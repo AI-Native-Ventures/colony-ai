@@ -113,6 +113,24 @@ impl Harness {
             .expect("host stdout should close");
         self.child.wait().expect("host process should exit")
     }
+
+    fn wait_for_exit_bounded(&mut self, timeout: Duration) -> ExitStatus {
+        let started = std::time::Instant::now();
+        loop {
+            if let Some(status) = self
+                .child
+                .try_wait()
+                .expect("host status should be readable")
+            {
+                return status;
+            }
+            assert!(
+                started.elapsed() < timeout,
+                "host did not exit within {timeout:?} while stdin remained open"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
 }
 
 impl Drop for Harness {
@@ -337,6 +355,41 @@ fn duplicate_ids_and_generation_errors_are_deterministic_without_replay() {
 }
 
 #[test]
+fn unique_request_ids_at_retention_cap_have_bounded_replay_semantics() {
+    const SEEN_REQUEST_LIMIT: usize = 128 * 32;
+
+    let mut host = Harness::spawn(None, None);
+    bind_initial(&mut host);
+    for index in 0..SEEN_REQUEST_LIMIT {
+        let request_id = format!("seen-{index}");
+        host.send(request(&request_id, 1))
+            .expect("request within the retention cap should be framed");
+        let response = host.read_value();
+        assert_eq!(response["requestId"], request_id);
+        assert_eq!(response["outcome"], "ok");
+    }
+
+    let over_cap = "over-cap";
+    host.send(request(over_cap, 1))
+        .expect("the first over-cap request should be framed");
+    assert_error(&host.read_value(), over_cap, 1, "error", "host_busy");
+    host.send(request(over_cap, 1))
+        .expect("the repeated over-cap request should be framed");
+    assert_error(&host.read_value(), over_cap, 1, "error", "host_busy");
+
+    host.send(request("seen-0", 1))
+        .expect("an accepted identifier should remain replay-fenced");
+    assert_error(
+        &host.read_value(),
+        "seen-0",
+        1,
+        "error",
+        "duplicate_request_id",
+    );
+    assert!(host.finish().success());
+}
+
+#[test]
 fn stale_and_future_rehello_frames_fail_closed() {
     for generation in [0_u64, 3_u64] {
         let mut host = Harness::spawn(None, None);
@@ -390,6 +443,66 @@ fn unknown_frame_and_wrong_session_fail_closed_without_dispatch() {
     host.send(wrong_session)
         .expect("wrong session should be framed");
     assert!(!host.finish().success());
+}
+
+#[test]
+fn fatal_frames_exit_with_parent_stdin_left_open() {
+    let cases = vec![
+        (
+            "unknown frame",
+            json!({
+                "type": "NOT_REGISTERED",
+                "protocolVersion": 1,
+                "profileId": PROFILE_ID,
+                "sessionId": SESSION_ID,
+                "generationId": 1
+            }),
+        ),
+        ("wrong session", {
+            let mut frame = request("wrong-session-open", 1);
+            frame["sessionId"] = json!("another-session");
+            frame
+        }),
+        ("stale rehello", rehello(0)),
+    ];
+
+    for (label, frame) in cases {
+        let mut host = Harness::spawn(None, None);
+        bind_initial(&mut host);
+        host.send(frame).expect("fatal frame should be framed");
+        let status = host.wait_for_exit_bounded(Duration::from_secs(2));
+        assert_eq!(
+            status.code(),
+            Some(2),
+            "{label} should terminate the host while stdin remains open"
+        );
+    }
+}
+
+#[test]
+fn non_reading_parent_cannot_make_host_buffers_unbounded() {
+    let mut host = Harness::spawn(None, None);
+    host.send(hello(1)).expect("HELLO should be framed");
+
+    let mut attempted = 0_usize;
+    for index in 0..512 {
+        let request_id = format!("pressure-{index}");
+        if host.send(request(&request_id, 1)).is_err() {
+            break;
+        }
+        attempted += 1;
+    }
+    assert!(
+        attempted > 0,
+        "the bounded pressure vector should reach the host"
+    );
+
+    let status = host.wait_for_exit_bounded(Duration::from_secs(2));
+    assert_eq!(
+        status.code(),
+        Some(2),
+        "a non-reading parent must trigger bounded output backpressure failure"
+    );
 }
 
 #[test]
