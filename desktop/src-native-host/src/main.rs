@@ -389,10 +389,10 @@ impl Host {
 }
 
 fn configured_relay_url() -> String {
-    // This follows the upstream `desktop/src-tauri/src/relay.rs` contract:
-    // a trimmed, non-empty runtime BUZZ_RELAY_URL wins, then the optional
-    // build-time override, then the local development default. The host does
-    // not open a socket or consult identity state for this health-safe value.
+    // This follows the upstream desktop relay URL contract: a trimmed,
+    // non-empty runtime BUZZ_RELAY_URL wins, then the optional build-time
+    // override, then the local development default. The host does not open a
+    // socket or consult identity state for this health-safe value.
     env::var("BUZZ_RELAY_URL")
         .ok()
         .map(|value| value.trim().to_string())
