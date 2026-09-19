@@ -4,6 +4,18 @@
 
 **Goal:** Prove one isolated, packaged Electron window can bind to one headless Rust host on macOS arm64 through the bounded host protocol, including a harmless request, one lifecycle event, renderer reload/rebind, and deterministic injected failures.
 
+## Repository and CI destination correction
+
+This plan is being implemented in the new public repository
+`AI-Native-Ventures/colony-ai`, from `develop` on an isolated feature branch.
+The older `/Users/mac/.traycer/worktrees/ai-native-ventures__colony/...`
+examples and the historical `block/buzz`/private `squareup` CI-destination
+note are stale setup references and must not be used for this checkout. Local
+command snippets below should be read as running from the current repository
+root; hosted proof is owned by this repository's dedicated workflow. The
+bounded first step currently proves only the standalone Rust host contract;
+Electron packaging and the broader feasibility lane remain future tasks.
+
 **Architecture:** Electron is the only UI runtime. Electron main owns the fresh local profile, one window, the private inherited-stdio host process, frame validation, and renderer transport generations. A standalone Rust helper owns only the Stage-1 health-safe command/event skeleton; it has no Tauri dependency, no WebView, no network access, and no identity/key state. The upstream `RelayClient` remains untouched and is not treated as proven by this gate.
 
 **Tech Stack:** Electron `44.4.3`, `@electron/packager` `20.3.0`, Node.js ESM/CommonJS, Playwright Electron support for the hosted packaged smoke, Rust 2021 with `serde` and `serde_json`, and the pinned Buzz source revision `ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be`.
@@ -76,7 +88,7 @@ full renderer file is modified by the host skeleton.
 - [ ] **Step 3: Run the narrow guard.**
 
   ```bash
-  cd /Users/mac/.traycer/worktrees/ai-native-ventures__colony/port-phase1-stage0-baseline
+  cd /path/to/colony-ai
   . ./bin/activate-hermit
   node desktop/scripts/check-electron-stage0.mjs
   ```
@@ -108,7 +120,7 @@ full renderer file is modified by the host skeleton.
 - [ ] **Step 6: Prove the host contract in isolation.**
 
   ```bash
-  cd /Users/mac/.traycer/worktrees/ai-native-ventures__colony/port-phase1-stage0-baseline
+  cd /path/to/colony-ai
   . ./bin/activate-hermit
   cargo test --manifest-path desktop/src-native-host/Cargo.toml
   ```
@@ -164,7 +176,7 @@ full renderer file is modified by the host skeleton.
 - [ ] **Step 3: Produce the arm64 app bundle.** Use the exact commands below on the designated hosted runner after the helper has been compiled:
 
   ```bash
-  cd /Users/mac/.traycer/worktrees/ai-native-ventures__colony/port-phase1-stage0-baseline
+  cd /path/to/colony-ai
   . ./bin/activate-hermit
   cargo build --manifest-path desktop/src-native-host/Cargo.toml --release --target aarch64-apple-darwin
   node desktop/scripts/stage-electron-stage0.mjs
@@ -198,7 +210,7 @@ full renderer file is modified by the host skeleton.
 - [ ] **Step 6: Run only the focused hosted test.**
 
   ```bash
-  cd /Users/mac/.traycer/worktrees/ai-native-ventures__colony/port-phase1-stage0-baseline
+  cd /path/to/colony-ai
   . ./bin/activate-hermit
   pnpm exec playwright test --config desktop/playwright.electron.config.ts desktop/tests/electron-host-feasibility.spec.ts
   ```
@@ -215,7 +227,7 @@ full renderer file is modified by the host skeleton.
 
 - [ ] **Step 2: Keep the lane isolated.** Checkout the exact branch commit, activate Hermit, install the locked JS dependencies, build only `desktop/src-native-host`, stage/package the candidate, run the static guard, and execute the focused Electron test. Upload the unsigned `.app` and redacted test report as artifacts only; do not sign, notarize, publish, dispatch a release, or access a preserved identity.
 
-- [ ] **Step 3: Record the CI destination prerequisite.** The public `block/buzz` repository currently exposes reusable macOS and mobile workflows, including `.github/workflows/_ci-desktop-macos.yml` and `signed-macos-canary.yml`, but this branch has no authorized public destination. The private `squareup/buzz-releases` metadata and self-hosted runner inventory were not observable with the current token. The coordinator must name the authorized repository/lane before this workflow is expected to run.
+- [ ] **Step 3: Record the CI destination prerequisite.** The authorized public destination for this work is `AI-Native-Ventures/colony-ai`; the bounded first step owns a dedicated hosted Rust contract lane at `.github/workflows/colony-native-host-contract.yml`. Any later packaged Electron lane must remain in this repository and must not be redirected to historical upstream/private workflow references.
 
 ## Acceptance gate and handoff
 
@@ -250,8 +262,8 @@ touching the full upstream renderer or any identity/relay path.
   explicit all-platform follow-on scope each map to a task and acceptance
   criterion.
 - **Placeholder scan:** every implementation step names its target files and
-  commands; unresolved hosted private-lane access is called out as an
-  observable prerequisite rather than a presumed failure.
+  commands; later packaged Electron and device prerequisites remain observable
+  follow-on work rather than a presumed pass or failure.
 - **Type/contract consistency:** the same manifest names, protocol limits,
   event, request, generation, profile, session, and error outcomes are used in
   the Rust, Electron, renderer, package, and CI tasks.
