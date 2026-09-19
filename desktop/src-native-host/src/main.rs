@@ -3,9 +3,9 @@ mod protocol;
 use std::{
     collections::{HashMap, HashSet},
     env,
-    io::{self, BufWriter, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
     process,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver, SyncSender, TrySendError},
     thread,
     time::{Duration, Instant},
 };
@@ -26,6 +26,12 @@ enum ReaderMessage {
     Frame(Vec<u8>),
     Eof,
     Error(ProtocolError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriterOutcome {
+    Drained,
+    IoError,
 }
 
 #[derive(Debug)]
@@ -52,7 +58,7 @@ impl FaultMode {
 struct Host {
     limits: ProtocolLimits,
     expected_profile_id: String,
-    output: BufWriter<io::Stdout>,
+    output: SyncSender<Vec<u8>>,
     binding: Option<Binding>,
     sequence: u64,
     pending: HashMap<String, PendingRequest>,
@@ -63,12 +69,17 @@ struct Host {
 }
 
 impl Host {
-    fn new(limits: ProtocolLimits, expected_profile_id: String, fault: FaultMode) -> Self {
+    fn new(
+        limits: ProtocolLimits,
+        expected_profile_id: String,
+        fault: FaultMode,
+        output: SyncSender<Vec<u8>>,
+    ) -> Self {
         let deadline = test_or_manifest_deadline(&limits);
         Self {
             limits,
             expected_profile_id,
-            output: BufWriter::new(io::stdout()),
+            output,
             binding: None,
             sequence: 0,
             pending: HashMap::new(),
@@ -89,18 +100,15 @@ impl Host {
                 }
                 Ok(ReaderMessage::Eof) => {
                     self.reject_pending("host_unavailable")?;
-                    self.output.flush().map_err(|_| ProtocolError::Io)?;
                     return Ok(());
                 }
                 Ok(ReaderMessage::Error(error)) => {
                     self.reject_pending("protocol_error")?;
-                    self.output.flush().map_err(|_| ProtocolError::Io)?;
                     return Err(error);
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     self.reject_pending("host_unavailable")?;
-                    self.output.flush().map_err(|_| ProtocolError::Io)?;
                     return Ok(());
                 }
             }
@@ -184,15 +192,17 @@ impl Host {
                 Some("duplicate_request_id"),
             );
         }
-        self.seen_request_ids.insert(request_id.clone());
         if self.seen_request_ids.len()
-            > self
+            >= self
                 .limits
                 .in_flight_limit
                 .saturating_mul(MAX_SEEN_REQUEST_IDS_MULTIPLIER)
         {
+            // A rejected identifier is deliberately not retained. Repeating it
+            // remains host_busy, while accepted identifiers stay replay-fenced.
             return self.send_response(&current, request_id, "error", None, Some("host_busy"));
         }
+        self.seen_request_ids.insert(request_id.clone());
         if self.pending.len() >= self.limits.in_flight_limit {
             return self.send_response(&current, request_id, "error", None, Some("host_busy"));
         }
@@ -378,13 +388,10 @@ impl Host {
 
     fn write(&mut self, frame: OutboundFrame) -> Result<(), ProtocolError> {
         let bytes = encode_frame(&frame, &self.limits)?;
-        // Writes are flushed synchronously, so this process has at most one
-        // frame in its outbound queue. The manifest's queue bound is still
-        // validated as part of the canonical contract.
-        self.output
-            .write_all(&bytes)
-            .map_err(|_| ProtocolError::Io)?;
-        self.output.flush().map_err(|_| ProtocolError::Io)
+        self.output.try_send(bytes).map_err(|error| match error {
+            TrySendError::Full(_) => ProtocolError::OutputQueueFull,
+            TrySendError::Disconnected(_) => ProtocolError::Io,
+        })
     }
 }
 
@@ -420,23 +427,49 @@ fn main() {
         _ => {}
     }
 
-    let (sender, receiver) = mpsc::channel();
+    let queue_limit = manifest.protocol.outbound_queue_limit;
     let frame_limit = manifest.protocol.frame_limit_bytes;
     let expected_profile_id = manifest.namespace.profile_id.clone();
-    let reader = thread::spawn(move || reader_loop(sender, frame_limit));
+    let (input_sender, receiver) = mpsc::sync_channel(queue_limit);
+    let (output_sender, output_receiver) = mpsc::sync_channel(queue_limit);
+    let (writer_done_sender, writer_done_receiver) = mpsc::channel();
+    let reader = thread::spawn(move || reader_loop(input_sender, frame_limit));
+    let writer = thread::spawn(move || writer_loop(output_receiver, writer_done_sender));
     let fault = FaultMode::from_environment();
-    let mut host = Host::new(manifest.protocol, expected_profile_id, fault);
+    let shutdown_grace_ms = manifest.protocol.shutdown_grace_ms;
+    let mut host = Host::new(manifest.protocol, expected_profile_id, fault, output_sender);
     let result = host.run(receiver);
-    let _ = reader.join();
-    if let Err(error) = result {
-        eprintln!("native host protocol closed: {error}");
-        process::exit(PROTOCOL_FAILURE_CODE);
+    match result {
+        Ok(()) => {
+            let _ = reader.join();
+            drop(host);
+            match writer_done_receiver.recv_timeout(Duration::from_millis(shutdown_grace_ms)) {
+                Ok(WriterOutcome::Drained) => {
+                    let _ = writer.join();
+                }
+                Ok(WriterOutcome::IoError) => process::exit(PROTOCOL_FAILURE_CODE),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    // The writer may be blocked by a non-reading parent. The
+                    // protocol's shutdown grace is a process-lifecycle bound;
+                    // once it expires, terminate without waiting on that pipe.
+                    process::exit(0);
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => process::exit(0),
+            }
+        }
+        Err(error) => {
+            eprintln!("native host protocol closed: {error}");
+            // A fatal protocol error owns process termination. The stdin reader
+            // may be blocked on a parent-held pipe, so joining it here would
+            // turn fail-closed handling into an unbounded wait.
+            process::exit(PROTOCOL_FAILURE_CODE);
+        }
     }
 }
 
-fn reader_loop(sender: Sender<ReaderMessage>, frame_limit: usize) {
+fn reader_loop(sender: SyncSender<ReaderMessage>, frame_limit: usize) {
     let stdin = io::stdin();
-    let mut input = io::BufReader::with_capacity(8 * 1024, stdin.lock());
+    let mut input = BufReader::with_capacity(8 * 1024, stdin.lock());
     loop {
         match read_frame(&mut input, frame_limit) {
             Ok(Some(frame)) => {
@@ -454,6 +487,22 @@ fn reader_loop(sender: Sender<ReaderMessage>, frame_limit: usize) {
             }
         }
     }
+}
+
+fn writer_loop(receiver: Receiver<Vec<u8>>, done: mpsc::Sender<WriterOutcome>) {
+    let mut output = BufWriter::new(io::stdout());
+    let mut outcome = WriterOutcome::Drained;
+    while let Ok(frame) = receiver.recv() {
+        if output
+            .write_all(&frame)
+            .and_then(|_| output.flush())
+            .is_err()
+        {
+            outcome = WriterOutcome::IoError;
+            break;
+        }
+    }
+    let _ = done.send(outcome);
 }
 
 fn read_frame(

@@ -38,6 +38,7 @@ pub enum ProtocolError {
     WrongBinding,
     Closed,
     OutputTooLarge,
+    OutputQueueFull,
     Serialization,
     Io,
 }
@@ -59,6 +60,7 @@ impl ProtocolError {
             Self::WrongBinding => "wrong_binding",
             Self::Closed => "host_unavailable",
             Self::OutputTooLarge => "outbound_too_large",
+            Self::OutputQueueFull => "outbound_queue_full",
             Self::Serialization => "serialization_error",
             Self::Io => "io_error",
         }
