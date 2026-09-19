@@ -1,0 +1,56 @@
+{
+  "stage": "0",
+  "sourceRevision": "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be",
+  "upstreamMainObservedAt": "2026-09-19T22:16:09Z",
+  "electron": {
+    "version": "44.4.3",
+    "packagerVersion": "20.3.0"
+  },
+  "namespace": {
+    "channel": "dev",
+    "profileId": "0000000000000001",
+    "applicationId": "xyz.ainative.ventures.colony.dev",
+    "userDataRelativePath": "Colony/dev/0000000000000001",
+    "keychainService": "xyz.ainative.ventures.colony.dev.0000000000000001",
+    "helperIdentity": "colony-native.dev.0000000000000001",
+    "deepLinkScheme": "colony-dev"
+  },
+  "protocol": {
+    "version": 1,
+    "framePrefix": "@colony-native:",
+    "frameLimitBytes": 16777216,
+    "jsonPayloadLimitBytes": 8388608,
+    "jsonDepthLimit": 32,
+    "binaryPayloadLimitBytes": 8388608,
+    "inFlightLimit": 128,
+    "subscriptionLimit": 1024,
+    "outboundQueueLimit": 64,
+    "defaultDeadlineMs": 10000,
+    "shutdownGraceMs": 250,
+    "rebindAckDeadlineMs": 10000,
+    "binaryEncoding": "base64-with-decoded-byte-length",
+    "registryDigest": "1242953f4a5baf1995ee18bac140ca16178a06205771d8a65ab0a9a39bb0ac49",
+    "registry": {
+      "health-safe": {
+        "request": "get_default_relay_url",
+        "event": "host_lifecycle"
+      }
+    },
+    "frames": [
+      "HELLO",
+      "READY",
+      "REHELLO",
+      "REBOUND",
+      "REQUEST",
+      "RESPONSE",
+      "EVENT",
+      "CANCEL"
+    ]
+  },
+  "faultInputs": [
+    "host-unavailable",
+    "exit-before-ready",
+    "malformed-frame",
+    "delay-response"
+  ]
+}
