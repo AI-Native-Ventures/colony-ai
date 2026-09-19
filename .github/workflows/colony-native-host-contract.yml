@@ -1,0 +1,74 @@
+name: Colony native host contract
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/electron-stage0-manifest.json"
+      - "desktop/src-native-host/**"
+      - ".github/workflows/colony-native-host-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: macOS arm64 host protocol
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert hosted runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "This lane requires a native macOS arm64 runner; got $machine" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+
+      - name: Check standalone host formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo fmt --manifest-path desktop/src-native-host/Cargo.toml -- --check
+
+      - name: Prove the host has no Tauri dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -n -i 'tauri|wry|src-tauri' desktop/src-native-host; then
+            echo "standalone host contains a forbidden Tauri/WebView reference" >&2
+            exit 1
+          fi
+          . ./bin/activate-hermit
+          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml
+          if cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            | rg -i '(^|[- ])(tauri|wry)([- ])|src-tauri'; then
+            echo "standalone host dependency tree contains Tauri/WebView" >&2
+            exit 1
+          fi
+
+      - name: Run only the standalone stdio contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml
