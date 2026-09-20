@@ -596,6 +596,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          . ./bin/activate-hermit
           report="$GITHUB_WORKSPACE/desktop/linux-reload-mutation-report.json"
           rm -f "$report"
           set +e
@@ -621,6 +622,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          . ./bin/activate-hermit
           report="$GITHUB_WORKSPACE/desktop/linux-ipc-mutation-report.json"
           rm -f "$report"
           set +e
