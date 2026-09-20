@@ -45,7 +45,9 @@ class FakeTransport {
 
   request({ generationId, requestId = `request-${this.requests.length}` }) {
     if (generationId !== this.binding.generationId) {
-      return Promise.reject(Object.assign(new Error("stale"), { code: "stale_generation" }));
+      return Promise.reject(
+        Object.assign(new Error("stale"), { code: "stale_generation" }),
+      );
     }
     this.requests.push({ generationId, requestId });
     if (generationId === 1 && this.pendingRequests.size === 0) {
@@ -75,7 +77,9 @@ class FakeTransport {
     if (!next) return;
     for (const [requestId, pending] of this.pendingRequests) {
       this.pendingRequests.delete(requestId);
-      pending.reject(Object.assign(new Error("rebound"), { code: "renderer_rebound" }));
+      pending.reject(
+        Object.assign(new Error("rebound"), { code: "renderer_rebound" }),
+      );
     }
     this.binding = {
       profileId: PROFILE_ID,
@@ -107,7 +111,10 @@ test("RendererHost replays the initial ready lifecycle after listener installati
   const events = [];
   host.onLifecycle((event) => events.push(event));
 
-  assert.deepEqual(events.map((event) => event.payload.state), ["ready"]);
+  assert.deepEqual(
+    events.map((event) => event.payload.state),
+    ["ready"],
+  );
   assert.deepEqual(host.bindingState(), {
     state: "bound",
     profileId: PROFILE_ID,
@@ -125,7 +132,10 @@ test("RendererHost fences the old renderer promise and admits health only after 
   const oldRequest = host.request();
   const barrier = host.reset();
 
-  await assert.rejects(oldRequest, (error) => error.code === "renderer_rebound");
+  await assert.rejects(
+    oldRequest,
+    (error) => error.code === "renderer_rebound",
+  );
   await barrier;
   const fresh = await host.request();
   assert.equal(fresh.generationId, 2);
@@ -140,7 +150,10 @@ test("RendererHost serializes repeated reloads and never admits a request betwee
   await host.start();
   const first = host.reset();
   const second = host.reset();
-  await assert.rejects(host.request(), (error) => error.code === "renderer_rebinding");
+  await assert.rejects(
+    host.request(),
+    (error) => error.code === "renderer_rebinding",
+  );
   await Promise.all([first, second]);
   assert.deepEqual(transport.rebindCalls, [2, 3]);
   assert.equal(host.bindingState().generationId, 3);
@@ -161,7 +174,11 @@ test("RendererHost drops stale lifecycle events after reload and retains only cu
 
   assert.deepEqual(
     events.map((event) => [event.generationId, event.payload.state]),
-    [[1, "ready"], [2, "rebound"], [2, "rebound"]],
+    [
+      [1, "ready"],
+      [2, "rebound"],
+      [2, "rebound"],
+    ],
   );
   await host.dispose();
   assert.equal(transport.disposed, true);

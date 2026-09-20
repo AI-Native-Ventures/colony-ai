@@ -2,8 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const MAX_ID_BYTES = 128;
-const EXPECTED_SOURCE_REVISION =
-  "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be";
+const EXPECTED_SOURCE_REVISION = "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be";
 const EXPECTED_PROFILE_ID = "0000000000000001";
 const EXPECTED_REGISTRY_DIGEST =
   "1242953f4a5baf1995ee18bac140ca16178a06205771d8a65ab0a9a39bb0ac49";
@@ -18,12 +17,7 @@ const EXPECTED_FRAME_TYPES = Object.freeze([
   "CANCEL",
 ]);
 const MAIN_FRAME_TYPES = new Set(["HELLO", "REHELLO", "REQUEST", "CANCEL"]);
-const HOST_FRAME_TYPES = new Set([
-  "READY",
-  "REBOUND",
-  "RESPONSE",
-  "EVENT",
-]);
+const HOST_FRAME_TYPES = new Set(["READY", "REBOUND", "RESPONSE", "EVENT"]);
 const EXPECTED_FAULT_INPUTS = Object.freeze([
   "host-unavailable",
   "exit-before-ready",
@@ -75,7 +69,11 @@ function expect(condition, code) {
   }
 }
 
-function expectString(value, code, { allowEmpty = false, maxBytes = Infinity } = {}) {
+function expectString(
+  value,
+  code,
+  { allowEmpty = false, maxBytes = Infinity } = {},
+) {
   expect(typeof value === "string", code);
   expect(allowEmpty || value.length > 0, code);
   expect(Buffer.byteLength(value, "utf8") <= maxBytes, code);
@@ -108,7 +106,11 @@ function validateNamespace(namespace) {
     helperIdentity: "colony-native.dev.0000000000000001",
     deepLinkScheme: "colony-dev",
   };
-  expectExactKeys(namespace, Object.keys(expected), "invalid_manifest_namespace");
+  expectExactKeys(
+    namespace,
+    Object.keys(expected),
+    "invalid_manifest_namespace",
+  );
   for (const [key, expectedValue] of Object.entries(expected)) {
     expect(namespace[key] === expectedValue, `invalid_manifest_${key}`);
   }
@@ -143,7 +145,10 @@ function validateProtocol(protocol) {
     ["health-safe"],
     "invalid_manifest_registry",
   );
-  expect(isRecord(protocol.registry?.["health-safe"]), "invalid_manifest_registry");
+  expect(
+    isRecord(protocol.registry?.["health-safe"]),
+    "invalid_manifest_registry",
+  );
   expectExactKeys(
     protocol.registry["health-safe"],
     ["request", "event"],
@@ -164,9 +169,15 @@ function validateProtocol(protocol) {
 export function validateManifest(input) {
   expect(isRecord(input), "invalid_manifest");
   expect(input.stage === "0", "invalid_manifest_stage");
-  expect(input.sourceRevision === EXPECTED_SOURCE_REVISION, "invalid_manifest_source");
+  expect(
+    input.sourceRevision === EXPECTED_SOURCE_REVISION,
+    "invalid_manifest_source",
+  );
   expect(isRecord(input.electron), "invalid_manifest_electron");
-  expect(input.electron.version === "44.4.3", "invalid_manifest_electron_version");
+  expect(
+    input.electron.version === "44.4.3",
+    "invalid_manifest_electron_version",
+  );
   expect(
     input.electron.packagerVersion === "20.3.0",
     "invalid_manifest_packager_version",
@@ -246,7 +257,10 @@ function validateCommon(frame) {
   expect(isRecord(frame), "invalid_frame");
   expectString(frame.type, "invalid_frame_type", { maxBytes: MAX_ID_BYTES });
   expect(FRAME_TYPES.includes(frame.type), "unknown_frame");
-  expect(frame.protocolVersion === PROTOCOL.version, "invalid_protocol_version");
+  expect(
+    frame.protocolVersion === PROTOCOL.version,
+    "invalid_protocol_version",
+  );
   validateId(frame.profileId, "invalid_profile_id");
   validateId(frame.sessionId, "invalid_session_id");
   expectPositiveInteger(frame.generationId, "invalid_generation_id");
@@ -276,7 +290,10 @@ function validateReadyLike(frame) {
       "invalid_ready_payload",
     );
   } else {
-    expect(frame.payload === undefined || frame.payload === null, "invalid_rebound_payload");
+    expect(
+      frame.payload === undefined || frame.payload === null,
+      "invalid_rebound_payload",
+    );
   }
 }
 
@@ -304,7 +321,9 @@ function validateResponse(frame) {
   if (frame.error !== undefined) {
     expect(isRecord(frame.error), "invalid_error");
     expectExactKeys(frame.error, ["code"], "invalid_error");
-    expectString(frame.error.code, "invalid_error_code", { maxBytes: MAX_ID_BYTES });
+    expectString(frame.error.code, "invalid_error_code", {
+      maxBytes: MAX_ID_BYTES,
+    });
   }
   if (frame.outcome === "ok") {
     expect(frame.error === undefined, "invalid_success_error");
@@ -331,7 +350,10 @@ function validateEvent(frame) {
   );
   expect(frame.event === "host_lifecycle", "unknown_event");
   expect(isRecord(frame.payload), "invalid_event_payload");
-  expect(["ready", "rebound"].includes(frame.payload.state), "invalid_event_state");
+  expect(
+    ["ready", "rebound"].includes(frame.payload.state),
+    "invalid_event_state",
+  );
   expectNumber(frame.sequence, "invalid_sequence");
 }
 
@@ -347,7 +369,8 @@ export function validateEnvelope(
   }
   if (binding) {
     expect(
-      frame.profileId === binding.profileId && frame.sessionId === binding.sessionId,
+      frame.profileId === binding.profileId &&
+        frame.sessionId === binding.sessionId,
       "wrong_binding",
     );
   }
@@ -403,7 +426,9 @@ export function validateEnvelope(
         "invalid_request_schema",
       );
       validateId(frame.requestId, "invalid_request_id");
-      expectString(frame.capability, "invalid_capability", { maxBytes: MAX_ID_BYTES });
+      expectString(frame.capability, "invalid_capability", {
+        maxBytes: MAX_ID_BYTES,
+      });
       expectString(frame.method, "invalid_method", { maxBytes: MAX_ID_BYTES });
       expect(isRecord(frame.payload), "invalid_request_payload");
       break;
@@ -441,7 +466,10 @@ export function validateEnvelope(
 export function validateHealthRequest({ capability, method, payload }) {
   expect(capability === "health-safe", "unknown_capability");
   expect(method === "get_default_relay_url", "unknown_method");
-  expect(isRecord(payload) && Object.keys(payload).length === 0, "invalid_payload");
+  expect(
+    isRecord(payload) && Object.keys(payload).length === 0,
+    "invalid_payload",
+  );
 }
 
 export function encodeFrame(frame, { direction = "any" } = {}) {
@@ -466,8 +494,14 @@ export function decodeFrame(input, { direction = "any", binding = null } = {}) {
   expect(text.startsWith(FRAME_PREFIX), "invalid_prefix");
   const jsonText = text.slice(FRAME_PREFIX.length);
   expect(jsonText.length > 0, "invalid_json");
-  expect(Buffer.byteLength(jsonText, "utf8") <= LIMITS.jsonPayloadLimitBytes, "json_too_large");
-  expect(!jsonDepthExceeds(Buffer.from(jsonText), LIMITS.jsonDepthLimit), "json_too_deep");
+  expect(
+    Buffer.byteLength(jsonText, "utf8") <= LIMITS.jsonPayloadLimitBytes,
+    "json_too_large",
+  );
+  expect(
+    !jsonDepthExceeds(Buffer.from(jsonText), LIMITS.jsonDepthLimit),
+    "json_too_deep",
+  );
   let frame;
   try {
     frame = JSON.parse(jsonText);
@@ -480,7 +514,11 @@ export function decodeFrame(input, { direction = "any", binding = null } = {}) {
 export class FrameDecoder {
   #buffer = Buffer.alloc(0);
 
-  constructor({ frameLimitBytes = LIMITS.frameLimitBytes, direction = "any", binding = null } = {}) {
+  constructor({
+    frameLimitBytes = LIMITS.frameLimitBytes,
+    direction = "any",
+    binding = null,
+  } = {}) {
     this.frameLimitBytes = frameLimitBytes;
     this.direction = direction;
     this.binding = binding;
@@ -502,17 +540,15 @@ export class FrameDecoder {
           throw protocolError("frame_too_large");
         }
         if (remaining > 0) {
-          this.#buffer = Buffer.concat([
-            this.#buffer,
-            bytes.subarray(offset),
-          ]);
+          this.#buffer = Buffer.concat([this.#buffer, bytes.subarray(offset)]);
         }
         break;
       }
       const chunkLine = bytes.subarray(offset, newline);
-      const line = this.#buffer.length === 0
-        ? chunkLine
-        : Buffer.concat([this.#buffer, chunkLine]);
+      const line =
+        this.#buffer.length === 0
+          ? chunkLine
+          : Buffer.concat([this.#buffer, chunkLine]);
       this.#buffer = Buffer.alloc(0);
       if (line.length === 0) {
         throw protocolError("invalid_json");
@@ -520,7 +556,9 @@ export class FrameDecoder {
       if (line.length + 1 > this.frameLimitBytes) {
         throw protocolError("frame_too_large");
       }
-      frames.push(decodeFrame(line, { direction: this.direction, binding: this.binding }));
+      frames.push(
+        decodeFrame(line, { direction: this.direction, binding: this.binding }),
+      );
       offset = newline + 1;
     }
     return frames;
@@ -533,7 +571,11 @@ export class FrameDecoder {
   }
 }
 
-export function createBinding({ profileId = PROFILE_ID, sessionId, generationId }) {
+export function createBinding({
+  profileId = PROFILE_ID,
+  sessionId,
+  generationId,
+}) {
   validateId(profileId, "invalid_profile_id");
   validateId(sessionId, "invalid_session_id");
   expectPositiveInteger(generationId, "invalid_generation_id");
@@ -551,7 +593,12 @@ export function createHello({ profileId = PROFILE_ID, sessionId, buildId }) {
   };
 }
 
-export function createRehello({ profileId = PROFILE_ID, sessionId, generationId, buildId }) {
+export function createRehello({
+  profileId = PROFILE_ID,
+  sessionId,
+  generationId,
+  buildId,
+}) {
   const binding = createBinding({ profileId, sessionId, generationId });
   validateId(buildId, "missing_build_id");
   return {
@@ -585,7 +632,12 @@ export function createRequest({
   };
 }
 
-export function createCancel({ profileId = PROFILE_ID, sessionId, generationId, requestId }) {
+export function createCancel({
+  profileId = PROFILE_ID,
+  sessionId,
+  generationId,
+  requestId,
+}) {
   const binding = createBinding({ profileId, sessionId, generationId });
   validateId(requestId, "invalid_request_id");
   return {
@@ -598,7 +650,11 @@ export function createCancel({ profileId = PROFILE_ID, sessionId, generationId, 
 
 export function redactedProtocolCode(error, fallback = "protocol_error") {
   if (error instanceof HostProtocolError) return error.code;
-  if (error && typeof error.code === "string" && /^[a-z0-9_]+$/.test(error.code)) {
+  if (
+    error &&
+    typeof error.code === "string" &&
+    /^[a-z0-9_]+$/.test(error.code)
+  ) {
     return error.code;
   }
   return fallback;

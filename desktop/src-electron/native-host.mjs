@@ -19,7 +19,12 @@ import {
 } from "./host-protocol.mjs";
 
 const MAX_SEEN_REQUEST_IDS = LIMITS.inFlightLimit * 32;
-const ALLOWED_OUTCOMES = new Set(["ok", "error", "outcome_unknown", "cancelled"]);
+const ALLOWED_OUTCOMES = new Set([
+  "ok",
+  "error",
+  "outcome_unknown",
+  "cancelled",
+]);
 
 export class NativeHostError extends Error {
   constructor(code, message = code) {
@@ -129,11 +134,13 @@ export class NativeHost {
         if (this.state === "starting") this.#fatal("startup_timeout");
       }, this.protocol.defaultDeadlineMs);
       this.startTimer.unref?.();
-      this.#enqueue(createHello({
-        profileId: this.profileId,
-        sessionId: this.sessionId,
-        buildId: this.buildId,
-      }));
+      this.#enqueue(
+        createHello({
+          profileId: this.profileId,
+          sessionId: this.sessionId,
+          buildId: this.buildId,
+        }),
+      );
     } catch {
       this.#fatal("host_unavailable");
     }
@@ -149,7 +156,9 @@ export class NativeHost {
     generationId = null,
   } = {}) {
     if (this.state !== "ready" || !this.binding) {
-      throw hostError(this.state === "rebinding" ? "renderer_rebinding" : "host_unavailable");
+      throw hostError(
+        this.state === "rebinding" ? "renderer_rebinding" : "host_unavailable",
+      );
     }
     validateHealthRequest({ capability, method, payload });
     if (generationId !== null && generationId !== this.binding.generationId) {
@@ -165,9 +174,10 @@ export class NativeHost {
     if (this.seenRequestIds.size >= MAX_SEEN_REQUEST_IDS) {
       throw hostError("host_busy");
     }
-    const safeDeadline = Number.isSafeInteger(deadlineMs) && deadlineMs > 0
-      ? Math.min(deadlineMs, this.protocol.defaultDeadlineMs)
-      : this.protocol.defaultDeadlineMs;
+    const safeDeadline =
+      Number.isSafeInteger(deadlineMs) && deadlineMs > 0
+        ? Math.min(deadlineMs, this.protocol.defaultDeadlineMs)
+        : this.protocol.defaultDeadlineMs;
     const frame = createRequest({
       profileId: this.binding.profileId,
       sessionId: this.binding.sessionId,
@@ -198,7 +208,9 @@ export class NativeHost {
       } catch (error) {
         clearTimeout(pending.timer);
         this.pending.delete(id);
-        reject(error instanceof Error ? error : hostError("outbound_queue_full"));
+        reject(
+          error instanceof Error ? error : hostError("outbound_queue_full"),
+        );
       }
     });
     return promise;
@@ -239,24 +251,29 @@ export class NativeHost {
     const promise = new Promise((resolve, reject) => {
       this.rebindWait = { generationId, nextBinding, resolve, reject };
       this.rebindTimer = setTimeout(() => {
-        if (!this.rebindWait || this.rebindWait.generationId !== generationId) return;
+        if (!this.rebindWait || this.rebindWait.generationId !== generationId)
+          return;
         this.rebindWait = null;
         this.rebindTimer = null;
         this.#fatal("rebind_timeout");
       }, this.protocol.rebindAckDeadlineMs);
       this.rebindTimer.unref?.();
       try {
-        this.#enqueue(createRehello({
-          profileId: this.binding.profileId,
-          sessionId: this.binding.sessionId,
-          generationId,
-          buildId: this.buildId,
-        }));
+        this.#enqueue(
+          createRehello({
+            profileId: this.binding.profileId,
+            sessionId: this.binding.sessionId,
+            generationId,
+            buildId: this.buildId,
+          }),
+        );
       } catch (error) {
         clearTimeout(this.rebindTimer);
         this.rebindTimer = null;
         this.rebindWait = null;
-        reject(error instanceof Error ? error : hostError("outbound_queue_full"));
+        reject(
+          error instanceof Error ? error : hostError("outbound_queue_full"),
+        );
         this.#fatal(redactedProtocolCode(error, "outbound_queue_full"));
       }
     });
@@ -264,21 +281,24 @@ export class NativeHost {
   }
 
   onLifecycle(listener) {
-    if (!isFunction(listener)) throw new TypeError("listener must be a function");
+    if (!isFunction(listener))
+      throw new TypeError("listener must be a function");
     if (this.lifecycleListeners.size >= this.protocol.subscriptionLimit) {
       throw hostError("host_busy");
     }
     this.lifecycleListeners.add(listener);
     const buffered = this.lifecycleBuffer.splice(0);
     for (const frame of buffered) {
-      if (this.binding && frame.generationId !== this.binding.generationId) continue;
+      if (this.binding && frame.generationId !== this.binding.generationId)
+        continue;
       this.#deliverLifecycle(listener, frame);
     }
     return () => this.lifecycleListeners.delete(listener);
   }
 
   onState(listener) {
-    if (!isFunction(listener)) throw new TypeError("listener must be a function");
+    if (!isFunction(listener))
+      throw new TypeError("listener must be a function");
     this.stateListeners.add(listener);
     return () => this.stateListeners.delete(listener);
   }
@@ -339,7 +359,7 @@ export class NativeHost {
   }
 
   #attachChild(child) {
-    if (!child || !child.stdin || !child.stdout) {
+    if (!child?.stdin || !child.stdout) {
       throw hostError("host_unavailable");
     }
     child.stdout.on("data", (chunk) => this.#receive(chunk));
@@ -429,7 +449,8 @@ export class NativeHost {
   #handleRebound(frame) {
     const wait = this.rebindWait;
     if (!wait) {
-      if (this.binding && frame.generationId === this.binding.generationId) return;
+      if (this.binding && frame.generationId === this.binding.generationId)
+        return;
       this.#fatal("unexpected_rebound");
       return;
     }
@@ -446,7 +467,10 @@ export class NativeHost {
     this.rebindTimer = null;
     this.binding = wait.nextBinding;
     this.decoder.setBinding(this.binding);
-    this.#settleOlderPending(this.binding.generationId, hostError("renderer_rebound"));
+    this.#settleOlderPending(
+      this.binding.generationId,
+      hostError("renderer_rebound"),
+    );
     this.rebindWait = null;
     this.state = "ready";
     this.#notifyState();
@@ -489,14 +513,20 @@ export class NativeHost {
 
   #deliverLifecycle(listener, frame) {
     try {
-      listener(Object.freeze({ ...frame, payload: Object.freeze({ ...frame.payload }) }));
+      listener(
+        Object.freeze({
+          ...frame,
+          payload: Object.freeze({ ...frame.payload }),
+        }),
+      );
     } catch {
       // Listener failures cannot tear down the private transport.
     }
   }
 
   #enqueue(frame) {
-    if (this.terminal || !this.child?.stdin) throw hostError("host_unavailable");
+    if (this.terminal || !this.child?.stdin)
+      throw hostError("host_unavailable");
     let bytes;
     try {
       bytes = encodeFrame(frame, { direction: "main" });
@@ -530,12 +560,14 @@ export class NativeHost {
   #sendCancelBestEffort(requestId, generationId) {
     if (!this.binding || this.terminal || this.state !== "ready") return;
     try {
-      this.#enqueue(createCancel({
-        profileId: this.binding.profileId,
-        sessionId: this.binding.sessionId,
-        generationId,
-        requestId,
-      }));
+      this.#enqueue(
+        createCancel({
+          profileId: this.binding.profileId,
+          sessionId: this.binding.sessionId,
+          generationId,
+          requestId,
+        }),
+      );
     } catch {
       // Timeout is already terminal; cancellation is explicitly best-effort.
     }

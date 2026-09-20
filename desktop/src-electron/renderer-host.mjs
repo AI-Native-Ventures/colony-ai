@@ -28,7 +28,8 @@ export class RendererHost {
       throw new TypeError("transport is required");
     }
     this.transport = transport;
-    this.maxListeners = maxListeners ?? transport.protocol?.subscriptionLimit ?? 1024;
+    this.maxListeners =
+      maxListeners ?? transport.protocol?.subscriptionLimit ?? 1024;
     this.maxRebindQueue = transport.protocol?.outboundQueueLimit ?? 64;
     this.state = "idle";
     this.binding = null;
@@ -61,7 +62,9 @@ export class RendererHost {
         this.binding = freezeBinding({
           ...binding,
           registryDigest:
-            binding.registryDigest ?? this.transport.getBindingState?.().registryDigest ?? null,
+            binding.registryDigest ??
+            this.transport.getBindingState?.().registryDigest ??
+            null,
         });
         this.targetGeneration = this.binding.generationId;
         this.state = "bound";
@@ -76,9 +79,15 @@ export class RendererHost {
     return this.startPromise;
   }
 
-  async request({ capability = "health-safe", method = "get_default_relay_url", payload = {} } = {}) {
+  async request({
+    capability = "health-safe",
+    method = "get_default_relay_url",
+    payload = {},
+  } = {}) {
     if (this.state !== "bound" || !this.binding) {
-      throw rendererError(this.state === "rebinding" ? "renderer_rebinding" : "host_unavailable");
+      throw rendererError(
+        this.state === "rebinding" ? "renderer_rebinding" : "host_unavailable",
+      );
     }
     const generation = this.binding.generationId;
     const epoch = this.rendererEpoch;
@@ -112,7 +121,11 @@ export class RendererHost {
    * no request is admitted until the final queued generation is bound.
    */
   reset() {
-    if (!this.binding || this.state === "closed" || this.state === "unavailable") {
+    if (
+      !this.binding ||
+      this.state === "closed" ||
+      this.state === "unavailable"
+    ) {
       return Promise.reject(rendererError("host_unavailable"));
     }
     if (this.rebindWaiters.length >= this.maxRebindQueue) {
@@ -134,7 +147,8 @@ export class RendererHost {
   }
 
   onLifecycle(listener) {
-    if (typeof listener !== "function") throw new TypeError("listener must be a function");
+    if (typeof listener !== "function")
+      throw new TypeError("listener must be a function");
     if (this.lifecycleListeners.size >= this.maxListeners) {
       throw rendererError("host_busy");
     }
@@ -166,7 +180,9 @@ export class RendererHost {
       this.detachTransportEvents();
       this.detachTransportEvents = null;
     }
-    this.disposePromise = Promise.resolve(this.transport.dispose?.()).then(() => undefined);
+    this.disposePromise = Promise.resolve(this.transport.dispose?.()).then(
+      () => undefined,
+    );
     return this.disposePromise;
   }
 
@@ -174,7 +190,10 @@ export class RendererHost {
     if (this.rebindRunning || this.state === "closed") return;
     this.rebindRunning = true;
     try {
-      while (this.binding && this.binding.generationId < this.targetGeneration) {
+      while (
+        this.binding &&
+        this.binding.generationId < this.targetGeneration
+      ) {
         const nextGeneration = this.binding.generationId + 1;
         const binding = await this.transport.rebind(nextGeneration);
         if (!binding || binding.generationId !== nextGeneration) {
@@ -183,7 +202,9 @@ export class RendererHost {
         this.binding = freezeBinding({
           ...binding,
           registryDigest:
-            binding.registryDigest ?? this.transport.getBindingState?.().registryDigest ?? null,
+            binding.registryDigest ??
+            this.transport.getBindingState?.().registryDigest ??
+            null,
         });
         this.#resolveRebindWaiters(nextGeneration);
       }
@@ -233,7 +254,8 @@ export class RendererHost {
       }
       return;
     }
-    if (this.state !== "bound" || generation !== this.binding?.generationId) return;
+    if (this.state !== "bound" || generation !== this.binding?.generationId)
+      return;
     this.#emitLifecycle(frame);
   }
 
@@ -271,7 +293,12 @@ export class RendererHost {
 
   #deliver(listener, frame) {
     try {
-      listener(Object.freeze({ ...frame, payload: Object.freeze({ ...frame.payload }) }));
+      listener(
+        Object.freeze({
+          ...frame,
+          payload: Object.freeze({ ...frame.payload }),
+        }),
+      );
     } catch {
       // Listener failures are isolated from the transport state machine.
     }
@@ -280,7 +307,11 @@ export class RendererHost {
   #asRendererError(error) {
     if (error instanceof RendererHostError) return error;
     if (error instanceof HostProtocolError) return rendererError(error.code);
-    if (error && typeof error.code === "string" && /^[a-z0-9_]+$/.test(error.code)) {
+    if (
+      error &&
+      typeof error.code === "string" &&
+      /^[a-z0-9_]+$/.test(error.code)
+    ) {
       return rendererError(error.code);
     }
     return rendererError("host_unavailable");

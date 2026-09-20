@@ -57,7 +57,8 @@ function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
 
   function send(value) {
     queueMicrotask(() => {
-      if (!exited) child.stdout.write(encodeFrame(value, { direction: "host" }));
+      if (!exited)
+        child.stdout.write(encodeFrame(value, { direction: "host" }));
     });
   }
 
@@ -74,19 +75,24 @@ function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
         if (input.type === "HELLO") {
           if (malformed) {
             queueMicrotask(() => {
-              if (!exited) child.stdout.write(Buffer.from("@colony-native:{not-json\n"));
+              if (!exited)
+                child.stdout.write(Buffer.from("@colony-native:{not-json\n"));
             });
             continue;
           }
-          send(frame("READY", 1, {
-            payload: { capabilities: ["health-safe"] },
-            registryDigest: REGISTRY_DIGEST,
-          }));
-          send(frame("EVENT", 1, {
-            event: "host_lifecycle",
-            payload: { state: "ready" },
-            sequence: 1,
-          }));
+          send(
+            frame("READY", 1, {
+              payload: { capabilities: ["health-safe"] },
+              registryDigest: REGISTRY_DIGEST,
+            }),
+          );
+          send(
+            frame("EVENT", 1, {
+              event: "host_lifecycle",
+              payload: { state: "ready" },
+              sequence: 1,
+            }),
+          );
         } else if (input.type === "REQUEST") {
           requestCount += 1;
           if (delayResponse && input.generationId === 1) {
@@ -98,17 +104,30 @@ function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
           send(response(input.requestId, input.generationId, "cancelled"));
         } else if (input.type === "REHELLO") {
           for (const delayedRequest of delayedRequests.splice(0)) {
-            send(response(delayedRequest.requestId, delayedRequest.generationId, "outcome_unknown", {
-              error: { code: "renderer_rebound" },
-              payload: undefined,
-            }));
+            send(
+              response(
+                delayedRequest.requestId,
+                delayedRequest.generationId,
+                "outcome_unknown",
+                {
+                  error: { code: "renderer_rebound" },
+                  payload: undefined,
+                },
+              ),
+            );
           }
-          send(frame("REBOUND", input.generationId, { registryDigest: REGISTRY_DIGEST }));
-          send(frame("EVENT", input.generationId, {
-            event: "host_lifecycle",
-            payload: { state: "rebound" },
-            sequence: input.generationId,
-          }));
+          send(
+            frame("REBOUND", input.generationId, {
+              registryDigest: REGISTRY_DIGEST,
+            }),
+          );
+          send(
+            frame("EVENT", input.generationId, {
+              event: "host_lifecycle",
+              payload: { state: "rebound" },
+              sequence: input.generationId,
+            }),
+          );
         }
       }
     });
@@ -153,7 +172,14 @@ test("NativeHost binds one private stdio child, buffers ready lifecycle, and ser
   const binding = await host.start();
   const result = await host.requestHealthSafe();
 
-  assert.deepEqual(binding, createBinding({ profileId: PROFILE_ID, sessionId: SESSION_ID, generationId: 1 }));
+  assert.deepEqual(
+    binding,
+    createBinding({
+      profileId: PROFILE_ID,
+      sessionId: SESSION_ID,
+      generationId: 1,
+    }),
+  );
   assert.equal(result.outcome, "ok");
   assert.equal(result.payload.relayUrl, "ws://localhost:3000");
   assert.equal(events.length, 1);
@@ -184,10 +210,12 @@ test("NativeHost redacts non-protocol host error codes before rejection", async 
   const host = hostWith(fake);
   await host.start();
   const request = host.requestHealthSafe({ requestId: "unsafe-error-code" });
-  fake.emit(response("unsafe-error-code", 1, "error", {
-    error: { code: "/private/path-with-secret" },
-    payload: undefined,
-  }));
+  fake.emit(
+    response("unsafe-error-code", 1, "error", {
+      error: { code: "/private/path-with-secret" },
+      payload: undefined,
+    }),
+  );
   await assert.rejects(request, (error) => error.code === "error");
   await host.dispose();
 });
@@ -214,7 +242,10 @@ test("NativeHost rebind fences old pending work, serializes the barrier, and dro
   await host.start();
   const oldRequest = host.requestHealthSafe();
   const rebound = await host.rebind(2);
-  await assert.rejects(oldRequest, (error) => error.code === "renderer_rebound");
+  await assert.rejects(
+    oldRequest,
+    (error) => error.code === "renderer_rebound",
+  );
   assert.equal(rebound.generationId, 2);
   assert.equal(host.getBindingState().generationId, 2);
   const fresh = await host.requestHealthSafe();
@@ -224,7 +255,10 @@ test("NativeHost rebind fences old pending work, serializes the barrier, and dro
   assert.equal(host.pending.size, 0);
   assert.deepEqual(
     events.map((event) => [event.generationId, event.payload.state]),
-    [[1, "ready"], [2, "rebound"]],
+    [
+      [1, "ready"],
+      [2, "rebound"],
+    ],
   );
   await host.dispose();
 });
@@ -257,7 +291,10 @@ test("NativeHost bounds request admission and does not retry effectful work", as
   for (let index = 0; index < LIMITS.inFlightLimit; index += 1) {
     requests.push(host.requestHealthSafe({ requestId: `pending-${index}` }));
   }
-  await assert.rejects(host.requestHealthSafe({ requestId: "over-limit" }), (error) => error.code === "host_busy");
+  await assert.rejects(
+    host.requestHealthSafe({ requestId: "over-limit" }),
+    (error) => error.code === "host_busy",
+  );
   assert.equal(fake.requestCount, LIMITS.inFlightLimit);
   await host.dispose();
   await Promise.allSettled(requests);
