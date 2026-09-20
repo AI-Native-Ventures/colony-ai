@@ -65,6 +65,13 @@ jobs:
           . ./bin/activate-hermit
           pnpm install --frozen-lockfile --filter buzz
 
+      - name: Run focused package guard fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --test desktop/scripts/check-electron-stage0.test.mjs
+
       - name: Download the pinned Electron runtime
         shell: bash
         run: |

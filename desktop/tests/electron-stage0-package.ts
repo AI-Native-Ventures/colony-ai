@@ -145,33 +145,48 @@ export async function assertActiveLinuxSandbox(
   application: ElectronApplication,
 ) {
   if (process.platform !== "linux") return;
-  const metrics = await application.evaluate(({ app }) => app.getAppMetrics());
-  const tabPids = metrics
-    .filter((metric) => metric.type === "Tab")
-    .map((metric) => metric.pid);
-  assert.ok(tabPids.length > 0, "expected an Electron renderer process");
-  const observations = tabPids.map((pid) => {
-    const statusPath = `/proc/${pid}/status`;
-    assert.ok(fs.existsSync(statusPath), `missing renderer status: ${pid}`);
-    const status = fs.readFileSync(statusPath, "utf8");
-    const uid = /^Uid:\s+(\d+)/m.exec(status)?.[1] ?? null;
+  const renderer = await application.evaluate(({ app, BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(
+      (candidate) => !candidate.isDestroyed() && candidate.isVisible(),
+    );
+    if (!window) throw new Error("expected an Electron renderer window");
+    const tabMetricPids = app
+      .getAppMetrics()
+      .filter((metric) => metric.type === "Tab")
+      .map((metric) => metric.pid);
     return {
-      pid,
-      uid,
-      noNewPrivs: /^NoNewPrivs:\s+(\d+)/m.exec(status)?.[1] ?? null,
-      seccomp: /^Seccomp:\s+(\d+)/m.exec(status)?.[1] ?? null,
+      rendererPid: window.webContents.getOSProcessId(),
+      tabMetricPids,
     };
   });
+  assert.ok(renderer.rendererPid > 0, "expected a renderer OS process");
   assert.ok(
-    observations.every((observation) => observation.uid !== "0"),
-    `renderer must run as non-root: ${JSON.stringify(observations)}`,
+    renderer.tabMetricPids.includes(renderer.rendererPid),
+    `renderer PID was not identified as a Tab metric: ${JSON.stringify(renderer)}`,
   );
+  const statusPath = `/proc/${renderer.rendererPid}/status`;
   assert.ok(
-    observations.some(
-      (observation) =>
-        observation.noNewPrivs === "1" || observation.seccomp === "2",
-    ),
-    `Electron sandbox signal not observed: ${JSON.stringify(observations)}`,
+    fs.existsSync(statusPath),
+    `missing renderer status: ${renderer.rendererPid}`,
   );
-  console.log(`linux_sandbox=active ${JSON.stringify(observations)}`);
+  const status = fs.readFileSync(statusPath, "utf8");
+  const observation = {
+    pid: renderer.rendererPid,
+    uid: /^Uid:\s+(\d+)/m.exec(status)?.[1] ?? null,
+    noNewPrivs: /^NoNewPrivs:\s+(\d+)/m.exec(status)?.[1] ?? null,
+    seccomp: /^Seccomp:\s+(\d+)/m.exec(status)?.[1] ?? null,
+    tabMetricPids: renderer.tabMetricPids,
+  };
+  assert.notEqual(
+    observation.uid,
+    "0",
+    `renderer must run as non-root: ${JSON.stringify(observation)}`,
+  );
+  // These are process-level sandbox signals, not a claim that one status bit
+  // proves every Chromium namespace/seccomp property.
+  assert.ok(
+    observation.noNewPrivs === "1" || observation.seccomp === "2",
+    `Electron renderer sandbox signal not observed: ${JSON.stringify(observation)}`,
+  );
+  console.log(`linux_sandbox=active ${JSON.stringify(observation)}`);
 }
