@@ -212,8 +212,9 @@ test("keeps an open status draft when the saved status expires", async ({
   const sidebarStatus = page.getByTestId("sidebar-profile-user-status");
   await expect(sidebarStatus).toContainText("Original draft");
   await page.getByTestId("profile-popover-set-status").click();
-  // ProfilePopover opens the dialog from requestAnimationFrame.
-  await page.clock.fastForward(1);
+  // ProfilePopover opens the dialog from requestAnimationFrame; flush one
+  // controlled frame before asserting the dialog state.
+  await page.clock.fastForward(20);
   const dialog = page.getByTestId("set-status-dialog");
   const input = dialog.getByTestId("set-status-input");
   const saveButton = dialog.getByLabel("Save status");
