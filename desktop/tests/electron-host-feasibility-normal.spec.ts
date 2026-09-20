@@ -123,10 +123,15 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
   try {
     await assertNormalReady(page);
     await page.reload();
-    await page
-      .getByTestId("stage0-event")
-      .filter({ hasText: "rebound / generation 2" })
-      .waitFor();
+    await expect
+      .poll(async () => page.evaluate(() => window.stage0?.bindingState?.()), {
+        timeout: 10_000,
+      })
+      .toMatchObject({ state: "bound", generationId: 2 });
+    assert.match(
+      (await page.getByTestId("stage0-event").textContent()) ?? "",
+      /rebound \/ generation 2/,
+    );
     await page
       .getByTestId("stage0-result")
       .filter({ hasText: "generation 2" })
