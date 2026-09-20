@@ -20,24 +20,10 @@
 //! adding an env tier here would duplicate that precedence and create a
 //! divergent-behavior trap.
 
+pub use colony_identity_kernel::KeyringProbe;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-
-/// Result of probing the keyring before a migration: distinguishes "reachable
-/// but holds no entry" (safe to migrate into) from "unreachable this boot"
-/// (must NOT migrate — re-importing from a leftover plaintext file could
-/// resurrect a rotated/stale key).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyringProbe {
-    /// Keyring is reachable and an entry for the key already exists.
-    Present,
-    /// Keyring is reachable but has no entry for the key.
-    ReachableButEmpty,
-    /// Keyring backend is unavailable this boot (no Secret Service, dbus
-    /// failure, etc.). Migration must be skipped.
-    Unreachable,
-}
 
 /// Username used for the single blob keychain entry. All secrets are stored
 /// as a JSON map under this name within the service.

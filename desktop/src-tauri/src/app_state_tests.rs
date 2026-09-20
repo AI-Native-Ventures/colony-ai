@@ -1,4 +1,5 @@
 use super::*;
+use nostr::ToBech32;
 
 fn assert_key_eq(a: &Keys, b: &Keys) {
     assert_eq!(a.public_key().to_hex(), b.public_key().to_hex());
