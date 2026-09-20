@@ -482,14 +482,18 @@ fn recover_from_keyring(
     eprintln!(
         "buzz-desktop: corrupt nsec in keyring ({error}), looking for a recovery path before clearing"
     );
+    let mut preexisting_blob_cleared = false;
     // A strict adapter classifies a malformed blob before entering this
     // recovery path. Remove only that pre-existing corrupt blob first so a
     // valid same-profile file can be migrated and read back; a fresh-write
     // read-back corruption never calls this function and therefore never
     // reaches this cleanup branch.
     if strict_headless && preexisting_corrupt_blob {
-        if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
-            eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+        match store.delete(IDENTITY_KEY_NAME) {
+            Ok(()) => preexisting_blob_cleared = true,
+            Err(error) => {
+                eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+            }
         }
     }
     if profile.legacy_identity_path().exists() {
@@ -513,8 +517,10 @@ fn recover_from_keyring(
             storage: IdentityStorage::Ephemeral,
         });
     }
-    if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
-        eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+    if !preexisting_blob_cleared {
+        if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
+            eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+        }
     }
     let (keys, storage) = if strict_headless {
         generate_and_persist_headless(store, profile).map_err(ResolveError::Headless)?
