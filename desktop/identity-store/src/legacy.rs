@@ -20,7 +20,9 @@
 //! adding an env tier here would duplicate that precedence and create a
 //! divergent-behavior trap.
 
-pub use colony_identity_kernel::{HeadlessProbe, HeadlessReadback, KeyringProbe};
+pub use colony_identity_kernel::{
+    HeadlessProbe, HeadlessReadback, KeyringProbe, IDENTITY_FILE_NAME, MIGRATION_MARKER_NAME,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
