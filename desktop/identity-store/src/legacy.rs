@@ -1997,6 +1997,22 @@ mod headless_tests {
         Fail,
     }
 
+    #[derive(Clone, Copy)]
+    enum ReadBehavior {
+        Exact,
+        LockedBeforeWrite,
+        UnreachableBeforeWrite,
+        LockedAfterWrite,
+        UnreachableAfterWrite,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum RawOperation {
+        Read,
+        Write { marker_present: bool },
+        Delete,
+    }
+
     #[derive(Default)]
     struct WriteGate {
         started: Mutex<bool>,
@@ -2008,28 +2024,45 @@ mod headless_tests {
     struct RawBlobState {
         raw: Option<Vec<u8>>,
         write_behavior: WriteBehavior,
+        read_behavior: ReadBehavior,
         writes: usize,
         deletes: usize,
         reads: usize,
+        operations: Vec<RawOperation>,
+        written_payloads: Vec<Vec<u8>>,
     }
 
     struct RawBlobFake {
         state: Mutex<RawBlobState>,
         gate: Option<Arc<WriteGate>>,
+        marker_path: Option<PathBuf>,
     }
 
     impl RawBlobFake {
         fn new(raw: Option<Vec<u8>>, write_behavior: WriteBehavior) -> Arc<Self> {
-            Arc::new(Self {
-                state: Mutex::new(RawBlobState {
-                    raw,
-                    write_behavior,
-                    writes: 0,
-                    deletes: 0,
-                    reads: 0,
-                }),
-                gate: None,
-            })
+            Self::with_options(raw, write_behavior, ReadBehavior::Exact, None, None)
+        }
+
+        fn with_read_behavior(
+            raw: Option<Vec<u8>>,
+            write_behavior: WriteBehavior,
+            read_behavior: ReadBehavior,
+        ) -> Arc<Self> {
+            Self::with_options(raw, write_behavior, read_behavior, None, None)
+        }
+
+        fn with_marker_path(
+            raw: Option<Vec<u8>>,
+            write_behavior: WriteBehavior,
+            marker_path: PathBuf,
+        ) -> Arc<Self> {
+            Self::with_options(
+                raw,
+                write_behavior,
+                ReadBehavior::Exact,
+                None,
+                Some(marker_path),
+            )
         }
 
         fn with_gate(
@@ -2037,15 +2070,29 @@ mod headless_tests {
             write_behavior: WriteBehavior,
             gate: Arc<WriteGate>,
         ) -> Arc<Self> {
+            Self::with_options(raw, write_behavior, ReadBehavior::Exact, Some(gate), None)
+        }
+
+        fn with_options(
+            raw: Option<Vec<u8>>,
+            write_behavior: WriteBehavior,
+            read_behavior: ReadBehavior,
+            gate: Option<Arc<WriteGate>>,
+            marker_path: Option<PathBuf>,
+        ) -> Arc<Self> {
             Arc::new(Self {
                 state: Mutex::new(RawBlobState {
                     raw,
                     write_behavior,
+                    read_behavior,
                     writes: 0,
                     deletes: 0,
                     reads: 0,
+                    operations: Vec::new(),
+                    written_payloads: Vec::new(),
                 }),
-                gate: Some(gate),
+                gate,
+                marker_path,
             })
         }
 
@@ -2055,6 +2102,24 @@ mod headless_tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             (state.reads, state.writes, state.deletes)
+        }
+
+        fn operations(&self) -> Vec<RawOperation> {
+            self.state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .operations
+                .clone()
+        }
+
+        fn last_written_identity(&self) -> Option<String> {
+            let state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let raw = state.written_payloads.last()?;
+            let map = decode_headless_blob(raw).ok()?;
+            map.get(colony_identity_kernel::IDENTITY_KEY_NAME).cloned()
         }
 
         fn wait_for_first_write(&self) {
@@ -2089,6 +2154,25 @@ mod headless_tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             state.reads += 1;
+            state.operations.push(RawOperation::Read);
+            let failure = match state.read_behavior {
+                ReadBehavior::LockedBeforeWrite if state.writes == 0 => Some("keyring locked"),
+                ReadBehavior::UnreachableBeforeWrite if state.writes == 0 => {
+                    Some("keyring unavailable")
+                }
+                ReadBehavior::LockedAfterWrite if state.writes > 0 => Some("keyring locked"),
+                ReadBehavior::UnreachableAfterWrite if state.writes > 0 => {
+                    Some("keyring unavailable")
+                }
+                ReadBehavior::Exact
+                | ReadBehavior::LockedBeforeWrite
+                | ReadBehavior::UnreachableBeforeWrite
+                | ReadBehavior::LockedAfterWrite
+                | ReadBehavior::UnreachableAfterWrite => None,
+            };
+            if let Some(error) = failure {
+                return Err(error.to_string());
+            }
             Ok(state.raw.clone())
         }
 
@@ -2099,6 +2183,10 @@ mod headless_tests {
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.writes += 1;
+                state.operations.push(RawOperation::Write {
+                    marker_present: self.marker_path.as_ref().is_some_and(|path| path.exists()),
+                });
+                state.written_payloads.push(bytes.to_vec());
                 (state.write_behavior, state.writes)
             };
 
@@ -2193,6 +2281,7 @@ mod headless_tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             state.deletes += 1;
+            state.operations.push(RawOperation::Delete);
             state.raw = None;
             Ok(())
         }
@@ -2212,6 +2301,223 @@ mod headless_tests {
             ResetProvenance::NotAttemptedFresh,
         )
         .expect("isolated descriptor")
+    }
+
+    fn expected_probe_for_read_failure(read_behavior: ReadBehavior) -> HeadlessProbe {
+        match read_behavior {
+            ReadBehavior::LockedBeforeWrite => {
+                #[cfg(feature = "system-keyring")]
+                {
+                    HeadlessProbe::Locked
+                }
+                #[cfg(not(feature = "system-keyring"))]
+                {
+                    HeadlessProbe::Unreachable
+                }
+            }
+            ReadBehavior::UnreachableBeforeWrite => HeadlessProbe::Unreachable,
+            ReadBehavior::Exact
+            | ReadBehavior::LockedAfterWrite
+            | ReadBehavior::UnreachableAfterWrite => {
+                panic!("expected a pre-write read failure")
+            }
+        }
+    }
+
+    fn expected_store_error_for_read_failure(read_behavior: ReadBehavior) -> HeadlessStoreError {
+        match read_behavior {
+            ReadBehavior::LockedBeforeWrite => {
+                #[cfg(feature = "system-keyring")]
+                {
+                    HeadlessStoreError::Locked
+                }
+                #[cfg(not(feature = "system-keyring"))]
+                {
+                    HeadlessStoreError::Unreachable
+                }
+            }
+            ReadBehavior::UnreachableBeforeWrite => HeadlessStoreError::Unreachable,
+            ReadBehavior::Exact
+            | ReadBehavior::LockedAfterWrite
+            | ReadBehavior::UnreachableAfterWrite => {
+                panic!("expected a pre-write read failure")
+            }
+        }
+    }
+
+    fn expected_fresh_error_for_read_failure(
+        read_behavior: ReadBehavior,
+    ) -> colony_identity_kernel::HeadlessResolutionError {
+        match read_behavior {
+            ReadBehavior::LockedAfterWrite => {
+                #[cfg(feature = "system-keyring")]
+                {
+                    colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackLocked
+                }
+                #[cfg(not(feature = "system-keyring"))]
+                {
+                    colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackUnavailable
+                }
+            }
+            ReadBehavior::UnreachableAfterWrite => {
+                colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackUnavailable
+            }
+            ReadBehavior::Exact
+            | ReadBehavior::LockedBeforeWrite
+            | ReadBehavior::UnreachableBeforeWrite => {
+                panic!("expected a post-write read failure")
+            }
+        }
+    }
+
+    fn assert_delete_precedes_write(operations: &[RawOperation]) {
+        let delete_index = operations
+            .iter()
+            .position(|operation| *operation == RawOperation::Delete)
+            .expect("corrupt recovery must delete once");
+        let write_index = operations
+            .iter()
+            .position(|operation| matches!(operation, RawOperation::Write { .. }))
+            .expect("recovery must write once");
+        assert!(
+            delete_index < write_index,
+            "cleanup delete must precede K1 write: {operations:?}"
+        );
+        assert!(matches!(
+            operations[write_index],
+            RawOperation::Write {
+                marker_present: false
+            }
+        ));
+    }
+
+    #[test]
+    fn adapter_probe_and_prewrite_read_failures_map_without_writes() {
+        for read_behavior in [
+            ReadBehavior::LockedBeforeWrite,
+            ReadBehavior::UnreachableBeforeWrite,
+        ] {
+            let root = tempfile::tempdir().expect("isolated root");
+            let descriptor = descriptor(root.path());
+            let backend =
+                RawBlobFake::with_read_behavior(None, WriteBehavior::Exact, read_behavior);
+            let store = HeadlessIdentityStore::with_test_backend(descriptor, backend.clone())
+                .expect("headless adapter");
+            assert_eq!(
+                store.probe_identity(),
+                expected_probe_for_read_failure(read_behavior)
+            );
+            let secret = Keys::generate()
+                .secret_key()
+                .to_bech32()
+                .expect("synthetic nsec");
+            assert_eq!(
+                store.store_identity(&secret),
+                Err(expected_store_error_for_read_failure(read_behavior))
+            );
+            let (_, writes, deletes) = backend.counts();
+            assert_eq!(writes, 0, "read failure before write must not write");
+            assert_eq!(deletes, 0, "read failure before write must not delete");
+        }
+    }
+
+    #[test]
+    fn adapter_postwrite_read_failures_are_typed_and_terminal() {
+        for read_behavior in [
+            ReadBehavior::LockedAfterWrite,
+            ReadBehavior::UnreachableAfterWrite,
+        ] {
+            let root = tempfile::tempdir().expect("isolated root");
+            let descriptor = descriptor(root.path());
+            let backend =
+                RawBlobFake::with_read_behavior(None, WriteBehavior::Exact, read_behavior);
+            let store =
+                HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+                    .expect("headless adapter");
+            assert_eq!(
+                store
+                    .initialize()
+                    .expect_err("read-back failure must be terminal"),
+                expected_fresh_error_for_read_failure(read_behavior)
+            );
+            let (_, writes, deletes) = backend.counts();
+            assert_eq!(writes, 1, "post-write failure must not generate K2");
+            assert_eq!(deletes, 0, "post-write failure must not delete");
+            assert!(!descriptor.migration_marker_path().exists());
+            assert!(backend.last_written_identity().is_some());
+        }
+    }
+
+    #[test]
+    fn adapter_valid_file_recovery_orders_delete_write_and_marker() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        let file_keys = Keys::generate();
+        colony_identity_kernel::save_key_file(&descriptor.identity_file_path(), &file_keys)
+            .expect("valid identity fixture");
+        let backend = RawBlobFake::with_marker_path(
+            Some(b"{malformed".to_vec()),
+            WriteBehavior::Exact,
+            descriptor.migration_marker_path(),
+        );
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("valid-file recovery");
+        assert_eq!(resolved.keys.public_key(), file_keys.public_key());
+        assert_eq!(
+            resolved.storage,
+            colony_identity_kernel::IdentityStorage::SystemKeyring
+        );
+        let (_, writes, deletes) = backend.counts();
+        assert_eq!(writes, 1, "valid-file recovery writes K1 once");
+        assert_eq!(deletes, 1, "valid-file recovery deletes corrupt blob once");
+        assert_eq!(
+            backend.last_written_identity(),
+            Some(file_keys.secret_key().to_bech32().expect("synthetic nsec"))
+        );
+        assert_delete_precedes_write(&backend.operations());
+        assert!(descriptor.migration_marker_path().exists());
+        assert!(!descriptor.identity_file_path().exists());
+    }
+
+    #[test]
+    fn adapter_no_marker_corrupt_cleanup_orders_delete_write_and_marker() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        let backend = RawBlobFake::with_marker_path(
+            Some(b"{malformed".to_vec()),
+            WriteBehavior::Exact,
+            descriptor.migration_marker_path(),
+        );
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("no-marker cleanup recovery");
+        assert_eq!(
+            resolved.recovery,
+            colony_identity_kernel::RecoveryState::None
+        );
+        assert_eq!(
+            resolved.storage,
+            colony_identity_kernel::IdentityStorage::SystemKeyring
+        );
+        let (_, writes, deletes) = backend.counts();
+        assert_eq!(writes, 1, "cleanup recovery generates/writes K1 once");
+        assert_eq!(deletes, 1, "cleanup recovery deletes corrupt blob once");
+        assert_eq!(
+            backend.last_written_identity(),
+            Some(
+                resolved
+                    .keys
+                    .secret_key()
+                    .to_bech32()
+                    .expect("synthetic nsec")
+            )
+        );
+        assert_delete_precedes_write(&backend.operations());
+        assert!(descriptor.migration_marker_path().exists());
+        assert!(!descriptor.identity_file_path().exists());
     }
 
     #[test]
