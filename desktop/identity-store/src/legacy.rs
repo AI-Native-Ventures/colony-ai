@@ -2566,16 +2566,19 @@ mod headless_tests {
             .expect("first write entered backend");
         backend.wait_for_first_write();
         let second_thread = std::thread::spawn(move || second.store_identity(&second_secret));
-        assert!(
-            receiver.recv_timeout(Duration::from_millis(100)).is_err(),
-            "second write must wait for the service lock"
-        );
+        let second_write_while_locked = receiver.recv_timeout(Duration::from_millis(100)).is_ok();
         backend.release_first_write();
         assert!(first_thread.join().expect("first thread").is_ok());
-        receiver
-            .recv_timeout(Duration::from_secs(1))
-            .expect("second write entered after first read-back");
+        let second_write_after_release = receiver.recv_timeout(Duration::from_secs(1)).is_ok();
         assert!(second_thread.join().expect("second thread").is_ok());
+        assert!(
+            !second_write_while_locked,
+            "second write must wait for the service lock"
+        );
+        assert!(
+            second_write_after_release,
+            "second write entered after first read-back"
+        );
     }
 }
 
