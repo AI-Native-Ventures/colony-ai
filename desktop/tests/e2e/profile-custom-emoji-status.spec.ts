@@ -214,14 +214,18 @@ test("keeps an open status draft when the saved status expires", async ({
   await page.goto("/");
   await waitForMockGlobalKindSubscription(page, 30315);
   await page.clock.pauseAt(STATUS_CLOCK);
-  await seedMockStatus(page, {
-    text: "Original draft",
-    emoji: "📝",
-    expiresAt: STATUS_CLOCK_SECONDS + STATUS_EXPIRY_MS / 1_000,
-    createdAt: STATUS_CLOCK_SECONDS,
-  }, {
-    eventFlushMs: STATUS_EVENT_BATCH_MS,
-  });
+  await seedMockStatus(
+    page,
+    {
+      text: "Original draft",
+      emoji: "📝",
+      expiresAt: STATUS_CLOCK_SECONDS + STATUS_EXPIRY_MS / 1_000,
+      createdAt: STATUS_CLOCK_SECONDS,
+    },
+    {
+      eventFlushMs: STATUS_EVENT_BATCH_MS,
+    },
+  );
 
   const sidebarStatus = page.getByTestId("sidebar-profile-user-status");
   await expect(sidebarStatus).toContainText("Original draft");
