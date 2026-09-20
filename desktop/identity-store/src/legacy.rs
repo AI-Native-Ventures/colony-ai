@@ -2015,7 +2015,6 @@ mod headless_tests {
 
     #[derive(Default)]
     struct WriteGate {
-        started: Mutex<bool>,
         released: Mutex<bool>,
         wake: Condvar,
         events: Mutex<Option<mpsc::Sender<()>>>,
@@ -2122,20 +2121,6 @@ mod headless_tests {
             map.get(colony_identity_kernel::IDENTITY_KEY_NAME).cloned()
         }
 
-        fn wait_for_first_write(&self) {
-            let gate = self.gate.as_ref().expect("write gate");
-            let mut started = gate
-                .started
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            while !*started {
-                started = gate
-                    .wake
-                    .wait(started)
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-            }
-        }
-
         fn release_first_write(&self) {
             let gate = self.gate.as_ref().expect("write gate");
             let mut released = gate
@@ -2200,12 +2185,6 @@ mod headless_tests {
                     {
                         let _ = sender.send(());
                     }
-                    let mut started = gate
-                        .started
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    *started = true;
-                    gate.wake.notify_all();
                     let mut released = gate
                         .released
                         .lock()
@@ -2870,7 +2849,6 @@ mod headless_tests {
         receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("first write entered backend");
-        backend.wait_for_first_write();
         let second_thread = std::thread::spawn(move || second.store_identity(&second_secret));
         let second_write_while_locked = receiver.recv_timeout(Duration::from_millis(100)).is_ok();
         backend.release_first_write();
