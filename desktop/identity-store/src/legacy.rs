@@ -1204,6 +1204,15 @@ fn validate_user_data_root_path(path: &Path) -> Result<(), DescriptorError> {
     let mut prefix = PathBuf::new();
     for component in path.components() {
         prefix.push(component.as_os_str());
+        // A Windows drive prefix (`C:`) is not itself a filesystem path;
+        // inspect only complete components after the root/UNC prefix is in
+        // place. Unix root and Windows volume roots are trusted anchors.
+        if !matches!(
+            component,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        ) {
+            continue;
+        }
         match std::fs::symlink_metadata(&prefix) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 let canonical = std::fs::canonicalize(&prefix).map_err(|error| {
