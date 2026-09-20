@@ -184,10 +184,11 @@ jobs:
           # into one multi-arch manifest. This is what makes the native-arm
           # matrix possible.
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          cache-from: |
-            type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:${{ matrix.arch }}
-          cache-to: |
-            ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('type=registry,ref={0}-buildcache:{1},mode=max,compression=zstd', env.IMAGE_NAME, matrix.arch) || '' }}
+          # Keep each image variant and architecture in its own repository-scoped
+          # Actions cache object. The gha backend receives its runtime URL/token
+          # from build-push-action; it must not point at a publisher's GHCR cache.
+          cache-from: type=gha,scope=buzz-relay-release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=buzz-relay-release-${{ matrix.arch }}
 
       - name: Build and push debug image by digest
         id: build-debug
@@ -203,8 +204,8 @@ jobs:
             BUZZ_BUILD_ID=github-actions:${{ github.run_id }}:${{ github.run_attempt }}
             BUZZ_BUILD_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          cache-from: |
-            type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:${{ matrix.arch }}
+          cache-from: type=gha,scope=buzz-relay-debug-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=buzz-relay-debug-${{ matrix.arch }}
 
       - name: Export release and debug digests
         if: github.event_name != 'pull_request'
@@ -553,8 +554,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=ghcr.io/block/buzz-push-gateway,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          cache-from: type=registry,ref=ghcr.io/block/buzz-push-gateway-buildcache:${{ matrix.arch }}
-          cache-to: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('type=registry,ref=ghcr.io/block/buzz-push-gateway-buildcache:{0},mode=max,compression=zstd', matrix.arch) || '' }}
+          cache-from: type=gha,scope=buzz-push-gateway-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=buzz-push-gateway-${{ matrix.arch }}
       - name: Export digest
         if: github.event_name != 'pull_request'
         env:

@@ -30,6 +30,69 @@ require_literal '- "scripts/create-deployment-eligibility-predicate.jq"'
 require_literal '- "scripts/select-qualified-ci-run.jq"'
 require_literal '- "scripts/test-relay-image-eligibility-workflow.sh"'
 
+require_docker_cache_contract() {
+  local step_name=$1
+  local scope=$2
+  local block
+  block=$(awk -v name="$step_name" '
+    $0 == "      - name: " name { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step { print }
+  ' "$workflow")
+
+  [[ -n "$block" ]] || {
+    echo "relay image workflow is missing build step: $step_name" >&2
+    exit 1
+  }
+
+  local cache_from_count cache_to_count
+  cache_from_count=$(grep -Ec '^[[:space:]]+cache-from:' <<<"$block" || true)
+  cache_to_count=$(grep -Ec '^[[:space:]]+cache-to:' <<<"$block" || true)
+  [[ "$cache_from_count" == "1" && "$cache_to_count" == "1" ]] || {
+    echo "build step must have exactly one cache-from and cache-to: $step_name" >&2
+    exit 1
+  }
+  grep -Fq "cache-from: type=gha,scope=$scope" <<<"$block" || {
+    echo "build step has the wrong gha cache-from scope: $step_name" >&2
+    exit 1
+  }
+  grep -Fq "cache-to: type=gha,mode=max,scope=$scope" <<<"$block" || {
+    echo "build step has the wrong gha cache-to scope: $step_name" >&2
+    exit 1
+  }
+  if grep -Eq 'type=registry|buildcache|cache-mode:' <<<"$block"; then
+    echo "build step still uses a registry cache or changes cache permissions: $step_name" >&2
+    exit 1
+  fi
+}
+
+require_docker_cache_contract \
+  "Build and push release image by digest" \
+  'buzz-relay-release-${{ matrix.arch }}'
+require_docker_cache_contract \
+  "Build and push debug image by digest" \
+  'buzz-relay-debug-${{ matrix.arch }}'
+require_docker_cache_contract \
+  "Build and push by digest" \
+  'buzz-push-gateway-${{ matrix.arch }}'
+
+for scope in \
+  'buzz-relay-release-${{ matrix.arch }}' \
+  'buzz-relay-debug-${{ matrix.arch }}' \
+  'buzz-push-gateway-${{ matrix.arch }}'; do
+  [[ "$(grep -F -c "scope=$scope" "$workflow" || true)" == "2" ]] || {
+    echo "gha cache scope must be used once for import and once for export: $scope" >&2
+    exit 1
+  }
+done
+
+require_literal "push=\${{ github.event_name != 'pull_request' }}"
+require_literal "if: github.event_name != 'pull_request'"
+if grep -Fq 'pull_request_target' "$workflow"; then
+  echo "relay image workflow must not widen the pull request trust boundary" >&2
+  exit 1
+fi
+
 if grep -Fq "buzz-staging-dev" "$workflow"; then
   echo "canonical relay image workflow references the preview-only image package" >&2
   exit 1
