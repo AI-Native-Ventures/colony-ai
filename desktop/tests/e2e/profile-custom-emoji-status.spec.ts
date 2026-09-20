@@ -7,8 +7,10 @@ const SHORTCODE = "buzz";
 const STATUS_TEXT = "testing custom status";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
 const STATUS_CLOCK = new Date("2026-06-18T12:00:00.000Z");
+const STATUS_CLOCK_INIT = new Date(STATUS_CLOCK.getTime() - 60_000);
 const STATUS_CLOCK_SECONDS = Math.floor(STATUS_CLOCK.getTime() / 1_000);
 const STATUS_EXPIRY_MS = 2_000;
+const STATUS_DIALOG_FRAME_MS = 20;
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -200,8 +202,11 @@ test("keeps an open status draft when the saved status expires", async ({
   page,
 }) => {
   // Keep the app's Date.now(), expiry timer, and seeded event on one epoch.
-  await page.clock.install({ time: STATUS_CLOCK });
+  // Let startup timers run naturally, then pause before seeding the status so
+  // navigation and dialog setup cannot consume its two-second lifetime.
+  await page.clock.install({ time: STATUS_CLOCK_INIT });
   await page.goto("/");
+  await page.clock.pauseAt(STATUS_CLOCK);
   await seedMockStatus(page, {
     text: "Original draft",
     emoji: "📝",
@@ -214,7 +219,7 @@ test("keeps an open status draft when the saved status expires", async ({
   await page.getByTestId("profile-popover-set-status").click();
   // ProfilePopover opens the dialog from requestAnimationFrame; flush one
   // controlled frame before asserting the dialog state.
-  await page.clock.fastForward(20);
+  await page.clock.fastForward(STATUS_DIALOG_FRAME_MS);
   const dialog = page.getByTestId("set-status-dialog");
   const input = dialog.getByTestId("set-status-input");
   const saveButton = dialog.getByLabel("Save status");
@@ -223,9 +228,11 @@ test("keeps an open status draft when the saved status expires", async ({
   await input.fill("Unsaved draft");
   await expect(input).toHaveValue("Unsaved draft");
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await expect(saveButton).toBeDisabled();
+  await expect(saveButton).toBeEnabled();
 
-  await page.clock.fastForward(STATUS_EXPIRY_MS);
+  // Advance only the remaining time from the paused pre-expiry frame so this
+  // timer transition, rather than natural setup time, causes the expiry.
+  await page.clock.fastForward(STATUS_EXPIRY_MS - STATUS_DIALOG_FRAME_MS);
   await expect(sidebarStatus).toHaveCount(0);
 
   await expect(input).toHaveValue("Unsaved draft");
