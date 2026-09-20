@@ -2527,7 +2527,7 @@ mod headless_tests {
         receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("first write entered backend");
-        gate.wait_for_first_write();
+        backend.wait_for_first_write();
         let second_thread = std::thread::spawn(move || second.store_identity(&second_secret));
         assert!(
             receiver.recv_timeout(Duration::from_millis(100)).is_err(),
