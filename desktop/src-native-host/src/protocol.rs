@@ -39,6 +39,7 @@ pub enum ProtocolError {
     Closed,
     OutputTooLarge,
     OutputQueueFull,
+    WriteTimeout,
     Serialization,
     Io,
 }
@@ -61,6 +62,7 @@ impl ProtocolError {
             Self::Closed => "host_unavailable",
             Self::OutputTooLarge => "outbound_too_large",
             Self::OutputQueueFull => "outbound_queue_full",
+            Self::WriteTimeout => "write_timeout",
             Self::Serialization => "serialization_error",
             Self::Io => "io_error",
         }

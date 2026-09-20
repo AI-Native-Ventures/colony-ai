@@ -5,7 +5,7 @@ use std::{
     env,
     io::{self, BufReader, BufWriter, Read, Write},
     process,
-    sync::mpsc::{self, Receiver, SyncSender, TrySendError},
+    sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
     thread,
     time::{Duration, Instant},
 };
@@ -32,6 +32,29 @@ enum ReaderMessage {
 enum WriterOutcome {
     Drained,
     IoError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriterSignal {
+    FrameStarted,
+    Progress,
+    FrameComplete,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriterFailure {
+    Io,
+    Deadline,
+}
+
+impl WriterFailure {
+    fn protocol_error(self) -> ProtocolError {
+        match self {
+            Self::Io => ProtocolError::Io,
+            Self::Deadline => ProtocolError::WriteTimeout,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -90,29 +113,63 @@ impl Host {
         }
     }
 
-    fn run(&mut self, receiver: Receiver<ReaderMessage>) -> Result<(), ProtocolError> {
+    fn run(
+        &mut self,
+        receiver: Receiver<ReaderMessage>,
+        writer_failures: Receiver<WriterFailure>,
+    ) -> Result<(), ProtocolError> {
         loop {
-            self.expire_pending()?;
+            self.observe_writer_failure(&writer_failures)?;
+            if let Err(error) = self.expire_pending() {
+                return self.fail(error);
+            }
             match receiver.recv_timeout(Duration::from_millis(READER_POLL_MS)) {
                 Ok(ReaderMessage::Frame(bytes)) => {
-                    let envelope = decode_frame(&bytes, &self.limits)?;
-                    self.handle(envelope)?;
+                    let envelope = match decode_frame(&bytes, &self.limits) {
+                        Ok(envelope) => envelope,
+                        Err(error) => return self.fail(error),
+                    };
+                    if let Err(error) = self.handle(envelope) {
+                        return self.fail(error);
+                    }
                 }
                 Ok(ReaderMessage::Eof) => {
-                    self.reject_pending("host_unavailable")?;
-                    return Ok(());
+                    return match self.reject_pending("host_unavailable") {
+                        Ok(()) => Ok(()),
+                        Err(error) => self.fail(error),
+                    };
                 }
-                Ok(ReaderMessage::Error(error)) => {
-                    self.reject_pending("protocol_error")?;
-                    return Err(error);
+                Ok(ReaderMessage::Error(error)) => return self.fail(error),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    self.observe_writer_failure(&writer_failures)?;
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    self.reject_pending("host_unavailable")?;
-                    return Ok(());
+                    return self.fail(ProtocolError::Io);
                 }
             }
         }
+    }
+
+    fn observe_writer_failure(
+        &mut self,
+        writer_failures: &Receiver<WriterFailure>,
+    ) -> Result<(), ProtocolError> {
+        match writer_failures.try_recv() {
+            Ok(failure) => self.fail(failure.protocol_error()),
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => Ok(()),
+        }
+    }
+
+    fn fail(&mut self, error: ProtocolError) -> Result<(), ProtocolError> {
+        // Every fatal parser, dispatch, reader, expiry, or writer failure
+        // stops admissions by leaving run(), retires pending health-safe work
+        // exactly once, and lets the caller wait for the bounded writer drain.
+        // If the pipe is full or broken, some terminal bytes cannot be
+        // delivered; those requests are still retired and are never replayed.
+        if let Err(cleanup_error) = self.reject_pending("host_unavailable") {
+            eprintln!("native host terminal response unavailable: {cleanup_error}");
+        }
+        Err(error)
     }
 
     fn handle(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
@@ -429,41 +486,79 @@ fn main() {
 
     let queue_limit = manifest.protocol.outbound_queue_limit;
     let frame_limit = manifest.protocol.frame_limit_bytes;
+    let writer_deadline = test_or_manifest_deadline(&manifest.protocol);
     let expected_profile_id = manifest.namespace.profile_id.clone();
     let (input_sender, receiver) = mpsc::sync_channel(queue_limit);
     let (output_sender, output_receiver) = mpsc::sync_channel(queue_limit);
     let (writer_done_sender, writer_done_receiver) = mpsc::channel();
+    let (writer_progress_sender, writer_progress_receiver) = mpsc::sync_channel(1);
+    let (writer_failure_sender, writer_failure_receiver) = mpsc::sync_channel(1);
     let reader = thread::spawn(move || reader_loop(input_sender, frame_limit));
-    let writer = thread::spawn(move || writer_loop(output_receiver, writer_done_sender));
+    let _writer_watchdog = thread::spawn(move || {
+        writer_watchdog(
+            writer_progress_receiver,
+            writer_deadline,
+            writer_failure_sender,
+        )
+    });
+    let writer = thread::spawn(move || {
+        writer_loop(output_receiver, writer_progress_sender, writer_done_sender)
+    });
     let fault = FaultMode::from_environment();
     let shutdown_grace_ms = manifest.protocol.shutdown_grace_ms;
     let mut host = Host::new(manifest.protocol, expected_profile_id, fault, output_sender);
-    let result = host.run(receiver);
+    let result = host.run(receiver, writer_failure_receiver);
+    finish_host(
+        result,
+        host,
+        reader,
+        writer,
+        writer_done_receiver,
+        shutdown_grace_ms,
+    );
+}
+
+fn finish_host(
+    result: Result<(), ProtocolError>,
+    host: Host,
+    reader: thread::JoinHandle<()>,
+    writer: thread::JoinHandle<()>,
+    writer_done: Receiver<WriterOutcome>,
+    shutdown_grace_ms: u64,
+) -> ! {
+    let fatal = result.is_err();
+    if !fatal {
+        let _ = reader.join();
+    }
+
+    // Host::run has already retired pending requests on every fatal path.
+    // Dropping its sender closes admissions; the writer acknowledgement is the
+    // only bounded delivery wait. A blocked reader is intentionally not joined
+    // on failure: process lifecycle is the portable cancellation boundary.
+    drop(host);
+    let writer_result = writer_done.recv_timeout(Duration::from_millis(shutdown_grace_ms));
+    let writer_drained = matches!(&writer_result, &Ok(WriterOutcome::Drained));
+    if writer_drained {
+        let _ = writer.join();
+    }
+
     match result {
-        Ok(()) => {
-            let _ = reader.join();
-            drop(host);
-            match writer_done_receiver.recv_timeout(Duration::from_millis(shutdown_grace_ms)) {
-                Ok(WriterOutcome::Drained) => {
-                    let _ = writer.join();
-                }
-                Ok(WriterOutcome::IoError) => process::exit(PROTOCOL_FAILURE_CODE),
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // The writer may be blocked by a non-reading parent. The
-                    // protocol's shutdown grace is a process-lifecycle bound;
-                    // once it expires, terminate without waiting on that pipe.
-                    process::exit(0);
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => process::exit(0),
-            }
-        }
         Err(error) => {
-            eprintln!("native host protocol closed: {error}");
-            // A fatal protocol error owns process termination. The stdin reader
-            // may be blocked on a parent-held pipe, so joining it here would
-            // turn fail-closed handling into an unbounded wait.
+            if !writer_drained {
+                eprintln!("native host protocol closed before output drain: {error}");
+            } else {
+                eprintln!("native host protocol closed: {error}");
+            }
             process::exit(PROTOCOL_FAILURE_CODE);
         }
+        Ok(()) => match writer_result {
+            Ok(WriterOutcome::Drained) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                process::exit(0)
+            }
+            Ok(WriterOutcome::IoError) | Err(mpsc::RecvTimeoutError::Timeout) => {
+                process::exit(PROTOCOL_FAILURE_CODE)
+            }
+        },
     }
 }
 
@@ -489,20 +584,92 @@ fn reader_loop(sender: SyncSender<ReaderMessage>, frame_limit: usize) {
     }
 }
 
-fn writer_loop(receiver: Receiver<Vec<u8>>, done: mpsc::Sender<WriterOutcome>) {
+fn writer_loop(
+    receiver: Receiver<Vec<u8>>,
+    progress: SyncSender<WriterSignal>,
+    done: mpsc::Sender<WriterOutcome>,
+) {
     let mut output = BufWriter::new(io::stdout());
     let mut outcome = WriterOutcome::Drained;
     while let Ok(frame) = receiver.recv() {
-        if output
-            .write_all(&frame)
-            .and_then(|_| output.flush())
-            .is_err()
-        {
+        if progress.send(WriterSignal::FrameStarted).is_err() {
+            outcome = WriterOutcome::IoError;
+            break;
+        }
+        let mut offset = 0;
+        let mut failed = false;
+        while offset < frame.len() {
+            match output.write(&frame[offset..]) {
+                Ok(0) => {
+                    failed = true;
+                    break;
+                }
+                Ok(written) => {
+                    offset += written;
+                    if progress.send(WriterSignal::Progress).is_err() {
+                        failed = true;
+                        break;
+                    }
+                }
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        if !failed && output.flush().is_err() {
+            failed = true;
+        }
+        if failed {
+            outcome = WriterOutcome::IoError;
+            let _ = progress.send(WriterSignal::Failed);
+            break;
+        }
+        if progress.send(WriterSignal::FrameComplete).is_err() {
             outcome = WriterOutcome::IoError;
             break;
         }
     }
     let _ = done.send(outcome);
+}
+
+fn writer_watchdog(
+    progress: Receiver<WriterSignal>,
+    write_deadline: Duration,
+    failures: SyncSender<WriterFailure>,
+) {
+    loop {
+        match progress.recv() {
+            Ok(WriterSignal::FrameStarted) => loop {
+                match progress.recv_timeout(write_deadline) {
+                    Ok(WriterSignal::Progress) => {}
+                    Ok(WriterSignal::FrameComplete) => break,
+                    Ok(WriterSignal::Failed) => {
+                        let _ = failures.send(WriterFailure::Io);
+                        return;
+                    }
+                    Ok(WriterSignal::FrameStarted) => {
+                        let _ = failures.send(WriterFailure::Io);
+                        return;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        let _ = failures.send(WriterFailure::Deadline);
+                        return;
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+            },
+            Ok(WriterSignal::Progress | WriterSignal::FrameComplete) => {
+                let _ = failures.send(WriterFailure::Io);
+                return;
+            }
+            Ok(WriterSignal::Failed) => {
+                let _ = failures.send(WriterFailure::Io);
+                return;
+            }
+            Err(_) => return,
+        }
+    }
 }
 
 fn read_frame(
