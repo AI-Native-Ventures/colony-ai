@@ -17,6 +17,15 @@ const TARGETS = Object.freeze({
     bundleKind: "directory",
     executableName: "Buzz",
   }),
+  "linux:x64": Object.freeze({
+    platform: "linux",
+    arch: "x64",
+    targetTriple: "x86_64-unknown-linux-gnu",
+    helperName: "colony-native-host",
+    packageSuffix: "linux-x64",
+    bundleKind: "directory",
+    executableName: null,
+  }),
 });
 
 function targetKey(platform, arch) {

@@ -28,6 +28,8 @@
     "electron:stage0:package:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=instrumented",
     "electron:stage0:package:windows": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=normal",
     "electron:stage0:package:windows:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=instrumented",
+    "electron:stage0:package:linux": "node ./scripts/package-electron-stage0.mjs --platform=linux --arch=x64 --target=x86_64-unknown-linux-gnu --flavor=normal",
+    "electron:stage0:package:linux:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=linux --arch=x64 --target=x86_64-unknown-linux-gnu --flavor=instrumented",
     "electron:stage0:check": "node ./scripts/check-electron-stage0.mjs dist-electron-normal --flavor=normal",
     "tauri:build": "node ./scripts/tauri-command.mjs build"
   },

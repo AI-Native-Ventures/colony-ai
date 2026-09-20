@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { ElectronApplication } from "@playwright/test";
+
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -15,7 +17,7 @@ type Stage0PackagePaths = {
   appRoot: string;
   appBinary: string;
   hostResource: string;
-  platform: "darwin" | "win32";
+  platform: "darwin" | "win32" | "linux";
   arch: "arm64" | "x64";
   targetTriple: string;
   helperName: string;
@@ -57,6 +59,22 @@ function findSingleWindowsExecutable(root: string, expectedName: string) {
     candidates.length,
     1,
     `expected one packaged Windows executable, found ${candidates.length}`,
+  );
+  return candidates[0];
+}
+
+function findSingleLinuxExecutable(root: string, expectedName: string) {
+  const candidates: string[] = [];
+  visitDirectories(root, (directory) => {
+    const executable = path.join(directory, expectedName);
+    if (fs.existsSync(executable) && fs.statSync(executable).isFile()) {
+      candidates.push(executable);
+    }
+  });
+  assert.equal(
+    candidates.length,
+    1,
+    `expected one packaged Linux executable, found ${candidates.length}`,
   );
   return candidates[0];
 }
@@ -103,7 +121,57 @@ export function getStage0PackagePaths(
       helperName,
     };
   }
+  if (process.platform === "linux" && process.arch === "x64") {
+    const appBinary = findSingleLinuxExecutable(packageRoot, appName);
+    const appRoot = path.dirname(appBinary);
+    const helperName = "colony-native-host";
+    return {
+      packageRoot,
+      appRoot,
+      appBinary,
+      hostResource: path.join(appRoot, "resources", helperName),
+      platform: "linux",
+      arch: "x64",
+      targetTriple: "x86_64-unknown-linux-gnu",
+      helperName,
+    };
+  }
   throw new Error(
     `unsupported packaged Stage 0 test host: ${process.platform}/${process.arch}`,
   );
+}
+
+export async function assertActiveLinuxSandbox(
+  application: ElectronApplication,
+) {
+  if (process.platform !== "linux") return;
+  const metrics = await application.evaluate(({ app }) => app.getAppMetrics());
+  const tabPids = metrics
+    .filter((metric) => metric.type === "Tab")
+    .map((metric) => metric.pid);
+  assert.ok(tabPids.length > 0, "expected an Electron renderer process");
+  const observations = tabPids.map((pid) => {
+    const statusPath = `/proc/${pid}/status`;
+    assert.ok(fs.existsSync(statusPath), `missing renderer status: ${pid}`);
+    const status = fs.readFileSync(statusPath, "utf8");
+    const uid = /^Uid:\s+(\d+)/m.exec(status)?.[1] ?? null;
+    return {
+      pid,
+      uid,
+      noNewPrivs: /^NoNewPrivs:\s+(\d+)/m.exec(status)?.[1] ?? null,
+      seccomp: /^Seccomp:\s+(\d+)/m.exec(status)?.[1] ?? null,
+    };
+  });
+  assert.ok(
+    observations.every((observation) => observation.uid !== "0"),
+    `renderer must run as non-root: ${JSON.stringify(observations)}`,
+  );
+  assert.ok(
+    observations.some(
+      (observation) =>
+        observation.noNewPrivs === "1" || observation.seccomp === "2",
+    ),
+    `Electron sandbox signal not observed: ${JSON.stringify(observations)}`,
+  );
+  console.log(`linux_sandbox=active ${JSON.stringify(observations)}`);
 }

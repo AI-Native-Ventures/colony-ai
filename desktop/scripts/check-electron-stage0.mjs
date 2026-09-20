@@ -32,6 +32,9 @@ const forbiddenTokens = [
   "xyz.block.buzz.app",
   "xyz.block.buzz",
   "fallback-tauri",
+  "--no-sandbox",
+  "sandbox: false",
+  "ELECTRON_DISABLE_SANDBOX",
 ];
 const normalPackageForbiddenTokens = [
   "COLONY_STAGE0_TEST",
@@ -350,6 +353,29 @@ function findWindowsApp(packageRoot, appName) {
   return matches[0];
 }
 
+function findLinuxApp(packageRoot, appName) {
+  const matches = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory)) {
+      const absolute = path.join(directory, entry);
+      const info = statSync(absolute);
+      if (info.isDirectory()) {
+        if (!entry.includes("node_modules")) visit(absolute);
+      } else if (entry === appName) {
+        matches.push({
+          appRoot: path.dirname(absolute),
+          appExecutable: absolute,
+        });
+      }
+    }
+  };
+  visit(packageRoot);
+  if (matches.length !== 1) {
+    fail(`expected one Linux app executable, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
 function findExecutableFiles(directory) {
   const matches = [];
   const visit = (current) => {
@@ -435,12 +461,81 @@ function checkWindowsBundle(bundleRoot, flavor, target) {
   return { appRoot, archive, helper, appExecutable };
 }
 
+export function readElfMachine(filePath) {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const header = Buffer.alloc(20);
+    if (readSync(descriptor, header, 0, header.length, 0) !== header.length) {
+      return null;
+    }
+    if (
+      header[0] !== 0x7f ||
+      header[1] !== 0x45 ||
+      header[2] !== 0x4c ||
+      header[3] !== 0x46 ||
+      header[4] !== 2 ||
+      header[5] !== 1
+    ) {
+      return null;
+    }
+    return header.readUInt16LE(18);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function checkLinuxBundle(bundleRoot, flavor, target) {
+  const expected = packageFlavors[flavor];
+  const { appRoot, appExecutable } = findLinuxApp(
+    bundleRoot,
+    expected.appName,
+  );
+  const resources = path.join(appRoot, "resources");
+  const archive = path.join(resources, "app.asar");
+  const helper = path.join(resources, target.helperName);
+  const chromeSandbox = path.join(appRoot, "chrome-sandbox");
+  if (!existsSync(archive)) fail("missing resources/app.asar");
+  if (!existsSync(helper)) {
+    fail(`missing external ${target.helperName} resource`);
+  }
+  for (const executable of [appExecutable, helper]) {
+    const info = statSync(executable);
+    if (!info.isFile() || (info.mode & 0o111) === 0) {
+      fail(`Linux x64 executable permission check failed for ${executable}`);
+    }
+    if (readElfMachine(executable) !== 0x3e) {
+      fail(`Linux x86_64 ELF check failed for ${executable}`);
+    }
+  }
+  if (!existsSync(chromeSandbox)) {
+    fail("missing Electron chrome-sandbox helper");
+  }
+  const sandboxInfo = statSync(chromeSandbox);
+  if (
+    !sandboxInfo.isFile() ||
+    sandboxInfo.uid !== 0 ||
+    (sandboxInfo.mode & 0o7777) !== 0o4755
+  ) {
+    fail("Electron chrome-sandbox must be root-owned with mode 4755");
+  }
+  if (readElfMachine(chromeSandbox) !== 0x3e) {
+    fail("Electron chrome-sandbox is not an x86_64 ELF");
+  }
+  checkAsar(archive, flavor, target);
+  return { appRoot, archive, helper, appExecutable, chromeSandbox };
+}
+
 function checkBundle(bundleRoot, flavor, target) {
   if (target.bundleKind === "app") {
     return checkMacBundle(bundleRoot, flavor, target);
   }
   if (target.bundleKind === "directory") {
-    return checkWindowsBundle(bundleRoot, flavor, target);
+    if (target.platform === "win32") {
+      return checkWindowsBundle(bundleRoot, flavor, target);
+    }
+    if (target.platform === "linux") {
+      return checkLinuxBundle(bundleRoot, flavor, target);
+    }
   }
   fail(`unsupported package bundle kind ${target.bundleKind}`);
 }

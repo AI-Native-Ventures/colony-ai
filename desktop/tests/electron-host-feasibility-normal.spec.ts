@@ -10,7 +10,10 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { getStage0PackagePaths } from "./electron-stage0-package";
+import {
+  assertActiveLinuxSandbox,
+  getStage0PackagePaths,
+} from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -73,6 +76,7 @@ test("normal relocated candidate ignores every ambient harness switch", async ()
   const { application, page } = await launchNormal();
   try {
     await assertNormalReady(page);
+    await assertActiveLinuxSandbox(application);
     const rendererSurface = await page.evaluate(() => ({
       stage0Keys: Object.keys(window.stage0 ?? {}).sort(),
       testState: typeof globalThis.__COLONY_STAGE0_TEST_STATE__,
@@ -97,6 +101,12 @@ test("normal relocated candidate ignores every ambient harness switch", async ()
       mainSurface.userDataPath,
       /Colony[\\/]dev[\\/]0000000000000001[\\/]normal$/,
     );
+    if (process.platform === "linux" && process.env.XDG_CONFIG_HOME) {
+      assert.ok(
+        mainSurface.userDataPath.startsWith(process.env.XDG_CONFIG_HOME),
+        `Linux user-data escaped the fresh XDG namespace: ${mainSurface.userDataPath}`,
+      );
+    }
     assert.equal(mainSurface.windowCount, 1);
   } finally {
     await close(application);
@@ -107,6 +117,7 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
   const { application, page } = await launchNormal();
   try {
     await assertNormalReady(page);
+    await assertActiveLinuxSandbox(application);
     await page.reload();
     await expect
       .poll(async () => page.evaluate(() => window.stage0?.bindingState?.()), {

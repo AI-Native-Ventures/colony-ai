@@ -6,7 +6,7 @@ import {
   getStage0TargetFromArguments,
 } from "./stage0-platform.mjs";
 
-test("Stage 0 target map keeps macOS and Windows helper resources explicit", () => {
+test("Stage 0 target map keeps platform helper resources explicit", () => {
   assert.deepEqual(getStage0Target({ platform: "darwin", arch: "arm64" }), {
     platform: "darwin",
     arch: "arm64",
@@ -25,13 +25,18 @@ test("Stage 0 target map keeps macOS and Windows helper resources explicit", () 
     bundleKind: "directory",
     executableName: "Buzz",
   });
+  assert.deepEqual(getStage0Target({ platform: "linux", arch: "x64" }), {
+    platform: "linux",
+    arch: "x64",
+    targetTriple: "x86_64-unknown-linux-gnu",
+    helperName: "colony-native-host",
+    packageSuffix: "linux-x64",
+    bundleKind: "directory",
+    executableName: null,
+  });
 });
 
 test("Stage 0 target arguments reject unsupported or mismatched host choices", () => {
-  assert.throws(
-    () => getStage0Target({ platform: "linux", arch: "x64" }),
-    /unsupported Stage 0 target/,
-  );
   assert.throws(
     () =>
       getStage0Target({
@@ -50,5 +55,19 @@ test("Stage 0 target arguments reject unsupported or mismatched host choices", (
       "--target=x86_64-pc-windows-msvc",
     ]).helperName,
     "colony-native-host.exe",
+  );
+  assert.equal(
+    getStage0TargetFromArguments([
+      "node",
+      "stage",
+      "--platform=linux",
+      "--arch=x64",
+      "--target=x86_64-unknown-linux-gnu",
+    ]).targetTriple,
+    "x86_64-unknown-linux-gnu",
+  );
+  assert.throws(
+    () => getStage0Target({ platform: "linux", arch: "arm64" }),
+    /unsupported Stage 0 target/,
   );
 });

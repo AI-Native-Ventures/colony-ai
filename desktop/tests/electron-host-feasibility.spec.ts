@@ -10,7 +10,10 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { getStage0PackagePaths } from "./electron-stage0-package";
+import {
+  assertActiveLinuxSandbox,
+  getStage0PackagePaths,
+} from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -118,6 +121,7 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
   });
   try {
     await assertReady(page);
+    await assertActiveLinuxSandbox(application);
     assert.equal(await visibleWindowCount(application), 1);
     const state = await testState(application);
     assert.equal(state.windowCount, 1);
@@ -128,6 +132,12 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
       state.userDataPath,
       /Colony[\\/]dev[\\/]0000000000000001[\\/]instrumented$/,
     );
+    if (process.platform === "linux" && process.env.XDG_CONFIG_HOME) {
+      assert.ok(
+        state.userDataPath.startsWith(process.env.XDG_CONFIG_HOME),
+        `Linux user-data escaped the fresh XDG namespace: ${state.userDataPath}`,
+      );
+    }
     assert.doesNotMatch(state.userDataPath, /xyz\.block\.buzz/);
     assert.deepEqual(networkRequests, []);
     const exposedKeys = await page.evaluate(() => Object.keys(window.stage0));
