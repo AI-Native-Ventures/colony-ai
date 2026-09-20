@@ -10,29 +10,14 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { getStage0PackagePaths } from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const appBundle = path.join(
-  desktopDirectory,
-  "dist-electron-normal",
-  "Buzz Stage0 Normal-darwin-arm64",
-  "Buzz Stage0 Normal.app",
-);
-const appBinary = path.join(
-  appBundle,
-  "Contents",
-  "MacOS",
-  "Buzz Stage0 Normal",
-);
-const hostResource = path.join(
-  appBundle,
-  "Contents",
-  "Resources",
-  "colony-native-host",
-);
+const packagePaths = getStage0PackagePaths("normal");
+const { appRoot: appBundle, appBinary, hostResource } = packagePaths;
 
 const hostileEnvironment = {
   COLONY_STAGE0_TEST_MODE: "1",
@@ -45,7 +30,7 @@ const hostileEnvironment = {
 };
 
 async function launchNormal() {
-  assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
+  assert.equal(process.arch, packagePaths.arch, "packaged proof architecture");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
     fs.existsSync(hostResource),
@@ -154,6 +139,11 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
       window.open("https://example.invalid/"),
     );
     assert.equal(popup, null);
+    const notificationPermission = await page.evaluate(async () => {
+      if (typeof Notification !== "function") return "unsupported";
+      return Notification.requestPermission();
+    });
+    assert.equal(notificationPermission, "denied");
     const permissionResult = await page.evaluate(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -166,10 +156,15 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
         return { granted: false, name: error?.name ?? "unknown" };
       }
     });
-    assert.deepEqual(permissionResult, {
-      granted: false,
-      name: "NotAllowedError",
-    });
+    assert.equal(permissionResult.granted, false);
+    // The normal package deliberately does not enable a synthetic device. A
+    // NotFoundError is therefore only device-availability evidence here, never
+    // permission-handler evidence; the instrumented derivative proves that
+    // callback seam separately.
+    assert.ok(
+      ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
+      `normal media must be denied (NotFoundError means no device, not handler proof): ${permissionResult.name}`,
+    );
 
     await page.evaluate((url) => {
       const frame = document.createElement("iframe");

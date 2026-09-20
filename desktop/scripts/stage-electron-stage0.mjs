@@ -2,19 +2,10 @@ import { chmod, copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getStage0TargetFromArguments } from "../src-electron/stage0-platform.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
-const helperName = "colony-native-host";
-const helperInput = process.env.COLONY_NATIVE_HOST_BIN
-  ? path.resolve(process.env.COLONY_NATIVE_HOST_BIN)
-  : path.join(
-      desktopDirectory,
-      "src-native-host",
-      "target",
-      "aarch64-apple-darwin",
-      "release",
-      helperName,
-    );
 
 const flavors = new Set(["normal", "instrumented"]);
 
@@ -45,6 +36,18 @@ async function copyEntry(packageDirectory, sourceRelative, targetRelative) {
 
 async function main() {
   const flavor = readFlavor();
+  const target = getStage0TargetFromArguments();
+  const helperName = target.helperName;
+  const helperInput = process.env.COLONY_NATIVE_HOST_BIN
+    ? path.resolve(process.env.COLONY_NATIVE_HOST_BIN)
+    : path.join(
+        desktopDirectory,
+        "src-native-host",
+        "target",
+        target.targetTriple,
+        "release",
+        helperName,
+      );
   const flavorModule = await import(
     new URL(`../src-electron/stage0-flavor.${flavor}.mjs`, import.meta.url)
   );
@@ -75,6 +78,7 @@ async function main() {
     ["src-electron/host-protocol.mjs", "src-electron/host-protocol.mjs"],
     ["src-electron/native-host.mjs", "src-electron/native-host.mjs"],
     ["src-electron/renderer-host.mjs", "src-electron/renderer-host.mjs"],
+    ["src-electron/stage0-platform.mjs", "src-electron/stage0-platform.mjs"],
     ["src-electron/ipc-security.mjs", "src-electron/ipc-security.mjs"],
     [
       "src-electron/feasibility/index.html",
@@ -86,8 +90,14 @@ async function main() {
     ],
   ];
   const helperInfo = await assertRegularFile(helperInput, "native host");
-  if ((helperInfo.mode & 0o111) === 0) {
+  if (target.platform !== "win32" && (helperInfo.mode & 0o111) === 0) {
     throw new Error(`native host is not executable: ${helperInput}`);
+  }
+  if (
+    target.platform === "win32" &&
+    !helperInput.toLowerCase().endsWith(".exe")
+  ) {
+    throw new Error(`Windows native host must be an .exe: ${helperInput}`);
   }
 
   await rm(packageDirectory, { recursive: true, force: true });
@@ -110,6 +120,10 @@ async function main() {
     stage0UserDataSuffix: flavorModule.STAGE0_USER_DATA_SUFFIX,
     stage0SourceRevision: "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be",
     stage0Instrumentation: flavorModule.STAGE0_INSTRUMENTATION_ENABLED,
+    stage0Platform: target.platform,
+    stage0Arch: target.arch,
+    stage0TargetTriple: target.targetTriple,
+    stage0HelperName: target.helperName,
   };
   await writeFile(
     path.join(packageDirectory, "package.json"),
@@ -126,6 +140,9 @@ async function main() {
       appDirectory: packageDirectory,
       helperPath: helperOutput,
       flavor,
+      platform: target.platform,
+      arch: target.arch,
+      targetTriple: target.targetTriple,
       packageName: flavorModule.STAGE0_PACKAGE_NAME,
       files: files.map(([, target]) => target).concat("package.json"),
     })}\n`,

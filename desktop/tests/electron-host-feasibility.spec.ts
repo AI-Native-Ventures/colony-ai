@@ -10,53 +10,32 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { getStage0PackagePaths } from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-function findAppBundle() {
-  const outputDirectory = path.join(
-    desktopDirectory,
-    "dist-electron-instrumented",
-  );
-  const candidates: string[] = [];
-  const visit = (directory: string) => {
-    if (!fs.existsSync(directory)) return;
-    for (const entry of fs.readdirSync(directory)) {
-      const absolute = path.join(directory, entry);
-      const info = fs.statSync(absolute);
-      if (entry.endsWith(".app") && info.isDirectory()) {
-        candidates.push(absolute);
-      } else if (info.isDirectory()) {
-        visit(absolute);
-      }
-    }
-  };
-  visit(outputDirectory);
-  assert.equal(
-    candidates.length,
-    1,
-    `expected one packaged app, found ${candidates.length}`,
-  );
-  assert.equal(path.basename(candidates[0]), "Buzz Stage0 Instrumented.app");
-  return candidates[0];
-}
+const packagePaths = getStage0PackagePaths("instrumented");
+const { appRoot: appBundle, appBinary, hostResource } = packagePaths;
+const mutationName = process.env.COLONY_STAGE0_TEST_MUTATION ?? null;
 
-const appBundle = findAppBundle();
-const appBinary = path.join(
-  appBundle,
-  "Contents",
-  "MacOS",
-  "Buzz Stage0 Instrumented",
-);
-const hostResource = path.join(
-  appBundle,
-  "Contents",
-  "Resources",
-  "colony-native-host",
-);
+function throwExpectedMutationFailure(
+  mutation: string,
+  seam: string,
+  preconditions: Record<string, unknown>,
+): never {
+  throw new Error(
+    `STAGE0_EXPECTED_MUTATION_FAILURE ${JSON.stringify({
+      version: 1,
+      mutation,
+      seam,
+      expectedOutcome: "production-seam-failed",
+      preconditions,
+    })}`,
+  );
+}
 
 function launchEnvironment(overrides: Record<string, string> = {}) {
   const environment = {
@@ -67,7 +46,7 @@ function launchEnvironment(overrides: Record<string, string> = {}) {
 }
 
 async function launch(overrides: Record<string, string> = {}) {
-  assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
+  assert.equal(process.arch, packagePaths.arch, "packaged proof architecture");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
     fs.existsSync(hostResource),
@@ -76,6 +55,10 @@ async function launch(overrides: Record<string, string> = {}) {
   const application = await electron.launch({
     executablePath: appBinary,
     env: launchEnvironment(overrides),
+    // This is an instrumented-only synthetic device. It does not grant
+    // permission (the installed main-process handler must still deny it), and
+    // it keeps the proof independent of real microphones/cameras.
+    args: ["--use-fake-device-for-media-stream"],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -97,6 +80,15 @@ async function visibleWindowCount(application: ElectronApplication) {
         (window) => !window.isDestroyed() && window.isVisible(),
       ).length,
   );
+}
+
+function isProcessAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function assertReady(page: Page) {
@@ -229,6 +221,35 @@ test("reload rebinds the same helper and fences the delayed old request", async 
       ],
     );
     await page.reload();
+    if (mutationName === "disable-rebind-fence") {
+      try {
+        await page
+          .getByTestId("stage0-event")
+          .filter({ hasText: "rebound" })
+          .waitFor({ timeout: 10_000 });
+      } catch {
+        const afterMutation = await testState(application);
+        assert.equal(afterMutation.hostStartCount, 1);
+        assert.equal(afterMutation.windowCount, 1);
+        assert.equal(afterMutation.visibleWindowCount, 1);
+        assert.equal(afterMutation.bindingState.state, "bound");
+        assert.equal(afterMutation.bindingState.generationId, 1);
+        assert.ok(Number.isSafeInteger(afterMutation.hostPid));
+        throwExpectedMutationFailure(
+          "disable-rebind-fence",
+          "renderer rebind generation fence",
+          {
+            hostReady: true,
+            hostStartCount: before.hostStartCount,
+            visibleWindowCount: before.visibleWindowCount,
+            hostPid: before.hostPid,
+            generationId: before.bindingState.generationId,
+            oldRequestPending: before.pendingCount > 0,
+          },
+        );
+      }
+      throw new Error("STAGE0_UNEXPECTED_MUTATION_PASS disable-rebind-fence");
+    }
     await page
       .getByTestId("stage0-event")
       .filter({ hasText: "rebound" })
@@ -292,6 +313,9 @@ test("idle helper death becomes visibly unavailable without a respawn", async ()
   const { application, page } = await launch();
   try {
     await assertReady(page);
+    const beforeDeath = await testState(application);
+    const pid = beforeDeath.hostPid;
+    assert.ok(Number.isInteger(pid) && pid > 0);
     await application.evaluate(() => globalThis.__COLONY_STAGE0_TEST_KILL__());
     await page
       .getByTestId("stage0-error")
@@ -299,8 +323,9 @@ test("idle helper death becomes visibly unavailable without a respawn", async ()
       .waitFor();
     const state = await testState(application);
     assert.equal(state.hostStartCount, 1);
-    assert.equal(state.hostPid > 0, true);
+    assert.equal(state.hostPid, pid);
     assert.equal(state.bindingState.state, "unavailable");
+    await expect.poll(() => isProcessAlive(pid)).toBe(false);
   } finally {
     await close(application);
   }
@@ -341,6 +366,31 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
         return { code: error?.code ?? error?.message ?? "unknown" };
       }
     });
+    if (mutationName === "allow-untrusted-ipc") {
+      const afterMutation = await testState(application);
+      assert.equal(denied.code, "unexpected-success");
+      assert.equal(afterMutation.hostStartCount, 1);
+      assert.equal(afterMutation.windowCount, 1);
+      assert.equal(afterMutation.visibleWindowCount, 1);
+      assert.equal(
+        afterMutation.ipcDeniedCount,
+        beforeSubframe.ipcDeniedCount + 1,
+      );
+      throwExpectedMutationFailure(
+        "allow-untrusted-ipc",
+        "trusted IPC sender guard",
+        {
+          hostReady: true,
+          hostStartCount: afterMutation.hostStartCount,
+          visibleWindowCount: afterMutation.visibleWindowCount,
+          hostPid: afterMutation.hostPid,
+          generationId: afterMutation.bindingState.generationId,
+          subframeLoaded: true,
+          ipcDeniedIncremented:
+            afterMutation.ipcDeniedCount === beforeSubframe.ipcDeniedCount + 1,
+        },
+      );
+    }
     assert.deepEqual(denied, { code: "untrusted_sender" });
     const afterSubframe = await testState(application);
     assert.equal(
@@ -384,11 +434,22 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
       .poll(async () => (await testState(application)).windowOpenDeniedCount)
       .toBeGreaterThan(beforeWindowOpen.windowOpenDeniedCount);
 
+    const beforeNotification = await testState(application);
+    const notificationPermission = await page.evaluate(async () => {
+      if (typeof Notification !== "function") return "unsupported";
+      return Notification.requestPermission();
+    });
+    assert.equal(notificationPermission, "denied");
+    await expect
+      .poll(async () => (await testState(application)).permissionDeniedCount)
+      .toBeGreaterThan(beforeNotification.permissionDeniedCount);
+    const afterNotification = await testState(application);
+    assert.equal(afterNotification.lastSecurityDenial, "notifications");
+
     assert.equal(
       await page.evaluate(() => Boolean(navigator.mediaDevices?.getUserMedia)),
       true,
     );
-    const beforePermission = await testState(application);
     const permissionResult = await page.evaluate(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -401,15 +462,22 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
         return { granted: false, name: error?.name ?? "unknown" };
       }
     });
-    assert.deepEqual(permissionResult, {
-      granted: false,
-      name: "NotAllowedError",
-    });
-    await expect
-      .poll(async () => (await testState(application)).permissionDeniedCount)
-      .toBeGreaterThan(beforePermission.permissionDeniedCount);
+    assert.equal(permissionResult.granted, false);
+    assert.equal(
+      permissionResult.name,
+      "NotAllowedError",
+      `synthetic media must reach the installed permission handler; got ${permissionResult.name}`,
+    );
     const afterPermission = await testState(application);
-    assert.equal(afterPermission.lastSecurityDenial, "media");
+    assert.equal(
+      afterPermission.permissionDeniedCount,
+      afterNotification.permissionDeniedCount + 1,
+    );
+    assert.equal(
+      afterPermission.lastSecurityDenial,
+      "media",
+      "media denial must be observed through the installed permission handler",
+    );
   } finally {
     await close(application);
   }
