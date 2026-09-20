@@ -22,6 +22,11 @@
     "test:e2e:integration": "pnpm build:e2e && playwright test --project=integration",
     "test:e2e:release-smoke": "pnpm build:e2e && playwright test --config=playwright.release-smoke.config.ts",
     "test:e2e:report": "playwright show-report",
+    "electron:stage0:stage": "node ./scripts/stage-electron-stage0.mjs --flavor=normal",
+    "electron:stage0:stage:instrumented": "node ./scripts/stage-electron-stage0.mjs --flavor=instrumented",
+    "electron:stage0:package": "pnpm run electron:stage0:stage && electron-packager .stage0-package-normal \"Buzz Stage0 Normal\" --platform=darwin --arch=arm64 --out=dist-electron-normal --overwrite --asar --app-bundle-id=xyz.ainative.ventures.colony.stage0.normal --extra-resource=.stage0-package-resources-normal/colony-native-host",
+    "electron:stage0:package:instrumented": "pnpm run electron:stage0:stage:instrumented && electron-packager .stage0-package-instrumented \"Buzz Stage0 Instrumented\" --platform=darwin --arch=arm64 --out=dist-electron-instrumented --overwrite --asar --app-bundle-id=xyz.ainative.ventures.colony.stage0.instrumented --extra-resource=.stage0-package-resources-instrumented/colony-native-host",
+    "electron:stage0:check": "node ./scripts/check-electron-stage0.mjs dist-electron-normal --flavor=normal",
     "tauri:build": "node ./scripts/tauri-command.mjs build"
   },
   "dependencies": {
@@ -90,6 +95,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electron/asar": "3.2.18",
+    "@electron/packager": "20.3.0",
     "@noble/hashes": "^2.0.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.3.0",
@@ -99,6 +106,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "electron": "44.4.3",
     "@vitejs/plugin-react": "^6.0.0",
     "jsdom": "^27.4.0",
     "nostr-tools": "^2.23.3",
