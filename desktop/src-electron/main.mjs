@@ -395,8 +395,13 @@ function configureWindowSecurity(window) {
     if (runtime.initialLoadComplete) beginRendererRebind();
   });
   window.webContents.on("did-finish-load", () => {
+    const wasInitialLoadComplete = runtime.initialLoadComplete;
+    // Some Electron 44 file:// reloads omit did-start-loading. Keep the
+    // reload barrier attached to the completed main-frame load as a fallback;
+    // the first load only establishes the initial READY state.
     if (!window.isDestroyed()) {
       runtime.initialLoadComplete = true;
+      if (wasInitialLoadComplete) void beginRendererRebind();
       publishTestState();
     }
   });
