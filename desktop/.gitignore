@@ -11,6 +11,9 @@ node_modules
 .pnpm-store
 dist
 dist-ssr
+dist-electron
+.stage0-package
+.stage0-package-resources
 playwright-report
 playwright-report.json
 test-results

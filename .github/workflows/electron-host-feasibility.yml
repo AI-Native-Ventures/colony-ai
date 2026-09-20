@@ -1,0 +1,117 @@
+name: Electron Stage 0 macOS arm64 feasibility
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/electron-stage0-manifest.json"
+      - "desktop/package.json"
+      - "desktop/src-electron/**"
+      - "desktop/src-native-host/**"
+      - "desktop/scripts/check-electron-stage0.mjs"
+      - "desktop/scripts/stage-electron-stage0.mjs"
+      - "desktop/playwright.electron.config.ts"
+      - "desktop/tests/electron-host-feasibility.spec.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/electron-host-feasibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-feasibility:
+    name: packaged Electron / macOS arm64
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "This lane requires a native macOS arm64 runner; got $machine" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+          node --version
+          pnpm --version
+
+      - name: Install only the desktop dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm install --frozen-lockfile --filter buzz
+
+      - name: Download the pinned Electron runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec install-electron
+
+      - name: Build the standalone arm64 helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            --release --target aarch64-apple-darwin
+
+      - name: Stage and package the isolated candidate
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop electron:stage0:package
+
+      - name: Inspect the package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop electron:stage0:check
+          app_binary="$(find desktop/dist-electron -path '*/Contents/MacOS/Buzz Stage0' -type f -print -quit)"
+          test -n "$app_binary"
+          binary_description="$(file "$app_binary")"
+          echo "$binary_description"
+          echo "$binary_description" | grep -Eq 'arm64|aarch64'
+
+      - name: Run the packaged Electron proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright test \
+            --config playwright.electron.config.ts \
+            tests/electron-host-feasibility.spec.ts
+
+      - name: Upload unsigned feasibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-macos-arm64-${{ github.sha }}
+          path: |
+            desktop/dist-electron
+            desktop/playwright-electron-report
+            desktop/test-results
+          if-no-files-found: ignore
+          retention-days: 7

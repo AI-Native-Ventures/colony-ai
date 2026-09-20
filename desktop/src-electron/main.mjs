@@ -1,0 +1,417 @@
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { app, BrowserWindow, ipcMain } from "electron";
+
+import { loadManifest } from "./host-protocol.mjs";
+import { NativeHost } from "./native-host.mjs";
+import { RendererHost } from "./renderer-host.mjs";
+import {
+  isTrustedNavigation,
+  publicIpcErrorCode,
+  validateExactIpcCall,
+} from "./ipc-security.mjs";
+
+const manifest = loadManifest();
+const TEST_MODE = process.env.COLONY_STAGE0_TEST_MODE === "1";
+const IPC = Object.freeze({
+  HEALTH: "colony-stage0:health:get-default-relay-url",
+  LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
+  LIFECYCLE_UNSUBSCRIBE: "colony-stage0:lifecycle:unsubscribe",
+  BINDING_STATE: "colony-stage0:binding-state",
+  LIFECYCLE_EVENT: "colony-stage0:lifecycle:event",
+});
+const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
+const rendererEntry = path.join(rootDirectory, "feasibility", "index.html");
+const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
+const userDataDirectory = path.join(
+  app.getPath("appData"),
+  manifest.namespace.userDataRelativePath,
+);
+
+// This must happen before Electron's ready event. Stage 0 intentionally uses a
+// fresh namespace and never probes or opens a legacy Buzz/Colony profile.
+app.setName("Buzz Stage0");
+app.setPath("userData", userDataDirectory);
+
+const runtime = {
+  window: null,
+  transport: null,
+  rendererHost: null,
+  trustedUrl: trustedRendererUrl,
+  lifecycleBuffer: [],
+  lifecycleSubscribers: new Set(),
+  initialLoadComplete: false,
+  rebindPromise: null,
+  shutdownPromise: null,
+  shutdownStarted: false,
+  diagnostics: {
+    hostStartCount: 0,
+    hostPid: null,
+    rebindCount: 0,
+    rebindGenerations: [],
+    lastError: null,
+  },
+};
+
+function publishTestState() {
+  if (!TEST_MODE) return;
+  globalThis.__COLONY_STAGE0_TEST_KILL__ = () => {
+    runtime.transport?.child?.kill?.("SIGTERM");
+  };
+  globalThis.__COLONY_STAGE0_TEST_STATE__ = {
+    ...runtime.diagnostics,
+    userDataPath: app.getPath("userData"),
+    windowCount: BrowserWindow.getAllWindows().filter(
+      (window) => !window.isDestroyed(),
+    ).length,
+    visibleWindowCount: BrowserWindow.getAllWindows().filter(
+      (window) => !window.isDestroyed() && window.isVisible(),
+    ).length,
+    pendingCount: runtime.transport?.pending?.size ?? 0,
+    bindingState: runtime.rendererHost?.bindingState() ?? null,
+  };
+}
+
+function boundedError(error, fallback = "protocol_error") {
+  const code = publicIpcErrorCode(error?.code ?? error?.message, fallback);
+  const value = new Error(code);
+  value.code = code;
+  return value;
+}
+
+function trustedFrameSnapshot(frame) {
+  return Object.freeze({
+    type: "EVENT",
+    protocolVersion: frame.protocolVersion,
+    profileId: frame.profileId,
+    sessionId: frame.sessionId,
+    generationId: frame.generationId,
+    payload: Object.freeze({ state: frame.payload?.state }),
+    event: "host_lifecycle",
+    sequence: frame.sequence,
+  });
+}
+
+function frameKey(frame) {
+  return `${frame.generationId}:${frame.sequence}`;
+}
+
+function currentGeneration() {
+  return runtime.rendererHost?.bindingState().generationId ?? null;
+}
+
+function rememberLifecycle(frame) {
+  const safeFrame = trustedFrameSnapshot(frame);
+  const current = currentGeneration() ?? safeFrame.generationId;
+  if (safeFrame.generationId !== current) return;
+  if (
+    runtime.lifecycleBuffer.some(
+      (item) => frameKey(item) === frameKey(safeFrame),
+    )
+  ) {
+    return;
+  }
+  runtime.lifecycleBuffer = [
+    ...runtime.lifecycleBuffer.filter(
+      (item) => item.generationId === safeFrame.generationId,
+    ),
+    safeFrame,
+  ].slice(-2);
+  const window = runtime.window;
+  if (!window || window.isDestroyed()) return;
+  for (const webContentsId of runtime.lifecycleSubscribers) {
+    if (webContentsId !== window.webContents.id) continue;
+    try {
+      window.webContents.send(IPC.LIFECYCLE_EVENT, safeFrame);
+    } catch {
+      runtime.lifecycleSubscribers.delete(webContentsId);
+    }
+  }
+}
+
+function clearLifecycleForRebind() {
+  runtime.lifecycleBuffer = [];
+  runtime.lifecycleSubscribers.clear();
+}
+
+function assertTrustedPayload(event, payload) {
+  const window = runtime.window;
+  if (!window || window.isDestroyed()) {
+    throw boundedError({ code: "invalid_ipc_sender" });
+  }
+  validateExactIpcCall({
+    event,
+    webContents: window.webContents,
+    trustedUrl: runtime.trustedUrl,
+    payload,
+    expectedPayload: {},
+  });
+}
+
+function resolveHostPath() {
+  const packagedPath = path.join(process.resourcesPath, "colony-native-host");
+  const harnessPath = process.env.COLONY_STAGE0_HOST_PATH;
+  if (TEST_MODE && typeof harnessPath === "string" && harnessPath.length > 0) {
+    return path.resolve(harnessPath);
+  }
+  return packagedPath;
+}
+
+function createTransport() {
+  const spawnEnv = {};
+  const fault = process.env.COLONY_STAGE0_FAULT;
+  if (TEST_MODE && manifest.faultInputs.includes(fault)) {
+    spawnEnv.COLONY_STAGE0_FAULT = fault;
+  }
+  return new NativeHost({
+    executablePath: resolveHostPath(),
+    manifest,
+    buildId: `electron-stage0-${manifest.sourceRevision.slice(0, 12)}`,
+    spawnEnv,
+  });
+}
+
+function setupIpc() {
+  ipcMain.handle(IPC.HEALTH, async (event, payload) => {
+    try {
+      assertTrustedPayload(event, payload);
+      const response = await runtime.rendererHost.requestHealthSafe();
+      if (
+        response?.outcome !== "ok" ||
+        typeof response.payload?.relayUrl !== "string" ||
+        !Number.isSafeInteger(response.generationId)
+      ) {
+        throw boundedError({ code: "protocol_error" });
+      }
+      return Object.freeze({
+        relayUrl: response.payload.relayUrl,
+        generationId: response.generationId,
+      });
+    } catch (error) {
+      runtime.diagnostics.lastError = publicIpcErrorCode(
+        error?.code,
+        "host_unavailable",
+      );
+      publishTestState();
+      throw boundedError(error, "host_unavailable");
+    }
+  });
+
+  ipcMain.handle(IPC.BINDING_STATE, (event, payload) => {
+    try {
+      assertTrustedPayload(event, payload);
+      return runtime.rendererHost.bindingState();
+    } catch (error) {
+      throw boundedError(error, "invalid_ipc_sender");
+    }
+  });
+
+  ipcMain.handle(IPC.LIFECYCLE_SUBSCRIBE, (event, payload) => {
+    try {
+      assertTrustedPayload(event, payload);
+      const id = event.sender.id;
+      runtime.lifecycleSubscribers.add(id);
+      const generation = currentGeneration();
+      return Object.freeze({
+        frames: runtime.lifecycleBuffer
+          .filter((frame) => frame.generationId === generation)
+          .map((frame) => trustedFrameSnapshot(frame)),
+      });
+    } catch (error) {
+      throw boundedError(error, "invalid_ipc_sender");
+    }
+  });
+
+  ipcMain.handle(IPC.LIFECYCLE_UNSUBSCRIBE, (event, payload) => {
+    try {
+      assertTrustedPayload(event, payload);
+      runtime.lifecycleSubscribers.delete(event.sender.id);
+      return Object.freeze({ ok: true });
+    } catch (error) {
+      throw boundedError(error, "invalid_ipc_sender");
+    }
+  });
+}
+
+function configureWindowSecurity(window) {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+  });
+  const handleNavigation = (event, url, isMainFrame = true) => {
+    if (
+      !isTrustedNavigation({
+        candidateUrl: url,
+        trustedUrl: runtime.trustedUrl,
+        isMainFrame,
+      })
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (runtime.initialLoadComplete) beginRendererRebind();
+  };
+  // Electron 44 emits will-navigate for the main frame without an
+  // isMainFrame argument. Treat that event as main-frame navigation; the
+  // frame-specific event below is the subframe denial seam.
+  window.webContents.on("will-navigate", (event, url) => {
+    handleNavigation(event, url, event.isMainFrame !== false);
+  });
+  window.webContents.on(
+    "will-frame-navigate",
+    (event, url, _isInPlace, isMainFrame) => {
+      handleNavigation(event, url, isMainFrame === true);
+    },
+  );
+  window.webContents.on("will-redirect", (event) => {
+    event.preventDefault();
+  });
+  window.webContents.on("did-start-loading", () => {
+    if (runtime.initialLoadComplete) beginRendererRebind();
+  });
+  window.webContents.on("did-finish-load", () => {
+    if (!window.isDestroyed()) {
+      runtime.initialLoadComplete = true;
+      publishTestState();
+    }
+  });
+  window.webContents.on("destroyed", () => {
+    runtime.lifecycleSubscribers.delete(window.webContents.id);
+  });
+  window.webContents.session.setPermissionRequestHandler(
+    (_contents, _permission, callback) => {
+      callback(false);
+    },
+  );
+}
+
+function createWindow() {
+  if (runtime.window && !runtime.window.isDestroyed()) {
+    return runtime.window;
+  }
+  const window = new BrowserWindow({
+    width: 820,
+    height: 620,
+    minWidth: 620,
+    minHeight: 460,
+    show: true,
+    title: "Buzz Stage0 host feasibility",
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      preload: path.join(rootDirectory, "preload.cjs"),
+    },
+  });
+  runtime.window = window;
+  configureWindowSecurity(window);
+  window.on("closed", () => {
+    if (runtime.window === window) runtime.window = null;
+    publishTestState();
+  });
+  void window.loadFile(rendererEntry).catch((error) => {
+    runtime.diagnostics.lastError = publicIpcErrorCode(
+      error?.code,
+      "invalid_origin",
+    );
+    publishTestState();
+  });
+  publishTestState();
+  return window;
+}
+
+function beginRendererRebind() {
+  if (
+    runtime.rendererHost?.bindingState().state !== "bound" ||
+    runtime.rebindPromise
+  ) {
+    return runtime.rebindPromise;
+  }
+  clearLifecycleForRebind();
+  runtime.diagnostics.rebindCount += 1;
+  const current = runtime.rendererHost.bindingState().generationId;
+  runtime.rebindPromise = runtime.rendererHost
+    .reset()
+    .then((state) => {
+      runtime.diagnostics.rebindGenerations.push(state.generationId);
+      publishTestState();
+      return state;
+    })
+    .catch((error) => {
+      runtime.diagnostics.lastError = publicIpcErrorCode(
+        error?.code,
+        "host_unavailable",
+      );
+      publishTestState();
+      throw error;
+    })
+    .finally(() => {
+      runtime.rebindPromise = null;
+    });
+  if (TEST_MODE && Number.isSafeInteger(current)) publishTestState();
+  return runtime.rebindPromise;
+}
+
+function initializeRuntime() {
+  if (runtime.rendererHost) return;
+  runtime.transport = createTransport();
+  runtime.rendererHost = new RendererHost({ transport: runtime.transport });
+  runtime.rendererHost.onLifecycle((frame) => {
+    rememberLifecycle(frame);
+    publishTestState();
+  });
+  runtime.diagnostics.hostStartCount += 1;
+}
+
+async function startRuntime() {
+  initializeRuntime();
+  try {
+    await runtime.rendererHost.start();
+    runtime.diagnostics.hostPid = runtime.transport.child?.pid ?? null;
+  } catch (error) {
+    runtime.diagnostics.lastError = publicIpcErrorCode(
+      error?.code,
+      "host_unavailable",
+    );
+  }
+  publishTestState();
+}
+
+async function disposeRuntime() {
+  if (runtime.shutdownPromise) return runtime.shutdownPromise;
+  runtime.shutdownPromise = Promise.resolve()
+    .then(() => runtime.rendererHost?.dispose())
+    .catch((error) => {
+      runtime.diagnostics.lastError = publicIpcErrorCode(
+        error?.code,
+        "host_unavailable",
+      );
+    })
+    .finally(() => {
+      runtime.lifecycleSubscribers.clear();
+      runtime.window = null;
+      publishTestState();
+    });
+  return runtime.shutdownPromise;
+}
+
+app.on("before-quit", (event) => {
+  if (runtime.shutdownStarted) return;
+  runtime.shutdownStarted = true;
+  event.preventDefault();
+  void disposeRuntime().finally(() => app.quit());
+});
+
+app.on("window-all-closed", () => {
+  app.quit();
+});
+
+app.whenReady().then(() => {
+  setupIpc();
+  initializeRuntime();
+  createWindow();
+  void startRuntime();
+});
+
+export { IPC, manifest, runtime, trustedRendererUrl };
