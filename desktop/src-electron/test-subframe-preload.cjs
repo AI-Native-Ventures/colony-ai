@@ -15,11 +15,10 @@ const PUBLIC_ERROR_CODES = new Set([
 ]);
 
 function errorFrom(error) {
-  const code = PUBLIC_ERROR_CODES.has(error?.code)
-    ? error.code
-    : PUBLIC_ERROR_CODES.has(error?.message)
-      ? error.message
-      : "protocol_error";
+  const text = `${error?.code ?? ""} ${error?.message ?? ""}`;
+  const code =
+    [...PUBLIC_ERROR_CODES].find((candidate) => text.includes(candidate)) ??
+    "protocol_error";
   const value = new Error(code);
   value.code = code;
   return value;
