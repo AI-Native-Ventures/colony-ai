@@ -933,6 +933,34 @@ impl SecretStore {
     }
 }
 
+/// Keep the existing Tauri compatibility resolver on the shared store type.
+///
+/// The implementation lives beside [`SecretStore`] so downstream crates only
+/// consume the trait; this avoids an orphan impl when the Tauri module
+/// re-exports the host-neutral type. Every operation delegates to the same
+/// legacy backend methods and retains its existing migration/env policy.
+impl colony_identity_kernel::IdentityKeyStore for SecretStore {
+    fn probe(&self, name: &str) -> KeyringProbe {
+        SecretStore::probe(self, name)
+    }
+
+    fn load(&self, name: &str) -> Result<Option<String>, String> {
+        SecretStore::load(self, name)
+    }
+
+    fn store(&self, name: &str, value: &str) -> Result<(), String> {
+        SecretStore::store(self, name, value)
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        SecretStore::delete(self, name)
+    }
+
+    fn verify_stored(&self, key: &str, expected: &str) -> Result<bool, String> {
+        SecretStore::verify_stored_raw(self, key, expected)
+    }
+}
+
 /// Whether this process was explicitly asked to initialize an identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentityMode {

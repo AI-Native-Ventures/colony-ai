@@ -14,7 +14,7 @@ use crate::huddle::HuddleState;
 pub(crate) use crate::identity_storage::{IdentityStorage, RecoveryState, ResolvedIdentity};
 use crate::managed_agents::config_bridge::SessionConfigCache;
 use crate::managed_agents::{ManagedAgentPairRuntime, ManagedAgentRuntimeKey};
-pub(crate) use colony_identity_kernel::{IdentityKeyStore, KeyringProbe, ProfileScope};
+pub(crate) use colony_identity_kernel::{IdentityKeyStore, ProfileScope};
 
 pub struct AppState {
     pub keys: Mutex<Keys>,
@@ -313,28 +313,6 @@ mod pending_channels;
 #[cfg(test)]
 pub(crate) const IDENTITY_KEY_NAME: &str = colony_identity_kernel::IDENTITY_KEY_NAME;
 pub(crate) const MIGRATION_MARKER_NAME: &str = colony_identity_kernel::MIGRATION_MARKER_NAME;
-
-impl IdentityKeyStore for crate::secret_store::SecretStore {
-    fn probe(&self, name: &str) -> KeyringProbe {
-        crate::secret_store::SecretStore::probe(self, name)
-    }
-
-    fn load(&self, name: &str) -> Result<Option<String>, String> {
-        crate::secret_store::SecretStore::load(self, name)
-    }
-
-    fn store(&self, name: &str, value: &str) -> Result<(), String> {
-        crate::secret_store::SecretStore::store(self, name, value)
-    }
-
-    fn delete(&self, name: &str) -> Result<(), String> {
-        crate::secret_store::SecretStore::delete(self, name)
-    }
-
-    fn verify_stored(&self, key: &str, expected: &str) -> Result<bool, String> {
-        crate::secret_store::SecretStore::verify_stored_raw(self, key, expected)
-    }
-}
 
 fn profile_scope(legacy_path: &std::path::Path, data_dir: &std::path::Path) -> ProfileScope {
     ProfileScope::new(
