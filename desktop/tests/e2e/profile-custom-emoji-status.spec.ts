@@ -6,6 +6,9 @@ import { installMockBridge } from "../helpers/bridge";
 const SHORTCODE = "buzz";
 const STATUS_TEXT = "testing custom status";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
+const STATUS_CLOCK = new Date("2026-06-18T12:00:00.000Z");
+const STATUS_CLOCK_SECONDS = Math.floor(STATUS_CLOCK.getTime() / 1_000);
+const STATUS_EXPIRY_MS = 2_000;
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -196,31 +199,42 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
 test("keeps an open status draft when the saved status expires", async ({
   page,
 }) => {
+  // Keep the app's Date.now(), expiry timer, and seeded event on one epoch.
+  await page.clock.install({ time: STATUS_CLOCK });
   await page.goto("/");
-  const nowSeconds = Math.floor(Date.now() / 1_000);
   await seedMockStatus(page, {
     text: "Original draft",
     emoji: "📝",
-    expiresAt: nowSeconds + 2,
-    createdAt: nowSeconds,
-  });
-  await page.getByTestId("profile-popover-set-status").click();
-  const dialog = page.getByTestId("set-status-dialog");
-  await dialog.getByTestId("set-status-input").fill("Unsaved draft");
-  await expect(page.getByTestId("sidebar-profile-user-status")).toHaveCount(0, {
-    timeout: 5_000,
+    expiresAt: STATUS_CLOCK_SECONDS + STATUS_EXPIRY_MS / 1_000,
+    createdAt: STATUS_CLOCK_SECONDS,
   });
 
-  await expect(dialog.getByTestId("set-status-input")).toHaveValue(
-    "Unsaved draft",
-  );
-  await expect(dialog.getByRole("alert")).toContainText(
+  const sidebarStatus = page.getByTestId("sidebar-profile-user-status");
+  await expect(sidebarStatus).toContainText("Original draft");
+  await page.getByTestId("profile-popover-set-status").click();
+  // ProfilePopover opens the dialog from requestAnimationFrame.
+  await page.clock.fastForward(1);
+  const dialog = page.getByTestId("set-status-dialog");
+  const input = dialog.getByTestId("set-status-input");
+  const saveButton = dialog.getByLabel("Save status");
+  await expect(dialog).toBeVisible();
+  await expect(input).toHaveValue("Original draft");
+  await input.fill("Unsaved draft");
+  await expect(input).toHaveValue("Unsaved draft");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(saveButton).toBeDisabled();
+
+  await page.clock.fastForward(STATUS_EXPIRY_MS);
+  await expect(sidebarStatus).toHaveCount(0);
+
+  await expect(input).toHaveValue("Unsaved draft");
+  await expect(dialog.getByRole("alert")).toHaveText(
     "Choose a duration in the future.",
   );
-  await expect(dialog.getByLabel("Save status")).toBeDisabled();
+  await expect(saveButton).toBeDisabled();
   await page.getByTestId("set-status-duration").click();
   await page.getByRole("menuitem", { name: "This week" }).click();
-  await expect(dialog.getByLabel("Save status")).toBeEnabled();
+  await expect(saveButton).toBeEnabled();
   await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
     0,
   );
