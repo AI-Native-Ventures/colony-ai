@@ -1638,6 +1638,8 @@ pub struct HeadlessIdentityStore {
     store: SecretStore,
     /// A strict identity-only cache; it never stores the legacy blob map.
     identity_cache: Mutex<Option<Option<String>>>,
+    #[cfg(test)]
+    marker_write_failure: bool,
 }
 
 impl HeadlessIdentityStore {
@@ -1657,6 +1659,8 @@ impl HeadlessIdentityStore {
             store: SecretStore::keyring(descriptor.keyring_service().to_string()),
             descriptor,
             identity_cache: Mutex::new(None),
+            #[cfg(test)]
+            marker_write_failure: false,
         })
     }
 
@@ -1664,6 +1668,23 @@ impl HeadlessIdentityStore {
     fn with_test_backend(
         descriptor: IdentityLaunchDescriptor,
         backend: Arc<dyn TestRawBlobBackend>,
+    ) -> Result<Self, HeadlessStoreError> {
+        Self::with_test_backend_options(descriptor, backend, false)
+    }
+
+    #[cfg(test)]
+    fn with_test_backend_and_marker_failure(
+        descriptor: IdentityLaunchDescriptor,
+        backend: Arc<dyn TestRawBlobBackend>,
+    ) -> Result<Self, HeadlessStoreError> {
+        Self::with_test_backend_options(descriptor, backend, true)
+    }
+
+    #[cfg(test)]
+    fn with_test_backend_options(
+        descriptor: IdentityLaunchDescriptor,
+        backend: Arc<dyn TestRawBlobBackend>,
+        marker_write_failure: bool,
     ) -> Result<Self, HeadlessStoreError> {
         if descriptor.identity_mode() != IdentityMode::ExplicitIdentity
             || descriptor.shared_identity()
@@ -1677,6 +1698,7 @@ impl HeadlessIdentityStore {
             store: SecretStore::with_test_backend(descriptor.keyring_service(), backend),
             descriptor,
             identity_cache: Mutex::new(None),
+            marker_write_failure,
         })
     }
 
@@ -1908,6 +1930,17 @@ impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
         }
         self.store_identity_and_verify_direct(expected)
             .map_err(|error| error.to_string())
+    }
+
+    fn write_migration_marker(
+        &self,
+        profile: &colony_identity_kernel::ProfileScope,
+    ) -> Result<(), String> {
+        #[cfg(test)]
+        if self.marker_write_failure {
+            return Err("synthetic migration marker failure".to_string());
+        }
+        colony_identity_kernel::write_migration_marker_at(&profile.migration_marker_path())
     }
 }
 
@@ -2277,10 +2310,12 @@ mod headless_tests {
     fn adapter_marker_failure_fallback_reads_back_same_k1() {
         let root = tempfile::tempdir().expect("isolated root");
         let descriptor = descriptor(root.path());
-        std::fs::create_dir(descriptor.migration_marker_path()).expect("marker failure fixture");
         let backend = RawBlobFake::new(None, WriteBehavior::Exact);
-        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend)
-            .expect("headless adapter");
+        let store = HeadlessIdentityStore::with_test_backend_and_marker_failure(
+            descriptor.clone(),
+            backend,
+        )
+        .expect("headless adapter");
 
         let resolved = store.initialize().expect("file fallback");
         assert_eq!(

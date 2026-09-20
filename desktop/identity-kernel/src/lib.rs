@@ -243,6 +243,16 @@ pub trait IdentityKeyStore {
         self.store(key, expected)?;
         Ok(self.verify_stored_headless(key, expected))
     }
+
+    /// Write the profile migration marker after a strict fresh write.
+    ///
+    /// Compatibility stores inherit the existing atomic file operation. A
+    /// headless adapter may override this seam in isolated tests so the
+    /// strict file-fallback branch is exercised without touching real user
+    /// paths or key stores.
+    fn write_migration_marker(&self, profile: &ProfileScope) -> Result<(), String> {
+        write_migration_marker(profile)
+    }
 }
 
 pub const IDENTITY_KEY_NAME: &str = "identity";
@@ -598,7 +608,7 @@ fn migrate_identity_file(
         Ok(false) => return Err("keyring read-back verify failed for identity key".to_string()),
         Err(error) => return Err(format!("keyring read-back verify failed: {error}")),
     }
-    if let Err(error) = write_migration_marker(profile) {
+    if let Err(error) = store.write_migration_marker(profile) {
         eprintln!(
             "buzz-desktop: keyring import ok but failed to write migration marker ({error}); keeping identity.key"
         );
