@@ -7,6 +7,9 @@ on:
     paths:
       - "desktop/electron-stage0-manifest.json"
       - "desktop/src-native-host/**"
+      - "desktop/src-electron/**"
+      - "desktop/scripts/check-native-host-scan.sh"
+      - "desktop/scripts/check-native-host-scan.test.sh"
       - ".github/workflows/colony-native-host-contract.yml"
   workflow_dispatch:
 
@@ -50,21 +53,23 @@ jobs:
           . ./bin/activate-hermit
           cargo fmt --manifest-path desktop/src-native-host/Cargo.toml -- --check
 
+      - name: Test the standalone host scanner guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash desktop/scripts/check-native-host-scan.test.sh
+
       - name: Prove the host has no Tauri dependency
         shell: bash
         run: |
           set -euo pipefail
-          if rg -n -i 'tauri|wry|src-tauri' desktop/src-native-host; then
-            echo "standalone host contains a forbidden Tauri/WebView reference" >&2
-            exit 1
-          fi
           . ./bin/activate-hermit
-          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml
-          if cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            | rg -i '(^|[- ])(tauri|wry)([- ])|src-tauri'; then
-            echo "standalone host dependency tree contains Tauri/WebView" >&2
-            exit 1
-          fi
+          dependency_tree="$(mktemp)"
+          trap 'rm -f "$dependency_tree"' EXIT
+          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml > "$dependency_tree"
+          bash desktop/scripts/check-native-host-scan.sh \
+            --source-root desktop/src-native-host \
+            --dependency-tree "$dependency_tree"
 
       - name: Run only the standalone stdio contract tests
         shell: bash
@@ -72,3 +77,19 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml
+
+      - name: Build the standalone host for real Node interop
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml --release
+
+      - name: Run focused Node transport tests against the real Rust host
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --test desktop/src-electron/*.test.mjs
