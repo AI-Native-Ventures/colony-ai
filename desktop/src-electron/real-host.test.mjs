@@ -68,8 +68,12 @@ test("real Rust host fences a delayed old request before REBOUND and never repla
   try {
     await host.start();
     const oldRequest = host.requestHealthSafe({ deadlineMs: 5_000 });
+    const oldRequestOutcome = assert.rejects(
+      oldRequest,
+      (error) => error.code === "renderer_rebound",
+    );
     const rebound = await host.rebind(2);
-    await assert.rejects(oldRequest, (error) => error.code === "renderer_rebound");
+    await oldRequestOutcome;
     assert.equal(rebound.generationId, 2);
     const fresh = await host.requestHealthSafe();
     assert.equal(fresh.generationId, 2);

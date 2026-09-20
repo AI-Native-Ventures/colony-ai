@@ -492,20 +492,28 @@ export class FrameDecoder {
 
   push(chunk) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    if (bytes.length > 0) {
-      this.#buffer = Buffer.concat([this.#buffer, bytes]);
-    }
     const frames = [];
-    while (true) {
-      const newline = this.#buffer.indexOf(0x0a);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const newline = bytes.indexOf(0x0a, offset);
       if (newline < 0) {
-        if (this.#buffer.length >= this.frameLimitBytes) {
+        const remaining = bytes.length - offset;
+        if (this.#buffer.length + remaining >= this.frameLimitBytes) {
           throw protocolError("frame_too_large");
+        }
+        if (remaining > 0) {
+          this.#buffer = Buffer.concat([
+            this.#buffer,
+            bytes.subarray(offset),
+          ]);
         }
         break;
       }
-      const line = this.#buffer.subarray(0, newline);
-      this.#buffer = this.#buffer.subarray(newline + 1);
+      const chunkLine = bytes.subarray(offset, newline);
+      const line = this.#buffer.length === 0
+        ? chunkLine
+        : Buffer.concat([this.#buffer, chunkLine]);
+      this.#buffer = Buffer.alloc(0);
       if (line.length === 0) {
         throw protocolError("invalid_json");
       }
@@ -513,6 +521,7 @@ export class FrameDecoder {
         throw protocolError("frame_too_large");
       }
       frames.push(decodeFrame(line, { direction: this.direction, binding: this.binding }));
+      offset = newline + 1;
     }
     return frames;
   }
