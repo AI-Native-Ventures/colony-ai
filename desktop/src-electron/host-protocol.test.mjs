@@ -15,6 +15,7 @@ import {
   PROFILE_ID,
   PROTOCOL,
   REGISTRY_DIGEST,
+  redactedProtocolCode,
   validateEnvelope,
 } from "./host-protocol.mjs";
 
@@ -200,6 +201,35 @@ test("FrameDecoder handles split and batched writes without text-size truncation
   decoder.finish();
 });
 
+test("FrameDecoder rejects an oversized completion before copying a partial frame", () => {
+  const frameLimitBytes = 64;
+  const decoder = new FrameDecoder({ direction: "any", frameLimitBytes });
+  decoder.push(Buffer.from("@colony-native:{"));
+  const hugeCompletion = Buffer.concat([
+    Buffer.alloc(frameLimitBytes, 0x20),
+    Buffer.from("\n"),
+  ]);
+  const originalConcat = Buffer.concat;
+  let concatCalls = 0;
+  let largestCopy = 0;
+  Buffer.concat = (chunks, totalLength) => {
+    concatCalls += 1;
+    const copiedBytes = chunks.reduce(
+      (total, chunk) => total + chunk.length,
+      0,
+    );
+    largestCopy = Math.max(largestCopy, copiedBytes);
+    return originalConcat(chunks, totalLength);
+  };
+  try {
+    expectProtocolError(() => decoder.push(hugeCompletion), "frame_too_large");
+  } finally {
+    Buffer.concat = originalConcat;
+  }
+  assert.equal(concatCalls, 0);
+  assert.equal(largestCopy, 0);
+});
+
 test("malformed, oversized, deep, invalid-prefix, and invalid-UTF8 frames fail before dispatch", () => {
   expectProtocolError(
     () => decodeFrame(Buffer.from("missing-prefix")),
@@ -241,6 +271,25 @@ test("malformed, oversized, deep, invalid-prefix, and invalid-UTF8 frames fail b
   expectProtocolError(
     () => decoder.push(Buffer.alloc(LIMITS.frameLimitBytes)),
     "frame_too_large",
+  );
+});
+
+test("redactedProtocolCode only preserves the finite public error vocabulary", () => {
+  assert.equal(
+    redactedProtocolCode({ code: "renderer_rebound" }, "error"),
+    "renderer_rebound",
+  );
+  assert.equal(
+    redactedProtocolCode({ code: "future_generation" }, "error"),
+    "future_generation",
+  );
+  assert.equal(
+    redactedProtocolCode({ code: "private_token_value" }, "error"),
+    "error",
+  );
+  assert.equal(
+    redactedProtocolCode({ code: "private_token_value" }, "host_unavailable"),
+    "host_unavailable",
   );
 });
 

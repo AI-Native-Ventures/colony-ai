@@ -39,11 +39,18 @@ function response(requestId, generationId, outcome = "ok", fields = {}) {
   });
 }
 
-function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
+function createFakeSpawn({
+  delayResponse = false,
+  malformed = false,
+  backpressured = false,
+} = {}) {
   let child;
   const delayedRequests = [];
   let requestCount = 0;
   let exited = false;
+  let stdinEnded = false;
+  let writeAfterEnd = 0;
+  let writeCount = 0;
   const spawnCalls = [];
 
   function emitExit(code = 0) {
@@ -62,75 +69,107 @@ function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
     });
   }
 
+  function sendBatch(values) {
+    const bytes = Buffer.concat(
+      values.map((value) => encodeFrame(value, { direction: "host" })),
+    );
+    queueMicrotask(() => {
+      if (!exited) child.stdout.write(bytes);
+    });
+  }
+
   const spawn = (executablePath, args, options) => {
     spawnCalls.push({ executablePath, args, options });
     child = new EventEmitter();
     child.pid = 9001;
-    child.stdin = new PassThrough();
+    child.stdin = backpressured ? new EventEmitter() : new PassThrough();
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     const decoder = new FrameDecoder({ direction: "main" });
-    child.stdin.on("data", (chunk) => {
-      for (const input of decoder.push(chunk)) {
-        if (input.type === "HELLO") {
-          if (malformed) {
-            queueMicrotask(() => {
-              if (!exited)
-                child.stdout.write(Buffer.from("@colony-native:{not-json\n"));
-            });
-            continue;
-          }
+    const handleInput = (input) => {
+      if (input.type === "HELLO") {
+        if (malformed) {
+          queueMicrotask(() => {
+            if (!exited)
+              child.stdout.write(Buffer.from("@colony-native:{not-json\n"));
+          });
+          return;
+        }
+        send(
+          frame("READY", 1, {
+            payload: { capabilities: ["health-safe"] },
+            registryDigest: REGISTRY_DIGEST,
+          }),
+        );
+        send(
+          frame("EVENT", 1, {
+            event: "host_lifecycle",
+            payload: { state: "ready" },
+            sequence: 1,
+          }),
+        );
+      } else if (input.type === "REQUEST") {
+        requestCount += 1;
+        if (delayResponse && input.generationId === 1) {
+          delayedRequests.push(input);
+        } else {
+          send(response(input.requestId, input.generationId));
+        }
+      } else if (input.type === "CANCEL") {
+        send(response(input.requestId, input.generationId, "cancelled"));
+      } else if (input.type === "REHELLO") {
+        for (const delayedRequest of delayedRequests.splice(0)) {
           send(
-            frame("READY", 1, {
-              payload: { capabilities: ["health-safe"] },
-              registryDigest: REGISTRY_DIGEST,
-            }),
-          );
-          send(
-            frame("EVENT", 1, {
-              event: "host_lifecycle",
-              payload: { state: "ready" },
-              sequence: 1,
-            }),
-          );
-        } else if (input.type === "REQUEST") {
-          requestCount += 1;
-          if (delayResponse && input.generationId === 1) {
-            delayedRequests.push(input);
-          } else {
-            send(response(input.requestId, input.generationId));
-          }
-        } else if (input.type === "CANCEL") {
-          send(response(input.requestId, input.generationId, "cancelled"));
-        } else if (input.type === "REHELLO") {
-          for (const delayedRequest of delayedRequests.splice(0)) {
-            send(
-              response(
-                delayedRequest.requestId,
-                delayedRequest.generationId,
-                "outcome_unknown",
-                {
-                  error: { code: "renderer_rebound" },
-                  payload: undefined,
-                },
-              ),
-            );
-          }
-          send(
-            frame("REBOUND", input.generationId, {
-              registryDigest: REGISTRY_DIGEST,
-            }),
-          );
-          send(
-            frame("EVENT", input.generationId, {
-              event: "host_lifecycle",
-              payload: { state: "rebound" },
-              sequence: input.generationId,
-            }),
+            response(
+              delayedRequest.requestId,
+              delayedRequest.generationId,
+              "outcome_unknown",
+              {
+                error: { code: "renderer_rebound" },
+                payload: undefined,
+              },
+            ),
           );
         }
+        send(
+          frame("REBOUND", input.generationId, {
+            registryDigest: REGISTRY_DIGEST,
+          }),
+        );
+        send(
+          frame("EVENT", input.generationId, {
+            event: "host_lifecycle",
+            payload: { state: "rebound" },
+            sequence: input.generationId,
+          }),
+        );
       }
-    });
+    };
+    const receiveInput = (chunk) => {
+      for (const input of decoder.push(chunk)) handleInput(input);
+    };
+    if (backpressured) {
+      child.stdin.write = (chunk) => {
+        writeCount += 1;
+        if (stdinEnded) {
+          writeAfterEnd += 1;
+          throw new Error("write after end");
+        }
+        receiveInput(chunk);
+        return false;
+      };
+      child.stdin.end = () => {
+        if (stdinEnded) return child.stdin;
+        stdinEnded = true;
+        child.stdin.emit("finish");
+        return child.stdin;
+      };
+      child.stdin.destroy = () => {
+        stdinEnded = true;
+      };
+    } else {
+      child.stdin.on("data", receiveInput);
+    }
     child.stdin.on("finish", () => emitExit(0));
     child.kill = () => emitExit(0);
     return child;
@@ -147,10 +186,23 @@ function createFakeSpawn({ delayResponse = false, malformed = false } = {}) {
     get requestCount() {
       return requestCount;
     },
+    get stdinEnded() {
+      return stdinEnded;
+    },
+    get writeAfterEnd() {
+      return writeAfterEnd;
+    },
+    get writeCount() {
+      return writeCount;
+    },
     spawnCalls,
     emit(value) {
       send(value);
     },
+    emitBatch(values) {
+      sendBatch(values);
+    },
+    emitExit,
   };
 }
 
@@ -220,6 +272,33 @@ test("NativeHost redacts non-protocol host error codes before rejection", async 
   await host.dispose();
 });
 
+test("NativeHost stops a mixed fatal frame batch before buffering later events", async () => {
+  const fake = createFakeSpawn();
+  const host = hostWith(fake);
+  const events = [];
+  host.onLifecycle((event) => events.push(event));
+  await host.start();
+  const eventsBeforeFatal = events.length;
+  fake.emitBatch([
+    frame("READY", 1, {
+      payload: { capabilities: ["health-safe"] },
+      registryDigest: REGISTRY_DIGEST,
+    }),
+    frame("EVENT", 1, {
+      event: "host_lifecycle",
+      payload: { state: "ready" },
+      sequence: 99,
+    }),
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(host.state, "failed");
+  assert.equal(events.length, eventsBeforeFatal);
+  const lateEvents = [];
+  host.onLifecycle((event) => lateEvents.push(event));
+  assert.deepEqual(lateEvents, []);
+  await host.dispose();
+});
+
 test("NativeHost rejects duplicate request IDs without replaying the first call", async () => {
   const fake = createFakeSpawn({ delayResponse: true });
   const host = hostWith(fake);
@@ -281,6 +360,62 @@ test("NativeHost rejects host death exactly once for pending calls", async () =>
   assert.equal(host.state, "failed");
   assert.equal(host.pending.size, 0);
   await host.dispose();
+});
+
+test("NativeHost publishes terminal state to idle observers and fences late subscriptions", async () => {
+  const fake = createFakeSpawn();
+  const host = hostWith(fake);
+  const states = [];
+  const detachState = host.onState((snapshot) => states.push(snapshot.state));
+  await host.start();
+
+  fake.emitExit(1);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(host.state, "failed");
+  assert.deepEqual(states, ["idle", "starting", "ready", "failed"]);
+
+  const lateStates = [];
+  const detachLateState = host.onState((snapshot) =>
+    lateStates.push(snapshot.state),
+  );
+  assert.deepEqual(lateStates, ["failed"]);
+
+  const lateEvents = [];
+  host.onLifecycle((event) => lateEvents.push(event));
+  fake.emit(
+    frame("EVENT", 1, {
+      event: "host_lifecycle",
+      payload: { state: "ready" },
+      sequence: 99,
+    }),
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(lateEvents, []);
+
+  detachState();
+  detachLateState();
+  await host.dispose();
+});
+
+test("NativeHost disposal fences a backpressured pump and late drain", async () => {
+  const fake = createFakeSpawn({ backpressured: true, delayResponse: true });
+  const host = hostWith(fake);
+  await host.start();
+  const pending = host.requestHealthSafe({
+    requestId: "queued-before-dispose",
+  });
+  const pendingOutcome = assert.rejects(
+    pending,
+    (error) => error.code === "host_disposed",
+  );
+  await host.dispose();
+  fake.child.stdin.emit("drain");
+  await new Promise((resolve) => setImmediate(resolve));
+  await pendingOutcome;
+  assert.equal(fake.stdinEnded, true);
+  assert.equal(fake.writeAfterEnd, 0);
+  assert.equal(host.state, "closed");
 });
 
 test("NativeHost bounds request admission and does not retry effectful work", async () => {

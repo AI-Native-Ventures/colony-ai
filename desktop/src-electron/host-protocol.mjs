@@ -25,6 +25,96 @@ const EXPECTED_FAULT_INPUTS = Object.freeze([
   "delay-response",
 ]);
 
+const PUBLIC_ERROR_CODE_VALUES = [
+  "error",
+  "protocol_error",
+  "host_unavailable",
+  "host_busy",
+  "host_disposed",
+  "timeout",
+  "startup_timeout",
+  "rebind_timeout",
+  "rebind_in_progress",
+  "renderer_rebinding",
+  "renderer_rebound",
+  "stale_generation",
+  "future_generation",
+  "duplicate_request_id",
+  "outbound_queue_full",
+  "invalid_rebound",
+  "invalid_sequence",
+  "unexpected_ready",
+  "unexpected_rebound",
+  "invalid_outcome",
+  "cancelled",
+  "outcome_unknown",
+  "invalid_manifest",
+  "frame_too_large",
+  "json_too_large",
+  "invalid_utf8",
+  "invalid_prefix",
+  "invalid_json",
+  "json_too_deep",
+  "missing_field",
+  "invalid_field",
+  "unknown_frame",
+  "wrong_binding",
+  "outbound_too_large",
+  "write_timeout",
+  "serialization_error",
+  "io_error",
+  "invalid_frame",
+  "invalid_frame_type",
+  "invalid_protocol_version",
+  "invalid_profile_id",
+  "invalid_session_id",
+  "invalid_generation_id",
+  "wrong_generation",
+  "invalid_hello_generation",
+  "missing_build_id",
+  "invalid_hello_schema",
+  "invalid_rehello_schema",
+  "invalid_request_schema",
+  "invalid_request_id",
+  "invalid_capability",
+  "invalid_method",
+  "invalid_request_payload",
+  "invalid_cancel_schema",
+  "invalid_ready_schema",
+  "invalid_registry_digest",
+  "invalid_ready_payload",
+  "invalid_rebound_payload",
+  "unexpected_host_frame",
+  "unexpected_main_frame",
+  "invalid_response_schema",
+  "invalid_error",
+  "invalid_error_code",
+  "invalid_success_error",
+  "invalid_success_payload",
+  "missing_error",
+  "invalid_event_schema",
+  "unknown_event",
+  "invalid_event_payload",
+  "invalid_event_state",
+  "unknown_capability",
+  "unknown_method",
+  "invalid_payload",
+  "invalid_id",
+  "invalid_schema",
+  "invalid_manifest_stage",
+  "invalid_manifest_source",
+  "invalid_manifest_electron",
+  "invalid_manifest_electron_version",
+  "invalid_manifest_packager_version",
+  "invalid_manifest_namespace",
+  "invalid_manifest_protocol",
+  "invalid_manifest_registry_digest",
+  "invalid_manifest_registry",
+  "invalid_manifest_frames",
+  "invalid_manifest_fault_inputs",
+];
+const PUBLIC_ERROR_CODES = new Set(PUBLIC_ERROR_CODE_VALUES);
+
 export const DEFAULT_MANIFEST_URL = new URL(
   "../electron-stage0-manifest.json",
   import.meta.url,
@@ -208,6 +298,9 @@ export const FRAME_PREFIX = PROTOCOL.framePrefix;
 export const FRAME_TYPES = EXPECTED_FRAME_TYPES;
 export const FAULT_INPUTS = EXPECTED_FAULT_INPUTS;
 export const REGISTRY_DIGEST = PROTOCOL.registryDigest;
+export const PUBLIC_PROTOCOL_ERROR_CODES = Object.freeze(
+  [...PUBLIC_ERROR_CODES].sort(),
+);
 export const LIMITS = Object.freeze({
   frameLimitBytes: PROTOCOL.frameLimitBytes,
   jsonPayloadLimitBytes: PROTOCOL.jsonPayloadLimitBytes,
@@ -536,7 +629,7 @@ export class FrameDecoder {
       const newline = bytes.indexOf(0x0a, offset);
       if (newline < 0) {
         const remaining = bytes.length - offset;
-        if (this.#buffer.length + remaining >= this.frameLimitBytes) {
+        if (this.#buffer.length + remaining + 1 > this.frameLimitBytes) {
           throw protocolError("frame_too_large");
         }
         if (remaining > 0) {
@@ -545,6 +638,9 @@ export class FrameDecoder {
         break;
       }
       const chunkLine = bytes.subarray(offset, newline);
+      if (this.#buffer.length + chunkLine.length + 1 > this.frameLimitBytes) {
+        throw protocolError("frame_too_large");
+      }
       const line =
         this.#buffer.length === 0
           ? chunkLine
@@ -552,9 +648,6 @@ export class FrameDecoder {
       this.#buffer = Buffer.alloc(0);
       if (line.length === 0) {
         throw protocolError("invalid_json");
-      }
-      if (line.length + 1 > this.frameLimitBytes) {
-        throw protocolError("frame_too_large");
       }
       frames.push(
         decodeFrame(line, { direction: this.direction, binding: this.binding }),
@@ -649,13 +742,12 @@ export function createCancel({
 }
 
 export function redactedProtocolCode(error, fallback = "protocol_error") {
-  if (error instanceof HostProtocolError) return error.code;
-  if (
-    error &&
-    typeof error.code === "string" &&
-    /^[a-z0-9_]+$/.test(error.code)
-  ) {
-    return error.code;
-  }
-  return fallback;
+  const candidate =
+    error instanceof HostProtocolError
+      ? error.code
+      : error && typeof error.code === "string"
+        ? error.code
+        : null;
+  if (PUBLIC_ERROR_CODES.has(candidate)) return candidate;
+  return PUBLIC_ERROR_CODES.has(fallback) ? fallback : "protocol_error";
 }

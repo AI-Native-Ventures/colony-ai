@@ -1,4 +1,4 @@
-import { HostProtocolError } from "./host-protocol.mjs";
+import { HostProtocolError, redactedProtocolCode } from "./host-protocol.mjs";
 
 export class RendererHostError extends Error {
   constructor(code, message = code) {
@@ -39,9 +39,16 @@ export class RendererHost {
     this.lifecycleListeners = new Set();
     this.deferredLifecycle = [];
     this.rendererEpoch = 0;
+    this.lastTransportGeneration = 0;
     this.startPromise = null;
     this.disposePromise = null;
     this.detachTransportEvents = null;
+    this.detachTransportState = null;
+    if (typeof transport.onState === "function") {
+      this.detachTransportState = transport.onState((snapshot) => {
+        this.#handleTransportState(snapshot);
+      });
+    }
     if (typeof transport.onLifecycle === "function") {
       this.detachTransportEvents = transport.onLifecycle((frame) => {
         this.#handleLifecycle(frame);
@@ -56,9 +63,13 @@ export class RendererHost {
       throw rendererError("host_unavailable");
     }
     this.state = "starting";
+    const startEpoch = this.rendererEpoch;
     this.startPromise = (async () => {
       try {
         const binding = await this.transport.start();
+        if (this.state === "closed" || this.rendererEpoch !== startEpoch) {
+          throw rendererError("host_disposed");
+        }
         this.binding = freezeBinding({
           ...binding,
           registryDigest:
@@ -67,13 +78,19 @@ export class RendererHost {
             null,
         });
         this.targetGeneration = this.binding.generationId;
+        this.lastTransportGeneration = this.binding.generationId;
         this.state = "bound";
         this.#flushLifecycle();
         return this.bindingState();
       } catch (error) {
-        this.state = "unavailable";
-        this.#rejectRebindWaiters(this.#asRendererError(error));
-        throw this.#asRendererError(error);
+        const rendererErrorValue = this.#asRendererError(error);
+        if (this.state !== "closed") {
+          this.binding = null;
+          this.targetGeneration = null;
+          this.state = "unavailable";
+          this.#rejectRebindWaiters(rendererErrorValue);
+        }
+        throw rendererErrorValue;
       }
     })();
     return this.startPromise;
@@ -180,6 +197,12 @@ export class RendererHost {
       this.detachTransportEvents();
       this.detachTransportEvents = null;
     }
+    if (this.detachTransportState) {
+      this.detachTransportState();
+      this.detachTransportState = null;
+    }
+    this.binding = null;
+    this.targetGeneration = null;
     this.disposePromise = Promise.resolve(this.transport.dispose?.()).then(
       () => undefined,
     );
@@ -196,6 +219,9 @@ export class RendererHost {
       ) {
         const nextGeneration = this.binding.generationId + 1;
         const binding = await this.transport.rebind(nextGeneration);
+        if (this.state === "closed" || this.state !== "rebinding") {
+          return;
+        }
         if (!binding || binding.generationId !== nextGeneration) {
           throw rendererError("invalid_rebound");
         }
@@ -206,6 +232,7 @@ export class RendererHost {
             this.transport.getBindingState?.().registryDigest ??
             null,
         });
+        this.lastTransportGeneration = nextGeneration;
         this.#resolveRebindWaiters(nextGeneration);
       }
       if (this.state !== "closed") {
@@ -213,7 +240,11 @@ export class RendererHost {
         this.#flushLifecycle();
       }
     } catch (error) {
+      if (this.state === "closed" || this.state !== "rebinding") return;
       const rendererErrorValue = this.#asRendererError(error);
+      if (this.state === "unavailable") return;
+      this.binding = null;
+      this.targetGeneration = null;
       this.state = "unavailable";
       this.#rejectRebindWaiters(rendererErrorValue);
       this.deferredLifecycle = [];
@@ -257,6 +288,30 @@ export class RendererHost {
     if (this.state !== "bound" || generation !== this.binding?.generationId)
       return;
     this.#emitLifecycle(frame);
+  }
+
+  #handleTransportState(snapshot) {
+    if (!snapshot || typeof snapshot.state !== "string") return;
+    const generation = snapshot.generationId;
+    if (
+      Number.isSafeInteger(generation) &&
+      generation < this.lastTransportGeneration
+    ) {
+      return;
+    }
+    if (Number.isSafeInteger(generation)) {
+      this.lastTransportGeneration = generation;
+    }
+    if (!new Set(["failed", "closing", "closed"]).has(snapshot.state)) {
+      return;
+    }
+    if (this.state === "closed") return;
+    this.rendererEpoch += 1;
+    this.binding = null;
+    this.targetGeneration = null;
+    this.state = "unavailable";
+    this.deferredLifecycle = [];
+    this.#rejectRebindWaiters(rendererError("host_unavailable"));
   }
 
   #flushLifecycle() {
@@ -306,14 +361,9 @@ export class RendererHost {
 
   #asRendererError(error) {
     if (error instanceof RendererHostError) return error;
-    if (error instanceof HostProtocolError) return rendererError(error.code);
-    if (
-      error &&
-      typeof error.code === "string" &&
-      /^[a-z0-9_]+$/.test(error.code)
-    ) {
-      return rendererError(error.code);
+    if (error instanceof HostProtocolError) {
+      return rendererError(redactedProtocolCode(error, "host_unavailable"));
     }
-    return rendererError("host_unavailable");
+    return rendererError(redactedProtocolCode(error, "host_unavailable"));
   }
 }

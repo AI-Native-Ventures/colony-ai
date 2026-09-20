@@ -8,6 +8,8 @@ on:
       - "desktop/electron-stage0-manifest.json"
       - "desktop/src-native-host/**"
       - "desktop/src-electron/**"
+      - "desktop/scripts/check-native-host-scan.sh"
+      - "desktop/scripts/check-native-host-scan.test.sh"
       - ".github/workflows/colony-native-host-contract.yml"
   workflow_dispatch:
 
@@ -51,21 +53,23 @@ jobs:
           . ./bin/activate-hermit
           cargo fmt --manifest-path desktop/src-native-host/Cargo.toml -- --check
 
+      - name: Test the standalone host scanner guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash desktop/scripts/check-native-host-scan.test.sh
+
       - name: Prove the host has no Tauri dependency
         shell: bash
         run: |
           set -euo pipefail
-          if rg -n -i 'tauri|wry|src-tauri' desktop/src-native-host; then
-            echo "standalone host contains a forbidden Tauri/WebView reference" >&2
-            exit 1
-          fi
           . ./bin/activate-hermit
-          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml
-          if cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            | rg -i '(^|[- ])(tauri|wry)([- ])|src-tauri'; then
-            echo "standalone host dependency tree contains Tauri/WebView" >&2
-            exit 1
-          fi
+          dependency_tree="$(mktemp)"
+          trap 'rm -f "$dependency_tree"' EXIT
+          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml > "$dependency_tree"
+          bash desktop/scripts/check-native-host-scan.sh \
+            --source-root desktop/src-native-host \
+            --dependency-tree "$dependency_tree"
 
       - name: Run only the standalone stdio contract tests
         shell: bash

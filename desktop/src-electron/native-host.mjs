@@ -283,6 +283,7 @@ export class NativeHost {
   onLifecycle(listener) {
     if (!isFunction(listener))
       throw new TypeError("listener must be a function");
+    if (this.terminal) return () => {};
     if (this.lifecycleListeners.size >= this.protocol.subscriptionLimit) {
       throw hostError("host_busy");
     }
@@ -299,7 +300,20 @@ export class NativeHost {
   onState(listener) {
     if (!isFunction(listener))
       throw new TypeError("listener must be a function");
+    if (this.terminal) {
+      try {
+        listener(this.getBindingState());
+      } catch {
+        // State observers are diagnostic only and cannot break transport.
+      }
+      return () => {};
+    }
     this.stateListeners.add(listener);
+    try {
+      listener(this.getBindingState());
+    } catch {
+      // State observers are diagnostic only and cannot break transport.
+    }
     return () => this.stateListeners.delete(listener);
   }
 
@@ -316,6 +330,12 @@ export class NativeHost {
   async dispose() {
     if (this.disposePromise) return this.disposePromise;
     if (this.state === "closed" && !this.child) return;
+    if (!this.terminal) {
+      this.terminal = true;
+      this.terminalError = hostError("host_disposed");
+    }
+    this.outboundQueue = [];
+    this.writing = false;
     this.state = "closing";
     this.#notifyState();
     this.#settlePending(hostError("host_disposed"));
@@ -366,6 +386,15 @@ export class NativeHost {
     child.stdout.on("end", () => this.#onPipeEnd());
     child.stdout.on("error", () => this.#fatal("host_unavailable"));
     child.stdin.on?.("drain", () => {
+      if (
+        this.terminal ||
+        this.state === "closing" ||
+        this.state === "closed"
+      ) {
+        this.writing = false;
+        this.outboundQueue = [];
+        return;
+      }
       this.writing = false;
       this.#pumpOutbound();
     });
@@ -384,6 +413,7 @@ export class NativeHost {
     try {
       for (const frame of this.decoder.push(chunk)) {
         this.#handleFrame(frame);
+        if (this.terminal) break;
       }
     } catch (error) {
       this.#fatal(redactedProtocolCode(error));
@@ -391,6 +421,7 @@ export class NativeHost {
   }
 
   #handleFrame(frame) {
+    if (this.terminal) return;
     try {
       validateEnvelope(frame, { direction: "host", binding: this.binding });
     } catch (error) {
@@ -495,6 +526,7 @@ export class NativeHost {
   }
 
   #handleEvent(frame) {
+    if (this.terminal || !this.binding) return;
     if (frame.generationId !== this.binding.generationId) return;
     const previous = this.sequenceByGeneration.get(frame.generationId) ?? 0;
     if (frame.sequence <= previous) {
@@ -525,7 +557,12 @@ export class NativeHost {
   }
 
   #enqueue(frame) {
-    if (this.terminal || !this.child?.stdin)
+    if (
+      this.terminal ||
+      this.state === "closing" ||
+      this.state === "closed" ||
+      !this.child?.stdin
+    )
       throw hostError("host_unavailable");
     let bytes;
     try {
@@ -542,7 +579,21 @@ export class NativeHost {
   }
 
   #pumpOutbound() {
-    if (this.writing || this.terminal || !this.child?.stdin) return;
+    if (
+      this.writing ||
+      this.terminal ||
+      this.state === "closing" ||
+      this.state === "closed"
+    ) {
+      if (
+        this.terminal ||
+        this.state === "closing" ||
+        this.state === "closed"
+      ) {
+        this.outboundQueue = [];
+      }
+      return;
+    }
     const bytes = this.outboundQueue.shift();
     if (!bytes) return;
     try {
@@ -653,6 +704,9 @@ export class NativeHost {
     if (this.state === "closed") return;
     if (this.disposeTimer) clearTimeout(this.disposeTimer);
     this.disposeTimer = null;
+    this.terminal = true;
+    this.outboundQueue = [];
+    this.writing = false;
     this.state = "closed";
     this.#notifyState();
     this.#clearObservers();
