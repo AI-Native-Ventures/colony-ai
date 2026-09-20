@@ -38,6 +38,7 @@ const testSubframePreload = path.join(
   "test-subframe-preload.cjs",
 );
 const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
+const testSubframeFixtureUrl = `${trustedRendererUrl}#stage0-test-subframe`;
 const userDataDirectory = path.join(
   app.getPath("appData"),
   manifest.namespace.userDataRelativePath,
@@ -333,7 +334,13 @@ function configureWindowSecurity(window) {
     event.preventDefault();
   });
   const handleNavigation = (event, url, isMainFrame = true) => {
+    const isTestSubframeFixture =
+      TEST_MODE &&
+      process.env.COLONY_STAGE0_TEST_SUBFRAME === "1" &&
+      !isMainFrame &&
+      url === testSubframeFixtureUrl;
     if (
+      !isTestSubframeFixture &&
       !isTrustedNavigation({
         candidateUrl: url,
         trustedUrl: runtime.trustedUrl,

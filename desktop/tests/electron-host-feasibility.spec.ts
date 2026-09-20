@@ -321,7 +321,7 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
     const beforeSubframe = await testState(application);
     await page.evaluate(() => {
       const frame = document.createElement("iframe");
-      frame.srcdoc = "<!doctype html><title>isolated fixture</title>";
+      frame.src = `${window.location.href}#stage0-test-subframe`;
       frame.setAttribute("data-testid", "remote-frame");
       document.body.append(frame);
     });
