@@ -206,6 +206,7 @@ test("keeps an open status draft when the saved status expires", async ({
   // navigation and dialog setup cannot consume its two-second lifetime.
   await page.clock.install({ time: STATUS_CLOCK_INIT });
   await page.goto("/");
+  await waitForMockGlobalKindSubscription(page, 30315);
   await page.clock.pauseAt(STATUS_CLOCK);
   await seedMockStatus(page, {
     text: "Original draft",
