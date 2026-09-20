@@ -373,7 +373,12 @@ function configureWindowSecurity(window) {
     event.preventDefault();
   });
   window.webContents.on("did-start-loading", () => {
-    if (runtime.initialLoadComplete) beginRendererRebind();
+    if (
+      runtime.initialLoadComplete &&
+      window.webContents.isLoadingMainFrame()
+    ) {
+      beginRendererRebind();
+    }
   });
   window.webContents.on("did-finish-load", () => {
     if (!window.isDestroyed()) {
