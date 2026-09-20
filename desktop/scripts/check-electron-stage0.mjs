@@ -142,10 +142,7 @@ function checkAsar(archivePath, flavor, target) {
   );
   const entries = [...entryByCanonicalPath.keys()];
   const rawEntry = (entry) => entryByCanonicalPath.get(entry) ?? entry;
-  const lookupEntry = (entry) => {
-    const raw = rawEntry(entry);
-    return target.platform === "win32" ? raw : raw.replace(/^\/+/, "");
-  };
+  const lookupEntry = (entry) => rawEntry(entry).replace(/^[/\\]+/, "");
   const extractEntry = (entry) => extractFile(archivePath, lookupEntry(entry));
   const fileEntries = entries.filter((entry) => {
     const metadata = statFile(archivePath, lookupEntry(entry));
