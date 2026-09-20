@@ -56,15 +56,16 @@ async function main() {
     `--target=${target.targetTriple}`,
   ]);
 
-  const packagerBinary = path.join(
+  const packagerScript = path.join(
     desktopDirectory,
     "node_modules",
-    ".bin",
-    process.platform === "win32"
-      ? "electron-packager.cmd"
-      : "electron-packager",
+    "@electron",
+    "packager",
+    "bin",
+    "electron-packager.mjs",
   );
-  run(packagerBinary, [
+  run(process.execPath, [
+    packagerScript,
     packageDirectory,
     appName,
     `--platform=${target.platform}`,
