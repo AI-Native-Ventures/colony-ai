@@ -192,6 +192,20 @@ test("NativeHost redacts non-protocol host error codes before rejection", async 
   await host.dispose();
 });
 
+test("NativeHost rejects duplicate request IDs without replaying the first call", async () => {
+  const fake = createFakeSpawn({ delayResponse: true });
+  const host = hostWith(fake);
+  await host.start();
+  const first = host.requestHealthSafe({ requestId: "duplicate-request" });
+  await assert.rejects(
+    host.requestHealthSafe({ requestId: "duplicate-request" }),
+    (error) => error.code === "duplicate_request_id",
+  );
+  assert.equal(fake.requestCount, 1);
+  await host.dispose();
+  await Promise.allSettled([first]);
+});
+
 test("NativeHost rebind fences old pending work, serializes the barrier, and drops stale responses", async () => {
   const fake = createFakeSpawn({ delayResponse: true });
   const host = hostWith(fake);

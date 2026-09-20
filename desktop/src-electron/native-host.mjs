@@ -311,6 +311,7 @@ export class NativeHost {
     if (!this.child) {
       this.state = "closed";
       this.#notifyState();
+      this.#clearObservers();
       return;
     }
     this.disposePromise = new Promise((resolve) => {
@@ -584,6 +585,7 @@ export class NativeHost {
     } catch {
       // Process exit is the final cleanup boundary.
     }
+    this.#clearObservers();
     if (this.disposePromise) this.#finishDispose();
   }
 
@@ -621,9 +623,16 @@ export class NativeHost {
     this.disposeTimer = null;
     this.state = "closed";
     this.#notifyState();
+    this.#clearObservers();
     const resolve = this.disposeResolve;
     this.disposeResolve = null;
     resolve?.();
+  }
+
+  #clearObservers() {
+    this.lifecycleListeners.clear();
+    this.stateListeners.clear();
+    this.lifecycleBuffer = [];
   }
 }
 

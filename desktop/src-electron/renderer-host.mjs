@@ -161,6 +161,7 @@ export class RendererHost {
     this.rendererEpoch += 1;
     this.#rejectRebindWaiters(rendererError("host_disposed"));
     this.deferredLifecycle = [];
+    this.lifecycleListeners.clear();
     if (this.detachTransportEvents) {
       this.detachTransportEvents();
       this.detachTransportEvents = null;
