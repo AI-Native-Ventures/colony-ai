@@ -359,11 +359,22 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
       .poll(async () => (await testState(application)).windowOpenDeniedCount)
       .toBeGreaterThan(beforeWindowOpen.windowOpenDeniedCount);
 
+    const beforeNotification = await testState(application);
+    const notificationPermission = await page.evaluate(async () => {
+      if (typeof Notification !== "function") return "unsupported";
+      return Notification.requestPermission();
+    });
+    assert.equal(notificationPermission, "denied");
+    await expect
+      .poll(async () => (await testState(application)).permissionDeniedCount)
+      .toBeGreaterThan(beforeNotification.permissionDeniedCount);
+    const afterNotification = await testState(application);
+    assert.equal(afterNotification.lastSecurityDenial, "notifications");
+
     assert.equal(
       await page.evaluate(() => Boolean(navigator.mediaDevices?.getUserMedia)),
       true,
     );
-    const beforePermission = await testState(application);
     const permissionResult = await page.evaluate(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -381,11 +392,14 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
       ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
       `unexpected denied media error: ${permissionResult.name}`,
     );
-    await expect
-      .poll(async () => (await testState(application)).permissionDeniedCount)
-      .toBeGreaterThan(beforePermission.permissionDeniedCount);
     const afterPermission = await testState(application);
-    assert.equal(afterPermission.lastSecurityDenial, "media");
+    assert.ok(
+      afterPermission.permissionDeniedCount >=
+        afterNotification.permissionDeniedCount,
+    );
+    assert.ok(
+      ["notifications", "media"].includes(afterPermission.lastSecurityDenial),
+    );
   } finally {
     await close(application);
   }

@@ -139,6 +139,11 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
       window.open("https://example.invalid/"),
     );
     assert.equal(popup, null);
+    const notificationPermission = await page.evaluate(async () => {
+      if (typeof Notification !== "function") return "unsupported";
+      return Notification.requestPermission();
+    });
+    assert.equal(notificationPermission, "denied");
     const permissionResult = await page.evaluate(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
