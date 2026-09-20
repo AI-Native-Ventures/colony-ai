@@ -1,0 +1,57 @@
+name: Colony identity kernel
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/identity-kernel/**"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/Cargo.lock"
+      - "desktop/src-tauri/src/app_state.rs"
+      - "desktop/src-tauri/src/app_state_tests.rs"
+      - "desktop/src-tauri/src/commands/identity.rs"
+      - "desktop/src-tauri/src/identity_storage.rs"
+      - "desktop/src-tauri/src/secret_store.rs"
+      - ".github/workflows/colony-identity-kernel.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel:
+    name: Standalone host-neutral Rust kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check kernel formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo fmt --manifest-path desktop/identity-kernel/Cargo.toml -- --check
+
+      - name: Prove the kernel has no desktop runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          dependency_tree="$(mktemp)"
+          trap 'rm -f "$dependency_tree"' EXIT
+          cargo tree --locked --manifest-path desktop/identity-kernel/Cargo.toml > "$dependency_tree"
+          if grep -Eiq '(^|[[:space:]])(tauri|wry|tao)([[:space:]]|$)' "$dependency_tree"; then
+            echo "identity kernel dependency tree unexpectedly includes a desktop runtime" >&2
+            cat "$dependency_tree" >&2
+            exit 1
+          fi
+
+      - name: Run focused kernel parity and recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo test --locked --manifest-path desktop/identity-kernel/Cargo.toml
