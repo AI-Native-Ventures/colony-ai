@@ -344,6 +344,7 @@ jobs:
           Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
           if ($status -eq 0) { throw "reload fence mutation unexpectedly passed" }
           Write-Host "reload fence mutation=expected-failure status=$status"
+          exit 0
 
       - name: Prove the Windows packaged sender guard is falsifiable
         shell: pwsh
@@ -357,6 +358,7 @@ jobs:
           Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
           if ($status -eq 0) { throw "untrusted IPC mutation unexpectedly passed" }
           Write-Host "untrusted IPC mutation=expected-failure status=$status"
+          exit 0
 
       - name: Upload unsigned Windows normal candidate evidence
         if: always()
