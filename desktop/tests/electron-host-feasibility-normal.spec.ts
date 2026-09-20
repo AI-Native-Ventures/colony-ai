@@ -122,7 +122,8 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
   const { application, page } = await launchNormal();
   try {
     await assertNormalReady(page);
-    await page.reload();
+    const originalUrl = page.url();
+    await page.goto(originalUrl);
     await expect
       .poll(async () => page.evaluate(() => window.stage0?.bindingState?.()), {
         timeout: 10_000,
@@ -138,7 +139,6 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
       .waitFor();
     assert.equal(await page.getByTestId("stage0-error").textContent(), "None");
 
-    const originalUrl = page.url();
     const mainNavigationUrls: string[] = [];
     const mainFrame = page.mainFrame();
     page.on("framenavigated", (frame) => {
