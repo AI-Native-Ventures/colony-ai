@@ -7,6 +7,7 @@ on:
     paths:
       - "desktop/electron-stage0-manifest.json"
       - "desktop/src-native-host/**"
+      - "desktop/src-electron/**"
       - ".github/workflows/colony-native-host-contract.yml"
   workflow_dispatch:
 
@@ -72,3 +73,19 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml
+
+      - name: Build the standalone host for real Node interop
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml --release
+
+      - name: Run focused Node transport tests against the real Rust host
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --test desktop/src-electron/*.test.mjs
