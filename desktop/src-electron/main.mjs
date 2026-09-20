@@ -176,7 +176,11 @@ function setupIpc() {
   ipcMain.handle(IPC.HEALTH, async (event, payload) => {
     try {
       assertTrustedPayload(event, payload);
-      const response = await runtime.rendererHost.requestHealthSafe();
+      const response = await runtime.rendererHost.request({
+        capability: "health-safe",
+        method: "get_default_relay_url",
+        payload: {},
+      });
       if (
         response?.outcome !== "ok" ||
         typeof response.payload?.relayUrl !== "string" ||
