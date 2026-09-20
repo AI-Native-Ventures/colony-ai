@@ -486,10 +486,7 @@ export function readElfMachine(filePath) {
 
 function checkLinuxBundle(bundleRoot, flavor, target) {
   const expected = packageFlavors[flavor];
-  const { appRoot, appExecutable } = findLinuxApp(
-    bundleRoot,
-    expected.appName,
-  );
+  const { appRoot, appExecutable } = findLinuxApp(bundleRoot, expected.appName);
   const resources = path.join(appRoot, "resources");
   const archive = path.join(resources, "app.asar");
   const helper = path.join(resources, target.helperName);
