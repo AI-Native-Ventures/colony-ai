@@ -10,6 +10,8 @@ const STATUS_CLOCK = new Date("2026-06-18T12:00:00.000Z");
 const STATUS_CLOCK_INIT = new Date(STATUS_CLOCK.getTime() - 60_000);
 const STATUS_CLOCK_SECONDS = Math.floor(STATUS_CLOCK.getTime() / 1_000);
 const STATUS_EXPIRY_MS = 2_000;
+// RelayClient batches live frames on this bounded interval before notifying React.
+const STATUS_EVENT_BATCH_MS = 16;
 const STATUS_DIALOG_FRAME_MS = 20;
 
 async function waitForMockLiveSubscription(
@@ -61,11 +63,15 @@ async function seedMockStatus(
     expiresAt?: number;
     createdAt?: number;
   },
+  options?: { eventFlushMs?: number },
 ) {
   await waitForMockGlobalKindSubscription(page, 30315);
   await page.evaluate((status) => {
     window.__BUZZ_E2E_SET_MOCK_USER_STATUS__?.(status);
   }, input);
+  if (options?.eventFlushMs !== undefined) {
+    await page.clock.fastForward(options.eventFlushMs);
+  }
   await openProfilePopover(page);
   await expect(page.getByTestId("profile-popover-set-status")).toContainText(
     input.text,
@@ -213,6 +219,8 @@ test("keeps an open status draft when the saved status expires", async ({
     emoji: "📝",
     expiresAt: STATUS_CLOCK_SECONDS + STATUS_EXPIRY_MS / 1_000,
     createdAt: STATUS_CLOCK_SECONDS,
+  }, {
+    eventFlushMs: STATUS_EVENT_BATCH_MS,
   });
 
   const sidebarStatus = page.getByTestId("sidebar-profile-user-status");
@@ -233,7 +241,9 @@ test("keeps an open status draft when the saved status expires", async ({
 
   // Advance only the remaining time from the paused pre-expiry frame so this
   // timer transition, rather than natural setup time, causes the expiry.
-  await page.clock.fastForward(STATUS_EXPIRY_MS - STATUS_DIALOG_FRAME_MS);
+  await page.clock.fastForward(
+    STATUS_EXPIRY_MS - STATUS_EVENT_BATCH_MS - STATUS_DIALOG_FRAME_MS,
+  );
   await expect(sidebarStatus).toHaveCount(0);
 
   await expect(input).toHaveValue("Unsaved draft");
