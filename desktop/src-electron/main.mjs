@@ -354,7 +354,9 @@ function configureWindowSecurity(window) {
       event.preventDefault();
       return;
     }
-    if (runtime.initialLoadComplete) beginRendererRebind();
+    if (runtime.initialLoadComplete && isMainFrame) {
+      beginRendererRebind();
+    }
   };
   // Electron 44 emits will-navigate for the main frame without an
   // isMainFrame argument. Treat that event as main-frame navigation; the
