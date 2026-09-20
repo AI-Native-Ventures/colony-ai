@@ -157,9 +157,13 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
       }
     });
     assert.equal(permissionResult.granted, false);
+    // The normal package deliberately does not enable a synthetic device. A
+    // NotFoundError is therefore only device-availability evidence here, never
+    // permission-handler evidence; the instrumented derivative proves that
+    // callback seam separately.
     assert.ok(
       ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
-      `unexpected denied media error: ${permissionResult.name}`,
+      `normal media must be denied (NotFoundError means no device, not handler proof): ${permissionResult.name}`,
     );
 
     await page.evaluate((url) => {

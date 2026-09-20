@@ -19,6 +19,23 @@ const desktopDirectory = path.resolve(
 
 const packagePaths = getStage0PackagePaths("instrumented");
 const { appRoot: appBundle, appBinary, hostResource } = packagePaths;
+const mutationName = process.env.COLONY_STAGE0_TEST_MUTATION ?? null;
+
+function throwExpectedMutationFailure(
+  mutation: string,
+  seam: string,
+  preconditions: Record<string, unknown>,
+): never {
+  throw new Error(
+    `STAGE0_EXPECTED_MUTATION_FAILURE ${JSON.stringify({
+      version: 1,
+      mutation,
+      seam,
+      expectedOutcome: "production-seam-failed",
+      preconditions,
+    })}`,
+  );
+}
 
 function launchEnvironment(overrides: Record<string, string> = {}) {
   const environment = {
@@ -38,6 +55,10 @@ async function launch(overrides: Record<string, string> = {}) {
   const application = await electron.launch({
     executablePath: appBinary,
     env: launchEnvironment(overrides),
+    // This is an instrumented-only synthetic device. It does not grant
+    // permission (the installed main-process handler must still deny it), and
+    // it keeps the proof independent of real microphones/cameras.
+    args: ["--use-fake-device-for-media-stream"],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -200,6 +221,35 @@ test("reload rebinds the same helper and fences the delayed old request", async 
       ],
     );
     await page.reload();
+    if (mutationName === "disable-rebind-fence") {
+      try {
+        await page
+          .getByTestId("stage0-event")
+          .filter({ hasText: "rebound" })
+          .waitFor({ timeout: 10_000 });
+      } catch {
+        const afterMutation = await testState(application);
+        assert.equal(afterMutation.hostStartCount, 1);
+        assert.equal(afterMutation.windowCount, 1);
+        assert.equal(afterMutation.visibleWindowCount, 1);
+        assert.equal(afterMutation.bindingState.state, "bound");
+        assert.equal(afterMutation.bindingState.generationId, 1);
+        assert.ok(Number.isSafeInteger(afterMutation.hostPid));
+        throwExpectedMutationFailure(
+          "disable-rebind-fence",
+          "renderer rebind generation fence",
+          {
+            hostReady: true,
+            hostStartCount: before.hostStartCount,
+            visibleWindowCount: before.visibleWindowCount,
+            hostPid: before.hostPid,
+            generationId: before.bindingState.generationId,
+            oldRequestPending: before.pendingCount > 0,
+          },
+        );
+      }
+      throw new Error("STAGE0_UNEXPECTED_MUTATION_PASS disable-rebind-fence");
+    }
     await page
       .getByTestId("stage0-event")
       .filter({ hasText: "rebound" })
@@ -316,6 +366,31 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
         return { code: error?.code ?? error?.message ?? "unknown" };
       }
     });
+    if (mutationName === "allow-untrusted-ipc") {
+      const afterMutation = await testState(application);
+      assert.equal(denied.code, "unexpected-success");
+      assert.equal(afterMutation.hostStartCount, 1);
+      assert.equal(afterMutation.windowCount, 1);
+      assert.equal(afterMutation.visibleWindowCount, 1);
+      assert.equal(
+        afterMutation.ipcDeniedCount,
+        beforeSubframe.ipcDeniedCount + 1,
+      );
+      throwExpectedMutationFailure(
+        "allow-untrusted-ipc",
+        "trusted IPC sender guard",
+        {
+          hostReady: true,
+          hostStartCount: afterMutation.hostStartCount,
+          visibleWindowCount: afterMutation.visibleWindowCount,
+          hostPid: afterMutation.hostPid,
+          generationId: afterMutation.bindingState.generationId,
+          subframeLoaded: true,
+          ipcDeniedIncremented:
+            afterMutation.ipcDeniedCount === beforeSubframe.ipcDeniedCount + 1,
+        },
+      );
+    }
     assert.deepEqual(denied, { code: "untrusted_sender" });
     const afterSubframe = await testState(application);
     assert.equal(
@@ -388,17 +463,20 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
       }
     });
     assert.equal(permissionResult.granted, false);
-    assert.ok(
-      ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
-      `unexpected denied media error: ${permissionResult.name}`,
+    assert.equal(
+      permissionResult.name,
+      "NotAllowedError",
+      `synthetic media must reach the installed permission handler; got ${permissionResult.name}`,
     );
     const afterPermission = await testState(application);
-    assert.ok(
-      afterPermission.permissionDeniedCount >=
-        afterNotification.permissionDeniedCount,
+    assert.equal(
+      afterPermission.permissionDeniedCount,
+      afterNotification.permissionDeniedCount + 1,
     );
-    assert.ok(
-      ["notifications", "media"].includes(afterPermission.lastSecurityDenial),
+    assert.equal(
+      afterPermission.lastSecurityDenial,
+      "media",
+      "media denial must be observed through the installed permission handler",
     );
   } finally {
     await close(application);

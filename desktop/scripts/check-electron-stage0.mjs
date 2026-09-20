@@ -80,6 +80,56 @@ function fail(message) {
   throw new Error(`electron stage0 check failed: ${message}`);
 }
 
+export function canonicalizeAsarEntry(rawEntry) {
+  if (typeof rawEntry !== "string" || rawEntry.length === 0) {
+    throw new Error("unsafe ASAR entry: empty or non-string path");
+  }
+  if (rawEntry.includes("\0")) {
+    throw new Error("unsafe ASAR entry: NUL byte");
+  }
+  if (/^[\\/]{2}/.test(rawEntry)) {
+    throw new Error("unsafe ASAR entry: multiple leading separators");
+  }
+  const withoutObservedLeadingSeparator = /^[\\/]/.test(rawEntry)
+    ? rawEntry.slice(1)
+    : rawEntry;
+  if (/^[A-Za-z]:/.test(withoutObservedLeadingSeparator)) {
+    throw new Error("unsafe ASAR entry: drive-qualified path");
+  }
+  const normalized = withoutObservedLeadingSeparator.replaceAll("\\", "/");
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith("/") ||
+    normalized.includes("//")
+  ) {
+    throw new Error("unsafe ASAR entry: unsupported absolute or empty segment");
+  }
+  const segments = normalized.split("/");
+  if (
+    segments.some(
+      (segment) => segment === "." || segment === ".." || segment === "",
+    )
+  ) {
+    throw new Error("unsafe ASAR entry: dot or empty path segment");
+  }
+  return normalized;
+}
+
+export function canonicalizeAsarEntries(rawEntries) {
+  if (!Array.isArray(rawEntries)) {
+    throw new Error("unsafe ASAR entry list: expected an array");
+  }
+  const entryByCanonicalPath = new Map();
+  for (const rawEntry of rawEntries) {
+    const canonical = canonicalizeAsarEntry(rawEntry);
+    if (entryByCanonicalPath.has(canonical)) {
+      throw new Error(`ASAR canonical collision: ${canonical}`);
+    }
+    entryByCanonicalPath.set(canonical, rawEntry);
+  }
+  return entryByCanonicalPath;
+}
+
 function scanText(label, text, additionalForbiddenTokens = []) {
   for (const token of [...forbiddenTokens, ...additionalForbiddenTokens]) {
     if (text.includes(token))
@@ -134,15 +184,14 @@ function checkAsar(archivePath, flavor, target) {
   if (expected.instrumentation) {
     requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
   }
-  const entryByCanonicalPath = new Map(
-    listPackage(archivePath).map((entry) => [
-      entry.replace(/^[/\\]/, "").replaceAll("\\", "/"),
-      entry,
-    ]),
+  const entryByCanonicalPath = canonicalizeAsarEntries(
+    listPackage(archivePath),
   );
   const entries = [...entryByCanonicalPath.keys()];
   const rawEntry = (entry) => entryByCanonicalPath.get(entry) ?? entry;
-  const lookupEntry = (entry) => rawEntry(entry).replace(/^[/\\]+/, "");
+  // Keep the archive library's native separator for lookup. Canonical slash
+  // normalization is only for validation and collision detection.
+  const lookupEntry = (entry) => rawEntry(entry).replace(/^[/\\]/, "");
   const extractEntry = (entry) => extractFile(archivePath, lookupEntry(entry));
   const fileEntries = entries.filter((entry) => {
     const metadata = statFile(archivePath, lookupEntry(entry));
@@ -429,9 +478,12 @@ function main() {
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error.message);
-  process.exitCode = 1;
+const modulePath = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === modulePath) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }

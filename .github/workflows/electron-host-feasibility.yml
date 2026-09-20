@@ -10,6 +10,9 @@ on:
       - "desktop/src-electron/**"
       - "desktop/src-native-host/**"
       - "desktop/scripts/check-electron-stage0.mjs"
+      - "desktop/scripts/check-electron-stage0.test.mjs"
+      - "desktop/scripts/check-electron-mutation-report.mjs"
+      - "desktop/scripts/check-electron-mutation-report.test.mjs"
       - "desktop/scripts/package-electron-stage0.mjs"
       - "desktop/scripts/stage-electron-stage0.mjs"
       - "desktop/playwright.electron.config.ts"
@@ -146,38 +149,54 @@ jobs:
       - name: Prove the packaged reload test detects a disabled fence
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           . ./bin/activate-hermit
+          report="$GITHUB_WORKSPACE/desktop/macos-reload-mutation-report.json"
+          rm -f "$report"
+          set +e
           COLONY_STAGE0_TEST_MUTATION=disable-rebind-fence \
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$report" \
             pnpm --dir desktop exec playwright test \
               --config playwright.electron.config.ts \
               tests/electron-host-feasibility.spec.ts \
-              --grep "reload rebinds the same helper"
+              --grep "reload rebinds the same helper" \
+              --reporter=json \
+              --retries=0
           status=$?
           set -e
-          if [ "$status" -eq 0 ]; then
-            echo "reload fence mutation unexpectedly passed"
+          if [ "$status" -ne 1 ]; then
+            echo "reload fence mutation did not produce the required test-failure status: $status" >&2
             exit 1
           fi
-          echo "reload fence mutation=expected-failure status=$status"
+          node desktop/scripts/check-electron-mutation-report.mjs \
+            "$report" --mutation=disable-rebind-fence
+          echo "reload fence mutation=expected-failure status=$status report=validated"
 
       - name: Prove the packaged IPC test detects an untrusted sender bypass
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           . ./bin/activate-hermit
+          report="$GITHUB_WORKSPACE/desktop/macos-ipc-mutation-report.json"
+          rm -f "$report"
+          set +e
           COLONY_STAGE0_TEST_MUTATION=allow-untrusted-ipc \
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$report" \
             pnpm --dir desktop exec playwright test \
               --config playwright.electron.config.ts \
               tests/electron-host-feasibility.spec.ts \
-              --grep "packaged IPC, navigation, window, and permission guards deny"
+              --grep "packaged IPC, navigation, window, and permission guards deny" \
+              --reporter=json \
+              --retries=0
           status=$?
           set -e
-          if [ "$status" -eq 0 ]; then
-            echo "untrusted IPC mutation unexpectedly passed"
+          if [ "$status" -ne 1 ]; then
+            echo "untrusted IPC mutation did not produce the required test-failure status: $status" >&2
             exit 1
           fi
-          echo "untrusted IPC mutation=expected-failure status=$status"
+          node desktop/scripts/check-electron-mutation-report.mjs \
+            "$report" --mutation=allow-untrusted-ipc
+          echo "untrusted IPC mutation=expected-failure status=$status report=validated"
 
       - name: Upload unsigned normal candidate evidence
         if: always()
@@ -200,6 +219,8 @@ jobs:
             desktop/dist-electron-instrumented
             desktop/instrumented-playwright-electron-report
             desktop/instrumented-test-results
+            desktop/macos-reload-mutation-report.json
+            desktop/macos-ipc-mutation-report.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -335,30 +356,44 @@ jobs:
       - name: Prove the Windows packaged reload guard is falsifiable
         shell: pwsh
         run: |
+          $report = Join-Path $env:GITHUB_WORKSPACE "desktop/windows-reload-mutation-report.json"
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
           $env:COLONY_STAGE0_TEST_MUTATION = "disable-rebind-fence"
+          $env:PLAYWRIGHT_JSON_OUTPUT_FILE = $report
           pnpm --dir desktop exec playwright test `
             --config playwright.electron.config.ts `
             tests/electron-host-feasibility.spec.ts `
-            --grep "reload rebinds the same helper"
+            --grep "reload rebinds the same helper" `
+            --reporter=json `
+            --retries=0
           $status = $LASTEXITCODE
           Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
-          if ($status -eq 0) { throw "reload fence mutation unexpectedly passed" }
-          Write-Host "reload fence mutation=expected-failure status=$status"
-          exit 0
+          Remove-Item Env:PLAYWRIGHT_JSON_OUTPUT_FILE -ErrorAction SilentlyContinue
+          if ($status -ne 1) { throw "reload fence mutation did not produce the required test-failure status: $status" }
+          node desktop/scripts/check-electron-mutation-report.mjs $report --mutation=disable-rebind-fence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "reload fence mutation=expected-failure status=$status report=validated"
 
       - name: Prove the Windows packaged sender guard is falsifiable
         shell: pwsh
         run: |
+          $report = Join-Path $env:GITHUB_WORKSPACE "desktop/windows-ipc-mutation-report.json"
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
           $env:COLONY_STAGE0_TEST_MUTATION = "allow-untrusted-ipc"
+          $env:PLAYWRIGHT_JSON_OUTPUT_FILE = $report
           pnpm --dir desktop exec playwright test `
             --config playwright.electron.config.ts `
             tests/electron-host-feasibility.spec.ts `
-            --grep "packaged IPC, navigation, window, and permission guards deny"
+            --grep "packaged IPC, navigation, window, and permission guards deny" `
+            --reporter=json `
+            --retries=0
           $status = $LASTEXITCODE
           Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
-          if ($status -eq 0) { throw "untrusted IPC mutation unexpectedly passed" }
-          Write-Host "untrusted IPC mutation=expected-failure status=$status"
-          exit 0
+          Remove-Item Env:PLAYWRIGHT_JSON_OUTPUT_FILE -ErrorAction SilentlyContinue
+          if ($status -ne 1) { throw "untrusted IPC mutation did not produce the required test-failure status: $status" }
+          node desktop/scripts/check-electron-mutation-report.mjs $report --mutation=allow-untrusted-ipc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "untrusted IPC mutation=expected-failure status=$status report=validated"
 
       - name: Upload unsigned Windows normal candidate evidence
         if: always()
@@ -381,5 +416,7 @@ jobs:
             ${{ runner.temp }}/electron-stage0-windows-x64/electron-stage0-windows-x64-instrumented.zip
             desktop/windows-instrumented-playwright-electron-report
             desktop/windows-instrumented-test-results
+            desktop/windows-reload-mutation-report.json
+            desktop/windows-ipc-mutation-report.json
           if-no-files-found: error
           retention-days: 7
