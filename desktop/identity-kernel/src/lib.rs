@@ -608,7 +608,7 @@ fn migrate_identity_file(
         Ok(false) => return Err("keyring read-back verify failed for identity key".to_string()),
         Err(error) => return Err(format!("keyring read-back verify failed: {error}")),
     }
-    if let Err(error) = store.write_migration_marker(profile) {
+    if let Err(error) = write_migration_marker(profile) {
         eprintln!(
             "buzz-desktop: keyring import ok but failed to write migration marker ({error}); keeping identity.key"
         );
@@ -745,7 +745,7 @@ fn generate_and_persist_headless(
         HeadlessReadback::Locked => return Err(HeadlessResolutionError::FreshWriteReadbackLocked),
     }
 
-    if let Err(error) = write_migration_marker(profile) {
+    if let Err(error) = store.write_migration_marker(profile) {
         // Preserve the existing marker-failure fallback, but never report the
         // keyring as authoritative without its marker. The same K1 is written
         // to the profile file and returned as local-file storage.
