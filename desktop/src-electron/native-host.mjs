@@ -63,6 +63,7 @@ export class NativeHost {
     sessionId = randomUUID(),
     buildId = `electron-transport-${manifest.sourceRevision.slice(0, 12)}`,
     spawnImpl = defaultSpawn,
+    inheritedEnv = process.env,
     spawnEnv = {},
     requestIdFactory = randomUUID,
   } = {}) {
@@ -79,6 +80,7 @@ export class NativeHost {
     this.sessionId = sessionId;
     this.buildId = buildId;
     this.spawnImpl = spawnImpl;
+    this.inheritedEnv = { ...inheritedEnv };
     this.spawnEnv = { ...spawnEnv };
     this.requestIdFactory = requestIdFactory;
 
@@ -123,7 +125,7 @@ export class NativeHost {
       this.startReject = reject;
     });
     try {
-      const environment = { ...process.env, ...this.spawnEnv };
+      const environment = { ...this.inheritedEnv, ...this.spawnEnv };
       this.child = this.spawnImpl(this.executablePath, [], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,

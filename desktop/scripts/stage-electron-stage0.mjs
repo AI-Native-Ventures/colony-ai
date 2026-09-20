@@ -25,6 +25,10 @@ const files = [
   ["electron-stage0-manifest.json", "electron-stage0-manifest.json"],
   ["src-electron/main.mjs", "src-electron/main.mjs"],
   ["src-electron/preload.cjs", "src-electron/preload.cjs"],
+  [
+    "src-electron/test-subframe-preload.cjs",
+    "src-electron/test-subframe-preload.cjs",
+  ],
   ["src-electron/host-protocol.mjs", "src-electron/host-protocol.mjs"],
   ["src-electron/native-host.mjs", "src-electron/native-host.mjs"],
   ["src-electron/renderer-host.mjs", "src-electron/renderer-host.mjs"],

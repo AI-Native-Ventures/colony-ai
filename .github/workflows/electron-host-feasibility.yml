@@ -104,6 +104,42 @@ jobs:
             --config playwright.electron.config.ts \
             tests/electron-host-feasibility.spec.ts
 
+      - name: Prove the packaged reload test detects a disabled fence
+        shell: bash
+        run: |
+          set +e
+          . ./bin/activate-hermit
+          COLONY_STAGE0_TEST_MUTATION=disable-rebind-fence \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility.spec.ts \
+              --grep "reload rebinds the same helper"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "reload fence mutation unexpectedly passed"
+            exit 1
+          fi
+          echo "reload fence mutation=expected-failure status=$status"
+
+      - name: Prove the packaged IPC test detects an untrusted sender bypass
+        shell: bash
+        run: |
+          set +e
+          . ./bin/activate-hermit
+          COLONY_STAGE0_TEST_MUTATION=allow-untrusted-ipc \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility.spec.ts \
+              --grep "packaged IPC, navigation, window, and permission guards deny"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "untrusted IPC mutation unexpectedly passed"
+            exit 1
+          fi
+          echo "untrusted IPC mutation=expected-failure status=$status"
+
       - name: Upload unsigned feasibility evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   _electron as electron,
+  expect,
   type ElectronApplication,
   type Page,
   test,
@@ -48,15 +49,28 @@ const hostResource = path.join(
   "colony-native-host",
 );
 
-function launchEnvironment(overrides: Record<string, string> = {}) {
-  return {
+function launchEnvironment(
+  overrides: Record<string, string> = {},
+  testMode = true,
+) {
+  const environment = {
     ...process.env,
-    COLONY_STAGE0_TEST_MODE: "1",
     ...overrides,
   };
+  if (testMode) {
+    environment.COLONY_STAGE0_TEST_MODE = "1";
+    environment.COLONY_STAGE0_TEST_SUBFRAME = "1";
+  } else {
+    delete environment.COLONY_STAGE0_TEST_MODE;
+    delete environment.COLONY_STAGE0_TEST_SUBFRAME;
+  }
+  return environment;
 }
 
-async function launch(overrides: Record<string, string> = {}) {
+async function launch(
+  overrides: Record<string, string> = {},
+  { testMode = true }: { testMode?: boolean } = {},
+) {
   assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
@@ -65,7 +79,7 @@ async function launch(overrides: Record<string, string> = {}) {
   );
   const application = await electron.launch({
     executablePath: appBinary,
-    env: launchEnvironment(overrides),
+    env: launchEnvironment(overrides, testMode),
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -136,12 +150,27 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
   }
 });
 
+test("normal packaged launch strips ambient harness controls", async () => {
+  const { application, page } = await launch(
+    {
+      COLONY_STAGE0_FAULT: "malformed-frame",
+      COLONY_STAGE0_HOST_MODE: "missing",
+      COLONY_STAGE0_HOST_PATH: path.join(desktopDirectory, "not-a-helper"),
+      COLONY_STAGE0_TEST_DEADLINE_MS: "1",
+    },
+    { testMode: false },
+  );
+  try {
+    await assertReady(page);
+    assert.equal(await page.getByTestId("stage0-error").textContent(), "None");
+  } finally {
+    await close(application);
+  }
+});
+
 test("host-unavailable is bounded with no fallback process", async () => {
   const { application, page } = await launch({
-    COLONY_STAGE0_HOST_PATH: path.join(
-      desktopDirectory,
-      "missing-stage0-helper",
-    ),
+    COLONY_STAGE0_HOST_MODE: "missing",
   });
   try {
     await page
@@ -187,9 +216,25 @@ test("reload rebinds the same helper and fences the delayed old request", async 
       .getByTestId("stage0-ready")
       .filter({ hasText: "READY" })
       .waitFor();
+    await expect
+      .poll(async () => (await testState(application)).pendingCount)
+      .toBeGreaterThan(0);
     const before = await testState(application);
     const pid = before.hostPid;
+    const sessionId = before.bindingState.sessionId;
     assert.ok(Number.isInteger(pid) && pid > 0);
+    assert.equal(before.bindingState.generationId, 1);
+    assert.deepEqual(
+      before.healthRequests.filter((request) => request.generationId === 1),
+      [
+        {
+          generationId: 1,
+          status: "pending",
+          outcome: null,
+          terminalCount: 0,
+        },
+      ],
+    );
     await page.reload();
     await page
       .getByTestId("stage0-event")
@@ -199,12 +244,51 @@ test("reload rebinds the same helper and fences the delayed old request", async 
       .getByTestId("stage0-result")
       .filter({ hasText: "generation 2" })
       .waitFor();
+    await expect
+      .poll(async () => {
+        const state = await testState(application);
+        return state.healthRequests.find(
+          (request) => request.generationId === 1,
+        );
+      })
+      .toMatchObject({
+        status: "rejected",
+        terminalCount: 1,
+      });
     const after = await testState(application);
     assert.equal(after.hostStartCount, 1);
     assert.equal(after.hostPid, pid);
+    assert.equal(after.bindingState.sessionId, sessionId);
+    assert.equal(after.bindingState.generationId, 2);
     assert.deepEqual(after.rebindGenerations, [2]);
     assert.equal(after.pendingCount, 0);
     assert.equal(after.windowCount, 1);
+    const oldRequest = after.healthRequests.find(
+      (request) => request.generationId === 1,
+    );
+    assert.deepEqual(oldRequest, {
+      generationId: 1,
+      status: "rejected",
+      outcome: "renderer_rebound",
+      terminalCount: 1,
+    });
+    const freshRequest = after.healthRequests.find(
+      (request) => request.generationId === 2,
+    );
+    assert.deepEqual(freshRequest, {
+      generationId: 2,
+      status: "fulfilled",
+      outcome: "ok",
+      terminalCount: 1,
+    });
+    assert.doesNotMatch(
+      (await page.getByTestId("stage0-result").textContent()) ?? "",
+      /generation 1/,
+    );
+    assert.match(
+      (await page.getByTestId("stage0-event").textContent()) ?? "",
+      /rebound \/ generation 2/,
+    );
     assert.equal(await page.getByTestId("stage0-error").textContent(), "None");
   } finally {
     await close(application);
@@ -229,28 +313,110 @@ test("idle helper death becomes visibly unavailable without a respawn", async ()
   }
 });
 
-test("subframes, foreign navigation, and new windows cannot reach the bridge", async () => {
+test("packaged IPC, navigation, window, and permission guards deny", async () => {
   const { application, page } = await launch();
   try {
     await assertReady(page);
     const originalUrl = page.url();
+    const beforeSubframe = await testState(application);
     await page.evaluate(() => {
       const frame = document.createElement("iframe");
-      frame.src = "https://example.invalid/";
+      frame.srcdoc = "<!doctype html><title>isolated fixture</title>";
       frame.setAttribute("data-testid", "remote-frame");
       document.body.append(frame);
     });
-    await page.waitForTimeout(100);
+    await page.locator('[data-testid="remote-frame"]').waitFor();
+    await expect
+      .poll(() =>
+        page
+          .frames()
+          .some((frame) => frame !== page.mainFrame() && frame.url() !== ""),
+      )
+      .toBe(true);
+    const subframe = page
+      .frames()
+      .find((frame) => frame !== page.mainFrame() && frame.url() !== "");
+    assert.ok(subframe, "expected a real packaged subframe fixture");
+    const denied = await subframe.evaluate(async () => {
+      if (!window.__colonyStage0Test) {
+        return { code: "missing-test-bridge" };
+      }
+      try {
+        await window.__colonyStage0Test.health();
+        return { code: "unexpected-success" };
+      } catch (error) {
+        return { code: error?.code ?? error?.message ?? "unknown" };
+      }
+    });
+    assert.deepEqual(denied, { code: "untrusted_sender" });
+    const afterSubframe = await testState(application);
+    assert.equal(
+      afterSubframe.healthRequestCount,
+      beforeSubframe.healthRequestCount,
+    );
+    assert.equal(
+      afterSubframe.ipcDeniedCount,
+      beforeSubframe.ipcDeniedCount + 1,
+    );
+
+    const trustedHealth = await page.evaluate(() =>
+      window.stage0.health.getDefaultRelayUrl(),
+    );
+    assert.deepEqual(trustedHealth, {
+      relayUrl: "ws://localhost:3000",
+      generationId: 1,
+    });
+    const afterTrustedHealth = await testState(application);
+    assert.equal(
+      afterTrustedHealth.healthRequestCount,
+      beforeSubframe.healthRequestCount + 1,
+    );
+
+    const beforeNavigation = await testState(application);
+    await page.evaluate((url) => {
+      window.location.href = `${url}?foreign-navigation=1`;
+    }, originalUrl);
+    await expect
+      .poll(async () => (await testState(application)).navigationDeniedCount)
+      .toBeGreaterThan(beforeNavigation.navigationDeniedCount);
     assert.equal(await page.url(), originalUrl);
+    assert.equal(await page.getByTestId("stage0-ready").textContent(), "READY");
+
+    const beforeWindowOpen = await testState(application);
     const popup = await page.evaluate(() =>
       window.open("https://example.invalid/"),
     );
     assert.equal(popup, null);
-    await page.evaluate(() => {
-      window.location.href = "https://example.invalid/";
+    await expect
+      .poll(async () => (await testState(application)).windowOpenDeniedCount)
+      .toBeGreaterThan(beforeWindowOpen.windowOpenDeniedCount);
+
+    assert.equal(
+      await page.evaluate(() => Boolean(navigator.mediaDevices?.getUserMedia)),
+      true,
+    );
+    const beforePermission = await testState(application);
+    const permissionResult = await page.evaluate(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false,
+        });
+        for (const track of stream.getTracks()) track.stop();
+        return { granted: true, name: null };
+      } catch (error) {
+        return { granted: false, name: error?.name ?? "unknown" };
+      }
     });
-    await page.waitForTimeout(100);
-    assert.equal(await page.url(), originalUrl);
+    assert.deepEqual(permissionResult, {
+      granted: false,
+      name: "NotAllowedError",
+    });
+    await expect
+      .poll(async () => (await testState(application)).permissionDeniedCount)
+      .toBeGreaterThan(beforePermission.permissionDeniedCount);
+    const afterPermission = await testState(application);
+    assert.equal(afterPermission.lastSecurityDenial, "media");
   } finally {
     await close(application);
   }

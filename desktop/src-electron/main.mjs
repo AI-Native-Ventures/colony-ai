@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 
 import { loadManifest } from "./host-protocol.mjs";
 import { NativeHost } from "./native-host.mjs";
@@ -14,6 +14,16 @@ import {
 
 const manifest = loadManifest();
 const TEST_MODE = process.env.COLONY_STAGE0_TEST_MODE === "1";
+const TEST_MUTATIONS = new Set(["disable-rebind-fence", "allow-untrusted-ipc"]);
+const TEST_MUTATION =
+  TEST_MODE && TEST_MUTATIONS.has(process.env.COLONY_STAGE0_TEST_MUTATION)
+    ? process.env.COLONY_STAGE0_TEST_MUTATION
+    : null;
+const CHILD_ENV_ALLOWLIST = Object.freeze([
+  "BUZZ_RELAY_URL",
+  "BUZZ_DESKTOP_BUILD_RELAY_URL",
+]);
+const TEST_HOST_MODE_MISSING = "missing";
 const IPC = Object.freeze({
   HEALTH: "colony-stage0:health:get-default-relay-url",
   LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
@@ -23,6 +33,10 @@ const IPC = Object.freeze({
 });
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererEntry = path.join(rootDirectory, "feasibility", "index.html");
+const testSubframePreload = path.join(
+  rootDirectory,
+  "test-subframe-preload.cjs",
+);
 const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
 const userDataDirectory = path.join(
   app.getPath("appData"),
@@ -52,6 +66,13 @@ const runtime = {
     rebindCount: 0,
     rebindGenerations: [],
     lastError: null,
+    healthRequestCount: 0,
+    healthRequests: [],
+    ipcDeniedCount: 0,
+    navigationDeniedCount: 0,
+    windowOpenDeniedCount: 0,
+    permissionDeniedCount: 0,
+    lastSecurityDenial: null,
   },
 };
 
@@ -71,7 +92,41 @@ function publishTestState() {
     ).length,
     pendingCount: runtime.transport?.pending?.size ?? 0,
     bindingState: runtime.rendererHost?.bindingState() ?? null,
+    healthRequests: runtime.diagnostics.healthRequests.map((request) => ({
+      ...request,
+    })),
   };
+}
+
+function noteSecurityDenial(countKey, kind) {
+  if (!TEST_MODE) return;
+  runtime.diagnostics[countKey] += 1;
+  runtime.diagnostics.lastSecurityDenial = kind;
+  publishTestState();
+}
+
+function beginHealthRequestProbe() {
+  if (!TEST_MODE) return null;
+  const probe = {
+    generationId: currentGeneration(),
+    status: "pending",
+    outcome: null,
+    terminalCount: 0,
+  };
+  runtime.diagnostics.healthRequestCount += 1;
+  runtime.diagnostics.healthRequests = [
+    ...runtime.diagnostics.healthRequests.slice(-7),
+    probe,
+  ];
+  return probe;
+}
+
+function settleHealthRequestProbe(probe, status, outcome) {
+  if (!probe) return;
+  probe.status = status;
+  probe.outcome = outcome;
+  probe.terminalCount += 1;
+  publishTestState();
 }
 
 function boundedError(error, fallback = "protocol_error") {
@@ -141,25 +196,43 @@ function assertTrustedPayload(event, payload) {
   if (!window || window.isDestroyed()) {
     throw boundedError({ code: "invalid_ipc_sender" });
   }
-  validateExactIpcCall({
-    event,
-    webContents: window.webContents,
-    trustedUrl: runtime.trustedUrl,
-    payload,
-    expectedPayload: {},
-  });
+  if (TEST_MUTATION === "allow-untrusted-ipc") return;
+  try {
+    validateExactIpcCall({
+      event,
+      webContents: window.webContents,
+      trustedUrl: runtime.trustedUrl,
+      payload,
+      expectedPayload: {},
+    });
+  } catch (error) {
+    noteSecurityDenial("ipcDeniedCount", error?.code ?? "unknown");
+    throw error;
+  }
 }
 
 function resolveHostPath() {
   const packagedPath = path.join(process.resourcesPath, "colony-native-host");
-  const harnessPath = process.env.COLONY_STAGE0_HOST_PATH;
-  if (TEST_MODE && typeof harnessPath === "string" && harnessPath.length > 0) {
-    return path.resolve(harnessPath);
+  if (
+    TEST_MODE &&
+    process.env.COLONY_STAGE0_HOST_MODE === TEST_HOST_MODE_MISSING
+  ) {
+    return path.join(
+      process.resourcesPath,
+      "stage0-test-missing",
+      "colony-native-host",
+    );
   }
   return packagedPath;
 }
 
 function createTransport() {
+  const inheritedEnv = {};
+  for (const key of CHILD_ENV_ALLOWLIST) {
+    if (typeof process.env[key] === "string") {
+      inheritedEnv[key] = process.env[key];
+    }
+  }
   const spawnEnv = {};
   const fault = process.env.COLONY_STAGE0_FAULT;
   if (TEST_MODE && manifest.faultInputs.includes(fault)) {
@@ -169,19 +242,24 @@ function createTransport() {
     executablePath: resolveHostPath(),
     manifest,
     buildId: `electron-stage0-${manifest.sourceRevision.slice(0, 12)}`,
+    inheritedEnv,
     spawnEnv,
   });
 }
 
 function setupIpc() {
   ipcMain.handle(IPC.HEALTH, async (event, payload) => {
+    let probe = null;
     try {
       assertTrustedPayload(event, payload);
-      const response = await runtime.rendererHost.request({
+      probe = beginHealthRequestProbe();
+      const responsePromise = runtime.rendererHost.request({
         capability: "health-safe",
         method: "get_default_relay_url",
         payload: {},
       });
+      publishTestState();
+      const response = await responsePromise;
       if (
         response?.outcome !== "ok" ||
         typeof response.payload?.relayUrl !== "string" ||
@@ -189,11 +267,17 @@ function setupIpc() {
       ) {
         throw boundedError({ code: "protocol_error" });
       }
+      settleHealthRequestProbe(probe, "fulfilled", "ok");
       return Object.freeze({
         relayUrl: response.payload.relayUrl,
         generationId: response.generationId,
       });
     } catch (error) {
+      settleHealthRequestProbe(
+        probe,
+        "rejected",
+        publicIpcErrorCode(error?.code, "host_unavailable"),
+      );
       runtime.diagnostics.lastError = publicIpcErrorCode(
         error?.code,
         "host_unavailable",
@@ -240,8 +324,12 @@ function setupIpc() {
 }
 
 function configureWindowSecurity(window) {
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.setWindowOpenHandler(() => {
+    noteSecurityDenial("windowOpenDeniedCount", "window-open");
+    return { action: "deny" };
+  });
   window.webContents.on("will-attach-webview", (event) => {
+    noteSecurityDenial("navigationDeniedCount", "webview-attach");
     event.preventDefault();
   });
   const handleNavigation = (event, url, isMainFrame = true) => {
@@ -252,6 +340,10 @@ function configureWindowSecurity(window) {
         isMainFrame,
       })
     ) {
+      noteSecurityDenial(
+        "navigationDeniedCount",
+        isMainFrame ? "main-frame" : "subframe",
+      );
       event.preventDefault();
       return;
     }
@@ -270,6 +362,7 @@ function configureWindowSecurity(window) {
     },
   );
   window.webContents.on("will-redirect", (event) => {
+    noteSecurityDenial("navigationDeniedCount", "redirect");
     event.preventDefault();
   });
   window.webContents.on("did-start-loading", () => {
@@ -285,7 +378,8 @@ function configureWindowSecurity(window) {
     runtime.lifecycleSubscribers.delete(window.webContents.id);
   });
   window.webContents.session.setPermissionRequestHandler(
-    (_contents, _permission, callback) => {
+    (_contents, permission, callback) => {
+      noteSecurityDenial("permissionDeniedCount", permission);
       callback(false);
     },
   );
@@ -333,6 +427,9 @@ function beginRendererRebind() {
   ) {
     return runtime.rebindPromise;
   }
+  if (TEST_MUTATION === "disable-rebind-fence") {
+    return Promise.resolve(runtime.rendererHost.bindingState());
+  }
   clearLifecycleForRebind();
   runtime.diagnostics.rebindCount += 1;
   const current = runtime.rendererHost.bindingState().generationId;
@@ -370,6 +467,21 @@ function initializeRuntime() {
     publishTestState();
   });
   runtime.diagnostics.hostStartCount += 1;
+}
+
+function registerTestSubframePreload() {
+  if (
+    !TEST_MODE ||
+    process.env.COLONY_STAGE0_TEST_SUBFRAME !== "1" ||
+    typeof session.defaultSession.registerPreloadScript !== "function"
+  ) {
+    return;
+  }
+  session.defaultSession.registerPreloadScript({
+    filePath: testSubframePreload,
+    id: "colony-stage0-test-subframe",
+    type: "frame",
+  });
 }
 
 async function startRuntime() {
@@ -418,6 +530,7 @@ app.on("window-all-closed", () => {
 });
 
 app.whenReady().then(() => {
+  registerTestSubframePreload();
   setupIpc();
   initializeRuntime();
   createWindow();
