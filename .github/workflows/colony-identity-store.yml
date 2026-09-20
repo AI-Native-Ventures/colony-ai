@@ -1,0 +1,122 @@
+name: Colony identity store
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/identity-kernel/**"
+      - "desktop/identity-store/**"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/Cargo.lock"
+      - "desktop/src-tauri/src/**"
+      - ".github/workflows/colony-identity-store.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  identity-store:
+    name: Identity store (${{ matrix.os }}, ${{ matrix.feature }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+        feature: [no-keyring, system-keyring]
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate the pinned toolchain
+        if: runner.os != 'Windows'
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --manifest-path desktop/identity-store/Cargo.toml -- --check
+
+      - name: Prove the adapter has no desktop UI runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree_file="${RUNNER_TEMP}/identity-store-tree.txt"
+          cargo tree --locked --manifest-path desktop/identity-store/Cargo.toml \
+            --no-default-features > "$tree_file"
+          if grep -Eiq '(^|[[:space:]]|-)tauri([[:space:]]|v|$)|wry|(^|-)tao([[:space:]]|v|$)' "$tree_file"; then
+            echo "identity-store unexpectedly depends on a desktop UI runtime" >&2
+            exit 1
+          fi
+
+      - name: Compile the selected backend feature
+        shell: bash
+        env:
+          IDENTITY_FEATURES: ${{ matrix.feature == 'system-keyring' && '--features system-keyring' || '' }}
+        run: |
+          set -euo pipefail
+          cargo check --locked --manifest-path desktop/identity-store/Cargo.toml \
+            --no-default-features ${IDENTITY_FEATURES}
+
+      - name: Run isolated adapter tests
+        shell: bash
+        env:
+          IDENTITY_FEATURES: ${{ matrix.feature == 'system-keyring' && '--features system-keyring' || '' }}
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path desktop/identity-store/Cargo.toml \
+            --no-default-features ${IDENTITY_FEATURES} --lib -- --test-threads=1
+
+  tauri-callers:
+    name: Tauri callers (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 2
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Install Tauri dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            file \
+            libasound2-dev \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Create Tauri sidecar placeholders
+        run: just _ensure-sidecar-stubs
+
+      - name: Check Tauri formatting
+        run: cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --all -- --check
+
+      - name: Compile Tauri callers
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml --workspace --all-targets
+
+      - name: Lint Tauri callers
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Test Tauri callers
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --workspace

@@ -230,6 +230,19 @@ pub trait IdentityKeyStore {
             Err(_) => HeadlessReadback::Unreachable,
         }
     }
+
+    /// Store a fresh headless identity and verify it through the backend's
+    /// direct read path. Adapters with a service lock should override this so
+    /// the write and raw read-back share one lock scope; compatibility stores
+    /// retain the conservative store-then-verify default.
+    fn store_and_verify_headless(
+        &self,
+        key: &str,
+        expected: &str,
+    ) -> Result<HeadlessReadback, String> {
+        self.store(key, expected)?;
+        Ok(self.verify_stored_headless(key, expected))
+    }
 }
 
 pub const IDENTITY_KEY_NAME: &str = "identity";
@@ -483,20 +496,21 @@ fn recover_from_keyring(
         "buzz-desktop: corrupt nsec in keyring ({error}), looking for a recovery path before clearing"
     );
     let mut preexisting_blob_cleared = false;
-    // A strict adapter classifies a malformed blob before entering this
-    // recovery path. Remove only that pre-existing corrupt blob first so a
-    // valid same-profile file can be migrated and read back; a fresh-write
-    // read-back corruption never calls this function and therefore never
-    // reaches this cleanup branch.
-    if strict_headless && preexisting_corrupt_blob {
-        match store.delete(IDENTITY_KEY_NAME) {
-            Ok(()) => preexisting_blob_cleared = true,
-            Err(error) => {
-                eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+    let has_valid_file = profile.legacy_identity_path().exists()
+        && load_key_file(profile.legacy_identity_path()).is_ok();
+    if has_valid_file {
+        // A valid same-profile file is the first recovery authority. A strict
+        // adapter may replace a pre-existing corrupt blob only for this
+        // explicit file-recovery path; a marker-only profile must retain the
+        // corrupt evidence and enter Lost below without deletion or rotation.
+        if strict_headless && preexisting_corrupt_blob {
+            match store.delete(IDENTITY_KEY_NAME) {
+                Ok(()) => preexisting_blob_cleared = true,
+                Err(error) => {
+                    eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+                }
             }
         }
-    }
-    if profile.legacy_identity_path().exists() {
         if let Some(keys) = migrate_identity_file(store, profile)? {
             return Ok(ResolvedIdentity {
                 keys,
@@ -517,6 +531,9 @@ fn recover_from_keyring(
             storage: IdentityStorage::Ephemeral,
         });
     }
+    // Only a profile with neither a valid file nor a migration marker may
+    // clean up a pre-existing corrupt blob before generating K1. Marker-only
+    // recovery intentionally returns above without deletion or rotation.
     if !preexisting_blob_cleared {
         if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
             eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
@@ -685,19 +702,23 @@ fn generate_and_persist_headless(
         HeadlessResolutionError::Persistence(format!("encode identity: {error}"))
     })?;
 
-    if let Err(error) = store.store(IDENTITY_KEY_NAME, &nsec) {
-        // Preserve the existing first-launch write-failure fallback. This is
-        // before the backend has reported a successful K1 write/read-back
-        // attempt, so a same-profile 0600 file remains an honest authority.
-        save_key_file(profile.legacy_identity_path(), &keys).map_err(|file_error| {
-            HeadlessResolutionError::Persistence(format!(
-                "identity keyring write failed ({error}); file fallback failed ({file_error})"
-            ))
-        })?;
-        return Ok((keys, IdentityStorage::LocalFile));
-    }
+    let readback = match store.store_and_verify_headless(IDENTITY_KEY_NAME, &nsec) {
+        Ok(readback) => readback,
+        Err(error) => {
+            // Preserve the existing first-launch write-failure fallback. This
+            // is before the backend has reported a successful K1
+            // write/read-back attempt, so a same-profile 0600 file remains an
+            // honest authority.
+            persist_headless_file_fallback(
+                profile,
+                &keys,
+                &format!("identity keyring write failed ({error})"),
+            )?;
+            return Ok((keys, IdentityStorage::LocalFile));
+        }
+    };
 
-    match store.verify_stored_headless(IDENTITY_KEY_NAME, &nsec) {
+    match readback {
         HeadlessReadback::Exact => {}
         HeadlessReadback::Missing => {
             return Err(HeadlessResolutionError::FreshWriteReadbackMissing)
@@ -718,16 +739,43 @@ fn generate_and_persist_headless(
         // Preserve the existing marker-failure fallback, but never report the
         // keyring as authoritative without its marker. The same K1 is written
         // to the profile file and returned as local-file storage.
-        save_key_file(profile.legacy_identity_path(), &keys).map_err(|file_error| {
-            HeadlessResolutionError::Persistence(format!(
-                "identity marker write failed ({error}); file fallback failed ({file_error})"
-            ))
-        })?;
+        persist_headless_file_fallback(
+            profile,
+            &keys,
+            &format!("identity marker write failed ({error})"),
+        )?;
         return Ok((keys, IdentityStorage::LocalFile));
     }
 
     cleanup_leftover_identity_file(profile.legacy_identity_path());
     Ok((keys, IdentityStorage::SystemKeyring))
+}
+
+fn persist_headless_file_fallback(
+    profile: &ProfileScope,
+    keys: &Keys,
+    reason: &str,
+) -> Result<(), HeadlessResolutionError> {
+    save_key_file(profile.legacy_identity_path(), keys).map_err(|file_error| {
+        HeadlessResolutionError::Persistence(format!(
+            "{reason}; file fallback write failed ({file_error})"
+        ))
+    })?;
+
+    let persisted = load_key_file(profile.legacy_identity_path()).map_err(|_| {
+        HeadlessResolutionError::Persistence(format!("{reason}; file fallback read-back failed"))
+    })?;
+    if !same_key_material(keys, &persisted) {
+        return Err(HeadlessResolutionError::Persistence(format!(
+            "{reason}; file fallback read-back mismatch"
+        )));
+    }
+    Ok(())
+}
+
+fn same_key_material(expected: &Keys, actual: &Keys) -> bool {
+    expected.public_key() == actual.public_key()
+        && expected.secret_key().as_secret_bytes() == actual.secret_key().as_secret_bytes()
 }
 
 fn store_key_preferring_keyring(

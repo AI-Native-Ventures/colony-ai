@@ -25,6 +25,8 @@ pub use colony_identity_kernel::{
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use nostr::Keys;
@@ -205,10 +207,19 @@ impl Drop for BlobLockGuard {
 
 /// An OS keyring, addressed by service name. All secrets are stored in a
 /// single JSON blob entry (one OS prompt per process lifetime).
+#[cfg(test)]
+trait TestRawBlobBackend: Send + Sync {
+    fn read(&self) -> Result<Option<Vec<u8>>, String>;
+    fn write(&self, bytes: &[u8]) -> Result<(), String>;
+    fn delete(&self) -> Result<(), String>;
+}
+
 pub struct SecretStore {
     service: String,
     /// In-memory cache of the deserialized blob. `None` means "not yet loaded".
     cache: Mutex<Option<HashMap<String, String>>>,
+    #[cfg(test)]
+    test_backend: Option<Arc<dyn TestRawBlobBackend>>,
 }
 
 impl SecretStore {
@@ -219,6 +230,17 @@ impl SecretStore {
         SecretStore {
             service: service.into(),
             cache: Mutex::new(None),
+            #[cfg(test)]
+            test_backend: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_test_backend(service: impl Into<String>, backend: Arc<dyn TestRawBlobBackend>) -> Self {
+        Self {
+            service: service.into(),
+            cache: Mutex::new(None),
+            test_backend: Some(backend),
         }
     }
 
@@ -1051,41 +1073,17 @@ impl IdentityLaunchDescriptor {
         {
             return Err(DescriptorError::InvalidService);
         }
-        if !user_data_root.is_absolute()
-            || user_data_root
-                .components()
-                .any(|component| component == std::path::Component::ParentDir)
-        {
-            return Err(DescriptorError::InvalidUserDataRoot);
-        }
-        if let Ok(metadata) = std::fs::symlink_metadata(user_data_root) {
-            if metadata.file_type().is_symlink() {
-                return Err(DescriptorError::SymlinkEscape);
-            }
-        }
+        validate_user_data_root_path(user_data_root)?;
         std::fs::create_dir_all(user_data_root).map_err(|error| {
             DescriptorError::Filesystem(format!("create user-data root: {error}"))
         })?;
-        // Parent-directory symlinks are normalized here (macOS commonly uses
-        // one for /var); the resulting canonical root is the confinement
-        // boundary, while the profile's own root/file/marker symlinks remain
-        // rejected below.
+        // Re-check after creation: a previously missing component must not
+        // have become a symlink between validation and the first write.
+        validate_user_data_root_path(user_data_root)?;
         let canonical_root = std::fs::canonicalize(user_data_root).map_err(|error| {
             DescriptorError::Filesystem(format!("canonicalize user-data root: {error}"))
         })?;
-        let marker_name = colony_identity_kernel::migration_marker_name(
-            &manifest.keyring_service,
-            MIGRATION_MARKER_NAME,
-        );
-        for child in [IDENTITY_FILE_NAME.to_string(), marker_name] {
-            let path = canonical_root.join(child);
-            if let Ok(metadata) = std::fs::symlink_metadata(&path) {
-                if metadata.file_type().is_symlink() {
-                    return Err(DescriptorError::SymlinkEscape);
-                }
-            }
-        }
-        Ok(Self {
+        let descriptor = Self {
             profile_id: manifest.profile_id.clone(),
             flavor: manifest.flavor.clone(),
             platform: manifest.platform.clone(),
@@ -1094,7 +1092,9 @@ impl IdentityLaunchDescriptor {
             identity_mode,
             shared_identity,
             reset_provenance,
-        })
+        };
+        descriptor.validate_storage_targets()?;
+        Ok(descriptor)
     }
 
     /// Return the collision-checked profile namespace.
@@ -1163,6 +1163,82 @@ impl IdentityLaunchDescriptor {
             ),
         )
     }
+
+    /// Revalidate the trusted root and the two derived local targets directly
+    /// before a headless initialization may use them.
+    fn validate_storage_targets(&self) -> Result<(), DescriptorError> {
+        validate_user_data_root_path(&self.user_data_root)?;
+        let canonical_root = std::fs::canonicalize(&self.user_data_root).map_err(|error| {
+            DescriptorError::Filesystem(format!("canonicalize user-data root: {error}"))
+        })?;
+        if canonical_root != self.user_data_root {
+            return Err(DescriptorError::SymlinkEscape);
+        }
+        for path in [self.identity_file_path(), self.migration_marker_path()] {
+            if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                if metadata.file_type().is_symlink() {
+                    return Err(DescriptorError::SymlinkEscape);
+                }
+                let parent = path.parent().ok_or(DescriptorError::InvalidUserDataRoot)?;
+                let canonical_parent = std::fs::canonicalize(parent).map_err(|error| {
+                    DescriptorError::Filesystem(format!("canonicalize profile target: {error}"))
+                })?;
+                if canonical_parent != self.user_data_root {
+                    return Err(DescriptorError::SymlinkEscape);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_user_data_root_path(path: &Path) -> Result<(), DescriptorError> {
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(DescriptorError::InvalidUserDataRoot);
+    }
+
+    let mut prefix = PathBuf::new();
+    for component in path.components() {
+        prefix.push(component.as_os_str());
+        match std::fs::symlink_metadata(&prefix) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                let canonical = std::fs::canonicalize(&prefix).map_err(|error| {
+                    DescriptorError::Filesystem(format!("canonicalize user-data parent: {error}"))
+                })?;
+                if !is_allowed_os_alias(&prefix, &canonical) {
+                    return Err(DescriptorError::SymlinkEscape);
+                }
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => {
+                return Err(DescriptorError::Filesystem(format!(
+                    "inspect user-data parent: {error}"
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn is_allowed_os_alias(path: &Path, canonical: &Path) -> bool {
+    [
+        (Path::new("/var"), Path::new("/private/var")),
+        (Path::new("/tmp"), Path::new("/private/tmp")),
+        (Path::new("/etc"), Path::new("/private/etc")),
+    ]
+    .into_iter()
+    .any(|(alias, target)| path == alias && canonical == target)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_allowed_os_alias(_path: &Path, _canonical: &Path) -> bool {
+    false
 }
 
 fn safe_namespace_component(value: &str) -> bool {
@@ -1183,6 +1259,9 @@ fn safe_service_name(value: &str) -> bool {
 pub enum HeadlessStoreError {
     /// The descriptor was not an explicit, isolated identity mode.
     InvalidMode,
+    /// The trusted profile root or a derived local target no longer passes
+    /// confinement checks immediately before use.
+    InvalidProfilePath,
     /// The serialized secret is not a supported Nostr secret.
     InvalidSecret,
     /// The fixed identity entry is absent.
@@ -1205,6 +1284,7 @@ impl std::fmt::Display for HeadlessStoreError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::InvalidMode => "identity_mode_not_explicit",
+            Self::InvalidProfilePath => "identity_profile_path_invalid",
             Self::InvalidSecret => "identity_secret_invalid",
             Self::Missing => "identity_missing",
             Self::Unreachable => "identity_store_unreachable",
@@ -1234,6 +1314,20 @@ fn map_backend_error(error: &str, delete: bool) -> HeadlessStoreError {
     {
         let _ = (error, delete);
         HeadlessStoreError::Unreachable
+    }
+}
+
+fn classify_headless_readback_error(error: &str) -> HeadlessReadback {
+    #[cfg(feature = "system-keyring")]
+    if is_keyring_locked_error(error) {
+        HeadlessReadback::Locked
+    } else {
+        HeadlessReadback::Unreachable
+    }
+    #[cfg(not(feature = "system-keyring"))]
+    {
+        let _ = error;
+        HeadlessReadback::Unreachable
     }
 }
 
@@ -1303,6 +1397,14 @@ impl SecretStore {
     fn read_headless_blob_direct(
         &self,
     ) -> Result<Option<HashMap<String, String>>, HeadlessStoreError> {
+        #[cfg(test)]
+        if let Some(backend) = self.test_backend.as_deref() {
+            let raw = backend
+                .read()
+                .map_err(|error| map_backend_error(&error, false))?;
+            return raw.as_deref().map(decode_headless_blob).transpose();
+        }
+
         #[cfg(feature = "system-keyring")]
         {
             let raw = self
@@ -1316,7 +1418,151 @@ impl SecretStore {
         }
     }
 
+    /// Store the fixed identity and perform the raw read-back while retaining
+    /// the service-scoped lock for the entire operation. This prevents a
+    /// second process from replacing K1 between the write and verification.
+    fn mutate_headless_identity_and_verify(
+        &self,
+        value: &str,
+    ) -> Result<HeadlessReadback, HeadlessStoreError> {
+        #[cfg(test)]
+        if let Some(backend) = self.test_backend.as_deref() {
+            #[cfg(feature = "system-keyring")]
+            let _lock = acquire_blob_lock(&self.service)
+                .map_err(|error| map_backend_error(&error, false))?;
+            let current = match backend
+                .read()
+                .map_err(|error| map_backend_error(&error, false))?
+            {
+                None => HashMap::new(),
+                Some(raw) => decode_headless_blob(&raw)?,
+            };
+            let mut next = current.clone();
+            next.insert(
+                colony_identity_kernel::IDENTITY_KEY_NAME.to_string(),
+                value.to_string(),
+            );
+            if next != current {
+                let json = encode_headless_blob(&next)?;
+                backend
+                    .write(&json)
+                    .map_err(|error| map_backend_error(&error, false))?;
+                let mut guard = self
+                    .cache
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                *guard = Some(next);
+            }
+            let readback = match backend.read() {
+                Ok(raw) => raw,
+                Err(error) => return Ok(classify_headless_readback_error(&error)),
+            };
+            let map = match readback.as_deref().map(decode_headless_blob).transpose() {
+                Ok(map) => map,
+                Err(HeadlessStoreError::CorruptCurrentBlob) => {
+                    return Ok(HeadlessReadback::CorruptCurrentBlob)
+                }
+                Err(error) => return Err(error),
+            };
+            return Ok(match map {
+                None => HeadlessReadback::Missing,
+                Some(map) => compare_headless_identity(&map, value),
+            });
+        }
+
+        #[cfg(feature = "system-keyring")]
+        {
+            let _lock = acquire_blob_lock(&self.service)
+                .map_err(|error| map_backend_error(&error, false))?;
+            let current = match self
+                .read_blob_raw()
+                .map_err(|error| map_backend_error(&error, false))?
+            {
+                None => HashMap::new(),
+                Some(raw) => decode_headless_blob(&raw)?,
+            };
+            let mut next = current.clone();
+            next.insert(
+                colony_identity_kernel::IDENTITY_KEY_NAME.to_string(),
+                value.to_string(),
+            );
+            if next != current {
+                let json = encode_headless_blob(&next)?;
+                self.write_blob_raw(&json)
+                    .map_err(|error| map_backend_error(&error, false))?;
+                let mut guard = self
+                    .cache
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                *guard = Some(next);
+            }
+
+            let readback = match self.read_blob_raw() {
+                Ok(raw) => raw,
+                Err(error) => return Ok(classify_headless_readback_error(&error)),
+            };
+            let map = match readback.as_deref().map(decode_headless_blob).transpose() {
+                Ok(map) => map,
+                Err(HeadlessStoreError::CorruptCurrentBlob) => {
+                    return Ok(HeadlessReadback::CorruptCurrentBlob)
+                }
+                Err(error) => return Err(error),
+            };
+            Ok(match map {
+                None => HeadlessReadback::Missing,
+                Some(map) => compare_headless_identity(&map, value),
+            })
+        }
+        #[cfg(not(feature = "system-keyring"))]
+        {
+            let _ = value;
+            Err(HeadlessStoreError::Unreachable)
+        }
+    }
+
     fn mutate_headless_identity(&self, value: Option<&str>) -> Result<(), HeadlessStoreError> {
+        #[cfg(test)]
+        if let Some(backend) = self.test_backend.as_deref() {
+            #[cfg(feature = "system-keyring")]
+            let _lock = acquire_blob_lock(&self.service)
+                .map_err(|error| map_backend_error(&error, value.is_none()))?;
+            let current = match backend
+                .read()
+                .map_err(|error| map_backend_error(&error, false))?
+            {
+                None => HashMap::new(),
+                Some(raw) => match decode_headless_blob(&raw) {
+                    Ok(map) => map,
+                    Err(HeadlessStoreError::CorruptCurrentBlob) if value.is_none() => {
+                        backend
+                            .delete()
+                            .map_err(|error| map_backend_error(&error, true))?;
+                        return Ok(());
+                    }
+                    Err(error) => return Err(error),
+                },
+            };
+            let mut next = current.clone();
+            match value {
+                Some(secret) => {
+                    next.insert(
+                        colony_identity_kernel::IDENTITY_KEY_NAME.to_string(),
+                        secret.to_string(),
+                    );
+                }
+                None => {
+                    next.remove(colony_identity_kernel::IDENTITY_KEY_NAME);
+                }
+            }
+            if next == current {
+                return Ok(());
+            }
+            let json = encode_headless_blob(&next)?;
+            return backend
+                .write(&json)
+                .map_err(|error| map_backend_error(&error, value.is_none()));
+        }
+
         #[cfg(feature = "system-keyring")]
         {
             let _lock = acquire_blob_lock(&self.service)
@@ -1361,13 +1607,27 @@ impl SecretStore {
         }
     }
 
-    #[cfg(feature = "system-keyring")]
+    #[cfg(any(feature = "system-keyring", test))]
     fn delete_headless_blob_locked(&self) -> Result<(), HeadlessStoreError> {
-        let entry = keyring_entry(&self.service, BLOB_KEY)
-            .map_err(|error| map_backend_error(&format!("keyring entry: {error}"), true))?;
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(error) => Err(map_backend_error(&format!("keyring delete: {error}"), true)),
+        #[cfg(test)]
+        if let Some(backend) = self.test_backend.as_deref() {
+            return backend
+                .delete()
+                .map_err(|error| map_backend_error(&error, true));
+        }
+
+        #[cfg(feature = "system-keyring")]
+        {
+            let entry = keyring_entry(&self.service, BLOB_KEY)
+                .map_err(|error| map_backend_error(&format!("keyring entry: {error}"), true))?;
+            match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(error) => Err(map_backend_error(&format!("keyring delete: {error}"), true)),
+            }
+        }
+        #[cfg(not(feature = "system-keyring"))]
+        {
+            Err(HeadlessStoreError::Unreachable)
         }
     }
 }
@@ -1390,8 +1650,31 @@ impl HeadlessIdentityStore {
         {
             return Err(HeadlessStoreError::InvalidMode);
         }
+        descriptor
+            .validate_storage_targets()
+            .map_err(|_| HeadlessStoreError::InvalidProfilePath)?;
         Ok(Self {
             store: SecretStore::keyring(descriptor.keyring_service().to_string()),
+            descriptor,
+            identity_cache: Mutex::new(None),
+        })
+    }
+
+    #[cfg(test)]
+    fn with_test_backend(
+        descriptor: IdentityLaunchDescriptor,
+        backend: Arc<dyn TestRawBlobBackend>,
+    ) -> Result<Self, HeadlessStoreError> {
+        if descriptor.identity_mode() != IdentityMode::ExplicitIdentity
+            || descriptor.shared_identity()
+        {
+            return Err(HeadlessStoreError::InvalidMode);
+        }
+        descriptor
+            .validate_storage_targets()
+            .map_err(|_| HeadlessStoreError::InvalidProfilePath)?;
+        Ok(Self {
+            store: SecretStore::with_test_backend(descriptor.keyring_service(), backend),
             descriptor,
             identity_cache: Mutex::new(None),
         })
@@ -1407,6 +1690,38 @@ impl HeadlessIdentityStore {
         self.descriptor.profile_scope()
     }
 
+    fn load_identity_direct(&self) -> Result<Option<String>, HeadlessStoreError> {
+        Ok(self
+            .store
+            .read_headless_blob_direct()?
+            .and_then(|map| map.get(colony_identity_kernel::IDENTITY_KEY_NAME).cloned()))
+    }
+
+    fn store_identity_and_verify_direct(
+        &self,
+        value: &str,
+    ) -> Result<HeadlessReadback, HeadlessStoreError> {
+        self.store.mutate_headless_identity_and_verify(value)
+    }
+
+    fn verify_identity_direct(&self, expected: &str) -> HeadlessReadback {
+        let map = match self.store.read_headless_blob_direct() {
+            Ok(Some(map)) => map,
+            Ok(None) => return HeadlessReadback::Missing,
+            Err(HeadlessStoreError::CorruptCurrentBlob) => {
+                return HeadlessReadback::CorruptCurrentBlob
+            }
+            Err(HeadlessStoreError::Locked) => return HeadlessReadback::Locked,
+            Err(HeadlessStoreError::Unreachable) => return HeadlessReadback::Unreachable,
+            Err(_) => return HeadlessReadback::Unreachable,
+        };
+        compare_headless_identity(&map, expected)
+    }
+
+    fn delete_identity_direct(&self) -> Result<(), HeadlessStoreError> {
+        self.store.mutate_headless_identity(None)
+    }
+
     fn load_identity_cached(&self) -> Result<Option<String>, HeadlessStoreError> {
         {
             let guard = self
@@ -1417,10 +1732,7 @@ impl HeadlessIdentityStore {
                 return Ok(value.clone());
             }
         }
-        let value = self
-            .store
-            .read_headless_blob_direct()?
-            .and_then(|map| map.get(colony_identity_kernel::IDENTITY_KEY_NAME).cloned());
+        let value = self.load_identity_direct()?;
         let mut guard = self
             .identity_cache
             .lock()
@@ -1469,10 +1781,21 @@ impl HeadlessIdentityStore {
     pub fn store_identity(&self, secret: &str) -> Result<(), HeadlessStoreError> {
         let normalized = secret.trim();
         Keys::parse(normalized).map_err(|_| HeadlessStoreError::InvalidSecret)?;
-        match self.store.mutate_headless_identity(Some(normalized)) {
-            Ok(()) => {
-                self.set_identity_cache(Some(normalized.to_string()));
-                Ok(())
+        match self.store_identity_and_verify_direct(normalized) {
+            Ok(readback) => {
+                if readback == HeadlessReadback::Exact {
+                    self.set_identity_cache(Some(normalized.to_string()));
+                    return Ok(());
+                }
+                self.clear_identity_cache();
+                Err(match readback {
+                    HeadlessReadback::Missing => HeadlessStoreError::Missing,
+                    HeadlessReadback::Mismatch => HeadlessStoreError::ReadbackMismatch,
+                    HeadlessReadback::CorruptCurrentBlob => HeadlessStoreError::CorruptCurrentBlob,
+                    HeadlessReadback::Unreachable => HeadlessStoreError::Unreachable,
+                    HeadlessReadback::Locked => HeadlessStoreError::Locked,
+                    HeadlessReadback::Exact => HeadlessStoreError::ReadbackMismatch,
+                })
             }
             Err(error) => {
                 self.clear_identity_cache();
@@ -1484,22 +1807,12 @@ impl HeadlessIdentityStore {
     /// Read directly from the backend, bypassing the shared cache, and compare
     /// canonical secret bytes plus the derived public key.
     pub fn verify_identity(&self, expected: &str) -> HeadlessReadback {
-        let map = match self.store.read_headless_blob_direct() {
-            Ok(Some(map)) => map,
-            Ok(None) => return HeadlessReadback::Missing,
-            Err(HeadlessStoreError::CorruptCurrentBlob) => {
-                return HeadlessReadback::CorruptCurrentBlob
-            }
-            Err(HeadlessStoreError::Locked) => return HeadlessReadback::Locked,
-            Err(HeadlessStoreError::Unreachable) => return HeadlessReadback::Unreachable,
-            Err(_) => return HeadlessReadback::Unreachable,
-        };
-        compare_headless_identity(&map, expected)
+        self.verify_identity_direct(expected)
     }
 
     /// Remove the fixed identity field without touching legacy per-key data.
     pub fn delete_identity(&self) -> Result<(), HeadlessStoreError> {
-        match self.store.mutate_headless_identity(None) {
+        match self.delete_identity_direct() {
             Ok(()) => {
                 self.set_identity_cache(None);
                 Ok(())
@@ -1519,6 +1832,11 @@ impl HeadlessIdentityStore {
         colony_identity_kernel::ResolvedIdentity,
         colony_identity_kernel::HeadlessResolutionError,
     > {
+        self.descriptor
+            .validate_storage_targets()
+            .map_err(|error| {
+                colony_identity_kernel::HeadlessResolutionError::Persistence(error.to_string())
+            })?;
         colony_identity_kernel::resolve_identity_with_headless_store(self, &self.profile_scope())
     }
 }
@@ -1579,12 +1897,408 @@ impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
         }
         self.verify_identity(expected)
     }
+
+    fn store_and_verify_headless(
+        &self,
+        key: &str,
+        expected: &str,
+    ) -> Result<HeadlessReadback, String> {
+        if key != colony_identity_kernel::IDENTITY_KEY_NAME {
+            return Err(HeadlessStoreError::InvalidMode.to_string());
+        }
+        self.store_identity_and_verify_direct(expected)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(test)]
 mod headless_tests {
     use super::*;
     use nostr::ToBech32;
+    use std::sync::{mpsc, Arc, Condvar};
+    use std::time::Duration;
+
+    #[derive(Clone, Copy)]
+    enum WriteBehavior {
+        Exact,
+        Mismatch,
+        Corrupt,
+        Missing,
+        Fail,
+    }
+
+    #[derive(Default)]
+    struct WriteGate {
+        started: Mutex<bool>,
+        released: Mutex<bool>,
+        wake: Condvar,
+        events: Mutex<Option<mpsc::Sender<()>>>,
+    }
+
+    struct RawBlobState {
+        raw: Option<Vec<u8>>,
+        write_behavior: WriteBehavior,
+        writes: usize,
+        deletes: usize,
+        reads: usize,
+    }
+
+    struct RawBlobFake {
+        state: Mutex<RawBlobState>,
+        gate: Option<Arc<WriteGate>>,
+    }
+
+    impl RawBlobFake {
+        fn new(raw: Option<Vec<u8>>, write_behavior: WriteBehavior) -> Arc<Self> {
+            Arc::new(Self {
+                state: Mutex::new(RawBlobState {
+                    raw,
+                    write_behavior,
+                    writes: 0,
+                    deletes: 0,
+                    reads: 0,
+                }),
+                gate: None,
+            })
+        }
+
+        fn with_gate(
+            raw: Option<Vec<u8>>,
+            write_behavior: WriteBehavior,
+            gate: Arc<WriteGate>,
+        ) -> Arc<Self> {
+            Arc::new(Self {
+                state: Mutex::new(RawBlobState {
+                    raw,
+                    write_behavior,
+                    writes: 0,
+                    deletes: 0,
+                    reads: 0,
+                }),
+                gate: Some(gate),
+            })
+        }
+
+        fn counts(&self) -> (usize, usize, usize) {
+            let state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (state.reads, state.writes, state.deletes)
+        }
+
+        fn wait_for_first_write(&self) {
+            let gate = self.gate.as_ref().expect("write gate");
+            let mut started = gate
+                .started
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            while !*started {
+                started = gate
+                    .wake
+                    .wait(started)
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+            }
+        }
+
+        fn release_first_write(&self) {
+            let gate = self.gate.as_ref().expect("write gate");
+            let mut released = gate
+                .released
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *released = true;
+            gate.wake.notify_all();
+        }
+    }
+
+    impl TestRawBlobBackend for RawBlobFake {
+        fn read(&self) -> Result<Option<Vec<u8>>, String> {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.reads += 1;
+            Ok(state.raw.clone())
+        }
+
+        fn write(&self, bytes: &[u8]) -> Result<(), String> {
+            let (behavior, write_number) = {
+                let mut state = self
+                    .state
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.writes += 1;
+                (state.write_behavior, state.writes)
+            };
+
+            if write_number == 1 {
+                if let Some(gate) = &self.gate {
+                    if let Some(sender) = gate
+                        .events
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .as_ref()
+                    {
+                        let _ = sender.send(());
+                    }
+                    let mut started = gate
+                        .started
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    *started = true;
+                    gate.wake.notify_all();
+                    let mut released = gate
+                        .released
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    while !*released {
+                        released = gate
+                            .wake
+                            .wait(released)
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    }
+                }
+            } else if let Some(gate) = &self.gate {
+                if let Some(sender) = gate
+                    .events
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .as_ref()
+                {
+                    let _ = sender.send(());
+                }
+            }
+
+            match behavior {
+                WriteBehavior::Fail => Err("synthetic write failure".to_string()),
+                WriteBehavior::Exact => {
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.raw = Some(bytes.to_vec());
+                    Ok(())
+                }
+                WriteBehavior::Mismatch => {
+                    let mut map = serde_json::from_slice::<HashMap<String, String>>(bytes)
+                        .map_err(|_| "synthetic blob decode".to_string())?;
+                    let other = Keys::generate()
+                        .secret_key()
+                        .to_bech32()
+                        .map_err(|_| "synthetic nsec encode".to_string())?;
+                    map.insert(colony_identity_kernel::IDENTITY_KEY_NAME.to_string(), other);
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.raw = Some(
+                        serde_json::to_vec(&map)
+                            .map_err(|_| "synthetic blob encode".to_string())?,
+                    );
+                    Ok(())
+                }
+                WriteBehavior::Corrupt => {
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.raw = Some(b"{malformed".to_vec());
+                    Ok(())
+                }
+                WriteBehavior::Missing => {
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.raw = None;
+                    Ok(())
+                }
+            }
+        }
+
+        fn delete(&self) -> Result<(), String> {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.deletes += 1;
+            state.raw = None;
+            Ok(())
+        }
+    }
+
+    fn descriptor(root: &Path) -> IdentityLaunchDescriptor {
+        descriptor_with_service(root, "colony-ai-headless-test")
+    }
+
+    fn descriptor_with_service(root: &Path, service: &str) -> IdentityLaunchDescriptor {
+        let manifest = TrustedProfileManifest::new("fresh-profile", "test", "linux", service);
+        IdentityLaunchDescriptor::from_trusted_manifest(
+            &manifest,
+            root,
+            IdentityMode::ExplicitIdentity,
+            false,
+            ResetProvenance::NotAttemptedFresh,
+        )
+        .expect("isolated descriptor")
+    }
+
+    #[test]
+    fn adapter_marker_and_corrupt_blob_enter_lost_without_cleanup() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        std::fs::write(descriptor.migration_marker_path(), b"1").expect("migration marker");
+        let backend = RawBlobFake::new(Some(b"{malformed".to_vec()), WriteBehavior::Exact);
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("marker recovery");
+        assert_eq!(
+            resolved.recovery,
+            colony_identity_kernel::RecoveryState::Lost
+        );
+        assert_eq!(
+            resolved.storage,
+            colony_identity_kernel::IdentityStorage::Ephemeral
+        );
+        let (_, writes, deletes) = backend.counts();
+        assert_eq!(
+            writes, 0,
+            "marker recovery must not rewrite the corrupt blob"
+        );
+        assert_eq!(deletes, 0, "marker recovery must preserve corrupt evidence");
+        assert!(!descriptor.identity_file_path().exists());
+    }
+
+    #[test]
+    fn adapter_marker_and_corrupt_blob_do_not_delete_invalid_file() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        std::fs::write(descriptor.migration_marker_path(), b"1").expect("migration marker");
+        std::fs::write(descriptor.identity_file_path(), b"not-a-secret")
+            .expect("invalid identity fixture");
+        let backend = RawBlobFake::new(Some(b"{malformed".to_vec()), WriteBehavior::Exact);
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("marker recovery");
+        assert_eq!(
+            resolved.recovery,
+            colony_identity_kernel::RecoveryState::Lost
+        );
+        let (_, writes, deletes) = backend.counts();
+        assert_eq!(writes, 0, "invalid-file marker recovery must not rewrite");
+        assert_eq!(
+            deletes, 0,
+            "invalid-file marker recovery must preserve the blob"
+        );
+        assert_eq!(
+            std::fs::read(descriptor.identity_file_path()).expect("invalid identity remains"),
+            b"not-a-secret"
+        );
+    }
+
+    #[test]
+    fn adapter_fresh_corrupt_readback_is_terminal_without_k2_or_cleanup() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        let backend = RawBlobFake::new(None, WriteBehavior::Corrupt);
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+            .expect("headless adapter");
+
+        let error = store
+            .initialize()
+            .expect_err("fresh corrupt read-back must not initialize");
+        assert_eq!(
+            error,
+            colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackCorrupt
+        );
+        let (_, writes, deletes) = backend.counts();
+        assert_eq!(writes, 1, "only K1 may be written");
+        assert_eq!(deletes, 0, "fresh read-back failure must not delete");
+        assert!(!descriptor.migration_marker_path().exists());
+        assert!(!descriptor.identity_file_path().exists());
+    }
+
+    #[test]
+    fn adapter_fresh_missing_and_mismatched_readbacks_are_terminal() {
+        for (behavior, expected) in [
+            (
+                WriteBehavior::Missing,
+                colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackMissing,
+            ),
+            (
+                WriteBehavior::Mismatch,
+                colony_identity_kernel::HeadlessResolutionError::FreshWriteReadbackMismatch,
+            ),
+        ] {
+            let root = tempfile::tempdir().expect("isolated root");
+            let descriptor = descriptor(root.path());
+            let backend = RawBlobFake::new(None, behavior);
+            let store =
+                HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend.clone())
+                    .expect("headless adapter");
+
+            assert_eq!(
+                store.initialize().expect_err("read-back must fail"),
+                expected
+            );
+            let (_, writes, deletes) = backend.counts();
+            assert_eq!(writes, 1, "only K1 may be written");
+            assert_eq!(deletes, 0, "fresh read-back failure must not delete");
+            assert!(!descriptor.migration_marker_path().exists());
+        }
+    }
+
+    #[test]
+    fn adapter_keyring_write_failure_fallback_reads_back_same_k1() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        let backend = RawBlobFake::new(None, WriteBehavior::Fail);
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend)
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("file fallback");
+        assert_eq!(
+            resolved.storage,
+            colony_identity_kernel::IdentityStorage::LocalFile
+        );
+        let persisted = identity_file_keys(&descriptor);
+        assert_eq!(resolved.keys.public_key(), persisted.public_key());
+        assert_eq!(
+            resolved.keys.secret_key().as_secret_bytes(),
+            persisted.secret_key().as_secret_bytes()
+        );
+        assert!(!descriptor.migration_marker_path().exists());
+    }
+
+    #[test]
+    fn adapter_marker_failure_fallback_reads_back_same_k1() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let descriptor = descriptor(root.path());
+        std::fs::create_dir(descriptor.migration_marker_path()).expect("marker failure fixture");
+        let backend = RawBlobFake::new(None, WriteBehavior::Exact);
+        let store = HeadlessIdentityStore::with_test_backend(descriptor.clone(), backend)
+            .expect("headless adapter");
+
+        let resolved = store.initialize().expect("file fallback");
+        assert_eq!(
+            resolved.storage,
+            colony_identity_kernel::IdentityStorage::LocalFile
+        );
+        let persisted = identity_file_keys(&descriptor);
+        assert_eq!(resolved.keys.public_key(), persisted.public_key());
+        assert_eq!(
+            resolved.keys.secret_key().as_secret_bytes(),
+            persisted.secret_key().as_secret_bytes()
+        );
+    }
+
+    fn identity_file_keys(descriptor: &IdentityLaunchDescriptor) -> Keys {
+        colony_identity_kernel::load_key_file(&descriptor.identity_file_path())
+            .expect("identity fallback")
+    }
 
     #[test]
     fn headless_decoder_types_malformed_and_unknown_blobs() {
@@ -1697,6 +2411,100 @@ mod headless_tests {
             .starts_with(descriptor.user_data_root()));
         assert_eq!(descriptor.reset_provenance(), ResetProvenance::Unknown);
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn descriptor_rejects_parent_symlink_outside_trusted_root() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let outside = tempfile::tempdir().expect("outside root");
+        let link = root.path().join("profile-link");
+        std::os::unix::fs::symlink(outside.path(), &link).expect("parent symlink");
+        let requested_root = link.join("instance");
+        let manifest = TrustedProfileManifest::new(
+            "fresh-profile",
+            "test",
+            "linux",
+            "colony-ai-headless-test",
+        );
+
+        let result = IdentityLaunchDescriptor::from_trusted_manifest(
+            &manifest,
+            &requested_root,
+            IdentityMode::ExplicitIdentity,
+            false,
+            ResetProvenance::NotAttemptedFresh,
+        );
+        assert_eq!(result, Err(DescriptorError::SymlinkEscape));
+        assert!(!outside.path().join("instance/identity.key").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn adapter_rechecks_derived_target_before_use() {
+        let root = tempfile::tempdir().expect("isolated root");
+        let outside = tempfile::tempdir().expect("outside root");
+        let descriptor = descriptor(root.path());
+        std::os::unix::fs::symlink(
+            outside.path().join("identity.key"),
+            descriptor.identity_file_path(),
+        )
+        .expect("derived target symlink");
+        let backend = RawBlobFake::new(None, WriteBehavior::Exact);
+
+        let result = HeadlessIdentityStore::with_test_backend(descriptor, backend);
+        assert!(matches!(
+            result,
+            Err(HeadlessStoreError::InvalidProfilePath)
+        ));
+        assert!(!outside.path().join("identity.key").exists());
+    }
+
+    #[cfg(feature = "system-keyring")]
+    #[test]
+    fn adapter_holds_service_lock_through_raw_readback() {
+        let first_root = tempfile::tempdir().expect("first root");
+        let second_root = tempfile::tempdir().expect("second root");
+        let first_descriptor =
+            descriptor_with_service(first_root.path(), "colony-ai-headless-lock-test");
+        let second_descriptor =
+            descriptor_with_service(second_root.path(), "colony-ai-headless-lock-test");
+        let gate = Arc::new(WriteGate::default());
+        let (sender, receiver) = mpsc::channel();
+        *gate
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sender);
+        let backend = RawBlobFake::with_gate(None, WriteBehavior::Exact, gate.clone());
+        let first = HeadlessIdentityStore::with_test_backend(first_descriptor, backend.clone())
+            .expect("first adapter");
+        let second = HeadlessIdentityStore::with_test_backend(second_descriptor, backend.clone())
+            .expect("second adapter");
+        let first_secret = Keys::generate()
+            .secret_key()
+            .to_bech32()
+            .expect("first nsec");
+        let second_secret = Keys::generate()
+            .secret_key()
+            .to_bech32()
+            .expect("second nsec");
+
+        let first_thread = std::thread::spawn(move || first.store_identity(&first_secret));
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first write entered backend");
+        gate.wait_for_first_write();
+        let second_thread = std::thread::spawn(move || second.store_identity(&second_secret));
+        assert!(
+            receiver.recv_timeout(Duration::from_millis(100)).is_err(),
+            "second write must wait for the service lock"
+        );
+        backend.release_first_write();
+        assert!(first_thread.join().expect("first thread").is_ok());
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second write entered after first read-back");
+        assert!(second_thread.join().expect("second thread").is_ok());
+    }
 }
 
 #[cfg(all(test, feature = "system-keyring"))]
@@ -1709,6 +2517,7 @@ mod tests {
             SecretStore {
                 service: service.to_string(),
                 cache: Mutex::new(cache),
+                test_backend: None,
             }
         }
     }
