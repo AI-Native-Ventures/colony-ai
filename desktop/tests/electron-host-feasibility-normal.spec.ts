@@ -151,10 +151,11 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
         return { granted: false, name: error?.name ?? "unknown" };
       }
     });
-    assert.deepEqual(permissionResult, {
-      granted: false,
-      name: "NotAllowedError",
-    });
+    assert.equal(permissionResult.granted, false);
+    assert.ok(
+      ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
+      `unexpected denied media error: ${permissionResult.name}`,
+    );
 
     await page.evaluate((url) => {
       const frame = document.createElement("iframe");

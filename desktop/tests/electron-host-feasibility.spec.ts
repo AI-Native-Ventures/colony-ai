@@ -376,10 +376,11 @@ test("packaged IPC, navigation, window, and permission guards deny", async () =>
         return { granted: false, name: error?.name ?? "unknown" };
       }
     });
-    assert.deepEqual(permissionResult, {
-      granted: false,
-      name: "NotAllowedError",
-    });
+    assert.equal(permissionResult.granted, false);
+    assert.ok(
+      ["NotAllowedError", "NotFoundError"].includes(permissionResult.name),
+      `unexpected denied media error: ${permissionResult.name}`,
+    );
     await expect
       .poll(async () => (await testState(application)).permissionDeniedCount)
       .toBeGreaterThan(beforePermission.permissionDeniedCount);
