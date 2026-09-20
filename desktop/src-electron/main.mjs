@@ -388,12 +388,11 @@ function configureWindowSecurity(window) {
     event.preventDefault();
   });
   window.webContents.on("did-start-loading", () => {
-    if (
-      runtime.initialLoadComplete &&
-      window.webContents.isLoadingMainFrame()
-    ) {
-      beginRendererRebind();
-    }
+    // Electron 44 does not reliably report `isLoadingMainFrame()` during the
+    // first tick of a file:// reload. This event is emitted for the window's
+    // main navigation, while subframe navigations use will-frame-navigate;
+    // the existing rebind promise remains the duplicate-event fence.
+    if (runtime.initialLoadComplete) beginRendererRebind();
   });
   window.webContents.on("did-finish-load", () => {
     if (!window.isDestroyed()) {
