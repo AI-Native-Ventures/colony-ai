@@ -310,6 +310,7 @@ mod pending_channels;
 /// Names and helpers retained at the Tauri adapter boundary so existing
 /// callsites/tests keep their behavior while the implementation lives in the
 /// host-neutral kernel.
+#[cfg(test)]
 pub(crate) const IDENTITY_KEY_NAME: &str = colony_identity_kernel::IDENTITY_KEY_NAME;
 pub(crate) const MIGRATION_MARKER_NAME: &str = colony_identity_kernel::MIGRATION_MARKER_NAME;
 
@@ -369,6 +370,7 @@ fn load_or_create_identity(data_dir: &std::path::Path) -> Result<ResolvedIdentit
     }
 }
 
+#[cfg(test)]
 fn resolve_identity_with_store(
     store: &impl IdentityKeyStore,
     legacy_path: &std::path::Path,
@@ -378,6 +380,7 @@ fn resolve_identity_with_store(
     colony_identity_kernel::resolve_identity_with_store(store, &profile)
 }
 
+#[cfg(test)]
 fn persist_identity_to_keyring(
     store: &impl IdentityKeyStore,
     keys: &Keys,
@@ -408,15 +411,18 @@ pub(crate) fn persist_imported_identity(
     persist_imported_identity_impl(store, keys, legacy_path, data_dir)
 }
 
+#[cfg(test)]
 fn migration_marker_path(data_dir: &std::path::Path) -> std::path::PathBuf {
     ProfileScope::for_keyring_service(data_dir.to_path_buf(), keyring_service())
         .migration_marker_path()
 }
 
+#[cfg(test)]
 fn write_migration_marker(path: &std::path::Path) -> Result<(), String> {
     colony_identity_kernel::write_migration_marker_at(path)
 }
 
+#[cfg(test)]
 pub(crate) use colony_identity_kernel::{
     cleanup_leftover_identity_file, load_key_file, save_key_file,
 };
