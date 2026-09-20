@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { EVENT_BATCH_MS } from "@/shared/api/relayClientTimings";
 
 const SHORTCODE = "buzz";
 const STATUS_TEXT = "testing custom status";
@@ -11,8 +12,9 @@ const STATUS_CLOCK_INIT = new Date(STATUS_CLOCK.getTime() - 60_000);
 const STATUS_CLOCK_SECONDS = Math.floor(STATUS_CLOCK.getTime() / 1_000);
 const STATUS_EXPIRY_MS = 2_000;
 // RelayClient batches live frames on this bounded interval before notifying React.
-const STATUS_EVENT_BATCH_MS = 16;
+const STATUS_EVENT_BATCH_MS = EVENT_BATCH_MS;
 const STATUS_DIALOG_FRAME_MS = 20;
+const STATUS_EXPIRY_CROSSING_MS = 1;
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -243,11 +245,15 @@ test("keeps an open status draft when the saved status expires", async ({
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(saveButton).toBeEnabled();
 
-  // Advance only the remaining time from the paused pre-expiry frame so this
-  // timer transition, rather than natural setup time, causes the expiry.
-  await page.clock.fastForward(
-    STATUS_EXPIRY_MS - STATUS_EVENT_BATCH_MS - STATUS_DIALOG_FRAME_MS,
-  );
+  // Advance exactly from the paused virtual time to the event's deadline so
+  // this timer transition, rather than natural setup time, causes the expiry.
+  const expiryDeadlineMs = STATUS_CLOCK.getTime() + STATUS_EXPIRY_MS;
+  const pausedNowMs = await page.evaluate(() => Date.now());
+  await page.clock.fastForward(expiryDeadlineMs - pausedNowMs);
+  // The production predicate is inclusive (expiresAt <= now). Cross that
+  // exact boundary by one controlled millisecond so the scheduled callback
+  // cannot remain queued at the endpoint.
+  await page.clock.fastForward(STATUS_EXPIRY_CROSSING_MS);
   await expect(sidebarStatus).toHaveCount(0);
 
   await expect(input).toHaveValue("Unsaved draft");
