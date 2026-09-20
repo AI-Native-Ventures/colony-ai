@@ -6,6 +6,7 @@ const TARGETS = Object.freeze({
     helperName: "colony-native-host",
     packageSuffix: "darwin-arm64",
     bundleKind: "app",
+    executableName: null,
   }),
   "win32:x64": Object.freeze({
     platform: "win32",
@@ -14,6 +15,7 @@ const TARGETS = Object.freeze({
     helperName: "colony-native-host.exe",
     packageSuffix: "win32-x64",
     bundleKind: "directory",
+    executableName: "Buzz",
   }),
 });
 

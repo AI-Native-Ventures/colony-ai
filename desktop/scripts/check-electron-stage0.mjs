@@ -348,10 +348,9 @@ function checkMacBundle(bundleRoot, flavor, target) {
 }
 
 function checkWindowsBundle(bundleRoot, flavor, target) {
-  const expected = packageFlavors[flavor];
   const { appRoot, appExecutable } = findWindowsApp(
     bundleRoot,
-    expected.appName,
+    target.executableName,
   );
   const resources = path.join(appRoot, "resources");
   const archive = path.join(resources, "app.asar");

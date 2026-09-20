@@ -14,6 +14,7 @@ test("Stage 0 target map keeps macOS and Windows helper resources explicit", () 
     helperName: "colony-native-host",
     packageSuffix: "darwin-arm64",
     bundleKind: "app",
+    executableName: null,
   });
   assert.deepEqual(getStage0Target({ platform: "win32", arch: "x64" }), {
     platform: "win32",
@@ -22,6 +23,7 @@ test("Stage 0 target map keeps macOS and Windows helper resources explicit", () 
     helperName: "colony-native-host.exe",
     packageSuffix: "win32-x64",
     bundleKind: "directory",
+    executableName: "Buzz",
   });
 });
 

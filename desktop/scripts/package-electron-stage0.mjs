@@ -26,7 +26,8 @@ const resourceDirectory = path.join(
 );
 const outputDirectory = path.join(desktopDirectory, `dist-electron-${flavor}`);
 const appName =
-  flavor === "normal" ? "Buzz Stage0 Normal" : "Buzz Stage0 Instrumented";
+  target.executableName ??
+  (flavor === "normal" ? "Buzz Stage0 Normal" : "Buzz Stage0 Instrumented");
 const appId =
   flavor === "normal"
     ? "xyz.ainative.ventures.colony.stage0.normal"
@@ -37,8 +38,6 @@ function run(command, args) {
     cwd: desktopDirectory,
     env: process.env,
     stdio: "inherit",
-    shell:
-      process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {

@@ -89,10 +89,7 @@ export function getStage0PackagePaths(
     };
   }
   if (process.platform === "win32" && process.arch === "x64") {
-    const appBinary = findSingleWindowsExecutable(
-      packageRoot,
-      `${appName}.exe`,
-    );
+    const appBinary = findSingleWindowsExecutable(packageRoot, "Buzz.exe");
     const appRoot = path.dirname(appBinary);
     const helperName = "colony-native-host.exe";
     return {
