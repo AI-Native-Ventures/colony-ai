@@ -177,7 +177,17 @@ test("normal relocated candidate rebinds core and denies foreign effects", async
       frame.setAttribute("data-testid", "normal-subframe");
       document.body.append(frame);
     }, originalUrl);
-    await page.locator('[data-testid="normal-subframe"]').waitFor();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              document.querySelector('[data-testid="normal-subframe"]') !==
+              null,
+          ),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
     for (const frame of page
       .frames()
       .filter((candidate) => candidate !== page.mainFrame())) {
