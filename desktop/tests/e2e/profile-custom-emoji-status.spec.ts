@@ -249,10 +249,7 @@ test("keeps an open status draft when the saved status expires", async ({
   // this timer transition, rather than natural setup time, causes the expiry.
   const expiryDeadlineMs = STATUS_CLOCK.getTime() + STATUS_EXPIRY_MS;
   const pausedNowMs = await page.evaluate(() => Date.now());
-  // TEMPORARY HOSTED NEGATIVE CONTROL: leave virtual time just before expiry.
-  await page.clock.fastForward(
-    Math.max(0, expiryDeadlineMs - pausedNowMs - STATUS_EXPIRY_CROSSING_MS - 1),
-  );
+  await page.clock.fastForward(expiryDeadlineMs - pausedNowMs);
   // The production predicate is inclusive (expiresAt <= now). Cross that
   // exact boundary by one controlled millisecond so the scheduled callback
   // cannot remain queued at the endpoint.
