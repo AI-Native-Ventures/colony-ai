@@ -183,10 +183,7 @@ export function validateMutationReport(report, mutation) {
   }
   const specFile =
     typeof spec.file === "string" ? spec.file.replaceAll("\\", "/") : "";
-  if (
-    specFile !== `tests/${definition.file}` &&
-    !specFile.endsWith(`/tests/${definition.file}`)
-  ) {
+  if (path.posix.basename(specFile) !== definition.file) {
     throw reportError("selected test file is not the expected production spec");
   }
   if (spec.tests.length !== 1) {
