@@ -179,6 +179,19 @@ test("NativeHost settles a delayed request once on timeout and ignores its late 
   await host.dispose();
 });
 
+test("NativeHost redacts non-protocol host error codes before rejection", async () => {
+  const fake = createFakeSpawn({ delayResponse: true });
+  const host = hostWith(fake);
+  await host.start();
+  const request = host.requestHealthSafe({ requestId: "unsafe-error-code" });
+  fake.emit(response("unsafe-error-code", 1, "error", {
+    error: { code: "/private/path-with-secret" },
+    payload: undefined,
+  }));
+  await assert.rejects(request, (error) => error.code === "error");
+  await host.dispose();
+});
+
 test("NativeHost rebind fences old pending work, serializes the barrier, and drops stale responses", async () => {
   const fake = createFakeSpawn({ delayResponse: true });
   const host = hostWith(fake);

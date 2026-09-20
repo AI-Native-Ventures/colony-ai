@@ -279,7 +279,9 @@ export class RendererHost {
   #asRendererError(error) {
     if (error instanceof RendererHostError) return error;
     if (error instanceof HostProtocolError) return rendererError(error.code);
-    if (error && typeof error.code === "string") return rendererError(error.code);
+    if (error && typeof error.code === "string" && /^[a-z0-9_]+$/.test(error.code)) {
+      return rendererError(error.code);
+    }
     return rendererError("host_unavailable");
   }
 }

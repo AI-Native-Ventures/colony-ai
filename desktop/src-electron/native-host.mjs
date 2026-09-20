@@ -466,7 +466,7 @@ export class NativeHost {
       pending.resolve(frame);
       return;
     }
-    pending.reject(hostError(frame.error?.code ?? frame.outcome));
+    pending.reject(hostError(redactedProtocolCode(frame.error, frame.outcome)));
   }
 
   #handleEvent(frame) {
