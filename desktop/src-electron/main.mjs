@@ -407,6 +407,11 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // The packaged denial fixture is the only opt-in path that enables
+      // preload execution in a local subframe. Normal launches keep this
+      // secure default disabled.
+      nodeIntegrationInSubFrames:
+        TEST_MODE && process.env.COLONY_STAGE0_TEST_SUBFRAME === "1",
       preload: path.join(rootDirectory, "preload.cjs"),
     },
   });
