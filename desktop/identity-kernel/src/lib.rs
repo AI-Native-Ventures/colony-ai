@@ -129,7 +129,81 @@ pub enum KeyringProbe {
     ReachableButEmpty,
     /// The keyring backend is unavailable for this boot.
     Unreachable,
+    /// The current identity blob was fetched but cannot be decoded.
+    ///
+    /// This is distinct from an unavailable/locked backend. A strict headless
+    /// adapter uses it to enter the existing corrupt-profile recovery order;
+    /// the legacy Tauri adapter may continue mapping its decoder failures to
+    /// `Unreachable` for compatibility.
+    CorruptCurrentBlob,
 }
+
+/// Normalized headless probe state exposed by the strict adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadlessProbe {
+    /// The identity entry exists and decoded successfully.
+    Present,
+    /// The backend is reachable but has no identity entry.
+    Missing,
+    /// A pre-existing backend blob was fetched but failed strict decoding.
+    CorruptCurrentBlob,
+    /// The backend could not be reached for this operation.
+    Unreachable,
+    /// The backend reported a locked credential store.
+    Locked,
+}
+
+/// Direct read-back result for a strict headless write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadlessReadback {
+    /// The durable value is byte-equivalent at the secret-key boundary.
+    Exact,
+    /// The backend has no identity entry after the write.
+    Missing,
+    /// The backend returned a different identity.
+    Mismatch,
+    /// The backend returned bytes that do not decode as a current blob.
+    CorruptCurrentBlob,
+    /// The backend could not be read after the write.
+    Unreachable,
+    /// The backend was locked during the read-back.
+    Locked,
+}
+
+/// Terminal errors produced by strict headless initialization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeadlessResolutionError {
+    /// The raw value written for a newly generated K1 could not be decoded.
+    /// It must not be cleaned up or replaced during this attempt.
+    FreshWriteReadbackCorrupt,
+    /// The raw value written for K1 decoded to a different secret/public key.
+    FreshWriteReadbackMismatch,
+    /// The backend reported that the just-written value was absent.
+    FreshWriteReadbackMissing,
+    /// The backend could not be read back after accepting the write.
+    FreshWriteReadbackUnavailable,
+    /// The backend was locked after accepting the write.
+    FreshWriteReadbackLocked,
+    /// A non-secret persistence or profile operation failed.
+    Persistence(String),
+}
+
+impl std::fmt::Display for HeadlessResolutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FreshWriteReadbackCorrupt => formatter.write_str("identity_readback_corrupt"),
+            Self::FreshWriteReadbackMismatch => formatter.write_str("identity_readback_mismatch"),
+            Self::FreshWriteReadbackMissing => formatter.write_str("identity_readback_missing"),
+            Self::FreshWriteReadbackUnavailable => {
+                formatter.write_str("identity_readback_unavailable")
+            }
+            Self::FreshWriteReadbackLocked => formatter.write_str("identity_readback_locked"),
+            Self::Persistence(message) => formatter.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for HeadlessResolutionError {}
 
 /// Key-store operations needed by identity resolution.
 ///
@@ -142,6 +216,20 @@ pub trait IdentityKeyStore {
     fn delete(&self, name: &str) -> Result<(), String>;
     /// Verify directly against durable storage, bypassing any in-process cache.
     fn verify_stored(&self, key: &str, expected: &str) -> Result<bool, String>;
+
+    /// Return a typed direct read-back outcome for a strict headless write.
+    ///
+    /// Existing Tauri implementations inherit the conservative mapping so
+    /// their behavior remains unchanged. The headless adapter overrides this
+    /// to distinguish missing, locked, unavailable, mismatch, and corrupt raw
+    /// values without inspecting secrets or backend error strings.
+    fn verify_stored_headless(&self, key: &str, expected: &str) -> HeadlessReadback {
+        match self.verify_stored(key, expected) {
+            Ok(true) => HeadlessReadback::Exact,
+            Ok(false) => HeadlessReadback::Mismatch,
+            Err(_) => HeadlessReadback::Unreachable,
+        }
+    }
 }
 
 pub const IDENTITY_KEY_NAME: &str = "identity";
@@ -198,6 +286,57 @@ pub fn resolve_identity_with_store(
     store: &impl IdentityKeyStore,
     profile: &ProfileScope,
 ) -> Result<ResolvedIdentity, String> {
+    resolve_identity_with_mode(store, profile, false).map_err(ResolveError::into_message)
+}
+
+/// Resolve an identity using the strict headless write/read-back contract.
+///
+/// This shares the resolver state machine with the Tauri compatibility path.
+/// The only intentional policy difference is a fresh keyring write: the
+/// headless path verifies the raw backend before writing its marker, and a
+/// corrupt/missing/locked/unavailable read-back is terminal for that attempt.
+/// In particular, a corrupt read-back after K1 is never routed through the
+/// pre-existing corrupt-profile cleanup/regeneration path.
+pub fn resolve_identity_with_headless_store(
+    store: &impl IdentityKeyStore,
+    profile: &ProfileScope,
+) -> Result<ResolvedIdentity, HeadlessResolutionError> {
+    resolve_identity_with_mode(store, profile, true).map_err(ResolveError::into_headless)
+}
+
+#[derive(Debug)]
+enum ResolveError {
+    Legacy(String),
+    Headless(HeadlessResolutionError),
+}
+
+impl From<String> for ResolveError {
+    fn from(error: String) -> Self {
+        Self::Legacy(error)
+    }
+}
+
+impl ResolveError {
+    fn into_message(self) -> String {
+        match self {
+            Self::Legacy(error) => error,
+            Self::Headless(error) => error.to_string(),
+        }
+    }
+
+    fn into_headless(self) -> HeadlessResolutionError {
+        match self {
+            Self::Headless(error) => error,
+            Self::Legacy(error) => HeadlessResolutionError::Persistence(error),
+        }
+    }
+}
+
+fn resolve_identity_with_mode(
+    store: &impl IdentityKeyStore,
+    profile: &ProfileScope,
+    strict_headless: bool,
+) -> Result<ResolvedIdentity, ResolveError> {
     let legacy_path = profile.legacy_identity_path();
 
     match store.probe(IDENTITY_KEY_NAME) {
@@ -257,7 +396,13 @@ pub fn resolve_identity_with_store(
                         });
                     }
                     Err(error) => {
-                        return recover_from_keyring(store, profile, &error.to_string());
+                        return recover_from_keyring(
+                            store,
+                            profile,
+                            &error.to_string(),
+                            strict_headless,
+                            false,
+                        );
                     }
                 }
             }
@@ -304,9 +449,22 @@ pub fn resolve_identity_with_store(
                 storage: IdentityStorage::LocalFile,
             });
         }
+        KeyringProbe::CorruptCurrentBlob => {
+            return recover_from_keyring(
+                store,
+                profile,
+                "current identity blob decode failed",
+                strict_headless,
+                true,
+            );
+        }
     }
 
-    let (keys, storage) = generate_and_persist(store, profile)?;
+    let (keys, storage) = if strict_headless {
+        generate_and_persist_headless(store, profile).map_err(ResolveError::Headless)?
+    } else {
+        generate_and_persist(store, profile)?
+    };
     Ok(ResolvedIdentity {
         keys,
         recovery: RecoveryState::None,
@@ -318,10 +476,22 @@ fn recover_from_keyring(
     store: &impl IdentityKeyStore,
     profile: &ProfileScope,
     error: &str,
-) -> Result<ResolvedIdentity, String> {
+    strict_headless: bool,
+    preexisting_corrupt_blob: bool,
+) -> Result<ResolvedIdentity, ResolveError> {
     eprintln!(
         "buzz-desktop: corrupt nsec in keyring ({error}), looking for a recovery path before clearing"
     );
+    // A strict adapter classifies a malformed blob before entering this
+    // recovery path. Remove only that pre-existing corrupt blob first so a
+    // valid same-profile file can be migrated and read back; a fresh-write
+    // read-back corruption never calls this function and therefore never
+    // reaches this cleanup branch.
+    if strict_headless && preexisting_corrupt_blob {
+        if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
+            eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
+        }
+    }
     if profile.legacy_identity_path().exists() {
         if let Some(keys) = migrate_identity_file(store, profile)? {
             return Ok(ResolvedIdentity {
@@ -346,7 +516,11 @@ fn recover_from_keyring(
     if let Err(error) = store.delete(IDENTITY_KEY_NAME) {
         eprintln!("buzz-desktop: failed to clear corrupt keyring value: {error}");
     }
-    let (keys, storage) = generate_and_persist(store, profile)?;
+    let (keys, storage) = if strict_headless {
+        generate_and_persist_headless(store, profile).map_err(ResolveError::Headless)?
+    } else {
+        generate_and_persist(store, profile)?
+    };
     Ok(ResolvedIdentity {
         keys,
         recovery: RecoveryState::None,
@@ -489,6 +663,67 @@ fn generate_and_persist(
     Ok((keys, storage))
 }
 
+/// Generate and persist a fresh identity for the strict headless consumer.
+///
+/// The legacy Tauri path intentionally remains in `generate_and_persist`.
+/// Here, a successful store is only provisional until the raw backend has been
+/// decoded and compared against K1. A corrupt/missing/locked/unavailable
+/// read-back is terminal for this attempt: no marker, delete, cleanup, or K2
+/// generation is allowed.
+fn generate_and_persist_headless(
+    store: &impl IdentityKeyStore,
+    profile: &ProfileScope,
+) -> Result<(Keys, IdentityStorage), HeadlessResolutionError> {
+    let keys = Keys::generate();
+    let nsec = keys.secret_key().to_bech32().map_err(|error| {
+        HeadlessResolutionError::Persistence(format!("encode identity: {error}"))
+    })?;
+
+    if let Err(error) = store.store(IDENTITY_KEY_NAME, &nsec) {
+        // Preserve the existing first-launch write-failure fallback. This is
+        // before the backend has reported a successful K1 write/read-back
+        // attempt, so a same-profile 0600 file remains an honest authority.
+        save_key_file(profile.legacy_identity_path(), &keys).map_err(|file_error| {
+            HeadlessResolutionError::Persistence(format!(
+                "identity keyring write failed ({error}); file fallback failed ({file_error})"
+            ))
+        })?;
+        return Ok((keys, IdentityStorage::LocalFile));
+    }
+
+    match store.verify_stored_headless(IDENTITY_KEY_NAME, &nsec) {
+        HeadlessReadback::Exact => {}
+        HeadlessReadback::Missing => {
+            return Err(HeadlessResolutionError::FreshWriteReadbackMissing)
+        }
+        HeadlessReadback::Mismatch => {
+            return Err(HeadlessResolutionError::FreshWriteReadbackMismatch)
+        }
+        HeadlessReadback::CorruptCurrentBlob => {
+            return Err(HeadlessResolutionError::FreshWriteReadbackCorrupt)
+        }
+        HeadlessReadback::Unreachable => {
+            return Err(HeadlessResolutionError::FreshWriteReadbackUnavailable)
+        }
+        HeadlessReadback::Locked => return Err(HeadlessResolutionError::FreshWriteReadbackLocked),
+    }
+
+    if let Err(error) = write_migration_marker(profile) {
+        // Preserve the existing marker-failure fallback, but never report the
+        // keyring as authoritative without its marker. The same K1 is written
+        // to the profile file and returned as local-file storage.
+        save_key_file(profile.legacy_identity_path(), &keys).map_err(|file_error| {
+            HeadlessResolutionError::Persistence(format!(
+                "identity marker write failed ({error}); file fallback failed ({file_error})"
+            ))
+        })?;
+        return Ok((keys, IdentityStorage::LocalFile));
+    }
+
+    cleanup_leftover_identity_file(profile.legacy_identity_path());
+    Ok((keys, IdentityStorage::SystemKeyring))
+}
+
 fn store_key_preferring_keyring(
     store: &impl IdentityKeyStore,
     keys: &Keys,
@@ -601,7 +836,7 @@ pub fn save_key_file(path: &Path, keys: &Keys) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, collections::HashMap};
+    use std::{cell::Cell, cell::RefCell, collections::HashMap};
 
     struct FakeStore {
         probe: KeyringProbe,
@@ -746,5 +981,145 @@ mod tests {
         assert_eq!(resolved.storage, IdentityStorage::LocalFile);
         let from_file = load_key_file(profile.legacy_identity_path()).expect("fallback key");
         assert_eq!(resolved.keys.public_key(), from_file.public_key());
+    }
+
+    struct HeadlessReadbackFake {
+        probe: KeyringProbe,
+        slot: RefCell<HashMap<String, String>>,
+        readback: Cell<HeadlessReadback>,
+        generated_values: RefCell<Vec<String>>,
+        store_calls: Cell<usize>,
+        delete_calls: Cell<usize>,
+    }
+
+    impl HeadlessReadbackFake {
+        fn new(probe: KeyringProbe, readback: HeadlessReadback) -> Self {
+            Self {
+                probe,
+                slot: RefCell::new(HashMap::new()),
+                readback: Cell::new(readback),
+                generated_values: RefCell::new(Vec::new()),
+                store_calls: Cell::new(0),
+                delete_calls: Cell::new(0),
+            }
+        }
+    }
+
+    impl IdentityKeyStore for HeadlessReadbackFake {
+        fn probe(&self, _name: &str) -> KeyringProbe {
+            self.probe
+        }
+
+        fn load(&self, name: &str) -> Result<Option<String>, String> {
+            Ok(self.slot.borrow().get(name).cloned())
+        }
+
+        fn store(&self, name: &str, value: &str) -> Result<(), String> {
+            self.store_calls.set(self.store_calls.get() + 1);
+            self.generated_values.borrow_mut().push(value.to_string());
+            self.slot
+                .borrow_mut()
+                .insert(name.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn delete(&self, name: &str) -> Result<(), String> {
+            self.delete_calls.set(self.delete_calls.get() + 1);
+            self.slot.borrow_mut().remove(name);
+            Ok(())
+        }
+
+        fn verify_stored(&self, name: &str, expected: &str) -> Result<bool, String> {
+            Ok(self
+                .slot
+                .borrow()
+                .get(name)
+                .is_some_and(|value| value == expected))
+        }
+
+        fn verify_stored_headless(&self, _name: &str, _expected: &str) -> HeadlessReadback {
+            self.readback.get()
+        }
+    }
+
+    #[test]
+    fn fresh_write_readback_corrupt_is_terminal_without_k2_or_cleanup() {
+        let dir = tempfile::tempdir().expect("temp profile");
+        let profile = scope(dir.path());
+        let store = HeadlessReadbackFake::new(
+            KeyringProbe::ReachableButEmpty,
+            HeadlessReadback::CorruptCurrentBlob,
+        );
+
+        let error = resolve_identity_with_headless_store(&store, &profile)
+            .expect_err("fresh corrupt read-back must not initialize");
+        assert_eq!(error, HeadlessResolutionError::FreshWriteReadbackCorrupt);
+        assert_eq!(
+            store.generated_values.borrow().len(),
+            1,
+            "only K1 may be generated"
+        );
+        assert_eq!(store.store_calls.get(), 1, "only K1 may be written");
+        assert_eq!(
+            store.delete_calls.get(),
+            0,
+            "fresh read-back failure must not delete"
+        );
+        assert!(!profile.migration_marker_path().exists());
+        assert!(!profile.legacy_identity_path().exists());
+    }
+
+    #[test]
+    fn fresh_write_readback_mismatch_is_terminal_without_marker() {
+        let dir = tempfile::tempdir().expect("temp profile");
+        let profile = scope(dir.path());
+        let store =
+            HeadlessReadbackFake::new(KeyringProbe::ReachableButEmpty, HeadlessReadback::Mismatch);
+
+        let error = resolve_identity_with_headless_store(&store, &profile)
+            .expect_err("fresh mismatch must not initialize");
+        assert_eq!(error, HeadlessResolutionError::FreshWriteReadbackMismatch);
+        assert_eq!(store.store_calls.get(), 1);
+        assert_eq!(store.delete_calls.get(), 0);
+        assert!(!profile.migration_marker_path().exists());
+    }
+
+    #[test]
+    fn initial_corrupt_probe_keeps_existing_recovery_order() {
+        let dir = tempfile::tempdir().expect("temp profile");
+        let profile = scope(dir.path());
+        let file_keys = Keys::generate();
+        save_key_file(profile.legacy_identity_path(), &file_keys).expect("file identity");
+        let store =
+            HeadlessReadbackFake::new(KeyringProbe::CorruptCurrentBlob, HeadlessReadback::Exact);
+
+        let resolved = resolve_identity_with_headless_store(&store, &profile)
+            .expect("pre-existing corrupt blob should recover the valid file");
+        assert_eq!(resolved.keys.public_key(), file_keys.public_key());
+        assert_eq!(store.store_calls.get(), 1);
+        assert!(profile.migration_marker_path().exists());
+    }
+
+    #[test]
+    fn initial_corrupt_probe_can_cleanup_before_regeneration() {
+        let dir = tempfile::tempdir().expect("temp profile");
+        let profile = scope(dir.path());
+        let store =
+            HeadlessReadbackFake::new(KeyringProbe::CorruptCurrentBlob, HeadlessReadback::Exact);
+
+        let resolved = resolve_identity_with_headless_store(&store, &profile)
+            .expect("initial corrupt blob may use cleanup recovery");
+        assert_eq!(resolved.storage, IdentityStorage::SystemKeyring);
+        assert_eq!(
+            store.delete_calls.get(),
+            1,
+            "cleanup may delete pre-existing blob"
+        );
+        assert_eq!(
+            store.store_calls.get(),
+            1,
+            "cleanup recovery generates only K1"
+        );
+        assert!(profile.migration_marker_path().exists());
     }
 }

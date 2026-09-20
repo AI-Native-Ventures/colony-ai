@@ -1103,6 +1103,7 @@ dependencies = [
  "bzip2 0.6.1",
  "chrono",
  "colony-identity-kernel",
+ "colony-identity-store",
  "ctrlc",
  "dirs",
  "earshot",
@@ -1621,6 +1622,20 @@ version = "0.1.0"
 dependencies = [
  "atomic-write-file",
  "nostr 0.44.7",
+]
+
+[[package]]
+name = "colony-identity-store"
+version = "0.1.0"
+dependencies = [
+ "colony-identity-kernel",
+ "keyring",
+ "libc",
+ "nostr 0.44.7",
+ "security-framework 3.7.0",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
