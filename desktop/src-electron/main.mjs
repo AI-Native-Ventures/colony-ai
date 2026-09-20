@@ -214,7 +214,11 @@ function assertTrustedPayload(event, payload) {
     });
   } catch (error) {
     noteSecurityDenial("ipcDeniedCount", error?.code ?? "unknown");
-    if (instrumentationMutation === STAGE0_TEST.allowUntrustedIpcMutation) {
+    if (
+      instrumentationEnabled &&
+      instrumentationMutation !== null &&
+      instrumentationMutation === STAGE0_TEST.allowUntrustedIpcMutation
+    ) {
       return;
     }
     throw error;
@@ -463,7 +467,11 @@ function beginRendererRebind() {
   ) {
     return runtime.rebindPromise;
   }
-  if (instrumentationMutation === STAGE0_TEST.disableRebindMutation) {
+  if (
+    instrumentationEnabled &&
+    instrumentationMutation !== null &&
+    instrumentationMutation === STAGE0_TEST.disableRebindMutation
+  ) {
     return Promise.resolve(runtime.rendererHost.bindingState());
   }
   clearLifecycleForRebind();
