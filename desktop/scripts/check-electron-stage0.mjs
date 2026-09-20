@@ -134,11 +134,17 @@ function checkAsar(archivePath, flavor, target) {
   if (expected.instrumentation) {
     requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
   }
-  const entries = listPackage(archivePath).map((entry) =>
-    entry.replace(/^\//, ""),
+  const entryByCanonicalPath = new Map(
+    listPackage(archivePath).map((entry) => [
+      entry.replace(/^[/\\]/, "").replaceAll("\\", "/"),
+      entry,
+    ]),
   );
+  const entries = [...entryByCanonicalPath.keys()];
+  const rawEntry = (entry) => entryByCanonicalPath.get(entry) ?? entry;
+  const extractEntry = (entry) => extractFile(archivePath, rawEntry(entry));
   const fileEntries = entries.filter((entry) => {
-    const metadata = statFile(archivePath, entry);
+    const metadata = statFile(archivePath, rawEntry(entry));
     return !("files" in metadata) && !("link" in metadata);
   });
   const entrySet = new Set(entries);
@@ -159,9 +165,7 @@ function checkAsar(archivePath, flavor, target) {
   if (fileEntries.filter((entry) => entry.endsWith(".html")).length !== 1) {
     fail("ASAR must contain exactly one HTML UI entry");
   }
-  const packageJson = JSON.parse(
-    extractFile(archivePath, "package.json").toString("utf8"),
-  );
+  const packageJson = JSON.parse(extractEntry("package.json").toString("utf8"));
   if (packageJson.stage0Flavor !== flavor) {
     fail(`ASAR flavor is ${packageJson.stage0Flavor ?? "missing"}`);
   }
@@ -204,10 +208,9 @@ function checkAsar(archivePath, flavor, target) {
   if (packageJson.main !== "src-electron/main.mjs") {
     fail(`ASAR entry point is ${packageJson.main ?? "missing"}`);
   }
-  const flavorSource = extractFile(
-    archivePath,
-    "src-electron/stage0-flavor.mjs",
-  ).toString("utf8");
+  const flavorSource = extractEntry("src-electron/stage0-flavor.mjs").toString(
+    "utf8",
+  );
   if (
     !flavorSource.includes(`STAGE0_BUILD_FLAVOR = "${flavor}"`) ||
     !flavorSource.includes(
@@ -240,7 +243,7 @@ function checkAsar(archivePath, flavor, target) {
     for (const entry of fileEntries) {
       scanText(
         `normal ASAR:${entry}`,
-        extractFile(archivePath, entry).toString("utf8"),
+        extractEntry(entry).toString("utf8"),
         normalPackageForbiddenTokens,
       );
     }
@@ -249,7 +252,7 @@ function checkAsar(archivePath, flavor, target) {
     }
   }
   for (const entry of fileEntries) {
-    scanText(`ASAR:${entry}`, extractFile(archivePath, entry).toString("utf8"));
+    scanText(`ASAR:${entry}`, extractEntry(entry).toString("utf8"));
   }
 }
 
