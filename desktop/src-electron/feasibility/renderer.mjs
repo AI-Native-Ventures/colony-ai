@@ -109,6 +109,7 @@ function startBindingMonitor() {
 }
 
 async function boot() {
+  if (window.top !== window.self) return;
   if (!window.stage0) {
     setError("untrusted_origin");
     return;
