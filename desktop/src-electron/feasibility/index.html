@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stage 0 host feasibility</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        background: #111318;
+        color: #f4f5f7;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top right, #243448, #111318 58%);
+      }
+
+      main {
+        box-sizing: border-box;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 36px 56px;
+      }
+
+      .eyebrow {
+        color: #8aa6c8;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 12px 0 8px;
+        font-size: clamp(1.8rem, 5vw, 2.6rem);
+        line-height: 1.05;
+      }
+
+      .lede {
+        margin: 0 0 30px;
+        color: #b9c0cc;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .card {
+        display: grid;
+        grid-template-columns: minmax(120px, 0.8fr) 1.8fr;
+        gap: 18px;
+        align-items: baseline;
+        padding: 16px 18px;
+        border: 1px solid #303744;
+        border-radius: 14px;
+        background: rgb(18 22 30 / 84%);
+      }
+
+      .label {
+        color: #8994a5;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        color: #f4f5f7;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92rem;
+      }
+
+      [data-state="ok"] .value {
+        color: #8fe3b2;
+      }
+
+      [data-state="error"] .value {
+        color: #ff9a9a;
+      }
+
+      footer {
+        margin-top: 30px;
+        color: #788396;
+        font-size: 0.8rem;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 620px) {
+        main {
+          padding: 32px 20px 40px;
+        }
+
+        .card {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Electron / Rust boundary</div>
+      <h1>Stage 0 host feasibility</h1>
+      <p class="lede">
+        A deliberately small diagnostic harness for one visible Electron window
+        and one headless Rust helper. No relay, identity, keychain, or network
+        operation is performed here.
+      </p>
+      <section class="grid" aria-label="Host binding diagnostics">
+        <div class="card" data-state="pending">
+          <div class="label">Binding</div>
+          <div class="value" data-testid="stage0-binding">Starting…</div>
+        </div>
+        <div class="card" data-state="pending">
+          <div class="label">Ready</div>
+          <div class="value" data-testid="stage0-ready">Waiting…</div>
+        </div>
+        <div class="card" data-state="pending">
+          <div class="label">Lifecycle</div>
+          <div class="value" data-testid="stage0-event">Waiting…</div>
+        </div>
+        <div class="card" data-state="pending">
+          <div class="label">Health-safe result</div>
+          <div class="value" data-testid="stage0-result">Waiting…</div>
+        </div>
+        <div class="card" data-state="pending">
+          <div class="label">Error</div>
+          <div class="value" data-testid="stage0-error">None</div>
+        </div>
+      </section>
+      <footer>
+        The only request admitted by this harness is
+        <code>health-safe / get_default_relay_url</code> with an empty payload.
+      </footer>
+    </main>
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

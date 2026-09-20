@@ -1,0 +1,202 @@
+name: Electron Stage 0 macOS arm64 feasibility
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/electron-stage0-manifest.json"
+      - "desktop/package.json"
+      - "desktop/src-electron/**"
+      - "desktop/src-native-host/**"
+      - "desktop/scripts/check-electron-stage0.mjs"
+      - "desktop/scripts/stage-electron-stage0.mjs"
+      - "desktop/playwright.electron.config.ts"
+      - "desktop/tests/electron-host-feasibility.spec.ts"
+      - "desktop/tests/electron-host-feasibility-normal.spec.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/electron-host-feasibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-feasibility:
+    name: packaged Electron / macOS arm64
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "This lane requires a native macOS arm64 runner; got $machine" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+          node --version
+          pnpm --version
+
+      - name: Install only the desktop dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm install --frozen-lockfile --filter buzz
+
+      - name: Download the pinned Electron runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec install-electron
+
+      - name: Build the standalone arm64 helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            --release --target aarch64-apple-darwin
+
+      - name: Stage and package the isolated candidate
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rm -rf desktop/dist-electron-normal desktop/dist-electron-instrumented
+          pnpm --dir desktop electron:stage0:package
+          pnpm --dir desktop electron:stage0:package:instrumented
+
+      - name: Inspect the package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-normal --flavor=normal
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-instrumented --flavor=instrumented
+          for app_binary in \
+            "$(find desktop/dist-electron-normal -path '*/Contents/MacOS/Buzz Stage0 Normal' -type f -print -quit)" \
+            "$(find desktop/dist-electron-instrumented -path '*/Contents/MacOS/Buzz Stage0 Instrumented' -type f -print -quit)"; do
+            test -n "$app_binary"
+            binary_description="$(file "$app_binary")"
+            echo "$binary_description"
+            echo "$binary_description" | grep -Eq 'arm64|aarch64'
+          done
+
+      - name: Run the normal relocated Electron proof with hostile ambient values
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: normal-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: normal-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright test \
+            --config playwright.electron.config.ts \
+            tests/electron-host-feasibility-normal.spec.ts
+
+      - name: Record candidate and derivative build flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          for flavor in normal instrumented; do
+            package_dir="desktop/.stage0-package-$flavor"
+            app_dir="desktop/dist-electron-$flavor/Buzz Stage0 $(test "$flavor" = normal && echo Normal || echo Instrumented)-darwin-arm64/Buzz Stage0 $(test "$flavor" = normal && echo Normal || echo Instrumented).app"
+            archive="$app_dir/Contents/Resources/app.asar"
+            helper="$app_dir/Contents/Resources/colony-native-host"
+            node -e 'const fs=require("node:fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p+"/package.json"));console.log(JSON.stringify({flavor:j.stage0Flavor,applicationId:j.stage0ApplicationId,userDataSuffix:j.stage0UserDataSuffix,sourceRevision:j.stage0SourceRevision,instrumentation:j.stage0Instrumentation}))' "$package_dir"
+            shasum -a 256 "$archive" "$helper"
+          done
+
+      - name: Run the packaged Electron proof
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: instrumented-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: instrumented-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright test \
+            --config playwright.electron.config.ts \
+            tests/electron-host-feasibility.spec.ts
+
+      - name: Prove the packaged reload test detects a disabled fence
+        shell: bash
+        run: |
+          set +e
+          . ./bin/activate-hermit
+          COLONY_STAGE0_TEST_MUTATION=disable-rebind-fence \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility.spec.ts \
+              --grep "reload rebinds the same helper"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "reload fence mutation unexpectedly passed"
+            exit 1
+          fi
+          echo "reload fence mutation=expected-failure status=$status"
+
+      - name: Prove the packaged IPC test detects an untrusted sender bypass
+        shell: bash
+        run: |
+          set +e
+          . ./bin/activate-hermit
+          COLONY_STAGE0_TEST_MUTATION=allow-untrusted-ipc \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility.spec.ts \
+              --grep "packaged IPC, navigation, window, and permission guards deny"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "untrusted IPC mutation unexpectedly passed"
+            exit 1
+          fi
+          echo "untrusted IPC mutation=expected-failure status=$status"
+
+      - name: Upload unsigned normal candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-macos-arm64-normal-${{ github.sha }}
+          path: |
+            desktop/dist-electron-normal
+            desktop/normal-playwright-electron-report
+            desktop/normal-test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload unsigned instrumented derivative evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-macos-arm64-instrumented-${{ github.sha }}
+          path: |
+            desktop/dist-electron-instrumented
+            desktop/instrumented-playwright-electron-report
+            desktop/instrumented-test-results
+          if-no-files-found: ignore
+          retention-days: 7
