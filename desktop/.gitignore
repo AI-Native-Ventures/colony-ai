@@ -14,6 +14,10 @@ dist-ssr
 dist-electron
 .stage0-package
 .stage0-package-resources
+.stage0-package-normal
+.stage0-package-instrumented
+.stage0-package-resources-normal
+.stage0-package-resources-instrumented
 playwright-report
 playwright-report.json
 test-results

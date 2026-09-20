@@ -11,19 +11,26 @@ import {
   publicIpcErrorCode,
   validateExactIpcCall,
 } from "./ipc-security.mjs";
+import {
+  STAGE0_APP_NAME,
+  STAGE0_BUILD_FLAVOR,
+  STAGE0_INSTRUMENTATION_ENABLED,
+  STAGE0_TEST,
+  STAGE0_USER_DATA_SUFFIX,
+} from "./stage0-flavor.mjs";
 
 const manifest = loadManifest();
-const TEST_MODE = process.env.COLONY_STAGE0_TEST_MODE === "1";
-const TEST_MUTATIONS = new Set(["disable-rebind-fence", "allow-untrusted-ipc"]);
-const TEST_MUTATION =
-  TEST_MODE && TEST_MUTATIONS.has(process.env.COLONY_STAGE0_TEST_MUTATION)
-    ? process.env.COLONY_STAGE0_TEST_MUTATION
+const instrumentationEnabled = STAGE0_INSTRUMENTATION_ENABLED;
+const instrumentationMutation =
+  instrumentationEnabled && STAGE0_TEST.mutationEnv
+    ? STAGE0_TEST.mutationNames.includes(process.env[STAGE0_TEST.mutationEnv])
+      ? process.env[STAGE0_TEST.mutationEnv]
+      : null
     : null;
 const CHILD_ENV_ALLOWLIST = Object.freeze([
   "BUZZ_RELAY_URL",
   "BUZZ_DESKTOP_BUILD_RELAY_URL",
 ]);
-const TEST_HOST_MODE_MISSING = "missing";
 const IPC = Object.freeze({
   HEALTH: "colony-stage0:health:get-default-relay-url",
   LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
@@ -33,20 +40,20 @@ const IPC = Object.freeze({
 });
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererEntry = path.join(rootDirectory, "feasibility", "index.html");
-const testSubframePreload = path.join(
-  rootDirectory,
-  "test-subframe-preload.cjs",
-);
+const testSubframePreload = STAGE0_TEST.subframePreload
+  ? path.join(rootDirectory, STAGE0_TEST.subframePreload)
+  : null;
 const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
-const testSubframeFixtureUrl = `${trustedRendererUrl}#stage0-test-subframe`;
+const testSubframeFixtureUrl = `${trustedRendererUrl}${STAGE0_TEST.subframeFixtureHash ?? ""}`;
 const userDataDirectory = path.join(
   app.getPath("appData"),
   manifest.namespace.userDataRelativePath,
+  STAGE0_USER_DATA_SUFFIX,
 );
 
 // This must happen before Electron's ready event. Stage 0 intentionally uses a
 // fresh namespace and never probes or opens a legacy Buzz/Colony profile.
-app.setName("Buzz Stage0");
+app.setName(STAGE0_APP_NAME);
 app.setPath("userData", userDataDirectory);
 
 const runtime = {
@@ -78,11 +85,11 @@ const runtime = {
 };
 
 function publishTestState() {
-  if (!TEST_MODE) return;
-  globalThis.__COLONY_STAGE0_TEST_KILL__ = () => {
+  if (!instrumentationEnabled || !STAGE0_TEST.stateGlobal) return;
+  globalThis[STAGE0_TEST.killGlobal] = () => {
     runtime.transport?.child?.kill?.("SIGTERM");
   };
-  globalThis.__COLONY_STAGE0_TEST_STATE__ = {
+  globalThis[STAGE0_TEST.stateGlobal] = {
     ...runtime.diagnostics,
     userDataPath: app.getPath("userData"),
     windowCount: BrowserWindow.getAllWindows().filter(
@@ -100,14 +107,14 @@ function publishTestState() {
 }
 
 function noteSecurityDenial(countKey, kind) {
-  if (!TEST_MODE) return;
+  if (!instrumentationEnabled) return;
   runtime.diagnostics[countKey] += 1;
   runtime.diagnostics.lastSecurityDenial = kind;
   publishTestState();
 }
 
 function beginHealthRequestProbe() {
-  if (!TEST_MODE) return null;
+  if (!instrumentationEnabled) return null;
   const probe = {
     generationId: currentGeneration(),
     status: "pending",
@@ -197,7 +204,6 @@ function assertTrustedPayload(event, payload) {
   if (!window || window.isDestroyed()) {
     throw boundedError({ code: "invalid_ipc_sender" });
   }
-  if (TEST_MUTATION === "allow-untrusted-ipc") return;
   try {
     validateExactIpcCall({
       event,
@@ -208,6 +214,9 @@ function assertTrustedPayload(event, payload) {
     });
   } catch (error) {
     noteSecurityDenial("ipcDeniedCount", error?.code ?? "unknown");
+    if (instrumentationMutation === STAGE0_TEST.allowUntrustedIpcMutation) {
+      return;
+    }
     throw error;
   }
 }
@@ -215,8 +224,9 @@ function assertTrustedPayload(event, payload) {
 function resolveHostPath() {
   const packagedPath = path.join(process.resourcesPath, "colony-native-host");
   if (
-    TEST_MODE &&
-    process.env.COLONY_STAGE0_HOST_MODE === TEST_HOST_MODE_MISSING
+    instrumentationEnabled &&
+    STAGE0_TEST.hostModeEnv &&
+    process.env[STAGE0_TEST.hostModeEnv] === STAGE0_TEST.hostModeMissing
   ) {
     return path.join(
       process.resourcesPath,
@@ -235,14 +245,17 @@ function createTransport() {
     }
   }
   const spawnEnv = {};
-  const fault = process.env.COLONY_STAGE0_FAULT;
-  if (TEST_MODE && manifest.faultInputs.includes(fault)) {
-    spawnEnv.COLONY_STAGE0_FAULT = fault;
+  const fault =
+    instrumentationEnabled && STAGE0_TEST.faultEnv
+      ? process.env[STAGE0_TEST.faultEnv]
+      : null;
+  if (instrumentationEnabled && manifest.faultInputs.includes(fault)) {
+    spawnEnv[STAGE0_TEST.faultEnv] = fault;
   }
   return new NativeHost({
     executablePath: resolveHostPath(),
     manifest,
-    buildId: `electron-stage0-${manifest.sourceRevision.slice(0, 12)}`,
+    buildId: `electron-stage0-${STAGE0_BUILD_FLAVOR}-${manifest.sourceRevision.slice(0, 12)}`,
     inheritedEnv,
     spawnEnv,
   });
@@ -335,8 +348,8 @@ function configureWindowSecurity(window) {
   });
   const handleNavigation = (event, url, isMainFrame = true) => {
     const isTestSubframeFixture =
-      TEST_MODE &&
-      process.env.COLONY_STAGE0_TEST_SUBFRAME === "1" &&
+      instrumentationEnabled &&
+      STAGE0_TEST.subframeEnabled &&
       !isMainFrame &&
       url === testSubframeFixtureUrl;
     if (
@@ -409,7 +422,7 @@ function createWindow() {
     minWidth: 620,
     minHeight: 460,
     show: true,
-    title: "Buzz Stage0 host feasibility",
+    title: STAGE0_APP_NAME,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
@@ -418,7 +431,7 @@ function createWindow() {
       // preload execution in a local subframe. Normal launches keep this
       // secure default disabled.
       nodeIntegrationInSubFrames:
-        TEST_MODE && process.env.COLONY_STAGE0_TEST_SUBFRAME === "1",
+        instrumentationEnabled && STAGE0_TEST.subframeEnabled,
       preload: path.join(rootDirectory, "preload.cjs"),
     },
   });
@@ -446,7 +459,7 @@ function beginRendererRebind() {
   ) {
     return runtime.rebindPromise;
   }
-  if (TEST_MUTATION === "disable-rebind-fence") {
+  if (instrumentationMutation === STAGE0_TEST.disableRebindMutation) {
     return Promise.resolve(runtime.rendererHost.bindingState());
   }
   clearLifecycleForRebind();
@@ -470,7 +483,9 @@ function beginRendererRebind() {
     .finally(() => {
       runtime.rebindPromise = null;
     });
-  if (TEST_MODE && Number.isSafeInteger(current)) publishTestState();
+  if (instrumentationEnabled && Number.isSafeInteger(current)) {
+    publishTestState();
+  }
   return runtime.rebindPromise;
 }
 
@@ -490,15 +505,16 @@ function initializeRuntime() {
 
 function registerTestSubframePreload() {
   if (
-    !TEST_MODE ||
-    process.env.COLONY_STAGE0_TEST_SUBFRAME !== "1" ||
+    !instrumentationEnabled ||
+    !STAGE0_TEST.subframeEnabled ||
+    !testSubframePreload ||
     typeof session.defaultSession.registerPreloadScript !== "function"
   ) {
     return;
   }
   session.defaultSession.registerPreloadScript({
     filePath: testSubframePreload,
-    id: "colony-stage0-test-subframe",
+    id: STAGE0_TEST.subframePreloadId,
     type: "frame",
   });
 }

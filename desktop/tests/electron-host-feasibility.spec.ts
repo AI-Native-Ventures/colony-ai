@@ -17,7 +17,10 @@ const desktopDirectory = path.resolve(
 );
 
 function findAppBundle() {
-  const outputDirectory = path.join(desktopDirectory, "dist-electron");
+  const outputDirectory = path.join(
+    desktopDirectory,
+    "dist-electron-instrumented",
+  );
   const candidates: string[] = [];
   const visit = (directory: string) => {
     if (!fs.existsSync(directory)) return;
@@ -37,11 +40,17 @@ function findAppBundle() {
     1,
     `expected one packaged app, found ${candidates.length}`,
   );
+  assert.equal(path.basename(candidates[0]), "Buzz Stage0 Instrumented.app");
   return candidates[0];
 }
 
 const appBundle = findAppBundle();
-const appBinary = path.join(appBundle, "Contents", "MacOS", "Buzz Stage0");
+const appBinary = path.join(
+  appBundle,
+  "Contents",
+  "MacOS",
+  "Buzz Stage0 Instrumented",
+);
 const hostResource = path.join(
   appBundle,
   "Contents",
@@ -49,28 +58,15 @@ const hostResource = path.join(
   "colony-native-host",
 );
 
-function launchEnvironment(
-  overrides: Record<string, string> = {},
-  testMode = true,
-) {
+function launchEnvironment(overrides: Record<string, string> = {}) {
   const environment = {
     ...process.env,
     ...overrides,
   };
-  if (testMode) {
-    environment.COLONY_STAGE0_TEST_MODE = "1";
-    environment.COLONY_STAGE0_TEST_SUBFRAME = "1";
-  } else {
-    delete environment.COLONY_STAGE0_TEST_MODE;
-    delete environment.COLONY_STAGE0_TEST_SUBFRAME;
-  }
   return environment;
 }
 
-async function launch(
-  overrides: Record<string, string> = {},
-  { testMode = true }: { testMode?: boolean } = {},
-) {
+async function launch(overrides: Record<string, string> = {}) {
   assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
@@ -79,7 +75,7 @@ async function launch(
   );
   const application = await electron.launch({
     executablePath: appBinary,
-    env: launchEnvironment(overrides, testMode),
+    env: launchEnvironment(overrides),
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -136,7 +132,10 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
     assert.equal(state.visibleWindowCount, 1);
     assert.equal(state.hostStartCount, 1);
     assert.ok(Number.isInteger(state.hostPid) && state.hostPid > 0);
-    assert.match(state.userDataPath, /Colony[\\/]dev[\\/]0000000000000001$/);
+    assert.match(
+      state.userDataPath,
+      /Colony[\\/]dev[\\/]0000000000000001[\\/]instrumented$/,
+    );
     assert.doesNotMatch(state.userDataPath, /xyz\.block\.buzz/);
     assert.deepEqual(networkRequests, []);
     const exposedKeys = await page.evaluate(() => Object.keys(window.stage0));
@@ -150,16 +149,11 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
   }
 });
 
-test("normal packaged launch strips ambient harness controls", async () => {
-  const { application, page } = await launch(
-    {
-      COLONY_STAGE0_FAULT: "malformed-frame",
-      COLONY_STAGE0_HOST_MODE: "missing",
-      COLONY_STAGE0_HOST_PATH: path.join(desktopDirectory, "not-a-helper"),
-      COLONY_STAGE0_TEST_DEADLINE_MS: "1",
-    },
-    { testMode: false },
-  );
+test("instrumented package ignores arbitrary helper path controls", async () => {
+  const { application, page } = await launch({
+    COLONY_STAGE0_HOST_MODE: "missing",
+    COLONY_STAGE0_HOST_PATH: path.join(desktopDirectory, "not-a-helper"),
+  });
   try {
     await assertReady(page);
     assert.equal(await page.getByTestId("stage0-error").textContent(), "None");

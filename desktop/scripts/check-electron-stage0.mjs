@@ -24,10 +24,23 @@ const forbiddenTokens = [
   "xyz.block.buzz",
   "fallback-tauri",
 ];
+const normalPackageForbiddenTokens = [
+  "COLONY_STAGE0_TEST",
+  "COLONY_STAGE0_FAULT",
+  "COLONY_STAGE0_HOST_MODE",
+  "COLONY_STAGE0_HOST_PATH",
+  "test-subframe-preload.cjs",
+  "allow-untrusted-ipc",
+  "disable-rebind-fence",
+  "stage0-instrumented",
+  'STAGE0_BUILD_FLAVOR = "instrumented"',
+];
 const sourceFiles = [
   "electron-stage0-manifest.json",
   "src-electron/main.mjs",
   "src-electron/preload.cjs",
+  "src-electron/stage0-flavor.normal.mjs",
+  "src-electron/stage0-flavor.instrumented.mjs",
   "src-electron/test-subframe-preload.cjs",
   "src-electron/host-protocol.mjs",
   "src-electron/native-host.mjs",
@@ -36,26 +49,29 @@ const sourceFiles = [
   "src-electron/feasibility/index.html",
   "src-electron/feasibility/renderer.mjs",
 ];
-const requiredPackageFiles = new Set([
-  "package.json",
-  "electron-stage0-manifest.json",
-  "src-electron/main.mjs",
-  "src-electron/preload.cjs",
-  "src-electron/test-subframe-preload.cjs",
-  "src-electron/host-protocol.mjs",
-  "src-electron/native-host.mjs",
-  "src-electron/renderer-host.mjs",
-  "src-electron/ipc-security.mjs",
-  "src-electron/feasibility/index.html",
-  "src-electron/feasibility/renderer.mjs",
-]);
+const packageFlavors = Object.freeze({
+  normal: Object.freeze({
+    packageName: "colony-stage0",
+    appName: "Buzz Stage0 Normal",
+    bundleId: "xyz.ainative.ventures.colony.stage0.normal",
+    userDataSuffix: "normal",
+    instrumentation: false,
+  }),
+  instrumented: Object.freeze({
+    packageName: "colony-stage0-instrumented",
+    appName: "Buzz Stage0 Instrumented",
+    bundleId: "xyz.ainative.ventures.colony.stage0.instrumented",
+    userDataSuffix: "instrumented",
+    instrumentation: true,
+  }),
+});
 
 function fail(message) {
   throw new Error(`electron stage0 check failed: ${message}`);
 }
 
-function scanText(label, text) {
-  for (const token of forbiddenTokens) {
+function scanText(label, text, additionalForbiddenTokens = []) {
+  for (const token of [...forbiddenTokens, ...additionalForbiddenTokens]) {
     if (text.includes(token))
       fail(`${label} contains forbidden token ${token}`);
   }
@@ -89,7 +105,24 @@ function findApps(packageRoot) {
   return results;
 }
 
-function checkAsar(archivePath) {
+function checkAsar(archivePath, flavor) {
+  const expected = packageFlavors[flavor];
+  const requiredPackageFiles = new Set([
+    "package.json",
+    "electron-stage0-manifest.json",
+    "src-electron/main.mjs",
+    "src-electron/preload.cjs",
+    "src-electron/stage0-flavor.mjs",
+    "src-electron/host-protocol.mjs",
+    "src-electron/native-host.mjs",
+    "src-electron/renderer-host.mjs",
+    "src-electron/ipc-security.mjs",
+    "src-electron/feasibility/index.html",
+    "src-electron/feasibility/renderer.mjs",
+  ]);
+  if (expected.instrumentation) {
+    requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
+  }
   const entries = listPackage(archivePath).map((entry) =>
     entry.replace(/^\//, ""),
   );
@@ -118,18 +151,85 @@ function checkAsar(archivePath) {
   const packageJson = JSON.parse(
     extractFile(archivePath, "package.json").toString("utf8"),
   );
+  if (packageJson.stage0Flavor !== flavor) {
+    fail(`ASAR flavor is ${packageJson.stage0Flavor ?? "missing"}`);
+  }
+  if (packageJson.name !== expected.packageName) {
+    fail(`ASAR package name is ${packageJson.name ?? "missing"}`);
+  }
+  if (packageJson.stage0Instrumentation !== expected.instrumentation) {
+    fail("ASAR instrumentation metadata disagrees with its flavor");
+  }
+  if (packageJson.stage0ApplicationId !== expected.bundleId) {
+    fail(
+      `ASAR application id is ${packageJson.stage0ApplicationId ?? "missing"}`,
+    );
+  }
+  if (packageJson.stage0UserDataSuffix !== expected.userDataSuffix) {
+    fail(
+      `ASAR user-data suffix is ${packageJson.stage0UserDataSuffix ?? "missing"}`,
+    );
+  }
+  if (
+    packageJson.stage0SourceRevision !==
+    "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be"
+  ) {
+    fail("ASAR source revision disagrees with the pinned manifest");
+  }
   if (packageJson.main !== "src-electron/main.mjs") {
     fail(`ASAR entry point is ${packageJson.main ?? "missing"}`);
   }
-  if (packageJson.name !== "colony-stage0") {
-    fail(`ASAR package name is ${packageJson.name ?? "missing"}`);
+  const flavorSource = extractFile(
+    archivePath,
+    "src-electron/stage0-flavor.mjs",
+  ).toString("utf8");
+  if (
+    !flavorSource.includes(`STAGE0_BUILD_FLAVOR = "${flavor}"`) ||
+    !flavorSource.includes(
+      `STAGE0_INSTRUMENTATION_ENABLED = ${expected.instrumentation}`,
+    )
+  ) {
+    fail("staged flavor metadata disagrees with package metadata");
+  }
+  if (!expected.instrumentation) {
+    const normalFlavorAssertions = [
+      "STAGE0_INSTRUMENTATION_ENABLED = false",
+      "mutationEnv: null",
+      "mutationNames: Object.freeze([])",
+      "disableRebindMutation: null",
+      "allowUntrustedIpcMutation: null",
+      "hostModeEnv: null",
+      "faultEnv: null",
+      "subframeEnabled: false",
+      "subframePreload: null",
+      "subframePreloadId: null",
+      "subframeFixtureHash: null",
+      "stateGlobal: null",
+      "killGlobal: null",
+    ];
+    for (const assertion of normalFlavorAssertions) {
+      if (!flavorSource.includes(assertion)) {
+        fail(`normal flavor is not immutable: missing ${assertion}`);
+      }
+    }
+    for (const entry of fileEntries) {
+      scanText(
+        `normal ASAR:${entry}`,
+        extractFile(archivePath, entry).toString("utf8"),
+        normalPackageForbiddenTokens,
+      );
+    }
+    if (entrySet.has("src-electron/test-subframe-preload.cjs")) {
+      fail("normal ASAR contains the instrumented subframe preload");
+    }
   }
   for (const entry of fileEntries) {
     scanText(`ASAR:${entry}`, extractFile(archivePath, entry).toString("utf8"));
   }
 }
 
-function checkBundle(bundleRoot) {
+function checkBundle(bundleRoot, flavor) {
+  const expected = packageFlavors[flavor];
   const apps = findApps(bundleRoot);
   if (apps.length !== 1) fail(`expected one app bundle, found ${apps.length}`);
   const appRoot = apps[0];
@@ -142,18 +242,34 @@ function checkBundle(bundleRoot) {
   if (!helperInfo.isFile() || (helperInfo.mode & 0o111) === 0) {
     fail("native helper is not an executable regular file");
   }
-  checkAsar(archive);
-  const appExecutable = path.join(appRoot, "Contents", "MacOS", "Buzz Stage0");
-  if (!existsSync(appExecutable)) fail("missing packaged Electron executable");
-  scanText(
-    "bundle metadata",
-    readFileSync(path.join(appRoot, "Contents", "Info.plist"), "utf8"),
+  checkAsar(archive, flavor);
+  const appExecutable = path.join(
+    appRoot,
+    "Contents",
+    "MacOS",
+    expected.appName,
   );
+  if (!existsSync(appExecutable)) fail("missing packaged Electron executable");
+  const infoPlist = readFileSync(
+    path.join(appRoot, "Contents", "Info.plist"),
+    "utf8",
+  );
+  scanText("bundle metadata", infoPlist);
+  if (!infoPlist.includes(expected.bundleId)) {
+    fail(`bundle metadata does not include ${expected.bundleId}`);
+  }
   return { appRoot, archive, helper };
 }
 
 function main() {
   const packageArgument = process.argv[2];
+  const flavorArgument = process.argv.find((value) =>
+    value.startsWith("--flavor="),
+  );
+  const flavor = flavorArgument?.slice("--flavor=".length) ?? "normal";
+  if (!Object.hasOwn(packageFlavors, flavor)) {
+    fail(`unsupported flavor ${flavor}`);
+  }
   scanSource();
   if (!packageArgument) {
     console.log("electron_stage0_source_guard=passed");
@@ -162,7 +278,7 @@ function main() {
   const packageRoot = path.resolve(packageArgument);
   if (!existsSync(packageRoot))
     fail(`package path does not exist: ${packageRoot}`);
-  const result = checkBundle(packageRoot);
+  const result = checkBundle(packageRoot, flavor);
   console.log(
     JSON.stringify({
       electron_stage0_package_guard: "passed",
