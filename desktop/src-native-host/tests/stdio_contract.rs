@@ -14,7 +14,7 @@ const FRAME_LIMIT: usize = 16_777_216;
 struct Harness {
     child: Child,
     stdin: Option<ChildStdin>,
-    stdout: BufReader<std::process::ChildStdout>,
+    stdout: Option<BufReader<std::process::ChildStdout>>,
 }
 
 impl Harness {
@@ -50,7 +50,7 @@ impl Harness {
         Self {
             child,
             stdin: Some(stdin),
-            stdout: BufReader::new(stdout),
+            stdout: Some(BufReader::new(stdout)),
         }
     }
 
@@ -78,6 +78,8 @@ impl Harness {
     fn read_value(&mut self) -> Value {
         let mut line = Vec::new();
         self.stdout
+            .as_mut()
+            .expect("host stdout should be open")
             .read_until(b'\n', &mut line)
             .expect("host stdout should be readable");
         assert!(!line.is_empty(), "expected a host frame, got EOF");
@@ -96,6 +98,8 @@ impl Harness {
     fn read_raw_line(&mut self) -> Vec<u8> {
         let mut line = Vec::new();
         self.stdout
+            .as_mut()
+            .expect("host stdout should be open")
             .read_until(b'\n', &mut line)
             .expect("host stdout should be readable");
         line
@@ -105,12 +109,33 @@ impl Harness {
         self.stdin.take();
     }
 
+    fn close_stdout(&mut self) {
+        self.stdout.take();
+    }
+
     fn finish(mut self) -> ExitStatus {
         self.close_stdin();
         let mut remaining = Vec::new();
-        self.stdout
-            .read_to_end(&mut remaining)
-            .expect("host stdout should close");
+        if let Some(stdout) = self.stdout.as_mut() {
+            stdout
+                .read_to_end(&mut remaining)
+                .expect("host stdout should close");
+        }
+        self.child.wait().expect("host process should exit")
+    }
+
+    fn finish_without_extra_output(mut self) -> ExitStatus {
+        self.close_stdin();
+        let mut remaining = Vec::new();
+        if let Some(stdout) = self.stdout.as_mut() {
+            stdout
+                .read_to_end(&mut remaining)
+                .expect("host stdout should close");
+        }
+        assert!(
+            remaining.is_empty(),
+            "host emitted more than one terminal frame"
+        );
         self.child.wait().expect("host process should exit")
     }
 
@@ -502,6 +527,92 @@ fn non_reading_parent_cannot_make_host_buffers_unbounded() {
         status.code(),
         Some(2),
         "a non-reading parent must trigger bounded output backpressure failure"
+    );
+}
+
+#[test]
+fn fatal_failure_rejects_pending_work_once_before_bounded_exit() {
+    let cases = vec![
+        (
+            "malformed",
+            None,
+            Some(format!("{PREFIX}{{not-json}}\n").into_bytes()),
+        ),
+        (
+            "wrong binding",
+            Some({
+                let mut frame = request("fatal-wrong-binding", 1);
+                frame["sessionId"] = json!("another-session");
+                frame
+            }),
+            None,
+        ),
+        (
+            "dispatch",
+            Some(json!({
+                "type": "NOT_REGISTERED",
+                "protocolVersion": 1,
+                "profileId": PROFILE_ID,
+                "sessionId": SESSION_ID,
+                "generationId": 1
+            })),
+            None,
+        ),
+    ];
+
+    for (label, frame, raw_frame) in cases {
+        let mut host = Harness::spawn(Some("delay-response"), None);
+        bind_initial(&mut host);
+        host.send(request("fatal-pending", 1))
+            .expect("delayed request should be accepted");
+        let fatal_started = std::time::Instant::now();
+        if let Some(frame) = frame {
+            host.send(frame).expect("fatal frame should be framed");
+        } else if let Some(raw_frame) = raw_frame {
+            host.send_raw(&raw_frame)
+                .expect("malformed frame should reach the host");
+        }
+
+        let terminal = host.read_value();
+        assert_error(&terminal, "fatal-pending", 1, "error", "host_unavailable");
+        assert!(
+            fatal_started.elapsed() < Duration::from_secs(1),
+            "{label} terminal response exceeded the bounded shutdown window"
+        );
+        let status = host.finish_without_extra_output();
+        assert_eq!(status.code(), Some(2), "{label} should fail closed");
+    }
+}
+
+#[test]
+fn idle_non_reading_parent_hits_active_writer_deadline() {
+    let relay_url = format!("wss://{}", "r".repeat(96 * 1024));
+    let mut host = Harness::spawn_with_relay_url(None, Some(50), Some(&relay_url));
+    bind_initial(&mut host);
+    host.send(request("large-write", 1))
+        .expect("large response request should be framed");
+
+    let status = host.wait_for_exit_bounded(Duration::from_secs(2));
+    assert_eq!(
+        status.code(),
+        Some(2),
+        "an idle blocked writer must hit its active progress deadline"
+    );
+}
+
+#[test]
+fn closed_stdout_causes_bounded_transport_failure() {
+    let mut host = Harness::spawn(None, Some(100));
+    bind_initial(&mut host);
+    host.close_stdout();
+    host.send(request("closed-output", 1))
+        .expect("request should reach the host before the output failure");
+
+    let status = host.wait_for_exit_bounded(Duration::from_secs(2));
+    assert_eq!(
+        status.code(),
+        Some(2),
+        "a closed output pipe must fail closed within a bounded interval"
     );
 }
 
