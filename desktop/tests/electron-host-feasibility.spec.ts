@@ -10,53 +10,15 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { getStage0PackagePaths } from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-function findAppBundle() {
-  const outputDirectory = path.join(
-    desktopDirectory,
-    "dist-electron-instrumented",
-  );
-  const candidates: string[] = [];
-  const visit = (directory: string) => {
-    if (!fs.existsSync(directory)) return;
-    for (const entry of fs.readdirSync(directory)) {
-      const absolute = path.join(directory, entry);
-      const info = fs.statSync(absolute);
-      if (entry.endsWith(".app") && info.isDirectory()) {
-        candidates.push(absolute);
-      } else if (info.isDirectory()) {
-        visit(absolute);
-      }
-    }
-  };
-  visit(outputDirectory);
-  assert.equal(
-    candidates.length,
-    1,
-    `expected one packaged app, found ${candidates.length}`,
-  );
-  assert.equal(path.basename(candidates[0]), "Buzz Stage0 Instrumented.app");
-  return candidates[0];
-}
-
-const appBundle = findAppBundle();
-const appBinary = path.join(
-  appBundle,
-  "Contents",
-  "MacOS",
-  "Buzz Stage0 Instrumented",
-);
-const hostResource = path.join(
-  appBundle,
-  "Contents",
-  "Resources",
-  "colony-native-host",
-);
+const packagePaths = getStage0PackagePaths("instrumented");
+const { appRoot: appBundle, appBinary, hostResource } = packagePaths;
 
 function launchEnvironment(overrides: Record<string, string> = {}) {
   const environment = {
@@ -67,7 +29,7 @@ function launchEnvironment(overrides: Record<string, string> = {}) {
 }
 
 async function launch(overrides: Record<string, string> = {}) {
-  assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
+  assert.equal(process.arch, packagePaths.arch, "packaged proof architecture");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
     fs.existsSync(hostResource),
@@ -97,6 +59,15 @@ async function visibleWindowCount(application: ElectronApplication) {
         (window) => !window.isDestroyed() && window.isVisible(),
       ).length,
   );
+}
+
+function isProcessAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function assertReady(page: Page) {
@@ -292,6 +263,9 @@ test("idle helper death becomes visibly unavailable without a respawn", async ()
   const { application, page } = await launch();
   try {
     await assertReady(page);
+    const beforeDeath = await testState(application);
+    const pid = beforeDeath.hostPid;
+    assert.ok(Number.isInteger(pid) && pid > 0);
     await application.evaluate(() => globalThis.__COLONY_STAGE0_TEST_KILL__());
     await page
       .getByTestId("stage0-error")
@@ -299,8 +273,9 @@ test("idle helper death becomes visibly unavailable without a respawn", async ()
       .waitFor();
     const state = await testState(application);
     assert.equal(state.hostStartCount, 1);
-    assert.equal(state.hostPid > 0, true);
+    assert.equal(state.hostPid, pid);
     assert.equal(state.bindingState.state, "unavailable");
+    await expect.poll(() => isProcessAlive(pid)).toBe(false);
   } finally {
     await close(application);
   }

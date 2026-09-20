@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -6,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { extractFile, listPackage, statFile } from "@electron/asar";
 
 import { loadManifest } from "../src-electron/host-protocol.mjs";
+import { getStage0TargetFromArguments } from "../src-electron/stage0-platform.mjs";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -45,6 +54,7 @@ const sourceFiles = [
   "src-electron/host-protocol.mjs",
   "src-electron/native-host.mjs",
   "src-electron/renderer-host.mjs",
+  "src-electron/stage0-platform.mjs",
   "src-electron/ipc-security.mjs",
   "src-electron/feasibility/index.html",
   "src-electron/feasibility/renderer.mjs",
@@ -105,7 +115,7 @@ function findApps(packageRoot) {
   return results;
 }
 
-function checkAsar(archivePath, flavor) {
+function checkAsar(archivePath, flavor, target) {
   const expected = packageFlavors[flavor];
   const requiredPackageFiles = new Set([
     "package.json",
@@ -117,6 +127,7 @@ function checkAsar(archivePath, flavor) {
     "src-electron/native-host.mjs",
     "src-electron/renderer-host.mjs",
     "src-electron/ipc-security.mjs",
+    "src-electron/stage0-platform.mjs",
     "src-electron/feasibility/index.html",
     "src-electron/feasibility/renderer.mjs",
   ]);
@@ -176,6 +187,20 @@ function checkAsar(archivePath, flavor) {
   ) {
     fail("ASAR source revision disagrees with the pinned manifest");
   }
+  if (packageJson.stage0Platform !== target.platform) {
+    fail(`ASAR platform is ${packageJson.stage0Platform ?? "missing"}`);
+  }
+  if (packageJson.stage0Arch !== target.arch) {
+    fail(`ASAR architecture is ${packageJson.stage0Arch ?? "missing"}`);
+  }
+  if (packageJson.stage0TargetTriple !== target.targetTriple) {
+    fail(
+      `ASAR target triple is ${packageJson.stage0TargetTriple ?? "missing"}`,
+    );
+  }
+  if (packageJson.stage0HelperName !== target.helperName) {
+    fail(`ASAR helper name is ${packageJson.stage0HelperName ?? "missing"}`);
+  }
   if (packageJson.main !== "src-electron/main.mjs") {
     fail(`ASAR entry point is ${packageJson.main ?? "missing"}`);
   }
@@ -228,21 +253,82 @@ function checkAsar(archivePath, flavor) {
   }
 }
 
-function checkBundle(bundleRoot, flavor) {
+function readPeMachine(filePath) {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const dosHeader = Buffer.alloc(64);
+    if (readSync(descriptor, dosHeader, 0, dosHeader.length, 0) !== 64) {
+      return null;
+    }
+    if (dosHeader.readUInt16LE(0) !== 0x5a4d) return null;
+    const peOffset = dosHeader.readUInt32LE(60);
+    const peHeader = Buffer.alloc(6);
+    if (readSync(descriptor, peHeader, 0, peHeader.length, peOffset) !== 6) {
+      return null;
+    }
+    if (peHeader.toString("ascii", 0, 4) !== "PE\0\0") return null;
+    return peHeader.readUInt16LE(4);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function findWindowsApp(packageRoot, appName) {
+  const expectedExecutable = `${appName}.exe`;
+  const matches = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory)) {
+      const absolute = path.join(directory, entry);
+      const info = statSync(absolute);
+      if (info.isDirectory()) {
+        if (!entry.includes("node_modules")) visit(absolute);
+      } else if (entry === expectedExecutable) {
+        matches.push({
+          appRoot: path.dirname(absolute),
+          appExecutable: absolute,
+        });
+      }
+    }
+  };
+  visit(packageRoot);
+  if (matches.length !== 1) {
+    fail(`expected one Windows app executable, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
+function findExecutableFiles(directory) {
+  const matches = [];
+  const visit = (current) => {
+    for (const entry of readdirSync(current)) {
+      const absolute = path.join(current, entry);
+      const info = statSync(absolute);
+      if (info.isDirectory()) {
+        if (!entry.includes("node_modules")) visit(absolute);
+      } else if (entry.toLowerCase().endsWith(".exe")) {
+        matches.push(absolute);
+      }
+    }
+  };
+  visit(directory);
+  return matches;
+}
+
+function checkMacBundle(bundleRoot, flavor, target) {
   const expected = packageFlavors[flavor];
   const apps = findApps(bundleRoot);
   if (apps.length !== 1) fail(`expected one app bundle, found ${apps.length}`);
   const appRoot = apps[0];
   const resources = path.join(appRoot, "Contents", "Resources");
   const archive = path.join(resources, "app.asar");
-  const helper = path.join(resources, "colony-native-host");
+  const helper = path.join(resources, target.helperName);
   if (!existsSync(archive)) fail("missing Contents/Resources/app.asar");
   if (!existsSync(helper)) fail("missing external colony-native-host resource");
   const helperInfo = statSync(helper);
   if (!helperInfo.isFile() || (helperInfo.mode & 0o111) === 0) {
     fail("native helper is not an executable regular file");
   }
-  checkAsar(archive, flavor);
+  checkAsar(archive, flavor, target);
   const appExecutable = path.join(
     appRoot,
     "Contents",
@@ -261,6 +347,52 @@ function checkBundle(bundleRoot, flavor) {
   return { appRoot, archive, helper };
 }
 
+function checkWindowsBundle(bundleRoot, flavor, target) {
+  const expected = packageFlavors[flavor];
+  const { appRoot, appExecutable } = findWindowsApp(
+    bundleRoot,
+    expected.appName,
+  );
+  const resources = path.join(appRoot, "resources");
+  const archive = path.join(resources, "app.asar");
+  const helper = path.join(resources, target.helperName);
+  if (!existsSync(archive)) fail("missing resources/app.asar");
+  if (!existsSync(helper))
+    fail(`missing external ${target.helperName} resource`);
+  for (const executable of [appExecutable, helper]) {
+    if (
+      !statSync(executable).isFile() ||
+      readPeMachine(executable) !== 0x8664
+    ) {
+      fail(`Windows x64 PE resource check failed for ${executable}`);
+    }
+  }
+  const executableFiles = findExecutableFiles(bundleRoot);
+  const allowedExecutables = new Set([appExecutable, helper]);
+  for (const executable of executableFiles) {
+    if (!allowedExecutables.has(executable)) {
+      fail(`unexpected Windows executable resource ${executable}`);
+    }
+  }
+  if (executableFiles.length !== 2) {
+    fail(
+      `expected one app and one helper executable, found ${executableFiles.length}`,
+    );
+  }
+  checkAsar(archive, flavor, target);
+  return { appRoot, archive, helper, appExecutable };
+}
+
+function checkBundle(bundleRoot, flavor, target) {
+  if (target.bundleKind === "app") {
+    return checkMacBundle(bundleRoot, flavor, target);
+  }
+  if (target.bundleKind === "directory") {
+    return checkWindowsBundle(bundleRoot, flavor, target);
+  }
+  fail(`unsupported package bundle kind ${target.bundleKind}`);
+}
+
 function main() {
   const packageArgument = process.argv[2];
   const flavorArgument = process.argv.find((value) =>
@@ -270,6 +402,7 @@ function main() {
   if (!Object.hasOwn(packageFlavors, flavor)) {
     fail(`unsupported flavor ${flavor}`);
   }
+  const target = getStage0TargetFromArguments();
   scanSource();
   if (!packageArgument) {
     console.log("electron_stage0_source_guard=passed");
@@ -278,11 +411,15 @@ function main() {
   const packageRoot = path.resolve(packageArgument);
   if (!existsSync(packageRoot))
     fail(`package path does not exist: ${packageRoot}`);
-  const result = checkBundle(packageRoot, flavor);
+  const result = checkBundle(packageRoot, flavor, target);
   console.log(
     JSON.stringify({
       electron_stage0_package_guard: "passed",
+      platform: target.platform,
+      arch: target.arch,
+      targetTriple: target.targetTriple,
       app: result.appRoot,
+      appExecutable: result.appExecutable ?? null,
       asar: result.archive,
       helper: result.helper,
     }),

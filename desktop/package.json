@@ -24,8 +24,10 @@
     "test:e2e:report": "playwright show-report",
     "electron:stage0:stage": "node ./scripts/stage-electron-stage0.mjs --flavor=normal",
     "electron:stage0:stage:instrumented": "node ./scripts/stage-electron-stage0.mjs --flavor=instrumented",
-    "electron:stage0:package": "pnpm run electron:stage0:stage && electron-packager .stage0-package-normal \"Buzz Stage0 Normal\" --platform=darwin --arch=arm64 --out=dist-electron-normal --overwrite --asar --app-bundle-id=xyz.ainative.ventures.colony.stage0.normal --extra-resource=.stage0-package-resources-normal/colony-native-host",
-    "electron:stage0:package:instrumented": "pnpm run electron:stage0:stage:instrumented && electron-packager .stage0-package-instrumented \"Buzz Stage0 Instrumented\" --platform=darwin --arch=arm64 --out=dist-electron-instrumented --overwrite --asar --app-bundle-id=xyz.ainative.ventures.colony.stage0.instrumented --extra-resource=.stage0-package-resources-instrumented/colony-native-host",
+    "electron:stage0:package": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=normal",
+    "electron:stage0:package:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=instrumented",
+    "electron:stage0:package:windows": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=normal",
+    "electron:stage0:package:windows:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=instrumented",
     "electron:stage0:check": "node ./scripts/check-electron-stage0.mjs dist-electron-normal --flavor=normal",
     "tauri:build": "node ./scripts/tauri-command.mjs build"
   },

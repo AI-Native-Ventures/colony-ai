@@ -10,29 +10,14 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { getStage0PackagePaths } from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const appBundle = path.join(
-  desktopDirectory,
-  "dist-electron-normal",
-  "Buzz Stage0 Normal-darwin-arm64",
-  "Buzz Stage0 Normal.app",
-);
-const appBinary = path.join(
-  appBundle,
-  "Contents",
-  "MacOS",
-  "Buzz Stage0 Normal",
-);
-const hostResource = path.join(
-  appBundle,
-  "Contents",
-  "Resources",
-  "colony-native-host",
-);
+const packagePaths = getStage0PackagePaths("normal");
+const { appRoot: appBundle, appBinary, hostResource } = packagePaths;
 
 const hostileEnvironment = {
   COLONY_STAGE0_TEST_MODE: "1",
@@ -45,7 +30,7 @@ const hostileEnvironment = {
 };
 
 async function launchNormal() {
-  assert.equal(process.arch, "arm64", "packaged proof must run on macOS arm64");
+  assert.equal(process.arch, packagePaths.arch, "packaged proof architecture");
   assert.ok(fs.existsSync(appBinary), `missing packaged app: ${appBinary}`);
   assert.ok(
     fs.existsSync(hostResource),

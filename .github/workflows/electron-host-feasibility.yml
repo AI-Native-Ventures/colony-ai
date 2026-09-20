@@ -1,4 +1,4 @@
-name: Electron Stage 0 macOS arm64 feasibility
+name: Electron Stage 0 packaged feasibility
 
 on:
   pull_request:
@@ -10,8 +10,10 @@ on:
       - "desktop/src-electron/**"
       - "desktop/src-native-host/**"
       - "desktop/scripts/check-electron-stage0.mjs"
+      - "desktop/scripts/package-electron-stage0.mjs"
       - "desktop/scripts/stage-electron-stage0.mjs"
       - "desktop/playwright.electron.config.ts"
+      - "desktop/tests/electron-stage0-package.ts"
       - "desktop/tests/electron-host-feasibility.spec.ts"
       - "desktop/tests/electron-host-feasibility-normal.spec.ts"
       - "pnpm-lock.yaml"
@@ -199,4 +201,184 @@ jobs:
             desktop/instrumented-playwright-electron-report
             desktop/instrumented-test-results
           if-no-files-found: ignore
+          retention-days: 7
+
+  packaged-feasibility-windows:
+    name: packaged Electron / Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native Windows x64 runner
+        shell: pwsh
+        run: |
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          Write-Host "runner_architecture=$architecture"
+          if ($architecture -ne "X64") {
+            throw "This lane requires a native Windows x64 runner; got $architecture"
+          }
+
+      - name: Add the pinned Rust target
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add x86_64-pc-windows-msvc
+          rustc -vV
+
+      - name: Install the pinned Node and pnpm toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+
+      - name: Install pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+
+      - name: Assert x64 Node runtime
+        shell: pwsh
+        run: |
+          if ((node -p "process.arch") -ne "x64") {
+            throw "This lane requires a x64 Node runtime"
+          }
+
+      - name: Install only the desktop dependency graph
+        shell: pwsh
+        run: |
+          pnpm install --frozen-lockfile --filter buzz
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Download the pinned Electron runtime
+        shell: pwsh
+        run: |
+          pnpm --dir desktop exec install-electron
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build the standalone x64 Windows helper
+        shell: pwsh
+        run: |
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml `
+            --release --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Stage and package both immutable flavors
+        shell: pwsh
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/x86_64-pc-windows-msvc/release/colony-native-host.exe
+        run: |
+          pnpm --dir desktop electron:stage0:package:windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --dir desktop electron:stage0:package:windows:instrumented
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Inspect the real Windows ASAR and PE boundary
+        shell: pwsh
+        run: |
+          node desktop/scripts/check-electron-stage0.mjs `
+            desktop/dist-electron-normal --platform=win32 --arch=x64 `
+            --target=x86_64-pc-windows-msvc --flavor=normal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/check-electron-stage0.mjs `
+            desktop/dist-electron-instrumented --platform=win32 --arch=x64 `
+            --target=x86_64-pc-windows-msvc --flavor=instrumented
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Archive, hash, and relocate the unsigned candidates
+        shell: pwsh
+        run: |
+          $archiveRoot = Join-Path $env:RUNNER_TEMP "electron-stage0-windows-x64"
+          Remove-Item -Recurse -Force $archiveRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $archiveRoot | Out-Null
+          $normalZip = Join-Path $archiveRoot "electron-stage0-windows-x64-normal.zip"
+          $instrumentedZip = Join-Path $archiveRoot "electron-stage0-windows-x64-instrumented.zip"
+          Compress-Archive -Path "desktop/dist-electron-normal/*" -DestinationPath $normalZip -Force
+          Compress-Archive -Path "desktop/dist-electron-instrumented/*" -DestinationPath $instrumentedZip -Force
+          $relocatedRoot = Join-Path $archiveRoot "relocated"
+          $normalRoot = Join-Path $relocatedRoot "normal"
+          $instrumentedRoot = Join-Path $relocatedRoot "instrumented"
+          New-Item -ItemType Directory -Force $normalRoot, $instrumentedRoot | Out-Null
+          Expand-Archive -Path $normalZip -DestinationPath $normalRoot -Force
+          Expand-Archive -Path $instrumentedZip -DestinationPath $instrumentedRoot -Force
+          Add-Content -Path $env:GITHUB_ENV -Value "COLONY_STAGE0_NORMAL_ROOT=$normalRoot"
+          Add-Content -Path $env:GITHUB_ENV -Value "COLONY_STAGE0_INSTRUMENTED_ROOT=$instrumentedRoot"
+          foreach ($flavor in @("normal", "instrumented")) {
+            $package = Join-Path $env:GITHUB_WORKSPACE "desktop/.stage0-package-$flavor/package.json"
+            node -e 'const fs=require("node:fs");const j=JSON.parse(fs.readFileSync(process.argv[1]));console.log(JSON.stringify({flavor:j.stage0Flavor,platform:j.stage0Platform,arch:j.stage0Arch,targetTriple:j.stage0TargetTriple,helperName:j.stage0HelperName,applicationId:j.stage0ApplicationId,userDataSuffix:j.stage0UserDataSuffix,sourceRevision:j.stage0SourceRevision,instrumentation:j.stage0Instrumentation}))' $package
+          }
+          Get-FileHash -Algorithm SHA256 $normalZip
+          Get-FileHash -Algorithm SHA256 $instrumentedZip
+
+      - name: Run the relocated normal Windows Electron proof
+        shell: pwsh
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: windows-normal-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: windows-normal-playwright-electron-report
+        run: |
+          pnpm --dir desktop exec playwright test `
+            --config playwright.electron.config.ts `
+            tests/electron-host-feasibility-normal.spec.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the relocated instrumented Windows Electron proof
+        shell: pwsh
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: windows-instrumented-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: windows-instrumented-playwright-electron-report
+        run: |
+          pnpm --dir desktop exec playwright test `
+            --config playwright.electron.config.ts `
+            tests/electron-host-feasibility.spec.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prove the Windows packaged reload guard is falsifiable
+        shell: pwsh
+        run: |
+          $env:COLONY_STAGE0_TEST_MUTATION = "disable-rebind-fence"
+          pnpm --dir desktop exec playwright test `
+            --config playwright.electron.config.ts `
+            tests/electron-host-feasibility.spec.ts `
+            --grep "reload rebinds the same helper"
+          $status = $LASTEXITCODE
+          Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
+          if ($status -eq 0) { throw "reload fence mutation unexpectedly passed" }
+          Write-Host "reload fence mutation=expected-failure status=$status"
+
+      - name: Prove the Windows packaged sender guard is falsifiable
+        shell: pwsh
+        run: |
+          $env:COLONY_STAGE0_TEST_MUTATION = "allow-untrusted-ipc"
+          pnpm --dir desktop exec playwright test `
+            --config playwright.electron.config.ts `
+            tests/electron-host-feasibility.spec.ts `
+            --grep "packaged IPC, navigation, window, and permission guards deny"
+          $status = $LASTEXITCODE
+          Remove-Item Env:COLONY_STAGE0_TEST_MUTATION -ErrorAction SilentlyContinue
+          if ($status -eq 0) { throw "untrusted IPC mutation unexpectedly passed" }
+          Write-Host "untrusted IPC mutation=expected-failure status=$status"
+
+      - name: Upload unsigned Windows normal candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-windows-x64-normal-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/electron-stage0-windows-x64/electron-stage0-windows-x64-normal.zip
+            desktop/windows-normal-playwright-electron-report
+            desktop/windows-normal-test-results
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unsigned Windows instrumented derivative evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-windows-x64-instrumented-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/electron-stage0-windows-x64/electron-stage0-windows-x64-instrumented.zip
+            desktop/windows-instrumented-playwright-electron-report
+            desktop/windows-instrumented-test-results
+          if-no-files-found: error
           retention-days: 7

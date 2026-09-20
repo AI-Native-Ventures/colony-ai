@@ -6,6 +6,7 @@ import { app, BrowserWindow, ipcMain, session } from "electron";
 import { loadManifest } from "./host-protocol.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { RendererHost } from "./renderer-host.mjs";
+import { getStage0Target } from "./stage0-platform.mjs";
 import {
   isTrustedNavigation,
   publicIpcErrorCode,
@@ -39,6 +40,7 @@ const IPC = Object.freeze({
   LIFECYCLE_EVENT: "colony-stage0:lifecycle:event",
 });
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
+const stage0Target = getStage0Target();
 const rendererEntry = path.join(rootDirectory, "feasibility", "index.html");
 const testSubframePreload = STAGE0_TEST.subframePreload
   ? path.join(rootDirectory, STAGE0_TEST.subframePreload)
@@ -226,7 +228,10 @@ function assertTrustedPayload(event, payload) {
 }
 
 function resolveHostPath() {
-  const packagedPath = path.join(process.resourcesPath, "colony-native-host");
+  const packagedPath = path.join(
+    process.resourcesPath,
+    stage0Target.helperName,
+  );
   if (
     instrumentationEnabled &&
     STAGE0_TEST.hostModeEnv &&
@@ -235,7 +240,7 @@ function resolveHostPath() {
     return path.join(
       process.resourcesPath,
       "stage0-test-missing",
-      "colony-native-host",
+      stage0Target.helperName,
     );
   }
   return packagedPath;
