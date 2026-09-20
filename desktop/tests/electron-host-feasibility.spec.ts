@@ -151,7 +151,6 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
 
 test("instrumented package ignores arbitrary helper path controls", async () => {
   const { application, page } = await launch({
-    COLONY_STAGE0_HOST_MODE: "missing",
     COLONY_STAGE0_HOST_PATH: path.join(desktopDirectory, "not-a-helper"),
   });
   try {
