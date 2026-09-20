@@ -38,6 +38,7 @@ const runtime = {
   window: null,
   transport: null,
   rendererHost: null,
+  detachTransportState: null,
   trustedUrl: trustedRendererUrl,
   lifecycleBuffer: [],
   lifecycleSubscribers: new Set(),
@@ -361,6 +362,9 @@ function initializeRuntime() {
   if (runtime.rendererHost) return;
   runtime.transport = createTransport();
   runtime.rendererHost = new RendererHost({ transport: runtime.transport });
+  runtime.detachTransportState = runtime.transport.onState?.(() => {
+    publishTestState();
+  });
   runtime.rendererHost.onLifecycle((frame) => {
     rememberLifecycle(frame);
     publishTestState();
@@ -393,6 +397,8 @@ async function disposeRuntime() {
       );
     })
     .finally(() => {
+      runtime.detachTransportState?.();
+      runtime.detachTransportState = null;
       runtime.lifecycleSubscribers.clear();
       runtime.window = null;
       publishTestState();
