@@ -207,7 +207,7 @@ const activeReactRendererForms = Object.freeze([
   {
     name: "Tauri import",
     pattern:
-      /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'][^"']*(?:@tauri-apps\/|(?:^|(?:\/|-))tauri(?:(?:\/|-)|["']))/,
+      /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'][^"']*@tauri-apps\//,
   },
   {
     name: "Tauri command",
