@@ -171,6 +171,8 @@ export function isApprovedAsarFileEntry(entry, uiMode) {
 const observedReactRendererAssets = Object.freeze({
   core: "src-electron/renderer/assets/core-CGTdLJHd.js",
   dialog: "src-electron/renderer/assets/dialog-9ih2nekE.js",
+  keyboardShortcuts:
+    "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
   index: "src-electron/renderer/assets/index-Bjw85wCC.js",
   instrumentedIndex: "src-electron/renderer/assets/index-CTdVhpDl.js",
 });
@@ -205,6 +207,7 @@ export function allowedReactRendererTokens(uiMode, entry) {
   if (
     entry === observedReactRendererAssets.core ||
     entry === observedReactRendererAssets.dialog ||
+    entry === observedReactRendererAssets.keyboardShortcuts ||
     entry === observedReactRendererAssets.index ||
     entry === observedReactRendererAssets.instrumentedIndex
   ) {
