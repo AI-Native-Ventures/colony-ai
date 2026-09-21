@@ -183,7 +183,7 @@ export function scanText(
 
 function allowedReactRendererTokens(uiMode, entry) {
   return uiMode === "react" && entry.startsWith("src-electron/renderer/")
-    ? ["buzz://"]
+    ? ["buzz://", "__TAURI_INTERNALS__"]
     : [];
 }
 

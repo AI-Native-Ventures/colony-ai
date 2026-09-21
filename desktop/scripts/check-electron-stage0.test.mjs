@@ -85,9 +85,9 @@ test("allows the product deep-link token only in the React renderer scan", () =>
   assert.doesNotThrow(() =>
     scanText(
       "React ASAR:src-electron/renderer/assets/autoPinMentionedAgentsPreference.js",
-      "const link = 'buzz://message';",
+      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__';",
       [],
-      ["buzz://"],
+      ["buzz://", "__TAURI_INTERNALS__"],
     ),
   );
   assert.throws(
@@ -98,9 +98,9 @@ test("allows the product deep-link token only in the React renderer scan", () =>
     () =>
       scanText(
         "React ASAR:src-electron/renderer/assets/adapter.js",
-        "import '@tauri-apps/api/core';",
+        "import '@tauri-apps/api/core'; const bridge = '__TAURI_INTERNALS__';",
         [],
-        ["buzz://"],
+        ["buzz://", "__TAURI_INTERNALS__"],
       ),
     /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token @tauri-apps\//,
   );
