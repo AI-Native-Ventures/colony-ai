@@ -176,6 +176,7 @@ const observedReactRendererAssets = Object.freeze({
   index: "src-electron/renderer/assets/index-Bjw85wCC.js",
   instrumentedIndex: "src-electron/renderer/assets/index-CTdVhpDl.js",
   markdown: "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+  tauri: "src-electron/renderer/assets/tauri-BU66xV9L.js",
 });
 
 const generatedReactAssetPattern =
@@ -210,7 +211,8 @@ export function allowedReactRendererTokens(uiMode, entry) {
     entry === observedReactRendererAssets.dialog ||
     entry === observedReactRendererAssets.keyboardShortcuts ||
     entry === observedReactRendererAssets.index ||
-    entry === observedReactRendererAssets.instrumentedIndex
+    entry === observedReactRendererAssets.instrumentedIndex ||
+    entry === observedReactRendererAssets.tauri
   ) {
     tokens.push("__TAURI_INTERNALS__");
   }

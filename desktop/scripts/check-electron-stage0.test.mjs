@@ -118,6 +118,13 @@ test("allows only observed generated React asset literals", () => {
   assert.deepEqual(
     allowedReactRendererTokens(
       "react",
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
       "src-electron/renderer/assets/index-Bjw85wCC.js",
     ),
     [
