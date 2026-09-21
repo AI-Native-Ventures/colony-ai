@@ -45,16 +45,13 @@ async function runtimeDiagnostics(
   return { binding, main };
 }
 
-async function readIdentity(
-  page: Page,
-  application: ElectronApplication,
-) {
+async function readIdentity(page: Page, application: ElectronApplication) {
   const surface = await page.evaluate(() => ({
     stage0: Object.keys(window.stage0 ?? {}).sort(),
     identity: Object.keys(window.stage0?.identity ?? {}).sort(),
   }));
   const binding = await page.evaluate(() => window.stage0.bindingState());
-  let shared;
+  let shared: { value: boolean };
   try {
     shared = await page.evaluate(() =>
       window.stage0.identity.isSharedIdentity(),
@@ -65,7 +62,11 @@ async function readIdentity(
       `isSharedIdentity failed: ${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify(diagnostics)}`,
     );
   }
-  let identity;
+  let identity: {
+    storage: string;
+    reset_failed: boolean;
+    pubkey: string;
+  };
   try {
     identity = await page.evaluate(() => window.stage0.identity.getIdentity());
   } catch (error) {
@@ -83,7 +84,7 @@ async function close(application: ElectronApplication) {
 
 test("packaged normal macOS bridge serves production identity and survives reload/restart", async () => {
   const first = await launchIdentity();
-  let firstIdentity;
+  let firstIdentity: Awaited<ReturnType<typeof readIdentity>>;
   try {
     firstIdentity = await readIdentity(first.page, first.application);
     assert.deepEqual(firstIdentity.surface.identity, [
@@ -115,7 +116,10 @@ test("packaged normal macOS bridge serves production identity and survives reloa
     assert.equal(restarted.identity.storage, "system-keyring");
     assert.equal(restarted.identity.pubkey, firstIdentity.identity.pubkey);
     assert.equal(restarted.binding.generationId, 1);
-    assert.equal(restarted.binding.sessionId !== firstIdentity.binding.sessionId, true);
+    assert.equal(
+      restarted.binding.sessionId !== firstIdentity.binding.sessionId,
+      true,
+    );
 
     const beforeReload = restarted.binding;
     await second.page.reload();
@@ -135,7 +139,9 @@ test("packaged identity helper failure stays pre-READY and exposes only a bounde
   const backup = `${packagePaths.hostResource}.identity-test-disabled`;
   fs.renameSync(packagePaths.hostResource, backup);
   try {
-    const { application, page } = await launchIdentity({ requireHelper: false });
+    const { application, page } = await launchIdentity({
+      requireHelper: false,
+    });
     try {
       await page.waitForLoadState("domcontentloaded");
       let error: { message?: string; name?: string } | null = null;

@@ -27,7 +27,6 @@ import {
   createIdentityRequest,
   encodeIdentityFrame,
   redactedIdentityProtocolCode,
-  validateIdentityFrame,
   validateIdentityLaunchDescriptor,
   validateIdentityResponse,
 } from "./identity-protocol.mjs";
@@ -365,8 +364,7 @@ export class NativeHost {
       throw new TypeError("listener must be a function");
     if (this.terminal) return () => {};
     if (
-      this.lifecycleListeners.size >=
-      (this.protocol.subscriptionLimit ?? 1024)
+      this.lifecycleListeners.size >= (this.protocol.subscriptionLimit ?? 1024)
     ) {
       throw hostError("host_busy");
     }
@@ -655,9 +653,7 @@ export class NativeHost {
       pending.resolve(frame);
       return;
     }
-      pending.reject(
-        hostError(this.#redactedCode(frame.error, frame.outcome)),
-      );
+    pending.reject(hostError(this.#redactedCode(frame.error, frame.outcome)));
   }
 
   #handleEvent(frame) {
