@@ -33,6 +33,7 @@ export type NativeCapability =
   | "identity-import"
   | "identity-recovery"
   | "identity-backup"
+  | "legacy-migration"
   | "deep-links"
   | "nostr-bind"
   | "updater"

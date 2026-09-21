@@ -9,6 +9,7 @@ import {
   normalizeElectronSharedIdentity,
   supportsNativeCapability,
 } from "./nativeBridge.ts";
+import { resolveInitialMachineOnboardingState } from "@/features/onboarding/ui/machineOnboardingStartup.ts";
 
 const originalWindow = globalThis.window;
 const originalIsTauri = globalThis.isTauri;
@@ -122,6 +123,36 @@ test("Electron uses named identity methods and only exposes read capabilities", 
       ["isSharedIdentity", 0],
       ["getIdentity", 0],
     ],
+  );
+});
+
+test("Electron lost identity names unsupported import before the flow mounts", () => {
+  installElectronIdentityBridge();
+
+  assert.deepEqual(
+    resolveInitialMachineOnboardingState({
+      identityLost: true,
+      supportsCapability: supportsNativeCapability,
+    }),
+    {
+      page: "unsupported",
+      unsupportedCapability: "identity-import",
+    },
+  );
+
+  globalThis.isTauri = true;
+  globalThis.window = {
+    __TAURI_INTERNALS__: { invoke: async () => undefined },
+  };
+  assert.deepEqual(
+    resolveInitialMachineOnboardingState({
+      identityLost: true,
+      supportsCapability: supportsNativeCapability,
+    }),
+    {
+      page: "key-import",
+      unsupportedCapability: null,
+    },
   );
 });
 

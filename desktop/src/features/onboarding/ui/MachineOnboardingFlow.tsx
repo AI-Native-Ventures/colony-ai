@@ -46,17 +46,13 @@ import {
 } from "./OnboardingSlideTransition";
 import { SetupStep } from "./SetupStep";
 import type { HarnessConnectionMethod } from "./harnessConnectionOptions";
+import {
+  resolveInitialMachineOnboardingState,
+  type MachineOnboardingPage,
+} from "./machineOnboardingStartup";
 import type { DefaultConfigDraft } from "./types";
 
-export type MachineOnboardingPage =
-  | "identity"
-  | "identity-key-intro"
-  | "identity-key-help"
-  | "key-import"
-  | "unsupported"
-  | "backup"
-  | "setup"
-  | "config";
+export type { MachineOnboardingPage } from "./machineOnboardingStartup";
 
 type BackupSubview = "created" | "password";
 
@@ -93,18 +89,21 @@ export function MachineOnboardingFlow({
   initialPage?: MachineOnboardingPage;
   queryClient: QueryClient;
 }) {
+  const initialState = resolveInitialMachineOnboardingState({
+    identityLost,
+    initialPage,
+    supportsCapability: supportsNativeCapability,
+  });
   const [page, setPage] = React.useState<MachineOnboardingPage>(
-    identityLost
-      ? supportsNativeCapability("identity-import")
-        ? "key-import"
-        : "unsupported"
-      : (initialPage ?? "identity"),
+    () => initialState.page,
   );
   const [transitionDirection, setTransitionDirection] =
     React.useState<OnboardingTransitionDirection>("forward");
   const [error, setError] = React.useState<string | null>(null);
   const [unsupportedCapability, setUnsupportedCapability] =
-    React.useState<NativeCapability | null>(null);
+    React.useState<NativeCapability | null>(
+      () => initialState.unsupportedCapability,
+    );
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [keyImportStage, setKeyImportStage] =
