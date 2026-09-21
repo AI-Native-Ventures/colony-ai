@@ -41,6 +41,7 @@ async function launchNormal() {
   );
   const application = await electron.launch({
     executablePath: appBinary,
+    chromiumSandbox: true,
     env: { ...process.env, ...hostileEnvironment },
   });
   const page = await application.firstWindow();

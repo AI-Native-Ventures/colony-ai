@@ -57,6 +57,7 @@ async function launch(overrides: Record<string, string> = {}) {
   );
   const application = await electron.launch({
     executablePath: appBinary,
+    chromiumSandbox: true,
     env: launchEnvironment(overrides),
     // This is an instrumented-only synthetic device. It does not grant
     // permission (the installed main-process handler must still deny it), and
