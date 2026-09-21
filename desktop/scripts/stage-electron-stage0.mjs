@@ -59,6 +59,9 @@ async function copyTree(sourceDirectory, packageDirectory, targetDirectory) {
       `renderer build is missing or not a directory: ${sourceDirectory}`,
     );
   }
+  await mkdir(path.join(packageDirectory, targetDirectory), {
+    recursive: true,
+  });
   const entries = await readdir(sourceDirectory, { withFileTypes: true });
   for (const entry of entries) {
     const source = path.join(sourceDirectory, entry.name);
