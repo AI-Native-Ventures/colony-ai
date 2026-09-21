@@ -164,6 +164,8 @@ struct Host {
     fault: FaultMode,
     deadline: Duration,
     launch_mode: LaunchMode,
+    crash_after_reservation: bool,
+    crash_after_b1: bool,
     session_mode: SessionMode,
     #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
     identity: Option<identity::IdentityRuntime>,
@@ -178,6 +180,8 @@ impl Host {
         fault: FaultMode,
         output: SyncSender<Vec<u8>>,
         launch_mode: LaunchMode,
+        crash_after_reservation: bool,
+        crash_after_b1: bool,
     ) -> Self {
         let deadline = test_or_manifest_deadline(&limits, launch_mode);
         Self {
@@ -194,6 +198,8 @@ impl Host {
             fault,
             deadline,
             launch_mode,
+            crash_after_reservation,
+            crash_after_b1,
             session_mode: SessionMode::Undecided,
             #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
             identity: None,
@@ -758,6 +764,8 @@ impl Host {
                     &self.identity_profiles,
                     &self.identity_manifest_digest,
                     &frame.build_id,
+                    self.crash_after_reservation,
+                    self.crash_after_b1,
                 )
             } else if derivative {
                 identity::IdentityRuntime::initialize_derivative(
@@ -1024,6 +1032,25 @@ fn launch_mode_from_args() -> LaunchMode {
     }
 }
 
+fn crash_controls_from_args(launch_mode: LaunchMode) -> (bool, bool) {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    let after_reservation = arguments
+        .iter()
+        .any(|argument| argument == "--identity-v2-crash-after-reservation");
+    let after_b1 = arguments
+        .iter()
+        .any(|argument| argument == "--identity-v2-crash-after-b1");
+    if (after_reservation || after_b1)
+        && (launch_mode != LaunchMode::IdentityV2Production
+            || !cfg!(feature = "identity-crash-test")
+            || (after_reservation && after_b1))
+    {
+        eprintln!("native host startup rejected invalid identity crash control");
+        process::exit(PROTOCOL_FAILURE_CODE);
+    }
+    (after_reservation, after_b1)
+}
+
 fn main() {
     let manifest = match load_manifest() {
         Ok(manifest) => manifest,
@@ -1033,6 +1060,7 @@ fn main() {
         }
     };
     let launch_mode = launch_mode_from_args();
+    let (crash_after_reservation, crash_after_b1) = crash_controls_from_args(launch_mode);
     if launch_mode != LaunchMode::IdentityV2Production {
         match env::var(FAULT_ENV).ok().as_deref() {
             Some("exit-before-ready") => process::exit(EXIT_BEFORE_READY_CODE),
@@ -1078,6 +1106,8 @@ fn main() {
         fault,
         output_sender,
         launch_mode,
+        crash_after_reservation,
+        crash_after_b1,
     );
     let result = host.run(receiver, writer_failure_receiver);
     finish_host(
@@ -1306,6 +1336,8 @@ mod tests {
             FaultMode::None,
             output,
             LaunchMode::IdentityV2Test,
+            false,
+            false,
         );
         let frame = v2::Frame::Hello(v2::Hello {
             frame_type: "HELLO".to_string(),

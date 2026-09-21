@@ -13,6 +13,9 @@ default = []
 # The Tauri compatibility consumer and the future explicit headless consumer
 # opt into this feature independently. Health-only native-host builds do not.
 system-keyring = ["dep:keyring", "dep:security-framework", "dep:windows-sys"]
+# Derivative-only bounded operation classification for the hosted custody
+# diagnostic. This never activates the store or changes normal custody.
+diagnostic = []
 
 [dependencies]
 colony_identity_kernel = { package = "colony-identity-kernel", path = "../identity-kernel" }

@@ -15,6 +15,11 @@ identity-system-keyring = [
     "dep:colony_identity_store",
     "colony_identity_store/system-keyring",
 ]
+identity-diagnostic = [
+    "identity-system-keyring",
+    "colony_identity_store/diagnostic",
+]
+identity-crash-test = ["identity-system-keyring"]
 
 [dependencies]
 atomic-write-file = "=0.3.0"
