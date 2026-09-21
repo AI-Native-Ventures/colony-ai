@@ -17,9 +17,13 @@ import {
   canonicalizeAsarEntries,
   canonicalizeAsarEntry,
   assertContainedRegularFile,
+  allowedReactRendererTokens,
   findLinuxApp,
   inspectAsarEntries,
+  isApprovedAsarFileEntry,
   readElfMachine,
+  scanReactRendererText,
+  scanText,
 } from "./check-electron-stage0.mjs";
 
 test("canonicalizes the observed ASAR leading separator and Windows separators", () => {
@@ -51,6 +55,227 @@ test("accepts the observed real package entry layout exactly once", () => {
       "src-electron/main.mjs",
       "resources/colony-native-host.exe",
     ],
+  );
+});
+
+test("allows only the observed React renderer Tauri adapter chunk", () => {
+  assert.equal(
+    isApprovedAsarFileEntry(
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+      "react",
+    ),
+    true,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry(
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+      "feasibility",
+    ),
+    false,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry("src-electron/renderer/tauri-runtime.js", "react"),
+    false,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry("src-electron/tauri-runtime.js", "react"),
+    false,
+  );
+});
+
+test("allows only observed generated React asset literals", () => {
+  const assetPath =
+    "src-electron/renderer/assets/autoPinMentionedAgentsPreference-CYBef7vf.js";
+  const assetTokens = allowedReactRendererTokens("react", assetPath);
+  assert.doesNotThrow(() =>
+    scanText(
+      `React ASAR:${assetPath}`,
+      "const link = 'buzz://message';",
+      [],
+      assetTokens,
+    ),
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/core-CGTdLJHd.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/dialog-9ih2nekE.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/index-Bjw85wCC.js",
+    ),
+    [
+      "buzz://",
+      "__TAURI_INTERNALS__",
+      "__BUZZ_E2E__",
+      "maybeInstallE2eTauriMocks",
+      "src/main.tsx",
+    ],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/index-CTdVhpDl.js",
+    ),
+    [
+      "buzz://",
+      "__TAURI_INTERNALS__",
+      "__BUZZ_E2E__",
+      "maybeInstallE2eTauriMocks",
+      "src/main.tsx",
+    ],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+    ),
+    ["buzz://", "__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens("react", "src-electron/renderer/index.html"),
+    ["src/main.tsx", "tauri.conf.json"],
+  );
+  assert.throws(
+    () => scanText("source", "const link = 'buzz://message';"),
+    /source contains forbidden token buzz:\/\//,
+  );
+  for (const path of [
+    "src-electron/renderer/index.html",
+    "src-electron/renderer/boot.css",
+    "src-electron/renderer/assets/style.css",
+    "src-electron/renderer/assets/index.js.map",
+    "src-electron/renderer/adapter.js",
+  ]) {
+    const tokens = allowedReactRendererTokens("react", path);
+    assert.equal(tokens.includes("buzz://"), false, path);
+    assert.throws(
+      () =>
+        scanText(
+          `React ASAR:${path}`,
+          "const link = 'buzz://message';",
+          [],
+          tokens,
+        ),
+      new RegExp(`React ASAR:${path} contains forbidden token buzz://`),
+    );
+  }
+  assert.throws(
+    () =>
+      scanText(
+        "React ASAR:src-electron/renderer/assets/adapter.js",
+        "window.__TAURI_INTERNALS__.invoke('identity');",
+        [],
+        allowedReactRendererTokens(
+          "react",
+          "src-electron/renderer/assets/adapter.js",
+        ),
+      ),
+    /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token __TAURI_INTERNALS__/,
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "feasibility",
+      "src-electron/renderer/assets/index.js",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens("react", "src-electron/main.mjs"),
+    [],
+  );
+});
+
+const reactAssetsWithTauriAllowance = [
+  "src-electron/renderer/assets/core-CGTdLJHd.js",
+  "src-electron/renderer/assets/dialog-9ih2nekE.js",
+  "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
+  "src-electron/renderer/assets/index-Bjw85wCC.js",
+  "src-electron/renderer/assets/index-CTdVhpDl.js",
+  "src-electron/renderer/assets/tauri-BU66xV9L.js",
+];
+
+const reactAssetsWithMockAllowance = [
+  "src-electron/renderer/assets/index-Bjw85wCC.js",
+  "src-electron/renderer/assets/index-CTdVhpDl.js",
+  "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+];
+
+for (const flavor of ["normal", "instrumented"]) {
+  for (const entry of reactAssetsWithTauriAllowance) {
+    test(`rejects active Tauri invoke/import/command in ${flavor} ${entry}`, () => {
+      for (const source of [
+        'window.__TAURI_INTERNALS__.invoke("identity");',
+        'import { invoke } from "@tauri-apps/api/core"; invoke("identity");',
+        'invoke("plugin:identity");',
+      ]) {
+        assert.throws(
+          () =>
+            scanReactRendererText(
+              `React ${flavor}:${entry}`,
+              source,
+              flavor,
+              entry,
+            ),
+          /active React renderer form/,
+          source,
+        );
+      }
+    });
+  }
+
+  for (const entry of reactAssetsWithMockAllowance) {
+    test(`rejects active E2E mock installation in ${flavor} ${entry}`, () => {
+      assert.throws(
+        () =>
+          scanReactRendererText(
+            `React ${flavor}:${entry}`,
+            "if (window.__BUZZ_E2E__) maybeInstallE2eTauriMocks();",
+            flavor,
+            entry,
+          ),
+        /active React renderer form E2E mock installer/,
+      );
+    });
+  }
+}
+
+test("keeps a content-bound exception separate from generic generated assets", () => {
+  const genericAsset =
+    "src-electron/renderer/assets/autoPinMentionedAgentsPreference-CYBef7vf.js";
+  assert.throws(
+    () =>
+      scanReactRendererText(
+        `React normal:${genericAsset}`,
+        "const link = 'buzz://message';",
+        "normal",
+        genericAsset,
+      ),
+    /reviewed React package provenance/,
   );
 });
 

@@ -26,6 +26,8 @@
     "electron:stage0:stage:instrumented": "node ./scripts/stage-electron-stage0.mjs --flavor=instrumented",
     "electron:stage0:package": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=normal",
     "electron:stage0:package:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=instrumented",
+    "electron:stage0:package:react": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=normal --ui=react",
+    "electron:stage0:package:react:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=darwin --arch=arm64 --target=aarch64-apple-darwin --flavor=instrumented --ui=react",
     "electron:stage0:package:windows": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=normal",
     "electron:stage0:package:windows:instrumented": "node ./scripts/package-electron-stage0.mjs --platform=win32 --arch=x64 --target=x86_64-pc-windows-msvc --flavor=instrumented",
     "electron:stage0:package:linux": "node ./scripts/package-electron-stage0.mjs --platform=linux --arch=x64 --target=x86_64-unknown-linux-gnu --flavor=normal",

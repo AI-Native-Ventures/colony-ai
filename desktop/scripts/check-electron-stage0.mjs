@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -47,6 +48,23 @@ const normalPackageForbiddenTokens = [
   "disable-rebind-fence",
   "stage0-instrumented",
   'STAGE0_BUILD_FLAVOR = "instrumented"',
+  "__BUZZ_E2E__",
+  "maybeInstallE2eTauriMocks",
+  "src/main.tsx",
+];
+// The upstream React bundle contains shared Tauri adapter modules because the
+// browser/Tauri product still owns those capabilities. Electron must not
+// execute them, but rejecting their package names would make a real upstream
+// build impossible. Keep the generated bundle guard focused on development
+// mocks and sandbox-disabling launch paths; the packaged spec proves the
+// Electron runtime has no Tauri internals and remains on the onboarding gate.
+const reactRendererForbiddenTokens = [
+  "__BUZZ_E2E__",
+  "maybeInstallE2eTauriMocks",
+  "src/main.tsx",
+  "--no-sandbox",
+  "sandbox: false",
+  "ELECTRON_DISABLE_SANDBOX",
 ];
 const sourceFiles = [
   "electron-stage0-manifest.json",
@@ -61,6 +79,8 @@ const sourceFiles = [
   "src-electron/identity-launch.mjs",
   "src-electron/renderer-host.mjs",
   "src-electron/stage0-platform.mjs",
+  "src-electron/stage0-renderer.feasibility.mjs",
+  "src-electron/stage0-renderer.react.mjs",
   "src-electron/ipc-security.mjs",
   "src-electron/feasibility/index.html",
   "src-electron/feasibility/renderer.mjs",
@@ -136,11 +156,199 @@ export function canonicalizeAsarEntries(rawEntries) {
   return entryByCanonicalPath;
 }
 
-function scanText(label, text, additionalForbiddenTokens = []) {
+export function isApprovedAsarFileEntry(entry, uiMode) {
+  const isGeneratedReactTauriChunk =
+    uiMode === "react" &&
+    /^src-electron\/renderer\/assets\/tauri-[A-Za-z0-9_-]+\.js$/.test(entry);
+  return (
+    !entry.startsWith("src/") &&
+    !entry.startsWith("src-tauri/") &&
+    (!entry.includes("tauri") || isGeneratedReactTauriChunk) &&
+    !entry.includes("node_modules") &&
+    !entry.endsWith(".dmg")
+  );
+}
+
+const observedReactRendererAssets = Object.freeze({
+  core: "src-electron/renderer/assets/core-CGTdLJHd.js",
+  dialog: "src-electron/renderer/assets/dialog-9ih2nekE.js",
+  keyboardShortcuts:
+    "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
+  index: "src-electron/renderer/assets/index-Bjw85wCC.js",
+  instrumentedIndex: "src-electron/renderer/assets/index-CTdVhpDl.js",
+  markdown: "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+  tauri: "src-electron/renderer/assets/tauri-BU66xV9L.js",
+});
+
+// These are the content digests of the complete app.asar files observed in the
+// hosted React package proof. A generated filename is only an observation;
+// the package digest binds every renderer exception to the reviewed bytes.
+// Update these values only with a new hosted package-provenance record and
+// review.
+const observedReactPackageAsarDigests = Object.freeze({
+  normal: "3d641a94855d9b095e7d8959ea2af0141a693542d88f53b13ac9b000c441edcd",
+  instrumented:
+    "bbb6613c4452fbbd73a0a9cc10b28078c0fee16c5e606758683b7bf05d8ef437",
+});
+
+const generatedReactAssetPattern =
+  /^src-electron\/renderer\/assets\/[A-Za-z0-9._-]+\.js$/;
+
+function isGeneratedReactAssetEntry(entry) {
+  return generatedReactAssetPattern.test(entry);
+}
+
+const activeReactRendererForms = Object.freeze([
+  {
+    name: "Tauri invoke",
+    pattern:
+      /__TAURI_INTERNALS__\s*(?:\.\s*invoke|\[\s*["']invoke["']\s*\])\s*(?:\?\.\s*)?\(/,
+  },
+  {
+    name: "Tauri import",
+    pattern:
+      /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'][^"']*@tauri-apps\//,
+  },
+  {
+    name: "Tauri command",
+    pattern:
+      /\b(?:invoke|run|command)\s*\(\s*["'][^"']*(?:plugin:|tauri(?:\/|-))/,
+  },
+  {
+    name: "E2E mock installer",
+    pattern: /\bmaybeInstallE2eTauriMocks\s*\(/,
+  },
+]);
+
+// The generated @tauri-apps/core adapter is present in the reviewed React
+// bundle for the upstream renderer, but it must not turn an arbitrary
+// allowlisted asset into an IPC escape hatch.  This is deliberately a
+// narrow, content-shaped adapter call: a command/args/options delegation in
+// the exact core chunk, and only when the complete app.asar provenance is the
+// fixed hosted package record above.  A string-literal command, an import, a
+// mock installer, or the same shape in any other asset remains forbidden.
+const reviewedCoreAdapterInvoke =
+  /__TAURI_INTERNALS__\s*(?:\.\s*invoke|\[\s*["']invoke["']\s*\])\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*[A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)?\s*\)/;
+
+function isReviewedCoreAdapterInvoke(entry, text, flavor, packageDigest) {
+  return (
+    entry === observedReactRendererAssets.core &&
+    packageDigest === observedReactPackageAsarDigests[flavor] &&
+    reviewedCoreAdapterInvoke.test(text)
+  );
+}
+
+export function scanText(
+  label,
+  text,
+  additionalForbiddenTokens = [],
+  allowedForbiddenTokens = [],
+) {
+  const allowed = new Set(allowedForbiddenTokens);
   for (const token of [...forbiddenTokens, ...additionalForbiddenTokens]) {
-    if (text.includes(token))
+    if (!allowed.has(token) && text.includes(token))
       fail(`${label} contains forbidden token ${token}`);
   }
+}
+
+function assertNoActiveReactRendererForms(
+  label,
+  text,
+  flavor,
+  entry,
+  packageDigest,
+) {
+  for (const { name, pattern } of activeReactRendererForms) {
+    if (
+      pattern.test(text) &&
+      !(
+        name === "Tauri invoke" &&
+        isReviewedCoreAdapterInvoke(entry, text, flavor, packageDigest)
+      )
+    ) {
+      fail(`${label} contains active React renderer form ${name}`);
+    }
+  }
+}
+
+function scanTrustedReactRendererText(
+  label,
+  text,
+  flavor,
+  entry,
+  additionalForbiddenTokens = [],
+  packageDigest,
+) {
+  assertNoActiveReactRendererForms(label, text, flavor, entry, packageDigest);
+  if (packageDigest !== observedReactPackageAsarDigests[flavor]) {
+    fail(`${label} is missing reviewed React package provenance`);
+  }
+  scanText(
+    label,
+    text,
+    [...reactRendererForbiddenTokens, ...additionalForbiddenTokens],
+    allowedReactRendererTokens("react", entry),
+  );
+}
+
+export function scanReactRendererText(
+  label,
+  text,
+  flavor,
+  entry,
+  additionalForbiddenTokens = [],
+) {
+  scanTrustedReactRendererText(
+    label,
+    text,
+    flavor,
+    entry,
+    additionalForbiddenTokens,
+    undefined,
+  );
+}
+
+function assertReactPackageProvenance(archivePath, flavor) {
+  const expected = observedReactPackageAsarDigests[flavor];
+  if (!expected) {
+    fail(`no reviewed React package provenance exists for ${flavor}`);
+  }
+  const actual = createHash("sha256")
+    .update(readFileSync(archivePath))
+    .digest("hex");
+  if (actual !== expected) {
+    fail(
+      `${flavor} app.asar digest ${actual} does not match the reviewed React package`,
+    );
+  }
+  return actual;
+}
+
+export function allowedReactRendererTokens(uiMode, entry) {
+  if (uiMode !== "react") return [];
+  if (entry === "src-electron/renderer/index.html") {
+    return ["src/main.tsx", "tauri.conf.json"];
+  }
+  if (!isGeneratedReactAssetEntry(entry)) return [];
+  const tokens = ["buzz://"];
+  if (
+    entry === observedReactRendererAssets.core ||
+    entry === observedReactRendererAssets.dialog ||
+    entry === observedReactRendererAssets.keyboardShortcuts ||
+    entry === observedReactRendererAssets.index ||
+    entry === observedReactRendererAssets.instrumentedIndex ||
+    entry === observedReactRendererAssets.tauri
+  ) {
+    tokens.push("__TAURI_INTERNALS__");
+  }
+  if (
+    entry === observedReactRendererAssets.index ||
+    entry === observedReactRendererAssets.instrumentedIndex ||
+    entry === observedReactRendererAssets.markdown
+  ) {
+    tokens.push("__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx");
+  }
+  return tokens;
 }
 
 function scanSource() {
@@ -265,8 +473,16 @@ export function inspectAsarEntries(archivePath) {
   };
 }
 
-function checkAsar(archivePath, flavor, target) {
+function checkAsar(archivePath, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
+  const reactPackageDigest =
+    uiMode === "react"
+      ? assertReactPackageProvenance(archivePath, flavor)
+      : undefined;
+  const expectedRendererEntry =
+    uiMode === "react"
+      ? "src-electron/renderer/index.html"
+      : "src-electron/feasibility/index.html";
   const requiredPackageFiles = new Set([
     "package.json",
     "electron-stage0-manifest.json",
@@ -278,11 +494,14 @@ function checkAsar(archivePath, flavor, target) {
     "src-electron/identity-protocol.mjs",
     "src-electron/identity-launch.mjs",
     "src-electron/renderer-host.mjs",
+    "src-electron/stage0-renderer.mjs",
     "src-electron/ipc-security.mjs",
     "src-electron/stage0-platform.mjs",
-    "src-electron/feasibility/index.html",
-    "src-electron/feasibility/renderer.mjs",
+    expectedRendererEntry,
   ]);
+  if (uiMode === "feasibility") {
+    requiredPackageFiles.add("src-electron/feasibility/renderer.mjs");
+  }
   if (expected.instrumentation) {
     requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
   }
@@ -297,13 +516,7 @@ function checkAsar(archivePath, flavor, target) {
     }
   }
   for (const entry of fileEntries) {
-    if (
-      entry.startsWith("src/") ||
-      entry.startsWith("src-tauri/") ||
-      entry.includes("tauri") ||
-      entry.includes("node_modules") ||
-      entry.endsWith(".dmg")
-    ) {
+    if (!isApprovedAsarFileEntry(entry, uiMode)) {
       fail(`ASAR contains an unapproved entry ${entry}`);
     }
   }
@@ -350,6 +563,14 @@ function checkAsar(archivePath, flavor, target) {
   if (packageJson.stage0HelperName !== target.helperName) {
     fail(`ASAR helper name is ${packageJson.stage0HelperName ?? "missing"}`);
   }
+  if (packageJson.stage0UiMode !== uiMode) {
+    fail(`ASAR UI mode is ${packageJson.stage0UiMode ?? "missing"}`);
+  }
+  if (packageJson.stage0RendererEntry !== expectedRendererEntry) {
+    fail(
+      `ASAR renderer entry is ${packageJson.stage0RendererEntry ?? "missing"}`,
+    );
+  }
   if (packageJson.main !== "src-electron/main.mjs") {
     fail(`ASAR entry point is ${packageJson.main ?? "missing"}`);
   }
@@ -363,6 +584,35 @@ function checkAsar(archivePath, flavor, target) {
     )
   ) {
     fail("staged flavor metadata disagrees with package metadata");
+  }
+  const rendererSource = extractEntry(
+    "src-electron/stage0-renderer.mjs",
+  ).toString("utf8");
+  if (
+    !rendererSource.includes(`STAGE0_UI_MODE = "${uiMode}"`) ||
+    !rendererSource.includes(
+      `STAGE0_RENDERER_ENTRY = "${uiMode === "react" ? "renderer/index.html" : "feasibility/index.html"}"`,
+    )
+  ) {
+    fail("staged renderer mode disagrees with package metadata");
+  }
+  const rendererHtml = extractEntry(expectedRendererEntry).toString("utf8");
+  if (uiMode === "react") {
+    if (!rendererHtml.includes('<div id="root"></div>')) {
+      fail("React renderer entry is missing the root mount");
+    }
+    if (
+      rendererHtml.includes("src/main.tsx") ||
+      rendererHtml.includes("feasibility/index.html") ||
+      rendererHtml.includes('src="/src/')
+    ) {
+      fail(
+        "React renderer entry still references a development/feasibility asset",
+      );
+    }
+    if (entrySet.has("src-electron/feasibility/index.html")) {
+      fail("React ASAR contains the feasibility renderer");
+    }
   }
   if (!expected.instrumentation) {
     const normalFlavorAssertions = [
@@ -385,19 +635,29 @@ function checkAsar(archivePath, flavor, target) {
         fail(`normal flavor is not immutable: missing ${assertion}`);
       }
     }
-    for (const entry of fileEntries) {
-      scanText(
-        `normal ASAR:${entry}`,
-        extractEntry(entry).toString("utf8"),
-        normalPackageForbiddenTokens,
-      );
-    }
     if (entrySet.has("src-electron/test-subframe-preload.cjs")) {
       fail("normal ASAR contains the instrumented subframe preload");
     }
   }
   for (const entry of fileEntries) {
-    scanText(`ASAR:${entry}`, extractEntry(entry).toString("utf8"));
+    const text = extractEntry(entry).toString("utf8");
+    if (uiMode === "react" && entry.startsWith("src-electron/renderer/")) {
+      scanTrustedReactRendererText(
+        `React ASAR:${entry}`,
+        text,
+        flavor,
+        entry,
+        expected.instrumentation ? [] : normalPackageForbiddenTokens,
+        reactPackageDigest,
+      );
+    } else {
+      scanText(
+        `${expected.instrumentation ? "ASAR" : "normal ASAR"}:${entry}`,
+        text,
+        expected.instrumentation ? [] : normalPackageForbiddenTokens,
+        allowedReactRendererTokens(uiMode, entry),
+      );
+    }
   }
 }
 
@@ -485,7 +745,7 @@ function findExecutableFiles(directory) {
   return matches;
 }
 
-function checkMacBundle(bundleRoot, flavor, target) {
+function checkMacBundle(bundleRoot, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
   const apps = findApps(bundleRoot);
   if (apps.length !== 1) fail(`expected one app bundle, found ${apps.length}`);
@@ -522,7 +782,7 @@ function checkMacBundle(bundleRoot, flavor, target) {
     path.join(appRoot, "Contents", "Info.plist"),
     "Info.plist",
   );
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   const infoPlist = readFileSync(infoPlistInfo.path, "utf8");
   scanText("bundle metadata", infoPlist);
   if (!infoPlist.includes(expected.bundleId)) {
@@ -536,7 +796,7 @@ function checkMacBundle(bundleRoot, flavor, target) {
   };
 }
 
-function checkWindowsBundle(bundleRoot, flavor, target) {
+function checkWindowsBundle(bundleRoot, flavor, target, uiMode) {
   const { appRoot, appExecutable } = findWindowsApp(
     bundleRoot,
     target.executableName,
@@ -576,7 +836,7 @@ function checkWindowsBundle(bundleRoot, flavor, target) {
       `expected one app and one helper executable, found ${executableFiles.length}`,
     );
   }
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   return {
     appRoot,
     archive: archiveInfo.path,
@@ -608,7 +868,7 @@ export function readElfMachine(filePath) {
   }
 }
 
-function checkLinuxBundle(bundleRoot, flavor, target) {
+function checkLinuxBundle(bundleRoot, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
   const { appRoot, appExecutable } = findLinuxApp(bundleRoot, expected.appName);
   const resources = path.join(appRoot, "resources");
@@ -655,7 +915,7 @@ function checkLinuxBundle(bundleRoot, flavor, target) {
   if (readElfMachine(sandboxInfo.path) !== 0x3e) {
     fail("Electron chrome-sandbox is not an x86_64 ELF");
   }
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   return {
     appRoot,
     archive: archiveInfo.path,
@@ -665,16 +925,16 @@ function checkLinuxBundle(bundleRoot, flavor, target) {
   };
 }
 
-function checkBundle(bundleRoot, flavor, target) {
+function checkBundle(bundleRoot, flavor, target, uiMode) {
   if (target.bundleKind === "app") {
-    return checkMacBundle(bundleRoot, flavor, target);
+    return checkMacBundle(bundleRoot, flavor, target, uiMode);
   }
   if (target.bundleKind === "directory") {
     if (target.platform === "win32") {
-      return checkWindowsBundle(bundleRoot, flavor, target);
+      return checkWindowsBundle(bundleRoot, flavor, target, uiMode);
     }
     if (target.platform === "linux") {
-      return checkLinuxBundle(bundleRoot, flavor, target);
+      return checkLinuxBundle(bundleRoot, flavor, target, uiMode);
     }
   }
   fail(`unsupported package bundle kind ${target.bundleKind}`);
@@ -689,6 +949,11 @@ function main() {
   if (!Object.hasOwn(packageFlavors, flavor)) {
     fail(`unsupported flavor ${flavor}`);
   }
+  const uiArgument = process.argv.find((value) => value.startsWith("--ui="));
+  const uiMode = uiArgument?.slice("--ui=".length) ?? "feasibility";
+  if (uiMode !== "feasibility" && uiMode !== "react") {
+    fail(`unsupported UI mode ${uiMode}`);
+  }
   const target = getStage0TargetFromArguments();
   scanSource();
   if (!packageArgument) {
@@ -698,13 +963,14 @@ function main() {
   const packageRoot = path.resolve(packageArgument);
   if (!existsSync(packageRoot))
     fail(`package path does not exist: ${packageRoot}`);
-  const result = checkBundle(packageRoot, flavor, target);
+  const result = checkBundle(packageRoot, flavor, target, uiMode);
   console.log(
     JSON.stringify({
       electron_stage0_package_guard: "passed",
       platform: target.platform,
       arch: target.arch,
       targetTriple: target.targetTriple,
+      uiMode,
       app: result.appRoot,
       appExecutable: result.appExecutable ?? null,
       asar: result.archive,
