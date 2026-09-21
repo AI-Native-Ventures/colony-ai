@@ -95,7 +95,7 @@ test("normal relocated candidate ignores every ambient harness switch", async ()
       testKill: typeof globalThis.__COLONY_STAGE0_TEST_KILL__,
     }));
     assert.deepEqual(rendererSurface, {
-      stage0Keys: ["bindingState", "health", "onLifecycle"],
+      stage0Keys: ["bindingState", "health", "identity", "onLifecycle"],
       testState: "undefined",
       testKill: "undefined",
     });

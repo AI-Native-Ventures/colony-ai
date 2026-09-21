@@ -7,6 +7,7 @@ import { loadManifest } from "./host-protocol.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { getStage0Target } from "./stage0-platform.mjs";
+import { createTrustedIdentityLaunch } from "./identity-launch.mjs";
 import {
   isTrustedNavigation,
   publicIpcErrorCode,
@@ -34,6 +35,8 @@ const CHILD_ENV_ALLOWLIST = Object.freeze([
 ]);
 const IPC = Object.freeze({
   HEALTH: "colony-stage0:health:get-default-relay-url",
+  IDENTITY_SHARED: "colony-stage0:identity:is-shared-identity",
+  IDENTITY_GET: "colony-stage0:identity:get-identity",
   LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
   LIFECYCLE_UNSUBSCRIBE: "colony-stage0:lifecycle:unsubscribe",
   BINDING_STATE: "colony-stage0:binding-state",
@@ -52,6 +55,12 @@ const userDataDirectory = path.join(
   manifest.namespace.userDataRelativePath,
   STAGE0_USER_DATA_SUFFIX,
 );
+const identityLaunch = createTrustedIdentityLaunch({
+  manifest,
+  flavor: STAGE0_BUILD_FLAVOR,
+  electronPlatform: process.platform,
+  userDataRoot: userDataDirectory,
+});
 
 // This must happen before Electron's ready event. Stage 0 intentionally uses a
 // fresh namespace and never probes or opens a legacy Buzz/Colony profile.
@@ -267,6 +276,7 @@ function createTransport() {
     buildId: `electron-stage0-${STAGE0_BUILD_FLAVOR}-${manifest.sourceRevision.slice(0, 12)}`,
     inheritedEnv,
     spawnEnv,
+    identityLaunch,
   });
 }
 
@@ -309,6 +319,62 @@ function setupIpc() {
       throw boundedError(error, "host_unavailable");
     }
   });
+
+  const handleIdentityCall = async (
+    event,
+    payload,
+    capability,
+    method,
+  ) => {
+    try {
+      assertTrustedPayload(event, payload);
+      if (!identityLaunch) {
+        throw boundedError({ code: "identity_unavailable" });
+      }
+      const response = await runtime.rendererHost.request({
+        capability,
+        method,
+        payload: {},
+      });
+      if (response?.outcome !== "ok" || !response.payload) {
+        throw boundedError({ code: "protocol_error" });
+      }
+      if (method === "is_shared_identity") {
+        return Object.freeze({ value: response.payload.value });
+      }
+      return Object.freeze({
+        display_name: response.payload.display_name,
+        locked: response.payload.locked,
+        lost: response.payload.lost,
+        pubkey: response.payload.pubkey,
+        reset_failed: response.payload.reset_failed,
+        storage: response.payload.storage,
+      });
+    } catch (error) {
+      runtime.diagnostics.lastError = publicIpcErrorCode(
+        error?.code,
+        identityLaunch ? "host_unavailable" : "identity_unavailable",
+      );
+      publishTestState();
+      throw boundedError(
+        error,
+        identityLaunch ? "host_unavailable" : "identity_unavailable",
+      );
+    }
+  };
+
+  ipcMain.handle(IPC.IDENTITY_SHARED, (event, payload) =>
+    handleIdentityCall(
+      event,
+      payload,
+      "identity-mode",
+      "is_shared_identity",
+    ),
+  );
+
+  ipcMain.handle(IPC.IDENTITY_GET, (event, payload) =>
+    handleIdentityCall(event, payload, "identity-read", "get_identity"),
+  );
 
   ipcMain.handle(IPC.BINDING_STATE, (event, payload) => {
     try {

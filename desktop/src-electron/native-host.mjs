@@ -17,6 +17,20 @@ import {
   validateEnvelope,
   validateHealthRequest,
 } from "./host-protocol.mjs";
+import {
+  IDENTITY_LIMITS,
+  IdentityFrameDecoder,
+  PRODUCTION_REGISTRY_DIGEST as IDENTITY_REGISTRY_DIGEST,
+  createIdentityCancel,
+  createIdentityHello,
+  createIdentityRehello,
+  createIdentityRequest,
+  encodeIdentityFrame,
+  redactedIdentityProtocolCode,
+  validateIdentityFrame,
+  validateIdentityLaunchDescriptor,
+  validateIdentityResponse,
+} from "./identity-protocol.mjs";
 
 const MAX_SEEN_REQUEST_IDS = LIMITS.inFlightLimit * 32;
 const ALLOWED_OUTCOMES = new Set([
@@ -25,6 +39,7 @@ const ALLOWED_OUTCOMES = new Set([
   "outcome_unknown",
   "cancelled",
 ]);
+const MAX_RETIRED_RESPONSE_SCHEMAS = LIMITS.inFlightLimit * 2;
 
 export class NativeHostError extends Error {
   constructor(code, message = code) {
@@ -59,24 +74,41 @@ export class NativeHost {
   constructor({
     executablePath,
     manifest = loadManifest(),
-    profileId = manifest.namespace.profileId,
+    profileId,
     sessionId = randomUUID(),
     buildId = `electron-transport-${manifest.sourceRevision.slice(0, 12)}`,
     spawnImpl = defaultSpawn,
     inheritedEnv = process.env,
     spawnEnv = {},
     requestIdFactory = randomUUID,
+    identityLaunch = null,
   } = {}) {
     if (typeof executablePath !== "string" || executablePath.length === 0) {
       throw new TypeError("executablePath is required");
     }
     this.manifest = loadManifest(manifest);
     this.protocol = this.manifest.protocol;
+    this.identityLaunch = identityLaunch
+      ? Object.freeze({ ...validateIdentityLaunchDescriptor(identityLaunch) })
+      : null;
+    this.identityMode = this.identityLaunch !== null;
     this.executablePath = executablePath;
-    if (profileId !== this.manifest.namespace.profileId) {
+    const resolvedProfileId =
+      profileId ??
+      this.identityLaunch?.profileId ??
+      this.manifest.namespace.profileId;
+    if (
+      this.identityMode
+        ? resolvedProfileId !== this.identityLaunch.profileId
+        : resolvedProfileId !== this.manifest.namespace.profileId
+    ) {
       throw new NativeHostError("invalid_profile_id");
     }
-    this.profileId = profileId;
+    this.profileId = resolvedProfileId;
+    this.registryDigest = this.identityMode
+      ? IDENTITY_REGISTRY_DIGEST
+      : REGISTRY_DIGEST;
+    this.limits = this.identityMode ? IDENTITY_LIMITS : this.protocol;
     this.sessionId = sessionId;
     this.buildId = buildId;
     this.spawnImpl = spawnImpl;
@@ -87,11 +119,18 @@ export class NativeHost {
     this.state = "idle";
     this.binding = null;
     this.child = null;
-    this.decoder = new FrameDecoder({
-      direction: "host",
-      frameLimitBytes: this.protocol.frameLimitBytes,
-    });
     this.pending = new Map();
+    this.retiredResponseSchemas = new Map();
+    this.decoder = this.identityMode
+      ? new IdentityFrameDecoder({
+          direction: "host",
+          frameLimitBytes: this.limits.frameLimitBytes,
+          responseContext: (requestId) => this.#responseContext(requestId),
+        })
+      : new FrameDecoder({
+          direction: "host",
+          frameLimitBytes: this.limits.frameLimitBytes,
+        });
     this.seenRequestIds = new Set();
     this.outboundQueue = [];
     this.writing = false;
@@ -126,22 +165,33 @@ export class NativeHost {
     });
     try {
       const environment = { ...this.inheritedEnv, ...this.spawnEnv };
-      this.child = this.spawnImpl(this.executablePath, [], {
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-        env: environment,
-      });
+      this.child = this.spawnImpl(
+        this.executablePath,
+        this.identityMode ? ["--identity-v2"] : [],
+        {
+          stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+          env: environment,
+        },
+      );
       this.#attachChild(this.child);
       this.startTimer = setTimeout(() => {
         if (this.state === "starting") this.#fatal("startup_timeout");
-      }, this.protocol.defaultDeadlineMs);
+      }, this.limits.defaultDeadlineMs);
       this.startTimer.unref?.();
       this.#enqueue(
-        createHello({
-          profileId: this.profileId,
-          sessionId: this.sessionId,
-          buildId: this.buildId,
-        }),
+        this.identityMode
+          ? createIdentityHello({
+              profileId: this.profileId,
+              sessionId: this.sessionId,
+              buildId: this.buildId,
+              identityLaunch: this.identityLaunch,
+            })
+          : createHello({
+              profileId: this.profileId,
+              sessionId: this.sessionId,
+              buildId: this.buildId,
+            }),
       );
     } catch {
       this.#fatal("host_unavailable");
@@ -154,7 +204,7 @@ export class NativeHost {
     method = "get_default_relay_url",
     payload = {},
     requestId = null,
-    deadlineMs = this.protocol.defaultDeadlineMs,
+    deadlineMs,
     generationId = null,
   } = {}) {
     if (this.state !== "ready" || !this.binding) {
@@ -162,11 +212,13 @@ export class NativeHost {
         this.state === "rebinding" ? "renderer_rebinding" : "host_unavailable",
       );
     }
-    validateHealthRequest({ capability, method, payload });
+    if (!this.identityMode) {
+      validateHealthRequest({ capability, method, payload });
+    }
     if (generationId !== null && generationId !== this.binding.generationId) {
       throw hostError("stale_generation");
     }
-    if (this.pending.size >= this.protocol.inFlightLimit) {
+    if (this.pending.size >= this.limits.inFlightLimit) {
       throw hostError("host_busy");
     }
     const id = requestId ?? this.requestIdFactory();
@@ -178,21 +230,38 @@ export class NativeHost {
     }
     const safeDeadline =
       Number.isSafeInteger(deadlineMs) && deadlineMs > 0
-        ? Math.min(deadlineMs, this.protocol.defaultDeadlineMs)
-        : this.protocol.defaultDeadlineMs;
-    const frame = createRequest({
-      profileId: this.binding.profileId,
-      sessionId: this.binding.sessionId,
-      generationId: this.binding.generationId,
-      requestId: id,
-      capability,
-      method,
-      payload,
-    });
+        ? Math.min(deadlineMs, this.limits.defaultDeadlineMs)
+        : this.limits.defaultDeadlineMs;
+    let frame;
+    try {
+      frame = this.identityMode
+        ? createIdentityRequest({
+            profileId: this.binding.profileId,
+            sessionId: this.binding.sessionId,
+            generationId: this.binding.generationId,
+            requestId: id,
+            capability,
+            method,
+            payload,
+          })
+        : createRequest({
+            profileId: this.binding.profileId,
+            sessionId: this.binding.sessionId,
+            generationId: this.binding.generationId,
+            requestId: id,
+            capability,
+            method,
+            payload,
+          });
+    } catch (error) {
+      throw hostError(this.#redactedCode(error));
+    }
     this.seenRequestIds.add(id);
     const promise = new Promise((resolve, reject) => {
       const pending = {
         generationId: this.binding.generationId,
+        capability,
+        method,
         resolve,
         reject,
         timer: null,
@@ -200,6 +269,7 @@ export class NativeHost {
       pending.timer = setTimeout(() => {
         if (this.pending.get(id) !== pending) return;
         this.pending.delete(id);
+        this.#retireResponseSchema(id, pending);
         this.#sendCancelBestEffort(id, pending.generationId);
         reject(hostError("timeout"));
       }, safeDeadline);
@@ -210,6 +280,7 @@ export class NativeHost {
       } catch (error) {
         clearTimeout(pending.timer);
         this.pending.delete(id);
+        this.#retireResponseSchema(id, pending);
         reject(
           error instanceof Error ? error : hostError("outbound_queue_full"),
         );
@@ -258,16 +329,23 @@ export class NativeHost {
         this.rebindWait = null;
         this.rebindTimer = null;
         this.#fatal("rebind_timeout");
-      }, this.protocol.rebindAckDeadlineMs);
+      }, this.limits.rebindAckDeadlineMs);
       this.rebindTimer.unref?.();
       try {
         this.#enqueue(
-          createRehello({
-            profileId: this.binding.profileId,
-            sessionId: this.binding.sessionId,
-            generationId,
-            buildId: this.buildId,
-          }),
+          this.identityMode
+            ? createIdentityRehello({
+                profileId: this.binding.profileId,
+                sessionId: this.binding.sessionId,
+                generationId,
+                buildId: this.buildId,
+              })
+            : createRehello({
+                profileId: this.binding.profileId,
+                sessionId: this.binding.sessionId,
+                generationId,
+                buildId: this.buildId,
+              }),
         );
       } catch (error) {
         clearTimeout(this.rebindTimer);
@@ -276,7 +354,7 @@ export class NativeHost {
         reject(
           error instanceof Error ? error : hostError("outbound_queue_full"),
         );
-        this.#fatal(redactedProtocolCode(error, "outbound_queue_full"));
+        this.#fatal(this.#redactedCode(error, "outbound_queue_full"));
       }
     });
     return promise;
@@ -286,7 +364,10 @@ export class NativeHost {
     if (!isFunction(listener))
       throw new TypeError("listener must be a function");
     if (this.terminal) return () => {};
-    if (this.lifecycleListeners.size >= this.protocol.subscriptionLimit) {
+    if (
+      this.lifecycleListeners.size >=
+      (this.protocol.subscriptionLimit ?? 1024)
+    ) {
       throw hostError("host_busy");
     }
     this.lifecycleListeners.add(listener);
@@ -325,7 +406,7 @@ export class NativeHost {
       profileId: this.binding?.profileId ?? this.profileId,
       sessionId: this.binding?.sessionId ?? this.sessionId,
       generationId: this.binding?.generationId ?? null,
-      registryDigest: this.binding ? REGISTRY_DIGEST : null,
+      registryDigest: this.binding ? this.registryDigest : null,
     });
   }
 
@@ -372,7 +453,7 @@ export class NativeHost {
           }
         }
         this.#finishDispose();
-      }, this.protocol.shutdownGraceMs);
+      }, this.limits.shutdownGraceMs);
       timer.unref?.();
       this.disposeTimer = timer;
       if (this.exitObserved) this.#finishDispose();
@@ -418,18 +499,42 @@ export class NativeHost {
         if (this.terminal) break;
       }
     } catch (error) {
-      this.#fatal(redactedProtocolCode(error));
+      this.#fatal(this.#redactedCode(error));
     }
   }
 
   #handleFrame(frame) {
     if (this.terminal) return;
+    if (this.identityMode) {
+      this.#handleIdentityFrame(frame);
+      return;
+    }
     try {
       validateEnvelope(frame, { direction: "host", binding: this.binding });
     } catch (error) {
       this.#fatal(redactedProtocolCode(error));
       return;
     }
+    if (frame.type === "READY") {
+      this.#handleReady(frame);
+      return;
+    }
+    if (frame.type === "REBOUND") {
+      this.#handleRebound(frame);
+      return;
+    }
+    if (!this.binding) {
+      this.#fatal("wrong_binding");
+      return;
+    }
+    if (frame.type === "RESPONSE") {
+      this.#handleResponse(frame);
+      return;
+    }
+    this.#handleEvent(frame);
+  }
+
+  #handleIdentityFrame(frame) {
     if (frame.type === "READY") {
       this.#handleReady(frame);
       return;
@@ -458,7 +563,7 @@ export class NativeHost {
       frame.profileId !== this.profileId ||
       frame.sessionId !== this.sessionId ||
       frame.generationId !== 1 ||
-      frame.registryDigest !== REGISTRY_DIGEST
+      frame.registryDigest !== this.registryDigest
     ) {
       this.#fatal("wrong_binding");
       return;
@@ -468,7 +573,10 @@ export class NativeHost {
       sessionId: frame.sessionId,
       generationId: frame.generationId,
     });
-    this.decoder.setBinding(this.binding);
+    this.decoder.setBinding({
+      profileId: this.binding.profileId,
+      sessionId: this.binding.sessionId,
+    });
     this.state = "ready";
     this.#notifyState();
     const resolve = this.startResolve;
@@ -491,7 +599,7 @@ export class NativeHost {
       frame.generationId !== wait.generationId ||
       frame.profileId !== wait.nextBinding.profileId ||
       frame.sessionId !== wait.nextBinding.sessionId ||
-      frame.registryDigest !== REGISTRY_DIGEST
+      frame.registryDigest !== this.registryDigest
     ) {
       this.#fatal("wrong_binding");
       return;
@@ -499,7 +607,10 @@ export class NativeHost {
     clearTimeout(this.rebindTimer);
     this.rebindTimer = null;
     this.binding = wait.nextBinding;
-    this.decoder.setBinding(this.binding);
+    this.decoder.setBinding({
+      profileId: this.binding.profileId,
+      sessionId: this.binding.sessionId,
+    });
     this.#settleOlderPending(
       this.binding.generationId,
       hostError("renderer_rebound"),
@@ -511,11 +622,31 @@ export class NativeHost {
   }
 
   #handleResponse(frame) {
-    if (frame.generationId !== this.binding.generationId) return;
+    if (frame.generationId !== this.binding.generationId) {
+      this.retiredResponseSchemas.delete(frame.requestId);
+      return;
+    }
     const pending = this.pending.get(frame.requestId);
-    if (!pending || pending.generationId !== frame.generationId) return;
+    if (!pending || pending.generationId !== frame.generationId) {
+      this.retiredResponseSchemas.delete(frame.requestId);
+      return;
+    }
     this.pending.delete(frame.requestId);
     clearTimeout(pending.timer);
+    this.#retireResponseSchema(frame.requestId, pending);
+    if (this.identityMode) {
+      try {
+        validateIdentityResponse(frame, {
+          binding: this.binding,
+          expectedCapability: pending.capability,
+          expectedGeneration: pending.generationId,
+          expectedMethod: pending.method,
+        });
+      } catch (error) {
+        this.#fatal(this.#redactedCode(error));
+        return;
+      }
+    }
     if (!ALLOWED_OUTCOMES.has(frame.outcome)) {
       pending.reject(hostError("invalid_outcome"));
       return;
@@ -524,7 +655,9 @@ export class NativeHost {
       pending.resolve(frame);
       return;
     }
-    pending.reject(hostError(redactedProtocolCode(frame.error, frame.outcome)));
+      pending.reject(
+        hostError(this.#redactedCode(frame.error, frame.outcome)),
+      );
   }
 
   #handleEvent(frame) {
@@ -568,11 +701,13 @@ export class NativeHost {
       throw hostError("host_unavailable");
     let bytes;
     try {
-      bytes = encodeFrame(frame, { direction: "main" });
+      bytes = this.identityMode
+        ? encodeIdentityFrame(frame, { direction: "main" })
+        : encodeFrame(frame, { direction: "main" });
     } catch (error) {
-      throw hostError(redactedProtocolCode(error));
+      throw hostError(this.#redactedCode(error));
     }
-    if (this.outboundQueue.length >= this.protocol.outboundQueueLimit) {
+    if (this.outboundQueue.length >= this.limits.outboundQueueLimit) {
       this.#fatal("outbound_queue_full");
       throw hostError("outbound_queue_full");
     }
@@ -614,12 +749,19 @@ export class NativeHost {
     if (!this.binding || this.terminal || this.state !== "ready") return;
     try {
       this.#enqueue(
-        createCancel({
-          profileId: this.binding.profileId,
-          sessionId: this.binding.sessionId,
-          generationId,
-          requestId,
-        }),
+        this.identityMode
+          ? createIdentityCancel({
+              profileId: this.binding.profileId,
+              sessionId: this.binding.sessionId,
+              generationId,
+              requestId,
+            })
+          : createCancel({
+              profileId: this.binding.profileId,
+              sessionId: this.binding.sessionId,
+              generationId,
+              requestId,
+            }),
       );
     } catch {
       // Timeout is already terminal; cancellation is explicitly best-effort.
@@ -687,8 +829,39 @@ export class NativeHost {
       if (pending.generationId >= generationId) continue;
       this.pending.delete(requestId);
       clearTimeout(pending.timer);
+      this.#retireResponseSchema(requestId, pending);
       settleReject(pending.reject, error);
     }
+  }
+
+  #responseContext(requestId) {
+    const pending = this.pending.get(requestId);
+    if (pending) {
+      return {
+        capability: pending.capability,
+        method: pending.method,
+      };
+    }
+    return this.retiredResponseSchemas.get(requestId) ?? null;
+  }
+
+  #retireResponseSchema(requestId, pending) {
+    if (!this.identityMode) return;
+    this.retiredResponseSchemas.set(requestId, {
+      capability: pending.capability,
+      method: pending.method,
+      generationId: pending.generationId,
+    });
+    while (this.retiredResponseSchemas.size > MAX_RETIRED_RESPONSE_SCHEMAS) {
+      const oldest = this.retiredResponseSchemas.keys().next().value;
+      this.retiredResponseSchemas.delete(oldest);
+    }
+  }
+
+  #redactedCode(error, fallback = "protocol_error") {
+    return this.identityMode
+      ? redactedIdentityProtocolCode(error, fallback)
+      : redactedProtocolCode(error, fallback);
   }
 
   #notifyState() {
@@ -721,6 +894,7 @@ export class NativeHost {
     this.lifecycleListeners.clear();
     this.stateListeners.clear();
     this.lifecycleBuffer = [];
+    this.retiredResponseSchemas.clear();
   }
 }
 

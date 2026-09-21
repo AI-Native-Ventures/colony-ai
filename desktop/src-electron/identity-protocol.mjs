@@ -54,6 +54,7 @@ export const IDENTITY_ERROR_CODES = Object.freeze([
   "unknown_capability",
   "unknown_method",
 ]);
+export const IDENTITY_FRAME_PREFIX = "@colony-native:";
 export const IDENTITY_LIMITS = Object.freeze({
   binaryPayloadLimitBytes: 8 * 1024 * 1024,
   defaultDeadlineMs: 10_000,
@@ -95,6 +96,35 @@ const MAIN_FRAME_TYPES = new Set(["HELLO", "REHELLO", "REQUEST", "CANCEL"]);
 const HOST_FRAME_TYPES = new Set(["READY", "REBOUND", "RESPONSE", "EVENT"]);
 const LIFECYCLE_STATES = new Set(["ready", "rebound"]);
 const IDENTITY_ERROR_CODE_SET = new Set(IDENTITY_ERROR_CODES);
+const IDENTITY_PUBLIC_ERROR_CODE_VALUES = Object.freeze([
+  ...IDENTITY_ERROR_CODES,
+  "error",
+  "protocol_error",
+  "host_disposed",
+  "invalid_outcome",
+  "invalid_sequence",
+  "invalid_utf8",
+  "invalid_prefix",
+  "invalid_json",
+  "json_too_large",
+  "json_too_deep",
+  "frame_too_large",
+  "wrong_binding",
+  "wrong_generation",
+  "unexpected_ready",
+  "unexpected_rebound",
+  "outbound_queue_full",
+  "rebind_in_progress",
+  "invalid_identity_launch",
+  "identity_manifest_mismatch",
+  "invalid_frame",
+  "unknown_frame",
+  "unexpected_host_frame",
+  "unexpected_main_frame",
+]);
+const IDENTITY_PUBLIC_ERROR_CODES_SET = new Set(
+  IDENTITY_PUBLIC_ERROR_CODE_VALUES,
+);
 const STORAGE_SET = new Set(IDENTITY_STORAGE_VALUES);
 const REQUESTS = Object.freeze({
   "health-safe:get_default_relay_url": Object.freeze({
@@ -1035,6 +1065,260 @@ export function validateIdentityFrame(
   return frame;
 }
 
+function jsonDepthExceeds(input, maxDepth = IDENTITY_LIMITS.jsonDepthLimit) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const byte of input) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (byte === 0x5c) {
+        escaped = true;
+      } else if (byte === 0x22) {
+        inString = false;
+      }
+      continue;
+    }
+    if (byte === 0x22) {
+      inString = true;
+    } else if (byte === 0x7b || byte === 0x5b) {
+      depth += 1;
+      if (depth > maxDepth) return true;
+    } else if (byte === 0x7d || byte === 0x5d) {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return false;
+}
+
+function responseContextFor(responseContext, requestId) {
+  if (typeof responseContext !== "function") return null;
+  const context = responseContext(requestId);
+  if (!isRecord(context)) return null;
+  return context;
+}
+
+export function encodeIdentityFrame(
+  frame,
+  {
+    direction = "any",
+    binding = null,
+    expectedGeneration = null,
+    responseCapability,
+    responseMethod,
+  } = {},
+) {
+  validateIdentityFrame(frame, {
+    direction,
+    binding,
+    expectedGeneration,
+    responseCapability,
+    responseMethod,
+  });
+  const json = JSON.stringify(frame);
+  const jsonBytes = Buffer.byteLength(json, "utf8");
+  expect(
+    jsonBytes <= IDENTITY_LIMITS.jsonPayloadLimitBytes,
+    "json_too_large",
+  );
+  const total =
+    Buffer.byteLength(IDENTITY_FRAME_PREFIX, "utf8") + jsonBytes + 1;
+  expect(total <= IDENTITY_LIMITS.frameLimitBytes, "frame_too_large");
+  return Buffer.from(`${IDENTITY_FRAME_PREFIX}${json}\n`, "utf8");
+}
+
+export function decodeIdentityFrame(
+  input,
+  {
+    direction = "any",
+    binding = null,
+    expectedGeneration = null,
+    responseContext,
+  } = {},
+) {
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  expect(
+    bytes.length + 1 <= IDENTITY_LIMITS.frameLimitBytes,
+    "frame_too_large",
+  );
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    fail("invalid_utf8");
+  }
+  expect(text.startsWith(IDENTITY_FRAME_PREFIX), "invalid_prefix");
+  const jsonText = text.slice(IDENTITY_FRAME_PREFIX.length);
+  expect(jsonText.length > 0, "invalid_json");
+  const jsonBytes = Buffer.from(jsonText, "utf8");
+  expect(
+    jsonBytes.length <= IDENTITY_LIMITS.jsonPayloadLimitBytes,
+    "json_too_large",
+  );
+  expect(
+    !jsonDepthExceeds(jsonBytes, IDENTITY_LIMITS.jsonDepthLimit),
+    "json_too_deep",
+  );
+  let frame;
+  try {
+    frame = JSON.parse(jsonText);
+  } catch {
+    fail("invalid_json");
+  }
+  const response =
+    frame?.type === "RESPONSE"
+      ? responseContextFor(responseContext, frame.requestId)
+      : null;
+  return validateIdentityFrame(frame, {
+    direction,
+    binding,
+    expectedGeneration,
+    responseCapability: response?.capability,
+    responseMethod: response?.method,
+  });
+}
+
+export class IdentityFrameDecoder {
+  #buffer = Buffer.alloc(0);
+
+  constructor({
+    frameLimitBytes = IDENTITY_LIMITS.frameLimitBytes,
+    direction = "any",
+    binding = null,
+    responseContext = null,
+  } = {}) {
+    this.frameLimitBytes = frameLimitBytes;
+    this.direction = direction;
+    this.binding = binding;
+    this.responseContext = responseContext;
+  }
+
+  setBinding(binding) {
+    this.binding = binding;
+  }
+
+  setResponseContext(responseContext) {
+    this.responseContext = responseContext;
+  }
+
+  push(chunk) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const frames = [];
+    let offset = 0;
+    while (offset < bytes.length) {
+      const newline = bytes.indexOf(0x0a, offset);
+      if (newline < 0) {
+        const remaining = bytes.length - offset;
+        if (this.#buffer.length + remaining + 1 > this.frameLimitBytes) {
+          fail("frame_too_large");
+        }
+        if (remaining > 0) {
+          this.#buffer = Buffer.concat([this.#buffer, bytes.subarray(offset)]);
+        }
+        break;
+      }
+      const chunkLine = bytes.subarray(offset, newline);
+      if (this.#buffer.length + chunkLine.length + 1 > this.frameLimitBytes) {
+        fail("frame_too_large");
+      }
+      const line =
+        this.#buffer.length === 0
+          ? chunkLine
+          : Buffer.concat([this.#buffer, chunkLine]);
+      this.#buffer = Buffer.alloc(0);
+      if (line.length === 0) fail("invalid_json");
+      frames.push(
+        decodeIdentityFrame(line, {
+          direction: this.direction,
+          binding: this.binding,
+          responseContext: this.responseContext,
+        }),
+      );
+      offset = newline + 1;
+    }
+    return frames;
+  }
+
+  finish() {
+    if (this.#buffer.length !== 0) fail("invalid_json");
+  }
+}
+
+export function redactedIdentityProtocolCode(
+  error,
+  fallback = "protocol_error",
+) {
+  const candidate =
+    error instanceof IdentityProtocolError
+      ? error.code
+      : error && typeof error.code === "string"
+        ? error.code
+        : null;
+  if (IDENTITY_PUBLIC_ERROR_CODES_SET.has(candidate)) return candidate;
+  return IDENTITY_PUBLIC_ERROR_CODES_SET.has(fallback)
+    ? fallback
+    : "protocol_error";
+}
+
+export function createIdentityHello({
+  profileId,
+  sessionId,
+  buildId,
+  identityLaunch,
+}) {
+  const frame = {
+    type: "HELLO",
+    protocolVersion: IDENTITY_PROTOCOL_VERSION,
+    profileId,
+    sessionId,
+    generationId: 1,
+    buildId,
+    registryDigest: PRODUCTION_REGISTRY_DIGEST,
+    identityLaunch,
+  };
+  validateIdentityFrame(frame, { direction: "main" });
+  return frame;
+}
+
+export function createIdentityRehello({
+  profileId,
+  sessionId,
+  generationId,
+  buildId,
+}) {
+  const frame = {
+    type: "REHELLO",
+    protocolVersion: IDENTITY_PROTOCOL_VERSION,
+    profileId,
+    sessionId,
+    generationId,
+    buildId,
+    registryDigest: PRODUCTION_REGISTRY_DIGEST,
+  };
+  validateIdentityFrame(frame, { direction: "main" });
+  return frame;
+}
+
+export function createIdentityCancel({
+  profileId,
+  sessionId,
+  generationId,
+  requestId,
+}) {
+  const frame = {
+    type: "CANCEL",
+    protocolVersion: IDENTITY_PROTOCOL_VERSION,
+    profileId,
+    sessionId,
+    generationId,
+    requestId,
+    registryDigest: PRODUCTION_REGISTRY_DIGEST,
+  };
+  validateIdentityFrame(frame, { direction: "main" });
+  return frame;
+}
+
 export function createIdentityRequest({
   profileId,
   sessionId,
@@ -1042,6 +1326,7 @@ export function createIdentityRequest({
   requestId,
   capability,
   method,
+  payload = {},
 }) {
   const frame = {
     type: "REQUEST",
@@ -1052,7 +1337,7 @@ export function createIdentityRequest({
     requestId,
     capability,
     method,
-    payload: {},
+    payload,
     registryDigest: PRODUCTION_REGISTRY_DIGEST,
   };
   validateIdentityFrame(frame, { direction: "main" });

@@ -77,6 +77,11 @@ async function main() {
       : []),
     ["src-electron/host-protocol.mjs", "src-electron/host-protocol.mjs"],
     ["src-electron/native-host.mjs", "src-electron/native-host.mjs"],
+    [
+      "src-electron/identity-protocol.mjs",
+      "src-electron/identity-protocol.mjs",
+    ],
+    ["src-electron/identity-launch.mjs", "src-electron/identity-launch.mjs"],
     ["src-electron/renderer-host.mjs", "src-electron/renderer-host.mjs"],
     ["src-electron/stage0-platform.mjs", "src-electron/stage0-platform.mjs"],
     ["src-electron/ipc-security.mjs", "src-electron/ipc-security.mjs"],
