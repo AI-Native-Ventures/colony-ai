@@ -498,7 +498,7 @@ pub fn validate_registry_document(document: &Value) -> Result<(), ProtocolError>
         }
         if let Some(types) = schema.get("types").and_then(Value::as_object) {
             for (field, type_name) in types {
-                if !field_names.contains(field)
+                if !field_names.contains(field.as_str())
                     || !matches!(
                         type_name.as_str(),
                         Some("array" | "boolean" | "integer" | "number" | "object" | "string")
@@ -511,7 +511,7 @@ pub fn validate_registry_document(document: &Value) -> Result<(), ProtocolError>
         for key in ["enums", "exactArrays"] {
             if let Some(values) = schema.get(key).and_then(Value::as_object) {
                 for (field, values) in values {
-                    if !field_names.contains(field)
+                    if !field_names.contains(field.as_str())
                         || !values.is_array()
                         || values.as_array().is_some_and(|values| values.is_empty())
                     {
