@@ -142,6 +142,13 @@ test("allows only observed generated React asset literals", () => {
     ],
   );
   assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+    ),
+    ["buzz://", "__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx"],
+  );
+  assert.deepEqual(
     allowedReactRendererTokens("react", "src-electron/renderer/index.html"),
     ["src/main.tsx", "tauri.conf.json"],
   );

@@ -175,6 +175,7 @@ const observedReactRendererAssets = Object.freeze({
     "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
   index: "src-electron/renderer/assets/index-Bjw85wCC.js",
   instrumentedIndex: "src-electron/renderer/assets/index-CTdVhpDl.js",
+  markdown: "src-electron/renderer/assets/markdown-B2B0ExcO.js",
 });
 
 const generatedReactAssetPattern =
@@ -215,7 +216,8 @@ export function allowedReactRendererTokens(uiMode, entry) {
   }
   if (
     entry === observedReactRendererAssets.index ||
-    entry === observedReactRendererAssets.instrumentedIndex
+    entry === observedReactRendererAssets.instrumentedIndex ||
+    entry === observedReactRendererAssets.markdown
   ) {
     tokens.push("__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx");
   }
