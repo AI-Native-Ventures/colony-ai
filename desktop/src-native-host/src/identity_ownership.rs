@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 const SCHEMA: &str = "colony.identity-ownership";
 const SCHEMA_VERSION: u64 = 1;
 const PROTOCOL_VERSION: u64 = 2;
+const MAX_PROVENANCE_PROTOCOL_VERSION: u64 = u16::MAX as u64;
 const ANCHOR_KIND: &str = "app-data";
 const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const LOCK_RETRY: Duration = Duration::from_millis(10);
@@ -564,7 +565,7 @@ fn validate_record(
         || record.root_relation.relative_root != context.relative_root
         || record.root_relation.derived_root != path_string(&context.root)
         || record.root_relation.sidecar_parent != path_string(&context.parent)
-        || record.provenance.protocol_version != PROTOCOL_VERSION
+        || !valid_provenance_protocol_version(record.provenance.protocol_version)
         || !is_hex_digest(&record.provenance.identity_manifest_digest)
         || record.provenance.build_id.is_empty()
         || record.provenance.build_id.len() > 128
@@ -588,6 +589,10 @@ fn validate_record(
         }
         _ => Err(OwnershipError::Invalid),
     }
+}
+
+fn valid_provenance_protocol_version(version: u64) -> bool {
+    (1..=MAX_PROVENANCE_PROTOCOL_VERSION).contains(&version)
 }
 
 fn write_record(
@@ -813,5 +818,32 @@ mod tests {
         let json = serde_json::to_value(record).expect("record serializes");
         assert!(json.get("rootRelation").is_some());
         assert!(json.get("provenance").is_some());
+    }
+
+    #[test]
+    fn protocol_upgrade_does_not_fence_stable_namespace() {
+        let context = context(Path::new("/tmp/colony-ownership-test"));
+        let mut record = make_record(&context, OwnershipState::Reserved, StorageKind::None);
+        record.provenance.protocol_version = PROTOCOL_VERSION + 1;
+        assert_eq!(
+            validate_record(&context, &record).expect("future provenance validates"),
+            OwnershipState::Reserved
+        );
+    }
+
+    #[test]
+    fn provenance_protocol_version_has_bounded_nonzero_shape() {
+        let context = context(Path::new("/tmp/colony-ownership-test"));
+        let mut record = make_record(&context, OwnershipState::Reserved, StorageKind::None);
+        record.provenance.protocol_version = 0;
+        assert_eq!(
+            validate_record(&context, &record),
+            Err(OwnershipError::Invalid)
+        );
+        record.provenance.protocol_version = MAX_PROVENANCE_PROTOCOL_VERSION + 1;
+        assert_eq!(
+            validate_record(&context, &record),
+            Err(OwnershipError::Invalid)
+        );
     }
 }

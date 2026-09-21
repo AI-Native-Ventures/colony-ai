@@ -8,6 +8,7 @@ on:
       - "desktop/src-native-host/**"
       - "desktop/identity-kernel/**"
       - "desktop/identity-store/**"
+      - "desktop/electron-stage0-manifest.json"
       - ".github/workflows/colony-identity-macos-production.yml"
 
 permissions:
@@ -55,15 +56,12 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
-          # Security.framework resolves the user keychain domain through HOME.
-          # Configure that domain in the same isolated HOME inherited by the
-          # production child; do not mutate the runner's login-keychain state.
-          export HOME="$proof_home"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
+          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -87,12 +85,12 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
-          export HOME="$proof_home"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
+          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -116,12 +114,12 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
-          export HOME="$proof_home"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
+          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
