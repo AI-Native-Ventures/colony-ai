@@ -55,10 +55,19 @@ async function launch(overrides: Record<string, string> = {}) {
     fs.existsSync(hostResource),
     `missing helper resource: ${hostResource}`,
   );
+  const sandboxEnvironment =
+    process.platform === "linux"
+      ? {
+          CHROME_DEVEL_SANDBOX: path.join(
+            packagePaths.appRoot,
+            "chrome-sandbox",
+          ),
+        }
+      : {};
   const application = await electron.launch({
     executablePath: appBinary,
     chromiumSandbox: true,
-    env: launchEnvironment(overrides),
+    env: { ...launchEnvironment(sandboxEnvironment), ...overrides },
     // This is an instrumented-only synthetic device. It does not grant
     // permission (the installed main-process handler must still deny it), and
     // it keeps the proof independent of real microphones/cameras.

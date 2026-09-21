@@ -39,10 +39,19 @@ async function launchNormal() {
     fs.existsSync(hostResource),
     `missing helper resource: ${hostResource}`,
   );
+  const sandboxEnvironment =
+    process.platform === "linux"
+      ? {
+          CHROME_DEVEL_SANDBOX: path.join(
+            packagePaths.appRoot,
+            "chrome-sandbox",
+          ),
+        }
+      : {};
   const application = await electron.launch({
     executablePath: appBinary,
     chromiumSandbox: true,
-    env: { ...process.env, ...hostileEnvironment },
+    env: { ...process.env, ...sandboxEnvironment, ...hostileEnvironment },
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");

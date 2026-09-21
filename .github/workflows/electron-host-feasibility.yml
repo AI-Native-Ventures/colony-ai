@@ -536,23 +536,32 @@ jobs:
           set -euo pipefail
           echo "source_revision=$GITHUB_SHA target=x86_64-unknown-linux-gnu runner_architecture=$(uname -m) runtime_uid=$(id -u)"
           archive_root="$RUNNER_TEMP/electron-stage0-linux-x64"
+          runtime_root="$(mktemp -d /tmp/colony-electron-stage0-linux-x64.XXXXXX)"
           rm -rf "$archive_root"
-          mkdir -p "$archive_root/relocated/normal" "$archive_root/relocated/instrumented"
+          mkdir -p "$archive_root" "$runtime_root/relocated/normal" "$runtime_root/relocated/instrumented"
           tar -czf "$archive_root/electron-stage0-linux-x64-normal.tar.gz" \
             -C desktop/dist-electron-normal .
           tar -czf "$archive_root/electron-stage0-linux-x64-instrumented.tar.gz" \
             -C desktop/dist-electron-instrumented .
           sha256sum "$archive_root"/*.tar.gz
           tar -xzf "$archive_root/electron-stage0-linux-x64-normal.tar.gz" \
-            -C "$archive_root/relocated/normal"
+            -C "$runtime_root/relocated/normal"
           tar -xzf "$archive_root/electron-stage0-linux-x64-instrumented.tar.gz" \
-            -C "$archive_root/relocated/instrumented"
+            -C "$runtime_root/relocated/instrumented"
           for flavor in normal instrumented; do
-            relocated_root="$archive_root/relocated/$flavor"
+            relocated_root="$runtime_root/relocated/$flavor"
             mapfile -t sandboxes < <(find "$relocated_root" -type f -name chrome-sandbox -print)
             test "${#sandboxes[@]}" -eq 1
             sudo chown root:root "${sandboxes[0]}"
             sudo chmod 4755 "${sandboxes[0]}"
+            sandbox_mount="$(findmnt -no FSTYPE,OPTIONS --target "${sandboxes[0]}")"
+            printf 'linux_chrome_sandbox_mount=%s flavor=%s\n' "$sandbox_mount" "$flavor"
+            case ",$sandbox_mount," in
+              *,nosuid,*)
+                echo "relocated chrome-sandbox mount is nosuid: $sandbox_mount" >&2
+                exit 1
+                ;;
+            esac
             node desktop/scripts/check-electron-stage0.mjs \
               "$relocated_root" --platform=linux --arch=x64 \
               --target=x86_64-unknown-linux-gnu --flavor="$flavor"
@@ -563,9 +572,9 @@ jobs:
             node -e 'const fs=require("node:fs");const j=JSON.parse(fs.readFileSync(process.argv[1]));console.log(JSON.stringify({flavor:j.stage0Flavor,platform:j.stage0Platform,arch:j.stage0Arch,targetTriple:j.stage0TargetTriple,helperName:j.stage0HelperName,applicationId:j.stage0ApplicationId,userDataSuffix:j.stage0UserDataSuffix,sourceRevision:j.stage0SourceRevision,instrumentation:j.stage0Instrumentation}))' "desktop/.stage0-package-$flavor/package.json"
             sha256sum "$app_asar" "$helper"
           done
-          printf 'COLONY_STAGE0_NORMAL_ROOT=%s\n' "$archive_root/relocated/normal" >> "$GITHUB_ENV"
-          printf 'COLONY_STAGE0_INSTRUMENTED_ROOT=%s\n' "$archive_root/relocated/instrumented" >> "$GITHUB_ENV"
-          xdg_root="$archive_root/xdg"
+          printf 'COLONY_STAGE0_NORMAL_ROOT=%s\n' "$runtime_root/relocated/normal" >> "$GITHUB_ENV"
+          printf 'COLONY_STAGE0_INSTRUMENTED_ROOT=%s\n' "$runtime_root/relocated/instrumented" >> "$GITHUB_ENV"
+          xdg_root="$runtime_root/xdg"
           mkdir -p "$xdg_root/config" "$xdg_root/data" "$xdg_root/cache" "$xdg_root/runtime"
           chmod 700 "$xdg_root/runtime"
           printf 'XDG_CONFIG_HOME=%s\n' "$xdg_root/config" >> "$GITHUB_ENV"
