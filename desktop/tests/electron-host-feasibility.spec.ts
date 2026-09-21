@@ -71,7 +71,10 @@ async function launch(overrides: Record<string, string> = {}) {
     // This is an instrumented-only synthetic device. It does not grant
     // permission (the installed main-process handler must still deny it), and
     // it keeps the proof independent of real microphones/cameras.
-    args: ["--use-fake-device-for-media-stream"],
+    args: [
+      ...(process.platform === "linux" ? ["--disable-namespace-sandbox"] : []),
+      "--use-fake-device-for-media-stream",
+    ],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");

@@ -52,6 +52,12 @@ async function launchNormal() {
     executablePath: appBinary,
     chromiumSandbox: true,
     env: { ...process.env, ...sandboxEnvironment, ...hostileEnvironment },
+    // Ubuntu's hosted runner can report user namespaces as available while
+    // Chromium's default namespace zygote still exits before a renderer is
+    // created. Select Chromium's documented SUID layer explicitly so this
+    // proof observes a real layer-1 sandbox rather than falling back to an
+    // unsandboxed launch.
+    args: process.platform === "linux" ? ["--disable-namespace-sandbox"] : [],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
