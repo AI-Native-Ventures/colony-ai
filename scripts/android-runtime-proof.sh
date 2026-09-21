@@ -11,6 +11,7 @@ output_dir="${ANDROID_RUNTIME_ARTIFACT_DIR:-android-runtime-artifacts}"
 source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
 ui_timeout_seconds="${ANDROID_RUNTIME_UI_TIMEOUT_SECONDS:-90}"
 adb_timeout_seconds="${ANDROID_RUNTIME_ADB_TIMEOUT_SECONDS:-20}"
+install_timeout_seconds="${ANDROID_RUNTIME_INSTALL_TIMEOUT_SECONDS:-60}"
 
 mkdir -p "$output_dir"
 exec > >(tee "$output_dir/harness.log") 2>&1
@@ -47,6 +48,10 @@ adb_target() {
     adb_bounded -s "$serial" "$@"
 }
 
+adb_install() {
+    timeout --preserve-status "${install_timeout_seconds}s" adb "$@"
+}
+
 cleanup() {
     adb_target shell am force-stop "$package" >/dev/null 2>&1 || true
 }
@@ -64,7 +69,7 @@ if adb_target shell pm list packages | tr -d '\r' | grep -Fxq "package:$package"
 fi
 
 echo "Installing $apk_path"
-adb_target install "$apk_path"
+adb_install -s "$serial" install "$apk_path"
 adb_target shell pm path "$package" >/dev/null
 clear_result="$(adb_target shell pm clear "$package" | tr -d '\r\n')"
 [[ "$clear_result" == *Success* ]] || die "failed to clear fresh app data: $clear_result"
