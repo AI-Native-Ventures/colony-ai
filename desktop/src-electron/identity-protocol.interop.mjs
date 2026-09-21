@@ -558,12 +558,12 @@ test("interop frame checks use newline-inclusive UTF-8 byte boundaries", async (
 });
 
 test("fatal close evidence rejects forced, signaled, and timeout-cleanup metadata", () => {
-  for (const closeInfo of [
-    { code: 2, signal: null, forced: true },
-    { code: null, signal: "SIGTERM", forced: false },
-    { code: 2, signal: null, forced: true },
+  for (const [label, closeInfo] of [
+    ["forced", { code: 2, signal: null, forced: true }],
+    ["signal", { code: null, signal: "SIGTERM", forced: false }],
+    ["timeout-cleanup", { code: null, signal: null, forced: true }],
   ]) {
-    assert.throws(() => assertExpectedFatalExit(closeInfo, "fatal case"));
+    assert.throws(() => assertExpectedFatalExit(closeInfo, label));
   }
 });
 
