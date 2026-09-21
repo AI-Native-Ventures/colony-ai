@@ -164,6 +164,87 @@ fn run_production_child(
     )
 }
 
+#[cfg(target_os = "macos")]
+fn sanitized_diagnostic(stderr: &[u8]) -> String {
+    if stderr.len() > 16 * 1024 {
+        return "diagnostic=unavailable".to_string();
+    }
+    let text = String::from_utf8_lossy(stderr);
+    for line in text.lines() {
+        let Some(fields) = line.strip_prefix("identity_diagnostic ") else {
+            continue;
+        };
+        let mut values = [None; 5];
+        for field in fields.split_whitespace() {
+            let Some((name, value)) = field.split_once('=') else {
+                values = [None; 5];
+                break;
+            };
+            let index = match name {
+                "probe" => 0,
+                "write" => 1,
+                "readback" => 2,
+                "marker" => 3,
+                "failure" => 4,
+                _ => {
+                    values = [None; 5];
+                    break;
+                }
+            };
+            if values[index].is_some() {
+                values = [None; 5];
+                break;
+            }
+            let allowed = match index {
+                0 => matches!(
+                    value,
+                    "not_attempted"
+                        | "missing"
+                        | "present"
+                        | "locked"
+                        | "unavailable"
+                        | "corrupt"
+                        | "error"
+                ),
+                1 | 3 => matches!(value, "not_attempted" | "ok" | "error"),
+                2 => matches!(
+                    value,
+                    "not_attempted"
+                        | "exact"
+                        | "missing"
+                        | "mismatch"
+                        | "locked"
+                        | "unavailable"
+                        | "corrupt"
+                        | "error"
+                ),
+                4 => matches!(
+                    value,
+                    "none" | "probe" | "prewrite_read" | "write" | "readback" | "marker"
+                ),
+                _ => false,
+            };
+            if !allowed {
+                values = [None; 5];
+                break;
+            }
+            values[index] = Some(value);
+        }
+        if let [Some(probe), Some(write), Some(readback), Some(marker), Some(failure)] = values {
+            return format!(
+                "diagnostic probe={probe} write={write} readback={readback} marker={marker} failure={failure}"
+            );
+        }
+    }
+    "diagnostic=unavailable".to_string()
+}
+
+fn contains_stable_error(stderr: &[u8], expected: &str) -> bool {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .any(|line| line.contains(expected))
+}
+
 #[test]
 fn production_binary_rejects_wrong_anchor_before_identity_side_effects() {
     for fault in ["exit-before-ready", "malformed-frame", "delay-response"] {
@@ -192,15 +273,17 @@ fn production_binary_rejects_wrong_anchor_before_identity_side_effects() {
             .expect("production host should exit");
         assert!(!output.status.success());
         assert!(output.stderr.len() <= 16 * 1024);
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let expected_error = if cfg!(target_os = "macos") {
             "identity_descriptor_rejected"
         } else {
             "identity_unavailable"
         };
-        assert!(stderr.contains(expected_error), "{stderr}");
-        assert!(!stderr.contains("private"));
-        assert!(!stderr.contains("secret"));
+        assert!(
+            contains_stable_error(&output.stderr, expected_error),
+            "expected stable rejection code"
+        );
+        assert!(!contains_stable_error(&output.stderr, "private"));
+        assert!(!contains_stable_error(&output.stderr, "secret"));
         assert!(!base.exists(), "wrong anchor must not create a profile");
     }
 }
@@ -220,7 +303,7 @@ fn macos_production_binary_initializes_and_restarts_with_same_key() {
     assert!(
         first_success,
         "first child failed: {}",
-        String::from_utf8_lossy(&first_stderr)
+        sanitized_diagnostic(&first_stderr)
     );
     assert!(first_stderr.len() <= 16 * 1024);
     assert!(first_frames.iter().any(|frame| frame["type"] == "READY"));
@@ -232,7 +315,12 @@ fn macos_production_binary_initializes_and_restarts_with_same_key() {
         .find(|frame| frame["type"] == "RESPONSE" && frame["requestId"] == "identity-first")
         .expect("first child should return identity metadata");
     assert_eq!(first_identity["outcome"], "ok");
-    assert_eq!(first_identity["payload"]["storage"], "system-keyring");
+    assert_eq!(
+        first_identity["payload"]["storage"],
+        "system-keyring",
+        "unexpected first storage; {}",
+        sanitized_diagnostic(&first_stderr)
+    );
     assert_eq!(first_identity["payload"]["lost"], false);
     assert_eq!(first_identity["payload"]["locked"], false);
     assert_eq!(first_identity["payload"]["reset_failed"], false);
@@ -262,7 +350,7 @@ fn macos_production_binary_initializes_and_restarts_with_same_key() {
     assert!(
         restart_success,
         "restart child failed: {}",
-        String::from_utf8_lossy(&restart_stderr)
+        sanitized_diagnostic(&restart_stderr)
     );
     assert!(restart_frames.iter().any(|frame| frame["type"] == "READY"));
     let restart_identity = restart_frames
@@ -299,12 +387,12 @@ fn macos_production_binary_serializes_two_fresh_children() {
     assert!(
         first_success,
         "first race child failed: {}",
-        String::from_utf8_lossy(&first_stderr)
+        sanitized_diagnostic(&first_stderr)
     );
     assert!(
         second_success,
         "second race child failed: {}",
-        String::from_utf8_lossy(&second_stderr)
+        sanitized_diagnostic(&second_stderr)
     );
     let first_pubkey = first_frames
         .iter()
@@ -333,7 +421,7 @@ fn macos_production_reserved_sidecar_blocks_before_b1() {
     assert!(
         success,
         "setup child failed: {}",
-        String::from_utf8_lossy(&stderr)
+        sanitized_diagnostic(&stderr)
     );
 
     let sidecar = root
@@ -358,7 +446,10 @@ fn macos_production_reserved_sidecar_blocks_before_b1() {
         run_production_child(&root, "macos-production-reserved", "identity-reserved");
     assert!(!restart_success);
     assert!(restart_frames.iter().all(|frame| frame["type"] != "READY"));
-    assert!(String::from_utf8_lossy(&restart_stderr).contains("identity_namespace_unverified"));
+    assert!(contains_stable_error(
+        &restart_stderr,
+        "identity_namespace_unverified"
+    ));
     assert_eq!(
         fs::read(&sidecar).expect("reserved sidecar remains"),
         before

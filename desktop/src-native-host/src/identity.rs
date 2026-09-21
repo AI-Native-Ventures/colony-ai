@@ -34,6 +34,8 @@ pub enum IdentityInitError {
 
 pub struct IdentityRuntime {
     snapshot: IdentitySnapshot,
+    #[cfg(feature = "identity-diagnostic")]
+    diagnostic_line: String,
 }
 
 impl IdentityRuntime {
@@ -107,6 +109,8 @@ impl IdentityRuntime {
             profile.keychain_service.clone(),
         );
         let runtime = Self::initialize_from_manifest(&manifest, &trusted_root)?;
+        #[cfg(feature = "identity-diagnostic")]
+        eprintln!("{}", runtime.diagnostic_line);
         ownership
             .commit_initialized(&runtime.snapshot.storage)
             .map_err(|_| IdentityInitError::InitializationFailed)?;
@@ -137,7 +141,11 @@ impl IdentityRuntime {
         };
         let snapshot = project_identity(&resolved.keys, resolved.storage, lost, locked, false)
             .map_err(|_| IdentityInitError::InitializationFailed)?;
-        Ok(Self { snapshot })
+        Ok(Self {
+            snapshot,
+            #[cfg(feature = "identity-diagnostic")]
+            diagnostic_line: store.diagnostic_line(),
+        })
     }
 
     pub fn is_shared_identity(&self) -> bool {

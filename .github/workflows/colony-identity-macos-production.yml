@@ -127,3 +127,54 @@ jobs:
               --test identity_production_dispatch \
               macos_production_reserved_sidecar_blocks_before_b1 \
               -- --ignored --exact --nocapture
+
+  macos-diagnostic:
+    name: macOS arm64 identity fallback diagnostic (derivative)
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Build the derivative diagnostic carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_target="$RUNNER_TEMP/colony-identity-diagnostic-target"
+          cargo build --locked --release \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --target-dir "$diagnostic_target" \
+            --no-default-features --features identity-diagnostic
+          echo "COLONY_IDENTITY_DIAGNOSTIC_TARGET=$diagnostic_target" >> "$GITHUB_ENV"
+
+      - name: Classify the production fallback boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_home="$RUNNER_TEMP/colony-identity-diagnostic-home"
+          keychain="$HOME/Library/Keychains/colony-identity-diagnostic.keychain-db"
+          binary="$COLONY_IDENTITY_DIAGNOSTIC_TARGET/release/colony-native-host"
+          cleanup() {
+            security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -rf "$proof_home"
+          }
+          trap cleanup EXIT
+          mkdir -p "$proof_home/Library/Application Support"
+          mkdir -p "$HOME/Library/Keychains"
+          security create-keychain -p "" "$keychain" >/dev/null
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+          COLONY_IDENTITY_PROOF_HOME="$proof_home" \
+            COLONY_NATIVE_HOST_BIN="$binary" \
+            cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
+              --no-default-features --features identity-diagnostic \
+              --test identity_production_dispatch \
+              macos_production_binary_initializes_and_restarts_with_same_key \
+              -- --ignored --exact --nocapture
