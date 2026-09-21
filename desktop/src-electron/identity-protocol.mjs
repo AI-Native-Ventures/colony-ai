@@ -192,10 +192,11 @@ function normalizePath(value) {
 }
 
 function isAbsolutePath(value) {
+  const normalized = normalizePath(value);
   return (
-    value.startsWith("/") ||
-    /^[A-Za-z]:\//.test(value) ||
-    value.startsWith("//")
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    normalized.startsWith("//")
   );
 }
 

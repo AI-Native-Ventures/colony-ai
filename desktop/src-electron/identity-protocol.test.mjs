@@ -187,6 +187,16 @@ test("registry digest changes for method schema, authorization, and deadline mut
 test("production launch descriptor requires exact profile, mode, root, and manifest digest", () => {
   assert.deepEqual(validateIdentityLaunchDescriptor(launch), launch);
 
+  const windowsLaunch = {
+    ...launch,
+    platform: "windows",
+    userDataRoot: "C:\\Users\\runner\\Colony\\dev\\0000000000000001\\normal",
+  };
+  assert.deepEqual(
+    validateIdentityLaunchDescriptor(windowsLaunch),
+    windowsLaunch,
+  );
+
   const wrongManifest = { ...launch, identityManifestDigest: "0".repeat(64) };
   expectCode(
     () =>

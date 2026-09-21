@@ -432,9 +432,9 @@ async function hostFrame(child, options) {
   validateIdentityFrame(frame, {
     direction: "host",
     binding: options.binding,
-    expectedCapability: options.capability,
+    responseCapability: options.capability,
     expectedGeneration: options.expectedGeneration,
-    expectedMethod: options.method,
+    responseMethod: options.method,
   });
   return frame;
 }
