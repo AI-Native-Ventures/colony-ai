@@ -124,6 +124,123 @@ jobs:
             --config playwright.electron.config.ts \
             tests/electron-identity-bridge.spec.ts
 
+      - name: Probe production helper with the exact minimal child environment
+        if: always()
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --input-type=module <<'NODE'
+          import { spawn } from "node:child_process";
+          import path from "node:path";
+
+          const prefix = "@colony-native:";
+          const registryDigest =
+            "452990462a124746a15d6ba7cdd0353e0183e7a3aa300e5b8b596e0439692204";
+          const manifestDigest =
+            "ff46bc9729c8e3dce602d5e1effb84d5aa6fff0b00231404c340b8e61aaa1e3d";
+          const home = process.env.HOME;
+          if (typeof home !== "string" || !path.isAbsolute(home)) {
+            throw new Error("hosted identity HOME must be absolute");
+          }
+          const userDataRoot = path.join(
+            home,
+            "Library",
+            "Application Support",
+            "Colony",
+            "dev",
+            "0000000000000001",
+            "normal",
+          );
+          const hello = {
+            type: "HELLO",
+            protocolVersion: 2,
+            profileId: "0000000000000001",
+            sessionId: "electron-minimal-env-probe",
+            generationId: 1,
+            buildId: "electron-minimal-env-probe",
+            registryDigest,
+            identityLaunch: {
+              profileId: "0000000000000001",
+              flavor: "normal",
+              platform: "macos",
+              userDataRoot,
+              identityMode: "explicit",
+              sharedIdentity: false,
+              resetProvenance: "not_attempted_fresh",
+              identityManifestDigest: manifestDigest,
+            },
+          };
+          const child = spawn(process.env.COLONY_NATIVE_HOST_BIN, ["--identity-v2"], {
+            stdio: ["pipe", "pipe", "pipe"],
+            env: { HOME: home },
+          });
+          let stdout = "";
+          let stderr = "";
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk.toString("utf8");
+          });
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk.toString("utf8");
+          });
+          child.stdin.write(`${prefix}${JSON.stringify(hello)}\n`);
+          child.stdin.end();
+          const result = await new Promise((resolve) => {
+            let settled = false;
+            const finish = (value) => {
+              if (settled) return;
+              settled = true;
+              resolve(value);
+            };
+            child.once("error", (error) =>
+              finish({ exitCode: null, signal: null, spawnError: error.code ?? "spawn_error" }),
+            );
+            child.once("close", (exitCode, signal) => finish({ exitCode, signal }));
+            const timer = setTimeout(() => {
+              child.kill("SIGTERM");
+              finish({ exitCode: null, signal: "SIGTERM" });
+            }, 15_000);
+            timer.unref?.();
+          });
+          const frames = stdout
+            .split("\n")
+            .filter((line) => line.startsWith(prefix))
+            .flatMap((line) => {
+              try {
+                const frame = JSON.parse(line.slice(prefix.length));
+                return [{
+                  type: frame.type ?? null,
+                  errorCode: frame.error?.code ?? null,
+                }];
+              } catch {
+                return [];
+              }
+            });
+          const stableCodes = [
+            "identity_unavailable",
+            "identity_descriptor_rejected",
+            "identity_initialization_failed",
+            "identity_namespace_unverified",
+            "identity_manifest_mismatch",
+            "registry_mismatch",
+            "serialization_error",
+          ];
+          const stderrCodes = stableCodes.filter((code) => stderr.includes(code));
+          console.log(
+            JSON.stringify({
+              ...result,
+              frameTypes: frames.map(({ type }) => type),
+              frameErrorCodes: frames
+                .map(({ errorCode }) => errorCode)
+                .filter((code) => code !== null),
+              stderrCodes,
+            }),
+          );
+          if (!frames.some(({ type }) => type === "READY")) process.exitCode = 1;
+          NODE
+
       - name: Record immutable flavor and artifact metadata
         shell: bash
         run: |
