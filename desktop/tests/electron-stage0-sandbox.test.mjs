@@ -18,7 +18,7 @@ for (const [missing, namespaces] of [
   ["user", ["pid", "net"]],
 ]) {
   test(`rejects renderer isolation missing ${missing}`, () => {
-    assert.equal(hasRequiredLinuxSandboxIsolation(namespaces, false), false);
+    assert.equal(hasRequiredLinuxSandboxIsolation(namespaces, true), false);
   });
 }
 
