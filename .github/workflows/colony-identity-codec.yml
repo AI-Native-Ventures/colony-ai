@@ -7,7 +7,7 @@ on:
     paths:
       - "desktop/src-electron/identity-protocol.mjs"
       - "desktop/src-electron/identity-protocol.test.mjs"
-      - "desktop/src-electron/identity-protocol.interop.test.mjs"
+      - "desktop/src-electron/identity-protocol.interop.mjs"
       - "desktop/src-native-host/**"
       - "desktop/identity-kernel/**"
       - "desktop/identity-store/**"
@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           cargo fmt --manifest-path desktop/src-native-host/Cargo.toml -- --check
           node --check desktop/src-electron/identity-protocol.mjs
-          node --check desktop/src-electron/identity-protocol.interop.test.mjs
+          node --check desktop/src-electron/identity-protocol.interop.mjs
 
       - name: Run the focused pure codec tests
         shell: bash
@@ -70,4 +70,4 @@ jobs:
         shell: bash
         env:
           COLONY_IDENTITY_CODEC_INTEROP_REQUIRED: "1"
-        run: node --test desktop/src-electron/identity-protocol.interop.test.mjs
+        run: node --test desktop/src-electron/identity-protocol.interop.mjs

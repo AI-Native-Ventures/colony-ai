@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { existsSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -152,8 +153,11 @@ function productionRequest({
   };
 }
 
-function assertSafeText(text, label) {
-  assert.ok(text.length <= STDERR_CAPTURE_LIMIT_BYTES, `${label} is bounded`);
+function assertSafeText(text, label, limitBytes = STDERR_CAPTURE_LIMIT_BYTES) {
+  assert.ok(
+    Buffer.byteLength(text, "utf8") <= limitBytes,
+    `${label} is bounded`,
+  );
   for (const forbidden of [
     FRAME_PREFIX,
     "nsec",
@@ -172,7 +176,17 @@ function assertSafeText(text, label) {
 }
 
 function assertSafeFrame(frame) {
-  assertSafeText(JSON.stringify(frame), "native frame");
+  assertSafeText(JSON.stringify(frame), "native frame", FRAME_LIMIT_BYTES);
+}
+
+function assertExpectedFatalExit(closeInfo, label) {
+  assert.equal(closeInfo.code, 2, `${label} must exit with protocol code 2`);
+  assert.equal(closeInfo.signal, null, `${label} must not be signal-killed`);
+  assert.equal(
+    closeInfo.forced,
+    false,
+    `${label} must not require cleanup kill`,
+  );
 }
 
 class NativeChild {
@@ -196,8 +210,10 @@ class NativeChild {
 
   #protocolFailure = null;
 
-  constructor(helper, environmentPatch = {}) {
-    this.#child = spawn(helper, ["--identity-v2-file-test"], {
+  #forcedKill = false;
+
+  constructor(helper, environmentPatch = {}, spawnProcess = spawn) {
+    this.#child = spawnProcess(helper, ["--identity-v2-file-test"], {
       cwd: REPO_ROOT,
       env: safeEnvironment(environmentPatch),
       stdio: ["pipe", "pipe", "pipe"],
@@ -216,7 +232,7 @@ class NativeChild {
       this.#closeInfo = {
         code,
         signal,
-        forced: false,
+        forced: this.#forcedKill,
       };
       this.#settleWaiters(
         this.#protocolFailure ??
@@ -233,6 +249,12 @@ class NativeChild {
     }
   }
 
+  #kill() {
+    if (this.#closed) return;
+    this.#forcedKill = true;
+    this.#child.kill();
+  }
+
   #onStdout(chunk) {
     if (this.#closed || this.#protocolFailure) return;
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
@@ -241,7 +263,7 @@ class NativeChild {
         "native stdout exceeded bounded frame buffer",
       );
       this.#settleWaiters(this.#protocolFailure);
-      this.#child.kill();
+      this.#kill();
       return;
     }
     this.#stdoutBuffer = Buffer.concat([this.#stdoutBuffer, bytes]);
@@ -250,19 +272,19 @@ class NativeChild {
       if (newline < 0) return;
       const line = this.#stdoutBuffer.subarray(0, newline);
       this.#stdoutBuffer = this.#stdoutBuffer.subarray(newline + 1);
-      if (line.length === 0 || line.length > FRAME_LIMIT_BYTES) {
+      if (line.length === 0 || line.length + 1 > FRAME_LIMIT_BYTES) {
         this.#protocolFailure = new Error(
           "native frame exceeded protocol bounds",
         );
         this.#settleWaiters(this.#protocolFailure);
-        this.#child.kill();
+        this.#kill();
         return;
       }
       const text = line.toString("utf8");
       if (!text.startsWith(FRAME_PREFIX)) {
         this.#protocolFailure = new Error("native frame prefix rejected");
         this.#settleWaiters(this.#protocolFailure);
-        this.#child.kill();
+        this.#kill();
         return;
       }
       let frame;
@@ -271,14 +293,14 @@ class NativeChild {
       } catch {
         this.#protocolFailure = new Error("native frame JSON rejected");
         this.#settleWaiters(this.#protocolFailure);
-        this.#child.kill();
+        this.#kill();
         return;
       }
       assertSafeFrame(frame);
       if (this.#frames.length >= 128) {
         this.#protocolFailure = new Error("native frame queue exceeded bound");
         this.#settleWaiters(this.#protocolFailure);
-        this.#child.kill();
+        this.#kill();
         return;
       }
       const waiter = this.#waiters.shift();
@@ -351,8 +373,12 @@ class NativeChild {
 
   async sendRaw(jsonText) {
     const jsonBytes = Buffer.byteLength(jsonText, "utf8");
+    const frameBytes = Buffer.byteLength(FRAME_PREFIX, "utf8") + jsonBytes + 1;
+    if (frameBytes > FRAME_LIMIT_BYTES) {
+      throw new Error("outbound frame exceeds protocol bounds");
+    }
     const payload = Buffer.from(`${FRAME_PREFIX}${jsonText}\n`, "utf8");
-    assert.ok(jsonBytes + Buffer.byteLength(FRAME_PREFIX) <= FRAME_LIMIT_BYTES);
+    assert.equal(payload.length, frameBytes);
     await this.#write(payload);
   }
 
@@ -381,14 +407,15 @@ class NativeChild {
     if (this.#closed && this.#closeInfo)
       return Promise.resolve(this.#closeInfo);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("native helper close timed out")),
-        timeoutMs,
-      );
       const onClose = (code, signal) => {
         clearTimeout(timer);
-        resolve({ code, signal, forced: false });
+        this.#child.off("close", onClose);
+        resolve({ code, signal, forced: this.#forcedKill });
       };
+      const timer = setTimeout(() => {
+        this.#child.off("close", onClose);
+        reject(new Error("native helper close timed out"));
+      }, timeoutMs);
       this.#child.once("close", onClose);
     });
   }
@@ -400,11 +427,11 @@ class NativeChild {
     try {
       return await this.waitForClose(CLOSE_TIMEOUT_MS);
     } catch {
-      if (!this.#closed) this.#child.kill();
+      this.#kill();
       try {
         return await this.waitForClose(CLOSE_TIMEOUT_MS);
       } catch {
-        return { code: null, signal: "SIGKILL", forced: true };
+        return { code: null, signal: null, forced: true };
       }
     }
   }
@@ -413,6 +440,132 @@ class NativeChild {
     return Buffer.concat(this.#stderrChunks).toString("utf8");
   }
 }
+
+class FakeStdin extends EventEmitter {
+  destroyed = false;
+
+  writes = [];
+
+  #onEnd;
+
+  constructor(onEnd) {
+    super();
+    this.#onEnd = onEnd;
+  }
+
+  write(payload, callback) {
+    if (this.destroyed) throw new Error("fake stdin is closed");
+    this.writes.push(Buffer.from(payload));
+    callback();
+    return true;
+  }
+
+  end() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.#onEnd();
+  }
+}
+
+class FakeChild extends EventEmitter {
+  stdout = new EventEmitter();
+
+  stderr = new EventEmitter();
+
+  stdin;
+
+  #killed = false;
+
+  constructor() {
+    super();
+    this.stdin = new FakeStdin(() => {
+      queueMicrotask(() => this.emit("close", 0, null));
+    });
+  }
+
+  kill(signal = "SIGKILL") {
+    if (this.#killed) return;
+    this.#killed = true;
+    this.stdin.destroyed = true;
+    queueMicrotask(() => this.emit("close", null, signal));
+  }
+}
+
+function fakeSpawnHandle() {
+  const handle = { child: null };
+  handle.spawn = () => {
+    handle.child = new FakeChild();
+    return handle.child;
+  };
+  return handle;
+}
+
+test("interop frame checks use newline-inclusive UTF-8 byte boundaries", async () => {
+  const targetJsonBytes =
+    FRAME_LIMIT_BYTES - Buffer.byteLength(FRAME_PREFIX, "utf8") - 1;
+  const jsonOverhead = Buffer.byteLength('{"padding":""}', "utf8");
+  const exactJson = JSON.stringify({
+    padding: "x".repeat(targetJsonBytes - jsonOverhead),
+  });
+  assert.equal(Buffer.byteLength(exactJson, "utf8"), targetJsonBytes);
+
+  const outboundHandle = fakeSpawnHandle();
+  const outbound = new NativeChild("fake", {}, outboundHandle.spawn);
+  try {
+    await outbound.sendRaw(exactJson);
+    assert.equal(outboundHandle.child.stdin.writes.length, 1);
+    assert.equal(
+      outboundHandle.child.stdin.writes[0].length,
+      FRAME_LIMIT_BYTES,
+    );
+    await assert.rejects(
+      () => outbound.sendRaw(`${exactJson}x`),
+      /outbound frame exceeds protocol bounds/,
+    );
+
+    const unicodeJson = JSON.stringify({ text: "é".repeat(64) });
+    assert.notEqual(unicodeJson.length, Buffer.byteLength(unicodeJson, "utf8"));
+    await outbound.sendRaw(unicodeJson);
+    assert.equal(
+      outboundHandle.child.stdin.writes[1].length,
+      Buffer.byteLength(`${FRAME_PREFIX}${unicodeJson}\n`, "utf8"),
+    );
+  } finally {
+    await outbound.close();
+  }
+
+  const inboundHandle = fakeSpawnHandle();
+  const inbound = new NativeChild("fake", {}, inboundHandle.spawn);
+  const exactWire = Buffer.from(`${FRAME_PREFIX}${exactJson}\n`, "utf8");
+  inboundHandle.child.stdout.emit("data", exactWire.subarray(0, 17));
+  inboundHandle.child.stdout.emit("data", exactWire.subarray(17));
+  const parsed = await inbound.nextFrame();
+  assert.equal(parsed.padding.length, targetJsonBytes - jsonOverhead);
+  await inbound.close();
+
+  const overcapHandle = fakeSpawnHandle();
+  const overcap = new NativeChild("fake", {}, overcapHandle.spawn);
+  overcapHandle.child.stdout.emit(
+    "data",
+    Buffer.alloc(FRAME_LIMIT_BYTES, 0x78),
+  );
+  overcapHandle.child.stdout.emit("data", Buffer.from("\n"));
+  await assert.rejects(
+    () => overcap.nextFrame(),
+    /native stdout exceeded bounded frame buffer/,
+  );
+  await overcap.close();
+});
+
+test("fatal close evidence rejects forced, signaled, and timeout-cleanup metadata", () => {
+  for (const closeInfo of [
+    { code: 2, signal: null, forced: true },
+    { code: null, signal: "SIGTERM", forced: false },
+    { code: 2, signal: null, forced: true },
+  ]) {
+    assert.throws(() => assertExpectedFatalExit(closeInfo, "fatal case"));
+  }
+});
 
 async function withProfileRoot(label, callback) {
   const base = await mkdtemp(
@@ -652,24 +805,21 @@ test("real helper rejects malformed, mixed-registry, and stale-manifest launch f
   for (const candidate of cases) {
     await withProfileRoot(candidate.label, async ({ base, root }) => {
       const child = new NativeChild(helper);
-      let finished;
       try {
         const frame = candidate.mutate(productionHello(root));
         await child.sendRaw(JSON.stringify(frame));
-        await child.waitForClose(FRAME_TIMEOUT_MS);
-        finished = await child.close();
+        const finished = await child.waitForClose(FRAME_TIMEOUT_MS);
+        assertExpectedFatalExit(finished, candidate.label);
+        assertSafeText(child.stderrText(), `${candidate.label} native stderr`);
+        assert.equal(child.stderrText().includes(candidate.expectedCode), true);
+        assert.equal(existsSync(root), false);
+        assert.equal(
+          existsSync(path.join(base, "Colony", "dev", PROFILE_ID)),
+          false,
+        );
       } finally {
-        if (!finished) finished = await child.close();
+        await child.close();
       }
-      assert.equal(finished.forced, false);
-      assert.notEqual(finished.code, 0);
-      assertSafeText(child.stderrText(), `${candidate.label} native stderr`);
-      assert.equal(child.stderrText().includes(candidate.expectedCode), true);
-      assert.equal(existsSync(root), false);
-      assert.equal(
-        existsSync(path.join(base, "Colony", "dev", PROFILE_ID)),
-        false,
-      );
     });
   }
 });
