@@ -22,7 +22,7 @@ die() {
 
 [[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] ||
     die "ANDROID_PACKAGE is not a valid application id"
-[[ "$activity" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] ||
+[[ "$activity" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*\.[A-Za-z_][A-Za-z0-9_]*$ ]] ||
     die "ANDROID_ACTIVITY is not a valid component name"
 [[ -s "$apk_path" ]] || die "APK does not exist or is empty: $apk_path"
 command -v adb >/dev/null 2>&1 || die "adb is not available"
