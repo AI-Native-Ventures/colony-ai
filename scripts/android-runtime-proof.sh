@@ -117,8 +117,10 @@ capture_screen() {
 
 assert_initial_ui() {
     local ui_file="$1"
-    grep -Fq 'text="Welcome to Buzz"' "$ui_file" || return 1
-    grep -Fq 'text="Scan a QR code"' "$ui_file" || return 1
+    # Flutter exposes these labels through Android accessibility semantics,
+    # which UIAutomator records as content-desc rather than text attributes.
+    grep -Fq 'content-desc="Welcome to Buzz"' "$ui_file" || return 1
+    grep -Fq 'content-desc="Scan a QR code"' "$ui_file" || return 1
 }
 
 wait_for_initial_ui() {
