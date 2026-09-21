@@ -75,10 +75,10 @@ const identityLaunch = createTrustedIdentityLaunch({
   userDataRoot: userDataDirectory,
 });
 
-// This must happen before Electron's ready event. Stage 0 intentionally uses a
-// fresh namespace and never probes or opens a legacy Buzz/Colony profile.
+// Stage 0 intentionally uses a fresh namespace and never probes or opens a
+// legacy Buzz/Colony profile. The user-data path is registered only after the
+// identity ownership preflight below has reserved that namespace.
 app.setName(STAGE0_APP_NAME);
-app.setPath("userData", userDataDirectory);
 
 const runtime = {
   window: null,
@@ -675,6 +675,11 @@ app.whenReady().then(() => {
   initializeRuntime();
   const ready = identityLaunch ? identityStartup : Promise.resolve();
   void ready.then(() => {
+    // Register the manifest-bound Electron profile only after the identity
+    // carrier has reserved the empty namespace. Electron may create this
+    // directory as a side effect of setting the path, which would otherwise
+    // race the native ownership preflight.
+    app.setPath("userData", userDataDirectory);
     createWindow();
     if (!identityLaunch) void startRuntime();
   });
