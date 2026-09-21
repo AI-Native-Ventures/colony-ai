@@ -139,13 +139,16 @@ wait_for_initial_ui() {
 launch_app() {
     local label="$1"
     local launch_output
-    launch_output="$(adb_target shell am start -W -n "$activity" 2>&1 | tr -d '\r')" || {
+    # Do not wait for Flutter's first frame in `am start`: Android's synchronous
+    # wait can time out while the activity is still starting. The bounded UI
+    # poll below is the readiness check for the real app surface.
+    launch_output="$(adb_target shell am start -n "$activity" 2>&1 | tr -d '\r')" || {
         printf '%s\n' "$launch_output" > "$output_dir/${label}-launch.txt"
         return 1
     }
     printf '%s\n' "$launch_output" > "$output_dir/${label}-launch.txt"
     cat "$output_dir/${label}-launch.txt"
-    grep -Fq 'Status: ok' "$output_dir/${label}-launch.txt"
+    grep -Fq 'Starting: Intent' "$output_dir/${label}-launch.txt"
 }
 
 if ! launch_app initial; then
