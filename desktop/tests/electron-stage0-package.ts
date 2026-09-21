@@ -141,6 +141,61 @@ export function getStage0PackagePaths(
   );
 }
 
+const linuxSandboxNamespaces = ["pid", "net", "mnt", "user"] as const;
+type LinuxSandboxNamespace = (typeof linuxSandboxNamespaces)[number];
+
+function readProcNamespace(
+  pid: number,
+  namespace: LinuxSandboxNamespace,
+): string | null {
+  try {
+    return fs.readlinkSync(`/proc/${pid}/ns/${namespace}`);
+  } catch {
+    return null;
+  }
+}
+
+function readProcRootIdentity(pid: number): string | null {
+  try {
+    const root = fs.statSync(`/proc/${pid}/root`);
+    return `${root.dev}:${root.ino}`;
+  } catch {
+    return null;
+  }
+}
+
+function readProcStatus(pid: number): string {
+  return fs.readFileSync(`/proc/${pid}/status`, "utf8");
+}
+
+function readProcStatusField(status: string, field: string): string | null {
+  return new RegExp(`^${field}:\\s+([^\\n]+)`, "m").exec(status)?.[1] ?? null;
+}
+
+function readProcParentPid(pid: number): number | null {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const closingCommand = stat.lastIndexOf(")");
+    if (closingCommand < 0) return null;
+    const fields = stat
+      .slice(closingCommand + 2)
+      .trim()
+      .split(/\s+/);
+    const parentPid = Number(fields[1]);
+    return Number.isInteger(parentPid) && parentPid > 0 ? parentPid : null;
+  } catch {
+    return null;
+  }
+}
+
+function readProcCommandName(pid: number): string | null {
+  try {
+    return fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function assertActiveLinuxSandbox(
   application: ElectronApplication,
 ) {
@@ -154,39 +209,106 @@ export async function assertActiveLinuxSandbox(
       .getAppMetrics()
       .filter((metric) => metric.type === "Tab")
       .map((metric) => metric.pid);
+    const metrics = app
+      .getAppMetrics()
+      .map((metric) => ({ type: metric.type, pid: metric.pid }))
+      .filter((metric) => Number.isInteger(metric.pid) && metric.pid > 0);
     return {
+      mainPid: process.pid,
       rendererPid: window.webContents.getOSProcessId(),
       tabMetricPids,
+      metrics,
     };
   });
   assert.ok(renderer.rendererPid > 0, "expected a renderer OS process");
+  assert.ok(renderer.mainPid > 0, "expected an Electron main OS process");
+  assert.notEqual(
+    renderer.rendererPid,
+    renderer.mainPid,
+    `renderer PID must differ from Electron main: ${JSON.stringify(renderer)}`,
+  );
   assert.ok(
     renderer.tabMetricPids.includes(renderer.rendererPid),
     `renderer PID was not identified as a Tab metric: ${JSON.stringify(renderer)}`,
   );
-  const statusPath = `/proc/${renderer.rendererPid}/status`;
+  const rendererStatus = readProcStatus(renderer.rendererPid);
+  const mainStatus = readProcStatus(renderer.mainPid);
+  const rendererNamespaces = Object.fromEntries(
+    linuxSandboxNamespaces.map((namespace) => [
+      namespace,
+      readProcNamespace(renderer.rendererPid, namespace),
+    ]),
+  ) as Record<LinuxSandboxNamespace, string | null>;
+  const mainNamespaces = Object.fromEntries(
+    linuxSandboxNamespaces.map((namespace) => [
+      namespace,
+      readProcNamespace(renderer.mainPid, namespace),
+    ]),
+  ) as Record<LinuxSandboxNamespace, string | null>;
   assert.ok(
-    fs.existsSync(statusPath),
-    `missing renderer status: ${renderer.rendererPid}`,
+    linuxSandboxNamespaces.every(
+      (namespace) =>
+        rendererNamespaces[namespace] !== null &&
+        mainNamespaces[namespace] !== null,
+    ),
+    `renderer/main namespace identities were not readable: ${JSON.stringify({ rendererNamespaces, mainNamespaces })}`,
   );
-  const status = fs.readFileSync(statusPath, "utf8");
+  const namespaceDifferences = linuxSandboxNamespaces.filter(
+    (namespace) => rendererNamespaces[namespace] !== mainNamespaces[namespace],
+  );
+  const rendererRoot = readProcRootIdentity(renderer.rendererPid);
+  const mainRoot = readProcRootIdentity(renderer.mainPid);
+  const rootDiffers =
+    rendererRoot !== null && mainRoot !== null && rendererRoot !== mainRoot;
+  const rendererParentPid = readProcParentPid(renderer.rendererPid);
+  const rendererParentMetric = renderer.metrics.find(
+    (metric) => metric.pid === rendererParentPid,
+  );
+  const status = rendererStatus;
   const observation = {
     pid: renderer.rendererPid,
-    uid: /^Uid:\s+(\d+)/m.exec(status)?.[1] ?? null,
-    noNewPrivs: /^NoNewPrivs:\s+(\d+)/m.exec(status)?.[1] ?? null,
-    seccomp: /^Seccomp:\s+(\d+)/m.exec(status)?.[1] ?? null,
+    mainPid: renderer.mainPid,
+    uid: readProcStatusField(status, "Uid")?.split(/\s+/)[0] ?? null,
+    mainUid: readProcStatusField(mainStatus, "Uid")?.split(/\s+/)[0] ?? null,
+    noNewPrivs: readProcStatusField(status, "NoNewPrivs"),
+    seccomp: readProcStatusField(status, "Seccomp"),
+    capEff: readProcStatusField(status, "CapEff"),
+    nspid: readProcStatusField(status, "NSpid"),
+    parentPid: rendererParentPid,
+    parentMetricType: rendererParentMetric?.type ?? null,
+    parentCommand: rendererParentPid
+      ? readProcCommandName(rendererParentPid)
+      : null,
     tabMetricPids: renderer.tabMetricPids,
+    metricTypes: renderer.metrics,
+    namespaceDifferences,
+    rendererNamespaces,
+    mainNamespaces,
+    rootDiffers,
+    seccompBpf: readProcStatusField(status, "Seccomp") === "2",
   };
   assert.notEqual(
     observation.uid,
     "0",
     `renderer must run as non-root: ${JSON.stringify(observation)}`,
   );
-  // These are process-level sandbox signals, not a claim that one status bit
-  // proves every Chromium namespace/seccomp property.
+  const layer1NamespaceIsolation =
+    namespaceDifferences.includes("pid") &&
+    (namespaceDifferences.some((namespace) => namespace !== "pid") ||
+      rootDiffers);
   assert.ok(
-    observation.noNewPrivs === "1" || observation.seccomp === "2",
-    `Electron renderer sandbox signal not observed: ${JSON.stringify(observation)}`,
+    layer1NamespaceIsolation,
+    `Chromium layer-1 renderer isolation was not observed: ${JSON.stringify(observation)}`,
   );
-  console.log(`linux_sandbox=active ${JSON.stringify(observation)}`);
+  assert.equal(
+    observation.noNewPrivs,
+    "1",
+    `renderer did not report NoNewPrivs=1: ${JSON.stringify(observation)}`,
+  );
+  console.log(
+    `linux_sandbox=active ${JSON.stringify({
+      ...observation,
+      layer1NamespaceIsolation,
+    })}`,
+  );
 }
