@@ -166,7 +166,13 @@ function expectOptionalKeys(value, requiredKeys, optionalKeys, code) {
 function expectString(value, code, { allowEmpty = false, maxBytes } = {}) {
   expect(typeof value === "string", code);
   expect(allowEmpty || value.length > 0, code);
-  expect(![...value].some((character) => character.charCodeAt(0) < 0x20), code);
+  expect(
+    ![...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint < 0x20 || codePoint === 0x7f;
+    }),
+    code,
+  );
   if (maxBytes !== undefined) {
     expect(Buffer.byteLength(value, "utf8") <= maxBytes, code);
   }
@@ -674,7 +680,6 @@ function validateIdentitySnapshot(payload) {
   expectString(payload.pubkey, "invalid_identity_metadata", {
     maxBytes: MAX_METADATA_STRING_BYTES,
   });
-  expect(/^[0-9a-f]{64}$/.test(payload.pubkey), "invalid_identity_metadata");
   expectString(payload.display_name, "invalid_identity_metadata", {
     maxBytes: MAX_METADATA_STRING_BYTES,
   });
@@ -712,7 +717,10 @@ function validateResponsePayload(payload, schema) {
 }
 
 function responseSchemaFor(capability, method) {
-  if (capability === undefined && method === undefined) return null;
+  expect(
+    capability !== undefined && method !== undefined,
+    "invalid_response_schema",
+  );
   expectString(capability, "unknown_capability", { maxBytes: MAX_ID_BYTES });
   expectString(method, "unknown_method", { maxBytes: MAX_ID_BYTES });
   const request = REQUESTS[`${capability}:${method}`];
@@ -725,7 +733,7 @@ function responseSchemaFor(capability, method) {
   return request.responseSchema;
 }
 
-function validateLaunchDescriptor(launch, expectedManifestDigest) {
+function validateLaunchDescriptor(launch) {
   expectExactKeys(
     launch,
     [
@@ -770,17 +778,14 @@ function validateLaunchDescriptor(launch, expectedManifestDigest) {
   );
   expectDigest(launch.identityManifestDigest, "invalid_identity_launch");
   expect(
-    launch.identityManifestDigest === expectedManifestDigest,
+    launch.identityManifestDigest === PRODUCTION_IDENTITY_MANIFEST_DIGEST,
     "identity_manifest_mismatch",
   );
   return launch;
 }
 
-export function validateIdentityLaunchDescriptor(
-  launch,
-  { expectedManifestDigest = PRODUCTION_IDENTITY_MANIFEST_DIGEST } = {},
-) {
-  return validateLaunchDescriptor(launch, expectedManifestDigest);
+export function validateIdentityLaunchDescriptor(launch) {
+  return validateLaunchDescriptor(launch);
 }
 
 export function validateIdentityRequest(frame) {
@@ -848,24 +853,7 @@ export function validateIdentityResponse(
     expect(!hasError, "invalid_success_error");
     expect(hasPayload, "invalid_success_payload");
     const schema = responseSchemaFor(expectedCapability, expectedMethod);
-    if (schema === null) {
-      const payloadMatches = [
-        "boolean",
-        "identity-snapshot",
-        "relay-url",
-      ].filter((candidate) => {
-        try {
-          validateResponsePayload(frame.payload, candidate);
-          return true;
-        } catch (error) {
-          if (error instanceof IdentityProtocolError) return false;
-          throw error;
-        }
-      });
-      expect(payloadMatches.length === 1, "invalid_success_payload");
-    } else {
-      validateResponsePayload(frame.payload, schema);
-    }
+    validateResponsePayload(frame.payload, schema);
   } else {
     expect(!hasPayload, "invalid_error_payload");
     expect(hasError, "missing_error");

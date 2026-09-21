@@ -90,6 +90,11 @@ function response(payload, overrides = {}) {
   return frame;
 }
 
+const identityResponseOptions = {
+  expectedCapability: "identity-read",
+  expectedMethod: "get_identity",
+};
+
 function expectCode(fn, code) {
   assert.throws(fn, (error) => {
     assert.ok(error instanceof IdentityProtocolError);
@@ -179,7 +184,10 @@ test("production launch descriptor requires exact profile, mode, root, and manif
 
   const wrongManifest = { ...launch, identityManifestDigest: "0".repeat(64) };
   expectCode(
-    () => validateIdentityLaunchDescriptor(wrongManifest),
+    () =>
+      validateIdentityLaunchDescriptor(wrongManifest, {
+        expectedManifestDigest: wrongManifest.identityManifestDigest,
+      }),
     "identity_manifest_mismatch",
   );
 
@@ -285,6 +293,10 @@ test("named requests accept only the three frozen capability/method pairs and an
     "unknown_capability",
   );
   expectCode(
+    () => validateIdentityRequest(request({ requestId: "request\u007f" })),
+    "invalid_request_id",
+  );
+  expectCode(
     () =>
       validateIdentityRequest(request({ payload: { nsec: "nsec1secret" } })),
     "invalid_payload",
@@ -307,13 +319,9 @@ test("is_shared_identity and get_identity success payloads are exact and bounded
     display_name: "npub1abc…wxyz",
     locked: false,
     lost: false,
-    pubkey: "0".repeat(64),
+    pubkey: "0123456789abcdef",
     reset_failed: false,
     storage: "local-file",
-  };
-  const identityResponseOptions = {
-    expectedCapability: "identity-read",
-    expectedMethod: "get_identity",
   };
   validateIdentityResponse(response(metadata), identityResponseOptions);
   assert.deepEqual(
@@ -354,7 +362,7 @@ test("is_shared_identity and get_identity success payloads are exact and bounded
   expectCode(
     () =>
       validateIdentityResponse(
-        response({ ...metadata, pubkey: "nsec1secret" }),
+        response({ ...metadata, private_key: "nsec1secret" }),
         identityResponseOptions,
       ),
     "invalid_identity_metadata",
@@ -362,6 +370,20 @@ test("is_shared_identity and get_identity success payloads are exact and bounded
 });
 
 test("responses are either one declared payload or one finite code-only error", () => {
+  expectCode(
+    () => validateIdentityResponse(response({ value: false })),
+    "invalid_response_schema",
+  );
+  expectCode(
+    () => validateIdentityFrame(response({ value: false })),
+    "invalid_response_schema",
+  );
+  validateIdentityFrame(response({ value: false }), {
+    direction: "host",
+    responseCapability: "identity-mode",
+    responseMethod: "is_shared_identity",
+  });
+
   for (const code of IDENTITY_ERROR_CODES) {
     validateIdentityResponse(
       response(undefined, {
@@ -386,6 +408,10 @@ test("responses are either one declared payload or one finite code-only error", 
     () =>
       validateIdentityResponse(
         response({ value: false }, { error: { code: "timeout" } }),
+        {
+          expectedCapability: "identity-mode",
+          expectedMethod: "is_shared_identity",
+        },
       ),
     "invalid_success_error",
   );
