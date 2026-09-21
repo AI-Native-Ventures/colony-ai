@@ -113,7 +113,26 @@ test("allows only observed generated React asset literals", () => {
       "react",
       "src-electron/renderer/assets/index-Bjw85wCC.js",
     ),
-    ["buzz://", "__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx"],
+    [
+      "buzz://",
+      "__TAURI_INTERNALS__",
+      "__BUZZ_E2E__",
+      "maybeInstallE2eTauriMocks",
+      "src/main.tsx",
+    ],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/index-CTdVhpDl.js",
+    ),
+    [
+      "buzz://",
+      "__TAURI_INTERNALS__",
+      "__BUZZ_E2E__",
+      "maybeInstallE2eTauriMocks",
+      "src/main.tsx",
+    ],
   );
   assert.deepEqual(
     allowedReactRendererTokens("react", "src-electron/renderer/index.html"),

@@ -172,6 +172,7 @@ const observedReactRendererAssets = Object.freeze({
   core: "src-electron/renderer/assets/core-CGTdLJHd.js",
   dialog: "src-electron/renderer/assets/dialog-9ih2nekE.js",
   index: "src-electron/renderer/assets/index-Bjw85wCC.js",
+  instrumentedIndex: "src-electron/renderer/assets/index-CTdVhpDl.js",
 });
 
 const generatedReactAssetPattern =
@@ -201,13 +202,18 @@ export function allowedReactRendererTokens(uiMode, entry) {
   }
   if (!isGeneratedReactAssetEntry(entry)) return [];
   const tokens = ["buzz://"];
-  if (entry === observedReactRendererAssets.core) {
+  if (
+    entry === observedReactRendererAssets.core ||
+    entry === observedReactRendererAssets.dialog ||
+    entry === observedReactRendererAssets.index ||
+    entry === observedReactRendererAssets.instrumentedIndex
+  ) {
     tokens.push("__TAURI_INTERNALS__");
   }
-  if (entry === observedReactRendererAssets.dialog) {
-    tokens.push("__TAURI_INTERNALS__");
-  }
-  if (entry === observedReactRendererAssets.index) {
+  if (
+    entry === observedReactRendererAssets.index ||
+    entry === observedReactRendererAssets.instrumentedIndex
+  ) {
     tokens.push("__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx");
   }
   return tokens;
