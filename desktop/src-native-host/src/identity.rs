@@ -88,7 +88,7 @@ impl IdentityRuntime {
         crash_after_b1: bool,
     ) -> Result<Self, IdentityInitError> {
         validate_manifest_binding(launch, profiles, expected_manifest_digest)?;
-        if host_platform() != "macos" {
+        if !matches!(host_platform(), "macos" | "linux") {
             return Err(IdentityInitError::Unavailable);
         }
         let profile = profiles

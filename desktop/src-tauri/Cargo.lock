@@ -1629,6 +1629,7 @@ name = "colony-identity-store"
 version = "0.1.0"
 dependencies = [
  "colony-identity-kernel",
+ "dbus-secret-service",
  "keyring",
  "libc",
  "nostr 0.44.7",

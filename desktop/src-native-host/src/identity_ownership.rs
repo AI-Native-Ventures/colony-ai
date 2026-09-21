@@ -3,7 +3,7 @@
 //! This module is deliberately a boundary around the unchanged B1
 //! `HeadlessIdentityStore`.  It owns only metadata: a stable sibling lock, a
 //! versioned sidecar, confined profile-parent creation, and an exact
-//! macOS-keychain presence probe supplied by `colony-identity-store`.  It
+//! OS-keychain presence probe supplied by `colony-identity-store`.  It
 //! never reads a keyring blob, legacy namespace, or identity file.
 
 use std::{
@@ -114,10 +114,34 @@ pub fn preflight(
     identity_manifest_digest: &str,
     build_id: &str,
 ) -> Result<OwnershipGuard, OwnershipError> {
-    if platform != "macos" || !cfg!(target_os = "macos") {
+    if !platform_matches_target(platform) {
         return Err(OwnershipError::Unavailable);
     }
 
+    preflight_with_probe(
+        anchor,
+        relative_root,
+        profile_id,
+        flavor,
+        platform,
+        keychain_service,
+        identity_manifest_digest,
+        build_id,
+        probe_identity_presence,
+    )
+}
+
+fn preflight_with_probe(
+    anchor: &Path,
+    relative_root: &str,
+    profile_id: &str,
+    flavor: &str,
+    platform: &str,
+    keychain_service: &str,
+    identity_manifest_digest: &str,
+    build_id: &str,
+    probe: impl Fn(&str) -> MetadataPresence,
+) -> Result<OwnershipGuard, OwnershipError> {
     let context = derive_context(
         anchor,
         relative_root,
@@ -158,7 +182,7 @@ pub fn preflight(
                 RootStatus::Absent => {}
             }
 
-            match probe_identity_presence(&context.keychain_service) {
+            match probe(&context.keychain_service) {
                 MetadataPresence::NotFound => {
                     let reserved =
                         make_record(&context, OwnershipState::Reserved, StorageKind::None);
@@ -193,7 +217,7 @@ fn derive_context(
         || !safe_component(profile_id)
         || !matches!(flavor, "normal" | "instrumented")
         || !safe_component(flavor)
-        || platform != "macos"
+        || !platform_name_is_supported(platform)
         || keychain_service.is_empty()
         || keychain_service.len() > 128
         || !safe_service(keychain_service)
@@ -229,6 +253,18 @@ fn derive_context(
         identity_manifest_digest: identity_manifest_digest.to_string(),
         build_id: build_id.to_string(),
     })
+}
+
+fn platform_name_is_supported(platform: &str) -> bool {
+    matches!(platform, "macos" | "linux")
+}
+
+fn platform_matches_target(platform: &str) -> bool {
+    match platform {
+        "macos" => cfg!(target_os = "macos"),
+        "linux" => cfg!(target_os = "linux"),
+        _ => false,
+    }
 }
 
 fn canonical_anchor(anchor: &Path) -> Result<PathBuf, OwnershipError> {
@@ -774,6 +810,57 @@ mod tests {
         }
     }
 
+    fn fresh_anchor(label: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let anchor = std::env::temp_dir().join(format!(
+            "colony-identity-ownership-{label}-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&anchor).expect("test anchor should be creatable");
+        fs::canonicalize(&anchor).expect("test anchor should be canonical")
+    }
+
+    fn assert_probe_rejects_before_reservation(
+        presence: MetadataPresence,
+        expected: OwnershipError,
+    ) {
+        let anchor = fresh_anchor("probe-rejection");
+        let root = anchor.join("Colony/dev/profile/normal");
+        let sidecar_parent = root.parent().expect("test root has parent");
+        let started = Instant::now();
+        let result = preflight_with_probe(
+            &anchor,
+            "Colony/dev/profile/normal",
+            "profile",
+            "normal",
+            "linux",
+            "xyz.example.profile",
+            &"a".repeat(64),
+            "test",
+            |_| presence,
+        );
+
+        assert!(matches!(result, Err(error) if error == expected));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "metadata fault should settle before reservation deadline"
+        );
+        assert!(
+            !root.exists(),
+            "metadata fault must precede B1 root creation"
+        );
+        assert!(
+            !sidecar_parent
+                .join(".profile.identity-ownership-v1.json")
+                .exists(),
+            "metadata fault must not write a reserved sidecar"
+        );
+        fs::remove_dir_all(anchor).expect("test anchor cleanup should succeed");
+    }
+
     #[test]
     fn stable_digest_excludes_build_provenance() {
         let anchor = PathBuf::from("/tmp/colony-ownership-test");
@@ -844,6 +931,19 @@ mod tests {
         assert_eq!(
             validate_record(&context, &record),
             Err(OwnershipError::Invalid)
+        );
+    }
+
+    #[test]
+    fn ambiguous_metadata_fails_before_reservation() {
+        assert_probe_rejects_before_reservation(MetadataPresence::Error, OwnershipError::Occupied);
+    }
+
+    #[test]
+    fn unavailable_metadata_fails_before_reservation() {
+        assert_probe_rejects_before_reservation(
+            MetadataPresence::Unavailable,
+            OwnershipError::Unavailable,
         );
     }
 }

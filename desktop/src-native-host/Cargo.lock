@@ -209,6 +209,7 @@ name = "colony-identity-store"
 version = "0.1.0"
 dependencies = [
  "colony-identity-kernel",
+ "dbus-secret-service",
  "keyring",
  "libc",
  "nostr",
@@ -225,6 +226,7 @@ dependencies = [
  "atomic-write-file",
  "colony-identity-kernel",
  "colony-identity-store",
+ "dbus-secret-service",
  "fs2",
  "serde",
  "serde_json",

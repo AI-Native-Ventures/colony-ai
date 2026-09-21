@@ -1,0 +1,124 @@
+name: Colony Linux identity custody proof
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/src-native-host/**"
+      - "desktop/identity-kernel/**"
+      - "desktop/identity-store/**"
+      - "desktop/electron-stage0-manifest.json"
+      - ".github/workflows/colony-identity-linux-production.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux-production:
+    name: Linux x86_64 production identity custody
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Install the disposable Secret Service runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            dbus \
+            dbus-x11 \
+            gnome-keyring \
+            libdbus-1-dev \
+            pkg-config
+
+      - name: Check native-host formatting
+        shell: bash
+        run: cargo fmt --manifest-path desktop/src-native-host/Cargo.toml -- --check
+
+      - name: Build the production system-keyring carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --no-default-features --features identity-system-keyring
+
+      - name: Build the bounded process-crash proof carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          crash_target="$RUNNER_TEMP/colony-identity-crash-target"
+          cargo build --locked --release \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --target-dir "$crash_target" \
+            --no-default-features --features identity-crash-test
+          echo "COLONY_IDENTITY_CRASH_BIN=$crash_target/release/colony-native-host" >> "$GITHUB_ENV"
+
+      - name: Prove metadata faults fail before reservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --bin colony-native-host \
+            --no-default-features --features identity-system-keyring \
+            identity_ownership::tests:: -- --nocapture
+
+      - name: Prove Linux production custody in disposable Secret Service sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
+          crash_binary="$COLONY_IDENTITY_CRASH_BIN"
+          test -x "$binary"
+          test -x "$crash_binary"
+
+          run_proof() {
+            local test_name="$1"
+            local proof_name="$2"
+            local proof_root="$RUNNER_TEMP/colony-linux-identity-$proof_name"
+            local proof_home="$proof_root/home"
+            local proof_config="$proof_root/config"
+            local proof_runtime="$proof_root/runtime"
+            rm -rf "$proof_root"
+            mkdir -p "$proof_home" "$proof_config" "$proof_runtime"
+            chmod 700 "$proof_home" "$proof_runtime"
+            (
+              export XDG_CONFIG_HOME="$proof_config"
+              export XDG_RUNTIME_DIR="$proof_runtime"
+              export COLONY_IDENTITY_PROOF_HOME="$proof_home"
+              mkdir -p "$proof_home/.local/share/keyrings"
+              dbus-run-session -- bash -euo pipefail -c '
+                test_name="$1"
+                production_binary="$2"
+                crash_binary="$3"
+                proof_home="$4"
+                printf "colony-ci-password" | HOME="$proof_home" gnome-keyring-daemon --unlock
+                COLONY_NATIVE_HOST_BIN="$production_binary" \
+                  COLONY_IDENTITY_CRASH_BIN="$crash_binary" \
+                  cargo test --locked \
+                    --manifest-path desktop/src-native-host/Cargo.toml \
+                    --no-default-features --features identity-system-keyring \
+                    --test identity_linux_production "$test_name" \
+                    -- --ignored --exact --nocapture
+              ' linux-identity-proof "$test_name" "$binary" "$crash_binary" "$proof_home"
+            )
+            rm -rf "$proof_root"
+          }
+
+          run_proof linux_production_binary_initializes_and_restarts_with_same_key restart
+          run_proof linux_production_binary_serializes_two_fresh_children race
+          run_proof linux_production_reserved_sidecar_blocks_before_b1 reserved
+          run_proof linux_production_process_kill_blocks_reserved_restarts crash
+          run_proof linux_production_locked_service_fails_closed_before_b1 locked
+          run_proof linux_production_missing_service_fails_closed_before_b1 unavailable

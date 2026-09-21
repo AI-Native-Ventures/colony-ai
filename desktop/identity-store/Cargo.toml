@@ -12,7 +12,12 @@ publish = false
 default = []
 # The Tauri compatibility consumer and the future explicit headless consumer
 # opt into this feature independently. Health-only native-host builds do not.
-system-keyring = ["dep:keyring", "dep:security-framework", "dep:windows-sys"]
+system-keyring = [
+    "dep:dbus-secret-service",
+    "dep:keyring",
+    "dep:security-framework",
+    "dep:windows-sys",
+]
 # Derivative-only bounded operation classification for the hosted custody
 # diagnostic. This never activates the store or changes normal custody.
 diagnostic = []
@@ -27,6 +32,7 @@ serde_json = "1"
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = { version = "=4.1.0", default-features = false, features = ["vendored"], optional = true }
 keyring = { version = "3.6.3", default-features = false, features = ["sync-secret-service", "vendored"], optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
