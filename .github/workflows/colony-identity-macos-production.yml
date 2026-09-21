@@ -58,16 +58,43 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-proof.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
           profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
+          owned_profile_parent=0
+          verify_profile_path() {
+            case "$proof_home" in
+              /*) ;;
+              *) echo "proof HOME must be absolute" >&2; return 1 ;;
+            esac
+            test "$profile_parent" = "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+            for path in \
+              "$proof_home" \
+              "$proof_home/Library" \
+              "$proof_app_data" \
+              "$proof_app_data/Colony" \
+              "$proof_app_data/Colony/dev"; do
+              test ! -L "$path" || return 1
+            done
+          }
           cleanup() {
+            exit_code=$?
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            if [ "$owned_profile_parent" -eq 1 ]; then
+              rm -rf "$profile_parent" >/dev/null 2>&1 || true
+            fi
+            trap - EXIT
+            exit "$exit_code"
           }
           trap cleanup EXIT
+          verify_profile_path
+          mkdir -p "$proof_app_data/Colony/dev"
+          verify_profile_path
           test ! -e "$profile_parent"
-          mkdir -p "$proof_home/Library/Application Support"
+          test ! -L "$profile_parent"
+          owned_profile_parent=1
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -80,7 +107,6 @@ jobs:
               --test identity_production_dispatch \
               macos_production_binary_initializes_and_restarts_with_same_key \
               -- --ignored --exact --nocapture
-          rm -rf "$profile_parent"
 
       - name: Prove concurrent production children share one identity
         shell: bash
@@ -88,16 +114,43 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-race-proof.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
           profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
+          owned_profile_parent=0
+          verify_profile_path() {
+            case "$proof_home" in
+              /*) ;;
+              *) echo "proof HOME must be absolute" >&2; return 1 ;;
+            esac
+            test "$profile_parent" = "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+            for path in \
+              "$proof_home" \
+              "$proof_home/Library" \
+              "$proof_app_data" \
+              "$proof_app_data/Colony" \
+              "$proof_app_data/Colony/dev"; do
+              test ! -L "$path" || return 1
+            done
+          }
           cleanup() {
+            exit_code=$?
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            if [ "$owned_profile_parent" -eq 1 ]; then
+              rm -rf "$profile_parent" >/dev/null 2>&1 || true
+            fi
+            trap - EXIT
+            exit "$exit_code"
           }
           trap cleanup EXIT
+          verify_profile_path
+          mkdir -p "$proof_app_data/Colony/dev"
+          verify_profile_path
           test ! -e "$profile_parent"
-          mkdir -p "$proof_home/Library/Application Support"
+          test ! -L "$profile_parent"
+          owned_profile_parent=1
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -110,7 +163,6 @@ jobs:
               --test identity_production_dispatch \
               macos_production_binary_serializes_two_fresh_children \
               -- --ignored --exact --nocapture
-          rm -rf "$profile_parent"
 
       - name: Prove an interrupted reservation blocks before B1
         shell: bash
@@ -118,16 +170,43 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-reserved-proof.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
           profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
+          owned_profile_parent=0
+          verify_profile_path() {
+            case "$proof_home" in
+              /*) ;;
+              *) echo "proof HOME must be absolute" >&2; return 1 ;;
+            esac
+            test "$profile_parent" = "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+            for path in \
+              "$proof_home" \
+              "$proof_home/Library" \
+              "$proof_app_data" \
+              "$proof_app_data/Colony" \
+              "$proof_app_data/Colony/dev"; do
+              test ! -L "$path" || return 1
+            done
+          }
           cleanup() {
+            exit_code=$?
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            if [ "$owned_profile_parent" -eq 1 ]; then
+              rm -rf "$profile_parent" >/dev/null 2>&1 || true
+            fi
+            trap - EXIT
+            exit "$exit_code"
           }
           trap cleanup EXIT
+          verify_profile_path
+          mkdir -p "$proof_app_data/Colony/dev"
+          verify_profile_path
           test ! -e "$profile_parent"
-          mkdir -p "$proof_home/Library/Application Support"
+          test ! -L "$profile_parent"
+          owned_profile_parent=1
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -140,7 +219,6 @@ jobs:
               --test identity_production_dispatch \
               macos_production_reserved_sidecar_blocks_before_b1 \
               -- --ignored --exact --nocapture
-          rm -rf "$profile_parent"
 
       - name: Prove process-kill reservation and post-B1 fences
         shell: bash
@@ -148,16 +226,43 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-crash-proof.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
           profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$COLONY_IDENTITY_CRASH_BIN"
+          owned_profile_parent=0
+          verify_profile_path() {
+            case "$proof_home" in
+              /*) ;;
+              *) echo "proof HOME must be absolute" >&2; return 1 ;;
+            esac
+            test "$profile_parent" = "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+            for path in \
+              "$proof_home" \
+              "$proof_home/Library" \
+              "$proof_app_data" \
+              "$proof_app_data/Colony" \
+              "$proof_app_data/Colony/dev"; do
+              test ! -L "$path" || return 1
+            done
+          }
           cleanup() {
+            exit_code=$?
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            if [ "$owned_profile_parent" -eq 1 ]; then
+              rm -rf "$profile_parent" >/dev/null 2>&1 || true
+            fi
+            trap - EXIT
+            exit "$exit_code"
           }
           trap cleanup EXIT
+          verify_profile_path
+          mkdir -p "$proof_app_data/Colony/dev"
+          verify_profile_path
           test ! -e "$profile_parent"
-          mkdir -p "$proof_home/Library/Application Support"
+          test ! -L "$profile_parent"
+          owned_profile_parent=1
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -170,7 +275,6 @@ jobs:
               --test identity_production_dispatch \
               macos_production_process_kill_blocks_reserved_restarts \
               -- --ignored --exact --nocapture
-          rm -rf "$profile_parent"
 
   macos-diagnostic:
     name: macOS arm64 identity fallback diagnostic (derivative)
@@ -200,14 +304,43 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-diagnostic.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
+          profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$COLONY_IDENTITY_DIAGNOSTIC_TARGET/release/colony-native-host"
+          owned_profile_parent=0
+          verify_profile_path() {
+            case "$proof_home" in
+              /*) ;;
+              *) echo "proof HOME must be absolute" >&2; return 1 ;;
+            esac
+            test "$profile_parent" = "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+            for path in \
+              "$proof_home" \
+              "$proof_home/Library" \
+              "$proof_app_data" \
+              "$proof_app_data/Colony" \
+              "$proof_app_data/Colony/dev"; do
+              test ! -L "$path" || return 1
+            done
+          }
           cleanup() {
+            exit_code=$?
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            if [ "$owned_profile_parent" -eq 1 ]; then
+              rm -rf "$profile_parent" >/dev/null 2>&1 || true
+            fi
+            trap - EXIT
+            exit "$exit_code"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support"
+          verify_profile_path
+          mkdir -p "$proof_app_data/Colony/dev"
+          verify_profile_path
+          test ! -e "$profile_parent"
+          test ! -L "$profile_parent"
+          owned_profile_parent=1
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
