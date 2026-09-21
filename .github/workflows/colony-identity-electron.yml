@@ -239,6 +239,10 @@ jobs:
           );
           if (!frames.some(({ type }) => type === "READY")) process.exitCode = 1;
           NODE
+          primary_keychain="${COLONY_IDENTITY_KEYCHAIN:-}"
+          test -n "$primary_keychain"
+          HOME="$HOME" security list-keychains -d user -s "$primary_keychain"
+          HOME="$HOME" security default-keychain -d user -s "$primary_keychain"
 
       - name: Run focused bridge and transport tests
         shell: bash
