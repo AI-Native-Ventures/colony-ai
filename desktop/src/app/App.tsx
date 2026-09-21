@@ -38,6 +38,7 @@ import {
   MachineOnboardingFlow,
   type MachineOnboardingPage,
 } from "@/features/onboarding/ui/MachineOnboardingFlow";
+import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
@@ -65,7 +66,10 @@ import { EncryptedBackupProvider } from "@/features/settings/EncryptedBackupProv
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
 import { hydrateChannelHeads } from "@/features/messages/lib/channelHeadCache";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { isSharedIdentity as isSharedIdentityCmd } from "@/shared/api/tauri";
+import {
+  getSharedIdentity,
+  supportsNativeCapability,
+} from "@/shared/api/nativeBridge";
 import { getProfile } from "@/shared/api/tauriProfiles";
 import {
   type AddCommunityDeepLinkPayload,
@@ -739,6 +743,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const acceptsCommunityDeepLinks = huddleWindowChannelId() === null;
   useEffect(() => {
     if (!acceptsCommunityDeepLinks) return;
+    if (!supportsNativeCapability("deep-links")) return;
 
     const unlisten = listenForDeepLinks({
       startCommunityOnboarding: communityOnboarding.start,
@@ -753,8 +758,30 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;
   if (machine.stage === "relaunch-required") return <RelaunchRequiredScreen />;
+  if (machine.stage === "identity-error") {
+    return (
+      <NativeUnavailableScreen
+        body="Buzz could not read the startup identity through its native bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        onRetry={() => window.location.reload()}
+        title="Buzz could not start"
+        testId="machine-identity-error"
+      />
+    );
+  }
   if (machine.stage === "blocking") return <AppLoadingGate />;
   if (machine.stage === "ready") {
+    if (!supportsNativeCapability("workspace-events")) {
+      return (
+        <MachineOnboardingFlow
+          complete={completeMachineOnboarding}
+          continueWithIdentity={machine.continueWithIdentity}
+          continueWithRecoveredIdentity={machine.continueWithRecoveredIdentity}
+          identityLost={machine.identityLost}
+          initialPage={undefined}
+          queryClient={machine.queryClient}
+        />
+      );
+    }
     return (
       <CommunityApp
         continueOnboarding={continueOnboarding}
@@ -794,16 +821,29 @@ export function App() {
   useCloseWindowShortcut();
   useInitialRenderReady();
   const [sharedIdentity, setSharedIdentity] = useState<boolean | null>(null);
+  const [startupError, setStartupError] = useState(false);
   const [queryClient] = useState(createBuzzQueryClient);
 
   useEffect(() => {
-    isSharedIdentityCmd()
+    getSharedIdentity()
       .then(setSharedIdentity)
-      .catch((err) => {
-        console.warn("is_shared_identity command failed:", err);
-        setSharedIdentity(false);
+      .catch(() => {
+        // The shell must fail closed. A bridge failure is not proof of a
+        // non-shared identity and must never unlock the workspace path.
+        setStartupError(true);
       });
   }, []);
+
+  if (startupError) {
+    return (
+      <NativeUnavailableScreen
+        body="Buzz could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        onRetry={() => window.location.reload()}
+        title="Buzz could not start"
+        testId="native-startup-error"
+      />
+    );
+  }
 
   if (sharedIdentity === null) return <AppLoadingGate />;
 

@@ -10,6 +10,7 @@ import "@fontsource/jetbrains-mono/700.css";
 import "@/shared/styles/globals.css";
 import { UpdaterProvider } from "@/features/settings/hooks/UpdaterProvider";
 import { migrateLegacyCommunityStorageBeforeRender } from "@/features/communities/legacyCommunityStorage";
+import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
 import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { CommunityOnboardingProvider } from "@/features/onboarding/communityOnboarding";
@@ -132,7 +133,9 @@ async function bootstrap() {
   initializeFontSizePreference();
   startLocalStorageSweep();
   await installE2eBridgeIfConfigured();
-  await migrateLegacyCommunityStorageBeforeRender();
+  if (supportsNativeCapability("legacy-migration")) {
+    await migrateLegacyCommunityStorageBeforeRender();
+  }
   renderApp();
 }
 

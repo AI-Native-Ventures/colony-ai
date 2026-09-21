@@ -12641,6 +12641,10 @@ export function maybeInstallE2eTauriMocks() {
 
         return { ...DEFAULT_MOCK_IDENTITY, lost: isLost, locked: isLocked };
       }
+      case "is_shared_identity":
+        // Match the default Rust command: the E2E identity is local to the
+        // mocked desktop and is not sourced from BUZZ_SHARE_IDENTITY.
+        return false;
       case "sign_nostr_identity_binding": {
         const request = payload as {
           challengeId: string;

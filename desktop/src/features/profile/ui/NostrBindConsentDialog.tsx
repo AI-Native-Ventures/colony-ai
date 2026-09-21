@@ -12,6 +12,7 @@ import { listenForNostrBindDeepLinks } from "@/shared/deep-link";
 import { OnboardingSlideTransition } from "@/features/onboarding/ui/OnboardingSlideTransition";
 import { buildNostrBindCallbackUrl } from "@/features/profile/lib/nostrBindCallback";
 import { signNostrIdentityBinding } from "@/features/profile/lib/nostrIdentityBinding";
+import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { cn } from "@/shared/lib/cn";
 import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
 import { Button } from "@/shared/ui/button";
@@ -277,6 +278,9 @@ export function NostrBindConsentDialog() {
 
   React.useEffect(() => {
     if (isPreview) {
+      return;
+    }
+    if (!supportsNativeCapability("nostr-bind")) {
       return;
     }
 
