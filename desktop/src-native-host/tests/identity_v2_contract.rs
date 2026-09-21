@@ -14,6 +14,14 @@ const PREFIX: &str = "@colony-native:";
 const PROFILE_ID: &str = "colony-b2a-test-profile";
 const SESSION_ID: &str = "identity-v2-session";
 const REGISTRY_DIGEST: &str = "1032c9f29dee5495099ebf951133bf3cf80c144e39476af39bb67fe62dee3565";
+const PRODUCTION_REGISTRY_DIGEST: &str =
+    "452990462a124746a15d6ba7cdd0353e0183e7a3aa300e5b8b596e0439692204";
+const PRODUCTION_MANIFEST_DIGEST: &str =
+    "91997f931c4c14d32010a2b155e9b71842680ed37a3b5dc3d94085857ef25d2b";
+const PRODUCTION_PROFILE_ID: &str = "0000000000000001";
+const PRODUCTION_SESSION_ID: &str = "identity-v2-production-session";
+const PRODUCTION_INSTRUMENTED_PROFILE_ID: &str = "0000000000000001.instrumented";
+const PRODUCTION_INSTRUMENTED_SESSION_ID: &str = "identity-v2-instrumented-session";
 const STDERR_CAPTURE_LIMIT: usize = 16 * 1024;
 
 struct Finished {
@@ -30,13 +38,21 @@ struct Harness {
 
 impl Harness {
     fn spawn() -> Self {
-        Self::spawn_with(None, None)
+        Self::spawn_with_mode("--identity-v2-test", None, None)
     }
 
     fn spawn_with(fault: Option<&str>, deadline_ms: Option<u64>) -> Self {
+        Self::spawn_with_mode("--identity-v2-test", fault, deadline_ms)
+    }
+
+    fn spawn_production() -> Self {
+        Self::spawn_with_mode("--identity-v2", None, None)
+    }
+
+    fn spawn_with_mode(mode: &str, fault: Option<&str>, deadline_ms: Option<u64>) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_colony-native-host"));
         command
-            .arg("--identity-v2-test")
+            .arg(mode)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -221,6 +237,72 @@ fn hello(root: &PathBuf) -> Value {
     })
 }
 
+fn production_root(label: &str, flavor: &str) -> (PathBuf, PathBuf) {
+    let base = fresh_root(label);
+    let root = base
+        .join("Colony")
+        .join("dev")
+        .join(PRODUCTION_PROFILE_ID)
+        .join(flavor);
+    (base, root)
+}
+
+fn production_hello(root: &PathBuf, flavor: &str, profile_id: &str, session_id: &str) -> Value {
+    json!({
+        "type": "HELLO",
+        "protocolVersion": 2,
+        "profileId": profile_id,
+        "sessionId": session_id,
+        "generationId": 1,
+        "buildId": "identity-v2-production-contract",
+        "registryDigest": PRODUCTION_REGISTRY_DIGEST,
+        "identityLaunch": {
+            "profileId": profile_id,
+            "flavor": flavor,
+            "platform": platform(),
+            "userDataRoot": root,
+            "identityMode": "explicit",
+            "sharedIdentity": false,
+            "resetProvenance": "not_attempted_fresh",
+            "identityManifestDigest": PRODUCTION_MANIFEST_DIGEST
+        }
+    })
+}
+
+fn production_request(
+    request_id: &str,
+    generation: u64,
+    capability: &str,
+    method: &str,
+    profile_id: &str,
+    session_id: &str,
+) -> Value {
+    json!({
+        "type": "REQUEST",
+        "protocolVersion": 2,
+        "profileId": profile_id,
+        "sessionId": session_id,
+        "generationId": generation,
+        "requestId": request_id,
+        "capability": capability,
+        "method": method,
+        "payload": {},
+        "registryDigest": PRODUCTION_REGISTRY_DIGEST
+    })
+}
+
+fn production_rehello(generation: u64, profile_id: &str, session_id: &str) -> Value {
+    json!({
+        "type": "REHELLO",
+        "protocolVersion": 2,
+        "profileId": profile_id,
+        "sessionId": session_id,
+        "generationId": generation,
+        "buildId": "identity-v2-production-contract",
+        "registryDigest": PRODUCTION_REGISTRY_DIGEST
+    })
+}
+
 fn rehello(generation: u64) -> Value {
     json!({
         "type": "REHELLO",
@@ -317,6 +399,161 @@ fn v2_initializes_file_only_identity_named_metadata_rebinds_and_restarts() {
     assert_eq!(restarted.read_value()["payload"]["pubkey"], first_pubkey);
     assert!(restarted.finish().success());
     fs::remove_dir_all(root).expect("synthetic profile should be removable");
+}
+
+#[test]
+fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart() {
+    let (base, root) = production_root("production-normal", "normal");
+    let legacy_sentinel = base.join("Colony").join("dev").join("legacy-sentinel");
+    fs::create_dir_all(&legacy_sentinel).expect("legacy sentinel directory should be creatable");
+    let sentinel = legacy_sentinel.join("identity.key");
+    fs::write(&sentinel, "sentinel").expect("legacy sentinel should be writable");
+
+    let mut host = Harness::spawn_production();
+    host.send(production_hello(
+        &root,
+        "normal",
+        PRODUCTION_PROFILE_ID,
+        PRODUCTION_SESSION_ID,
+    ))
+        .expect("production HELLO should be framed");
+
+    if cfg!(target_os = "macos") {
+        let ready = host.read_value();
+        assert_eq!(ready["type"], "READY");
+        assert_eq!(ready["registryDigest"], PRODUCTION_REGISTRY_DIGEST);
+        assert_eq!(
+            ready["payload"]["capabilities"],
+            json!(["health-safe", "identity-mode", "identity-read"])
+        );
+        let lifecycle = host.read_value();
+        assert_eq!(lifecycle["payload"]["state"], "ready");
+
+        host.send(production_request(
+            "production-identity-1",
+            1,
+            "identity-read",
+            "get_identity",
+            PRODUCTION_PROFILE_ID,
+            PRODUCTION_SESSION_ID,
+        ))
+        .expect("production identity request should be framed");
+        let first = host.read_value();
+        let first_pubkey = first["payload"]["pubkey"]
+            .as_str()
+            .expect("production pubkey should be metadata")
+            .to_string();
+        assert_eq!(first["payload"]["reset_failed"], false);
+        assert!(first["payload"].get("nsec").is_none());
+
+        host.send(production_rehello(
+            2,
+            PRODUCTION_PROFILE_ID,
+            PRODUCTION_SESSION_ID,
+        ))
+            .expect("production rebind should be framed");
+        assert_eq!(host.read_value()["type"], "REBOUND");
+        assert_eq!(host.read_value()["payload"]["state"], "rebound");
+        host.send(production_request(
+            "production-identity-2",
+            2,
+            "identity-read",
+            "get_identity",
+            PRODUCTION_PROFILE_ID,
+            PRODUCTION_SESSION_ID,
+        ))
+        .expect("generation-two production request should be framed");
+        assert_eq!(host.read_value()["payload"]["pubkey"], first_pubkey);
+        let finished = host.finish_with_stderr();
+        assert!(finished.status.success());
+        assert_stderr_safe(&finished.stderr);
+
+        let mut restarted = Harness::spawn_production();
+        restarted
+            .send(production_hello(
+                &root,
+                "normal",
+                PRODUCTION_PROFILE_ID,
+                PRODUCTION_SESSION_ID,
+            ))
+            .expect("production restart HELLO should be framed");
+        assert_eq!(restarted.read_value()["type"], "READY");
+        let _ = restarted.read_value();
+        restarted
+            .send(production_request(
+                "production-restart",
+                1,
+                "identity-read",
+                "get_identity",
+                PRODUCTION_PROFILE_ID,
+                PRODUCTION_SESSION_ID,
+            ))
+            .expect("production restart request should be framed");
+        assert_eq!(restarted.read_value()["payload"]["pubkey"], first_pubkey);
+        let finished = restarted.finish_with_stderr();
+        assert!(finished.status.success());
+        assert_stderr_safe(&finished.stderr);
+        assert_eq!(fs::read_to_string(&sentinel).expect("sentinel should remain"), "sentinel");
+
+        let (instrumented_base, instrumented_root) =
+            production_root("production-instrumented", "instrumented");
+        let mut instrumented = Harness::spawn_production();
+        instrumented
+            .send(production_hello(
+                &instrumented_root,
+                "instrumented",
+                PRODUCTION_INSTRUMENTED_PROFILE_ID,
+                PRODUCTION_INSTRUMENTED_SESSION_ID,
+            ))
+            .expect("instrumented production HELLO should be framed");
+        assert_eq!(instrumented.read_value()["type"], "READY");
+        let _ = instrumented.read_value();
+        instrumented
+            .send(production_request(
+                "instrumented-identity",
+                1,
+                "identity-read",
+                "get_identity",
+                PRODUCTION_INSTRUMENTED_PROFILE_ID,
+                PRODUCTION_INSTRUMENTED_SESSION_ID,
+            ))
+            .expect("instrumented identity request should be framed");
+        let instrumented_identity = instrumented.read_value();
+        assert!(instrumented_identity["payload"]["pubkey"].as_str().is_some());
+        let finished = instrumented.finish_with_stderr();
+        assert!(finished.status.success());
+        assert_stderr_safe(&finished.stderr);
+        assert_ne!(root, instrumented_root);
+        let _ = fs::remove_dir_all(instrumented_base);
+    } else {
+        let finished = host.finish_with_stderr();
+        assert!(!finished.status.success());
+        assert_stderr_safe(&finished.stderr);
+        assert!(String::from_utf8_lossy(&finished.stderr).contains("identity_namespace_unverified"));
+        assert!(!root.exists(), "unknown platform must not create a profile");
+    }
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+fn production_carrier_rejects_stale_digest_before_profile_creation() {
+    let (base, root) = production_root("production-stale", "normal");
+    let mut frame = production_hello(
+        &root,
+        "normal",
+        PRODUCTION_PROFILE_ID,
+        PRODUCTION_SESSION_ID,
+    );
+    frame["identityLaunch"]["identityManifestDigest"] = json!("0".repeat(64));
+    let mut host = Harness::spawn_production();
+    host.send(frame)
+        .expect("stale production descriptor should be framed");
+    let finished = host.finish_with_stderr();
+    assert!(!finished.status.success());
+    assert_stderr_safe(&finished.stderr);
+    assert!(String::from_utf8_lossy(&finished.stderr).contains("identity_manifest_mismatch"));
+    assert!(!root.exists(), "stale manifest must fail before profile creation");
+    let _ = fs::remove_dir_all(base);
 }
 
 #[test]

@@ -22,6 +22,8 @@ use crate::protocol::{
 pub const VERSION: u64 = 2;
 pub const REGISTRY_DIGEST: &str =
     "1032c9f29dee5495099ebf951133bf3cf80c144e39476af39bb67fe62dee3565";
+pub const PRODUCTION_REGISTRY_DIGEST: &str =
+    "452990462a124746a15d6ba7cdd0353e0183e7a3aa300e5b8b596e0439692204";
 
 const FRAME_LIMIT_BYTES: usize = 16_777_216;
 const JSON_PAYLOAD_LIMIT_BYTES: usize = 8_388_608;
@@ -61,6 +63,8 @@ pub struct IdentityLaunch {
     pub identity_mode: String,
     pub shared_identity: bool,
     pub reset_provenance: String,
+    #[serde(default)]
+    pub identity_manifest_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -200,6 +204,9 @@ fn validate_frame(frame: &Frame) -> Result<Frame, ProtocolError> {
                 return Err(ProtocolError::InvalidField("protocol_version"));
             }
             validate_id(&frame.build_id, "build_id")?;
+            if let Some(digest) = frame.identity_launch.identity_manifest_digest.as_deref() {
+                validate_digest(digest, "identity_manifest_digest")?;
+            }
         }
         Frame::Rehello(frame) => {
             if frame.frame_type != "REHELLO" || frame.protocol_version != VERSION {
@@ -223,6 +230,13 @@ fn validate_frame(frame: &Frame) -> Result<Frame, ProtocolError> {
         }
     }
     Ok(frame.clone())
+}
+
+fn validate_digest(value: &str, field: &'static str) -> Result<(), ProtocolError> {
+    if value.len() != 64 || value.bytes().any(|byte| !byte.is_ascii_hexdigit()) {
+        return Err(ProtocolError::InvalidField(field));
+    }
+    Ok(())
 }
 
 fn frame_json<'a>(frame: &'a [u8], limits: &ProtocolLimits) -> Result<&'a str, ProtocolError> {
@@ -311,6 +325,10 @@ pub fn ready_capabilities_value() -> Value {
 }
 
 pub fn ready_frame(binding: &Binding) -> OutboundFrame {
+    ready_frame_for(binding, false)
+}
+
+pub fn ready_frame_for(binding: &Binding, production: bool) -> OutboundFrame {
     OutboundFrame {
         frame_type: "READY".to_string(),
         protocol_version: VERSION,
@@ -323,11 +341,15 @@ pub fn ready_frame(binding: &Binding) -> OutboundFrame {
         error: None,
         event: None,
         sequence: None,
-        registry_digest: Some(REGISTRY_DIGEST.to_string()),
+        registry_digest: Some(registry_digest_for(production)),
     }
 }
 
 pub fn rebound_frame(binding: &Binding) -> OutboundFrame {
+    rebound_frame_for(binding, false)
+}
+
+pub fn rebound_frame_for(binding: &Binding, production: bool) -> OutboundFrame {
     OutboundFrame {
         frame_type: "REBOUND".to_string(),
         protocol_version: VERSION,
@@ -340,11 +362,20 @@ pub fn rebound_frame(binding: &Binding) -> OutboundFrame {
         error: None,
         event: None,
         sequence: None,
-        registry_digest: Some(REGISTRY_DIGEST.to_string()),
+        registry_digest: Some(registry_digest_for(production)),
     }
 }
 
 pub fn lifecycle_frame(binding: &Binding, sequence: u64, state: &str) -> OutboundFrame {
+    lifecycle_frame_for(binding, sequence, state, false)
+}
+
+pub fn lifecycle_frame_for(
+    binding: &Binding,
+    sequence: u64,
+    state: &str,
+    production: bool,
+) -> OutboundFrame {
     OutboundFrame {
         frame_type: "EVENT".to_string(),
         protocol_version: VERSION,
@@ -357,7 +388,7 @@ pub fn lifecycle_frame(binding: &Binding, sequence: u64, state: &str) -> Outboun
         error: None,
         event: Some("host_lifecycle".to_string()),
         sequence: Some(sequence),
-        registry_digest: Some(REGISTRY_DIGEST.to_string()),
+        registry_digest: Some(registry_digest_for(production)),
     }
 }
 
@@ -367,6 +398,17 @@ pub fn response_frame(
     outcome: &str,
     payload: Option<Value>,
     error_code: Option<&str>,
+) -> OutboundFrame {
+    response_frame_for(binding, request_id, outcome, payload, error_code, false)
+}
+
+pub fn response_frame_for(
+    binding: &Binding,
+    request_id: String,
+    outcome: &str,
+    payload: Option<Value>,
+    error_code: Option<&str>,
+    production: bool,
 ) -> OutboundFrame {
     OutboundFrame {
         frame_type: "RESPONSE".to_string(),
@@ -382,7 +424,7 @@ pub fn response_frame(
         }),
         event: None,
         sequence: None,
-        registry_digest: Some(REGISTRY_DIGEST.to_string()),
+        registry_digest: Some(registry_digest_for(production)),
     }
 }
 
@@ -578,9 +620,13 @@ fn ensure_unique_values(values: &Value, field: &'static str) -> Result<(), Proto
 }
 
 pub fn validate_registry() -> Result<(), ProtocolError> {
-    let document = registry_document();
+    validate_registry_for(false)
+}
+
+pub fn validate_registry_for(production: bool) -> Result<(), ProtocolError> {
+    let document = registry_document_for(production);
     validate_registry_document(&document)?;
-    if digest_for_document(&document) != REGISTRY_DIGEST {
+    if digest_for_document(&document) != registry_digest_for(production) {
         return Err(ProtocolError::RegistryMismatch);
     }
     Ok(())
@@ -704,10 +750,19 @@ pub fn validate_outbound(
     frame: &OutboundFrame,
     response_schema: Option<&str>,
 ) -> Result<(), ProtocolError> {
-    validate_registry()?;
-    let document = registry_document();
+    validate_outbound_for_registry(frame, response_schema, false)
+}
+
+pub fn validate_outbound_for_registry(
+    frame: &OutboundFrame,
+    response_schema: Option<&str>,
+    production: bool,
+) -> Result<(), ProtocolError> {
+    validate_registry_for(production)?;
+    let document = registry_document_for(production);
+    let registry_digest = registry_digest_for(production);
     if frame.protocol_version != VERSION
-        || frame.registry_digest.as_deref() != Some(REGISTRY_DIGEST)
+        || frame.registry_digest.as_deref() != Some(registry_digest.as_str())
     {
         return Err(ProtocolError::RegistryMismatch);
     }
@@ -1131,6 +1186,53 @@ pub fn registry_document() -> Value {
     })
 }
 
+/// Return the strict production-v2 contract. The B2a test registry remains
+/// byte-for-byte stable; production adds only the manifest digest required to
+/// bind the trusted carrier to the embedded flavor authority.
+pub fn registry_document_for(production: bool) -> Value {
+    if !production {
+        return registry_document();
+    }
+    let mut document = registry_document();
+    let Some(identity_launch) = document
+        .get_mut("schemas")
+        .and_then(Value::as_object_mut)
+        .and_then(|schemas| schemas.get_mut("identity-launch"))
+        .and_then(Value::as_object_mut)
+    else {
+        return document;
+    };
+    if let Some(fields) = identity_launch.get_mut("fields").and_then(Value::as_array_mut) {
+        fields.push(json!("identityManifestDigest"));
+    }
+    if let Some(required) = identity_launch
+        .get_mut("required")
+        .and_then(Value::as_array_mut)
+    {
+        required.push(json!("identityManifestDigest"));
+    }
+    if let Some(types) = identity_launch
+        .entry("types")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+    {
+        types.insert("identityManifestDigest".to_string(), json!("string"));
+    }
+    document
+}
+
+pub fn production_registry_digest() -> String {
+    PRODUCTION_REGISTRY_DIGEST.to_string()
+}
+
+pub fn registry_digest_for(production: bool) -> String {
+    if production {
+        production_registry_digest()
+    } else {
+        REGISTRY_DIGEST.to_string()
+    }
+}
+
 pub fn canonical_registry_json() -> String {
     canonicalize(&registry_document())
 }
@@ -1177,8 +1279,10 @@ fn canonicalize(value: &Value) -> String {
 mod tests {
     use super::{
         canonical_registry_json, digest_for_document, lifecycle_frame, ready_frame, rebound_frame,
-        registry_digest, registry_document, response_frame, validate_outbound,
-        validate_registry_document, validate_runtime_limits, REGISTRY_DIGEST,
+        production_registry_digest, production_registry_document, registry_digest,
+        registry_document, response_frame, validate_outbound, validate_registry_document,
+        validate_registry_for, validate_runtime_limits, PRODUCTION_REGISTRY_DIGEST,
+        REGISTRY_DIGEST,
     };
     use crate::protocol::{load_manifest, Binding};
     use serde_json::json;
@@ -1191,6 +1295,12 @@ mod tests {
     fn registry_hash_vector_is_stable() {
         assert!(!canonical_registry_json().is_empty());
         assert_eq!(registry_digest(), REGISTRY_DIGEST);
+        assert_eq!(production_registry_digest(), PRODUCTION_REGISTRY_DIGEST);
+        validate_registry_for(true).expect("production registry should validate");
+        assert_ne!(
+            digest_for_document(&production_registry_document()),
+            REGISTRY_DIGEST
+        );
     }
 
     #[test]

@@ -46,6 +46,8 @@ pub enum ProtocolError {
     IdentityModeRequired,
     IdentityDescriptorRejected,
     IdentityInitializationFailed,
+    IdentityManifestMismatch,
+    IdentityNamespaceUnverified,
     RegistryMismatch,
 }
 
@@ -74,6 +76,8 @@ impl ProtocolError {
             Self::IdentityModeRequired => "identity_mode_required",
             Self::IdentityDescriptorRejected => "identity_descriptor_rejected",
             Self::IdentityInitializationFailed => "identity_initialization_failed",
+            Self::IdentityManifestMismatch => "identity_manifest_mismatch",
+            Self::IdentityNamespaceUnverified => "identity_namespace_unverified",
             Self::RegistryMismatch => "registry_mismatch",
         }
     }
@@ -89,6 +93,8 @@ impl fmt::Display for ProtocolError {
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub namespace: Namespace,
+    pub identity_manifest_digest: String,
+    pub identity_profiles: IdentityProfiles,
     pub protocol: ProtocolLimits,
     pub fault_inputs: Vec<String>,
 }
@@ -97,6 +103,59 @@ pub struct Manifest {
 #[serde(rename_all = "camelCase")]
 pub struct Namespace {
     pub profile_id: String,
+    pub user_data_relative_path: String,
+    pub keychain_service: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IdentityProfiles {
+    pub manifest_version: u64,
+    pub normal: IdentityProfile,
+    pub instrumented: IdentityProfile,
+}
+
+impl IdentityProfiles {
+    pub fn for_flavor(&self, flavor: &str) -> Option<&IdentityProfile> {
+        match flavor {
+            "normal" => Some(&self.normal),
+            "instrumented" => Some(&self.instrumented),
+            _ => None,
+        }
+    }
+
+    pub fn collision_status(&self, flavor: &str, platform: &str) -> Option<&str> {
+        self.for_flavor(flavor)
+            .and_then(|profile| profile.collision_evidence.status(platform))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IdentityProfile {
+    pub profile_id: String,
+    pub user_data_relative_path: String,
+    pub keychain_service: String,
+    pub collision_evidence: CollisionEvidence,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollisionEvidence {
+    pub macos: String,
+    pub windows: String,
+    pub linux: String,
+}
+
+impl CollisionEvidence {
+    pub fn status(&self, platform: &str) -> Option<&str> {
+        match platform {
+            "macos" => Some(&self.macos),
+            "windows" => Some(&self.windows),
+            "linux" => Some(&self.linux),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -136,6 +195,10 @@ pub fn validate_manifest(manifest: &Manifest) -> Result<(), ProtocolError> {
     if manifest.namespace.profile_id != EXPECTED_PROFILE_ID {
         return Err(ProtocolError::InvalidManifest("profile_id"));
     }
+    if manifest.namespace.user_data_relative_path != "Colony/dev/0000000000000001" {
+        return Err(ProtocolError::InvalidManifest("user_data_relative_path"));
+    }
+    validate_identity_profiles(manifest)?;
     if protocol.version != 1 {
         return Err(ProtocolError::InvalidManifest("version"));
     }
@@ -181,6 +244,80 @@ pub fn validate_manifest(manifest: &Manifest) -> Result<(), ProtocolError> {
         return Err(ProtocolError::InvalidManifest("fault_inputs"));
     }
     Ok(())
+}
+
+fn validate_identity_profiles(manifest: &Manifest) -> Result<(), ProtocolError> {
+    let profiles = &manifest.identity_profiles;
+    if profiles.manifest_version != 1 {
+        return Err(ProtocolError::InvalidManifest("identity_manifest_version"));
+    }
+    if profiles.normal.profile_id != manifest.namespace.profile_id
+        || profiles.normal.keychain_service != manifest.namespace.keychain_service
+        || profiles.normal.user_data_relative_path
+            != format!("{}/normal", manifest.namespace.user_data_relative_path)
+        || profiles.instrumented.user_data_relative_path
+            != format!("{}/instrumented", manifest.namespace.user_data_relative_path)
+        || profiles.normal.profile_id == profiles.instrumented.profile_id
+        || profiles.normal.user_data_relative_path == profiles.instrumented.user_data_relative_path
+        || profiles.normal.keychain_service == profiles.instrumented.keychain_service
+    {
+        return Err(ProtocolError::InvalidManifest("identity_profiles"));
+    }
+    for profile in [&profiles.normal, &profiles.instrumented] {
+        if profile.profile_id.is_empty()
+            || profile.profile_id.len() > 96
+            || !safe_namespace_component(&profile.profile_id)
+            || profile.user_data_relative_path.is_empty()
+            || std::path::Path::new(&profile.user_data_relative_path).is_absolute()
+            || profile
+                .user_data_relative_path
+                .split('/')
+                .any(|component| component.is_empty() || component == "." || component == "..")
+            || profile.keychain_service.is_empty()
+            || profile.keychain_service.len() > 128
+            || !safe_service_name(&profile.keychain_service)
+            || matches!(
+                profile.keychain_service.as_str(),
+                "buzz-desktop" | "buzz-desktop-dev"
+            )
+        {
+            return Err(ProtocolError::InvalidManifest("identity_profiles"));
+        }
+        for status in [
+            profile.collision_evidence.macos.as_str(),
+            profile.collision_evidence.windows.as_str(),
+            profile.collision_evidence.linux.as_str(),
+        ] {
+            if !matches!(status, "observed-unoccupied" | "unknown") {
+                return Err(ProtocolError::InvalidManifest("identity_collision_evidence"));
+            }
+        }
+    }
+    let expected_digest = identity_manifest_digest(profiles)?;
+    if manifest.identity_manifest_digest != expected_digest {
+        return Err(ProtocolError::InvalidManifest("identity_manifest_digest"));
+    }
+    Ok(())
+}
+
+fn safe_namespace_component(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+fn safe_service_name(value: &str) -> bool {
+    value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
+    })
+}
+
+pub fn identity_manifest_digest(profiles: &IdentityProfiles) -> Result<String, ProtocolError> {
+    let value = serde_json::json!({
+        "manifestVersion": profiles.manifest_version,
+        "identityProfiles": profiles,
+    });
+    Ok(crate::v2::digest_for_document(&value))
 }
 
 #[derive(Debug, Clone, Deserialize)]
