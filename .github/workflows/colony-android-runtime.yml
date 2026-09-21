@@ -1,0 +1,149 @@
+name: Colony Android runtime proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+    paths:
+      - ".github/workflows/colony-android-runtime.yml"
+      - "scripts/android-runtime-proof.sh"
+      - "scripts/mobile-worktree-overrides.sh"
+      - "justfile"
+      - "mobile/android/**"
+      - "mobile/assets/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - ".github/workflows/colony-android-runtime.yml"
+      - "scripts/android-runtime-proof.sh"
+      - "scripts/mobile-worktree-overrides.sh"
+      - "justfile"
+      - "mobile/android/**"
+      - "mobile/assets/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: colony-android-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PACKAGE: xyz.block.buzz.mobile
+  ANDROID_ACTIVITY: xyz.block.buzz.mobile.MainActivity
+  APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
+  ANDROID_RUNTIME_ARTIFACT_DIR: android-runtime-artifacts
+  SOURCE_SHA: ${{ github.sha }}
+
+jobs:
+  android-runtime:
+    name: Android emulator runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Compute Hermit cache key
+        id: hermit-bin-hash
+        shell: bash
+        run: |
+          hash="$(find ./bin ! -type d | sort | xargs openssl sha256 | openssl sha256 -r | cut -d' ' -f1)"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Hermit package cache
+        id: hermit-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/hermit/pkg
+          key: ${{ runner.os }}-hermit-cache-${{ steps.hermit-bin-hash.outputs.hash }}
+          restore-keys: ${{ runner.os }}-hermit-cache-
+
+      - name: Prime Flutter and Android tools
+        run: |
+          flutter --version
+          adb version
+
+      - name: Save Hermit package cache
+        if: always() && steps.hermit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        continue-on-error: true
+        with:
+          path: ~/.cache/hermit/pkg
+          key: ${{ runner.os }}-hermit-cache-${{ steps.hermit-bin-hash.outputs.hash }}
+
+      - name: Restore Flutter package cache
+        id: pub-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-android-runtime-pub-${{ hashFiles('mobile/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-android-runtime-pub-
+
+      - name: Resolve Flutter dependencies
+        run: cd mobile && flutter pub get
+
+      - name: Save Flutter package cache
+        if: always() && steps.pub-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        continue-on-error: true
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-android-runtime-pub-${{ hashFiles('mobile/pubspec.lock') }}
+
+      - name: Build the existing unsigned debug APK
+        run: |
+          just mobile-build-android
+          test -s "$APK_PATH"
+          sha256sum "$APK_PATH"
+
+      - name: Require the normal Linux emulator acceleration path
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Boot emulator and prove app launch/relaunch
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 420
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash scripts/android-runtime-proof.sh
+
+      - name: Upload Android runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: colony-android-runtime-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            android-runtime-artifacts
+            mobile/build/app/outputs/flutter-apk/app-debug.apk
