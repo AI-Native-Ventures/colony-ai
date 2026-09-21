@@ -108,6 +108,15 @@ const runtime = {
   },
 };
 
+// The production identity carrier must reserve its manifest-bound namespace
+// before Electron can create the user-data directory. Health-only launches
+// retain their existing ready-time startup; only the trusted macOS identity
+// path needs this earlier reservation barrier.
+if (identityLaunch) {
+  initializeRuntime();
+  void startRuntime();
+}
+
 function publishTestState() {
   if (!instrumentationEnabled || !STAGE0_TEST.stateGlobal) return;
   globalThis[STAGE0_TEST.killGlobal] = () => {
@@ -115,7 +124,7 @@ function publishTestState() {
   };
   globalThis[STAGE0_TEST.stateGlobal] = {
     ...runtime.diagnostics,
-    userDataPath: app.getPath("userData"),
+    userDataPath: app.isReady() ? app.getPath("userData") : userDataDirectory,
     windowCount: BrowserWindow.getAllWindows().filter(
       (window) => !window.isDestroyed(),
     ).length,
@@ -668,7 +677,7 @@ app.whenReady().then(() => {
   setupIpc();
   initializeRuntime();
   createWindow();
-  void startRuntime();
+  if (!identityLaunch) void startRuntime();
 });
 
 export { IPC, manifest, runtime, trustedRendererUrl };
