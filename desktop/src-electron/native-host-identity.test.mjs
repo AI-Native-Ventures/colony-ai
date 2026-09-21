@@ -205,6 +205,18 @@ test("NativeHost opts into production identity-v2 and serves only named calls", 
   assert.equal(fake.stdinEnded, true);
 });
 
+test("identity-v2 forwards only the explicit inherited environment to its child", async () => {
+  const fake = createFakeIdentitySpawn();
+  const host = hostWith(fake, {
+    inheritedEnv: {
+      HOME: "/proof/home",
+    },
+  });
+  await host.start();
+  assert.equal(fake.spawnCalls[0].options.env.HOME, "/proof/home");
+  await host.dispose();
+});
+
 test("identity-v2 rebind fences delayed old responses and accepts post-ACK calls", async () => {
   const fake = createFakeIdentitySpawn({ delayResponse: true });
   const host = hostWith(fake);

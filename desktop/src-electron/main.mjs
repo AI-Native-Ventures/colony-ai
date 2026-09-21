@@ -262,6 +262,13 @@ function createTransport() {
       inheritedEnv[key] = process.env[key];
     }
   }
+  // The production identity carrier derives its manifest-bound macOS app-data
+  // anchor from HOME. Forward that one platform-owned value only when the
+  // trusted identity descriptor is active; v1 health-only launches retain the
+  // narrower relay-only environment.
+  if (identityLaunch && typeof process.env.HOME === "string") {
+    inheritedEnv.HOME = process.env.HOME;
+  }
   const spawnEnv = {};
   const fault =
     instrumentationEnabled && STAGE0_TEST.faultEnv
