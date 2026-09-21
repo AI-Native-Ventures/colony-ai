@@ -170,6 +170,7 @@ export function isApprovedAsarFileEntry(entry, uiMode) {
 
 const observedReactRendererAssets = Object.freeze({
   core: "src-electron/renderer/assets/core-CGTdLJHd.js",
+  dialog: "src-electron/renderer/assets/dialog-9ih2nekE.js",
   index: "src-electron/renderer/assets/index-Bjw85wCC.js",
 });
 
@@ -201,6 +202,9 @@ export function allowedReactRendererTokens(uiMode, entry) {
   if (!isGeneratedReactAssetEntry(entry)) return [];
   const tokens = ["buzz://"];
   if (entry === observedReactRendererAssets.core) {
+    tokens.push("__TAURI_INTERNALS__");
+  }
+  if (entry === observedReactRendererAssets.dialog) {
     tokens.push("__TAURI_INTERNALS__");
   }
   if (entry === observedReactRendererAssets.index) {
