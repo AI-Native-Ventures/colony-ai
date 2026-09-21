@@ -513,9 +513,9 @@ test("identity framing preserves partial and batched frames with a byte bound", 
   assert.deepEqual(decoder.push(helloBytes.subarray(0, 5)), []);
   assert.equal(decoder.push(helloBytes.subarray(5))[0].type, "HELLO");
   assert.deepEqual(
-    decoder.push(Buffer.concat([helloBytes, reboundBytes])).map((frame) =>
-      frame.type,
-    ),
+    decoder
+      .push(Buffer.concat([helloBytes, reboundBytes]))
+      .map((frame) => frame.type),
     ["HELLO", "REHELLO"],
   );
   assert.equal(IDENTITY_FRAME_PREFIX, "@colony-native:");
@@ -541,25 +541,28 @@ test("identity decoder rejects an oversized completing chunk before copying a re
 });
 
 test("identity response decoding requires the pending capability and method", () => {
-  const responseFrame = response({ value: false }, { requestId: "mode-request" });
+  const responseFrame = response(
+    { value: false },
+    { requestId: "mode-request" },
+  );
   const encoded = encodeIdentityFrame(responseFrame, {
     direction: "host",
     responseCapability: "identity-mode",
     responseMethod: "is_shared_identity",
   });
   expectCode(
-    () => decodeIdentityFrame(encoded.subarray(0, encoded.length - 1), { direction: "host" }),
+    () =>
+      decodeIdentityFrame(encoded.subarray(0, encoded.length - 1), {
+        direction: "host",
+      }),
     "invalid_response_schema",
   );
-  const decoded = decodeIdentityFrame(
-    encoded.subarray(0, encoded.length - 1),
-    {
-      direction: "host",
-      responseContext: () => ({
-        capability: "identity-mode",
-        method: "is_shared_identity",
-      }),
-    },
-  );
+  const decoded = decodeIdentityFrame(encoded.subarray(0, encoded.length - 1), {
+    direction: "host",
+    responseContext: () => ({
+      capability: "identity-mode",
+      method: "is_shared_identity",
+    }),
+  });
   assert.deepEqual(decoded.payload, { value: false });
 });

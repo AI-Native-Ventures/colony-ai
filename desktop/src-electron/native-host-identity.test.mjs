@@ -124,12 +124,9 @@ function createFakeIdentitySpawn({ delayResponse = false } = {}) {
       } else if (input.type === "REHELLO") {
         for (const delayed of delayedRequests.splice(0)) {
           send(
-            response(
-              delayed,
-              undefined,
-              "outcome_unknown",
-              { code: "renderer_rebound" },
-            ),
+            response(delayed, undefined, "outcome_unknown", {
+              code: "renderer_rebound",
+            }),
             delayed,
           );
         }
@@ -185,7 +182,10 @@ test("NativeHost opts into production identity-v2 and serves only named calls", 
   const binding = await host.start();
   assert.equal(fake.spawnCalls[0].args[0], "--identity-v2");
   assert.equal(binding.profileId, LAUNCH.profileId);
-  assert.equal(host.getBindingState().registryDigest, PRODUCTION_REGISTRY_DIGEST);
+  assert.equal(
+    host.getBindingState().registryDigest,
+    PRODUCTION_REGISTRY_DIGEST,
+  );
 
   const shared = await host.request({
     capability: "identity-mode",
@@ -227,7 +227,10 @@ test("identity-v2 rebind fences delayed old responses and accepts post-ACK calls
     payload: {},
   });
   const rebound = await host.rebind(2);
-  await assert.rejects(oldRequest, (error) => error.code === "renderer_rebound");
+  await assert.rejects(
+    oldRequest,
+    (error) => error.code === "renderer_rebound",
+  );
   assert.equal(rebound.generationId, 2);
   const fresh = await host.request({
     capability: "identity-mode",

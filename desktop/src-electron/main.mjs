@@ -346,12 +346,7 @@ function setupIpc() {
     }
   });
 
-  const handleIdentityCall = async (
-    event,
-    payload,
-    capability,
-    method,
-  ) => {
+  const handleIdentityCall = async (event, payload, capability, method) => {
     try {
       assertTrustedPayload(event, payload);
       if (!identityLaunch) {
@@ -390,12 +385,7 @@ function setupIpc() {
   };
 
   ipcMain.handle(IPC.IDENTITY_SHARED, (event, payload) =>
-    handleIdentityCall(
-      event,
-      payload,
-      "identity-mode",
-      "is_shared_identity",
-    ),
+    handleIdentityCall(event, payload, "identity-mode", "is_shared_identity"),
   );
 
   ipcMain.handle(IPC.IDENTITY_GET, (event, payload) =>

@@ -1118,10 +1118,7 @@ export function encodeIdentityFrame(
   });
   const json = JSON.stringify(frame);
   const jsonBytes = Buffer.byteLength(json, "utf8");
-  expect(
-    jsonBytes <= IDENTITY_LIMITS.jsonPayloadLimitBytes,
-    "json_too_large",
-  );
+  expect(jsonBytes <= IDENTITY_LIMITS.jsonPayloadLimitBytes, "json_too_large");
   const total =
     Buffer.byteLength(IDENTITY_FRAME_PREFIX, "utf8") + jsonBytes + 1;
   expect(total <= IDENTITY_LIMITS.frameLimitBytes, "frame_too_large");
