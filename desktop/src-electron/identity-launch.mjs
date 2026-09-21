@@ -3,6 +3,7 @@ import {
   PRODUCTION_IDENTITY_PROFILES,
   validateIdentityLaunchDescriptor,
 } from "./identity-protocol.mjs";
+import { validateManifest } from "./host-protocol.mjs";
 
 const PLATFORM_NAMES = Object.freeze({
   darwin: "macos",
@@ -26,6 +27,7 @@ export function createTrustedIdentityLaunch({
   userDataRoot,
 }) {
   if (flavor !== "normal" || electronPlatform !== "darwin") return null;
+  validateManifest(manifest);
   const profile = manifest?.identityProfiles?.[flavor];
   const expectedProfile = PRODUCTION_IDENTITY_PROFILES[flavor];
   if (

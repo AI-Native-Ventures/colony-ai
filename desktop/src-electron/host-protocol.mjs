@@ -1,11 +1,52 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { canonicalizeJson, digestJson } from "./identity-protocol.mjs";
+
 const MAX_ID_BYTES = 128;
 const EXPECTED_SOURCE_REVISION = "ef2aa1ae38fadcc0bc22b8bf6ed96b35933146be";
 const EXPECTED_PROFILE_ID = "0000000000000001";
 const EXPECTED_REGISTRY_DIGEST =
   "1242953f4a5baf1995ee18bac140ca16178a06205771d8a65ab0a9a39bb0ac49";
+const EXPECTED_IDENTITY_MANIFEST_DIGEST =
+  "ff46bc9729c8e3dce602d5e1effb84d5aa6fff0b00231404c340b8e61aaa1e3d";
+const EXPECTED_IDENTITY_PROFILE_FLAVORS = Object.freeze([
+  "normal",
+  "instrumented",
+]);
+const IDENTITY_COLLISION_PLATFORMS = Object.freeze([
+  "macos",
+  "windows",
+  "linux",
+]);
+const IDENTITY_COLLISION_VALUES = new Set(["observed-unoccupied", "unknown"]);
+const EXPECTED_IDENTITY_PROFILES = deepFreeze({
+  manifestVersion: 1,
+  normal: {
+    profileId: "0000000000000001",
+    userDataRelativePath: "Colony/dev/0000000000000001/normal",
+    keychainService: "xyz.ainative.ventures.colony.dev.0000000000000001",
+    collisionEvidence: {
+      macos: "unknown",
+      windows: "unknown",
+      linux: "unknown",
+    },
+  },
+  instrumented: {
+    profileId: "0000000000000001.instrumented",
+    userDataRelativePath: "Colony/dev/0000000000000001/instrumented",
+    keychainService:
+      "xyz.ainative.ventures.colony.instrumented.0000000000000001",
+    collisionEvidence: {
+      macos: "unknown",
+      windows: "unknown",
+      linux: "unknown",
+    },
+  },
+});
+const EXPECTED_IDENTITY_PROFILES_CANONICAL = canonicalizeJson(
+  EXPECTED_IDENTITY_PROFILES,
+);
 const EXPECTED_FRAME_TYPES = Object.freeze([
   "HELLO",
   "READY",
@@ -256,6 +297,100 @@ function validateProtocol(protocol) {
   );
 }
 
+function validateIdentityProfile(profile, code) {
+  expectExactKeys(
+    profile,
+    [
+      "profileId",
+      "userDataRelativePath",
+      "keychainService",
+      "collisionEvidence",
+    ],
+    code,
+  );
+  expectString(profile.profileId, code, { maxBytes: 96 });
+  expect(/^[A-Za-z0-9._-]+$/.test(profile.profileId), code);
+
+  expectString(profile.userDataRelativePath, code, { maxBytes: 4096 });
+  const normalizedPath = profile.userDataRelativePath.replaceAll("\\", "/");
+  expect(
+    !normalizedPath.startsWith("/") &&
+      !normalizedPath.startsWith("//") &&
+      !/^[A-Za-z]:\//.test(normalizedPath),
+    code,
+  );
+  expect(
+    normalizedPath
+      .split("/")
+      .every(
+        (segment) => segment.length > 0 && segment !== "." && segment !== "..",
+      ),
+    code,
+  );
+
+  expectString(profile.keychainService, code, { maxBytes: 128 });
+  expect(/^[A-Za-z0-9._-]+$/.test(profile.keychainService), code);
+  expect(
+    !["buzz-desktop", "buzz-desktop-dev"].includes(profile.keychainService),
+    code,
+  );
+
+  expectExactKeys(
+    profile.collisionEvidence,
+    IDENTITY_COLLISION_PLATFORMS,
+    code,
+  );
+  for (const platform of IDENTITY_COLLISION_PLATFORMS) {
+    expect(
+      IDENTITY_COLLISION_VALUES.has(profile.collisionEvidence[platform]),
+      code,
+    );
+  }
+}
+
+function computeIdentityManifestDigest(identityProfiles) {
+  return digestJson({
+    manifestVersion: identityProfiles.manifestVersion,
+    identityProfiles,
+  });
+}
+
+export function validateIdentityManifestAuthority(input) {
+  expect(isRecord(input), "invalid_manifest_identity_profiles");
+  const identityProfiles = input.identityProfiles;
+  expectExactKeys(
+    identityProfiles,
+    ["manifestVersion", ...EXPECTED_IDENTITY_PROFILE_FLAVORS],
+    "invalid_manifest_identity_profiles",
+  );
+  expect(
+    identityProfiles.manifestVersion ===
+      EXPECTED_IDENTITY_PROFILES.manifestVersion,
+    "invalid_manifest_identity_profiles",
+  );
+  for (const flavor of EXPECTED_IDENTITY_PROFILE_FLAVORS) {
+    validateIdentityProfile(
+      identityProfiles[flavor],
+      "invalid_manifest_identity_profiles",
+    );
+  }
+
+  const computedDigest = computeIdentityManifestDigest(identityProfiles);
+  expect(
+    input.identityManifestDigest === computedDigest,
+    "invalid_manifest_identity_digest",
+  );
+  expect(
+    computedDigest === EXPECTED_IDENTITY_MANIFEST_DIGEST,
+    "invalid_manifest_identity_digest",
+  );
+  expect(
+    canonicalizeJson(identityProfiles) === EXPECTED_IDENTITY_PROFILES_CANONICAL,
+    "invalid_manifest_identity_profiles",
+  );
+  return identityProfiles;
+}
+
 export function validateManifest(input) {
   expect(isRecord(input), "invalid_manifest");
   expect(input.stage === "0", "invalid_manifest_stage");
@@ -273,6 +408,7 @@ export function validateManifest(input) {
     "invalid_manifest_packager_version",
   );
   validateNamespace(input.namespace);
+  validateIdentityManifestAuthority(input);
   validateProtocol(input.protocol);
   expect(
     JSON.stringify(input.faultInputs) === JSON.stringify(EXPECTED_FAULT_INPUTS),

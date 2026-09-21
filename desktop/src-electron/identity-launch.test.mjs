@@ -6,7 +6,10 @@ import {
   createTrustedIdentityLaunch,
   identityPlatformForElectron,
 } from "./identity-launch.mjs";
-import { PRODUCTION_IDENTITY_MANIFEST_DIGEST } from "./identity-protocol.mjs";
+import {
+  digestJson,
+  PRODUCTION_IDENTITY_MANIFEST_DIGEST,
+} from "./identity-protocol.mjs";
 
 const manifest = loadManifest();
 
@@ -79,6 +82,26 @@ test("trusted launch rejects a profile path that is not the frozen manifest auth
         electronPlatform: "darwin",
         userDataRoot: "/tmp/Colony/dev/0000000000000001/normal",
       }),
-    /identity_manifest_mismatch/,
+    /invalid_manifest_identity_digest/,
+  );
+});
+
+test("trusted launch rejects a complete identity record drift even with a recomputed digest", () => {
+  const tampered = structuredClone(manifest);
+  tampered.identityProfiles.normal.collisionEvidence.macos =
+    "observed-unoccupied";
+  tampered.identityManifestDigest = digestJson({
+    manifestVersion: tampered.identityProfiles.manifestVersion,
+    identityProfiles: tampered.identityProfiles,
+  });
+  assert.throws(
+    () =>
+      createTrustedIdentityLaunch({
+        manifest: tampered,
+        flavor: "normal",
+        electronPlatform: "darwin",
+        userDataRoot: "/tmp/Colony/dev/0000000000000001/normal",
+      }),
+    /invalid_manifest_identity_digest/,
   );
 });
