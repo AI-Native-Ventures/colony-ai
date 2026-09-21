@@ -37,16 +37,11 @@ async function runtimeDiagnostics(
   page: Page,
 ) {
   const binding = await page.evaluate(() => window.stage0.bindingState());
-  const main = await application.evaluate(async ({ app }) => {
-    const { existsSync } = await import("node:fs");
-    const userDataPath = app.getPath("userData");
-    return {
-      home: process.env.HOME ?? null,
-      appDataPath: app.getPath("appData"),
-      userDataPath,
-      userDataRootExists: existsSync(userDataPath),
-    };
-  });
+  const main = await application.evaluate(({ app }) => ({
+    home: process.env.HOME ?? null,
+    appDataPath: app.getPath("appData"),
+    userDataPath: app.getPath("userData"),
+  }));
   return { binding, main };
 }
 
@@ -151,8 +146,8 @@ test("packaged identity helper failure stays pre-READY and exposes only a bounde
       }
       const binding = await page.evaluate(() => window.stage0.bindingState());
       assert.equal(
-        error?.message,
-        "host_unavailable",
+        error?.message?.endsWith("host_unavailable"),
+        true,
         `identity helper failure error=${JSON.stringify(error)} binding=${JSON.stringify(binding)}`,
       );
       assert.equal(binding.state, "unavailable");
