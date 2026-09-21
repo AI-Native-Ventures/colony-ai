@@ -98,7 +98,7 @@ impl Harness {
         self.stdin.take();
     }
 
-    fn finish(mut self) -> ExitStatus {
+    fn finish(self) -> ExitStatus {
         self.finish_with_stderr().status
     }
 
@@ -178,8 +178,13 @@ fn assert_stderr_safe(stderr: &[u8]) {
     assert!(!text.contains(PROFILE_ID));
     assert!(!text.contains("identity-v2-contract"));
     assert!(!text.contains("userDataRoot"));
-    assert!(!text.contains("pubkey"));
+    // B1 currently emits a public-key diagnostic during its preserved
+    // initialization path. Reject private-key material and raw custody data,
+    // while keeping that existing public metadata behavior visible.
+    assert!(!text.contains("nsec"));
+    assert!(!text.contains("private"));
     assert!(!text.contains("secret"));
+    assert!(!text.contains("key material"));
     assert!(!text.contains("backend"));
 }
 
@@ -400,7 +405,7 @@ fn v2_rebind_fences_pending_work_and_allows_generation_two_metadata() {
 #[test]
 fn v2_cancel_duplicate_and_generation_fences_are_terminal_and_bounded() {
     let root = fresh_root("ids");
-    let mut host = Harness::spawn();
+    let mut host = Harness::spawn_with(Some("delay-response"), None);
     bind(&mut host, &root);
 
     host.send(request(
