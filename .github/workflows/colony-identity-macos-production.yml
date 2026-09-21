@@ -47,6 +47,7 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-proof.keychain-db"
+          profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -54,6 +55,7 @@ jobs:
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+          test ! -e "$profile_parent"
           mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
@@ -67,6 +69,7 @@ jobs:
               --test identity_production_dispatch \
               macos_production_binary_initializes_and_restarts_with_same_key \
               -- --ignored --exact --nocapture
+          rm -rf "$profile_parent"
 
       - name: Prove concurrent production children share one identity
         shell: bash
@@ -74,6 +77,7 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-race-proof.keychain-db"
+          profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -81,6 +85,7 @@ jobs:
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+          test ! -e "$profile_parent"
           mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
@@ -94,6 +99,7 @@ jobs:
               --test identity_production_dispatch \
               macos_production_binary_serializes_two_fresh_children \
               -- --ignored --exact --nocapture
+          rm -rf "$profile_parent"
 
       - name: Prove an interrupted reservation blocks before B1
         shell: bash
@@ -101,6 +107,7 @@ jobs:
           set -euo pipefail
           proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-identity-reserved-proof.keychain-db"
+          profile_parent="$proof_home/Library/Application Support/Colony/dev/0000000000000001"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -108,6 +115,7 @@ jobs:
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+          test ! -e "$profile_parent"
           mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
@@ -121,6 +129,7 @@ jobs:
               --test identity_production_dispatch \
               macos_production_reserved_sidecar_blocks_before_b1 \
               -- --ignored --exact --nocapture
+          rm -rf "$profile_parent"
 
   macos-diagnostic:
     name: macOS arm64 identity fallback diagnostic (derivative)
