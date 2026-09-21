@@ -104,11 +104,13 @@ jobs:
 
       - name: Probe the clean production helper before Electron startup
         shell: bash
-        env:
-          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
+          normal_app="$(find desktop/dist-electron-normal -path '*/Contents/MacOS/Buzz Stage0 Normal' -type f -print -quit)"
+          test -n "$normal_app"
+          COLONY_NATIVE_HOST_BIN="$(dirname "$(dirname "$normal_app")")/Resources/colony-native-host"
+          test -x "$COLONY_NATIVE_HOST_BIN"
           probe_home="$RUNNER_TEMP/colony-electron-identity-probe-home"
           probe_keychain="$RUNNER_TEMP/colony-electron-identity-probe.keychain-db"
           mkdir -p "$probe_home/Library/Application Support/Colony/dev"
@@ -118,7 +120,7 @@ jobs:
           HOME="$probe_home" security list-keychains -d user -s "$probe_keychain"
           HOME="$probe_home" security default-keychain -d user -s "$probe_keychain"
           trap 'HOME="$probe_home" security delete-keychain "$probe_keychain" >/dev/null 2>&1 || true; rm -rf "$probe_home"' EXIT
-          HOME="$probe_home" node --input-type=module <<'NODE'
+          HOME="$probe_home" COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" node --input-type=module <<'NODE'
           import { spawn } from "node:child_process";
           import path from "node:path";
 
