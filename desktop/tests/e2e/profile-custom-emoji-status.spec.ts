@@ -2,10 +2,19 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { EVENT_BATCH_MS } from "@/shared/api/relayClientTimings";
 
 const SHORTCODE = "buzz";
 const STATUS_TEXT = "testing custom status";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
+const STATUS_CLOCK = new Date("2026-06-18T12:00:00.000Z");
+const STATUS_CLOCK_INIT = new Date(STATUS_CLOCK.getTime() - 60_000);
+const STATUS_CLOCK_SECONDS = Math.floor(STATUS_CLOCK.getTime() / 1_000);
+const STATUS_EXPIRY_MS = 2_000;
+// RelayClient batches live frames on this bounded interval before notifying React.
+const STATUS_EVENT_BATCH_MS = EVENT_BATCH_MS;
+const STATUS_DIALOG_FRAME_MS = 20;
+const STATUS_EXPIRY_CROSSING_MS = 1;
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -56,11 +65,15 @@ async function seedMockStatus(
     expiresAt?: number;
     createdAt?: number;
   },
+  options?: { eventFlushMs?: number },
 ) {
   await waitForMockGlobalKindSubscription(page, 30315);
   await page.evaluate((status) => {
     window.__BUZZ_E2E_SET_MOCK_USER_STATUS__?.(status);
   }, input);
+  if (options?.eventFlushMs !== undefined) {
+    await page.clock.fastForward(options.eventFlushMs);
+  }
   await openProfilePopover(page);
   await expect(page.getByTestId("profile-popover-set-status")).toContainText(
     input.text,
@@ -196,31 +209,61 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
 test("keeps an open status draft when the saved status expires", async ({
   page,
 }) => {
+  // Keep the app's Date.now(), expiry timer, and seeded event on one epoch.
+  // Let startup timers run naturally, then pause before seeding the status so
+  // navigation and dialog setup cannot consume its two-second lifetime.
+  await page.clock.install({ time: STATUS_CLOCK_INIT });
   await page.goto("/");
-  const nowSeconds = Math.floor(Date.now() / 1_000);
-  await seedMockStatus(page, {
-    text: "Original draft",
-    emoji: "📝",
-    expiresAt: nowSeconds + 2,
-    createdAt: nowSeconds,
-  });
-  await page.getByTestId("profile-popover-set-status").click();
-  const dialog = page.getByTestId("set-status-dialog");
-  await dialog.getByTestId("set-status-input").fill("Unsaved draft");
-  await expect(page.getByTestId("sidebar-profile-user-status")).toHaveCount(0, {
-    timeout: 5_000,
-  });
-
-  await expect(dialog.getByTestId("set-status-input")).toHaveValue(
-    "Unsaved draft",
+  await waitForMockGlobalKindSubscription(page, 30315);
+  await page.clock.pauseAt(STATUS_CLOCK);
+  await seedMockStatus(
+    page,
+    {
+      text: "Original draft",
+      emoji: "📝",
+      expiresAt: STATUS_CLOCK_SECONDS + STATUS_EXPIRY_MS / 1_000,
+      createdAt: STATUS_CLOCK_SECONDS,
+    },
+    {
+      eventFlushMs: STATUS_EVENT_BATCH_MS,
+    },
   );
-  await expect(dialog.getByRole("alert")).toContainText(
+
+  const sidebarStatus = page.getByTestId("sidebar-profile-user-status");
+  await expect(sidebarStatus).toContainText("Original draft");
+  await page.getByTestId("profile-popover-set-status").click();
+  // ProfilePopover opens the dialog from requestAnimationFrame; flush one
+  // controlled frame before asserting the dialog state.
+  await page.clock.fastForward(STATUS_DIALOG_FRAME_MS);
+  const dialog = page.getByTestId("set-status-dialog");
+  const input = dialog.getByTestId("set-status-input");
+  const saveButton = dialog.getByLabel("Save status");
+  await expect(dialog).toBeVisible();
+  await expect(input).toHaveValue("Original draft");
+  await input.fill("Unsaved draft");
+  await expect(input).toHaveValue("Unsaved draft");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(saveButton).toBeEnabled();
+
+  // Advance exactly from the paused virtual time to the event's deadline so
+  // this timer transition, rather than natural setup time, causes the expiry.
+  const expiryDeadlineMs = STATUS_CLOCK.getTime() + STATUS_EXPIRY_MS;
+  const pausedNowMs = await page.evaluate(() => Date.now());
+  await page.clock.fastForward(expiryDeadlineMs - pausedNowMs);
+  // The production predicate is inclusive (expiresAt <= now). Cross that
+  // exact boundary by one controlled millisecond so the scheduled callback
+  // cannot remain queued at the endpoint.
+  await page.clock.fastForward(STATUS_EXPIRY_CROSSING_MS);
+  await expect(sidebarStatus).toHaveCount(0);
+
+  await expect(input).toHaveValue("Unsaved draft");
+  await expect(dialog.getByRole("alert")).toHaveText(
     "Choose a duration in the future.",
   );
-  await expect(dialog.getByLabel("Save status")).toBeDisabled();
+  await expect(saveButton).toBeDisabled();
   await page.getByTestId("set-status-duration").click();
   await page.getByRole("menuitem", { name: "This week" }).click();
-  await expect(dialog.getByLabel("Save status")).toBeEnabled();
+  await expect(saveButton).toBeEnabled();
   await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
     0,
   );
