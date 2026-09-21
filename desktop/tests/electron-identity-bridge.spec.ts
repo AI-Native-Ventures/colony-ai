@@ -32,18 +32,48 @@ async function launchIdentity({ requireHelper = true } = {}) {
   return { application, page };
 }
 
-async function readIdentity(page: Page) {
+async function runtimeDiagnostics(
+  application: ElectronApplication,
+  page: Page,
+) {
+  const binding = await page.evaluate(() => window.stage0.bindingState());
+  const main = await application.evaluate(({ app }) => ({
+    home: process.env.HOME ?? null,
+    appDataPath: app.getPath("appData"),
+    userDataPath: app.getPath("userData"),
+  }));
+  return { binding, main };
+}
+
+async function readIdentity(
+  page: Page,
+  application: ElectronApplication,
+) {
   const surface = await page.evaluate(() => ({
     stage0: Object.keys(window.stage0 ?? {}).sort(),
     identity: Object.keys(window.stage0?.identity ?? {}).sort(),
   }));
   const binding = await page.evaluate(() => window.stage0.bindingState());
-  const shared = await page.evaluate(() =>
-    window.stage0.identity.isSharedIdentity(),
-  );
-  const identity = await page.evaluate(() =>
-    window.stage0.identity.getIdentity(),
-  );
+  let shared;
+  try {
+    shared = await page.evaluate(() =>
+      window.stage0.identity.isSharedIdentity(),
+    );
+  } catch (error) {
+    const diagnostics = await runtimeDiagnostics(application, page);
+    throw new Error(
+      `isSharedIdentity failed: ${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify(diagnostics)}`,
+    );
+  }
+  let identity;
+  try {
+    identity = await page.evaluate(() => window.stage0.identity.getIdentity());
+  } catch (error) {
+    const diagnostics = await runtimeDiagnostics(application, page);
+    throw new Error(
+      `getIdentity failed: ${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify(diagnostics)}`,
+    );
+  }
   return { surface, binding, shared, identity };
 }
 
@@ -55,7 +85,7 @@ test("packaged normal macOS bridge serves production identity and survives reloa
   const first = await launchIdentity();
   let firstIdentity;
   try {
-    firstIdentity = await readIdentity(first.page);
+    firstIdentity = await readIdentity(first.page, first.application);
     assert.deepEqual(firstIdentity.surface.identity, [
       "getIdentity",
       "isSharedIdentity",
@@ -81,7 +111,7 @@ test("packaged normal macOS bridge serves production identity and survives reloa
 
   const second = await launchIdentity();
   try {
-    const restarted = await readIdentity(second.page);
+    const restarted = await readIdentity(second.page, second.application);
     assert.equal(restarted.identity.storage, "system-keyring");
     assert.equal(restarted.identity.pubkey, firstIdentity.identity.pubkey);
     assert.equal(restarted.binding.generationId, 1);
@@ -108,12 +138,19 @@ test("packaged identity helper failure stays pre-READY and exposes only a bounde
     const { application, page } = await launchIdentity({ requireHelper: false });
     try {
       await page.waitForLoadState("domcontentloaded");
-      await assert.rejects(
-        page.evaluate(() => window.stage0.identity.getIdentity()),
-        (error: { message?: string; name?: string }) =>
-          error.message === "host_unavailable" && error.name === "Stage0Error",
-      );
+      let error: { message?: string; name?: string } | null = null;
+      try {
+        await page.evaluate(() => window.stage0.identity.getIdentity());
+      } catch (caught) {
+        error = caught as { message?: string; name?: string };
+      }
       const binding = await page.evaluate(() => window.stage0.bindingState());
+      assert.equal(
+        error?.message,
+        "host_unavailable",
+        `identity helper failure error=${JSON.stringify(error)} binding=${JSON.stringify(binding)}`,
+      );
+      assert.equal(error?.name, "Stage0Error");
       assert.equal(binding.state, "unavailable");
     } finally {
       await close(application);
