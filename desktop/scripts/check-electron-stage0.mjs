@@ -189,6 +189,7 @@ export function allowedReactRendererTokens(uiMode, entry) {
         "__BUZZ_E2E__",
         "maybeInstallE2eTauriMocks",
         "src/main.tsx",
+        "tauri.conf.json",
       ]
     : [];
 }

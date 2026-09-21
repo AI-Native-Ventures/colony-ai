@@ -90,7 +90,7 @@ test("allows the product deep-link token only in the React renderer scan", () =>
   assert.doesNotThrow(() =>
     scanText(
       "React ASAR:src-electron/renderer/assets/autoPinMentionedAgentsPreference.js",
-      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__'; const e2e = '__BUZZ_E2E__'; const install = 'maybeInstallE2eTauriMocks'; const source = 'src/main.tsx';",
+      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__'; const e2e = '__BUZZ_E2E__'; const install = 'maybeInstallE2eTauriMocks'; const source = 'src/main.tsx'; const config = 'tauri.conf.json';",
       [],
       rendererTokens,
     ),
