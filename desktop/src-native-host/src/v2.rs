@@ -1196,7 +1196,7 @@ mod tests {
     #[test]
     fn lifecycle_and_capability_mutations_change_the_digest() {
         let mut lifecycle = registry_document();
-        lifecycle["schemas"]["host-lifecycle-event"]["states"][0] = json!("changed");
+        lifecycle["schemas"]["lifecycle-payload"]["enums"]["state"][0] = json!("changed");
         assert_ne!(digest_for_document(&lifecycle), registry_digest());
 
         let mut capabilities = registry_document();
