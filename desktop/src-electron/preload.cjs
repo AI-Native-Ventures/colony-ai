@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const IPC = Object.freeze({
   HEALTH: "colony-stage0:health:get-default-relay-url",
+  IDENTITY_SHARED: "colony-stage0:identity:is-shared-identity",
+  IDENTITY_GET: "colony-stage0:identity:get-identity",
   LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
   LIFECYCLE_UNSUBSCRIBE: "colony-stage0:lifecycle:unsubscribe",
   BINDING_STATE: "colony-stage0:binding-state",
@@ -15,6 +17,19 @@ const PUBLIC_ERROR_CODES = new Set([
   "untrusted_origin",
   "invalid_ipc_payload",
   "host_unavailable",
+  "identity_unavailable",
+  "identity_manifest_mismatch",
+  "invalid_identity_launch",
+  "unknown_capability",
+  "unknown_method",
+  "invalid_payload",
+  "cancelled",
+  "duplicate_request_id",
+  "future_generation",
+  "host_busy",
+  "renderer_rebound",
+  "stale_generation",
+  "timeout",
   "renderer_rebinding",
   "renderer_rebound",
   "startup_timeout",
@@ -27,12 +42,21 @@ const PUBLIC_ERROR_CODES = new Set([
 const lifecycleListeners = new Set();
 let lifecycleSubscription = null;
 
+function errorCodeFromSerialized(error, fallback) {
+  const values = [error?.code, error?.message].filter(
+    (value) => typeof value === "string",
+  );
+  for (const value of values) {
+    if (PUBLIC_ERROR_CODES.has(value)) return value;
+    for (const code of PUBLIC_ERROR_CODES) {
+      if (value.endsWith(`: ${code}`)) return code;
+    }
+  }
+  return fallback;
+}
+
 function errorFrom(error, fallback = "protocol_error") {
-  const code = PUBLIC_ERROR_CODES.has(error?.code)
-    ? error.code
-    : PUBLIC_ERROR_CODES.has(error?.message)
-      ? error.message
-      : fallback;
+  const code = errorCodeFromSerialized(error, fallback);
   const value = new Error(code);
   value.name = "Stage0Error";
   value.code = code;
@@ -50,6 +74,10 @@ async function invoke(channel, payload) {
 const api = Object.freeze({
   health: Object.freeze({
     getDefaultRelayUrl: () => invoke(IPC.HEALTH, {}),
+  }),
+  identity: Object.freeze({
+    isSharedIdentity: () => invoke(IPC.IDENTITY_SHARED, {}),
+    getIdentity: () => invoke(IPC.IDENTITY_GET, {}),
   }),
   onLifecycle: (callback) => {
     if (typeof callback !== "function") {

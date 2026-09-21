@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   IDENTITY_ERROR_CODES,
+  IDENTITY_FRAME_PREFIX,
   IDENTITY_LIMITS,
   IDENTITY_METADATA_FIELDS,
   IDENTITY_PROTOCOL_VERSION,
   IdentityProtocolError,
+  IdentityFrameDecoder,
   PRODUCTION_CAPABILITIES,
   PRODUCTION_IDENTITY_MANIFEST_DIGEST,
   PRODUCTION_REGISTRY_DOCUMENT,
@@ -15,7 +17,9 @@ import {
   TEST_V2_REGISTRY_DIGEST,
   V1_REGISTRY_DIGEST,
   canonicalizeJson,
+  decodeIdentityFrame,
   createIdentityRequest,
+  encodeIdentityFrame,
   digestJson,
   validateIdentityFrame,
   validateIdentityLaunchDescriptor,
@@ -495,4 +499,70 @@ test("binding and generation fences reject stale, future, or cross-session frame
       ),
     "invalid_rebound_schema",
   );
+});
+
+test("identity framing preserves partial and batched frames with a byte bound", () => {
+  const decoder = new IdentityFrameDecoder({ direction: "main" });
+  const helloBytes = encodeIdentityFrame(hello(), { direction: "main" });
+  const rebound = { ...hello() };
+  delete rebound.identityLaunch;
+  rebound.type = "REHELLO";
+  rebound.generationId = 2;
+  const reboundBytes = encodeIdentityFrame(rebound, { direction: "main" });
+
+  assert.deepEqual(decoder.push(helloBytes.subarray(0, 5)), []);
+  assert.equal(decoder.push(helloBytes.subarray(5))[0].type, "HELLO");
+  assert.deepEqual(
+    decoder
+      .push(Buffer.concat([helloBytes, reboundBytes]))
+      .map((frame) => frame.type),
+    ["HELLO", "REHELLO"],
+  );
+  assert.equal(IDENTITY_FRAME_PREFIX, "@colony-native:");
+});
+
+test("identity decoder rejects an oversized completing chunk before copying a retained partial", () => {
+  const decoder = new IdentityFrameDecoder({ direction: "main" });
+  decoder.push(Buffer.from(`${IDENTITY_FRAME_PREFIX}{`, "utf8"));
+  const completingChunk = Buffer.alloc(IDENTITY_LIMITS.frameLimitBytes, 0x61);
+  completingChunk[completingChunk.length - 1] = 0x0a;
+  const originalConcat = Buffer.concat;
+  let concatCalls = 0;
+  Buffer.concat = (...args) => {
+    concatCalls += 1;
+    return originalConcat(...args);
+  };
+  try {
+    expectCode(() => decoder.push(completingChunk), "frame_too_large");
+  } finally {
+    Buffer.concat = originalConcat;
+  }
+  assert.equal(concatCalls, 0);
+});
+
+test("identity response decoding requires the pending capability and method", () => {
+  const responseFrame = response(
+    { value: false },
+    { requestId: "mode-request" },
+  );
+  const encoded = encodeIdentityFrame(responseFrame, {
+    direction: "host",
+    responseCapability: "identity-mode",
+    responseMethod: "is_shared_identity",
+  });
+  expectCode(
+    () =>
+      decodeIdentityFrame(encoded.subarray(0, encoded.length - 1), {
+        direction: "host",
+      }),
+    "invalid_response_schema",
+  );
+  const decoded = decodeIdentityFrame(encoded.subarray(0, encoded.length - 1), {
+    direction: "host",
+    responseContext: () => ({
+      capability: "identity-mode",
+      method: "is_shared_identity",
+    }),
+  });
+  assert.deepEqual(decoded.payload, { value: false });
 });

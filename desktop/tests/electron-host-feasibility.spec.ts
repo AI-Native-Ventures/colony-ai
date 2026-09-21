@@ -159,6 +159,7 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
     assert.deepEqual(exposedKeys.sort(), [
       "bindingState",
       "health",
+      "identity",
       "onLifecycle",
     ]);
   } finally {
