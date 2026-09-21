@@ -17,6 +17,8 @@ on:
       - "desktop/scripts/stage-electron-stage0.mjs"
       - "desktop/playwright.electron.config.ts"
       - "desktop/tests/electron-stage0-package.ts"
+      - "desktop/tests/electron-stage0-sandbox.mjs"
+      - "desktop/tests/electron-stage0-sandbox.test.mjs"
       - "desktop/tests/electron-host-feasibility.spec.ts"
       - "desktop/tests/electron-host-feasibility-normal.spec.ts"
       - "pnpm-lock.yaml"
@@ -70,7 +72,9 @@ jobs:
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
-          node --test desktop/scripts/check-electron-stage0.test.mjs
+          node --test \
+            desktop/scripts/check-electron-stage0.test.mjs \
+            desktop/tests/electron-stage0-sandbox.test.mjs
 
       - name: Download the pinned Electron runtime
         shell: bash

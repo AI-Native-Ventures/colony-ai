@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import type { ElectronApplication } from "@playwright/test";
 
+import { hasRequiredLinuxSandboxIsolation } from "./electron-stage0-sandbox.mjs";
+
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -292,10 +294,10 @@ export async function assertActiveLinuxSandbox(
     "0",
     `renderer must run as non-root: ${JSON.stringify(observation)}`,
   );
-  const layer1NamespaceIsolation =
-    namespaceDifferences.includes("pid") &&
-    (namespaceDifferences.some((namespace) => namespace !== "pid") ||
-      rootDiffers);
+  const layer1NamespaceIsolation = hasRequiredLinuxSandboxIsolation(
+    namespaceDifferences,
+    rootDiffers,
+  );
   assert.ok(
     layer1NamespaceIsolation,
     `Chromium layer-1 renderer isolation was not observed: ${JSON.stringify(observation)}`,
