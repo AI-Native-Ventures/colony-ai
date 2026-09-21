@@ -516,7 +516,7 @@ jobs:
             sudo chown root:root "${sandboxes[0]}"
             sudo chmod 4755 "${sandboxes[0]}"
             stat --printf='linux_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
-            sandbox_api="$("${sandboxes[0]}" --get-api-version)"
+            sandbox_api="$("${sandboxes[0]}" --get-api)"
             printf 'linux_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
           done
           test "$(id -u)" -ne 0
@@ -568,7 +568,7 @@ jobs:
             sudo chown root:root "${sandboxes[0]}"
             sudo chmod 4755 "${sandboxes[0]}"
             stat --printf='linux_relocated_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
-            sandbox_api="$("${sandboxes[0]}" --get-api-version)"
+            sandbox_api="$("${sandboxes[0]}" --get-api)"
             printf 'linux_relocated_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
             sandbox_mount="$(findmnt -no FSTYPE,OPTIONS --target "${sandboxes[0]}")"
             printf 'linux_chrome_sandbox_mount=%s flavor=%s\n' "$sandbox_mount" "$flavor"
