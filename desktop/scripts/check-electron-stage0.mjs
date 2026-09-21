@@ -220,6 +220,24 @@ const activeReactRendererForms = Object.freeze([
   },
 ]);
 
+// The generated @tauri-apps/core adapter is present in the reviewed React
+// bundle for the upstream renderer, but it must not turn an arbitrary
+// allowlisted asset into an IPC escape hatch.  This is deliberately a
+// narrow, content-shaped adapter call: a command/args/options delegation in
+// the exact core chunk, and only when the complete app.asar provenance is the
+// fixed hosted package record above.  A string-literal command, an import, a
+// mock installer, or the same shape in any other asset remains forbidden.
+const reviewedCoreAdapterInvoke =
+  /__TAURI_INTERNALS__\s*(?:\.\s*invoke|\[\s*["']invoke["']\s*\])\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*[A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)?\s*\)/;
+
+function isReviewedCoreAdapterInvoke(entry, text, flavor, packageDigest) {
+  return (
+    entry === observedReactRendererAssets.core &&
+    packageDigest === observedReactPackageAsarDigests[flavor] &&
+    reviewedCoreAdapterInvoke.test(text)
+  );
+}
+
 export function scanText(
   label,
   text,
@@ -233,9 +251,21 @@ export function scanText(
   }
 }
 
-function assertNoActiveReactRendererForms(label, text) {
+function assertNoActiveReactRendererForms(
+  label,
+  text,
+  flavor,
+  entry,
+  packageDigest,
+) {
   for (const { name, pattern } of activeReactRendererForms) {
-    if (pattern.test(text)) {
+    if (
+      pattern.test(text) &&
+      !(
+        name === "Tauri invoke" &&
+        isReviewedCoreAdapterInvoke(entry, text, flavor, packageDigest)
+      )
+    ) {
       fail(`${label} contains active React renderer form ${name}`);
     }
   }
@@ -249,7 +279,7 @@ function scanTrustedReactRendererText(
   additionalForbiddenTokens = [],
   packageDigest,
 ) {
-  assertNoActiveReactRendererForms(label, text);
+  assertNoActiveReactRendererForms(label, text, flavor, entry, packageDigest);
   if (packageDigest !== observedReactPackageAsarDigests[flavor]) {
     fail(`${label} is missing reviewed React package provenance`);
   }
