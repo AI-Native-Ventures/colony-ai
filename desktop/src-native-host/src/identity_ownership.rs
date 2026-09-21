@@ -3,7 +3,7 @@
 //! This module is deliberately a boundary around the unchanged B1
 //! `HeadlessIdentityStore`.  It owns only metadata: a stable sibling lock, a
 //! versioned sidecar, confined profile-parent creation, and an exact
-//! macOS-keychain presence probe supplied by `colony-identity-store`.  It
+//! OS-keychain presence probe supplied by `colony-identity-store`.  It
 //! never reads a keyring blob, legacy namespace, or identity file.
 
 use std::{
@@ -114,7 +114,7 @@ pub fn preflight(
     identity_manifest_digest: &str,
     build_id: &str,
 ) -> Result<OwnershipGuard, OwnershipError> {
-    if platform != "macos" || !cfg!(target_os = "macos") {
+    if !platform_matches_target(platform) {
         return Err(OwnershipError::Unavailable);
     }
 
@@ -193,7 +193,7 @@ fn derive_context(
         || !safe_component(profile_id)
         || !matches!(flavor, "normal" | "instrumented")
         || !safe_component(flavor)
-        || platform != "macos"
+        || !platform_name_is_supported(platform)
         || keychain_service.is_empty()
         || keychain_service.len() > 128
         || !safe_service(keychain_service)
@@ -229,6 +229,18 @@ fn derive_context(
         identity_manifest_digest: identity_manifest_digest.to_string(),
         build_id: build_id.to_string(),
     })
+}
+
+fn platform_name_is_supported(platform: &str) -> bool {
+    matches!(platform, "macos" | "linux")
+}
+
+fn platform_matches_target(platform: &str) -> bool {
+    match platform {
+        "macos" => cfg!(target_os = "macos"),
+        "linux" => cfg!(target_os = "linux"),
+        _ => false,
+    }
 }
 
 fn canonical_anchor(anchor: &Path) -> Result<PathBuf, OwnershipError> {

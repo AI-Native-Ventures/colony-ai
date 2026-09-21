@@ -383,7 +383,7 @@ fn production_binary_rejects_wrong_anchor_before_identity_side_effects() {
             .expect("production host should exit");
         assert!(!output.status.success());
         assert!(output.stderr.len() <= 16 * 1024);
-        let expected_error = if cfg!(target_os = "macos") {
+        let expected_error = if cfg!(any(target_os = "macos", target_os = "linux")) {
             "identity_descriptor_rejected"
         } else {
             "identity_unavailable"
