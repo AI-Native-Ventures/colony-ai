@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 const PREFIX: &str = "@colony-native:";
 const PROFILE_ID: &str = "colony-b2a-test-profile";
 const SESSION_ID: &str = "identity-v2-session";
-const REGISTRY_DIGEST: &str = "ffe911d3ad1f4ad9738148ad293d92c04811f61fc1c9d03cc0f3572853ea295e";
+const REGISTRY_DIGEST: &str = "1032c9f29dee5495099ebf951133bf3cf80c144e39476af39bb67fe62dee3565";
 const STDERR_CAPTURE_LIMIT: usize = 16 * 1024;
 
 struct Finished {

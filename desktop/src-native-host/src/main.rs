@@ -72,6 +72,17 @@ enum PendingKind {
     V2Identity,
 }
 
+impl PendingKind {
+    fn v2_response_schema(self) -> Option<&'static str> {
+        match self {
+            Self::V1Health => None,
+            Self::V2Health => Some("relay-url"),
+            Self::V2SharedIdentity => Some("boolean"),
+            Self::V2Identity => Some("identity-snapshot"),
+        }
+    }
+}
+
 enum DecodedFrame {
     V1(Envelope),
     V2(v2::Frame),
@@ -409,12 +420,13 @@ impl Host {
                     None,
                 )
             }
-            PendingKind::V2Health => self.send_response_v2(
+            PendingKind::V2Health => self.send_response_v2_with_schema(
                 &pending.binding,
                 request_id.to_string(),
                 "ok",
                 Some(serde_json::json!({"relayUrl": configured_relay_url()})),
                 None,
+                pending.kind.v2_response_schema(),
             ),
             PendingKind::V2SharedIdentity => {
                 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
@@ -428,12 +440,13 @@ impl Host {
                     feature = "identity-system-keyring"
                 )))]
                 let shared = false;
-                self.send_response_v2(
+                self.send_response_v2_with_schema(
                     &pending.binding,
                     request_id.to_string(),
                     "ok",
                     Some(serde_json::json!({"value": shared})),
                     None,
+                    pending.kind.v2_response_schema(),
                 )
             }
             PendingKind::V2Identity => {
@@ -452,12 +465,13 @@ impl Host {
                         "locked": snapshot.locked,
                         "reset_failed": snapshot.reset_failed,
                     });
-                    return self.send_response_v2(
+                    return self.send_response_v2_with_schema(
                         &pending.binding,
                         request_id.to_string(),
                         "ok",
                         Some(payload),
                         None,
+                        pending.kind.v2_response_schema(),
                     );
                 }
                 #[cfg(not(any(
@@ -519,7 +533,14 @@ impl Host {
                 self.send_response(&pending.binding, request_id, outcome, payload, error_code)
             }
             PendingKind::V2Health | PendingKind::V2SharedIdentity | PendingKind::V2Identity => {
-                self.send_response_v2(&pending.binding, request_id, outcome, payload, error_code)
+                self.send_response_v2_with_schema(
+                    &pending.binding,
+                    request_id,
+                    outcome,
+                    payload,
+                    error_code,
+                    pending.kind.v2_response_schema(),
+                )
             }
         }
     }
@@ -609,25 +630,48 @@ impl Host {
         payload: Option<serde_json::Value>,
         error_code: Option<&str>,
     ) -> Result<(), ProtocolError> {
-        self.write(v2::response_frame(
+        self.send_response_v2_with_schema(
+            binding,
+            request_id,
+            outcome,
+            payload,
+            error_code,
+            None,
+        )
+    }
+
+    fn send_response_v2_with_schema(
+        &mut self,
+        binding: &Binding,
+        request_id: String,
+        outcome: &str,
+        payload: Option<serde_json::Value>,
+        error_code: Option<&str>,
+        response_schema: Option<&str>,
+    ) -> Result<(), ProtocolError> {
+        self.write_v2(
+            v2::response_frame(
             binding, request_id, outcome, payload, error_code,
-        ))
+            ),
+            response_schema,
+        )
     }
 
     fn send_ready_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
-        self.write(v2::ready_frame(binding))
+        self.write_v2(v2::ready_frame(binding), None)
     }
 
     fn send_rebound_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
-        self.write(v2::rebound_frame(binding))
+        self.write_v2(v2::rebound_frame(binding), None)
     }
 
     fn send_lifecycle_v2(&mut self, binding: &Binding, state: &str) -> Result<(), ProtocolError> {
-        self.write(v2::lifecycle_frame(binding, self.sequence, state))
+        self.write_v2(v2::lifecycle_frame(binding, self.sequence, state), None)
     }
 
     fn handle_v2(&mut self, frame: v2::Frame) -> Result<(), ProtocolError> {
         v2::validate_runtime_limits(&self.limits)?;
+        v2::validate_registry()?;
         if frame.registry_digest() != v2::registry_digest() {
             return Err(ProtocolError::RegistryMismatch);
         }
@@ -821,8 +865,21 @@ impl Host {
 
     fn write(&mut self, frame: OutboundFrame) -> Result<(), ProtocolError> {
         if frame.protocol_version == v2::VERSION {
-            v2::validate_outbound(&frame)?;
+            return self.write_v2(frame, None);
         }
+        let bytes = encode_frame(&frame, &self.limits)?;
+        self.output.try_send(bytes).map_err(|error| match error {
+            TrySendError::Full(_) => ProtocolError::OutputQueueFull,
+            TrySendError::Disconnected(_) => ProtocolError::Io,
+        })
+    }
+
+    fn write_v2(
+        &mut self,
+        frame: OutboundFrame,
+        response_schema: Option<&str>,
+    ) -> Result<(), ProtocolError> {
+        v2::validate_outbound(&frame, response_schema)?;
         let bytes = encode_frame(&frame, &self.limits)?;
         self.output.try_send(bytes).map_err(|error| match error {
             TrySendError::Full(_) => ProtocolError::OutputQueueFull,
