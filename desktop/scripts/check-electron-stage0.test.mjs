@@ -19,6 +19,7 @@ import {
   assertContainedRegularFile,
   findLinuxApp,
   inspectAsarEntries,
+  isApprovedAsarFileEntry,
   readElfMachine,
 } from "./check-electron-stage0.mjs";
 
@@ -51,6 +52,31 @@ test("accepts the observed real package entry layout exactly once", () => {
       "src-electron/main.mjs",
       "resources/colony-native-host.exe",
     ],
+  );
+});
+
+test("allows only the observed React renderer Tauri adapter chunk", () => {
+  assert.equal(
+    isApprovedAsarFileEntry(
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+      "react",
+    ),
+    true,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry(
+      "src-electron/renderer/assets/tauri-BU66xV9L.js",
+      "feasibility",
+    ),
+    false,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry("src-electron/renderer/tauri-runtime.js", "react"),
+    false,
+  );
+  assert.equal(
+    isApprovedAsarFileEntry("src-electron/tauri-runtime.js", "react"),
+    false,
   );
 });
 

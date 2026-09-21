@@ -155,6 +155,19 @@ export function canonicalizeAsarEntries(rawEntries) {
   return entryByCanonicalPath;
 }
 
+export function isApprovedAsarFileEntry(entry, uiMode) {
+  const isGeneratedReactTauriChunk =
+    uiMode === "react" &&
+    /^src-electron\/renderer\/assets\/tauri-[A-Za-z0-9_-]+\.js$/.test(entry);
+  return (
+    !entry.startsWith("src/") &&
+    !entry.startsWith("src-tauri/") &&
+    (!entry.includes("tauri") || isGeneratedReactTauriChunk) &&
+    !entry.includes("node_modules") &&
+    !entry.endsWith(".dmg")
+  );
+}
+
 function scanText(label, text, additionalForbiddenTokens = []) {
   for (const token of [...forbiddenTokens, ...additionalForbiddenTokens]) {
     if (text.includes(token))
@@ -323,13 +336,7 @@ function checkAsar(archivePath, flavor, target, uiMode) {
     }
   }
   for (const entry of fileEntries) {
-    if (
-      entry.startsWith("src/") ||
-      entry.startsWith("src-tauri/") ||
-      entry.includes("tauri") ||
-      entry.includes("node_modules") ||
-      entry.endsWith(".dmg")
-    ) {
+    if (!isApprovedAsarFileEntry(entry, uiMode)) {
       fail(`ASAR contains an unapproved entry ${entry}`);
     }
   }
