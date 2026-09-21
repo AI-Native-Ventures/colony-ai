@@ -25,7 +25,7 @@ pub use colony_identity_kernel::{
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-#[cfg(test)]
+#[cfg(any(test, feature = "diagnostic"))]
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -34,6 +34,244 @@ use nostr::Keys;
 /// Username used for the single blob keychain entry. All secrets are stored
 /// as a JSON map under this name within the service.
 const BLOB_KEY: &str = "secrets";
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticProbe {
+    NotAttempted,
+    Missing,
+    Present,
+    Locked,
+    Unavailable,
+    Corrupt,
+    Error,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticProbe {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticProbe {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::Missing => "missing",
+            Self::Present => "present",
+            Self::Locked => "locked",
+            Self::Unavailable => "unavailable",
+            Self::Corrupt => "corrupt",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticWrite {
+    NotAttempted,
+    Ok,
+    Error,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticWrite {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticWrite {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::Ok => "ok",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticReadback {
+    NotAttempted,
+    Exact,
+    Missing,
+    Mismatch,
+    Locked,
+    Unavailable,
+    Corrupt,
+    Error,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticReadback {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticReadback {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::Exact => "exact",
+            Self::Missing => "missing",
+            Self::Mismatch => "mismatch",
+            Self::Locked => "locked",
+            Self::Unavailable => "unavailable",
+            Self::Corrupt => "corrupt",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticMarker {
+    NotAttempted,
+    Ok,
+    Error,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticMarker {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticMarker {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::Ok => "ok",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticFailure {
+    None,
+    Probe,
+    PrewriteRead,
+    Write,
+    Readback,
+    Marker,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticFailure {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticFailure {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Probe => "probe",
+            Self::PrewriteRead => "prewrite_read",
+            Self::Write => "write",
+            Self::Readback => "readback",
+            Self::Marker => "marker",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticBackend {
+    NotAttempted,
+    NoEntry,
+    NoStorageAccess,
+    PlatformFailure,
+    Other,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticBackend {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticBackend {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::NoEntry => "no_entry",
+            Self::NoStorageAccess => "no_storage_access",
+            Self::PlatformFailure => "platform_failure",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticStatus {
+    NotAttempted,
+    None,
+    Code(i32),
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticStatus {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticStatus {
+    fn as_str(self) -> String {
+        match self {
+            Self::NotAttempted => "not_attempted".to_string(),
+            Self::None => "none".to_string(),
+            Self::Code(code) => code.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Default)]
+struct HeadlessDiagnosticReport {
+    probe: DiagnosticProbe,
+    write: DiagnosticWrite,
+    readback: DiagnosticReadback,
+    marker: DiagnosticMarker,
+    failure: DiagnosticFailure,
+    backend: DiagnosticBackend,
+    status: DiagnosticStatus,
+}
+
+#[cfg(feature = "diagnostic")]
+impl HeadlessDiagnosticReport {
+    fn stable_line(&self) -> String {
+        format!(
+            "identity_diagnostic probe={} write={} readback={} marker={} failure={} backend={} status={}",
+            self.probe.as_str(),
+            self.write.as_str(),
+            self.readback.as_str(),
+            self.marker.as_str(),
+            self.failure.as_str(),
+            self.backend.as_str(),
+            self.status.as_str(),
+        )
+    }
+}
 
 // ── Interprocess advisory lock ─────────────────────────────────────────────
 //
@@ -218,6 +456,8 @@ pub struct SecretStore {
     service: String,
     /// In-memory cache of the deserialized blob. `None` means "not yet loaded".
     cache: Mutex<Option<HashMap<String, String>>>,
+    #[cfg(feature = "diagnostic")]
+    diagnostic: Arc<Mutex<HeadlessDiagnosticReport>>,
     #[cfg(test)]
     test_backend: Option<Arc<dyn TestRawBlobBackend>>,
 }
@@ -230,6 +470,8 @@ impl SecretStore {
         SecretStore {
             service: service.into(),
             cache: Mutex::new(None),
+            #[cfg(feature = "diagnostic")]
+            diagnostic: Arc::new(Mutex::new(HeadlessDiagnosticReport::default())),
             #[cfg(test)]
             test_backend: None,
         }
@@ -240,8 +482,61 @@ impl SecretStore {
         Self {
             service: service.into(),
             cache: Mutex::new(None),
+            #[cfg(feature = "diagnostic")]
+            diagnostic: Arc::new(Mutex::new(HeadlessDiagnosticReport::default())),
             test_backend: Some(backend),
         }
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn diagnostic_update(&self, update: impl FnOnce(&mut HeadlessDiagnosticReport)) {
+        let mut report = self
+            .diagnostic
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut report);
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn diagnostic_line(&self) -> String {
+        self.diagnostic
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .stable_line()
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn record_probe(&self, probe: DiagnosticProbe) {
+        self.diagnostic_update(|report| report.probe = probe);
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn record_write(&self, write: DiagnosticWrite) {
+        self.diagnostic_update(|report| report.write = write);
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn record_readback(&self, readback: DiagnosticReadback) {
+        self.diagnostic_update(|report| report.readback = readback);
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn record_marker(&self, marker: DiagnosticMarker) {
+        self.diagnostic_update(|report| report.marker = marker);
+    }
+
+    #[cfg(feature = "diagnostic")]
+    fn record_failure(&self, failure: DiagnosticFailure) {
+        self.diagnostic_update(|report| report.failure = failure);
+    }
+
+    #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+    fn record_keyring_error(&self, error: &keyring::Error) {
+        let (backend, status) = diagnostic_keyring_error(error);
+        self.diagnostic_update(|report| {
+            report.backend = backend;
+            report.status = status;
+        });
     }
 
     /// Return a process-global `SecretStore` for `service`. All callers with
@@ -275,6 +570,45 @@ fn is_keyring_availability_error(error_str: &str) -> bool {
 #[cfg(feature = "system-keyring")]
 fn keyring_entry(service: &str, key: &str) -> Result<keyring::Entry, keyring::Error> {
     keyring::Entry::new(service, key)
+}
+
+#[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+fn diagnostic_keyring_error(error: &keyring::Error) -> (DiagnosticBackend, DiagnosticStatus) {
+    match error {
+        keyring::Error::NoEntry => (DiagnosticBackend::NoEntry, DiagnosticStatus::None),
+        keyring::Error::NoStorageAccess(source) => (
+            DiagnosticBackend::NoStorageAccess,
+            diagnostic_os_status(source.as_ref()),
+        ),
+        keyring::Error::PlatformFailure(source) => (
+            DiagnosticBackend::PlatformFailure,
+            diagnostic_os_status(source.as_ref()),
+        ),
+        _ => (DiagnosticBackend::Other, DiagnosticStatus::None),
+    }
+}
+
+#[cfg(all(
+    feature = "diagnostic",
+    feature = "system-keyring",
+    target_os = "macos"
+))]
+fn diagnostic_os_status(source: &(dyn std::error::Error + 'static)) -> DiagnosticStatus {
+    use std::error::Error as _;
+
+    source
+        .downcast_ref::<security_framework::base::Error>()
+        .map(|error| DiagnosticStatus::Code(error.code()))
+        .unwrap_or(DiagnosticStatus::None)
+}
+
+#[cfg(all(
+    feature = "diagnostic",
+    feature = "system-keyring",
+    not(target_os = "macos")
+))]
+fn diagnostic_os_status(_source: &(dyn std::error::Error + 'static)) -> DiagnosticStatus {
+    DiagnosticStatus::None
 }
 
 // macOS-specific imports for the Data Protection Keychain backend.
@@ -365,15 +699,31 @@ impl SecretStore {
     /// builds that lack hardened-runtime entitlements).
     #[cfg(feature = "system-keyring")]
     fn read_blob_raw_keyring(&self) -> Result<Option<Vec<u8>>, String> {
-        let entry =
-            keyring_entry(&self.service, BLOB_KEY).map_err(|e| format!("keyring entry: {e}"))?;
+        let entry = match keyring_entry(&self.service, BLOB_KEY) {
+            Ok(entry) => entry,
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                return Err(format!("keyring entry: {error}"));
+            }
+        };
         match entry.get_password() {
             Ok(s) => Ok(Some(s.into_bytes())),
-            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(keyring::Error::NoEntry) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&keyring::Error::NoEntry);
+                Ok(None)
+            }
             Err(e) if is_keyring_availability_error(&e.to_string()) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&e);
                 Err(format!("keyring unavailable: {e}"))
             }
-            Err(e) => Err(format!("keyring read: {e}")),
+            Err(e) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&e);
+                Err(format!("keyring read: {e}"))
+            }
         }
     }
 
@@ -477,11 +827,22 @@ impl SecretStore {
     #[cfg(feature = "system-keyring")]
     fn write_blob_raw_keyring(&self, bytes: &[u8]) -> Result<(), String> {
         let value = std::str::from_utf8(bytes).map_err(|e| format!("blob utf8 encode: {e}"))?;
-        let entry =
-            keyring_entry(&self.service, BLOB_KEY).map_err(|e| format!("keyring entry: {e}"))?;
-        entry
-            .set_password(value)
-            .map_err(|e| format!("keyring write: {e}"))
+        let entry = match keyring_entry(&self.service, BLOB_KEY) {
+            Ok(entry) => entry,
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                return Err(format!("keyring entry: {error}"));
+            }
+        };
+        match entry.set_password(value) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                Err(format!("keyring write: {error}"))
+            }
+        }
     }
 
     /// Probe whether `key` exists and whether the backend is reachable.
@@ -1368,6 +1729,38 @@ fn classify_headless_readback_error(error: &str) -> HeadlessReadback {
     }
 }
 
+#[cfg(feature = "diagnostic")]
+fn diagnostic_probe_for_error(error: HeadlessStoreError) -> DiagnosticProbe {
+    match error {
+        HeadlessStoreError::Locked => DiagnosticProbe::Locked,
+        HeadlessStoreError::Unreachable => DiagnosticProbe::Unavailable,
+        HeadlessStoreError::CorruptCurrentBlob => DiagnosticProbe::Corrupt,
+        _ => DiagnosticProbe::Error,
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+fn diagnostic_readback_for_outcome(outcome: HeadlessReadback) -> DiagnosticReadback {
+    match outcome {
+        HeadlessReadback::Exact => DiagnosticReadback::Exact,
+        HeadlessReadback::Missing => DiagnosticReadback::Missing,
+        HeadlessReadback::Mismatch => DiagnosticReadback::Mismatch,
+        HeadlessReadback::CorruptCurrentBlob => DiagnosticReadback::Corrupt,
+        HeadlessReadback::Unreachable => DiagnosticReadback::Unavailable,
+        HeadlessReadback::Locked => DiagnosticReadback::Locked,
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+fn diagnostic_readback_for_error(error: HeadlessStoreError) -> DiagnosticReadback {
+    match error {
+        HeadlessStoreError::Locked => DiagnosticReadback::Locked,
+        HeadlessStoreError::Unreachable => DiagnosticReadback::Unavailable,
+        HeadlessStoreError::CorruptCurrentBlob => DiagnosticReadback::Corrupt,
+        _ => DiagnosticReadback::Error,
+    }
+}
+
 #[cfg(feature = "system-keyring")]
 fn is_keyring_locked_error(error_str: &str) -> bool {
     let lower = error_str.to_lowercase();
@@ -1509,14 +1902,31 @@ impl SecretStore {
 
         #[cfg(feature = "system-keyring")]
         {
-            let _lock = acquire_blob_lock(&self.service)
-                .map_err(|error| map_backend_error(&error, false))?;
-            let current = match self
-                .read_blob_raw()
-                .map_err(|error| map_backend_error(&error, false))?
-            {
-                None => HashMap::new(),
-                Some(raw) => decode_headless_blob(&raw)?,
+            let _lock = match acquire_blob_lock(&self.service) {
+                Ok(lock) => lock,
+                Err(error) => {
+                    #[cfg(feature = "diagnostic")]
+                    self.record_failure(DiagnosticFailure::PrewriteRead);
+                    return Err(map_backend_error(&error, false));
+                }
+            };
+            let current = match self.read_blob_raw() {
+                Err(error) => {
+                    #[cfg(feature = "diagnostic")]
+                    self.record_failure(DiagnosticFailure::PrewriteRead);
+                    return Err(map_backend_error(&error, false));
+                }
+                Ok(raw) => match raw {
+                    None => HashMap::new(),
+                    Some(raw) => match decode_headless_blob(&raw) {
+                        Ok(map) => map,
+                        Err(error) => {
+                            #[cfg(feature = "diagnostic")]
+                            self.record_failure(DiagnosticFailure::PrewriteRead);
+                            return Err(error);
+                        }
+                    },
+                },
             };
             let mut next = current.clone();
             next.insert(
@@ -1524,31 +1934,80 @@ impl SecretStore {
                 value.to_string(),
             );
             if next != current {
-                let json = encode_headless_blob(&next)?;
-                self.write_blob_raw(&json)
-                    .map_err(|error| map_backend_error(&error, false))?;
+                let json = match encode_headless_blob(&next) {
+                    Ok(json) => json,
+                    Err(error) => {
+                        #[cfg(feature = "diagnostic")]
+                        {
+                            self.record_write(DiagnosticWrite::Error);
+                            self.record_failure(DiagnosticFailure::Write);
+                        }
+                        return Err(error);
+                    }
+                };
+                if let Err(error) = self.write_blob_raw(&json) {
+                    #[cfg(feature = "diagnostic")]
+                    {
+                        self.record_write(DiagnosticWrite::Error);
+                        self.record_failure(DiagnosticFailure::Write);
+                    }
+                    return Err(map_backend_error(&error, false));
+                }
+                #[cfg(feature = "diagnostic")]
+                self.record_write(DiagnosticWrite::Ok);
                 let mut guard = self
                     .cache
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 *guard = Some(next);
+            } else {
+                #[cfg(feature = "diagnostic")]
+                self.record_write(DiagnosticWrite::Ok);
             }
 
             let readback = match self.read_blob_raw() {
                 Ok(raw) => raw,
-                Err(error) => return Ok(classify_headless_readback_error(&error)),
+                Err(error) => {
+                    let outcome = classify_headless_readback_error(&error);
+                    #[cfg(feature = "diagnostic")]
+                    {
+                        self.record_readback(diagnostic_readback_for_outcome(outcome));
+                        self.record_failure(DiagnosticFailure::Readback);
+                    }
+                    return Ok(outcome);
+                }
             };
             let map = match readback.as_deref().map(decode_headless_blob).transpose() {
                 Ok(map) => map,
                 Err(HeadlessStoreError::CorruptCurrentBlob) => {
-                    return Ok(HeadlessReadback::CorruptCurrentBlob)
+                    #[cfg(feature = "diagnostic")]
+                    {
+                        self.record_readback(DiagnosticReadback::Corrupt);
+                        self.record_failure(DiagnosticFailure::Readback);
+                    }
+                    return Ok(HeadlessReadback::CorruptCurrentBlob);
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    #[cfg(feature = "diagnostic")]
+                    {
+                        self.record_readback(diagnostic_readback_for_error(error));
+                        self.record_failure(DiagnosticFailure::Readback);
+                    }
+                    return Err(error);
+                }
             };
-            Ok(match map {
+            let outcome = match map {
                 None => HeadlessReadback::Missing,
                 Some(map) => compare_headless_identity(&map, value),
-            })
+            };
+            #[cfg(feature = "diagnostic")]
+            {
+                self.record_readback(diagnostic_readback_for_outcome(outcome));
+                if outcome != HeadlessReadback::Exact {
+                    self.record_failure(DiagnosticFailure::Readback);
+                }
+            }
+            Ok(outcome)
         }
         #[cfg(not(feature = "system-keyring"))]
         {
@@ -1820,7 +2279,20 @@ impl HeadlessIdentityStore {
 
     /// Probe the fixed identity operation without exposing the backing blob.
     pub fn probe_identity(&self) -> HeadlessProbe {
-        match self.load_identity_cached() {
+        let result = self.load_identity_cached();
+        #[cfg(feature = "diagnostic")]
+        {
+            let diagnostic_probe = match &result {
+                Ok(Some(_)) => DiagnosticProbe::Present,
+                Ok(None) => DiagnosticProbe::Missing,
+                Err(error) => diagnostic_probe_for_error(*error),
+            };
+            self.store.record_probe(diagnostic_probe);
+            if result.is_err() {
+                self.store.record_failure(DiagnosticFailure::Probe);
+            }
+        }
+        match result {
             Ok(Some(_)) => HeadlessProbe::Present,
             Ok(None) => HeadlessProbe::Missing,
             Err(HeadlessStoreError::CorruptCurrentBlob) => HeadlessProbe::CorruptCurrentBlob,
@@ -1898,6 +2370,11 @@ impl HeadlessIdentityStore {
             })?;
         colony_identity_kernel::resolve_identity_with_headless_store(self, &self.profile_scope())
     }
+
+    #[cfg(feature = "diagnostic")]
+    pub fn diagnostic_line(&self) -> String {
+        self.store.diagnostic_line()
+    }
 }
 
 impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
@@ -1974,10 +2451,22 @@ impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
         profile: &colony_identity_kernel::ProfileScope,
     ) -> Result<(), String> {
         #[cfg(test)]
-        if self.marker_write_failure {
-            return Err("synthetic migration marker failure".to_string());
+        let result = if self.marker_write_failure {
+            Err("synthetic migration marker failure".to_string())
+        } else {
+            colony_identity_kernel::write_migration_marker_at(&profile.migration_marker_path())
+        };
+        #[cfg(not(test))]
+        let result =
+            colony_identity_kernel::write_migration_marker_at(&profile.migration_marker_path());
+        #[cfg(feature = "diagnostic")]
+        if result.is_ok() {
+            self.store.record_marker(DiagnosticMarker::Ok);
+        } else {
+            self.store.record_marker(DiagnosticMarker::Error);
+            self.store.record_failure(DiagnosticFailure::Marker);
         }
-        colony_identity_kernel::write_migration_marker_at(&profile.migration_marker_path())
+        result
     }
 }
 
@@ -2876,6 +3365,8 @@ mod tests {
             SecretStore {
                 service: service.to_string(),
                 cache: Mutex::new(cache),
+                #[cfg(feature = "diagnostic")]
+                diagnostic: Arc::new(Mutex::new(HeadlessDiagnosticReport::default())),
                 test_backend: None,
             }
         }
@@ -3116,6 +3607,41 @@ mod tests {
         ));
         // A plain "not found" is per-entry, not an availability failure.
         assert!(!is_keyring_availability_error("entry not found"));
+    }
+
+    #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+    #[test]
+    fn diagnostic_keyring_classifier_keeps_backend_categories_finite() {
+        assert_eq!(
+            diagnostic_keyring_error(&keyring::Error::NoEntry),
+            (DiagnosticBackend::NoEntry, DiagnosticStatus::None)
+        );
+
+        let platform_error = keyring::Error::PlatformFailure(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "diagnostic-only synthetic error",
+        )));
+        assert_eq!(
+            diagnostic_keyring_error(&platform_error),
+            (DiagnosticBackend::PlatformFailure, DiagnosticStatus::None)
+        );
+    }
+
+    #[cfg(all(
+        feature = "diagnostic",
+        feature = "system-keyring",
+        target_os = "macos"
+    ))]
+    #[test]
+    fn diagnostic_keyring_classifier_preserves_only_macos_status_code() {
+        let platform_error = keyring::Error::NoStorageAccess(Box::new(SFError::from_code(-25291)));
+        assert_eq!(
+            diagnostic_keyring_error(&platform_error),
+            (
+                DiagnosticBackend::NoStorageAccess,
+                DiagnosticStatus::Code(-25291)
+            )
+        );
     }
 
     #[cfg(target_os = "macos")]
