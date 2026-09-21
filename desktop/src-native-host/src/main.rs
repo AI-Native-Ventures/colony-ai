@@ -97,12 +97,16 @@ struct PendingRequest {
 enum FaultMode {
     None,
     DelayResponse,
+    HoldResponses,
 }
 
 impl FaultMode {
-    fn from_environment() -> Self {
+    fn from_environment(launch_mode: LaunchMode) -> Self {
         match env::var(FAULT_ENV).ok().as_deref() {
             Some("delay-response") => Self::DelayResponse,
+            Some("hold-responses") if launch_mode == LaunchMode::IdentityV2Test => {
+                Self::HoldResponses
+            }
             _ => Self::None,
         }
     }
@@ -352,7 +356,11 @@ impl Host {
             deadline: Instant::now() + self.deadline,
             kind: PendingKind::V1Health,
         };
-        let delayed = self.fault == FaultMode::DelayResponse && !self.delayed_once;
+        let delayed = match self.fault {
+            FaultMode::DelayResponse => !self.delayed_once,
+            FaultMode::HoldResponses => true,
+            FaultMode::None => false,
+        };
         self.delayed_once |= delayed;
         self.pending.insert(request_id.clone(), pending);
         if delayed {
@@ -601,78 +609,25 @@ impl Host {
         payload: Option<serde_json::Value>,
         error_code: Option<&str>,
     ) -> Result<(), ProtocolError> {
-        self.write(OutboundFrame {
-            frame_type: "RESPONSE".to_string(),
-            protocol_version: v2::VERSION,
-            profile_id: binding.profile_id.clone(),
-            session_id: binding.session_id.clone(),
-            generation_id: binding.generation_id,
-            request_id: Some(request_id),
-            outcome: Some(outcome.to_string()),
-            payload,
-            error: error_code.map(|code| ErrorBody {
-                code: code.to_string(),
-            }),
-            event: None,
-            sequence: None,
-            registry_digest: Some(v2::registry_digest()),
-        })
+        self.write(v2::response_frame(
+            binding, request_id, outcome, payload, error_code,
+        ))
     }
 
     fn send_ready_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
-        self.write(OutboundFrame {
-            frame_type: "READY".to_string(),
-            protocol_version: v2::VERSION,
-            profile_id: binding.profile_id.clone(),
-            session_id: binding.session_id.clone(),
-            generation_id: binding.generation_id,
-            request_id: None,
-            outcome: None,
-            payload: Some(serde_json::json!({
-                "capabilities": ["health-safe", "identity-mode", "identity-read"]
-            })),
-            error: None,
-            event: None,
-            sequence: None,
-            registry_digest: Some(v2::registry_digest()),
-        })
+        self.write(v2::ready_frame(binding))
     }
 
     fn send_rebound_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
-        self.write(OutboundFrame {
-            frame_type: "REBOUND".to_string(),
-            protocol_version: v2::VERSION,
-            profile_id: binding.profile_id.clone(),
-            session_id: binding.session_id.clone(),
-            generation_id: binding.generation_id,
-            request_id: None,
-            outcome: None,
-            payload: None,
-            error: None,
-            event: None,
-            sequence: None,
-            registry_digest: Some(v2::registry_digest()),
-        })
+        self.write(v2::rebound_frame(binding))
     }
 
     fn send_lifecycle_v2(&mut self, binding: &Binding, state: &str) -> Result<(), ProtocolError> {
-        self.write(OutboundFrame {
-            frame_type: "EVENT".to_string(),
-            protocol_version: v2::VERSION,
-            profile_id: binding.profile_id.clone(),
-            session_id: binding.session_id.clone(),
-            generation_id: binding.generation_id,
-            request_id: None,
-            outcome: None,
-            payload: Some(serde_json::json!({"state": state})),
-            error: None,
-            event: Some("host_lifecycle".to_string()),
-            sequence: Some(self.sequence),
-            registry_digest: Some(v2::registry_digest()),
-        })
+        self.write(v2::lifecycle_frame(binding, self.sequence, state))
     }
 
     fn handle_v2(&mut self, frame: v2::Frame) -> Result<(), ProtocolError> {
+        v2::validate_runtime_limits(&self.limits)?;
         if frame.registry_digest() != v2::registry_digest() {
             return Err(ProtocolError::RegistryMismatch);
         }
@@ -832,7 +787,11 @@ impl Host {
                 kind,
             },
         );
-        let delayed = self.fault == FaultMode::DelayResponse && !self.delayed_once;
+        let delayed = match self.fault {
+            FaultMode::DelayResponse => !self.delayed_once,
+            FaultMode::HoldResponses => true,
+            FaultMode::None => false,
+        };
         self.delayed_once |= delayed;
         if delayed {
             return Ok(());
@@ -861,6 +820,9 @@ impl Host {
     }
 
     fn write(&mut self, frame: OutboundFrame) -> Result<(), ProtocolError> {
+        if frame.protocol_version == v2::VERSION {
+            v2::validate_outbound(&frame)?;
+        }
         let bytes = encode_frame(&frame, &self.limits)?;
         self.output.try_send(bytes).map_err(|error| match error {
             TrySendError::Full(_) => ProtocolError::OutputQueueFull,
@@ -947,9 +909,9 @@ fn main() {
     let writer = thread::spawn(move || {
         writer_loop(output_receiver, writer_progress_sender, writer_done_sender)
     });
-    let fault = FaultMode::from_environment();
     let shutdown_grace_ms = manifest.protocol.shutdown_grace_ms;
     let launch_mode = launch_mode_from_args();
+    let fault = FaultMode::from_environment(launch_mode);
     let mut host = Host::new(
         manifest.protocol,
         expected_profile_id,
@@ -1161,4 +1123,47 @@ fn test_or_manifest_deadline(limits: &ProtocolLimits) -> Duration {
         .filter(|value| *value > 0 && *value <= limits.default_deadline_ms)
         .unwrap_or(limits.default_deadline_ms);
     Duration::from_millis(milliseconds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v2_limit_mismatch_fails_before_identity_initialization_or_ready() {
+        let manifest = load_manifest().expect("stage manifest should load");
+        let mut limits = manifest.protocol;
+        limits.in_flight_limit += 1;
+        let (output, receiver) = mpsc::sync_channel(1);
+        let mut host = Host::new(
+            limits,
+            manifest.namespace.profile_id,
+            FaultMode::None,
+            output,
+            LaunchMode::IdentityV2Test,
+        );
+        let frame = v2::Frame::Hello(v2::Hello {
+            frame_type: "HELLO".to_string(),
+            protocol_version: v2::VERSION,
+            profile_id: "colony-b2a-test-profile".to_string(),
+            session_id: "v2-limit-test".to_string(),
+            generation_id: 1,
+            build_id: "v2-limit-test".to_string(),
+            registry_digest: v2::REGISTRY_DIGEST.to_string(),
+            identity_launch: v2::IdentityLaunch {
+                profile_id: "colony-b2a-test-profile".to_string(),
+                flavor: "test".to_string(),
+                platform: "linux".to_string(),
+                user_data_root: "/tmp/colony-b2a-limit-test".to_string(),
+                identity_mode: "explicit".to_string(),
+                shared_identity: false,
+                reset_provenance: "not_attempted_fresh".to_string(),
+            },
+        });
+        let error = host
+            .handle_v2(frame)
+            .expect_err("limit mismatch must fail closed");
+        assert_eq!(error.code(), "invalid_manifest");
+        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
 }
