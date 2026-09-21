@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -179,12 +180,45 @@ const observedReactRendererAssets = Object.freeze({
   tauri: "src-electron/renderer/assets/tauri-BU66xV9L.js",
 });
 
+// These are the content digests of the complete app.asar files observed in the
+// hosted React package proof. A generated filename is only an observation;
+// the package digest binds every renderer exception to the reviewed bytes.
+// Update these values only with a new hosted package-provenance record and
+// review.
+const observedReactPackageAsarDigests = Object.freeze({
+  normal: "3d641a94855d9b095e7d8959ea2af0141a693542d88f53b13ac9b000c441edcd",
+  instrumented:
+    "bbb6613c4452fbbd73a0a9cc10b28078c0fee16c5e606758683b7bf05d8ef437",
+});
+
 const generatedReactAssetPattern =
   /^src-electron\/renderer\/assets\/[A-Za-z0-9._-]+\.js$/;
 
 function isGeneratedReactAssetEntry(entry) {
   return generatedReactAssetPattern.test(entry);
 }
+
+const activeReactRendererForms = Object.freeze([
+  {
+    name: "Tauri invoke",
+    pattern:
+      /__TAURI_INTERNALS__\s*(?:\.\s*invoke|\[\s*["']invoke["']\s*\])\s*(?:\?\.\s*)?\(/,
+  },
+  {
+    name: "Tauri import",
+    pattern:
+      /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'][^"']*(?:@tauri-apps\/|(?:^|(?:\/|-))tauri(?:(?:\/|-)|["']))/,
+  },
+  {
+    name: "Tauri command",
+    pattern:
+      /\b(?:invoke|run|command)\s*\(\s*["'][^"']*(?:plugin:|tauri(?:\/|-))/,
+  },
+  {
+    name: "E2E mock installer",
+    pattern: /\bmaybeInstallE2eTauriMocks\s*\(/,
+  },
+]);
 
 export function scanText(
   label,
@@ -197,6 +231,67 @@ export function scanText(
     if (!allowed.has(token) && text.includes(token))
       fail(`${label} contains forbidden token ${token}`);
   }
+}
+
+function assertNoActiveReactRendererForms(label, text) {
+  for (const { name, pattern } of activeReactRendererForms) {
+    if (pattern.test(text)) {
+      fail(`${label} contains active React renderer form ${name}`);
+    }
+  }
+}
+
+function scanTrustedReactRendererText(
+  label,
+  text,
+  flavor,
+  entry,
+  additionalForbiddenTokens = [],
+  packageDigest,
+) {
+  assertNoActiveReactRendererForms(label, text);
+  if (packageDigest !== observedReactPackageAsarDigests[flavor]) {
+    fail(`${label} is missing reviewed React package provenance`);
+  }
+  scanText(
+    label,
+    text,
+    [...reactRendererForbiddenTokens, ...additionalForbiddenTokens],
+    allowedReactRendererTokens("react", entry),
+  );
+}
+
+export function scanReactRendererText(
+  label,
+  text,
+  flavor,
+  entry,
+  additionalForbiddenTokens = [],
+) {
+  scanTrustedReactRendererText(
+    label,
+    text,
+    flavor,
+    entry,
+    additionalForbiddenTokens,
+    undefined,
+  );
+}
+
+function assertReactPackageProvenance(archivePath, flavor) {
+  const expected = observedReactPackageAsarDigests[flavor];
+  if (!expected) {
+    fail(`no reviewed React package provenance exists for ${flavor}`);
+  }
+  const actual = createHash("sha256")
+    .update(readFileSync(archivePath))
+    .digest("hex");
+  if (actual !== expected) {
+    fail(
+      `${flavor} app.asar digest ${actual} does not match the reviewed React package`,
+    );
+  }
+  return actual;
 }
 
 export function allowedReactRendererTokens(uiMode, entry) {
@@ -350,6 +445,10 @@ export function inspectAsarEntries(archivePath) {
 
 function checkAsar(archivePath, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
+  const reactPackageDigest =
+    uiMode === "react"
+      ? assertReactPackageProvenance(archivePath, flavor)
+      : undefined;
   const expectedRendererEntry =
     uiMode === "react"
       ? "src-electron/renderer/index.html"
@@ -506,14 +605,6 @@ function checkAsar(archivePath, flavor, target, uiMode) {
         fail(`normal flavor is not immutable: missing ${assertion}`);
       }
     }
-    for (const entry of fileEntries) {
-      scanText(
-        `normal ASAR:${entry}`,
-        extractEntry(entry).toString("utf8"),
-        normalPackageForbiddenTokens,
-        allowedReactRendererTokens(uiMode, entry),
-      );
-    }
     if (entrySet.has("src-electron/test-subframe-preload.cjs")) {
       fail("normal ASAR contains the instrumented subframe preload");
     }
@@ -521,14 +612,21 @@ function checkAsar(archivePath, flavor, target, uiMode) {
   for (const entry of fileEntries) {
     const text = extractEntry(entry).toString("utf8");
     if (uiMode === "react" && entry.startsWith("src-electron/renderer/")) {
-      scanText(
+      scanTrustedReactRendererText(
         `React ASAR:${entry}`,
         text,
-        reactRendererForbiddenTokens,
-        allowedReactRendererTokens(uiMode, entry),
+        flavor,
+        entry,
+        expected.instrumentation ? [] : normalPackageForbiddenTokens,
+        reactPackageDigest,
       );
     } else {
-      scanText(`ASAR:${entry}`, text);
+      scanText(
+        `${expected.instrumentation ? "ASAR" : "normal ASAR"}:${entry}`,
+        text,
+        expected.instrumentation ? [] : normalPackageForbiddenTokens,
+        allowedReactRendererTokens(uiMode, entry),
+      );
     }
   }
 }

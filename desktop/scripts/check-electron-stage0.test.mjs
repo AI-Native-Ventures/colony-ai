@@ -22,6 +22,7 @@ import {
   inspectAsarEntries,
   isApprovedAsarFileEntry,
   readElfMachine,
+  scanReactRendererText,
   scanText,
 } from "./check-electron-stage0.mjs";
 
@@ -206,6 +207,75 @@ test("allows only observed generated React asset literals", () => {
   assert.deepEqual(
     allowedReactRendererTokens("react", "src-electron/main.mjs"),
     [],
+  );
+});
+
+const reactAssetsWithTauriAllowance = [
+  "src-electron/renderer/assets/core-CGTdLJHd.js",
+  "src-electron/renderer/assets/dialog-9ih2nekE.js",
+  "src-electron/renderer/assets/keyboard-shortcuts-DOXtHE5q.js",
+  "src-electron/renderer/assets/index-Bjw85wCC.js",
+  "src-electron/renderer/assets/index-CTdVhpDl.js",
+  "src-electron/renderer/assets/tauri-BU66xV9L.js",
+];
+
+const reactAssetsWithMockAllowance = [
+  "src-electron/renderer/assets/index-Bjw85wCC.js",
+  "src-electron/renderer/assets/index-CTdVhpDl.js",
+  "src-electron/renderer/assets/markdown-B2B0ExcO.js",
+];
+
+for (const flavor of ["normal", "instrumented"]) {
+  for (const entry of reactAssetsWithTauriAllowance) {
+    test(`rejects active Tauri invoke/import/command in ${flavor} ${entry}`, () => {
+      for (const source of [
+        'window.__TAURI_INTERNALS__.invoke("identity");',
+        'import { invoke } from "@tauri-apps/api/core"; invoke("identity");',
+        'invoke("plugin:identity");',
+      ]) {
+        assert.throws(
+          () =>
+            scanReactRendererText(
+              `React ${flavor}:${entry}`,
+              source,
+              flavor,
+              entry,
+            ),
+          /active React renderer form/,
+          source,
+        );
+      }
+    });
+  }
+
+  for (const entry of reactAssetsWithMockAllowance) {
+    test(`rejects active E2E mock installation in ${flavor} ${entry}`, () => {
+      assert.throws(
+        () =>
+          scanReactRendererText(
+            `React ${flavor}:${entry}`,
+            "if (window.__BUZZ_E2E__) maybeInstallE2eTauriMocks();",
+            flavor,
+            entry,
+          ),
+        /active React renderer form E2E mock installer/,
+      );
+    });
+  }
+}
+
+test("keeps a content-bound exception separate from generic generated assets", () => {
+  const genericAsset =
+    "src-electron/renderer/assets/autoPinMentionedAgentsPreference-CYBef7vf.js";
+  assert.throws(
+    () =>
+      scanReactRendererText(
+        `React normal:${genericAsset}`,
+        "const link = 'buzz://message';",
+        "normal",
+        genericAsset,
+      ),
+    /reviewed React package provenance/,
   );
 });
 
