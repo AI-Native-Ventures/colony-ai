@@ -45,17 +45,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          proof_home="$RUNNER_TEMP/colony-identity-home"
-          keychain="$proof_home/Library/Keychains/colony-identity-proof.keychain-db"
+          proof_home="$HOME"
+          keychain="$RUNNER_TEMP/colony-identity-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -73,17 +72,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          proof_home="$RUNNER_TEMP/colony-identity-race-home"
-          keychain="$proof_home/Library/Keychains/colony-identity-race-proof.keychain-db"
+          proof_home="$HOME"
+          keychain="$RUNNER_TEMP/colony-identity-race-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -101,17 +99,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          proof_home="$RUNNER_TEMP/colony-identity-reserved-home"
-          keychain="$proof_home/Library/Keychains/colony-identity-reserved-proof.keychain-db"
+          proof_home="$HOME"
+          keychain="$RUNNER_TEMP/colony-identity-reserved-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
@@ -151,17 +148,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          proof_home="$RUNNER_TEMP/colony-identity-diagnostic-home"
-          keychain="$proof_home/Library/Keychains/colony-identity-diagnostic.keychain-db"
+          proof_home="$HOME"
+          keychain="$RUNNER_TEMP/colony-identity-diagnostic.keychain-db"
           binary="$COLONY_IDENTITY_DIAGNOSTIC_TARGET/release/colony-native-host"
           cleanup() {
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          mkdir -p "$proof_home/Library/Application Support"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
