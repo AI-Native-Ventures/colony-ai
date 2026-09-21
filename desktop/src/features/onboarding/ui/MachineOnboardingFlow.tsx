@@ -7,6 +7,10 @@ import {
   importIdentity,
   persistCurrentIdentity,
 } from "@/shared/api/tauriIdentity";
+import {
+  type NativeCapability,
+  supportsNativeCapability,
+} from "@/shared/api/nativeBridge";
 import type { IdentityStorage } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
@@ -35,6 +39,7 @@ import {
 } from "./OnboardingChrome";
 import { OnboardingCard } from "./OnboardingCard";
 import { OnboardingFooterProvider } from "./OnboardingFooter";
+import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
 import {
   type OnboardingTransitionDirection,
   OnboardingSlideTransition,
@@ -48,11 +53,27 @@ export type MachineOnboardingPage =
   | "identity-key-intro"
   | "identity-key-help"
   | "key-import"
+  | "unsupported"
   | "backup"
   | "setup"
   | "config";
 
 type BackupSubview = "created" | "password";
+
+function unavailableBody(capability: NativeCapability): string {
+  switch (capability) {
+    case "identity-backup":
+      return "Identity backup and private-key export are not available in this Electron build yet. Your key has not been exported or replaced.";
+    case "identity-import":
+      return "Importing an existing identity is not available in this Electron build yet. No key material was read or changed.";
+    case "identity-recovery":
+      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Buzz desktop build.";
+    case "identity-create":
+      return "Creating or replacing an identity is not available in this Electron build yet.";
+    default:
+      return "This native identity operation is not available in this Electron build yet.";
+  }
+}
 
 export function MachineOnboardingFlow({
   complete,
@@ -73,11 +94,17 @@ export function MachineOnboardingFlow({
   queryClient: QueryClient;
 }) {
   const [page, setPage] = React.useState<MachineOnboardingPage>(
-    identityLost ? "key-import" : (initialPage ?? "identity"),
+    identityLost
+      ? supportsNativeCapability("identity-import")
+        ? "key-import"
+        : "unsupported"
+      : (initialPage ?? "identity"),
   );
   const [transitionDirection, setTransitionDirection] =
     React.useState<OnboardingTransitionDirection>("forward");
   const [error, setError] = React.useState<string | null>(null);
+  const [unsupportedCapability, setUnsupportedCapability] =
+    React.useState<NativeCapability | null>(null);
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [keyImportStage, setKeyImportStage] =
@@ -123,6 +150,11 @@ export function MachineOnboardingFlow({
   const backupSession = useEncryptedBackupSession();
   const reduceMotion = useReducedMotion() ?? false;
   const setupSelectionHandoffRef = React.useRef(false);
+  const showUnsupported = React.useCallback((capability: NativeCapability) => {
+    setUnsupportedCapability(capability);
+    setError(null);
+    setPage("unsupported");
+  }, []);
   const handleReadyRuntimeIdsChange = React.useCallback(
     (runtimeIds: readonly string[]) => {
       if (setupSelectionHandoffRef.current) return;
@@ -151,6 +183,10 @@ export function MachineOnboardingFlow({
       queryClient.setQueryData(["identity"], identity);
       setSelectedPubkey(identity.pubkey);
       setIdentityStorage(identity.storage);
+      if (!supportsNativeCapability("identity-backup")) {
+        showUnsupported("identity-backup");
+        return;
+      }
       setBackupDirection("forward");
       setTransitionDirection("forward");
       setReturningFromSecurity(false);
@@ -163,9 +199,13 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [queryClient]);
+  }, [queryClient, showUnsupported]);
 
   const loadRecoveredIdentity = React.useCallback(async () => {
+    if (!supportsNativeCapability("identity-recovery")) {
+      showUnsupported("identity-recovery");
+      return;
+    }
     setIsPending(true);
     setError(null);
     try {
@@ -184,9 +224,13 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [continueWithRecoveredIdentity, queryClient]);
+  }, [continueWithRecoveredIdentity, queryClient, showUnsupported]);
 
   const replaceLostIdentity = React.useCallback(async () => {
+    if (!supportsNativeCapability("identity-create")) {
+      showUnsupported("identity-create");
+      return;
+    }
     const confirmed = window.confirm(
       "This will create a new identity and abandon your previous key. This cannot be undone. Continue?",
     );
@@ -211,10 +255,14 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [queryClient]);
+  }, [queryClient, showUnsupported]);
 
   const importExistingIdentity = React.useCallback(
     async (nsec: string, password?: string) => {
+      if (!supportsNativeCapability("identity-import")) {
+        showUnsupported("identity-import");
+        return;
+      }
       const identity = await importIdentity(nsec, password);
       continueWithIdentity(identity.pubkey);
       queryClient.setQueryData(["identity"], identity);
@@ -223,7 +271,7 @@ export function MachineOnboardingFlow({
       setTransitionDirection("forward");
       setPage("setup");
     },
-    [continueWithIdentity, queryClient],
+    [continueWithIdentity, queryClient, showUnsupported],
   );
 
   const backFromKeyImport = React.useCallback(() => {
@@ -357,6 +405,13 @@ export function MachineOnboardingFlow({
                   className={ONBOARDING_LANDING_CTA_CLASS}
                   disabled={isPending}
                   onClick={() => {
+                    if (
+                      selectedPubkey &&
+                      !supportsNativeCapability("identity-read")
+                    ) {
+                      showUnsupported("identity-read");
+                      return;
+                    }
                     if (selectedPubkey) {
                       void loadFreshIdentity();
                       return;
@@ -376,6 +431,10 @@ export function MachineOnboardingFlow({
                   className={`${ONBOARDING_SECONDARY_CTA_CLASS} px-5`}
                   disabled={isPending}
                   onClick={() => {
+                    if (!supportsNativeCapability("identity-import")) {
+                      showUnsupported("identity-import");
+                      return;
+                    }
                     setKeyImportDialog(null);
                     setKeyImportStage("key-entry");
                     setTransitionDirection("forward");
@@ -400,6 +459,33 @@ export function MachineOnboardingFlow({
           </div>
         </OnboardingFooterProvider>
       </div>
+    );
+  }
+
+  if (page === "unsupported") {
+    return (
+      <NativeUnavailableScreen
+        body={unavailableBody(unsupportedCapability ?? "identity-recovery")}
+        onBack={() => {
+          setUnsupportedCapability(null);
+          setTransitionDirection("backward");
+          setPage("identity");
+        }}
+        testId="machine-onboarding-native-unavailable"
+      />
+    );
+  }
+
+  if (page === "backup" && !supportsNativeCapability("identity-backup")) {
+    return (
+      <NativeUnavailableScreen
+        body={unavailableBody("identity-backup")}
+        onBack={() => {
+          setTransitionDirection("backward");
+          setPage("identity-key-intro");
+        }}
+        testId="machine-onboarding-native-unavailable"
+      />
     );
   }
 

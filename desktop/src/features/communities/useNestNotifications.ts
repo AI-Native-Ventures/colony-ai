@@ -2,6 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
+import { supportsNativeCapability } from "@/shared/api/nativeBridge";
+
 const MIGRATION_TOAST_KEY = "buzz-legacy-nest-migrated-notified";
 
 /**
@@ -22,6 +24,10 @@ const MIGRATION_TOAST_KEY = "buzz-legacy-nest-migrated-notified";
  */
 export function useNestNotifications(): void {
   useEffect(() => {
+    if (!supportsNativeCapability("workspace-events")) {
+      return;
+    }
+
     const unlistenReposError = listen<string>("repos-dir-error", (event) => {
       toast.error("Repos directory not applied", {
         description: event.payload,
