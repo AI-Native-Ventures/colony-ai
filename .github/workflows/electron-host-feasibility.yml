@@ -598,6 +598,35 @@ jobs:
           printf 'XDG_CACHE_HOME=%s\n' "$xdg_root/cache" >> "$GITHUB_ENV"
           printf 'XDG_RUNTIME_DIR=%s\n' "$xdg_root/runtime" >> "$GITHUB_ENV"
 
+      - name: Allow only the relocated packaged binaries to use Linux user namespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -r /sys/kernel/security/apparmor/profiles
+          command -v apparmor_parser
+          normal_binary="$(find "$COLONY_STAGE0_NORMAL_ROOT" -type f -name 'Buzz Stage0 Normal' -print -quit)"
+          instrumented_binary="$(find "$COLONY_STAGE0_INSTRUMENTED_ROOT" -type f -name 'Buzz Stage0 Instrumented' -print -quit)"
+          test -n "$normal_binary"
+          test -n "$instrumented_binary"
+          profile_file="$RUNNER_TEMP/colony-electron-stage0-apparmor"
+          {
+            printf 'abi <abi/4.0>,\n'
+            printf 'include <tunables/global>\n\n'
+            printf 'profile colony-electron-stage0-normal "%s" flags=(unconfined) {\n' "$normal_binary"
+            printf '  userns,\n}\n\n'
+            printf 'profile colony-electron-stage0-instrumented "%s" flags=(unconfined) {\n' "$instrumented_binary"
+            printf '  userns,\n}\n'
+          } > "$profile_file"
+          sudo install -o root -g root -m 0644 "$profile_file" \
+            /etc/apparmor.d/colony-electron-stage0
+          sudo apparmor_parser -r /etc/apparmor.d/colony-electron-stage0
+          sudo grep -F 'colony-electron-stage0-normal' \
+            /sys/kernel/security/apparmor/profiles
+          sudo grep -F 'colony-electron-stage0-instrumented' \
+            /sys/kernel/security/apparmor/profiles
+          printf 'linux_apparmor_userns_profiles=loaded normal=%s instrumented=%s\n' \
+            "$normal_binary" "$instrumented_binary"
+
       - name: Run the relocated normal Linux Electron proof
         shell: bash
         env:
@@ -675,6 +704,20 @@ jobs:
           node desktop/scripts/check-electron-mutation-report.mjs \
             "$report" --mutation=allow-untrusted-ipc
           echo "untrusted IPC mutation=expected-failure status=$status report=validated"
+
+      - name: Remove the hosted-only Linux AppArmor profile
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile=/etc/apparmor.d/colony-electron-stage0
+          if test -f "$profile"; then
+            if sudo grep -Fq 'colony-electron-stage0-normal' \
+              /sys/kernel/security/apparmor/profiles; then
+              sudo apparmor_parser -R "$profile"
+            fi
+            sudo rm -f "$profile"
+          fi
 
       - name: Upload unsigned Linux normal candidate evidence
         if: always()

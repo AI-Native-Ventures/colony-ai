@@ -305,6 +305,11 @@ export async function assertActiveLinuxSandbox(
     "1",
     `renderer did not report NoNewPrivs=1: ${JSON.stringify(observation)}`,
   );
+  assert.equal(
+    observation.seccomp,
+    "2",
+    `renderer did not report an active Seccomp-BPF filter: ${JSON.stringify(observation)}`,
+  );
   console.log(
     `linux_sandbox=active ${JSON.stringify({
       ...observation,

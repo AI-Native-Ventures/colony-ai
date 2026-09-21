@@ -72,7 +72,6 @@ async function launch(overrides: Record<string, string> = {}) {
     // permission (the installed main-process handler must still deny it), and
     // it keeps the proof independent of real microphones/cameras.
     args: [
-      ...(process.platform === "linux" ? ["--disable-namespace-sandbox"] : []),
       ...(process.platform === "linux"
         ? ["--enable-logging=stderr", "--v=1"]
         : []),
