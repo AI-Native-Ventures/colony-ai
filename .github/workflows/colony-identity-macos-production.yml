@@ -62,7 +62,6 @@ jobs:
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
-          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -92,7 +91,6 @@ jobs:
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
-          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -122,7 +120,6 @@ jobs:
           security unlock-keychain -p "" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
-          security login-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
