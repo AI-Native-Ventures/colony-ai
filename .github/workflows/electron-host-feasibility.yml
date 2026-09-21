@@ -516,8 +516,21 @@ jobs:
             sudo chown root:root "${sandboxes[0]}"
             sudo chmod 4755 "${sandboxes[0]}"
             stat --printf='linux_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
+            sandbox_api="$("${sandboxes[0]}" --get-api-version)"
+            printf 'linux_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
           done
           test "$(id -u)" -ne 0
+          awk '/^(Name|Uid|Gid|NoNewPrivs|Seccomp|CapEff):/ {printf "%s%s", $0, ORS}' /proc/$$/status
+          for setting in \
+            /proc/sys/kernel/unprivileged_userns_clone \
+            /proc/sys/user/max_user_namespaces \
+            /proc/sys/kernel/apparmor_restrict_unprivileged_userns; do
+            if test -r "$setting"; then
+              printf 'linux_kernel_setting=%s value=%s\n' "$setting" "$(cat "$setting")"
+            else
+              printf 'linux_kernel_setting=%s value=unavailable\n' "$setting"
+            fi
+          done
 
       - name: Inspect the real Linux ELF, ASAR, and sandbox boundary
         shell: bash
@@ -554,6 +567,9 @@ jobs:
             test "${#sandboxes[@]}" -eq 1
             sudo chown root:root "${sandboxes[0]}"
             sudo chmod 4755 "${sandboxes[0]}"
+            stat --printf='linux_relocated_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
+            sandbox_api="$("${sandboxes[0]}" --get-api-version)"
+            printf 'linux_relocated_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
             sandbox_mount="$(findmnt -no FSTYPE,OPTIONS --target "${sandboxes[0]}")"
             printf 'linux_chrome_sandbox_mount=%s flavor=%s\n' "$sandbox_mount" "$flavor"
             case ",$sandbox_mount," in

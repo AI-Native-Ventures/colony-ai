@@ -57,7 +57,10 @@ async function launchNormal() {
     // created. Select Chromium's documented SUID layer explicitly so this
     // proof observes a real layer-1 sandbox rather than falling back to an
     // unsandboxed launch.
-    args: process.platform === "linux" ? ["--disable-namespace-sandbox"] : [],
+    args:
+      process.platform === "linux"
+        ? ["--disable-namespace-sandbox", "--enable-logging=stderr", "--v=1"]
+        : [],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");

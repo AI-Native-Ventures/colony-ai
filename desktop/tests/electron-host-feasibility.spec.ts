@@ -73,6 +73,9 @@ async function launch(overrides: Record<string, string> = {}) {
     // it keeps the proof independent of real microphones/cameras.
     args: [
       ...(process.platform === "linux" ? ["--disable-namespace-sandbox"] : []),
+      ...(process.platform === "linux"
+        ? ["--enable-logging=stderr", "--v=1"]
+        : []),
       "--use-fake-device-for-media-stream",
     ],
   });
