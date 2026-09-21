@@ -418,125 +418,117 @@ fn file_derivative_binds_manifest_before_ready_and_preserves_profile_restart() {
     ))
     .expect("production HELLO should be framed");
 
-    if cfg!(target_os = "macos") {
-        let ready = host.read_value();
-        assert_eq!(ready["type"], "READY");
-        assert_eq!(ready["registryDigest"], PRODUCTION_REGISTRY_DIGEST);
-        assert_eq!(
-            ready["payload"]["capabilities"],
-            json!(["health-safe", "identity-mode", "identity-read"])
-        );
-        let lifecycle = host.read_value();
-        assert_eq!(lifecycle["payload"]["state"], "ready");
+    let ready = host.read_value();
+    assert_eq!(ready["type"], "READY");
+    assert_eq!(ready["registryDigest"], PRODUCTION_REGISTRY_DIGEST);
+    assert_eq!(
+        ready["payload"]["capabilities"],
+        json!(["health-safe", "identity-mode", "identity-read"])
+    );
+    let lifecycle = host.read_value();
+    assert_eq!(lifecycle["payload"]["state"], "ready");
 
-        host.send(production_request(
-            "production-identity-1",
+    host.send(production_request(
+        "production-identity-1",
+        1,
+        "identity-read",
+        "get_identity",
+        PRODUCTION_PROFILE_ID,
+        PRODUCTION_SESSION_ID,
+    ))
+    .expect("production identity request should be framed");
+    let first = host.read_value();
+    let first_pubkey = first["payload"]["pubkey"]
+        .as_str()
+        .expect("production pubkey should be metadata")
+        .to_string();
+    assert_eq!(first["payload"]["reset_failed"], false);
+    assert!(first["payload"].get("nsec").is_none());
+
+    host.send(production_rehello(
+        2,
+        PRODUCTION_PROFILE_ID,
+        PRODUCTION_SESSION_ID,
+    ))
+    .expect("production rebind should be framed");
+    assert_eq!(host.read_value()["type"], "REBOUND");
+    assert_eq!(host.read_value()["payload"]["state"], "rebound");
+    host.send(production_request(
+        "production-identity-2",
+        2,
+        "identity-read",
+        "get_identity",
+        PRODUCTION_PROFILE_ID,
+        PRODUCTION_SESSION_ID,
+    ))
+    .expect("generation-two production request should be framed");
+    assert_eq!(host.read_value()["payload"]["pubkey"], first_pubkey);
+    let finished = host.finish_with_stderr();
+    assert!(finished.status.success());
+    assert_stderr_safe(&finished.stderr);
+
+    let mut restarted = Harness::spawn_derivative();
+    restarted
+        .send(production_hello(
+            &root,
+            "normal",
+            PRODUCTION_PROFILE_ID,
+            PRODUCTION_SESSION_ID,
+        ))
+        .expect("production restart HELLO should be framed");
+    assert_eq!(restarted.read_value()["type"], "READY");
+    let _ = restarted.read_value();
+    restarted
+        .send(production_request(
+            "production-restart",
             1,
             "identity-read",
             "get_identity",
             PRODUCTION_PROFILE_ID,
             PRODUCTION_SESSION_ID,
         ))
-        .expect("production identity request should be framed");
-        let first = host.read_value();
-        let first_pubkey = first["payload"]["pubkey"]
-            .as_str()
-            .expect("production pubkey should be metadata")
-            .to_string();
-        assert_eq!(first["payload"]["reset_failed"], false);
-        assert!(first["payload"].get("nsec").is_none());
+        .expect("production restart request should be framed");
+    assert_eq!(restarted.read_value()["payload"]["pubkey"], first_pubkey);
+    let finished = restarted.finish_with_stderr();
+    assert!(finished.status.success());
+    assert_stderr_safe(&finished.stderr);
+    assert_eq!(
+        fs::read_to_string(&sentinel).expect("sentinel should remain"),
+        "sentinel"
+    );
 
-        host.send(production_rehello(
-            2,
-            PRODUCTION_PROFILE_ID,
-            PRODUCTION_SESSION_ID,
+    let (instrumented_base, instrumented_root) =
+        production_root("production-instrumented", "instrumented");
+    let mut instrumented = Harness::spawn_derivative();
+    instrumented
+        .send(production_hello(
+            &instrumented_root,
+            "instrumented",
+            PRODUCTION_INSTRUMENTED_PROFILE_ID,
+            PRODUCTION_INSTRUMENTED_SESSION_ID,
         ))
-        .expect("production rebind should be framed");
-        assert_eq!(host.read_value()["type"], "REBOUND");
-        assert_eq!(host.read_value()["payload"]["state"], "rebound");
-        host.send(production_request(
-            "production-identity-2",
-            2,
+        .expect("instrumented production HELLO should be framed");
+    assert_eq!(instrumented.read_value()["type"], "READY");
+    let _ = instrumented.read_value();
+    instrumented
+        .send(production_request(
+            "instrumented-identity",
+            1,
             "identity-read",
             "get_identity",
-            PRODUCTION_PROFILE_ID,
-            PRODUCTION_SESSION_ID,
+            PRODUCTION_INSTRUMENTED_PROFILE_ID,
+            PRODUCTION_INSTRUMENTED_SESSION_ID,
         ))
-        .expect("generation-two production request should be framed");
-        assert_eq!(host.read_value()["payload"]["pubkey"], first_pubkey);
-        let finished = host.finish_with_stderr();
-        assert!(finished.status.success());
-        assert_stderr_safe(&finished.stderr);
-
-        let mut restarted = Harness::spawn_derivative();
-        restarted
-            .send(production_hello(
-                &root,
-                "normal",
-                PRODUCTION_PROFILE_ID,
-                PRODUCTION_SESSION_ID,
-            ))
-            .expect("production restart HELLO should be framed");
-        assert_eq!(restarted.read_value()["type"], "READY");
-        let _ = restarted.read_value();
-        restarted
-            .send(production_request(
-                "production-restart",
-                1,
-                "identity-read",
-                "get_identity",
-                PRODUCTION_PROFILE_ID,
-                PRODUCTION_SESSION_ID,
-            ))
-            .expect("production restart request should be framed");
-        assert_eq!(restarted.read_value()["payload"]["pubkey"], first_pubkey);
-        let finished = restarted.finish_with_stderr();
-        assert!(finished.status.success());
-        assert_stderr_safe(&finished.stderr);
-        assert_eq!(
-            fs::read_to_string(&sentinel).expect("sentinel should remain"),
-            "sentinel"
-        );
-
-        let (instrumented_base, instrumented_root) =
-            production_root("production-instrumented", "instrumented");
-        let mut instrumented = Harness::spawn_derivative();
-        instrumented
-            .send(production_hello(
-                &instrumented_root,
-                "instrumented",
-                PRODUCTION_INSTRUMENTED_PROFILE_ID,
-                PRODUCTION_INSTRUMENTED_SESSION_ID,
-            ))
-            .expect("instrumented production HELLO should be framed");
-        assert_eq!(instrumented.read_value()["type"], "READY");
-        let _ = instrumented.read_value();
-        instrumented
-            .send(production_request(
-                "instrumented-identity",
-                1,
-                "identity-read",
-                "get_identity",
-                PRODUCTION_INSTRUMENTED_PROFILE_ID,
-                PRODUCTION_INSTRUMENTED_SESSION_ID,
-            ))
-            .expect("instrumented identity request should be framed");
-        let instrumented_identity = instrumented.read_value();
-        assert!(instrumented_identity["payload"]["pubkey"]
-            .as_str()
-            .is_some());
-        let finished = instrumented.finish_with_stderr();
-        assert!(finished.status.success());
-        assert_stderr_safe(&finished.stderr);
-        assert_ne!(root, instrumented_root);
-        let _ = fs::remove_dir_all(instrumented_base);
-    } else {
-        let finished = host.finish_with_stderr();
-        assert!(!finished.status.success());
-        assert_stderr_safe(&finished.stderr);
-        assert!(String::from_utf8_lossy(&finished.stderr).contains("identity_namespace_unverified"));
-        assert!(!root.exists(), "unknown platform must not create a profile");
-    }
+        .expect("instrumented identity request should be framed");
+    let instrumented_identity = instrumented.read_value();
+    assert!(instrumented_identity["payload"]["pubkey"]
+        .as_str()
+        .is_some());
+    let finished = instrumented.finish_with_stderr();
+    assert!(finished.status.success());
+    assert_stderr_safe(&finished.stderr);
+    assert_ne!(root, instrumented_root);
+    let _ = fs::remove_dir_all(instrumented_base);
     let _ = fs::remove_dir_all(base);
 }
 

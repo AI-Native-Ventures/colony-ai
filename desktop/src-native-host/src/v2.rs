@@ -1282,10 +1282,9 @@ fn canonicalize(value: &Value) -> String {
 mod tests {
     use super::{
         canonical_registry_json, digest_for_document, lifecycle_frame, production_registry_digest,
-        production_registry_document, ready_frame, rebound_frame, registry_digest,
-        registry_document, response_frame, validate_outbound, validate_registry_document,
-        validate_registry_for, validate_runtime_limits, PRODUCTION_REGISTRY_DIGEST,
-        REGISTRY_DIGEST,
+        ready_frame, rebound_frame, registry_digest, registry_document, registry_document_for,
+        response_frame, validate_outbound, validate_registry_document, validate_registry_for,
+        validate_runtime_limits, PRODUCTION_REGISTRY_DIGEST, REGISTRY_DIGEST,
     };
     use crate::protocol::{load_manifest, Binding};
     use serde_json::json;
@@ -1301,7 +1300,7 @@ mod tests {
         assert_eq!(production_registry_digest(), PRODUCTION_REGISTRY_DIGEST);
         validate_registry_for(true).expect("production registry should validate");
         assert_ne!(
-            digest_for_document(&production_registry_document()),
+            digest_for_document(&registry_document_for(true)),
             REGISTRY_DIGEST
         );
     }
