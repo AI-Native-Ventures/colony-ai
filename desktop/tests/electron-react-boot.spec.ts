@@ -41,7 +41,9 @@ async function close(application: ElectronApplication) {
   await application.close();
 }
 
-test("packaged macOS app loads real React identity landing and intro", async (_test, testInfo) => {
+test("packaged macOS app loads real React identity landing and intro", async ({
+  browserName: _browserName,
+}, testInfo) => {
   let application: ElectronApplication | null = null;
   try {
     const first = await launchReact();
