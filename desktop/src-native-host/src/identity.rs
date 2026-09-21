@@ -5,7 +5,10 @@
 //! synthetic fixture; production mode binds the same store to the embedded
 //! flavor manifest without changing the B1 resolver or its custody semantics.
 
-use std::path::{Component, Path};
+use std::{
+    env,
+    path::{Component, Path, PathBuf},
+};
 
 use colony_identity_kernel::{project_identity, IdentitySnapshot, RecoveryState};
 use colony_identity_store::{
@@ -45,7 +48,27 @@ impl IdentityRuntime {
             format!("{FIXTURE_SERVICE_PREFIX}.{FIXTURE_PROFILE_ID}.{FIXTURE_FLAVOR}.{platform}");
         let manifest =
             TrustedProfileManifest::new(FIXTURE_PROFILE_ID, FIXTURE_FLAVOR, platform, service);
-        Self::initialize_from_manifest(launch, &manifest)
+        Self::initialize_from_manifest(&manifest, Path::new(&launch.user_data_root))
+    }
+
+    /// Keep temporary roots confined to the explicitly fenced file-only
+    /// derivative carrier. This path is never a production custody mode.
+    pub fn initialize_derivative(
+        launch: &IdentityLaunch,
+        profiles: &IdentityProfiles,
+        expected_manifest_digest: &str,
+    ) -> Result<Self, IdentityInitError> {
+        validate_manifest_binding(launch, profiles, expected_manifest_digest)?;
+        let profile = profiles
+            .for_flavor(&launch.flavor)
+            .ok_or(IdentityInitError::DescriptorRejected)?;
+        let manifest = TrustedProfileManifest::new(
+            profile.profile_id.clone(),
+            launch.flavor.clone(),
+            host_platform(),
+            profile.keychain_service.clone(),
+        );
+        Self::initialize_from_manifest(&manifest, Path::new(&launch.user_data_root))
     }
 
     pub fn initialize_production(
@@ -53,20 +76,15 @@ impl IdentityRuntime {
         profiles: &IdentityProfiles,
         expected_manifest_digest: &str,
     ) -> Result<Self, IdentityInitError> {
-        if launch.identity_manifest_digest.as_deref() != Some(expected_manifest_digest) {
-            return Err(IdentityInitError::ManifestMismatch);
-        }
-        if identity_manifest_digest(profiles).map_err(|_| IdentityInitError::ManifestMismatch)?
-            != expected_manifest_digest
-        {
-            return Err(IdentityInitError::ManifestMismatch);
-        }
-        validate_production_launch(launch, profiles)?;
+        validate_manifest_binding(launch, profiles, expected_manifest_digest)?;
         let profile = profiles
             .for_flavor(&launch.flavor)
             .ok_or(IdentityInitError::DescriptorRejected)?;
-        if profiles.collision_status(&launch.flavor, host_platform()) != Some("observed-unoccupied")
-        {
+        let trusted_root = trusted_production_root(&profile.user_data_relative_path)?;
+        if Path::new(&launch.user_data_root) != trusted_root {
+            return Err(IdentityInitError::DescriptorRejected);
+        }
+        if !production_collision_record_is_verified(profiles, &launch.flavor, host_platform()) {
             return Err(IdentityInitError::NamespaceUnverified);
         }
         let manifest = TrustedProfileManifest::new(
@@ -75,16 +93,16 @@ impl IdentityRuntime {
             host_platform(),
             profile.keychain_service.clone(),
         );
-        Self::initialize_from_manifest(launch, &manifest)
+        Self::initialize_from_manifest(&manifest, &trusted_root)
     }
 
     fn initialize_from_manifest(
-        launch: &IdentityLaunch,
         manifest: &TrustedProfileManifest,
+        user_data_root: &Path,
     ) -> Result<Self, IdentityInitError> {
         let descriptor = IdentityLaunchDescriptor::from_trusted_manifest(
             manifest,
-            Path::new(&launch.user_data_root),
+            user_data_root,
             IdentityMode::ExplicitIdentity,
             false,
             ResetProvenance::NotAttemptedFresh,
@@ -112,6 +130,22 @@ impl IdentityRuntime {
     pub fn snapshot(&self) -> &IdentitySnapshot {
         &self.snapshot
     }
+}
+
+fn validate_manifest_binding(
+    launch: &IdentityLaunch,
+    profiles: &IdentityProfiles,
+    expected_manifest_digest: &str,
+) -> Result<(), IdentityInitError> {
+    if launch.identity_manifest_digest.as_deref() != Some(expected_manifest_digest) {
+        return Err(IdentityInitError::ManifestMismatch);
+    }
+    if identity_manifest_digest(profiles).map_err(|_| IdentityInitError::ManifestMismatch)?
+        != expected_manifest_digest
+    {
+        return Err(IdentityInitError::ManifestMismatch);
+    }
+    validate_production_launch(launch, profiles)
 }
 
 fn validate_launch(launch: &IdentityLaunch) -> Result<(), IdentityInitError> {
@@ -162,6 +196,44 @@ fn root_matches_relative_path(root: &str, relative: &str) -> bool {
             .components()
             .any(|component| component == Component::ParentDir)
         && path.ends_with(Path::new(relative))
+}
+
+fn trusted_production_root(relative: &str) -> Result<PathBuf, IdentityInitError> {
+    let anchor = platform_app_data_anchor()?;
+    Ok(anchor.join(relative))
+}
+
+fn production_collision_record_is_verified(
+    _profiles: &IdentityProfiles,
+    _flavor: &str,
+    _platform: &str,
+) -> bool {
+    // Deliberately disabled until an exact read-only collision record binds
+    // each candidate path/service to its platform, profile, flavor, scope,
+    // source, time, and manifest digest. A manifest status string is not an
+    // activation authority.
+    false
+}
+
+fn platform_app_data_anchor() -> Result<PathBuf, IdentityInitError> {
+    let candidate = match host_platform() {
+        "macos" => env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Library").join("Application Support")),
+        "windows" => env::var_os("APPDATA").map(PathBuf::from),
+        "linux" => env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .map(|home| home.join(".config"))
+            }),
+        _ => None,
+    }
+    .filter(|path| path.is_absolute())
+    .ok_or(IdentityInitError::NamespaceUnverified)?;
+    std::fs::canonicalize(candidate).map_err(|_| IdentityInitError::NamespaceUnverified)
 }
 
 fn host_platform() -> &'static str {

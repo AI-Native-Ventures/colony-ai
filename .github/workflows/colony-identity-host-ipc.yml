@@ -57,3 +57,24 @@ jobs:
           set -euo pipefail
           cargo check --locked --manifest-path desktop/src-native-host/Cargo.toml \
             --no-default-features --features identity-system-keyring
+
+      - name: Build the production system-keyring carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --no-default-features --features identity-system-keyring
+
+      - name: Exercise production pre-initialization rejection with the built carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            binary="${binary}.exe"
+          fi
+          COLONY_NATIVE_HOST_BIN="$binary" cargo test --locked \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --no-default-features --features identity-system-keyring \
+            --test identity_production_dispatch -- --nocapture

@@ -15,7 +15,7 @@
     "helperIdentity": "colony-native.dev.0000000000000001",
     "deepLinkScheme": "colony-dev"
   },
-  "identityManifestDigest": "91997f931c4c14d32010a2b155e9b71842680ed37a3b5dc3d94085857ef25d2b",
+  "identityManifestDigest": "ff46bc9729c8e3dce602d5e1effb84d5aa6fff0b00231404c340b8e61aaa1e3d",
   "identityProfiles": {
     "manifestVersion": 1,
     "normal": {
@@ -23,7 +23,7 @@
       "userDataRelativePath": "Colony/dev/0000000000000001/normal",
       "keychainService": "xyz.ainative.ventures.colony.dev.0000000000000001",
       "collisionEvidence": {
-        "macos": "observed-unoccupied",
+        "macos": "unknown",
         "windows": "unknown",
         "linux": "unknown"
       }
@@ -33,7 +33,7 @@
       "userDataRelativePath": "Colony/dev/0000000000000001/instrumented",
       "keychainService": "xyz.ainative.ventures.colony.instrumented.0000000000000001",
       "collisionEvidence": {
-        "macos": "observed-unoccupied",
+        "macos": "unknown",
         "windows": "unknown",
         "linux": "unknown"
       }

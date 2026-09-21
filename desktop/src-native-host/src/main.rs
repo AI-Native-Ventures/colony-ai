@@ -55,16 +55,27 @@ enum WriterFailure {
 enum LaunchMode {
     HealthOnly,
     IdentityV2Test,
+    IdentityV2Derivative,
     IdentityV2Production,
 }
 
 impl LaunchMode {
     fn is_identity(self) -> bool {
-        matches!(self, Self::IdentityV2Test | Self::IdentityV2Production)
+        matches!(
+            self,
+            Self::IdentityV2Test | Self::IdentityV2Derivative | Self::IdentityV2Production
+        )
     }
 
     fn is_production(self) -> bool {
         matches!(self, Self::IdentityV2Production)
+    }
+
+    fn uses_production_schema(self) -> bool {
+        matches!(
+            self,
+            Self::IdentityV2Derivative | Self::IdentityV2Production
+        )
     }
 }
 
@@ -124,6 +135,9 @@ enum FaultMode {
 
 impl FaultMode {
     fn from_environment(launch_mode: LaunchMode) -> Self {
+        if launch_mode == LaunchMode::IdentityV2Production {
+            return Self::None;
+        }
         match env::var(FAULT_ENV).ok().as_deref() {
             Some("delay-response") => Self::DelayResponse,
             Some("hold-responses") if launch_mode == LaunchMode::IdentityV2Test => {
@@ -163,7 +177,7 @@ impl Host {
         output: SyncSender<Vec<u8>>,
         launch_mode: LaunchMode,
     ) -> Self {
-        let deadline = test_or_manifest_deadline(&limits);
+        let deadline = test_or_manifest_deadline(&limits, launch_mode);
         Self {
             limits,
             expected_profile_id,
@@ -661,7 +675,7 @@ impl Host {
                 outcome,
                 payload,
                 error_code,
-                self.launch_mode.is_production(),
+                self.launch_mode.uses_production_schema(),
             ),
             response_schema,
         )
@@ -669,14 +683,14 @@ impl Host {
 
     fn send_ready_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
         self.write_v2(
-            v2::ready_frame_for(binding, self.launch_mode.is_production()),
+            v2::ready_frame_for(binding, self.launch_mode.uses_production_schema()),
             None,
         )
     }
 
     fn send_rebound_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
         self.write_v2(
-            v2::rebound_frame_for(binding, self.launch_mode.is_production()),
+            v2::rebound_frame_for(binding, self.launch_mode.uses_production_schema()),
             None,
         )
     }
@@ -687,7 +701,7 @@ impl Host {
                 binding,
                 self.sequence,
                 state,
-                self.launch_mode.is_production(),
+                self.launch_mode.uses_production_schema(),
             ),
             None,
         )
@@ -695,9 +709,9 @@ impl Host {
 
     fn handle_v2(&mut self, frame: v2::Frame) -> Result<(), ProtocolError> {
         v2::validate_runtime_limits(&self.limits)?;
-        let production = self.launch_mode.is_production();
-        v2::validate_registry_for(production)?;
-        let registry_digest = v2::registry_digest_for(production);
+        let production_schema = self.launch_mode.uses_production_schema();
+        v2::validate_registry_for(production_schema)?;
+        let registry_digest = v2::registry_digest_for(production_schema);
         if frame.registry_digest() != registry_digest.as_str() {
             return Err(ProtocolError::RegistryMismatch);
         }
@@ -722,13 +736,28 @@ impl Host {
             return Err(ProtocolError::IdentityDescriptorRejected);
         }
         let production = self.launch_mode.is_production();
-        if frame.identity_launch.identity_manifest_digest.is_some() != production {
+        let derivative = self.launch_mode == LaunchMode::IdentityV2Derivative;
+        if frame.identity_launch.identity_manifest_digest.is_some()
+            != self.launch_mode.uses_production_schema()
+        {
             return Err(ProtocolError::IdentityDescriptorRejected);
+        }
+        if production && !cfg!(feature = "identity-system-keyring") {
+            return Err(ProtocolError::IdentityUnavailable);
+        }
+        if derivative && !cfg!(feature = "identity-file-only") {
+            return Err(ProtocolError::IdentityUnavailable);
         }
         #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
         {
             let identity = (if production {
                 identity::IdentityRuntime::initialize_production(
+                    &frame.identity_launch,
+                    &self.identity_profiles,
+                    &self.identity_manifest_digest,
+                )
+            } else if derivative {
+                identity::IdentityRuntime::initialize_derivative(
                     &frame.identity_launch,
                     &self.identity_profiles,
                     &self.identity_manifest_digest,
@@ -924,7 +953,7 @@ impl Host {
         v2::validate_outbound_for_registry(
             &frame,
             response_schema,
-            self.launch_mode.is_production(),
+            self.launch_mode.uses_production_schema(),
         )?;
         let bytes = encode_frame(&frame, &self.limits)?;
         self.output.try_send(bytes).map_err(|error| match error {
@@ -967,13 +996,23 @@ fn launch_mode_from_args() -> LaunchMode {
     let test = arguments
         .iter()
         .any(|argument| argument == "--identity-v2-test");
+    let derivative = arguments
+        .iter()
+        .any(|argument| argument == "--identity-v2-file-test");
     let production = arguments.iter().any(|argument| argument == "--identity-v2");
-    if test && production {
+    if [test, derivative, production]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count()
+        > 1
+    {
         eprintln!("native host startup rejected mixed identity launch modes");
         process::exit(PROTOCOL_FAILURE_CODE);
     }
     if production {
         LaunchMode::IdentityV2Production
+    } else if derivative {
+        LaunchMode::IdentityV2Derivative
     } else if test {
         LaunchMode::IdentityV2Test
     } else {
@@ -989,20 +1028,23 @@ fn main() {
             process::exit(PROTOCOL_FAILURE_CODE);
         }
     };
-    match env::var(FAULT_ENV).ok().as_deref() {
-        Some("exit-before-ready") => process::exit(EXIT_BEFORE_READY_CODE),
-        Some("malformed-frame") => {
-            let _ = io::stdout()
-                .write_all(format!("{}{{not-json\n", protocol::FRAME_PREFIX).as_bytes());
-            let _ = io::stdout().flush();
-            return;
+    let launch_mode = launch_mode_from_args();
+    if launch_mode != LaunchMode::IdentityV2Production {
+        match env::var(FAULT_ENV).ok().as_deref() {
+            Some("exit-before-ready") => process::exit(EXIT_BEFORE_READY_CODE),
+            Some("malformed-frame") => {
+                let _ = io::stdout()
+                    .write_all(format!("{}{{not-json\n", protocol::FRAME_PREFIX).as_bytes());
+                let _ = io::stdout().flush();
+                return;
+            }
+            _ => {}
         }
-        _ => {}
     }
 
     let queue_limit = manifest.protocol.outbound_queue_limit;
     let frame_limit = manifest.protocol.frame_limit_bytes;
-    let writer_deadline = test_or_manifest_deadline(&manifest.protocol);
+    let writer_deadline = test_or_manifest_deadline(&manifest.protocol, launch_mode);
     let expected_profile_id = manifest.namespace.profile_id.clone();
     let (input_sender, receiver) = mpsc::sync_channel(queue_limit);
     let (output_sender, output_receiver) = mpsc::sync_channel(queue_limit);
@@ -1021,7 +1063,6 @@ fn main() {
         writer_loop(output_receiver, writer_progress_sender, writer_done_sender)
     });
     let shutdown_grace_ms = manifest.protocol.shutdown_grace_ms;
-    let launch_mode = launch_mode_from_args();
     let fault = FaultMode::from_environment(launch_mode);
     let identity_manifest_digest = manifest.identity_manifest_digest.clone();
     let identity_profiles = manifest.identity_profiles.clone();
@@ -1231,7 +1272,10 @@ fn read_frame(
     }
 }
 
-fn test_or_manifest_deadline(limits: &ProtocolLimits) -> Duration {
+fn test_or_manifest_deadline(limits: &ProtocolLimits, launch_mode: LaunchMode) -> Duration {
+    if launch_mode == LaunchMode::IdentityV2Production {
+        return Duration::from_millis(limits.default_deadline_ms);
+    }
     let milliseconds = env::var(TEST_DEADLINE_ENV)
         .ok()
         .and_then(|value| value.parse::<u64>().ok())

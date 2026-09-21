@@ -17,7 +17,7 @@ const REGISTRY_DIGEST: &str = "1032c9f29dee5495099ebf951133bf3cf80c144e39476af39
 const PRODUCTION_REGISTRY_DIGEST: &str =
     "452990462a124746a15d6ba7cdd0353e0183e7a3aa300e5b8b596e0439692204";
 const PRODUCTION_MANIFEST_DIGEST: &str =
-    "91997f931c4c14d32010a2b155e9b71842680ed37a3b5dc3d94085857ef25d2b";
+    "ff46bc9729c8e3dce602d5e1effb84d5aa6fff0b00231404c340b8e61aaa1e3d";
 const PRODUCTION_PROFILE_ID: &str = "0000000000000001";
 const PRODUCTION_SESSION_ID: &str = "identity-v2-production-session";
 const PRODUCTION_INSTRUMENTED_PROFILE_ID: &str = "0000000000000001.instrumented";
@@ -45,8 +45,8 @@ impl Harness {
         Self::spawn_with_mode("--identity-v2-test", fault, deadline_ms)
     }
 
-    fn spawn_production() -> Self {
-        Self::spawn_with_mode("--identity-v2", None, None)
+    fn spawn_derivative() -> Self {
+        Self::spawn_with_mode("--identity-v2-file-test", None, None)
     }
 
     fn spawn_with_mode(mode: &str, fault: Option<&str>, deadline_ms: Option<u64>) -> Self {
@@ -402,14 +402,14 @@ fn v2_initializes_file_only_identity_named_metadata_rebinds_and_restarts() {
 }
 
 #[test]
-fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart() {
+fn file_derivative_binds_manifest_before_ready_and_preserves_profile_restart() {
     let (base, root) = production_root("production-normal", "normal");
     let legacy_sentinel = base.join("Colony").join("dev").join("legacy-sentinel");
     fs::create_dir_all(&legacy_sentinel).expect("legacy sentinel directory should be creatable");
     let sentinel = legacy_sentinel.join("identity.key");
     fs::write(&sentinel, "sentinel").expect("legacy sentinel should be writable");
 
-    let mut host = Harness::spawn_production();
+    let mut host = Harness::spawn_derivative();
     host.send(production_hello(
         &root,
         "normal",
@@ -468,7 +468,7 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
         assert!(finished.status.success());
         assert_stderr_safe(&finished.stderr);
 
-        let mut restarted = Harness::spawn_production();
+        let mut restarted = Harness::spawn_derivative();
         restarted
             .send(production_hello(
                 &root,
@@ -500,7 +500,7 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
 
         let (instrumented_base, instrumented_root) =
             production_root("production-instrumented", "instrumented");
-        let mut instrumented = Harness::spawn_production();
+        let mut instrumented = Harness::spawn_derivative();
         instrumented
             .send(production_hello(
                 &instrumented_root,
@@ -541,7 +541,7 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
 }
 
 #[test]
-fn production_carrier_rejects_stale_digest_before_profile_creation() {
+fn file_derivative_rejects_stale_digest_before_profile_creation() {
     let (base, root) = production_root("production-stale", "normal");
     let mut frame = production_hello(
         &root,
@@ -550,7 +550,7 @@ fn production_carrier_rejects_stale_digest_before_profile_creation() {
         PRODUCTION_SESSION_ID,
     );
     frame["identityLaunch"]["identityManifestDigest"] = json!("0".repeat(64));
-    let mut host = Harness::spawn_production();
+    let mut host = Harness::spawn_derivative();
     host.send(frame)
         .expect("stale production descriptor should be framed");
     let finished = host.finish_with_stderr();
