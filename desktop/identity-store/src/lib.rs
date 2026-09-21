@@ -8,4 +8,7 @@
 #[path = "legacy.rs"]
 mod legacy;
 
+mod metadata;
+
 pub use legacy::*;
+pub use metadata::{probe_identity_presence, MetadataPresence};

@@ -27,6 +27,7 @@ const FIXTURE_SERVICE_PREFIX: &str = "xyz.ainative.ventures.colony.b2a";
 pub enum IdentityInitError {
     DescriptorRejected,
     ManifestMismatch,
+    Unavailable,
     NamespaceUnverified,
     InitializationFailed,
 }
@@ -75,8 +76,12 @@ impl IdentityRuntime {
         launch: &IdentityLaunch,
         profiles: &IdentityProfiles,
         expected_manifest_digest: &str,
+        build_id: &str,
     ) -> Result<Self, IdentityInitError> {
         validate_manifest_binding(launch, profiles, expected_manifest_digest)?;
+        if host_platform() != "macos" {
+            return Err(IdentityInitError::Unavailable);
+        }
         let profile = profiles
             .for_flavor(&launch.flavor)
             .ok_or(IdentityInitError::DescriptorRejected)?;
@@ -84,16 +89,28 @@ impl IdentityRuntime {
         if Path::new(&launch.user_data_root) != trusted_root {
             return Err(IdentityInitError::DescriptorRejected);
         }
-        if !production_collision_record_is_verified(profiles, &launch.flavor, host_platform()) {
-            return Err(IdentityInitError::NamespaceUnverified);
-        }
+        let ownership = crate::identity_ownership::preflight(
+            &platform_app_data_anchor()?,
+            &profile.user_data_relative_path,
+            &profile.profile_id,
+            &launch.flavor,
+            host_platform(),
+            &profile.keychain_service,
+            expected_manifest_digest,
+            build_id,
+        )
+        .map_err(map_ownership_error)?;
         let manifest = TrustedProfileManifest::new(
             profile.profile_id.clone(),
             launch.flavor.clone(),
             host_platform(),
             profile.keychain_service.clone(),
         );
-        Self::initialize_from_manifest(&manifest, &trusted_root)
+        let runtime = Self::initialize_from_manifest(&manifest, &trusted_root)?;
+        ownership
+            .commit_initialized(&runtime.snapshot.storage)
+            .map_err(|_| IdentityInitError::InitializationFailed)?;
+        Ok(runtime)
     }
 
     fn initialize_from_manifest(
@@ -203,16 +220,12 @@ fn trusted_production_root(relative: &str) -> Result<PathBuf, IdentityInitError>
     Ok(anchor.join(relative))
 }
 
-fn production_collision_record_is_verified(
-    _profiles: &IdentityProfiles,
-    _flavor: &str,
-    _platform: &str,
-) -> bool {
-    // Deliberately disabled until an exact read-only collision record binds
-    // each candidate path/service to its platform, profile, flavor, scope,
-    // source, time, and manifest digest. A manifest status string is not an
-    // activation authority.
-    false
+fn map_ownership_error(error: crate::identity_ownership::OwnershipError) -> IdentityInitError {
+    if error.is_unavailable() {
+        IdentityInitError::Unavailable
+    } else {
+        IdentityInitError::NamespaceUnverified
+    }
 }
 
 fn platform_app_data_anchor() -> Result<PathBuf, IdentityInitError> {

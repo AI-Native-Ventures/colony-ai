@@ -1,5 +1,7 @@
 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
 mod identity;
+#[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+mod identity_ownership;
 mod protocol;
 mod v2;
 
@@ -755,6 +757,7 @@ impl Host {
                     &frame.identity_launch,
                     &self.identity_profiles,
                     &self.identity_manifest_digest,
+                    &frame.build_id,
                 )
             } else if derivative {
                 identity::IdentityRuntime::initialize_derivative(
@@ -772,6 +775,7 @@ impl Host {
                 identity::IdentityInitError::ManifestMismatch => {
                     ProtocolError::IdentityManifestMismatch
                 }
+                identity::IdentityInitError::Unavailable => ProtocolError::IdentityUnavailable,
                 identity::IdentityInitError::NamespaceUnverified => {
                     ProtocolError::IdentityNamespaceUnverified
                 }

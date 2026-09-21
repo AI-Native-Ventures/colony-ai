@@ -17,8 +17,10 @@ identity-system-keyring = [
 ]
 
 [dependencies]
+atomic-write-file = "=0.3.0"
 colony_identity_kernel = { package = "colony-identity-kernel", path = "../identity-kernel" }
 colony_identity_store = { package = "colony-identity-store", path = "../identity-store", default-features = false, optional = true }
+fs2 = "=0.4.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
