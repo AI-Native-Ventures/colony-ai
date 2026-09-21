@@ -84,15 +84,16 @@ jobs:
             mkdir -p "$proof_home" "$proof_config" "$proof_runtime"
             chmod 700 "$proof_home" "$proof_runtime"
             (
-              export HOME="$proof_home"
               export XDG_CONFIG_HOME="$proof_config"
               export XDG_RUNTIME_DIR="$proof_runtime"
-              mkdir -p "$HOME/.local/share/keyrings"
+              export COLONY_IDENTITY_PROOF_HOME="$proof_home"
+              mkdir -p "$proof_home/.local/share/keyrings"
               dbus-run-session -- bash -euo pipefail -c '
                 test_name="$1"
                 production_binary="$2"
                 crash_binary="$3"
-                printf "colony-ci-password" | gnome-keyring-daemon --unlock
+                proof_home="$4"
+                printf "colony-ci-password" | HOME="$proof_home" gnome-keyring-daemon --unlock
                 COLONY_NATIVE_HOST_BIN="$production_binary" \
                   COLONY_IDENTITY_CRASH_BIN="$crash_binary" \
                   cargo test --locked \
@@ -100,7 +101,7 @@ jobs:
                     --no-default-features --features identity-system-keyring \
                     --test identity_linux_production "$test_name" \
                     -- --ignored --exact --nocapture
-              ' linux-identity-proof "$test_name" "$binary" "$crash_binary"
+              ' linux-identity-proof "$test_name" "$binary" "$crash_binary" "$proof_home"
             )
             rm -rf "$proof_root"
           }

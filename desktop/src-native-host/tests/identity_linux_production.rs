@@ -42,6 +42,13 @@ fn config_home() -> PathBuf {
     )
 }
 
+fn proof_home() -> PathBuf {
+    PathBuf::from(
+        std::env::var_os("COLONY_IDENTITY_PROOF_HOME")
+            .expect("hosted Linux proof supplies an isolated HOME"),
+    )
+}
+
 fn production_root() -> PathBuf {
     config_home()
         .join("Colony")
@@ -126,6 +133,7 @@ fn base_command(binary: PathBuf) -> Command {
         .stderr(Stdio::piped())
         .env_remove("COLONY_STAGE0_FAULT")
         .env_remove("COLONY_STAGE0_TEST_DEADLINE_MS")
+        .env("HOME", proof_home())
         .env("XDG_CONFIG_HOME", config_home());
     command
 }
