@@ -58,6 +58,7 @@ jobs:
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
@@ -86,6 +87,7 @@ jobs:
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
@@ -114,6 +116,7 @@ jobs:
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
