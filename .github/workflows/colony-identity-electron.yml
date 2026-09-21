@@ -90,16 +90,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          proof_home="$RUNNER_TEMP/colony-electron-identity-home"
+          # macOS Security.framework resolves the default keychain from the
+          # real user-domain HOME. Keep the app-data anchor there as well;
+          # PR11's custody lane proved this exact selection boundary. Only
+          # the named keychain is disposable, and only the exact profile
+          # namespace below is owned by this job.
+          proof_home="$HOME"
           keychain="$RUNNER_TEMP/colony-electron-identity.keychain-db"
-          mkdir -p "$proof_home/Library/Application Support/Colony/dev"
-          test ! -e "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+          proof_app_data="$proof_home/Library/Application Support"
+          profile_parent="$proof_app_data/Colony/dev/0000000000000001"
+          test ! -e "$profile_parent"
+          test ! -L "$profile_parent"
+          mkdir -p "$proof_app_data/Colony/dev"
+          test ! -L "$proof_app_data/Colony/dev"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
           HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
           HOME="$proof_home" security list-keychains -d user -s "$keychain"
           HOME="$proof_home" security default-keychain -d user -s "$keychain"
-          echo "HOME=$proof_home" >> "$GITHUB_ENV"
           echo "COLONY_IDENTITY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
       - name: Probe the clean production helper before Electron startup
