@@ -55,6 +55,7 @@ export const IDENTITY_ERROR_CODES = Object.freeze([
   "unknown_method",
 ]);
 export const IDENTITY_LIMITS = Object.freeze({
+  binaryPayloadLimitBytes: 8 * 1024 * 1024,
   defaultDeadlineMs: 10_000,
   frameLimitBytes: 16 * 1024 * 1024,
   inFlightLimit: 128,

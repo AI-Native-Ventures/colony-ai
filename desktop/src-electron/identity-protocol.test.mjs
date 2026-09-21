@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   IDENTITY_ERROR_CODES,
+  IDENTITY_LIMITS,
   IDENTITY_METADATA_FIELDS,
   IDENTITY_PROTOCOL_VERSION,
   IdentityProtocolError,
@@ -119,6 +120,10 @@ test("Rust 832 production registry vector is independently anchored", () => {
     digestJson(PRODUCTION_REGISTRY_DOCUMENT),
     RUST_PRODUCTION_REGISTRY_DIGEST,
   );
+});
+
+test("exported limits exactly mirror the frozen production registry", () => {
+  assert.deepEqual(IDENTITY_LIMITS, PRODUCTION_REGISTRY_DOCUMENT.limits);
 });
 
 test("canonicalization sorts UTF-8 object keys and preserves arrays", () => {
