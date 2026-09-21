@@ -532,16 +532,15 @@ impl Host {
             PendingKind::V1Health => {
                 self.send_response(&pending.binding, request_id, outcome, payload, error_code)
             }
-            PendingKind::V2Health | PendingKind::V2SharedIdentity | PendingKind::V2Identity => {
-                self.send_response_v2_with_schema(
+            PendingKind::V2Health | PendingKind::V2SharedIdentity | PendingKind::V2Identity => self
+                .send_response_v2_with_schema(
                     &pending.binding,
                     request_id,
                     outcome,
                     payload,
                     error_code,
                     pending.kind.v2_response_schema(),
-                )
-            }
+                ),
         }
     }
 
@@ -630,14 +629,7 @@ impl Host {
         payload: Option<serde_json::Value>,
         error_code: Option<&str>,
     ) -> Result<(), ProtocolError> {
-        self.send_response_v2_with_schema(
-            binding,
-            request_id,
-            outcome,
-            payload,
-            error_code,
-            None,
-        )
+        self.send_response_v2_with_schema(binding, request_id, outcome, payload, error_code, None)
     }
 
     fn send_response_v2_with_schema(
@@ -650,9 +642,7 @@ impl Host {
         response_schema: Option<&str>,
     ) -> Result<(), ProtocolError> {
         self.write_v2(
-            v2::response_frame(
-            binding, request_id, outcome, payload, error_code,
-            ),
+            v2::response_frame(binding, request_id, outcome, payload, error_code),
             response_schema,
         )
     }

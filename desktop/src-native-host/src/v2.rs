@@ -527,9 +527,9 @@ pub fn validate_registry_document(document: &Value) -> Result<(), ProtocolError>
             require_schema(schema_id, "v2_registry_payload_schema")?;
         }
         if let Some(schema_ids) = schema.get("payloadSchemas") {
-            let schema_ids = schema_ids
-                .as_array()
-                .ok_or(ProtocolError::InvalidManifest("v2_registry_payload_schemas"))?;
+            let schema_ids = schema_ids.as_array().ok_or(ProtocolError::InvalidManifest(
+                "v2_registry_payload_schemas",
+            ))?;
             ensure_unique_strings(schema_ids, "v2_registry_payload_schemas")?;
             for schema_id in schema_ids {
                 require_schema(schema_id, "v2_registry_payload_schema")?;
@@ -586,7 +586,10 @@ pub fn validate_registry() -> Result<(), ProtocolError> {
     Ok(())
 }
 
-fn schema<'a>(document: &'a Value, schema_id: &str) -> Result<&'a serde_json::Map<String, Value>, ProtocolError> {
+fn schema<'a>(
+    document: &'a Value,
+    schema_id: &str,
+) -> Result<&'a serde_json::Map<String, Value>, ProtocolError> {
     document
         .get("schemas")
         .and_then(Value::as_object)
@@ -667,9 +670,7 @@ fn validate_value_schema(
     }
     if let Some(nested) = schema.get("nestedSchemas").and_then(Value::as_object) {
         for (field, nested_schema) in nested {
-            let nested = nested_schema
-                .as_str()
-                .ok_or(ProtocolError::Serialization)?;
+            let nested = nested_schema.as_str().ok_or(ProtocolError::Serialization)?;
             let value = object.get(field).ok_or(ProtocolError::Serialization)?;
             validate_value_schema(value, nested, document)?;
         }
@@ -690,7 +691,11 @@ fn response_schema_is_declared(document: &Value, schema_id: &str) -> bool {
         .and_then(Value::as_object)
         .and_then(|response| response.get("payloadSchemas"))
         .and_then(Value::as_array)
-        .is_some_and(|schemas| schemas.iter().any(|schema| schema.as_str() == Some(schema_id)))
+        .is_some_and(|schemas| {
+            schemas
+                .iter()
+                .any(|schema| schema.as_str() == Some(schema_id))
+        })
 }
 
 /// Validate every v2 outbound frame against the exact schema selected by the
@@ -1347,13 +1352,8 @@ mod tests {
         );
         assert!(validate_outbound(&error_with_payload, Some("relay-url")).is_err());
 
-        let missing_error = response_frame(
-            &binding,
-            "error-request".to_string(),
-            "error",
-            None,
-            None,
-        );
+        let missing_error =
+            response_frame(&binding, "error-request".to_string(), "error", None, None);
         assert!(validate_outbound(&missing_error, Some("relay-url")).is_err());
 
         let unknown_error = response_frame(
