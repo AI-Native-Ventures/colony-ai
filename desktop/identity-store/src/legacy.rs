@@ -190,6 +190,62 @@ impl DiagnosticFailure {
 }
 
 #[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticBackend {
+    NotAttempted,
+    NoEntry,
+    NoStorageAccess,
+    PlatformFailure,
+    Other,
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticBackend {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticBackend {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAttempted => "not_attempted",
+            Self::NoEntry => "no_entry",
+            Self::NoStorageAccess => "no_storage_access",
+            Self::PlatformFailure => "platform_failure",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticStatus {
+    NotAttempted,
+    None,
+    Code(i32),
+}
+
+#[cfg(feature = "diagnostic")]
+impl Default for DiagnosticStatus {
+    fn default() -> Self {
+        Self::NotAttempted
+    }
+}
+
+#[cfg(feature = "diagnostic")]
+impl DiagnosticStatus {
+    fn as_str(self) -> String {
+        match self {
+            Self::NotAttempted => "not_attempted".to_string(),
+            Self::None => "none".to_string(),
+            Self::Code(code) => code.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "diagnostic")]
 #[derive(Debug, Default)]
 struct HeadlessDiagnosticReport {
     probe: DiagnosticProbe,
@@ -197,18 +253,22 @@ struct HeadlessDiagnosticReport {
     readback: DiagnosticReadback,
     marker: DiagnosticMarker,
     failure: DiagnosticFailure,
+    backend: DiagnosticBackend,
+    status: DiagnosticStatus,
 }
 
 #[cfg(feature = "diagnostic")]
 impl HeadlessDiagnosticReport {
     fn stable_line(&self) -> String {
         format!(
-            "identity_diagnostic probe={} write={} readback={} marker={} failure={}",
+            "identity_diagnostic probe={} write={} readback={} marker={} failure={} backend={} status={}",
             self.probe.as_str(),
             self.write.as_str(),
             self.readback.as_str(),
             self.marker.as_str(),
             self.failure.as_str(),
+            self.backend.as_str(),
+            self.status.as_str(),
         )
     }
 }
@@ -470,6 +530,15 @@ impl SecretStore {
         self.diagnostic_update(|report| report.failure = failure);
     }
 
+    #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+    fn record_keyring_error(&self, error: &keyring::Error) {
+        let (backend, status) = diagnostic_keyring_error(error);
+        self.diagnostic_update(|report| {
+            report.backend = backend;
+            report.status = status;
+        });
+    }
+
     /// Return a process-global `SecretStore` for `service`. All callers with
     /// the same service name share one instance — and therefore one in-memory
     /// cache and one mutex — so concurrent blob read-modify-write operations
@@ -501,6 +570,45 @@ fn is_keyring_availability_error(error_str: &str) -> bool {
 #[cfg(feature = "system-keyring")]
 fn keyring_entry(service: &str, key: &str) -> Result<keyring::Entry, keyring::Error> {
     keyring::Entry::new(service, key)
+}
+
+#[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+fn diagnostic_keyring_error(error: &keyring::Error) -> (DiagnosticBackend, DiagnosticStatus) {
+    match error {
+        keyring::Error::NoEntry => (DiagnosticBackend::NoEntry, DiagnosticStatus::None),
+        keyring::Error::NoStorageAccess(source) => (
+            DiagnosticBackend::NoStorageAccess,
+            diagnostic_os_status(source.as_ref()),
+        ),
+        keyring::Error::PlatformFailure(source) => (
+            DiagnosticBackend::PlatformFailure,
+            diagnostic_os_status(source.as_ref()),
+        ),
+        _ => (DiagnosticBackend::Other, DiagnosticStatus::None),
+    }
+}
+
+#[cfg(all(
+    feature = "diagnostic",
+    feature = "system-keyring",
+    target_os = "macos"
+))]
+fn diagnostic_os_status(source: &(dyn std::error::Error + 'static)) -> DiagnosticStatus {
+    use std::error::Error as _;
+
+    source
+        .downcast_ref::<security_framework::base::Error>()
+        .map(|error| DiagnosticStatus::Code(error.code()))
+        .unwrap_or(DiagnosticStatus::None)
+}
+
+#[cfg(all(
+    feature = "diagnostic",
+    feature = "system-keyring",
+    not(target_os = "macos")
+))]
+fn diagnostic_os_status(_source: &(dyn std::error::Error + 'static)) -> DiagnosticStatus {
+    DiagnosticStatus::None
 }
 
 // macOS-specific imports for the Data Protection Keychain backend.
@@ -591,15 +699,31 @@ impl SecretStore {
     /// builds that lack hardened-runtime entitlements).
     #[cfg(feature = "system-keyring")]
     fn read_blob_raw_keyring(&self) -> Result<Option<Vec<u8>>, String> {
-        let entry =
-            keyring_entry(&self.service, BLOB_KEY).map_err(|e| format!("keyring entry: {e}"))?;
+        let entry = match keyring_entry(&self.service, BLOB_KEY) {
+            Ok(entry) => entry,
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                return Err(format!("keyring entry: {error}"));
+            }
+        };
         match entry.get_password() {
             Ok(s) => Ok(Some(s.into_bytes())),
-            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(keyring::Error::NoEntry) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&keyring::Error::NoEntry);
+                Ok(None)
+            }
             Err(e) if is_keyring_availability_error(&e.to_string()) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&e);
                 Err(format!("keyring unavailable: {e}"))
             }
-            Err(e) => Err(format!("keyring read: {e}")),
+            Err(e) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&e);
+                Err(format!("keyring read: {e}"))
+            }
         }
     }
 
@@ -703,11 +827,22 @@ impl SecretStore {
     #[cfg(feature = "system-keyring")]
     fn write_blob_raw_keyring(&self, bytes: &[u8]) -> Result<(), String> {
         let value = std::str::from_utf8(bytes).map_err(|e| format!("blob utf8 encode: {e}"))?;
-        let entry =
-            keyring_entry(&self.service, BLOB_KEY).map_err(|e| format!("keyring entry: {e}"))?;
-        entry
-            .set_password(value)
-            .map_err(|e| format!("keyring write: {e}"))
+        let entry = match keyring_entry(&self.service, BLOB_KEY) {
+            Ok(entry) => entry,
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                return Err(format!("keyring entry: {error}"));
+            }
+        };
+        match entry.set_password(value) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+                self.record_keyring_error(&error);
+                Err(format!("keyring write: {error}"))
+            }
+        }
     }
 
     /// Probe whether `key` exists and whether the backend is reachable.
@@ -3472,6 +3607,41 @@ mod tests {
         ));
         // A plain "not found" is per-entry, not an availability failure.
         assert!(!is_keyring_availability_error("entry not found"));
+    }
+
+    #[cfg(all(feature = "diagnostic", feature = "system-keyring"))]
+    #[test]
+    fn diagnostic_keyring_classifier_keeps_backend_categories_finite() {
+        assert_eq!(
+            diagnostic_keyring_error(&keyring::Error::NoEntry),
+            (DiagnosticBackend::NoEntry, DiagnosticStatus::None)
+        );
+
+        let platform_error = keyring::Error::PlatformFailure(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "diagnostic-only synthetic error",
+        )));
+        assert_eq!(
+            diagnostic_keyring_error(&platform_error),
+            (DiagnosticBackend::PlatformFailure, DiagnosticStatus::None)
+        );
+    }
+
+    #[cfg(all(
+        feature = "diagnostic",
+        feature = "system-keyring",
+        target_os = "macos"
+    ))]
+    #[test]
+    fn diagnostic_keyring_classifier_preserves_only_macos_status_code() {
+        let platform_error = keyring::Error::NoStorageAccess(Box::new(SFError::from_code(-25291)));
+        assert_eq!(
+            diagnostic_keyring_error(&platform_error),
+            (
+                DiagnosticBackend::NoStorageAccess,
+                DiagnosticStatus::Code(-25291)
+            )
+        );
     }
 
     #[cfg(target_os = "macos")]

@@ -174,10 +174,10 @@ fn sanitized_diagnostic(stderr: &[u8]) -> String {
         let Some(fields) = line.strip_prefix("identity_diagnostic ") else {
             continue;
         };
-        let mut values = [None; 5];
+        let mut values = [None; 7];
         for field in fields.split_whitespace() {
             let Some((name, value)) = field.split_once('=') else {
-                values = [None; 5];
+                values = [None; 7];
                 break;
             };
             let index = match name {
@@ -186,13 +186,15 @@ fn sanitized_diagnostic(stderr: &[u8]) -> String {
                 "readback" => 2,
                 "marker" => 3,
                 "failure" => 4,
+                "backend" => 5,
+                "status" => 6,
                 _ => {
-                    values = [None; 5];
+                    values = [None; 7];
                     break;
                 }
             };
             if values[index].is_some() {
-                values = [None; 5];
+                values = [None; 7];
                 break;
             }
             let allowed = match index {
@@ -222,17 +224,31 @@ fn sanitized_diagnostic(stderr: &[u8]) -> String {
                     value,
                     "none" | "probe" | "prewrite_read" | "write" | "readback" | "marker"
                 ),
+                5 => matches!(
+                    value,
+                    "not_attempted"
+                        | "no_entry"
+                        | "no_storage_access"
+                        | "platform_failure"
+                        | "other"
+                ),
+                6 => {
+                    (value == "not_attempted" || value == "none")
+                        || (value.len() <= 11 && value.parse::<i32>().is_ok())
+                }
                 _ => false,
             };
             if !allowed {
-                values = [None; 5];
+                values = [None; 7];
                 break;
             }
             values[index] = Some(value);
         }
-        if let [Some(probe), Some(write), Some(readback), Some(marker), Some(failure)] = values {
+        if let [Some(probe), Some(write), Some(readback), Some(marker), Some(failure), Some(backend), Some(status)] =
+            values
+        {
             return format!(
-                "diagnostic probe={probe} write={write} readback={readback} marker={marker} failure={failure}"
+                "diagnostic probe={probe} write={write} readback={readback} marker={marker} failure={failure} backend={backend} status={status}"
             );
         }
     }
