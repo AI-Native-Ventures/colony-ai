@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-home"
-          keychain="$RUNNER_TEMP/colony-identity-proof.keychain-db"
+          keychain="$HOME/Library/Keychains/colony-identity-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -56,6 +56,7 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
+          mkdir -p "$HOME/Library/Keychains"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
@@ -75,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-race-home"
-          keychain="$RUNNER_TEMP/colony-identity-race-proof.keychain-db"
+          keychain="$HOME/Library/Keychains/colony-identity-race-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -85,6 +86,7 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
+          mkdir -p "$HOME/Library/Keychains"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
@@ -104,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-reserved-home"
-          keychain="$RUNNER_TEMP/colony-identity-reserved-proof.keychain-db"
+          keychain="$HOME/Library/Keychains/colony-identity-reserved-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
             security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
@@ -114,6 +116,7 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$proof_home/Library/Application Support"
+          mkdir -p "$HOME/Library/Keychains"
           security create-keychain -p "" "$keychain" >/dev/null
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "" "$keychain"
