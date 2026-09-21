@@ -18,9 +18,11 @@ test.skip(
   "production identity custody is macOS arm64-only in this slice",
 );
 
-async function launchIdentity() {
+async function launchIdentity({ requireHelper = true } = {}) {
   assert.ok(fs.existsSync(packagePaths.appBinary));
-  assert.ok(fs.existsSync(packagePaths.hostResource));
+  if (requireHelper) {
+    assert.ok(fs.existsSync(packagePaths.hostResource));
+  }
   const application = await electron.launch({
     executablePath: packagePaths.appBinary,
     env: { ...process.env },
@@ -31,15 +33,18 @@ async function launchIdentity() {
 }
 
 async function readIdentity(page: Page) {
-  return page.evaluate(async () => ({
-    surface: {
-      stage0: Object.keys(window.stage0 ?? {}).sort(),
-      identity: Object.keys(window.stage0?.identity ?? {}).sort(),
-    },
-    binding: await window.stage0.bindingState(),
-    shared: await window.stage0.identity.isSharedIdentity(),
-    identity: await window.stage0.identity.getIdentity(),
+  const surface = await page.evaluate(() => ({
+    stage0: Object.keys(window.stage0 ?? {}).sort(),
+    identity: Object.keys(window.stage0?.identity ?? {}).sort(),
   }));
+  const binding = await page.evaluate(() => window.stage0.bindingState());
+  const shared = await page.evaluate(() =>
+    window.stage0.identity.isSharedIdentity(),
+  );
+  const identity = await page.evaluate(() =>
+    window.stage0.identity.getIdentity(),
+  );
+  return { surface, binding, shared, identity };
 }
 
 async function close(application: ElectronApplication) {
@@ -100,7 +105,7 @@ test("packaged identity helper failure stays pre-READY and exposes only a bounde
   const backup = `${packagePaths.hostResource}.identity-test-disabled`;
   fs.renameSync(packagePaths.hostResource, backup);
   try {
-    const { application, page } = await launchIdentity();
+    const { application, page } = await launchIdentity({ requireHelper: false });
     try {
       await page.waitForLoadState("domcontentloaded");
       await assert.rejects(
