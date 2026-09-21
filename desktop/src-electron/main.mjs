@@ -112,10 +112,7 @@ const runtime = {
 // before Electron can create the user-data directory. Health-only launches
 // retain their existing ready-time startup; only the trusted macOS identity
 // path needs this earlier reservation barrier.
-if (identityLaunch) {
-  initializeRuntime();
-  void startRuntime();
-}
+const identityStartup = identityLaunch ? startRuntime() : null;
 
 function publishTestState() {
   if (!instrumentationEnabled || !STAGE0_TEST.stateGlobal) return;
@@ -676,8 +673,11 @@ app.whenReady().then(() => {
   registerTestSubframePreload();
   setupIpc();
   initializeRuntime();
-  createWindow();
-  if (!identityLaunch) void startRuntime();
+  const ready = identityLaunch ? identityStartup : Promise.resolve();
+  void ready.then(() => {
+    createWindow();
+    if (!identityLaunch) void startRuntime();
+  });
 });
 
 export { IPC, manifest, runtime, trustedRendererUrl };
