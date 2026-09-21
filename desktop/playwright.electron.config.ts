@@ -6,6 +6,7 @@ export default defineConfig({
     "**/electron-host-feasibility.spec.ts",
     "**/electron-host-feasibility-normal.spec.ts",
     "**/electron-identity-bridge.spec.ts",
+    "**/electron-react-boot.spec.ts",
   ],
   timeout: 45_000,
   expect: {

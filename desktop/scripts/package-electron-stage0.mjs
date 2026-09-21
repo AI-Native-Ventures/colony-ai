@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { lstat, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +14,13 @@ const flavor =
 if (flavor !== "normal" && flavor !== "instrumented") {
   throw new Error(`unsupported Stage 0 flavor: ${flavor}`);
 }
+const uiMode =
+  process.argv
+    .find((value) => value.startsWith("--ui="))
+    ?.slice("--ui=".length) ?? "feasibility";
+if (uiMode !== "feasibility" && uiMode !== "react") {
+  throw new Error(`unsupported Stage 0 UI mode: ${uiMode}`);
+}
 
 const target = getStage0TargetFromArguments();
 const packageDirectory = path.join(
@@ -25,6 +32,7 @@ const resourceDirectory = path.join(
   `.stage0-package-resources-${flavor}`,
 );
 const outputDirectory = path.join(desktopDirectory, `dist-electron-${flavor}`);
+const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
 const appName =
   target.executableName ??
   (flavor === "normal" ? "Buzz Stage0 Normal" : "Buzz Stage0 Instrumented");
@@ -46,14 +54,61 @@ function run(command, args) {
   }
 }
 
+const ELECTRON_PUBLIC_PATHS = Object.freeze([
+  "/landing/",
+  "/buzz.svg",
+  "/boot.css",
+]);
+
+async function rewriteElectronPublicPaths(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const filePath = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(`renderer build contains a symbolic link: ${filePath}`);
+    }
+    if (entry.isDirectory()) {
+      await rewriteElectronPublicPaths(filePath);
+      continue;
+    }
+    if (!entry.isFile() || !/\.(?:html|js|css)$/.test(entry.name)) continue;
+    const info = await lstat(filePath);
+    if (!info.isFile()) {
+      throw new Error(`renderer build is not a regular file: ${filePath}`);
+    }
+    let text = await readFile(filePath, "utf8");
+    for (const publicPath of ELECTRON_PUBLIC_PATHS) {
+      const relativePath = `.${publicPath}`;
+      text = text
+        .replaceAll(`"${publicPath}`, `"${relativePath}`)
+        .replaceAll(`'${publicPath}`, `'${relativePath}`)
+        .replaceAll(`(${publicPath}`, `(${relativePath}`);
+    }
+    await writeFile(filePath, text, "utf8");
+  }
+}
+
 async function main() {
   await rm(outputDirectory, { recursive: true, force: true });
+  if (uiMode === "react") {
+    await rm(rendererBuildDirectory, { recursive: true, force: true });
+    run(process.execPath, [
+      path.join(desktopDirectory, "node_modules", "vite", "bin", "vite.js"),
+      "build",
+      "--base",
+      "./",
+      "--outDir",
+      rendererBuildDirectory,
+    ]);
+    await rewriteElectronPublicPaths(rendererBuildDirectory);
+  }
   run(process.execPath, [
     path.join(desktopDirectory, "scripts", "stage-electron-stage0.mjs"),
     `--flavor=${flavor}`,
     `--platform=${target.platform}`,
     `--arch=${target.arch}`,
     `--target=${target.targetTriple}`,
+    `--ui=${uiMode}`,
   ]);
 
   const packagerScript = path.join(

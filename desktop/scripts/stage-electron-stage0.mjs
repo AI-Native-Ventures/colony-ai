@@ -1,4 +1,12 @@
-import { chmod, copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +16,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
 
 const flavors = new Set(["normal", "instrumented"]);
+const uiModes = new Set(["feasibility", "react"]);
 
 function readFlavor() {
   const argument = process.argv.find((value) => value.startsWith("--flavor="));
@@ -18,8 +27,17 @@ function readFlavor() {
   return flavor;
 }
 
+function readUiMode() {
+  const argument = process.argv.find((value) => value.startsWith("--ui="));
+  const uiMode = argument?.slice("--ui=".length) ?? "feasibility";
+  if (!uiModes.has(uiMode)) {
+    throw new Error(`unsupported stage0 UI mode: ${uiMode}`);
+  }
+  return uiMode;
+}
+
 async function assertRegularFile(filePath, label) {
-  const info = await stat(filePath).catch(() => null);
+  const info = await lstat(filePath).catch(() => null);
   if (!info?.isFile()) {
     throw new Error(`${label} is missing or not a regular file: ${filePath}`);
   }
@@ -34,8 +52,41 @@ async function copyEntry(packageDirectory, sourceRelative, targetRelative) {
   await copyFile(source, target);
 }
 
+async function copyTree(sourceDirectory, packageDirectory, targetDirectory) {
+  const sourceInfo = await lstat(sourceDirectory).catch(() => null);
+  if (!sourceInfo?.isDirectory()) {
+    throw new Error(
+      `renderer build is missing or not a directory: ${sourceDirectory}`,
+    );
+  }
+  const entries = await readdir(sourceDirectory, { withFileTypes: true });
+  for (const entry of entries) {
+    const source = path.join(sourceDirectory, entry.name);
+    const target = path.join(packageDirectory, targetDirectory, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(`renderer build contains a symbolic link: ${source}`);
+    }
+    if (entry.isDirectory()) {
+      await mkdir(target, { recursive: true });
+      await copyTree(
+        source,
+        packageDirectory,
+        path.join(targetDirectory, entry.name),
+      );
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error(
+        `renderer build contains an unsupported entry: ${source}`,
+      );
+    }
+    await copyFile(source, target);
+  }
+}
+
 async function main() {
   const flavor = readFlavor();
+  const uiMode = readUiMode();
   const target = getStage0TargetFromArguments();
   const helperName = target.helperName;
   const helperInput = process.env.COLONY_NATIVE_HOST_BIN
@@ -59,6 +110,11 @@ async function main() {
     desktopDirectory,
     `.stage0-package-resources-${flavor}`,
   );
+  const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
+  const rendererSource =
+    uiMode === "react"
+      ? "src-electron/stage0-renderer.react.mjs"
+      : "src-electron/stage0-renderer.feasibility.mjs";
   const files = [
     ["electron-stage0-manifest.json", "electron-stage0-manifest.json"],
     ["src-electron/main.mjs", "src-electron/main.mjs"],
@@ -83,16 +139,21 @@ async function main() {
     ],
     ["src-electron/identity-launch.mjs", "src-electron/identity-launch.mjs"],
     ["src-electron/renderer-host.mjs", "src-electron/renderer-host.mjs"],
+    [rendererSource, "src-electron/stage0-renderer.mjs"],
     ["src-electron/stage0-platform.mjs", "src-electron/stage0-platform.mjs"],
     ["src-electron/ipc-security.mjs", "src-electron/ipc-security.mjs"],
-    [
-      "src-electron/feasibility/index.html",
-      "src-electron/feasibility/index.html",
-    ],
-    [
-      "src-electron/feasibility/renderer.mjs",
-      "src-electron/feasibility/renderer.mjs",
-    ],
+    ...(uiMode === "feasibility"
+      ? [
+          [
+            "src-electron/feasibility/index.html",
+            "src-electron/feasibility/index.html",
+          ],
+          [
+            "src-electron/feasibility/renderer.mjs",
+            "src-electron/feasibility/renderer.mjs",
+          ],
+        ]
+      : []),
   ];
   const helperInfo = await assertRegularFile(helperInput, "native host");
   if (target.platform !== "win32" && (helperInfo.mode & 0o111) === 0) {
@@ -113,6 +174,13 @@ async function main() {
   for (const [source, target] of files) {
     await copyEntry(packageDirectory, source, target);
   }
+  if (uiMode === "react") {
+    await copyTree(
+      rendererBuildDirectory,
+      packageDirectory,
+      "src-electron/renderer",
+    );
+  }
 
   const packageJson = {
     name: flavorModule.STAGE0_PACKAGE_NAME,
@@ -129,6 +197,11 @@ async function main() {
     stage0Arch: target.arch,
     stage0TargetTriple: target.targetTriple,
     stage0HelperName: target.helperName,
+    stage0UiMode: uiMode,
+    stage0RendererEntry:
+      uiMode === "react"
+        ? "src-electron/renderer/index.html"
+        : "src-electron/feasibility/index.html",
   };
   await writeFile(
     path.join(packageDirectory, "package.json"),
@@ -149,6 +222,7 @@ async function main() {
       arch: target.arch,
       targetTriple: target.targetTriple,
       packageName: flavorModule.STAGE0_PACKAGE_NAME,
+      uiMode,
       files: files.map(([, target]) => target).concat("package.json"),
     })}\n`,
   );

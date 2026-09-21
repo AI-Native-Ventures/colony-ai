@@ -7,6 +7,7 @@ import { loadManifest } from "./host-protocol.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { getStage0Target } from "./stage0-platform.mjs";
+import { STAGE0_RENDERER_ENTRY } from "./stage0-renderer.mjs";
 import { createTrustedIdentityLaunch } from "./identity-launch.mjs";
 import {
   isTrustedNavigation,
@@ -44,7 +45,7 @@ const IPC = Object.freeze({
 });
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 const stage0Target = getStage0Target();
-const rendererEntry = path.join(rootDirectory, "feasibility", "index.html");
+const rendererEntry = path.join(rootDirectory, STAGE0_RENDERER_ENTRY);
 const testSubframePreload = STAGE0_TEST.subframePreload
   ? path.join(rootDirectory, STAGE0_TEST.subframePreload)
   : null;

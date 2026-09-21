@@ -47,6 +47,23 @@ const normalPackageForbiddenTokens = [
   "disable-rebind-fence",
   "stage0-instrumented",
   'STAGE0_BUILD_FLAVOR = "instrumented"',
+  "__BUZZ_E2E__",
+  "maybeInstallE2eTauriMocks",
+  "src/main.tsx",
+];
+// The upstream React bundle contains shared Tauri adapter modules because the
+// browser/Tauri product still owns those capabilities. Electron must not
+// execute them, but rejecting their package names would make a real upstream
+// build impossible. Keep the generated bundle guard focused on development
+// mocks and sandbox-disabling launch paths; the packaged spec proves the
+// Electron runtime has no Tauri internals and remains on the onboarding gate.
+const reactRendererForbiddenTokens = [
+  "__BUZZ_E2E__",
+  "maybeInstallE2eTauriMocks",
+  "src/main.tsx",
+  "--no-sandbox",
+  "sandbox: false",
+  "ELECTRON_DISABLE_SANDBOX",
 ];
 const sourceFiles = [
   "electron-stage0-manifest.json",
@@ -61,6 +78,8 @@ const sourceFiles = [
   "src-electron/identity-launch.mjs",
   "src-electron/renderer-host.mjs",
   "src-electron/stage0-platform.mjs",
+  "src-electron/stage0-renderer.feasibility.mjs",
+  "src-electron/stage0-renderer.react.mjs",
   "src-electron/ipc-security.mjs",
   "src-electron/feasibility/index.html",
   "src-electron/feasibility/renderer.mjs",
@@ -265,8 +284,12 @@ export function inspectAsarEntries(archivePath) {
   };
 }
 
-function checkAsar(archivePath, flavor, target) {
+function checkAsar(archivePath, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
+  const expectedRendererEntry =
+    uiMode === "react"
+      ? "src-electron/renderer/index.html"
+      : "src-electron/feasibility/index.html";
   const requiredPackageFiles = new Set([
     "package.json",
     "electron-stage0-manifest.json",
@@ -278,11 +301,14 @@ function checkAsar(archivePath, flavor, target) {
     "src-electron/identity-protocol.mjs",
     "src-electron/identity-launch.mjs",
     "src-electron/renderer-host.mjs",
+    "src-electron/stage0-renderer.mjs",
     "src-electron/ipc-security.mjs",
     "src-electron/stage0-platform.mjs",
-    "src-electron/feasibility/index.html",
-    "src-electron/feasibility/renderer.mjs",
+    expectedRendererEntry,
   ]);
+  if (uiMode === "feasibility") {
+    requiredPackageFiles.add("src-electron/feasibility/renderer.mjs");
+  }
   if (expected.instrumentation) {
     requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
   }
@@ -350,6 +376,14 @@ function checkAsar(archivePath, flavor, target) {
   if (packageJson.stage0HelperName !== target.helperName) {
     fail(`ASAR helper name is ${packageJson.stage0HelperName ?? "missing"}`);
   }
+  if (packageJson.stage0UiMode !== uiMode) {
+    fail(`ASAR UI mode is ${packageJson.stage0UiMode ?? "missing"}`);
+  }
+  if (packageJson.stage0RendererEntry !== expectedRendererEntry) {
+    fail(
+      `ASAR renderer entry is ${packageJson.stage0RendererEntry ?? "missing"}`,
+    );
+  }
   if (packageJson.main !== "src-electron/main.mjs") {
     fail(`ASAR entry point is ${packageJson.main ?? "missing"}`);
   }
@@ -363,6 +397,35 @@ function checkAsar(archivePath, flavor, target) {
     )
   ) {
     fail("staged flavor metadata disagrees with package metadata");
+  }
+  const rendererSource = extractEntry(
+    "src-electron/stage0-renderer.mjs",
+  ).toString("utf8");
+  if (
+    !rendererSource.includes(`STAGE0_UI_MODE = "${uiMode}"`) ||
+    !rendererSource.includes(
+      `STAGE0_RENDERER_ENTRY = "${uiMode === "react" ? "renderer/index.html" : "feasibility/index.html"}"`,
+    )
+  ) {
+    fail("staged renderer mode disagrees with package metadata");
+  }
+  const rendererHtml = extractEntry(expectedRendererEntry).toString("utf8");
+  if (uiMode === "react") {
+    if (!rendererHtml.includes('<div id="root"></div>')) {
+      fail("React renderer entry is missing the root mount");
+    }
+    if (
+      rendererHtml.includes("src/main.tsx") ||
+      rendererHtml.includes("feasibility/index.html") ||
+      rendererHtml.includes('src="/src/')
+    ) {
+      fail(
+        "React renderer entry still references a development/feasibility asset",
+      );
+    }
+    if (entrySet.has("src-electron/feasibility/index.html")) {
+      fail("React ASAR contains the feasibility renderer");
+    }
   }
   if (!expected.instrumentation) {
     const normalFlavorAssertions = [
@@ -397,7 +460,12 @@ function checkAsar(archivePath, flavor, target) {
     }
   }
   for (const entry of fileEntries) {
-    scanText(`ASAR:${entry}`, extractEntry(entry).toString("utf8"));
+    const text = extractEntry(entry).toString("utf8");
+    if (uiMode === "react" && entry.startsWith("src-electron/renderer/")) {
+      scanText(`React ASAR:${entry}`, text, reactRendererForbiddenTokens);
+    } else {
+      scanText(`ASAR:${entry}`, text);
+    }
   }
 }
 
@@ -485,7 +553,7 @@ function findExecutableFiles(directory) {
   return matches;
 }
 
-function checkMacBundle(bundleRoot, flavor, target) {
+function checkMacBundle(bundleRoot, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
   const apps = findApps(bundleRoot);
   if (apps.length !== 1) fail(`expected one app bundle, found ${apps.length}`);
@@ -522,7 +590,7 @@ function checkMacBundle(bundleRoot, flavor, target) {
     path.join(appRoot, "Contents", "Info.plist"),
     "Info.plist",
   );
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   const infoPlist = readFileSync(infoPlistInfo.path, "utf8");
   scanText("bundle metadata", infoPlist);
   if (!infoPlist.includes(expected.bundleId)) {
@@ -536,7 +604,7 @@ function checkMacBundle(bundleRoot, flavor, target) {
   };
 }
 
-function checkWindowsBundle(bundleRoot, flavor, target) {
+function checkWindowsBundle(bundleRoot, flavor, target, uiMode) {
   const { appRoot, appExecutable } = findWindowsApp(
     bundleRoot,
     target.executableName,
@@ -576,7 +644,7 @@ function checkWindowsBundle(bundleRoot, flavor, target) {
       `expected one app and one helper executable, found ${executableFiles.length}`,
     );
   }
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   return {
     appRoot,
     archive: archiveInfo.path,
@@ -608,7 +676,7 @@ export function readElfMachine(filePath) {
   }
 }
 
-function checkLinuxBundle(bundleRoot, flavor, target) {
+function checkLinuxBundle(bundleRoot, flavor, target, uiMode) {
   const expected = packageFlavors[flavor];
   const { appRoot, appExecutable } = findLinuxApp(bundleRoot, expected.appName);
   const resources = path.join(appRoot, "resources");
@@ -655,7 +723,7 @@ function checkLinuxBundle(bundleRoot, flavor, target) {
   if (readElfMachine(sandboxInfo.path) !== 0x3e) {
     fail("Electron chrome-sandbox is not an x86_64 ELF");
   }
-  checkAsar(archiveInfo.path, flavor, target);
+  checkAsar(archiveInfo.path, flavor, target, uiMode);
   return {
     appRoot,
     archive: archiveInfo.path,
@@ -665,16 +733,16 @@ function checkLinuxBundle(bundleRoot, flavor, target) {
   };
 }
 
-function checkBundle(bundleRoot, flavor, target) {
+function checkBundle(bundleRoot, flavor, target, uiMode) {
   if (target.bundleKind === "app") {
-    return checkMacBundle(bundleRoot, flavor, target);
+    return checkMacBundle(bundleRoot, flavor, target, uiMode);
   }
   if (target.bundleKind === "directory") {
     if (target.platform === "win32") {
-      return checkWindowsBundle(bundleRoot, flavor, target);
+      return checkWindowsBundle(bundleRoot, flavor, target, uiMode);
     }
     if (target.platform === "linux") {
-      return checkLinuxBundle(bundleRoot, flavor, target);
+      return checkLinuxBundle(bundleRoot, flavor, target, uiMode);
     }
   }
   fail(`unsupported package bundle kind ${target.bundleKind}`);
@@ -689,6 +757,11 @@ function main() {
   if (!Object.hasOwn(packageFlavors, flavor)) {
     fail(`unsupported flavor ${flavor}`);
   }
+  const uiArgument = process.argv.find((value) => value.startsWith("--ui="));
+  const uiMode = uiArgument?.slice("--ui=".length) ?? "feasibility";
+  if (uiMode !== "feasibility" && uiMode !== "react") {
+    fail(`unsupported UI mode ${uiMode}`);
+  }
   const target = getStage0TargetFromArguments();
   scanSource();
   if (!packageArgument) {
@@ -698,13 +771,14 @@ function main() {
   const packageRoot = path.resolve(packageArgument);
   if (!existsSync(packageRoot))
     fail(`package path does not exist: ${packageRoot}`);
-  const result = checkBundle(packageRoot, flavor, target);
+  const result = checkBundle(packageRoot, flavor, target, uiMode);
   console.log(
     JSON.stringify({
       electron_stage0_package_guard: "passed",
       platform: target.platform,
       arch: target.arch,
       targetTriple: target.targetTriple,
+      uiMode,
       app: result.appRoot,
       appExecutable: result.appExecutable ?? null,
       asar: result.archive,

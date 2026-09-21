@@ -13,8 +13,12 @@ on:
       - "desktop/scripts/check-electron-stage0.test.mjs"
       - "desktop/scripts/package-electron-stage0.mjs"
       - "desktop/scripts/stage-electron-stage0.mjs"
+      - "desktop/index.html"
+      - "desktop/vite.config.ts"
+      - "desktop/src/**"
       - "desktop/playwright.electron.config.ts"
       - "desktop/tests/electron-identity-bridge.spec.ts"
+      - "desktop/tests/electron-react-boot.spec.ts"
       - "desktop/tests/electron-stage0-package.ts"
       - "pnpm-lock.yaml"
       - ".github/workflows/colony-identity-electron.yml"
@@ -296,6 +300,148 @@ jobs:
           set -euo pipefail
           proof_home="${HOME:-}"
           keychain="${COLONY_IDENTITY_KEYCHAIN:-}"
+          if [ -n "$proof_home" ]; then
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+          fi
+          if [ -n "$keychain" ]; then
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+          fi
+          if [ -n "$proof_home" ]; then
+            rm -rf "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+          fi
+
+  macos-react-boot:
+    name: packaged Electron React identity landing / macOS arm64
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native macOS arm64 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *) echo "React identity landing requires a native arm64 runner" >&2; exit 1 ;;
+          esac
+
+      - name: Activate the pinned toolchain and install desktop dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --version
+          pnpm --version
+          pnpm install --frozen-lockfile --filter buzz
+          pnpm --dir desktop exec install-electron
+
+      - name: Build the production identity helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --release \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --target aarch64-apple-darwin \
+            --no-default-features --features identity-system-keyring
+
+      - name: Stage and package the real React build in both flavors
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop electron:stage0:package:react
+          pnpm --dir desktop electron:stage0:package:react:instrumented
+
+      - name: Inspect the real React ASAR and helper boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-normal --flavor=normal --ui=react
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-instrumented --flavor=instrumented --ui=react
+          normal_app="$(find desktop/dist-electron-normal -path '*/Contents/MacOS/Buzz Stage0 Normal' -type f -print -quit)"
+          test -n "$normal_app"
+          file "$normal_app" | grep -Eq 'arm64|aarch64'
+
+      - name: Prepare an owned disposable macOS identity namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The production system-keyring proof must use the real user-domain
+          # HOME. Only this named keychain and exact Stage 0 profile namespace
+          # are owned by the job; no isolated HOME is substituted.
+          proof_home="$HOME"
+          keychain="$RUNNER_TEMP/colony-electron-react-identity.keychain-db"
+          proof_app_data="$proof_home/Library/Application Support"
+          profile_parent="$proof_app_data/Colony/dev/0000000000000001"
+          test ! -e "$profile_parent"
+          test ! -L "$profile_parent"
+          mkdir -p "$proof_app_data/Colony/dev"
+          test ! -L "$proof_app_data/Colony/dev"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
+          echo "COLONY_REACT_IDENTITY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Run the packaged real React identity landing proof
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: react-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: react-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright test \
+            --config playwright.electron.config.ts \
+            tests/electron-identity-bridge.spec.ts \
+            tests/electron-react-boot.spec.ts
+
+      - name: Record React package and screenshot evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          git show -s --format='parents=%P%nsubject=%s' HEAD
+          for flavor in normal instrumented; do
+            package_dir="desktop/.stage0-package-$flavor"
+            node -e 'const fs=require("node:fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p+"/package.json"));console.log(JSON.stringify({flavor:j.stage0Flavor,applicationId:j.stage0ApplicationId,userDataSuffix:j.stage0UserDataSuffix,sourceRevision:j.stage0SourceRevision,instrumentation:j.stage0Instrumentation,uiMode:j.stage0UiMode,rendererEntry:j.stage0RendererEntry}))' "$package_dir"
+          done
+          find desktop/dist-electron-normal desktop/dist-electron-instrumented \
+            desktop/react-test-results desktop/react-playwright-electron-report \
+            -type f -print0 2>/dev/null | sort -z | xargs -0 shasum -a 256
+
+      - name: Upload unsigned React identity landing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-react-boot-macos-arm64-${{ github.sha }}
+          path: |
+            desktop/dist-electron-normal
+            desktop/dist-electron-instrumented
+            desktop/react-playwright-electron-report
+            desktop/react-test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove the owned disposable namespace and keychain
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_home="${HOME:-}"
+          keychain="${COLONY_REACT_IDENTITY_KEYCHAIN:-}"
           if [ -n "$proof_home" ]; then
             HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
             HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
