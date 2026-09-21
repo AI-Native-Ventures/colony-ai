@@ -46,22 +46,21 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-home"
-          keychain="$HOME/Library/Keychains/colony-identity-proof.keychain-db"
+          keychain="$proof_home/Library/Keychains/colony-identity-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
-            security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
             rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support"
-          mkdir -p "$HOME/Library/Keychains"
-          security create-keychain -p "" "$keychain" >/dev/null
-          security set-keychain-settings -lut 7200 "$keychain"
-          security unlock-keychain -p "" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security default-keychain -d user -s "$keychain"
+          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -75,22 +74,21 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-race-home"
-          keychain="$HOME/Library/Keychains/colony-identity-race-proof.keychain-db"
+          keychain="$proof_home/Library/Keychains/colony-identity-race-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
-            security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
             rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support"
-          mkdir -p "$HOME/Library/Keychains"
-          security create-keychain -p "" "$keychain" >/dev/null
-          security set-keychain-settings -lut 7200 "$keychain"
-          security unlock-keychain -p "" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security default-keychain -d user -s "$keychain"
+          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -104,22 +102,21 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-reserved-home"
-          keychain="$HOME/Library/Keychains/colony-identity-reserved-proof.keychain-db"
+          keychain="$proof_home/Library/Keychains/colony-identity-reserved-proof.keychain-db"
           binary="$PWD/desktop/src-native-host/target/release/colony-native-host"
           cleanup() {
-            security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
             rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support"
-          mkdir -p "$HOME/Library/Keychains"
-          security create-keychain -p "" "$keychain" >/dev/null
-          security set-keychain-settings -lut 7200 "$keychain"
-          security unlock-keychain -p "" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security default-keychain -d user -s "$keychain"
+          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
@@ -155,22 +152,21 @@ jobs:
         run: |
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-identity-diagnostic-home"
-          keychain="$HOME/Library/Keychains/colony-identity-diagnostic.keychain-db"
+          keychain="$proof_home/Library/Keychains/colony-identity-diagnostic.keychain-db"
           binary="$COLONY_IDENTITY_DIAGNOSTIC_TARGET/release/colony-native-host"
           cleanup() {
-            security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
             rm -rf "$proof_home"
           }
           trap cleanup EXIT
-          mkdir -p "$proof_home/Library/Application Support"
-          mkdir -p "$HOME/Library/Keychains"
-          security create-keychain -p "" "$keychain" >/dev/null
-          security set-keychain-settings -lut 7200 "$keychain"
-          security unlock-keychain -p "" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security default-keychain -d user -s "$keychain"
+          mkdir -p "$proof_home/Library/Application Support" "$proof_home/Library/Keychains"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
           COLONY_IDENTITY_PROOF_HOME="$proof_home" \
             COLONY_NATIVE_HOST_BIN="$binary" \
             cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
