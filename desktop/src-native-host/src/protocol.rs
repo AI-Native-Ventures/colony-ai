@@ -256,7 +256,10 @@ fn validate_identity_profiles(manifest: &Manifest) -> Result<(), ProtocolError> 
         || profiles.normal.user_data_relative_path
             != format!("{}/normal", manifest.namespace.user_data_relative_path)
         || profiles.instrumented.user_data_relative_path
-            != format!("{}/instrumented", manifest.namespace.user_data_relative_path)
+            != format!(
+                "{}/instrumented",
+                manifest.namespace.user_data_relative_path
+            )
         || profiles.normal.profile_id == profiles.instrumented.profile_id
         || profiles.normal.user_data_relative_path == profiles.instrumented.user_data_relative_path
         || profiles.normal.keychain_service == profiles.instrumented.keychain_service
@@ -289,7 +292,9 @@ fn validate_identity_profiles(manifest: &Manifest) -> Result<(), ProtocolError> 
             profile.collision_evidence.linux.as_str(),
         ] {
             if !matches!(status, "observed-unoccupied" | "unknown") {
-                return Err(ProtocolError::InvalidManifest("identity_collision_evidence"));
+                return Err(ProtocolError::InvalidManifest(
+                    "identity_collision_evidence",
+                ));
             }
         }
     }
@@ -307,9 +312,9 @@ fn safe_namespace_component(value: &str) -> bool {
 }
 
 fn safe_service_name(value: &str) -> bool {
-    value.bytes().all(|byte| {
-        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
-    })
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
 pub fn identity_manifest_digest(profiles: &IdentityProfiles) -> Result<String, ProtocolError> {

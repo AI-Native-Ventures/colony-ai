@@ -1202,7 +1202,10 @@ pub fn registry_document_for(production: bool) -> Value {
     else {
         return document;
     };
-    if let Some(fields) = identity_launch.get_mut("fields").and_then(Value::as_array_mut) {
+    if let Some(fields) = identity_launch
+        .get_mut("fields")
+        .and_then(Value::as_array_mut)
+    {
         fields.push(json!("identityManifestDigest"));
     }
     if let Some(required) = identity_launch
@@ -1278,8 +1281,8 @@ fn canonicalize(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_registry_json, digest_for_document, lifecycle_frame, ready_frame, rebound_frame,
-        production_registry_digest, production_registry_document, registry_digest,
+        canonical_registry_json, digest_for_document, lifecycle_frame, production_registry_digest,
+        production_registry_document, ready_frame, rebound_frame, registry_digest,
         registry_document, response_frame, validate_outbound, validate_registry_document,
         validate_registry_for, validate_runtime_limits, PRODUCTION_REGISTRY_DIGEST,
         REGISTRY_DIGEST,

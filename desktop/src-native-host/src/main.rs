@@ -14,8 +14,8 @@ use std::{
 };
 
 use protocol::{
-    decode_frame, encode_frame, load_manifest, Binding, Envelope, ErrorBody, OutboundFrame,
-    IdentityProfiles, ProtocolError, ProtocolLimits, FALLBACK_RELAY_URL, TEST_DEADLINE_ENV,
+    decode_frame, encode_frame, load_manifest, Binding, Envelope, ErrorBody, IdentityProfiles,
+    OutboundFrame, ProtocolError, ProtocolLimits, FALLBACK_RELAY_URL, TEST_DEADLINE_ENV,
 };
 
 const FAULT_ENV: &str = "COLONY_STAGE0_FAULT";
@@ -964,7 +964,9 @@ fn decode_any_frame(frame: &[u8], limits: &ProtocolLimits) -> Result<DecodedFram
 
 fn launch_mode_from_args() -> LaunchMode {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
-    let test = arguments.iter().any(|argument| argument == "--identity-v2-test");
+    let test = arguments
+        .iter()
+        .any(|argument| argument == "--identity-v2-test");
     let production = arguments.iter().any(|argument| argument == "--identity-v2");
     if test && production {
         eprintln!("native host startup rejected mixed identity launch modes");

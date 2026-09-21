@@ -416,7 +416,7 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
         PRODUCTION_PROFILE_ID,
         PRODUCTION_SESSION_ID,
     ))
-        .expect("production HELLO should be framed");
+    .expect("production HELLO should be framed");
 
     if cfg!(target_os = "macos") {
         let ready = host.read_value();
@@ -451,7 +451,7 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
             PRODUCTION_PROFILE_ID,
             PRODUCTION_SESSION_ID,
         ))
-            .expect("production rebind should be framed");
+        .expect("production rebind should be framed");
         assert_eq!(host.read_value()["type"], "REBOUND");
         assert_eq!(host.read_value()["payload"]["state"], "rebound");
         host.send(production_request(
@@ -493,7 +493,10 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
         let finished = restarted.finish_with_stderr();
         assert!(finished.status.success());
         assert_stderr_safe(&finished.stderr);
-        assert_eq!(fs::read_to_string(&sentinel).expect("sentinel should remain"), "sentinel");
+        assert_eq!(
+            fs::read_to_string(&sentinel).expect("sentinel should remain"),
+            "sentinel"
+        );
 
         let (instrumented_base, instrumented_root) =
             production_root("production-instrumented", "instrumented");
@@ -519,7 +522,9 @@ fn production_carrier_binds_manifest_before_ready_and_preserves_profile_restart(
             ))
             .expect("instrumented identity request should be framed");
         let instrumented_identity = instrumented.read_value();
-        assert!(instrumented_identity["payload"]["pubkey"].as_str().is_some());
+        assert!(instrumented_identity["payload"]["pubkey"]
+            .as_str()
+            .is_some());
         let finished = instrumented.finish_with_stderr();
         assert!(finished.status.success());
         assert_stderr_safe(&finished.stderr);
@@ -552,7 +557,10 @@ fn production_carrier_rejects_stale_digest_before_profile_creation() {
     assert!(!finished.status.success());
     assert_stderr_safe(&finished.stderr);
     assert!(String::from_utf8_lossy(&finished.stderr).contains("identity_manifest_mismatch"));
-    assert!(!root.exists(), "stale manifest must fail before profile creation");
+    assert!(
+        !root.exists(),
+        "stale manifest must fail before profile creation"
+    );
     let _ = fs::remove_dir_all(base);
 }
 
