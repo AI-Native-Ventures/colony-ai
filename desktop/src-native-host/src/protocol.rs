@@ -42,6 +42,11 @@ pub enum ProtocolError {
     WriteTimeout,
     Serialization,
     Io,
+    IdentityUnavailable,
+    IdentityModeRequired,
+    IdentityDescriptorRejected,
+    IdentityInitializationFailed,
+    RegistryMismatch,
 }
 
 impl ProtocolError {
@@ -65,6 +70,11 @@ impl ProtocolError {
             Self::WriteTimeout => "write_timeout",
             Self::Serialization => "serialization_error",
             Self::Io => "io_error",
+            Self::IdentityUnavailable => "identity_unavailable",
+            Self::IdentityModeRequired => "identity_mode_required",
+            Self::IdentityDescriptorRejected => "identity_descriptor_rejected",
+            Self::IdentityInitializationFailed => "identity_initialization_failed",
+            Self::RegistryMismatch => "registry_mismatch",
         }
     }
 }
@@ -232,21 +242,37 @@ pub struct Binding {
 }
 
 impl Binding {
-    pub fn from_envelope(envelope: &Envelope) -> Result<Self, ProtocolError> {
-        validate_id(&envelope.profile_id, "profile_id")?;
-        validate_id(&envelope.session_id, "session_id")?;
-        if envelope.generation_id == 0 {
+    pub fn from_parts(
+        profile_id: &str,
+        session_id: &str,
+        generation_id: u64,
+    ) -> Result<Self, ProtocolError> {
+        validate_id(profile_id, "profile_id")?;
+        validate_id(session_id, "session_id")?;
+        if generation_id == 0 {
             return Err(ProtocolError::InvalidField("generation_id"));
         }
         Ok(Self {
-            profile_id: envelope.profile_id.clone(),
-            session_id: envelope.session_id.clone(),
-            generation_id: envelope.generation_id,
+            profile_id: profile_id.to_string(),
+            session_id: session_id.to_string(),
+            generation_id,
         })
+    }
+
+    pub fn from_envelope(envelope: &Envelope) -> Result<Self, ProtocolError> {
+        Self::from_parts(
+            &envelope.profile_id,
+            &envelope.session_id,
+            envelope.generation_id,
+        )
     }
 
     pub fn matches(&self, envelope: &Envelope) -> bool {
         self.profile_id == envelope.profile_id && self.session_id == envelope.session_id
+    }
+
+    pub fn matches_parts(&self, profile_id: &str, session_id: &str) -> bool {
+        self.profile_id == profile_id && self.session_id == session_id
     }
 }
 
