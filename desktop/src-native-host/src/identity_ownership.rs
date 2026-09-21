@@ -820,7 +820,7 @@ mod tests {
             std::process::id()
         ));
         fs::create_dir_all(&anchor).expect("test anchor should be creatable");
-        anchor
+        fs::canonicalize(&anchor).expect("test anchor should be canonical");
     }
 
     fn assert_probe_rejects_before_reservation(
