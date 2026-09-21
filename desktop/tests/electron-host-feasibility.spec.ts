@@ -10,7 +10,10 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { getStage0PackagePaths } from "./electron-stage0-package";
+import {
+  assertActiveLinuxSandbox,
+  getStage0PackagePaths,
+} from "./electron-stage0-package";
 
 const desktopDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -52,13 +55,28 @@ async function launch(overrides: Record<string, string> = {}) {
     fs.existsSync(hostResource),
     `missing helper resource: ${hostResource}`,
   );
+  const sandboxEnvironment =
+    process.platform === "linux"
+      ? {
+          CHROME_DEVEL_SANDBOX: path.join(
+            packagePaths.appRoot,
+            "chrome-sandbox",
+          ),
+        }
+      : {};
   const application = await electron.launch({
     executablePath: appBinary,
-    env: launchEnvironment(overrides),
+    chromiumSandbox: true,
+    env: { ...launchEnvironment(sandboxEnvironment), ...overrides },
     // This is an instrumented-only synthetic device. It does not grant
     // permission (the installed main-process handler must still deny it), and
     // it keeps the proof independent of real microphones/cameras.
-    args: ["--use-fake-device-for-media-stream"],
+    args: [
+      ...(process.platform === "linux"
+        ? ["--enable-logging=stderr", "--v=1"]
+        : []),
+      "--use-fake-device-for-media-stream",
+    ],
   });
   const page = await application.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -118,6 +136,7 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
   });
   try {
     await assertReady(page);
+    await assertActiveLinuxSandbox(application);
     assert.equal(await visibleWindowCount(application), 1);
     const state = await testState(application);
     assert.equal(state.windowCount, 1);
@@ -128,6 +147,12 @@ test("packaged app starts one visible Electron window and one Rust helper", asyn
       state.userDataPath,
       /Colony[\\/]dev[\\/]0000000000000001[\\/]instrumented$/,
     );
+    if (process.platform === "linux" && process.env.XDG_CONFIG_HOME) {
+      assert.ok(
+        state.userDataPath.startsWith(process.env.XDG_CONFIG_HOME),
+        `Linux user-data escaped the fresh XDG namespace: ${state.userDataPath}`,
+      );
+    }
     assert.doesNotMatch(state.userDataPath, /xyz\.block\.buzz/);
     assert.deepEqual(networkRequests, []);
     const exposedKeys = await page.evaluate(() => Object.keys(window.stage0));

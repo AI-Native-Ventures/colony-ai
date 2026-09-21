@@ -17,6 +17,8 @@ on:
       - "desktop/scripts/stage-electron-stage0.mjs"
       - "desktop/playwright.electron.config.ts"
       - "desktop/tests/electron-stage0-package.ts"
+      - "desktop/tests/electron-stage0-sandbox.mjs"
+      - "desktop/tests/electron-stage0-sandbox.test.mjs"
       - "desktop/tests/electron-host-feasibility.spec.ts"
       - "desktop/tests/electron-host-feasibility-normal.spec.ts"
       - "pnpm-lock.yaml"
@@ -64,6 +66,15 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           pnpm install --frozen-lockfile --filter buzz
+
+      - name: Run focused package guard fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --test \
+            desktop/scripts/check-electron-stage0.test.mjs \
+            desktop/tests/electron-stage0-sandbox.test.mjs
 
       - name: Download the pinned Electron runtime
         shell: bash
@@ -418,5 +429,322 @@ jobs:
             desktop/windows-instrumented-test-results
             desktop/windows-reload-mutation-report.json
             desktop/windows-ipc-mutation-report.json
+          if-no-files-found: error
+          retention-days: 7
+
+  packaged-feasibility-linux:
+    name: packaged Electron / Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native Linux x64 non-root runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          test "$machine" = "x86_64"
+          runtime_uid="$(id -u)"
+          echo "runtime_uid=$runtime_uid"
+          test "$runtime_uid" -ne 0
+
+      - name: Install Linux display and Electron runtime prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libasound2t64 \
+            libgbm1 \
+            libgtk-3-0 \
+            libnss3 \
+            libxss1 \
+            libxtst6
+          command -v xvfb-run
+
+      - name: Activate the pinned toolchain and Linux target
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustup target add x86_64-unknown-linux-gnu
+          rustc -vV
+          node --version
+          pnpm --version
+
+      - name: Install only the desktop dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm install --frozen-lockfile --filter buzz
+
+      - name: Download the pinned Electron runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec install-electron
+
+      - name: Build the standalone x64 Linux helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            --release --target x86_64-unknown-linux-gnu
+
+      - name: Stage and package both immutable flavors
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/x86_64-unknown-linux-gnu/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rm -rf desktop/dist-electron-normal desktop/dist-electron-instrumented
+          pnpm --dir desktop electron:stage0:package:linux
+          pnpm --dir desktop electron:stage0:package:linux:instrumented
+
+      - name: Configure and observe the real Chromium sandbox helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for flavor in normal instrumented; do
+            package_root="desktop/dist-electron-$flavor"
+            mapfile -t sandboxes < <(find "$package_root" -type f -name chrome-sandbox -print)
+            test "${#sandboxes[@]}" -eq 1
+            sudo chown root:root "${sandboxes[0]}"
+            sudo chmod 4755 "${sandboxes[0]}"
+            stat --printf='linux_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
+            sandbox_api="$("${sandboxes[0]}" --get-api)"
+            printf 'linux_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
+          done
+          test "$(id -u)" -ne 0
+          awk '/^(Name|Uid|Gid|NoNewPrivs|Seccomp|CapEff):/ {printf "%s%s", $0, ORS}' /proc/$$/status
+          for setting in \
+            /proc/sys/kernel/unprivileged_userns_clone \
+            /proc/sys/user/max_user_namespaces \
+            /proc/sys/kernel/apparmor_restrict_unprivileged_userns; do
+            if test -r "$setting"; then
+              printf 'linux_kernel_setting=%s value=%s\n' "$setting" "$(cat "$setting")"
+            else
+              printf 'linux_kernel_setting=%s value=unavailable\n' "$setting"
+            fi
+          done
+
+      - name: Inspect the real Linux ELF, ASAR, and sandbox boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-normal --platform=linux --arch=x64 \
+            --target=x86_64-unknown-linux-gnu --flavor=normal
+          node desktop/scripts/check-electron-stage0.mjs \
+            desktop/dist-electron-instrumented --platform=linux --arch=x64 \
+            --target=x86_64-unknown-linux-gnu --flavor=instrumented
+
+      - name: Archive, hash, relocate, and isolate the Linux candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "source_revision=$GITHUB_SHA target=x86_64-unknown-linux-gnu runner_architecture=$(uname -m) runtime_uid=$(id -u)"
+          archive_root="$RUNNER_TEMP/electron-stage0-linux-x64"
+          runtime_root="$(mktemp -d /tmp/colony-electron-stage0-linux-x64.XXXXXX)"
+          rm -rf "$archive_root"
+          mkdir -p "$archive_root" "$runtime_root/relocated/normal" "$runtime_root/relocated/instrumented"
+          tar -czf "$archive_root/electron-stage0-linux-x64-normal.tar.gz" \
+            -C desktop/dist-electron-normal .
+          tar -czf "$archive_root/electron-stage0-linux-x64-instrumented.tar.gz" \
+            -C desktop/dist-electron-instrumented .
+          sha256sum "$archive_root"/*.tar.gz
+          tar -xzf "$archive_root/electron-stage0-linux-x64-normal.tar.gz" \
+            -C "$runtime_root/relocated/normal"
+          tar -xzf "$archive_root/electron-stage0-linux-x64-instrumented.tar.gz" \
+            -C "$runtime_root/relocated/instrumented"
+          for flavor in normal instrumented; do
+            relocated_root="$runtime_root/relocated/$flavor"
+            mapfile -t sandboxes < <(find "$relocated_root" -type f -name chrome-sandbox -print)
+            test "${#sandboxes[@]}" -eq 1
+            sudo chown root:root "${sandboxes[0]}"
+            sudo chmod 4755 "${sandboxes[0]}"
+            stat --printf='linux_relocated_chrome_sandbox=%n uid=%u gid=%g mode=%a\n' "${sandboxes[0]}"
+            sandbox_api="$("${sandboxes[0]}" --get-api)"
+            printf 'linux_relocated_chrome_sandbox_api=%s flavor=%s\n' "$sandbox_api" "$flavor"
+            sandbox_mount="$(findmnt -no FSTYPE,OPTIONS --target "${sandboxes[0]}")"
+            printf 'linux_chrome_sandbox_mount=%s flavor=%s\n' "$sandbox_mount" "$flavor"
+            case ",$sandbox_mount," in
+              *,nosuid,*)
+                echo "relocated chrome-sandbox mount is nosuid: $sandbox_mount" >&2
+                exit 1
+                ;;
+            esac
+            node desktop/scripts/check-electron-stage0.mjs \
+              "$relocated_root" --platform=linux --arch=x64 \
+              --target=x86_64-unknown-linux-gnu --flavor="$flavor"
+            app_asar="$(find "$relocated_root" -path '*/resources/app.asar' -type f -print -quit)"
+            test -n "$app_asar"
+            helper="$(dirname "$app_asar")/colony-native-host"
+            test -x "$helper"
+            node -e 'const fs=require("node:fs");const j=JSON.parse(fs.readFileSync(process.argv[1]));console.log(JSON.stringify({flavor:j.stage0Flavor,platform:j.stage0Platform,arch:j.stage0Arch,targetTriple:j.stage0TargetTriple,helperName:j.stage0HelperName,applicationId:j.stage0ApplicationId,userDataSuffix:j.stage0UserDataSuffix,sourceRevision:j.stage0SourceRevision,instrumentation:j.stage0Instrumentation}))' "desktop/.stage0-package-$flavor/package.json"
+            sha256sum "$app_asar" "$helper"
+          done
+          printf 'COLONY_STAGE0_NORMAL_ROOT=%s\n' "$runtime_root/relocated/normal" >> "$GITHUB_ENV"
+          printf 'COLONY_STAGE0_INSTRUMENTED_ROOT=%s\n' "$runtime_root/relocated/instrumented" >> "$GITHUB_ENV"
+          xdg_root="$runtime_root/xdg"
+          mkdir -p "$xdg_root/config" "$xdg_root/data" "$xdg_root/cache" "$xdg_root/runtime"
+          chmod 700 "$xdg_root/runtime"
+          printf 'XDG_CONFIG_HOME=%s\n' "$xdg_root/config" >> "$GITHUB_ENV"
+          printf 'XDG_DATA_HOME=%s\n' "$xdg_root/data" >> "$GITHUB_ENV"
+          printf 'XDG_CACHE_HOME=%s\n' "$xdg_root/cache" >> "$GITHUB_ENV"
+          printf 'XDG_RUNTIME_DIR=%s\n' "$xdg_root/runtime" >> "$GITHUB_ENV"
+
+      - name: Allow only the relocated packaged binaries to use Linux user namespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -r /sys/kernel/security/apparmor/profiles
+          command -v apparmor_parser
+          normal_binary="$(find "$COLONY_STAGE0_NORMAL_ROOT" -type f -name 'Buzz Stage0 Normal' -print -quit)"
+          instrumented_binary="$(find "$COLONY_STAGE0_INSTRUMENTED_ROOT" -type f -name 'Buzz Stage0 Instrumented' -print -quit)"
+          test -n "$normal_binary"
+          test -n "$instrumented_binary"
+          profile_file="$RUNNER_TEMP/colony-electron-stage0-apparmor"
+          {
+            printf 'abi <abi/4.0>,\n'
+            printf 'include <tunables/global>\n\n'
+            printf 'profile colony-electron-stage0-normal "%s" flags=(unconfined) {\n' "$normal_binary"
+            printf '  userns,\n}\n\n'
+            printf 'profile colony-electron-stage0-instrumented "%s" flags=(unconfined) {\n' "$instrumented_binary"
+            printf '  userns,\n}\n'
+          } > "$profile_file"
+          sudo install -o root -g root -m 0644 "$profile_file" \
+            /etc/apparmor.d/colony-electron-stage0
+          sudo apparmor_parser -r /etc/apparmor.d/colony-electron-stage0
+          sudo grep -F 'colony-electron-stage0-normal' \
+            /sys/kernel/security/apparmor/profiles
+          sudo grep -F 'colony-electron-stage0-instrumented' \
+            /sys/kernel/security/apparmor/profiles
+          printf 'linux_apparmor_userns_profiles=loaded normal=%s instrumented=%s\n' \
+            "$normal_binary" "$instrumented_binary"
+
+      - name: Run the relocated normal Linux Electron proof
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: linux-normal-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: linux-normal-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x720x24' \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility-normal.spec.ts
+
+      - name: Run the relocated instrumented Linux Electron proof
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: linux-instrumented-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: linux-instrumented-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x720x24' \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.electron.config.ts \
+              tests/electron-host-feasibility.spec.ts
+
+      - name: Prove the Linux packaged reload guard is falsifiable
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          report="$GITHUB_WORKSPACE/desktop/linux-reload-mutation-report.json"
+          rm -f "$report"
+          set +e
+          COLONY_STAGE0_TEST_MUTATION=disable-rebind-fence \
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$report" \
+            xvfb-run --auto-servernum --server-args='-screen 0 1280x720x24' \
+              pnpm --dir desktop exec playwright test \
+                --config playwright.electron.config.ts \
+                tests/electron-host-feasibility.spec.ts \
+                --grep "reload rebinds the same helper" \
+                --reporter=json --retries=0
+          status=$?
+          set -e
+          if [ "$status" -ne 1 ]; then
+            echo "reload fence mutation did not produce the required test-failure status: $status" >&2
+            exit 1
+          fi
+          node desktop/scripts/check-electron-mutation-report.mjs \
+            "$report" --mutation=disable-rebind-fence
+          echo "reload fence mutation=expected-failure status=$status report=validated"
+
+      - name: Prove the Linux packaged sender guard is falsifiable
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          report="$GITHUB_WORKSPACE/desktop/linux-ipc-mutation-report.json"
+          rm -f "$report"
+          set +e
+          COLONY_STAGE0_TEST_MUTATION=allow-untrusted-ipc \
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$report" \
+            xvfb-run --auto-servernum --server-args='-screen 0 1280x720x24' \
+              pnpm --dir desktop exec playwright test \
+                --config playwright.electron.config.ts \
+                tests/electron-host-feasibility.spec.ts \
+                --grep "packaged IPC, navigation, window, and permission guards deny" \
+                --reporter=json --retries=0
+          status=$?
+          set -e
+          if [ "$status" -ne 1 ]; then
+            echo "untrusted IPC mutation did not produce the required test-failure status: $status" >&2
+            exit 1
+          fi
+          node desktop/scripts/check-electron-mutation-report.mjs \
+            "$report" --mutation=allow-untrusted-ipc
+          echo "untrusted IPC mutation=expected-failure status=$status report=validated"
+
+      - name: Remove the hosted-only Linux AppArmor profile
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile=/etc/apparmor.d/colony-electron-stage0
+          if test -f "$profile"; then
+            if sudo grep -Fq 'colony-electron-stage0-normal' \
+              /sys/kernel/security/apparmor/profiles; then
+              sudo apparmor_parser -R "$profile"
+            fi
+            sudo rm -f "$profile"
+          fi
+
+      - name: Upload unsigned Linux normal candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-linux-x64-normal-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/electron-stage0-linux-x64/electron-stage0-linux-x64-normal.tar.gz
+            desktop/linux-normal-playwright-electron-report
+            desktop/linux-normal-test-results
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unsigned Linux instrumented derivative evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-stage0-linux-x64-instrumented-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/electron-stage0-linux-x64/electron-stage0-linux-x64-instrumented.tar.gz
+            desktop/linux-instrumented-playwright-electron-report
+            desktop/linux-instrumented-test-results
+            desktop/linux-reload-mutation-report.json
+            desktop/linux-ipc-mutation-report.json
           if-no-files-found: error
           retention-days: 7

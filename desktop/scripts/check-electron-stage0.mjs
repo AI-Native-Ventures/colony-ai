@@ -5,7 +5,8 @@ import {
   readFileSync,
   readdirSync,
   readSync,
-  statSync,
+  lstatSync,
+  realpathSync,
 } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -32,6 +33,9 @@ const forbiddenTokens = [
   "xyz.block.buzz.app",
   "xyz.block.buzz",
   "fallback-tauri",
+  "--no-sandbox",
+  "sandbox: false",
+  "ELECTRON_DISABLE_SANDBOX",
 ];
 const normalPackageForbiddenTokens = [
   "COLONY_STAGE0_TEST",
@@ -147,22 +151,116 @@ function scanSource() {
   loadManifest(path.join(desktopDirectory, "electron-stage0-manifest.json"));
 }
 
+function readDirectoryEntries(directory, packageRoot) {
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    fail(`unable to read package directory ${directory}`);
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      assertContainedPath(
+        packageRoot,
+        path.join(directory, entry.name),
+        `package entry ${entry.name}`,
+      );
+    }
+  }
+  return entries;
+}
+
+function assertContainedPath(packageRoot, candidate, label) {
+  let rootRealPath;
+  try {
+    rootRealPath = realpathSync(packageRoot);
+  } catch {
+    fail(`package root is not readable: ${packageRoot}`);
+  }
+
+  let candidateRealPath;
+  try {
+    candidateRealPath = realpathSync(candidate);
+  } catch {
+    fail(`${label} is missing or unreadable: ${candidate}`);
+  }
+
+  const relativePath = path.relative(rootRealPath, candidateRealPath);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    fail(`${label} escapes package root`);
+  }
+  return candidateRealPath;
+}
+
+export function assertContainedRegularFile(packageRoot, candidate, label) {
+  const candidateRealPath = assertContainedPath(packageRoot, candidate, label);
+
+  let info;
+  try {
+    info = lstatSync(candidateRealPath);
+  } catch {
+    fail(`${label} is missing or unreadable: ${candidate}`);
+  }
+  if (!info.isFile()) {
+    fail(`${label} is not a regular file: ${candidate}`);
+  }
+  return { path: candidateRealPath, info };
+}
+
 function findApps(packageRoot) {
   const results = [];
   const visit = (directory) => {
-    for (const entry of readdirSync(directory)) {
-      const absolute = path.join(directory, entry);
-      const info = statSync(absolute);
-      if (entry.endsWith(".app") && info.isDirectory()) {
+    for (const entry of readDirectoryEntries(directory, packageRoot)) {
+      if (entry.isSymbolicLink()) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.name.endsWith(".app") && entry.isDirectory()) {
         results.push(absolute);
         continue;
       }
-      if (info.isDirectory() && !entry.includes("node_modules"))
+      if (entry.isDirectory() && !entry.name.includes("node_modules"))
         visit(absolute);
     }
   };
   visit(packageRoot);
   return results;
+}
+
+export function inspectAsarEntries(archivePath) {
+  const entryByCanonicalPath = canonicalizeAsarEntries(
+    listPackage(archivePath),
+  );
+  const entries = [...entryByCanonicalPath.keys()];
+  const rawEntry = (entry) => entryByCanonicalPath.get(entry) ?? entry;
+  // Keep the archive library's native separator for lookup. Canonical slash
+  // normalization is only for validation and collision detection.
+  const lookupEntry = (entry) => rawEntry(entry).replace(/^[/\\]/, "");
+  const extractEntry = (entry) => extractFile(archivePath, lookupEntry(entry));
+  const metadataByEntry = new Map();
+  for (const entry of entries) {
+    const metadata = statFile(archivePath, lookupEntry(entry), false);
+    if (!metadata || typeof metadata !== "object") {
+      fail(`ASAR entry has invalid metadata: ${entry}`);
+    }
+    if ("link" in metadata) {
+      fail(`ASAR link metadata is not permitted: ${entry}`);
+    }
+    metadataByEntry.set(entry, metadata);
+  }
+  const fileEntries = entries.filter(
+    (entry) => !("files" in metadataByEntry.get(entry)),
+  );
+  return {
+    entryByCanonicalPath,
+    entries,
+    extractEntry,
+    fileEntries,
+    lookupEntry,
+    metadataByEntry,
+  };
 }
 
 function checkAsar(archivePath, flavor, target) {
@@ -184,22 +282,15 @@ function checkAsar(archivePath, flavor, target) {
   if (expected.instrumentation) {
     requiredPackageFiles.add("src-electron/test-subframe-preload.cjs");
   }
-  const entryByCanonicalPath = canonicalizeAsarEntries(
-    listPackage(archivePath),
-  );
-  const entries = [...entryByCanonicalPath.keys()];
-  const rawEntry = (entry) => entryByCanonicalPath.get(entry) ?? entry;
-  // Keep the archive library's native separator for lookup. Canonical slash
-  // normalization is only for validation and collision detection.
-  const lookupEntry = (entry) => rawEntry(entry).replace(/^[/\\]/, "");
-  const extractEntry = (entry) => extractFile(archivePath, lookupEntry(entry));
-  const fileEntries = entries.filter((entry) => {
-    const metadata = statFile(archivePath, lookupEntry(entry));
-    return !("files" in metadata) && !("link" in metadata);
-  });
+  const { entries, extractEntry, fileEntries, metadataByEntry } =
+    inspectAsarEntries(archivePath);
   const entrySet = new Set(entries);
   for (const required of requiredPackageFiles) {
     if (!entrySet.has(required)) fail(`ASAR is missing ${required}`);
+    const metadata = metadataByEntry.get(required);
+    if (!metadata || "files" in metadata || "link" in metadata) {
+      fail(`ASAR required entry is not a regular file: ${required}`);
+    }
   }
   for (const entry of fileEntries) {
     if (
@@ -330,12 +421,12 @@ function findWindowsApp(packageRoot, appName) {
   const expectedExecutable = `${appName}.exe`;
   const matches = [];
   const visit = (directory) => {
-    for (const entry of readdirSync(directory)) {
-      const absolute = path.join(directory, entry);
-      const info = statSync(absolute);
-      if (info.isDirectory()) {
-        if (!entry.includes("node_modules")) visit(absolute);
-      } else if (entry === expectedExecutable) {
+    for (const entry of readDirectoryEntries(directory, packageRoot)) {
+      if (entry.isSymbolicLink()) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!entry.name.includes("node_modules")) visit(absolute);
+      } else if (entry.isFile() && entry.name === expectedExecutable) {
         matches.push({
           appRoot: path.dirname(absolute),
           appExecutable: absolute,
@@ -350,15 +441,38 @@ function findWindowsApp(packageRoot, appName) {
   return matches[0];
 }
 
+export function findLinuxApp(packageRoot, appName) {
+  const matches = [];
+  const visit = (directory) => {
+    for (const entry of readDirectoryEntries(directory, packageRoot)) {
+      if (entry.isSymbolicLink()) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!entry.name.includes("node_modules")) visit(absolute);
+      } else if (entry.isFile() && entry.name === appName) {
+        matches.push({
+          appRoot: path.dirname(absolute),
+          appExecutable: absolute,
+        });
+      }
+    }
+  };
+  visit(packageRoot);
+  if (matches.length !== 1) {
+    fail(`expected one Linux app executable, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
 function findExecutableFiles(directory) {
   const matches = [];
   const visit = (current) => {
-    for (const entry of readdirSync(current)) {
-      const absolute = path.join(current, entry);
-      const info = statSync(absolute);
-      if (info.isDirectory()) {
-        if (!entry.includes("node_modules")) visit(absolute);
-      } else if (entry.toLowerCase().endsWith(".exe")) {
+    for (const entry of readDirectoryEntries(current, directory)) {
+      if (entry.isSymbolicLink()) continue;
+      const absolute = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!entry.name.includes("node_modules")) visit(absolute);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".exe")) {
         matches.push(absolute);
       }
     }
@@ -375,29 +489,47 @@ function checkMacBundle(bundleRoot, flavor, target) {
   const resources = path.join(appRoot, "Contents", "Resources");
   const archive = path.join(resources, "app.asar");
   const helper = path.join(resources, target.helperName);
-  if (!existsSync(archive)) fail("missing Contents/Resources/app.asar");
-  if (!existsSync(helper)) fail("missing external colony-native-host resource");
-  const helperInfo = statSync(helper);
-  if (!helperInfo.isFile() || (helperInfo.mode & 0o111) === 0) {
+  const archiveInfo = assertContainedRegularFile(
+    bundleRoot,
+    archive,
+    "Contents/Resources/app.asar",
+  );
+  const helperInfo = assertContainedRegularFile(
+    bundleRoot,
+    helper,
+    "native helper",
+  );
+  if ((helperInfo.info.mode & 0o111) === 0) {
     fail("native helper is not an executable regular file");
   }
-  checkAsar(archive, flavor, target);
   const appExecutable = path.join(
     appRoot,
     "Contents",
     "MacOS",
     expected.appName,
   );
-  if (!existsSync(appExecutable)) fail("missing packaged Electron executable");
-  const infoPlist = readFileSync(
-    path.join(appRoot, "Contents", "Info.plist"),
-    "utf8",
+  const appExecutableInfo = assertContainedRegularFile(
+    bundleRoot,
+    appExecutable,
+    "packaged Electron executable",
   );
+  const infoPlistInfo = assertContainedRegularFile(
+    bundleRoot,
+    path.join(appRoot, "Contents", "Info.plist"),
+    "Info.plist",
+  );
+  checkAsar(archiveInfo.path, flavor, target);
+  const infoPlist = readFileSync(infoPlistInfo.path, "utf8");
   scanText("bundle metadata", infoPlist);
   if (!infoPlist.includes(expected.bundleId)) {
     fail(`bundle metadata does not include ${expected.bundleId}`);
   }
-  return { appRoot, archive, helper };
+  return {
+    appRoot,
+    archive: archiveInfo.path,
+    helper: helperInfo.path,
+    appExecutable: appExecutableInfo.path,
+  };
 }
 
 function checkWindowsBundle(bundleRoot, flavor, target) {
@@ -408,14 +540,23 @@ function checkWindowsBundle(bundleRoot, flavor, target) {
   const resources = path.join(appRoot, "resources");
   const archive = path.join(resources, "app.asar");
   const helper = path.join(resources, target.helperName);
-  if (!existsSync(archive)) fail("missing resources/app.asar");
-  if (!existsSync(helper))
-    fail(`missing external ${target.helperName} resource`);
-  for (const executable of [appExecutable, helper]) {
-    if (
-      !statSync(executable).isFile() ||
-      readPeMachine(executable) !== 0x8664
-    ) {
+  const archiveInfo = assertContainedRegularFile(
+    bundleRoot,
+    archive,
+    "resources/app.asar",
+  );
+  const helperInfo = assertContainedRegularFile(
+    bundleRoot,
+    helper,
+    target.helperName,
+  );
+  const appExecutableInfo = assertContainedRegularFile(
+    bundleRoot,
+    appExecutable,
+    "packaged Electron executable",
+  );
+  for (const executable of [appExecutableInfo.path, helperInfo.path]) {
+    if (readPeMachine(executable) !== 0x8664) {
       fail(`Windows x64 PE resource check failed for ${executable}`);
     }
   }
@@ -431,8 +572,93 @@ function checkWindowsBundle(bundleRoot, flavor, target) {
       `expected one app and one helper executable, found ${executableFiles.length}`,
     );
   }
-  checkAsar(archive, flavor, target);
-  return { appRoot, archive, helper, appExecutable };
+  checkAsar(archiveInfo.path, flavor, target);
+  return {
+    appRoot,
+    archive: archiveInfo.path,
+    helper: helperInfo.path,
+    appExecutable: appExecutableInfo.path,
+  };
+}
+
+export function readElfMachine(filePath) {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const header = Buffer.alloc(20);
+    if (readSync(descriptor, header, 0, header.length, 0) !== header.length) {
+      return null;
+    }
+    if (
+      header[0] !== 0x7f ||
+      header[1] !== 0x45 ||
+      header[2] !== 0x4c ||
+      header[3] !== 0x46 ||
+      header[4] !== 2 ||
+      header[5] !== 1
+    ) {
+      return null;
+    }
+    return header.readUInt16LE(18);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function checkLinuxBundle(bundleRoot, flavor, target) {
+  const expected = packageFlavors[flavor];
+  const { appRoot, appExecutable } = findLinuxApp(bundleRoot, expected.appName);
+  const resources = path.join(appRoot, "resources");
+  const archive = path.join(resources, "app.asar");
+  const helper = path.join(resources, target.helperName);
+  const chromeSandbox = path.join(appRoot, "chrome-sandbox");
+  const archiveInfo = assertContainedRegularFile(
+    bundleRoot,
+    archive,
+    "resources/app.asar",
+  );
+  const helperInfo = assertContainedRegularFile(
+    bundleRoot,
+    helper,
+    target.helperName,
+  );
+  const appExecutableInfo = assertContainedRegularFile(
+    bundleRoot,
+    appExecutable,
+    "packaged Electron executable",
+  );
+  for (const [executable, info] of [
+    [appExecutableInfo.path, appExecutableInfo.info],
+    [helperInfo.path, helperInfo.info],
+  ]) {
+    if ((info.mode & 0o111) === 0) {
+      fail(`Linux x64 executable permission check failed for ${executable}`);
+    }
+    if (readElfMachine(executable) !== 0x3e) {
+      fail(`Linux x86_64 ELF check failed for ${executable}`);
+    }
+  }
+  const sandboxInfo = assertContainedRegularFile(
+    bundleRoot,
+    chromeSandbox,
+    "Electron chrome-sandbox helper",
+  );
+  if (
+    sandboxInfo.info.uid !== 0 ||
+    (sandboxInfo.info.mode & 0o7777) !== 0o4755
+  ) {
+    fail("Electron chrome-sandbox must be root-owned with mode 4755");
+  }
+  if (readElfMachine(sandboxInfo.path) !== 0x3e) {
+    fail("Electron chrome-sandbox is not an x86_64 ELF");
+  }
+  checkAsar(archiveInfo.path, flavor, target);
+  return {
+    appRoot,
+    archive: archiveInfo.path,
+    helper: helperInfo.path,
+    appExecutable: appExecutableInfo.path,
+    chromeSandbox: sandboxInfo.path,
+  };
 }
 
 function checkBundle(bundleRoot, flavor, target) {
@@ -440,7 +666,12 @@ function checkBundle(bundleRoot, flavor, target) {
     return checkMacBundle(bundleRoot, flavor, target);
   }
   if (target.bundleKind === "directory") {
-    return checkWindowsBundle(bundleRoot, flavor, target);
+    if (target.platform === "win32") {
+      return checkWindowsBundle(bundleRoot, flavor, target);
+    }
+    if (target.platform === "linux") {
+      return checkLinuxBundle(bundleRoot, flavor, target);
+    }
   }
   fail(`unsupported package bundle kind ${target.bundleKind}`);
 }
