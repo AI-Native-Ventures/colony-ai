@@ -26,7 +26,7 @@ default = ["system-keyring"]
 mesh-llm = ["dep:iroh", "dep:mesh-llm-sdk", "dep:mesh-llm-host-runtime", "dep:mesh-llm-client", "dep:mesh-llm-node", "dep:mesh-llm-system", "dep:mesh-llm-events"]
 # OS keyring backing for desktop secret storage (nsec private keys). When
 # disabled, secrets fall back to 0o600 files. On by default for real builds.
-system-keyring = ["dep:keyring"]
+system-keyring = ["dep:keyring", "colony_identity_store/system-keyring"]
 
 [build-dependencies]
 base64 = "0.22"
@@ -70,6 +70,7 @@ user-idle = { version = "0.6", default-features = false }
 [dependencies]
 atomic-write-file = "0.3"
 colony_identity_kernel = { package = "colony-identity-kernel", path = "../identity-kernel" }
+colony_identity_store = { package = "colony-identity-store", path = "../identity-store", default-features = false }
 anyhow = "1"
 dirs = "6"
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }

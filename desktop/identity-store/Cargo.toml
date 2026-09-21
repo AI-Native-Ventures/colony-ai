@@ -1,0 +1,38 @@
+[package]
+name = "colony-identity-store"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+# The Tauri compatibility consumer and the future explicit headless consumer
+# opt into this feature independently. Health-only native-host builds do not.
+system-keyring = ["dep:keyring", "dep:security-framework", "dep:windows-sys"]
+
+[dependencies]
+colony_identity_kernel = { package = "colony-identity-kernel", path = "../identity-kernel" }
+nostr = { version = "=0.44.7", features = ["nip44", "nip49"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["sync-secret-service", "vendored"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "vendored"], optional = true }
+security-framework = { version = "3.7.0", features = ["OSX_10_15"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native", "vendored"], optional = true }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"

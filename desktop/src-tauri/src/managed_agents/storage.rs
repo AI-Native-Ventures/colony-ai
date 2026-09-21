@@ -204,7 +204,7 @@ fn migrate_inline_key(store: &impl KeyStore, record: &ManagedAgentRecord) -> Key
     match store.probe(&name) {
         // Keyring down this boot: keep the key inline (file fallback), do NOT
         // migrate — re-importing later could resurrect a rotated key.
-        KeyringProbe::Unreachable => KeyMigration::KeptInline,
+        KeyringProbe::Unreachable | KeyringProbe::CorruptCurrentBlob => KeyMigration::KeptInline,
         KeyringProbe::Present | KeyringProbe::ReachableButEmpty => {
             match store.write_and_verify(&name, &record.private_key_nsec) {
                 Ok(()) => KeyMigration::Persisted,
