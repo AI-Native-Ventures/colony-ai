@@ -691,7 +691,8 @@ impl Host {
         if frame.generation_id != 1 || frame.build_id.is_empty() {
             return Err(ProtocolError::WrongBinding);
         }
-        let binding = frame.binding()?;
+        let binding =
+            Binding::from_parts(&frame.profile_id, &frame.session_id, frame.generation_id)?;
         if binding.profile_id != frame.identity_launch.profile_id {
             return Err(ProtocolError::IdentityDescriptorRejected);
         }
@@ -709,15 +710,15 @@ impl Host {
                     }
                 })?;
             self.identity = Some(identity);
+            self.binding = Some(binding.clone());
+            self.sequence = 1;
+            self.send_ready_v2(&binding)?;
+            self.send_lifecycle_v2(&binding, "ready")
         }
         #[cfg(not(any(feature = "identity-file-only", feature = "identity-system-keyring")))]
         {
-            return Err(ProtocolError::IdentityUnavailable);
+            Err(ProtocolError::IdentityUnavailable)
         }
-        self.binding = Some(binding.clone());
-        self.sequence = 1;
-        self.send_ready_v2(&binding)?;
-        self.send_lifecycle_v2(&binding, "ready")
     }
 
     fn handle_rehello_v2(&mut self, frame: v2::Rehello) -> Result<(), ProtocolError> {
