@@ -50,8 +50,21 @@ const testSubframePreload = STAGE0_TEST.subframePreload
   : null;
 const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
 const testSubframeFixtureUrl = `${trustedRendererUrl}${STAGE0_TEST.subframeFixtureHash ?? ""}`;
+
+function resolveStage0AppDataDirectory() {
+  if (
+    process.platform === "darwin" &&
+    STAGE0_BUILD_FLAVOR === "normal" &&
+    typeof process.env.HOME === "string" &&
+    path.isAbsolute(process.env.HOME)
+  ) {
+    return path.join(process.env.HOME, "Library", "Application Support");
+  }
+  return app.getPath("appData");
+}
+
 const userDataDirectory = path.join(
-  app.getPath("appData"),
+  resolveStage0AppDataDirectory(),
   manifest.namespace.userDataRelativePath,
   STAGE0_USER_DATA_SUFFIX,
 );

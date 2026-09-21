@@ -42,12 +42,21 @@ const PUBLIC_ERROR_CODES = new Set([
 const lifecycleListeners = new Set();
 let lifecycleSubscription = null;
 
+function errorCodeFromSerialized(error, fallback) {
+  const values = [error?.code, error?.message].filter(
+    (value) => typeof value === "string",
+  );
+  for (const value of values) {
+    if (PUBLIC_ERROR_CODES.has(value)) return value;
+    for (const code of PUBLIC_ERROR_CODES) {
+      if (value.endsWith(`: ${code}`)) return code;
+    }
+  }
+  return fallback;
+}
+
 function errorFrom(error, fallback = "protocol_error") {
-  const code = PUBLIC_ERROR_CODES.has(error?.code)
-    ? error.code
-    : PUBLIC_ERROR_CODES.has(error?.message)
-      ? error.message
-      : fallback;
+  const code = errorCodeFromSerialized(error, fallback);
   const value = new Error(code);
   value.name = "Stage0Error";
   value.code = code;
