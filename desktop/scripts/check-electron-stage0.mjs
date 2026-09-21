@@ -168,6 +168,18 @@ export function isApprovedAsarFileEntry(entry, uiMode) {
   );
 }
 
+const observedReactRendererAssets = Object.freeze({
+  core: "src-electron/renderer/assets/core-CGTdLJHd.js",
+  index: "src-electron/renderer/assets/index-Bjw85wCC.js",
+});
+
+const generatedReactAssetPattern =
+  /^src-electron\/renderer\/assets\/[A-Za-z0-9._-]+\.js$/;
+
+function isGeneratedReactAssetEntry(entry) {
+  return generatedReactAssetPattern.test(entry);
+}
+
 export function scanText(
   label,
   text,
@@ -182,16 +194,19 @@ export function scanText(
 }
 
 export function allowedReactRendererTokens(uiMode, entry) {
-  return uiMode === "react" && entry.startsWith("src-electron/renderer/")
-    ? [
-        "buzz://",
-        "__TAURI_INTERNALS__",
-        "__BUZZ_E2E__",
-        "maybeInstallE2eTauriMocks",
-        "src/main.tsx",
-        "tauri.conf.json",
-      ]
-    : [];
+  if (uiMode !== "react") return [];
+  if (entry === "src-electron/renderer/index.html") {
+    return ["src/main.tsx", "tauri.conf.json"];
+  }
+  if (!isGeneratedReactAssetEntry(entry)) return [];
+  const tokens = ["buzz://"];
+  if (entry === observedReactRendererAssets.core) {
+    tokens.push("__TAURI_INTERNALS__");
+  }
+  if (entry === observedReactRendererAssets.index) {
+    tokens.push("__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx");
+  }
+  return tokens;
 }
 
 function scanSource() {

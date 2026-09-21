@@ -82,32 +82,72 @@ test("allows only the observed React renderer Tauri adapter chunk", () => {
   );
 });
 
-test("allows the product deep-link token only in the React renderer scan", () => {
-  const rendererTokens = allowedReactRendererTokens(
-    "react",
-    "src-electron/renderer/assets/index.js",
-  );
+test("allows only observed generated React asset literals", () => {
+  const assetPath =
+    "src-electron/renderer/assets/autoPinMentionedAgentsPreference-CYBef7vf.js";
+  const assetTokens = allowedReactRendererTokens("react", assetPath);
   assert.doesNotThrow(() =>
     scanText(
-      "React ASAR:src-electron/renderer/assets/autoPinMentionedAgentsPreference.js",
-      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__'; const e2e = '__BUZZ_E2E__'; const install = 'maybeInstallE2eTauriMocks'; const source = 'src/main.tsx'; const config = 'tauri.conf.json';",
+      `React ASAR:${assetPath}`,
+      "const link = 'buzz://message';",
       [],
-      rendererTokens,
+      assetTokens,
     ),
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/core-CGTdLJHd.js",
+    ),
+    ["buzz://", "__TAURI_INTERNALS__"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "react",
+      "src-electron/renderer/assets/index-Bjw85wCC.js",
+    ),
+    ["buzz://", "__BUZZ_E2E__", "maybeInstallE2eTauriMocks", "src/main.tsx"],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens("react", "src-electron/renderer/index.html"),
+    ["src/main.tsx", "tauri.conf.json"],
   );
   assert.throws(
     () => scanText("source", "const link = 'buzz://message';"),
     /source contains forbidden token buzz:\/\//,
   );
+  for (const path of [
+    "src-electron/renderer/index.html",
+    "src-electron/renderer/boot.css",
+    "src-electron/renderer/assets/style.css",
+    "src-electron/renderer/assets/index.js.map",
+    "src-electron/renderer/adapter.js",
+  ]) {
+    const tokens = allowedReactRendererTokens("react", path);
+    assert.equal(tokens.includes("buzz://"), false, path);
+    assert.throws(
+      () =>
+        scanText(
+          `React ASAR:${path}`,
+          "const link = 'buzz://message';",
+          [],
+          tokens,
+        ),
+      new RegExp(`React ASAR:${path} contains forbidden token buzz://`),
+    );
+  }
   assert.throws(
     () =>
       scanText(
         "React ASAR:src-electron/renderer/assets/adapter.js",
-        "import '@tauri-apps/api/core'; const bridge = '__TAURI_INTERNALS__';",
+        "window.__TAURI_INTERNALS__.invoke('identity');",
         [],
-        rendererTokens,
+        allowedReactRendererTokens(
+          "react",
+          "src-electron/renderer/assets/adapter.js",
+        ),
       ),
-    /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token @tauri-apps\//,
+    /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token __TAURI_INTERNALS__/,
   );
   assert.deepEqual(
     allowedReactRendererTokens(
