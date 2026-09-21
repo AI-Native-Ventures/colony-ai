@@ -59,10 +59,14 @@ pub fn probe_identity_presence(service: &str) -> MetadataPresence {
 fn probe_linux_secret_service(service: &str, account: &str, target: &str) -> MetadataPresence {
     use dbus_secret_service::{EncryptionType, SecretService};
 
-    let secret_service = match SecretService::connect(EncryptionType::Plain) {
-        Ok(secret_service) => secret_service,
-        Err(error) => return classify_secret_service_error(&error),
-    };
+    // Zero disables Secret Service authorization prompts.  The pinned crate's
+    // session and SearchItems proxies also use its fixed two-second D-Bus call
+    // timeout, so this pre-READY probe cannot wait for interactive consent.
+    let secret_service =
+        match SecretService::connect_with_max_prompt_timeout(EncryptionType::Plain, 0) {
+            Ok(secret_service) => secret_service,
+            Err(error) => return classify_secret_service_error(&error),
+        };
     let attributes = linux_search_attributes(service, account, target);
     let result = match secret_service.search_items(attributes) {
         Ok(result) => result,
@@ -102,7 +106,9 @@ fn classify_secret_service_error(error: &dbus_secret_service::Error) -> Metadata
         Error::Unavailable => MetadataPresence::Unavailable,
         Error::Locked => MetadataPresence::Locked,
         Error::Dbus(error) => classify_dbus_error_name(error.name()),
-        Error::NoResult => MetadataPresence::NotFound,
+        // NoResult is an operation failure in this API, not the successful
+        // exact SearchItems result `(unlocked=0, locked=0)`.
+        Error::NoResult => MetadataPresence::Error,
         _ => MetadataPresence::Error,
     }
 }
@@ -249,6 +255,15 @@ mod tests {
         assert_ne!(
             super::classify_dbus_error_name(Some("org.freedesktop.DBus.Error.Failed")),
             MetadataPresence::NotFound
+        );
+    }
+
+    #[cfg(all(target_os = "linux", feature = "system-keyring"))]
+    #[test]
+    fn no_result_is_never_fresh_absence() {
+        assert_eq!(
+            super::classify_secret_service_error(&dbus_secret_service::Error::NoResult),
+            MetadataPresence::Error
         );
     }
 }

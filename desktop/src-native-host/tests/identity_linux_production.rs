@@ -22,6 +22,7 @@ const PRODUCTION_PROFILE_ID: &str = "0000000000000001";
 const PRODUCTION_KEYCHAIN_SERVICE: &str = "xyz.ainative.ventures.colony.dev.0000000000000001";
 const CHILD_TIMEOUT: Duration = Duration::from_secs(12);
 const CRASH_READY_TIMEOUT: Duration = Duration::from_secs(8);
+const PRE_READY_FAULT_BOUND: Duration = Duration::from_secs(8);
 
 fn binary_path() -> PathBuf {
     std::env::var_os("COLONY_NATIVE_HOST_BIN")
@@ -553,12 +554,17 @@ fn linux_production_missing_service_fails_closed_before_b1() {
             .as_nanos()
     ));
     let address = format!("unix:path={}", invalid_bus.display());
+    let started = Instant::now();
     let (success, frames, stderr) = run_child_with_binary(
         binary_path(),
         &root,
         "linux-production-missing-service",
         "identity-missing-service",
         Some(&address),
+    );
+    assert!(
+        started.elapsed() < PRE_READY_FAULT_BOUND,
+        "missing-service preflight must settle before the bounded fault deadline"
     );
     assert!(!success);
     assert_namespace_rejection(&frames, &stderr);

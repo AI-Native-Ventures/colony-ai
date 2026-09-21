@@ -64,6 +64,16 @@ jobs:
             --no-default-features --features identity-crash-test
           echo "COLONY_IDENTITY_CRASH_BIN=$crash_target/release/colony-native-host" >> "$GITHUB_ENV"
 
+      - name: Prove metadata faults fail before reservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path desktop/src-native-host/Cargo.toml \
+            --bin colony-native-host \
+            --no-default-features --features identity-system-keyring \
+            identity_ownership::tests:: -- --nocapture
+
       - name: Prove Linux production custody in disposable Secret Service sessions
         shell: bash
         run: |
