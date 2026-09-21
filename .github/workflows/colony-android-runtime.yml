@@ -77,10 +77,8 @@ jobs:
           key: ${{ runner.os }}-hermit-cache-${{ steps.hermit-bin-hash.outputs.hash }}
           restore-keys: ${{ runner.os }}-hermit-cache-
 
-      - name: Prime Flutter and Android tools
-        run: |
-          flutter --version
-          adb version
+      - name: Prime the pinned Flutter toolchain
+        run: flutter --version
 
       - name: Save Hermit package cache
         if: always() && steps.hermit-cache.outputs.cache-hit != 'true'
