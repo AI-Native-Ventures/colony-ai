@@ -21,6 +21,7 @@ import {
   inspectAsarEntries,
   isApprovedAsarFileEntry,
   readElfMachine,
+  scanText,
 } from "./check-electron-stage0.mjs";
 
 test("canonicalizes the observed ASAR leading separator and Windows separators", () => {
@@ -77,6 +78,31 @@ test("allows only the observed React renderer Tauri adapter chunk", () => {
   assert.equal(
     isApprovedAsarFileEntry("src-electron/tauri-runtime.js", "react"),
     false,
+  );
+});
+
+test("allows the product deep-link token only in the React renderer scan", () => {
+  assert.doesNotThrow(() =>
+    scanText(
+      "React ASAR:src-electron/renderer/assets/autoPinMentionedAgentsPreference.js",
+      "const link = 'buzz://message';",
+      [],
+      ["buzz://"],
+    ),
+  );
+  assert.throws(
+    () => scanText("source", "const link = 'buzz://message';"),
+    /source contains forbidden token buzz:\/\//,
+  );
+  assert.throws(
+    () =>
+      scanText(
+        "React ASAR:src-electron/renderer/assets/adapter.js",
+        "import '@tauri-apps/api/core';",
+        [],
+        ["buzz://"],
+      ),
+    /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token @tauri-apps\//,
   );
 });
 

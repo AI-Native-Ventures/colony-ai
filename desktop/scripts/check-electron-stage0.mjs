@@ -168,11 +168,23 @@ export function isApprovedAsarFileEntry(entry, uiMode) {
   );
 }
 
-function scanText(label, text, additionalForbiddenTokens = []) {
+export function scanText(
+  label,
+  text,
+  additionalForbiddenTokens = [],
+  allowedForbiddenTokens = [],
+) {
+  const allowed = new Set(allowedForbiddenTokens);
   for (const token of [...forbiddenTokens, ...additionalForbiddenTokens]) {
-    if (text.includes(token))
+    if (!allowed.has(token) && text.includes(token))
       fail(`${label} contains forbidden token ${token}`);
   }
+}
+
+function allowedReactRendererTokens(uiMode, entry) {
+  return uiMode === "react" && entry.startsWith("src-electron/renderer/")
+    ? ["buzz://"]
+    : [];
 }
 
 function scanSource() {
@@ -460,6 +472,7 @@ function checkAsar(archivePath, flavor, target, uiMode) {
         `normal ASAR:${entry}`,
         extractEntry(entry).toString("utf8"),
         normalPackageForbiddenTokens,
+        allowedReactRendererTokens(uiMode, entry),
       );
     }
     if (entrySet.has("src-electron/test-subframe-preload.cjs")) {
@@ -469,7 +482,12 @@ function checkAsar(archivePath, flavor, target, uiMode) {
   for (const entry of fileEntries) {
     const text = extractEntry(entry).toString("utf8");
     if (uiMode === "react" && entry.startsWith("src-electron/renderer/")) {
-      scanText(`React ASAR:${entry}`, text, reactRendererForbiddenTokens);
+      scanText(
+        `React ASAR:${entry}`,
+        text,
+        reactRendererForbiddenTokens,
+        allowedReactRendererTokens(uiMode, entry),
+      );
     } else {
       scanText(`ASAR:${entry}`, text);
     }
