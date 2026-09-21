@@ -120,7 +120,7 @@ jobs:
           HOME="$probe_home" security list-keychains -d user -s "$probe_keychain"
           HOME="$probe_home" security default-keychain -d user -s "$probe_keychain"
           trap 'HOME="$probe_home" security delete-keychain "$probe_keychain" >/dev/null 2>&1 || true; rm -rf "$probe_home"' EXIT
-          HOME="$probe_home" COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" node --input-type=module <<'NODE'
+          PROBE_HOME="$probe_home" COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" node --input-type=module <<'NODE'
           import { spawn } from "node:child_process";
           import path from "node:path";
 
@@ -129,7 +129,7 @@ jobs:
             "452990462a124746a15d6ba7cdd0353e0183e7a3aa300e5b8b596e0439692204";
           const manifestDigest =
             "ff46bc9729c8e3dce602d5e1effb84d5aa6fff0b00231404c340b8e61aaa1e3d";
-          const home = process.env.HOME;
+          const home = process.env.PROBE_HOME;
           if (typeof home !== "string" || !path.isAbsolute(home)) {
             throw new Error("hosted identity probe HOME must be absolute");
           }
