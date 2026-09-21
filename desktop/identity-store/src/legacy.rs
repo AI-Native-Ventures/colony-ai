@@ -2235,6 +2235,11 @@ impl HeadlessIdentityStore {
             })?;
         colony_identity_kernel::resolve_identity_with_headless_store(self, &self.profile_scope())
     }
+
+    #[cfg(feature = "diagnostic")]
+    pub fn diagnostic_line(&self) -> String {
+        self.store.diagnostic_line()
+    }
 }
 
 impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
@@ -2327,11 +2332,6 @@ impl colony_identity_kernel::IdentityKeyStore for HeadlessIdentityStore {
             self.store.record_failure(DiagnosticFailure::Marker);
         }
         result
-    }
-
-    #[cfg(feature = "diagnostic")]
-    pub fn diagnostic_line(&self) -> String {
-        self.store.diagnostic_line()
     }
 }
 
