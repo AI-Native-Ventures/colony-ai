@@ -135,12 +135,10 @@ fn run_production_child(
         .stderr(Stdio::piped())
         .env_remove("COLONY_STAGE0_FAULT")
         .env_remove("COLONY_STAGE0_TEST_DEADLINE_MS")
-        .env(
-            "HOME",
-            std::env::var_os("COLONY_IDENTITY_PROOF_HOME")
-                .or_else(|| std::env::var_os("HOME"))
-                .expect("hosted proof supplies an isolated app-data home"),
-        )
+        // Keep the runner HOME so SecKeychainCopyDomainDefault(User) sees the
+        // disposable default configured by the workflow. The profile's
+        // application-data root is independently isolated by the explicit
+        // COLONY_IDENTITY_PROOF_HOME carrier below.
         .spawn()
         .expect("production host should spawn");
     let mut input = Vec::new();
