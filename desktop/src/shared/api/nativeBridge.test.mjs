@@ -176,7 +176,9 @@ test("Electron missing or rejected identity bridges fail closed without Tauri fa
 
 test("Tauri keeps the existing command boundary and full native capability set", async () => {
   const calls = [];
-  globalThis.isTauri = true;
+  // Existing Tauri tests and the real runtime provide the internal invoke
+  // object even when the optional global marker is absent.
+  delete globalThis.isTauri;
   globalThis.window = {
     __TAURI_INTERNALS__: {
       invoke: async (command, args) => {

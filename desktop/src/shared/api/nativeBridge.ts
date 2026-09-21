@@ -188,10 +188,17 @@ function stage0(): Stage0Api | undefined {
   return typeof window === "undefined" ? undefined : window.stage0;
 }
 
+function hasTauriInternals(): boolean {
+  if (typeof window === "undefined") return false;
+  const internals = (window as Window & { __TAURI_INTERNALS__?: unknown })
+    .__TAURI_INTERNALS__;
+  return typeof internals === "object" && internals !== null;
+}
+
 /** Detect the host without treating an Electron health-only bridge as Tauri. */
 export function detectNativeShell(): NativeShell {
   if (stage0() !== undefined) return "electron";
-  if (isTauri()) return "tauri";
+  if (isTauri() || hasTauriInternals()) return "tauri";
   return "web";
 }
 
