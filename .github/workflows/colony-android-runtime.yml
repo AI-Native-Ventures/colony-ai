@@ -40,7 +40,7 @@ concurrency:
 
 env:
   ANDROID_PACKAGE: xyz.block.buzz.mobile
-  ANDROID_ACTIVITY: xyz.block.buzz.mobile.MainActivity
+  ANDROID_ACTIVITY: xyz.block.buzz.mobile/.MainActivity
   APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
   ANDROID_RUNTIME_ARTIFACT_DIR: android-runtime-artifacts
   SOURCE_SHA: ${{ github.sha }}

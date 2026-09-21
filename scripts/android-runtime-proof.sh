@@ -5,7 +5,7 @@
 set -euo pipefail
 
 package="${ANDROID_PACKAGE:-xyz.block.buzz.mobile}"
-activity="${ANDROID_ACTIVITY:-${package}.MainActivity}"
+activity="${ANDROID_ACTIVITY:-${package}/.MainActivity}"
 apk_path="${APK_PATH:-mobile/build/app/outputs/flutter-apk/app-debug.apk}"
 output_dir="${ANDROID_RUNTIME_ARTIFACT_DIR:-android-runtime-artifacts}"
 source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
@@ -23,7 +23,7 @@ die() {
 
 [[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] ||
     die "ANDROID_PACKAGE is not a valid application id"
-[[ "$activity" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*\.[A-Za-z_][A-Za-z0-9_]*$ ]] ||
+[[ "$activity" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*/\.[A-Za-z_][A-Za-z0-9_]*$ ]] ||
     die "ANDROID_ACTIVITY is not a valid component name"
 [[ -s "$apk_path" ]] || die "APK does not exist or is empty: $apk_path"
 command -v adb >/dev/null 2>&1 || die "adb is not available"
@@ -144,6 +144,7 @@ launch_app() {
         return 1
     }
     printf '%s\n' "$launch_output" > "$output_dir/${label}-launch.txt"
+    cat "$output_dir/${label}-launch.txt"
     grep -Fq 'Status: ok' "$output_dir/${label}-launch.txt"
 }
 
