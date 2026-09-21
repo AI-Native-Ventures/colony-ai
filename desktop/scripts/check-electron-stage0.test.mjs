@@ -17,6 +17,7 @@ import {
   canonicalizeAsarEntries,
   canonicalizeAsarEntry,
   assertContainedRegularFile,
+  allowedReactRendererTokens,
   findLinuxApp,
   inspectAsarEntries,
   isApprovedAsarFileEntry,
@@ -82,12 +83,16 @@ test("allows only the observed React renderer Tauri adapter chunk", () => {
 });
 
 test("allows the product deep-link token only in the React renderer scan", () => {
+  const rendererTokens = allowedReactRendererTokens(
+    "react",
+    "src-electron/renderer/assets/index.js",
+  );
   assert.doesNotThrow(() =>
     scanText(
       "React ASAR:src-electron/renderer/assets/autoPinMentionedAgentsPreference.js",
-      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__';",
+      "const link = 'buzz://message'; const bridge = '__TAURI_INTERNALS__'; const e2e = '__BUZZ_E2E__'; const install = 'maybeInstallE2eTauriMocks'; const source = 'src/main.tsx';",
       [],
-      ["buzz://", "__TAURI_INTERNALS__"],
+      rendererTokens,
     ),
   );
   assert.throws(
@@ -100,9 +105,20 @@ test("allows the product deep-link token only in the React renderer scan", () =>
         "React ASAR:src-electron/renderer/assets/adapter.js",
         "import '@tauri-apps/api/core'; const bridge = '__TAURI_INTERNALS__';",
         [],
-        ["buzz://", "__TAURI_INTERNALS__"],
+        rendererTokens,
       ),
     /React ASAR:src-electron\/renderer\/assets\/adapter\.js contains forbidden token @tauri-apps\//,
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens(
+      "feasibility",
+      "src-electron/renderer/assets/index.js",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    allowedReactRendererTokens("react", "src-electron/main.mjs"),
+    [],
   );
 });
 

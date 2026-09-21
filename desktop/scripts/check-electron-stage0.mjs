@@ -181,9 +181,15 @@ export function scanText(
   }
 }
 
-function allowedReactRendererTokens(uiMode, entry) {
+export function allowedReactRendererTokens(uiMode, entry) {
   return uiMode === "react" && entry.startsWith("src-electron/renderer/")
-    ? ["buzz://", "__TAURI_INTERNALS__"]
+    ? [
+        "buzz://",
+        "__TAURI_INTERNALS__",
+        "__BUZZ_E2E__",
+        "maybeInstallE2eTauriMocks",
+        "src/main.tsx",
+      ]
     : [];
 }
 
