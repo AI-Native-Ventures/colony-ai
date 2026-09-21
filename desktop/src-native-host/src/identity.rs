@@ -10,6 +10,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+#[cfg(feature = "identity-crash-test")]
+use std::{fs, thread, time::Duration};
+
 use colony_identity_kernel::{project_identity, IdentitySnapshot, RecoveryState};
 use colony_identity_store::{
     HeadlessIdentityStore, IdentityLaunchDescriptor, IdentityMode, ResetProvenance,
@@ -22,6 +25,8 @@ use crate::v2::IdentityLaunch;
 pub const FIXTURE_PROFILE_ID: &str = "colony-b2a-test-profile";
 pub const FIXTURE_FLAVOR: &str = "test";
 const FIXTURE_SERVICE_PREFIX: &str = "xyz.ainative.ventures.colony.b2a";
+#[cfg(feature = "identity-crash-test")]
+const CRASH_READY_PATH_ENV: &str = "COLONY_IDENTITY_CRASH_READY_PATH";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentityInitError {
@@ -79,6 +84,8 @@ impl IdentityRuntime {
         profiles: &IdentityProfiles,
         expected_manifest_digest: &str,
         build_id: &str,
+        crash_after_reservation: bool,
+        crash_after_b1: bool,
     ) -> Result<Self, IdentityInitError> {
         validate_manifest_binding(launch, profiles, expected_manifest_digest)?;
         if host_platform() != "macos" {
@@ -102,6 +109,7 @@ impl IdentityRuntime {
             build_id,
         )
         .map_err(map_ownership_error)?;
+        pause_for_test_crash(crash_after_reservation, "after-reservation")?;
         let manifest = TrustedProfileManifest::new(
             profile.profile_id.clone(),
             launch.flavor.clone(),
@@ -111,6 +119,7 @@ impl IdentityRuntime {
         let runtime = Self::initialize_from_manifest(&manifest, &trusted_root)?;
         #[cfg(feature = "identity-diagnostic")]
         eprintln!("{}", runtime.diagnostic_line);
+        pause_for_test_crash(crash_after_b1, "after-b1")?;
         ownership
             .commit_initialized(&runtime.snapshot.storage)
             .map_err(|_| IdentityInitError::InitializationFailed)?;
@@ -154,6 +163,28 @@ impl IdentityRuntime {
 
     pub fn snapshot(&self) -> &IdentitySnapshot {
         &self.snapshot
+    }
+}
+
+fn pause_for_test_crash(enabled: bool, stage: &str) -> Result<(), IdentityInitError> {
+    #[cfg(feature = "identity-crash-test")]
+    {
+        if !enabled {
+            return Ok(());
+        }
+        let Some(path) = env::var_os(CRASH_READY_PATH_ENV) else {
+            return Err(IdentityInitError::InitializationFailed);
+        };
+        fs::write(path, stage.as_bytes()).map_err(|_| IdentityInitError::InitializationFailed)?;
+        loop {
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    #[cfg(not(feature = "identity-crash-test"))]
+    {
+        let _ = (enabled, stage);
+        Ok(())
     }
 }
 
