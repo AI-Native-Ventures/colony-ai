@@ -7,6 +7,7 @@ import { loadManifest } from "./host-protocol.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { getStage0Target } from "./stage0-platform.mjs";
+import { createTrustedIdentityLaunch } from "./identity-launch.mjs";
 import {
   isTrustedNavigation,
   publicIpcErrorCode,
@@ -34,6 +35,8 @@ const CHILD_ENV_ALLOWLIST = Object.freeze([
 ]);
 const IPC = Object.freeze({
   HEALTH: "colony-stage0:health:get-default-relay-url",
+  IDENTITY_SHARED: "colony-stage0:identity:is-shared-identity",
+  IDENTITY_GET: "colony-stage0:identity:get-identity",
   LIFECYCLE_SUBSCRIBE: "colony-stage0:lifecycle:subscribe",
   LIFECYCLE_UNSUBSCRIBE: "colony-stage0:lifecycle:unsubscribe",
   BINDING_STATE: "colony-stage0:binding-state",
@@ -47,16 +50,35 @@ const testSubframePreload = STAGE0_TEST.subframePreload
   : null;
 const trustedRendererUrl = pathToFileURL(rendererEntry).toString();
 const testSubframeFixtureUrl = `${trustedRendererUrl}${STAGE0_TEST.subframeFixtureHash ?? ""}`;
+
+function resolveStage0AppDataDirectory() {
+  if (
+    process.platform === "darwin" &&
+    STAGE0_BUILD_FLAVOR === "normal" &&
+    typeof process.env.HOME === "string" &&
+    path.isAbsolute(process.env.HOME)
+  ) {
+    return path.join(process.env.HOME, "Library", "Application Support");
+  }
+  return app.getPath("appData");
+}
+
 const userDataDirectory = path.join(
-  app.getPath("appData"),
+  resolveStage0AppDataDirectory(),
   manifest.namespace.userDataRelativePath,
   STAGE0_USER_DATA_SUFFIX,
 );
+const identityLaunch = createTrustedIdentityLaunch({
+  manifest,
+  flavor: STAGE0_BUILD_FLAVOR,
+  electronPlatform: process.platform,
+  userDataRoot: userDataDirectory,
+});
 
-// This must happen before Electron's ready event. Stage 0 intentionally uses a
-// fresh namespace and never probes or opens a legacy Buzz/Colony profile.
+// Stage 0 intentionally uses a fresh namespace and never probes or opens a
+// legacy Buzz/Colony profile. The user-data path is registered only after the
+// identity ownership preflight below has reserved that namespace.
 app.setName(STAGE0_APP_NAME);
-app.setPath("userData", userDataDirectory);
 
 const runtime = {
   window: null,
@@ -86,6 +108,12 @@ const runtime = {
   },
 };
 
+// The production identity carrier must reserve its manifest-bound namespace
+// before Electron can create the user-data directory. Health-only launches
+// retain their existing ready-time startup; only the trusted macOS identity
+// path needs this earlier reservation barrier.
+const identityStartup = identityLaunch ? startRuntime() : null;
+
 function publishTestState() {
   if (!instrumentationEnabled || !STAGE0_TEST.stateGlobal) return;
   globalThis[STAGE0_TEST.killGlobal] = () => {
@@ -93,7 +121,7 @@ function publishTestState() {
   };
   globalThis[STAGE0_TEST.stateGlobal] = {
     ...runtime.diagnostics,
-    userDataPath: app.getPath("userData"),
+    userDataPath: app.isReady() ? app.getPath("userData") : userDataDirectory,
     windowCount: BrowserWindow.getAllWindows().filter(
       (window) => !window.isDestroyed(),
     ).length,
@@ -253,6 +281,13 @@ function createTransport() {
       inheritedEnv[key] = process.env[key];
     }
   }
+  // The production identity carrier derives its manifest-bound macOS app-data
+  // anchor from HOME. Forward that one platform-owned value only when the
+  // trusted identity descriptor is active; v1 health-only launches retain the
+  // narrower relay-only environment.
+  if (identityLaunch && typeof process.env.HOME === "string") {
+    inheritedEnv.HOME = process.env.HOME;
+  }
   const spawnEnv = {};
   const fault =
     instrumentationEnabled && STAGE0_TEST.faultEnv
@@ -267,6 +302,7 @@ function createTransport() {
     buildId: `electron-stage0-${STAGE0_BUILD_FLAVOR}-${manifest.sourceRevision.slice(0, 12)}`,
     inheritedEnv,
     spawnEnv,
+    identityLaunch,
   });
 }
 
@@ -309,6 +345,52 @@ function setupIpc() {
       throw boundedError(error, "host_unavailable");
     }
   });
+
+  const handleIdentityCall = async (event, payload, capability, method) => {
+    try {
+      assertTrustedPayload(event, payload);
+      if (!identityLaunch) {
+        throw boundedError({ code: "identity_unavailable" });
+      }
+      const response = await runtime.rendererHost.request({
+        capability,
+        method,
+        payload: {},
+      });
+      if (response?.outcome !== "ok" || !response.payload) {
+        throw boundedError({ code: "protocol_error" });
+      }
+      if (method === "is_shared_identity") {
+        return Object.freeze({ value: response.payload.value });
+      }
+      return Object.freeze({
+        display_name: response.payload.display_name,
+        locked: response.payload.locked,
+        lost: response.payload.lost,
+        pubkey: response.payload.pubkey,
+        reset_failed: response.payload.reset_failed,
+        storage: response.payload.storage,
+      });
+    } catch (error) {
+      runtime.diagnostics.lastError = publicIpcErrorCode(
+        error?.code,
+        identityLaunch ? "host_unavailable" : "identity_unavailable",
+      );
+      publishTestState();
+      throw boundedError(
+        error,
+        identityLaunch ? "host_unavailable" : "identity_unavailable",
+      );
+    }
+  };
+
+  ipcMain.handle(IPC.IDENTITY_SHARED, (event, payload) =>
+    handleIdentityCall(event, payload, "identity-mode", "is_shared_identity"),
+  );
+
+  ipcMain.handle(IPC.IDENTITY_GET, (event, payload) =>
+    handleIdentityCall(event, payload, "identity-read", "get_identity"),
+  );
 
   ipcMain.handle(IPC.BINDING_STATE, (event, payload) => {
     try {
@@ -581,8 +663,16 @@ app.whenReady().then(() => {
   registerTestSubframePreload();
   setupIpc();
   initializeRuntime();
-  createWindow();
-  void startRuntime();
+  const ready = identityLaunch ? identityStartup : Promise.resolve();
+  void ready.then(() => {
+    // Register the manifest-bound Electron profile only after the identity
+    // carrier has reserved the empty namespace. Electron may create this
+    // directory as a side effect of setting the path, which would otherwise
+    // race the native ownership preflight.
+    app.setPath("userData", userDataDirectory);
+    createWindow();
+    if (!identityLaunch) void startRuntime();
+  });
 });
 
 export { IPC, manifest, runtime, trustedRendererUrl };

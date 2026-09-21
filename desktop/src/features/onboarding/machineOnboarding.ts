@@ -7,8 +7,9 @@ const MACHINE_ONBOARDING_COMPLETION_STORAGE_KEY =
   "buzz-machine-onboarding-complete.v2";
 const LEGACY_ONBOARDING_COMPLETION_STORAGE_KEY = "buzz-onboarding-complete.v1";
 
-type MachineOnboardingStage =
+export type MachineOnboardingStage =
   | "blocking"
+  | "identity-error"
   | "keyring-locked"
   | "onboarding"
   | "ready"
@@ -94,6 +95,70 @@ export function migrateMachineOnboardingCompletion(
 
 function identitySettled(status: QueryStatus, isFetching: boolean) {
   return !isFetching && (status === "success" || status === "error");
+}
+
+/** @internal Exported for the startup failure regression test. */
+export function resolveMachineOnboardingStage({
+  currentPubkey,
+  evaluatedPubkey,
+  hasCompletedCurrentPubkey,
+  identityLost,
+  identityLocked,
+  identityQueryStatus,
+  identityResetFailed,
+  identityQueryFetching,
+  relaunchRequired,
+  continuingPubkey,
+}: {
+  currentPubkey: string | null;
+  evaluatedPubkey: string | null;
+  hasCompletedCurrentPubkey: boolean;
+  identityLost: boolean;
+  identityLocked: boolean;
+  identityQueryStatus: QueryStatus;
+  identityResetFailed: boolean;
+  identityQueryFetching: boolean;
+  relaunchRequired: boolean;
+  continuingPubkey: string | null;
+}): MachineOnboardingStage {
+  if (identityResetFailed && identityQueryStatus === "success") {
+    return "reset-failed";
+  }
+  if (identityLocked && identityQueryStatus === "success") {
+    return "keyring-locked";
+  }
+  if (relaunchRequired) {
+    return "relaunch-required";
+  }
+  if (identityLost && identityQueryStatus === "success") {
+    return "onboarding";
+  }
+  if (identityQueryStatus === "error") {
+    // A failed identity read is a startup failure, never evidence that the
+    // machine is ready. In particular, Electron must not fall through into
+    // CommunityApp when its named identity bridge is absent or malformed.
+    return "identity-error";
+  }
+  if (
+    !identitySettled(identityQueryStatus, identityQueryFetching) ||
+    !currentPubkey ||
+    // Imported identities are published before the flow can advance to setup.
+    // Keep that explicitly requested identity switch in onboarding; only the
+    // startup identity needs the one-render evaluation gate above.
+    (!hasCompletedCurrentPubkey &&
+      evaluatedPubkey !== currentPubkey &&
+      continuingPubkey !== currentPubkey)
+  ) {
+    return "blocking";
+  }
+  if (
+    identityLost ||
+    continuingPubkey === currentPubkey ||
+    !hasCompletedCurrentPubkey
+  ) {
+    return "onboarding";
+  }
+  return "ready";
 }
 
 export function useMachineOnboardingState({
@@ -210,40 +275,18 @@ export function useMachineOnboardingState({
     (!forceMachineOnboarding() &&
       readMachineOnboardingCompletion(currentPubkey));
 
-  let stage: MachineOnboardingStage;
-  if (identityResetFailed && identityQuery.status === "success") {
-    stage = "reset-failed";
-  } else if (identityLocked && identityQuery.status === "success") {
-    stage = "keyring-locked";
-  } else if (relaunchRequired) {
-    stage = "relaunch-required";
-  } else if (identityLost && identityQuery.status === "success") {
-    stage = "onboarding";
-  } else if (identityQuery.status === "error") {
-    stage = "ready";
-  } else if (
-    !identitySettled(
-      identityQuery.status,
-      identityQuery.fetchStatus === "fetching",
-    ) ||
-    !currentPubkey ||
-    // Imported identities are published before the flow can advance to setup.
-    // Keep that explicitly requested identity switch in onboarding; only the
-    // startup identity needs the one-render evaluation gate above.
-    (!hasCompletedCurrentPubkey &&
-      evaluatedPubkey !== currentPubkey &&
-      continuingPubkeyRef.current !== currentPubkey)
-  ) {
-    stage = "blocking";
-  } else if (
-    identityLost ||
-    continuingPubkeyRef.current === currentPubkey ||
-    !hasCompletedCurrentPubkey
-  ) {
-    stage = "onboarding";
-  } else {
-    stage = "ready";
-  }
+  const stage = resolveMachineOnboardingStage({
+    currentPubkey,
+    evaluatedPubkey,
+    hasCompletedCurrentPubkey,
+    identityLost,
+    identityLocked,
+    identityQueryFetching: identityQuery.fetchStatus === "fetching",
+    identityQueryStatus: identityQuery.status,
+    identityResetFailed,
+    relaunchRequired,
+    continuingPubkey: continuingPubkeyRef.current,
+  });
 
   return {
     complete,
@@ -251,6 +294,7 @@ export function useMachineOnboardingState({
     continueWithRecoveredIdentity,
     currentPubkey,
     identityLost,
+    identityError: identityQuery.error,
     queryClient,
     reopen,
     stage,

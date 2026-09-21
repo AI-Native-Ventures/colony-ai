@@ -18,6 +18,7 @@ import {
   redactedProtocolCode,
   validateEnvelope,
 } from "./host-protocol.mjs";
+import { digestJson } from "./identity-protocol.mjs";
 
 const SESSION_ID = "session-protocol-test";
 const BUILD_ID = "node-contract";
@@ -26,6 +27,13 @@ function expectProtocolError(callback, code) {
   assert.throws(callback, (error) => {
     assert.equal(error.code, code);
     return true;
+  });
+}
+
+function identityManifestDigest(identityProfiles) {
+  return digestJson({
+    manifestVersion: identityProfiles.manifestVersion,
+    identityProfiles,
   });
 }
 
@@ -91,6 +99,37 @@ test("manifest validation rejects drift and loadManifest returns an immutable co
         namespace: { ...MANIFEST.namespace, profileId: "old" },
       }),
     "invalid_manifest_profileId",
+  );
+});
+
+test("manifest authority rejects identity service drift", () => {
+  const copy = JSON.parse(JSON.stringify(MANIFEST));
+  copy.identityProfiles.normal.keychainService =
+    "xyz.ainative.ventures.colony.tampered";
+  expectProtocolError(
+    () => loadManifest(copy),
+    "invalid_manifest_identity_digest",
+  );
+});
+
+test("manifest authority rejects identity collision drift", () => {
+  const copy = JSON.parse(JSON.stringify(MANIFEST));
+  copy.identityProfiles.instrumented.collisionEvidence.windows =
+    "observed-unoccupied";
+  expectProtocolError(
+    () => loadManifest(copy),
+    "invalid_manifest_identity_digest",
+  );
+});
+
+test("manifest authority rejects a caller-recomputed malicious identity digest", () => {
+  const copy = JSON.parse(JSON.stringify(MANIFEST));
+  copy.identityProfiles.normal.keychainService =
+    "xyz.ainative.ventures.colony.tampered";
+  copy.identityManifestDigest = identityManifestDigest(copy.identityProfiles);
+  expectProtocolError(
+    () => loadManifest(copy),
+    "invalid_manifest_identity_digest",
   );
 });
 

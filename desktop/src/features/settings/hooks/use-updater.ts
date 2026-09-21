@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { isAutoUpdateSupported } from "@/shared/api/tauri";
 
 export type UpdateStatus =
@@ -99,6 +100,10 @@ export function useUpdater() {
   }, [setStatus]);
 
   const installAndRelaunch = useCallback(async () => {
+    if (!supportsNativeCapability("updater")) {
+      setStatus({ state: "unavailable" });
+      return;
+    }
     if (installInFlightRef.current) {
       return;
     }
@@ -123,6 +128,12 @@ export function useUpdater() {
 
   const runUpdateCheck = useCallback(
     async ({ background }: { background: boolean }) => {
+      if (!supportsNativeCapability("updater")) {
+        if (!background) {
+          setStatus({ state: "unavailable" });
+        }
+        return;
+      }
       if (checkInFlightRef.current) {
         if (!background) {
           manualResultRequestedRef.current = true;
@@ -210,6 +221,10 @@ export function useUpdater() {
   }, [runUpdateCheck]);
 
   useEffect(() => {
+    if (!supportsNativeCapability("updater")) {
+      return;
+    }
+
     void checkForUpdateInBackground();
 
     const intervalId = window.setInterval(() => {

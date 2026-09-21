@@ -89,7 +89,8 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            --release --target aarch64-apple-darwin
+            --release --target aarch64-apple-darwin \
+            --no-default-features --features identity-system-keyring
 
       - name: Stage and package the isolated candidate
         shell: bash
@@ -119,6 +120,22 @@ jobs:
             echo "$binary_description"
             echo "$binary_description" | grep -Eq 'arm64|aarch64'
           done
+
+      - name: Prepare an owned disposable macOS identity keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_home="$RUNNER_TEMP/colony-stage0-home"
+          keychain="$RUNNER_TEMP/colony-stage0-identity.keychain-db"
+          mkdir -p "$proof_home/Library/Application Support/Colony/dev"
+          test ! -e "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
+          echo "HOME=$proof_home" >> "$GITHUB_ENV"
+          echo "COLONY_STAGE0_IDENTITY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
       - name: Run the normal relocated Electron proof with hostile ambient values
         shell: bash
@@ -234,6 +251,24 @@ jobs:
             desktop/macos-ipc-mutation-report.json
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Remove the owned disposable identity namespace and keychain
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_home="${HOME:-}"
+          keychain="${COLONY_STAGE0_IDENTITY_KEYCHAIN:-}"
+          if [ -n "$proof_home" ]; then
+            HOME="$proof_home" security default-keychain -d user -s login.keychain-db >/dev/null 2>&1 || true
+            HOME="$proof_home" security list-keychains -d user -s login.keychain-db >/dev/null 2>&1 || true
+          fi
+          if [ -n "$keychain" ]; then
+            HOME="$proof_home" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+          fi
+          if [ -n "$proof_home" ]; then
+            rm -rf "$proof_home/Library/Application Support/Colony/dev/0000000000000001"
+          fi
 
   packaged-feasibility-windows:
     name: packaged Electron / Windows x64

@@ -5,6 +5,7 @@ export default defineConfig({
   testMatch: [
     "**/electron-host-feasibility.spec.ts",
     "**/electron-host-feasibility-normal.spec.ts",
+    "**/electron-identity-bridge.spec.ts",
   ],
   timeout: 45_000,
   expect: {

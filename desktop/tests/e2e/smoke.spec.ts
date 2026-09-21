@@ -88,6 +88,15 @@ test("loads the app shell with mocked channels", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+            .__BUZZ_E2E_COMMANDS__ ?? [],
+      ),
+    )
+    .toContain("is_shared_identity");
   await expect(page.getByTestId("stream-list")).toContainText("general");
   await expect(page.getByTestId("forum-list")).toContainText("watercooler");
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
