@@ -1,4 +1,7 @@
+#[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+mod identity;
 mod protocol;
+mod v2;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -48,6 +51,32 @@ enum WriterFailure {
     Deadline,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    HealthOnly,
+    IdentityV2Test,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionMode {
+    Undecided,
+    V1,
+    V2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingKind {
+    V1Health,
+    V2Health,
+    V2SharedIdentity,
+    V2Identity,
+}
+
+enum DecodedFrame {
+    V1(Envelope),
+    V2(v2::Frame),
+}
+
 impl WriterFailure {
     fn protocol_error(self) -> ProtocolError {
         match self {
@@ -61,6 +90,7 @@ impl WriterFailure {
 struct PendingRequest {
     binding: Binding,
     deadline: Instant,
+    kind: PendingKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +119,10 @@ struct Host {
     delayed_once: bool,
     fault: FaultMode,
     deadline: Duration,
+    launch_mode: LaunchMode,
+    session_mode: SessionMode,
+    #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+    identity: Option<identity::IdentityRuntime>,
 }
 
 impl Host {
@@ -97,6 +131,7 @@ impl Host {
         expected_profile_id: String,
         fault: FaultMode,
         output: SyncSender<Vec<u8>>,
+        launch_mode: LaunchMode,
     ) -> Self {
         let deadline = test_or_manifest_deadline(&limits);
         Self {
@@ -110,6 +145,10 @@ impl Host {
             delayed_once: false,
             fault,
             deadline,
+            launch_mode,
+            session_mode: SessionMode::Undecided,
+            #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+            identity: None,
         }
     }
 
@@ -125,11 +164,11 @@ impl Host {
             }
             match receiver.recv_timeout(Duration::from_millis(READER_POLL_MS)) {
                 Ok(ReaderMessage::Frame(bytes)) => {
-                    let envelope = match decode_frame(&bytes, &self.limits) {
-                        Ok(envelope) => envelope,
+                    let frame = match decode_any_frame(&bytes, &self.limits) {
+                        Ok(frame) => frame,
                         Err(error) => return self.fail(error),
                     };
-                    if let Err(error) = self.handle(envelope) {
+                    if let Err(error) = self.handle_decoded(frame) {
                         return self.fail(error);
                     }
                 }
@@ -172,7 +211,30 @@ impl Host {
         Err(error)
     }
 
-    fn handle(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
+    fn handle_decoded(&mut self, frame: DecodedFrame) -> Result<(), ProtocolError> {
+        match frame {
+            DecodedFrame::V1(envelope) => {
+                if self.launch_mode == LaunchMode::IdentityV2Test
+                    || self.session_mode == SessionMode::V2
+                {
+                    return Err(ProtocolError::IdentityModeRequired);
+                }
+                self.session_mode = SessionMode::V1;
+                self.handle_v1(envelope)
+            }
+            DecodedFrame::V2(frame) => {
+                if self.launch_mode != LaunchMode::IdentityV2Test
+                    || self.session_mode == SessionMode::V1
+                {
+                    return Err(ProtocolError::IdentityModeRequired);
+                }
+                self.session_mode = SessionMode::V2;
+                self.handle_v2(frame)
+            }
+        }
+    }
+
+    fn handle_v1(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
         match envelope.frame_type.as_str() {
             "HELLO" => self.handle_hello(envelope),
             "REHELLO" => self.handle_rehello(envelope),
@@ -288,6 +350,7 @@ impl Host {
         let pending = PendingRequest {
             binding: current.clone(),
             deadline: Instant::now() + self.deadline,
+            kind: PendingKind::V1Health,
         };
         let delayed = self.fault == FaultMode::DelayResponse && !self.delayed_once;
         self.delayed_once |= delayed;
@@ -327,14 +390,83 @@ impl Host {
             .pending
             .remove(request_id)
             .ok_or(ProtocolError::Closed)?;
-        let relay_url = configured_relay_url();
-        self.send_response(
-            &pending.binding,
-            request_id.to_string(),
-            "ok",
-            Some(serde_json::json!({"relayUrl": relay_url})),
-            None,
-        )
+        match pending.kind {
+            PendingKind::V1Health => {
+                let relay_url = configured_relay_url();
+                self.send_response(
+                    &pending.binding,
+                    request_id.to_string(),
+                    "ok",
+                    Some(serde_json::json!({"relayUrl": relay_url})),
+                    None,
+                )
+            }
+            PendingKind::V2Health => self.send_response_v2(
+                &pending.binding,
+                request_id.to_string(),
+                "ok",
+                Some(serde_json::json!({"relayUrl": configured_relay_url()})),
+                None,
+            ),
+            PendingKind::V2SharedIdentity => {
+                #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+                let shared = self
+                    .identity
+                    .as_ref()
+                    .ok_or(ProtocolError::IdentityInitializationFailed)?
+                    .is_shared_identity();
+                #[cfg(not(any(
+                    feature = "identity-file-only",
+                    feature = "identity-system-keyring"
+                )))]
+                let shared = false;
+                self.send_response_v2(
+                    &pending.binding,
+                    request_id.to_string(),
+                    "ok",
+                    Some(serde_json::json!({"value": shared})),
+                    None,
+                )
+            }
+            PendingKind::V2Identity => {
+                #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+                {
+                    let identity = self
+                        .identity
+                        .as_ref()
+                        .ok_or(ProtocolError::IdentityInitializationFailed)?;
+                    let snapshot = identity.snapshot();
+                    let payload = serde_json::json!({
+                        "pubkey": snapshot.pubkey.clone(),
+                        "display_name": snapshot.display_name.clone(),
+                        "storage": snapshot.storage.clone(),
+                        "lost": snapshot.lost,
+                        "locked": snapshot.locked,
+                        "reset_failed": snapshot.reset_failed,
+                    });
+                    return self.send_response_v2(
+                        &pending.binding,
+                        request_id.to_string(),
+                        "ok",
+                        Some(payload),
+                        None,
+                    );
+                }
+                #[cfg(not(any(
+                    feature = "identity-file-only",
+                    feature = "identity-system-keyring"
+                )))]
+                {
+                    self.send_response_v2(
+                        &pending.binding,
+                        request_id.to_string(),
+                        "error",
+                        None,
+                        Some("identity_unavailable"),
+                    )
+                }
+            }
+        }
     }
 
     fn expire_pending(&mut self) -> Result<(), ProtocolError> {
@@ -347,7 +479,7 @@ impl Host {
             .collect::<Vec<_>>();
         for request_id in expired {
             if let Some(pending) = self.pending.remove(&request_id) {
-                self.send_response(&pending.binding, request_id, "error", None, Some("timeout"))?;
+                self.send_pending_response(&pending, request_id, "error", None, Some("timeout"))?;
             }
         }
         Ok(())
@@ -361,9 +493,27 @@ impl Host {
             } else {
                 "error"
             };
-            self.send_response(&request.binding, request_id, outcome, None, Some(code))?;
+            self.send_pending_response(&request, request_id, outcome, None, Some(code))?;
         }
         Ok(())
+    }
+
+    fn send_pending_response(
+        &mut self,
+        pending: &PendingRequest,
+        request_id: String,
+        outcome: &str,
+        payload: Option<serde_json::Value>,
+        error_code: Option<&str>,
+    ) -> Result<(), ProtocolError> {
+        match pending.kind {
+            PendingKind::V1Health => {
+                self.send_response(&pending.binding, request_id, outcome, payload, error_code)
+            }
+            PendingKind::V2Health | PendingKind::V2SharedIdentity | PendingKind::V2Identity => {
+                self.send_response_v2(&pending.binding, request_id, outcome, payload, error_code)
+            }
+        }
     }
 
     fn send_ready(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
@@ -443,6 +593,272 @@ impl Host {
         })
     }
 
+    fn send_response_v2(
+        &mut self,
+        binding: &Binding,
+        request_id: String,
+        outcome: &str,
+        payload: Option<serde_json::Value>,
+        error_code: Option<&str>,
+    ) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "RESPONSE".to_string(),
+            protocol_version: v2::VERSION,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: Some(request_id),
+            outcome: Some(outcome.to_string()),
+            payload,
+            error: error_code.map(|code| ErrorBody {
+                code: code.to_string(),
+            }),
+            event: None,
+            sequence: None,
+            registry_digest: Some(v2::registry_digest()),
+        })
+    }
+
+    fn send_ready_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "READY".to_string(),
+            protocol_version: v2::VERSION,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: Some(serde_json::json!({
+                "capabilities": ["health-safe", "identity-mode", "identity-read"]
+            })),
+            error: None,
+            event: None,
+            sequence: None,
+            registry_digest: Some(v2::registry_digest()),
+        })
+    }
+
+    fn send_rebound_v2(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "REBOUND".to_string(),
+            protocol_version: v2::VERSION,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: None,
+            error: None,
+            event: None,
+            sequence: None,
+            registry_digest: Some(v2::registry_digest()),
+        })
+    }
+
+    fn send_lifecycle_v2(&mut self, binding: &Binding, state: &str) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "EVENT".to_string(),
+            protocol_version: v2::VERSION,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: Some(serde_json::json!({"state": state})),
+            error: None,
+            event: Some("host_lifecycle".to_string()),
+            sequence: Some(self.sequence),
+            registry_digest: Some(v2::registry_digest()),
+        })
+    }
+
+    fn handle_v2(&mut self, frame: v2::Frame) -> Result<(), ProtocolError> {
+        if frame.registry_digest() != v2::registry_digest() {
+            return Err(ProtocolError::RegistryMismatch);
+        }
+        match frame {
+            v2::Frame::Hello(frame) => self.handle_hello_v2(frame),
+            v2::Frame::Rehello(frame) => self.handle_rehello_v2(frame),
+            v2::Frame::Request(frame) => self.handle_request_v2(frame),
+            v2::Frame::Cancel(frame) => self.handle_cancel_v2(frame),
+        }
+    }
+
+    fn handle_hello_v2(&mut self, frame: v2::Hello) -> Result<(), ProtocolError> {
+        if self.binding.is_some() {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if frame.generation_id != 1 || frame.build_id.is_empty() {
+            return Err(ProtocolError::WrongBinding);
+        }
+        let binding = frame.binding()?;
+        if binding.profile_id != frame.identity_launch.profile_id {
+            return Err(ProtocolError::IdentityDescriptorRejected);
+        }
+        #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
+        {
+            let identity =
+                identity::IdentityRuntime::initialize(&frame.identity_launch).map_err(|error| {
+                    match error {
+                        identity::IdentityInitError::DescriptorRejected => {
+                            ProtocolError::IdentityDescriptorRejected
+                        }
+                        identity::IdentityInitError::InitializationFailed => {
+                            ProtocolError::IdentityInitializationFailed
+                        }
+                    }
+                })?;
+            self.identity = Some(identity);
+        }
+        #[cfg(not(any(feature = "identity-file-only", feature = "identity-system-keyring")))]
+        {
+            return Err(ProtocolError::IdentityUnavailable);
+        }
+        self.binding = Some(binding.clone());
+        self.sequence = 1;
+        self.send_ready_v2(&binding)?;
+        self.send_lifecycle_v2(&binding, "ready")
+    }
+
+    fn handle_rehello_v2(&mut self, frame: v2::Rehello) -> Result<(), ProtocolError> {
+        let current = self.binding.clone().ok_or(ProtocolError::WrongBinding)?;
+        if !current.matches_parts(&frame.profile_id, &frame.session_id) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if frame.generation_id == current.generation_id {
+            self.send_rebound_v2(&current)?;
+            return Ok(());
+        }
+        if frame.generation_id != current.generation_id.saturating_add(1) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        let next = Binding::from_parts(&frame.profile_id, &frame.session_id, frame.generation_id)?;
+        self.reject_pending("renderer_rebound")?;
+        self.binding = Some(next.clone());
+        self.send_rebound_v2(&next)?;
+        self.sequence = self.sequence.saturating_add(1);
+        self.send_lifecycle_v2(&next, "rebound")
+    }
+
+    fn handle_request_v2(&mut self, frame: v2::Request) -> Result<(), ProtocolError> {
+        let current = self.binding.clone().ok_or(ProtocolError::WrongBinding)?;
+        if !current.matches_parts(&frame.profile_id, &frame.session_id) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if frame.generation_id != current.generation_id {
+            let code = if frame.generation_id < current.generation_id {
+                "stale_generation"
+            } else {
+                "future_generation"
+            };
+            return self.send_response_v2(&current, frame.request_id, "error", None, Some(code));
+        }
+        if self.seen_request_ids.contains(&frame.request_id) {
+            return self.send_response_v2(
+                &current,
+                frame.request_id,
+                "error",
+                None,
+                Some("duplicate_request_id"),
+            );
+        }
+        if self.seen_request_ids.len()
+            >= self
+                .limits
+                .in_flight_limit
+                .saturating_mul(MAX_SEEN_REQUEST_IDS_MULTIPLIER)
+        {
+            return self.send_response_v2(
+                &current,
+                frame.request_id,
+                "error",
+                None,
+                Some("host_busy"),
+            );
+        }
+        self.seen_request_ids.insert(frame.request_id.clone());
+        if self.pending.len() >= self.limits.in_flight_limit {
+            return self.send_response_v2(
+                &current,
+                frame.request_id,
+                "error",
+                None,
+                Some("host_busy"),
+            );
+        }
+        let kind = match (frame.capability.as_str(), frame.method.as_str()) {
+            ("health-safe", "get_default_relay_url") => PendingKind::V2Health,
+            ("identity-mode", "is_shared_identity") => PendingKind::V2SharedIdentity,
+            ("identity-read", "get_identity") => PendingKind::V2Identity,
+            _ if !matches!(
+                frame.capability.as_str(),
+                "health-safe" | "identity-mode" | "identity-read"
+            ) =>
+            {
+                return self.send_response_v2(
+                    &current,
+                    frame.request_id,
+                    "error",
+                    None,
+                    Some("unknown_capability"),
+                )
+            }
+            _ => {
+                return self.send_response_v2(
+                    &current,
+                    frame.request_id,
+                    "error",
+                    None,
+                    Some("unknown_method"),
+                )
+            }
+        };
+        if frame.payload != serde_json::json!({}) {
+            return self.send_response_v2(
+                &current,
+                frame.request_id,
+                "error",
+                None,
+                Some("invalid_payload"),
+            );
+        }
+        let request_id = frame.request_id;
+        self.pending.insert(
+            request_id.clone(),
+            PendingRequest {
+                binding: current,
+                deadline: Instant::now() + self.deadline,
+                kind,
+            },
+        );
+        let delayed = self.fault == FaultMode::DelayResponse && !self.delayed_once;
+        self.delayed_once |= delayed;
+        if delayed {
+            return Ok(());
+        }
+        self.complete_ok(&request_id)
+    }
+
+    fn handle_cancel_v2(&mut self, frame: v2::Cancel) -> Result<(), ProtocolError> {
+        let current = self.binding.clone().ok_or(ProtocolError::WrongBinding)?;
+        if !current.matches_parts(&frame.profile_id, &frame.session_id) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if frame.generation_id != current.generation_id {
+            return Ok(());
+        }
+        if let Some(pending) = self.pending.remove(&frame.request_id) {
+            self.send_pending_response(
+                &pending,
+                frame.request_id,
+                "cancelled",
+                None,
+                Some("cancelled"),
+            )?;
+        }
+        Ok(())
+    }
+
     fn write(&mut self, frame: OutboundFrame) -> Result<(), ProtocolError> {
         let bytes = encode_frame(&frame, &self.limits)?;
         self.output.try_send(bytes).map_err(|error| match error {
@@ -463,6 +879,32 @@ fn configured_relay_url() -> String {
         .filter(|value| !value.is_empty())
         .or_else(|| option_env!("BUZZ_DESKTOP_BUILD_RELAY_URL").map(str::to_string))
         .unwrap_or_else(|| FALLBACK_RELAY_URL.to_string())
+}
+
+fn decode_any_frame(frame: &[u8], limits: &ProtocolLimits) -> Result<DecodedFrame, ProtocolError> {
+    let versions = match v2::root_protocol_versions(frame, limits) {
+        Ok(versions) => versions,
+        Err(_) => return decode_frame(frame, limits).map(DecodedFrame::V1),
+    };
+    if versions.contains(&v2::VERSION) {
+        v2::decode(frame, limits).map(DecodedFrame::V2)
+    } else {
+        if v2::contains_v2_only_fields(frame, limits)? {
+            return Err(ProtocolError::IdentityModeRequired);
+        }
+        decode_frame(frame, limits).map(DecodedFrame::V1)
+    }
+}
+
+fn launch_mode_from_args() -> LaunchMode {
+    if env::args()
+        .skip(1)
+        .any(|argument| argument == "--identity-v2-test")
+    {
+        LaunchMode::IdentityV2Test
+    } else {
+        LaunchMode::HealthOnly
+    }
 }
 
 fn main() {
@@ -506,7 +948,14 @@ fn main() {
     });
     let fault = FaultMode::from_environment();
     let shutdown_grace_ms = manifest.protocol.shutdown_grace_ms;
-    let mut host = Host::new(manifest.protocol, expected_profile_id, fault, output_sender);
+    let launch_mode = launch_mode_from_args();
+    let mut host = Host::new(
+        manifest.protocol,
+        expected_profile_id,
+        fault,
+        output_sender,
+        launch_mode,
+    );
     let result = host.run(receiver, writer_failure_receiver);
     finish_host(
         result,
