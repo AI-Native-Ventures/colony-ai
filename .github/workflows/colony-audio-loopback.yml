@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - feat/phase1-audio-parity
     paths:
       - "desktop/src-native-host-audio-loopback/**"
       - ".github/workflows/colony-audio-loopback.yml"
