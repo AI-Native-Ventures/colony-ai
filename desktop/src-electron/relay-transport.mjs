@@ -340,11 +340,17 @@ export class RelayTransport {
         if (outcome === "ok") {
           payload = payload.payload;
         } else if (outcome === "error") {
+          // Native emits error:{code} with a finite redacted code. A
+          // missing/non-string code is itself a contract violation, not a
+          // passthrough of whatever the helper sent.
+          const code = payload.error?.code;
           settleFail(
             new RelayTransportError(
-              redactedRelayTransportCode(
-                payload.error?.code ?? "invalid_payload",
-              ),
+              typeof code === "string" && isKnownTransportCode(code)
+                ? code === "unsupported_message_type"
+                  ? "invalid_payload"
+                  : code
+                : "invalid_payload",
             ),
           );
           return;

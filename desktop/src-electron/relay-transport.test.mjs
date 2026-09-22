@@ -121,6 +121,13 @@ function responseFor(operation) {
   }
 }
 
+// Mock-child contract, derived field-by-field from pinned native source
+// (protocol.rs Envelope/OutboundFrame, main.rs handle_request_relay):
+// - REQUEST carries camelCase requestId (Option<String>, echoed back),
+//   split capability/method (relay_operation_for maps the pair; full-op
+//   strings and unknown pairs fail), and the contract-encoded payload.
+// - RESPONSE envelopes echo requestId, carry outcome ok/error, payload on
+//   ok, and error:{code} on error. outcome missing/other fails closed.
 function mockChild({ onRequest = null, binding = { generationId: 1 } } = {}) {
   const calls = [];
   const listeners = new Set();
@@ -254,6 +261,92 @@ test("malformed child responses fail closed without payload leakage", async () =
     "invalid_payload",
   );
   transport.dispose();
+});
+
+test("native RESPONSE envelope shapes settle exactly per the wire contract", async () => {
+  // outcome:"error" with a finite code rejects with that code.
+  {
+    const child = mockChild({
+      onRequest: () =>
+        Promise.resolve({
+          type: "RESPONSE",
+          outcome: "error",
+          error: { code: "request_timeout" },
+        }),
+    });
+    const transport = attached(child);
+    transport.bindConnection(CONNECTION);
+    await expectCode(
+      transport.invoke(
+        "identity-sign/sign_presence",
+        payloadFor("identity-sign/sign_presence"),
+      ),
+      "request_timeout",
+    );
+    transport.dispose();
+  }
+  // outcome:"error" with relay prose fails closed, never passthrough.
+  {
+    const child = mockChild({
+      onRequest: () =>
+        Promise.resolve({
+          type: "RESPONSE",
+          outcome: "error",
+          error: { code: "relay says no" },
+        }),
+    });
+    const transport = attached(child);
+    transport.bindConnection(CONNECTION);
+    await expectCode(
+      transport.invoke(
+        "identity-sign/sign_presence",
+        payloadFor("identity-sign/sign_presence"),
+      ),
+      "invalid_payload",
+    );
+    transport.dispose();
+  }
+  // Unknown outcome fails closed (native only ever emits ok/error).
+  {
+    const child = mockChild({
+      onRequest: () =>
+        Promise.resolve({ type: "RESPONSE", outcome: "maybe", payload: {} }),
+    });
+    const transport = attached(child);
+    transport.bindConnection(CONNECTION);
+    await expectCode(
+      transport.invoke(
+        "identity-sign/sign_presence",
+        payloadFor("identity-sign/sign_presence"),
+      ),
+      "invalid_payload",
+    );
+    transport.dispose();
+  }
+  // Responses arriving after dispose settle with the dispose reason,
+  // not with the late response content (exactly-once: dispose wins).
+  {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const child = mockChild({ onRequest: () => gate });
+    const transport = attached(child);
+    transport.bindConnection(CONNECTION);
+    const pending = transport.invoke(
+      "identity-sign/sign_presence",
+      payloadFor("identity-sign/sign_presence"),
+    );
+    assert.equal(transport.pendingCount(), 1);
+    transport.dispose();
+    release({
+      type: "RESPONSE",
+      outcome: "ok",
+      payload: responseFor("identity-sign/sign_presence"),
+    });
+    await expectCode(pending, "host_unavailable");
+    assert.equal(transport.pendingCount(), 0);
+  }
 });
 
 test("valid relay events dispatch to subscribers; invalid frames are dropped", async () => {
