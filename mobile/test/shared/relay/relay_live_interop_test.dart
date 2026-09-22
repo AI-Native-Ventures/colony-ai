@@ -368,7 +368,8 @@ void main() {
         expect(
           matches.single.content,
           sent.content,
-          reason: 'catch-up must return the probe content, got '
+          reason:
+              'catch-up must return the probe content, got '
               '${matches.single.content}',
         );
       },
