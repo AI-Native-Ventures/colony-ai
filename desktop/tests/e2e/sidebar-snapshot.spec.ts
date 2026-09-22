@@ -330,6 +330,7 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
   page,
 }) => {
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
@@ -354,6 +355,11 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
       measure: expect.any(Number),
     });
   expect((await getFullSidebarMeasure(page)).markCount).toBeGreaterThan(0);
+  // Negative observer control: with no seeded snapshot nothing may ever
+  // be recorded, even though the live list paints afterwards.
+  await expect
+    .poll(() => getTrackedSnapshotRows(page))
+    .toEqual([]);
 });
 
 test("a different identity's snapshot is ignored", async ({ page }) => {
@@ -363,6 +369,7 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
     ownerPubkey: STALE_COMMUNITY_PUBKEY,
   });
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
@@ -379,6 +386,11 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
       presence: "invalid",
     });
   await expect(page.getByTestId("channel-general")).toBeVisible();
+  // Negative observer control: the foreign snapshot must never paint,
+  // so the tracker records nothing even after the live list settles.
+  await expect
+    .poll(() => getTrackedSnapshotRows(page))
+    .toEqual([]);
 });
 
 test("display-only community pubkey cannot expose another identity's snapshot", async ({
@@ -524,6 +536,14 @@ test("hash mismatch replaces the snapshot with the full live list", async ({
   // The live revalidation still sends the stale hash first: the
   // replacement path is unchanged, only the boot-frame observation is
   // race-free.
+  //
+  // Fast-replacement control: the seeded rows are inserted and later
+  // removed, so the current-DOM locator below reads 0 while the
+  // observer above records all 14 inserted ids. That is exactly the
+  // schedule the old instant count could miss: it proves the tracker
+  // observes detached added nodes (MutationObserver addedNodes are
+  // delivered with the inserted subtree even after removal) rather
+  // than querying the current document.
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "stale-hash" }]);
