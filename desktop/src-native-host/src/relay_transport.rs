@@ -1074,35 +1074,12 @@ pub mod wire_fixtures {
         serde_json::json!(["EOSE", subscription_id]).to_string()
     }
 
-    pub fn notice_wire(message: &str) -> String {
-        serde_json::json!(["NOTICE", message]).to_string()
+    pub fn closed_wire(subscription_id: &str, message: &str) -> String {
+        serde_json::json!(["CLOSED", subscription_id, message]).to_string()
     }
 
-    /// Positive-vector coverage for the remaining wire classes, so every
-    /// variant the translator accepts is proven parseable from real wire.
-    #[test]
-    fn wire_parser_covers_event_closed_shapes() {
-        let event = serde_json::json!({
-            "id": EVENT_ID,
-            "pubkey": EVENT_ID,
-            "created_at": 1,
-            "kind": 9,
-            "tags": [],
-            "content": "hello",
-            "sig": "c".repeat(128),
-        });
-        assert!(matches!(
-            parse_wire(&event_wire("sub-1", event)).expect("EVENT parses"),
-            WireInbound::Event { .. }
-        ));
-        assert!(matches!(
-            parse_wire(&closed_wire("sub-1", "auth_required")).expect("CLOSED parses"),
-            WireInbound::Closed { .. }
-        ));
-        assert!(matches!(
-            parse_wire(&notice_wire("maintenance")).expect("NOTICE parses"),
-            WireInbound::Notice { .. }
-        ));
+    pub fn notice_wire(message: &str) -> String {
+        serde_json::json!(["NOTICE", message]).to_string()
     }
 }
 
@@ -1247,6 +1224,36 @@ mod tests {
         assert_eq!(redact_notice("weird prose"), "unknown");
         assert_eq!(redact_ok_message("weird prose"), "unknown");
         assert_eq!(redact_closed_message("weird prose"), "unknown");
+    }
+
+    /// Positive-vector coverage for the remaining wire classes, so every
+    /// variant the translator accepts is proven parseable from real wire.
+    /// Lives here (not in wire_fixtures) because fixtures hold only shared
+    /// helpers — parse/translate targets resolve through this module.
+    #[test]
+    fn wire_parser_covers_event_closed_shapes() {
+        use super::{parse_wire, WireInbound};
+        let event = serde_json::json!({
+            "id": EVENT_ID,
+            "pubkey": EVENT_ID,
+            "created_at": 1,
+            "kind": 9,
+            "tags": [],
+            "content": "hello",
+            "sig": "c".repeat(128),
+        });
+        assert!(matches!(
+            parse_wire(&event_wire("sub-1", event)).expect("EVENT parses"),
+            WireInbound::Event { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&closed_wire("sub-1", "auth_required")).expect("CLOSED parses"),
+            WireInbound::Closed { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&notice_wire("maintenance")).expect("NOTICE parses"),
+            WireInbound::Notice { .. }
+        ));
     }
 
     #[test]
