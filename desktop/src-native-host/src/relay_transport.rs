@@ -422,8 +422,8 @@ pub fn relay_operation(operation: &str) -> Result<(&'static str, Duration), Cont
     }
 }
 
-/// Typed inbound relay traffic after frozen validation, tagged with the
-/// transport generation that produced it.
+/// Typed inbound relay traffic after wire parsing plus frozen validation,
+/// tagged with the transport generation that produced it.
 #[derive(Debug, Clone)]
 pub struct TypedInbound {
     pub generation: u64,
@@ -431,28 +431,218 @@ pub struct TypedInbound {
     pub payload: serde_json::Value,
 }
 
-/// Parse one raw relay text frame through the frozen inbound validator and
-/// tag it with `generation`. The class is one of the six frozen kinds.
-pub fn parse_inbound(text: &str, generation: u64) -> ContractResult<TypedInbound> {
+/// Raw upstream Nostr wire shapes, parsed before any envelope is built.
+/// Real relays send bare arrays: `["AUTH", challenge]`, `["OK", id, bool,
+/// string]`, `["EVENT", sub, event]`, `["EOSE", sub]`, `["CLOSED", sub,
+/// string]`, `["NOTICE", string]`. The host envelope below is constructed
+/// from these, never confused with them.
+#[derive(Debug, Clone)]
+pub enum WireInbound {
+    Auth {
+        challenge: String,
+    },
+    Ok {
+        event_id: String,
+        accepted: bool,
+        message: String,
+    },
+    Event {
+        subscription_id: String,
+        event: serde_json::Value,
+    },
+    Eose {
+        subscription_id: String,
+    },
+    Closed {
+        subscription_id: String,
+        message: String,
+    },
+    Notice {
+        message: String,
+    },
+}
+
+/// Parse one raw relay text frame into its wire shape. Bounds first, raw
+/// wire second, envelope later. Unknown classes and malformed shapes fail
+/// closed here; oversized frames never enter the parser beyond the bound.
+pub fn parse_wire(text: &str) -> ContractResult<WireInbound> {
     if text.len() > RELAY_FRAME_CAP {
         return Err(ContractError::Oversized);
     }
-    let frame = relay_v2::validate_inbound_frame(text.as_bytes())?;
+    let frame: serde_json::Value =
+        serde_json::from_str(text).map_err(|_| ContractError::InvalidJson)?;
     let array = frame.as_array().ok_or(ContractError::MalformedFrame)?;
-    let message_type = array
+    let label = array
         .first()
-        .and_then(|value| value.as_str())
+        .and_then(|v| v.as_str())
         .ok_or(ContractError::MalformedFrame)?;
-    let class: &'static str = match message_type {
-        "AUTH" => "AUTH",
-        "OK" => "OK",
-        "EVENT" => "EVENT",
-        "EOSE" => "EOSE",
-        "CLOSED" => "CLOSED",
-        "NOTICE" => "NOTICE",
-        _ => return Err(ContractError::MalformedFrame),
+    let at = |index: usize| array.get(index);
+    match label {
+        "AUTH" => {
+            let challenge = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            if challenge.len() > 64 {
+                return Err(ContractError::InvalidPayload);
+            }
+            Ok(WireInbound::Auth {
+                challenge: challenge.to_string(),
+            })
+        }
+        "OK" => {
+            let event_id = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            let accepted = at(2)
+                .and_then(|v| v.as_bool())
+                .ok_or(ContractError::MalformedFrame)?;
+            let message = at(3)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            Ok(WireInbound::Ok {
+                event_id: event_id.to_string(),
+                accepted,
+                message: message.to_string(),
+            })
+        }
+        "EVENT" => {
+            let subscription_id = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            let event = at(2).cloned().ok_or(ContractError::MalformedFrame)?;
+            Ok(WireInbound::Event {
+                subscription_id: subscription_id.to_string(),
+                event,
+            })
+        }
+        "EOSE" => {
+            let subscription_id = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            Ok(WireInbound::Eose {
+                subscription_id: subscription_id.to_string(),
+            })
+        }
+        "CLOSED" => {
+            let subscription_id = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            let message = at(2)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            Ok(WireInbound::Closed {
+                subscription_id: subscription_id.to_string(),
+                message: message.to_string(),
+            })
+        }
+        "NOTICE" => {
+            let message = at(1)
+                .and_then(|v| v.as_str())
+                .ok_or(ContractError::MalformedFrame)?;
+            Ok(WireInbound::Notice {
+                message: message.to_string(),
+            })
+        }
+        _ => Err(ContractError::MalformedFrame),
+    }
+}
+
+/// Redact relay prose into the finite NOTICE vocabulary. Raw server strings
+/// never cross this seam except as `unknown`.
+pub fn redact_notice(message: &str) -> &'static str {
+    match message {
+        "invalid_request" => "invalid_request",
+        "not_authorized" => "not_authorized",
+        "rate_limited" => "rate_limited",
+        "server_error" => "server_error",
+        "maintenance" => "maintenance",
+        _ => "unknown",
+    }
+}
+
+/// Redact relay prose into the finite OK vocabulary.
+pub fn redact_ok_message(message: &str) -> &'static str {
+    match message {
+        "accepted" => "accepted",
+        "rejected" => "rejected",
+        "duplicate" => "duplicate",
+        "invalid_event" => "invalid_event",
+        "not_authorized" => "not_authorized",
+        "rate_limited" => "rate_limited",
+        "server_error" => "server_error",
+        _ => "unknown",
+    }
+}
+
+/// Redact relay prose into the finite CLOSED vocabulary.
+pub fn redact_closed_message(message: &str) -> &'static str {
+    match message {
+        "auth_required" => "auth_required",
+        "invalid_request" => "invalid_request",
+        "not_authorized" => "not_authorized",
+        "rate_limited" => "rate_limited",
+        "server_error" => "server_error",
+        "timeout" => "timeout",
+        _ => "unknown",
+    }
+}
+
+/// Translate one parsed wire frame into its frozen host envelope and
+/// validate the envelope through the frozen registry. Construction and
+/// validation live behind one seam so fixtures can never substitute a
+/// hand-written envelope for real wire.
+pub fn translate_wire(
+    wire: &WireInbound,
+    connection_id: &str,
+    generation: u64,
+) -> ContractResult<TypedInbound> {
+    let (class, payload) = match wire {
+        WireInbound::Auth { challenge } => ("AUTH", serde_json::json!({"challengeRef": challenge})),
+        WireInbound::Ok {
+            event_id,
+            accepted,
+            message,
+        } => (
+            "OK",
+            serde_json::json!({
+                "eventId": event_id,
+                "accepted": accepted,
+                "messageCode": redact_ok_message(message),
+            }),
+        ),
+        WireInbound::Event {
+            subscription_id,
+            event,
+        } => (
+            "EVENT",
+            serde_json::json!({"subscriptionId": subscription_id, "event": event}),
+        ),
+        WireInbound::Eose { subscription_id } => (
+            "EOSE",
+            serde_json::json!({"subscriptionId": subscription_id}),
+        ),
+        WireInbound::Closed {
+            subscription_id,
+            message,
+        } => (
+            "CLOSED",
+            serde_json::json!({
+                "subscriptionId": subscription_id,
+                "reasonCode": redact_closed_message(message),
+            }),
+        ),
+        WireInbound::Notice { message } => (
+            "NOTICE",
+            serde_json::json!({"code": redact_notice(message)}),
+        ),
     };
-    let payload = array.get(1).cloned().unwrap_or(serde_json::Value::Null);
+    let envelope_value = serde_json::json!({
+        "connectionId": connection_id,
+        "generation": generation,
+        "messageType": class,
+        "payload": payload,
+    });
+    relay_v2::validate_inbound_event(&envelope_value)?;
     Ok(TypedInbound {
         generation,
         message_type: class,
@@ -460,14 +650,26 @@ pub fn parse_inbound(text: &str, generation: u64) -> ContractResult<TypedInbound
     })
 }
 
+/// Parse one raw relay text frame: wire shape first, then envelope
+/// construction plus frozen validation, tagged with `generation`.
+pub fn parse_inbound(
+    text: &str,
+    connection_id: &str,
+    generation: u64,
+) -> ContractResult<TypedInbound> {
+    translate_wire(&parse_wire(text)?, connection_id, generation)
+}
+
 /// Read until `predicate` accepts a parsed inbound frame or `deadline`
 /// passes with `timeout_code`. Ticks keep shutdown observable. The parsed
 /// frames are tagged with `generation` so stale traffic is fenced here,
-/// not delivered.
+/// not delivered. The socket carries raw upstream wire; envelopes are
+/// constructed per frame with the reader's connection id.
 pub fn read_until<S, F>(
     socket: &mut S,
     deadline: Instant,
     timeout_code: ContractError,
+    connection_id: &str,
     generation: u64,
     mut predicate: F,
 ) -> ContractResult<TypedInbound>
@@ -481,7 +683,7 @@ where
         }
         match socket.read_text(deadline) {
             Ok(Some(text)) => {
-                let inbound = parse_inbound(&text, generation)?;
+                let inbound = parse_inbound(&text, connection_id, generation)?;
                 if inbound.generation == generation && predicate(&inbound) {
                     return Ok(inbound);
                 }
@@ -667,18 +869,18 @@ impl Drop for RelayConnection {
     }
 }
 
-/// Spawn the background reader for an authenticated socket. Every parsed
-/// frame is validated and forwarded with `generation`; the reader exits on
-/// shutdown, socket failure, or a full inbound queue (bounded memory wins
-/// over delivery, and the failure is surfaced through health). The socket
-/// is already erased behind `Box<dyn SocketIo>`, so no type parameter is
-/// needed — production and fake sockets share the seam.
+/// Spawn the background reader for an authenticated socket. Every raw wire
+/// frame is parsed, translated into its envelope, and forwarded with
+/// `generation`; the reader exits on shutdown, socket failure, or a full
+/// inbound queue (bounded memory wins over delivery, and the failure is
+/// surfaced through health).
 pub fn spawn_reader(
     socket: Arc<Mutex<Box<dyn SocketIo>>>,
     inbox: mpsc::SyncSender<TypedInbound>,
     shutdown: Arc<AtomicBool>,
     alive: Arc<AtomicBool>,
     failed: Arc<Mutex<Option<ContractError>>>,
+    connection_id: String,
     generation: u64,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
@@ -691,7 +893,7 @@ pub fn spawn_reader(
                 guard.read_text(Instant::now() + Duration::from_secs(60))
             };
             match next {
-                Ok(Some(text)) => match parse_inbound(&text, generation) {
+                Ok(Some(text)) => match parse_inbound(&text, &connection_id, generation) {
                     Ok(inbound) => {
                         if inbox.try_send(inbound).is_err() {
                             return Err(ContractError::QueueFull);
@@ -738,6 +940,10 @@ impl ConnectionFactory {
             &mut socket,
             auth_deadline,
             ContractError::AuthTimeout,
+            // The connection id is minted after the handshake; challenge
+            // parsing only needs envelope shape validity, so the zero UUID
+            // stands in until the real id exists.
+            "00000000-0000-0000-0000-000000000000",
             generation,
             |inbound| inbound.message_type == "AUTH",
         )?;
@@ -756,6 +962,7 @@ impl ConnectionFactory {
             &mut socket,
             auth_deadline,
             ContractError::AuthTimeout,
+            "00000000-0000-0000-0000-000000000000",
             generation,
             |inbound| {
                 inbound.message_type == "OK"
@@ -799,6 +1006,7 @@ impl ConnectionFactory {
             Arc::clone(&connection.reader_shutdown),
             Arc::clone(&connection.reader_alive),
             Arc::clone(&connection.reader_failed),
+            connection.connection_id.clone(),
             connection.generation,
         );
         connection.reader_handle = Some(handle);
@@ -850,29 +1058,30 @@ mod tests {
     const EVENT_ID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const CONNECTION_ID: &str = "11111111-1111-1111-1111-111111111111";
 
-    /// Full contract envelope for a relay message class. The frozen
-    /// `relay-message-event` schema requires connectionId, generation,
-    /// messageType, and payload — bare `["TYPE", payload]` pairs are a
-    /// fixture shape, not relay traffic.
-    fn envelope_frame(message_type: &str, payload: serde_json::Value) -> String {
-        serde_json::json!({
-            "connectionId": CONNECTION_ID,
-            "generation": 1,
-            "messageType": message_type,
-            "payload": payload,
-        })
-        .to_string()
+    /// Raw upstream wire frames. Real relays send bare arrays; envelopes
+    /// are constructed by the translator, never hand-written in fixtures.
+    fn auth_wire(challenge: &str) -> String {
+        serde_json::json!(["AUTH", challenge]).to_string()
     }
 
-    fn auth_frame(challenge: &str) -> String {
-        envelope_frame("AUTH", serde_json::json!({"challengeRef": challenge}))
+    fn ok_wire(event_id: &str, accepted: bool, message: &str) -> String {
+        serde_json::json!(["OK", event_id, accepted, message]).to_string()
     }
 
-    fn ok_frame(event_id: &str, accepted: bool, code: &str) -> String {
-        envelope_frame(
-            "OK",
-            serde_json::json!({"eventId": event_id, "accepted": accepted, "messageCode": code}),
-        )
+    fn event_wire(subscription_id: &str, event: serde_json::Value) -> String {
+        serde_json::json!(["EVENT", subscription_id, event]).to_string()
+    }
+
+    fn eose_wire(subscription_id: &str) -> String {
+        serde_json::json!(["EOSE", subscription_id]).to_string()
+    }
+
+    fn closed_wire(subscription_id: &str, message: &str) -> String {
+        serde_json::json!(["CLOSED", subscription_id, message]).to_string()
+    }
+
+    fn notice_wire(message: &str) -> String {
+        serde_json::json!(["NOTICE", message]).to_string()
     }
 
     fn test_connection() -> RelayConnection {
@@ -985,28 +1194,95 @@ mod tests {
     }
 
     #[test]
-    fn parse_inbound_accepts_classes_and_rejects_count_and_oversize() {
-        let ok = parse_inbound(&ok_frame(EVENT_ID, true, "accepted"), 3).expect("valid OK parses");
-        assert_eq!(ok.message_type, "OK");
-        assert_eq!(ok.generation, 3);
-        assert!(parse_inbound(&auth_frame("c"), 3).is_ok());
-        // Bare pairs and unknown classes are not envelopes — rejected.
-        assert!(parse_inbound(r#"["COUNT",{"kinds":[1]}]"#, 3).is_err());
-        assert!(parse_inbound(r#"["OK",{"eventId":"x"}]"#, 3).is_err());
-        assert!(parse_inbound("not json", 3).is_err());
+    fn wire_parser_accepts_real_shapes_and_rejects_count_and_oversize() {
+        // Real upstream wire first: bare arrays, exactly as relays send.
+        assert!(matches!(
+            parse_wire(&auth_wire("challenge-1")).expect("AUTH parses"),
+            WireInbound::Auth { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&ok_wire(EVENT_ID, true, "accepted")).expect("OK parses"),
+            WireInbound::Ok { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&eose_wire("sub-1")).expect("EOSE parses"),
+            WireInbound::Eose { .. }
+        ));
+        assert!(parse_wire(r#"["COUNT",{"kinds":[1]}]"#).is_err());
+        assert!(parse_wire(r#"["OK",{"eventId":"x"}]"#).is_err());
+        assert!(parse_wire("not json").is_err());
         let oversized = "x".repeat(RELAY_FRAME_CAP + 1);
-        let big = envelope_frame("NOTICE", serde_json::json!({"code": oversized}));
         assert_eq!(
-            parse_inbound(&big, 3).unwrap_err(),
+            parse_wire(&notice_wire(&oversized)).unwrap_err(),
             ContractError::Oversized
         );
+        // Raw prose survives parsing but is redacted at translation.
+        assert_eq!(redact_notice("weird prose"), "unknown");
+        assert_eq!(redact_ok_message("weird prose"), "unknown");
+        assert_eq!(redact_closed_message("weird prose"), "unknown");
+    }
+
+    #[test]
+    fn translator_builds_validated_envelopes_from_wire() {
+        // Translation constructs the frozen envelope and validates it; the
+        // six classes pass, and prose is redacted to finite codes.
+        let ok = translate_wire(
+            &parse_wire(&ok_wire(EVENT_ID, true, "accepted")).expect("wire"),
+            CONNECTION_ID,
+            3,
+        )
+        .expect("valid OK translates");
+        assert_eq!(ok.message_type, "OK");
+        assert_eq!(ok.generation, 3);
+        assert_eq!(
+            ok.payload.get("messageCode").and_then(|v| v.as_str()),
+            Some("accepted")
+        );
+        let ok = translate_wire(
+            &parse_wire(&ok_wire(EVENT_ID, false, "relay exploded")).expect("wire"),
+            CONNECTION_ID,
+            3,
+        )
+        .expect("rejected OK translates");
+        assert_eq!(
+            ok.payload.get("messageCode").and_then(|v| v.as_str()),
+            Some("unknown")
+        );
+        assert_eq!(
+            ok.payload.get("accepted").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        // Full EVENT wire with a signed-shaped event validates end to end.
+        let event = serde_json::json!({
+            "id": "a".repeat(64),
+            "pubkey": "b".repeat(64),
+            "created_at": 1,
+            "kind": 9,
+            "tags": [],
+            "content": "hello",
+            "sig": "c".repeat(128),
+        });
+        let translated = translate_wire(
+            &parse_wire(&event_wire("sub-1", event)).expect("wire"),
+            CONNECTION_ID,
+            3,
+        )
+        .expect("EVENT translates");
+        assert_eq!(translated.message_type, "EVENT");
+        // Oversize and malformed wire fail at the socket seam.
+        let oversized = "x".repeat(RELAY_FRAME_CAP + 1);
+        assert_eq!(
+            parse_inbound(&notice_wire(&oversized), CONNECTION_ID, 3).unwrap_err(),
+            ContractError::Oversized
+        );
+        assert!(parse_inbound(r#"["COUNT",{"kinds":[1]}]"#, CONNECTION_ID, 3).is_err());
     }
 
     #[test]
     fn handshake_succeeds_and_mints_connection_id() {
         let keys = Keys::generate();
         let socket = FakeSocket::scripted(vec![
-            FakeRead::Fixed(Ok(Some(auth_frame("challenge-1")))),
+            FakeRead::Fixed(Ok(Some(auth_wire("challenge-1")))),
             FakeRead::OkForLastAuth,
         ]);
         let connection = ConnectionFactory::connect_authenticated(
@@ -1046,7 +1322,7 @@ mod tests {
         // factory reads AUTH first, writes AUTH, then the broken read
         // fails the OK wait deterministically.
         let socket = FakeSocket::scripted(vec![
-            FakeRead::Fixed(Ok(Some(auth_frame("challenge-1")))),
+            FakeRead::Fixed(Ok(Some(auth_wire("challenge-1")))),
             FakeRead::Fixed(Err(ContractError::RelayClosed)),
         ]);
         assert_eq!(
