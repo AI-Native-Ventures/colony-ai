@@ -436,7 +436,7 @@ void main() {
         await bad.start();
         await Future<void>.delayed(const Duration(seconds: 10));
         expect(
-          bad.container.read(relaySessionProvider.notifier).status,
+          bad.container.read(relaySessionProvider).status,
           isNot(SessionStatus.connected),
           reason: 'garbage identity must never authenticate',
         );
