@@ -42,6 +42,7 @@ try {
 
 const require = createRequire(import.meta.url);
 const { app, clipboard } = require("electron");
+writeFileSync(1, "shell-clipboard-proof: probe-after-electron-require\n");
 
 import { copyTextToClipboard, readClipboardText } from "./shell-clipboard.mjs";
 import { CLIPBOARD_PROOF_TOKEN_PREFIX } from "./shell-clipboard.proof.mjs";
@@ -104,7 +105,9 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+writeFileSync(1, "shell-clipboard-proof: probe-before-whenReady\n");
 await app.whenReady();
+writeFileSync(1, "shell-clipboard-proof: probe-whenReady-resolved\n");
 try {
   await main();
 } catch (error) {
@@ -117,6 +120,7 @@ try {
   // can leave the process alive when nothing else drives the loop, so force
   // a synchronous exit after flushing stdio. The report file is already
   // written by main(), so no evidence is lost.
+  writeFileSync(1, "shell-clipboard-proof: probe-before-quit\n");
   app.quit();
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
