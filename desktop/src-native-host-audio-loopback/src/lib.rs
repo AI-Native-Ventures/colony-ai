@@ -10,7 +10,7 @@
 //! runs fmt/diff/scan only.
 
 use colony_native_host_audio::{
-    audio_level_dbov, next_seq, next_ts_48k, parse_relay_frame, FrameHeader, FLAG_DTX,
+    audio_level_dbov, next_seq, next_ts_48k, FrameHeader, FLAG_DTX,
     FRAME_SAMPLES_20MS, MAX_OPUS_PACKET_BYTES,
 };
 use neteq::{codec::AudioDecoder, neteq::SpeechType, AudioPacket, NetEq, NetEqConfig, RtpHeader};
@@ -119,11 +119,15 @@ impl LoopbackDrain {
         let mut neteq = NetEq::new(NetEqConfig {
             sample_rate: SAMPLE_RATE_HZ,
             channels: CHANNELS,
+            max_packets_in_buffer: colony_native_host_audio::PCM_QUEUE_DEPTH,
             ..Default::default()
         })?;
         neteq.register_decoder(
             OPUS_PAYLOAD_TYPE,
-            Box::new(OpusDecoder::new().map_err(neteq::NetEqError::DecoderError)?),
+            Box::new(
+                OpusDecoder::new()
+                    .map_err(|e| neteq::NetEqError::DecoderError(format!("opus decoder init: {e}")))?,
+            ),
         );
         Ok(Self {
             neteq,
