@@ -125,7 +125,9 @@ class RealChild {
         env: environment,
       });
       const timer = setTimeout(() => {
-        reject(new Error("helper produced no process output before exit-or-timeout"));
+        reject(
+          new Error("helper produced no process output before exit-or-timeout"),
+        );
       }, timeoutMs);
       timer.unref?.();
       let settled = false;
@@ -145,13 +147,18 @@ class RealChild {
       this.child.stdout.on("data", (chunk) => this.#onData(String(chunk)));
       this.child.stderr.setEncoding("utf8");
       this.child.stderr.on("data", (chunk) => {
-        this.stderrText += String(chunk).slice(0, 4096 - this.stderrText.length);
+        this.stderrText += String(chunk).slice(
+          0,
+          4096 - this.stderrText.length,
+        );
       });
       this.child.on("error", (error) => settleReject(error));
       this.child.on("close", (code, signal) => {
         this.closeInfo = { code, signal };
         if (this.frames.length === 0 && this.waiters.length > 0) {
-          settleReject(new Error(redactedExitDiagnostic(this.closeInfo, this.stderrText)));
+          settleReject(
+            new Error(redactedExitDiagnostic(this.closeInfo, this.stderrText)),
+          );
         } else {
           settleResolve();
         }
