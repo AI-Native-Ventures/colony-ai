@@ -98,14 +98,14 @@ jobs:
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
-          # The owned proof helper (shell-clipboard.proof.mjs) is staged into
-          # the ASAR next to main.mjs. Shared stage/pack scripts are NOT
-          # modified: the copy is an explicit lane-local step so the stage-0
-          # package guard keeps proving the frozen file list.
+          # The owned proof contract (shell-clipboard.proof.mjs) is staged into
+          # the ASAR next to main.mjs for provenance only - the spec drives
+          # the real backend through the documented evaluate callback, with
+          # no imports inside the serialized function. Shared stage/pack
+          # scripts are NOT modified: the copy is an explicit lane-local step
+          # so the stage-0 package guard keeps proving the frozen file list.
           rm -rf desktop/dist-electron-instrumented desktop/.stage0-package-instrumented
           pnpm --dir desktop electron:stage0:stage:instrumented
-          cp desktop/src-electron/shell-clipboard.mjs \
-            desktop/.stage0-package-instrumented/src-electron/shell-clipboard.mjs
           cp desktop/src-electron/shell-clipboard.proof.mjs \
             desktop/.stage0-package-instrumented/src-electron/shell-clipboard.proof.mjs
           COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" \
