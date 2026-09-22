@@ -42,8 +42,22 @@ jobs:
         run: just fmt-check
       - name: Desktop Tauri format check
         run: just desktop-tauri-fmt-check
+      # These packages each declare their own standalone workspace. The root
+      # cargo workspace and the Tauri manifest do not discover them.
+      - name: Standalone desktop Rust format checks
+        run: |
+          cargo fmt --manifest-path desktop/src-native-host/Cargo.toml --all -- --check
+          cargo fmt --manifest-path desktop/src-native-host-terminal/Cargo.toml --all -- --check
+          cargo fmt --manifest-path desktop/src-native-host-audio/Cargo.toml --all -- --check
+          cargo fmt --manifest-path desktop/src-native-host-audio-loopback/Cargo.toml --all -- --check
       - name: Clippy
         run: just clippy
+      - name: Standalone desktop Rust Clippy
+        run: |
+          cargo clippy --manifest-path desktop/src-native-host/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path desktop/src-native-host-terminal/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path desktop/src-native-host-audio/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path desktop/src-native-host-audio-loopback/Cargo.toml --all-targets -- -D warnings
 
   unit-tests:
     name: Unit Tests
