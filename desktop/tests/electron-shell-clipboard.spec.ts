@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 import {
   _electron as electron,
@@ -9,11 +9,6 @@ import {
   test,
 } from "@playwright/test";
 import { getStage0PackagePaths } from "./electron-stage0-package";
-
-const desktopDirectory = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
 
 const packagePaths = getStage0PackagePaths("instrumented");
 const { appBinary, hostResource } = packagePaths;
@@ -55,7 +50,9 @@ test("packaged main process proves real Electron clipboard read/write", async ()
     // developer-machine clipboard is involved. Hosted runner only: fresh GUI
     // session, unique per-run token.
     const appPath = await application.evaluate(async () => {
-      const electronModule = (await import("electron")) as typeof import("electron");
+      const electronModule = (await import(
+        "electron"
+      )) as typeof import("electron");
       return electronModule.app.getAppPath();
     });
     const proofFileUrl = pathToFileURL(
@@ -63,9 +60,7 @@ test("packaged main process proves real Electron clipboard read/write", async ()
     ).toString();
     const report = await application.evaluate(async (fileUrl: string) => {
       const { runRealClipboardProof } = (await import(fileUrl)) as {
-        runRealClipboardProof: (
-          clipboard: unknown,
-        ) => {
+        runRealClipboardProof: (clipboard: unknown) => {
           ok: boolean;
           token: string;
           plainRoundTrip: boolean;
@@ -73,7 +68,9 @@ test("packaged main process proves real Electron clipboard read/write", async ()
           backendErrorVocabulary: string;
         };
       };
-      const electronModule = (await import("electron")) as typeof import("electron");
+      const electronModule = (await import(
+        "electron"
+      )) as typeof import("electron");
       return runRealClipboardProof(electronModule.clipboard);
     }, proofFileUrl);
     assert.equal(report.ok, true);

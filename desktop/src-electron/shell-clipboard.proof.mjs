@@ -16,10 +16,7 @@
  * Run ONLY inside the packaged Electron main process on a hosted runner.
  */
 
-import {
-  copyTextToClipboard,
-  readClipboardText,
-} from "./shell-clipboard.mjs";
+import { copyTextToClipboard, readClipboardText } from "./shell-clipboard.mjs";
 
 export function uniqueClipboardToken(prefix = "colony-clipboard-proof") {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
