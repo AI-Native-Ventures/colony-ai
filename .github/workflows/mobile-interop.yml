@@ -46,10 +46,13 @@ jobs:
 
       - name: Run the live interop harness
         working-directory: mobile
+        shell: bash
         # Harness prints pubkeys, event/channel IDs, and correlation IDs
         # only — never nsec material, auth headers, or storage contents.
         # INTEROP_REQUIRE_RELAY=true makes a missing relay fail the run:
-        # a green hosted proof always executed every test.
+        # a green hosted proof always executed every test. Explicit
+        # shell: bash brings -eo pipefail, so the step exit is flutter's,
+        # not tee's; without it a failing flutter run still reports green.
         run: >
           flutter test test/shared/relay/relay_live_interop_test.dart
           --dart-define=BUZZ_PUSH_GATEWAY_URL=https://push.example
