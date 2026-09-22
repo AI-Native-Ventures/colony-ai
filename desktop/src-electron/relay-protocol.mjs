@@ -30,7 +30,7 @@ export const RELAY_V2_LEGACY_REGISTRY_DIGESTS = Object.freeze({
 
 export const RELAY_V2_NATIVE_REGISTRY_PROVENANCE = Object.freeze({
   source: "desktop/src-native-host/relay_v2_registry.json",
-  sourceCommit: "2473757b5a7cb3c7c27d56430e2a1e0b2970765c",
+  sourceCommit: "c972742536936ef4fff8035dd574841d3a75fbd7",
   sourceBytes: 15_724,
   canonicalBytes: RELAY_V2_CANONICAL_REGISTRY_BYTES,
   canonicalDigest: RELAY_V2_REGISTRY_DIGEST,
