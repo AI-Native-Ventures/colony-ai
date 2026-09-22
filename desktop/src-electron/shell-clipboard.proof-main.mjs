@@ -87,9 +87,21 @@ async function main() {
     backendErrorVocabulary: backendError,
   };
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  // Flush stdout/stderr before quitting so the report and any diagnostics
+  // are not truncated when the app exits.
+  await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 await app.whenReady();
-await main();
-app.quit();
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(
+    `shell-clipboard-proof: unexpected failure: ${String(error?.stack ?? error)}\n`,
+  );
+  process.exitCode = 1;
+} finally {
+  app.quit();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
 process.exit(process.exitCode ?? 0);

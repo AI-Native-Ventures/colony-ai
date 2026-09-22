@@ -75,7 +75,9 @@ test("real adapter proves against the real Electron clipboard backend", async ()
   assert.equal(
     result.status,
     0,
-    `proof main exited ${result.status}: ${result.stderr}`,
+    `proof main exited status=${result.status} signal=${result.signal} ` +
+      `error=${String(result.error)} stdout=${String(result.stdout).slice(-2000)} ` +
+      `stderr=${String(result.stderr).slice(-2000)}`,
   );
   const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
   assert.equal(report.ok, true);
