@@ -323,8 +323,7 @@ impl SocketIo for FakeSocket {
             FakeRead::Fixed(outcome) => outcome,
             FakeRead::OkForLastAuth => match self.auth_event_id() {
                 Some(id) => Ok(Some(
-                    serde_json::json!(["OK", {"eventId": id, "accepted": true, "messageCode": "accepted"}])
-                        .to_string(),
+                    serde_json::json!(["OK", id, true, "accepted"]).to_string(),
                 )),
                 None => Err(ContractError::MalformedFrame),
             },
@@ -2037,15 +2036,15 @@ mod session_tests {
     }
 
     fn inject_ok(session: &RelaySession, event_id: &str, accepted: bool, code: &str) {
-        let inbound = TypedInbound {
-            generation: 1,
-            message_type: "OK",
-            payload: serde_json::json!({
-                "eventId": event_id,
-                "accepted": accepted,
-                "messageCode": code,
-            }),
-        };
+        // Inbox entries arrive only via translate_wire in production; build
+        // the entry through the same seam so the test cannot hand-write an
+        // envelope the wire would never produce.
+        let inbound = translate_wire(
+            &parse_wire(&ok_wire(event_id, accepted, code)).expect("test wire parses"),
+            "11111111-1111-1111-1111-111111111111",
+            1,
+        )
+        .expect("test translation validates");
         session
             .inbox_tx
             .send(inbound)
