@@ -64,7 +64,8 @@ fn header_matches_upstream_fixture_vectors() {
         level_dbov: -30,
         flags: FLAG_DTX,
     };
-    let (parsed, tail) = FrameHeader::parse(&header.encode()).expect("parses");
+    let encoded = header.encode();
+    let (parsed, tail) = FrameHeader::parse(&encoded).expect("parses");
     assert_eq!(parsed, header);
     assert!(tail.is_empty());
 
@@ -160,7 +161,8 @@ fn header_ignores_reserved_flag_bits() {
         level_dbov: -60,
         flags: FLAG_DTX | 0xFE,
     };
-    let (parsed, _) = FrameHeader::parse(&header.encode()).expect("parses");
+    let encoded = header.encode();
+    let (parsed, _) = FrameHeader::parse(&encoded).expect("parses");
     assert!(parsed.is_dtx());
     assert_eq!(parsed.flags & FLAG_DTX, FLAG_DTX);
 }
