@@ -307,12 +307,25 @@ test_args=(
   test-without-building
 )
 log "running XCTest landing and relaunch proof"
-run_logged "$run_root/xcodebuild-test-without-building.log" run_in_dir "$ios_root" \
-  "${test_args[@]}"
+test_failed=0
+if ! run_logged "$run_root/xcodebuild-test-without-building.log" run_in_dir "$ios_root" \
+  "${test_args[@]}"; then
+  test_failed=1
+  log "XCTest proof failed; exporting available evidence before exiting"
+fi
 
 mkdir -p "$attachments_dir"
-run_logged "$run_root/xcresulttool-export.log" \
-  xcrun xcresulttool export attachments --path "$result_bundle" --output-path "$attachments_dir"
+if [[ -d "$result_bundle" ]]; then
+  run_logged "$run_root/xcresulttool-export.log" \
+    xcrun xcresulttool export attachments --path "$result_bundle" --output-path "$attachments_dir" || \
+    log "WARNING: attachment export failed; see xcresulttool log"
+else
+  log "WARNING: no result bundle; skipping attachment export"
+fi
+
+if [[ "$test_failed" == "1" ]]; then
+  fail "XCTest landing and relaunch proof failed"
+fi
 
 screenshot_hashes_json="$(python3 - "$attachments_dir" <<'PY'
 import hashlib

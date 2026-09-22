@@ -1,7 +1,9 @@
 import XCTest
 
 final class RunnerUITests: XCTestCase {
-  private let landingTimeout: TimeInterval = 30
+  // Relaunch must allow a full Flutter engine cold start on a fresh
+  // simulator (observed >40s before the first semantics tree appears).
+  private let landingTimeout: TimeInterval = 120
 
   func testLandingSurvivesTerminateAndRelaunch() {
     guard let appIdentifier = testAppBundleIdentifier() else { return }
