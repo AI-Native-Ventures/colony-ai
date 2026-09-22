@@ -160,18 +160,17 @@ jobs:
 
       - name: Seed the disposable channel, member, and event
         id: seed
-        run: |
-          set -euo pipefail
-          SEED_NSEC="$(openssl rand -hex 32)"
-          SEED_OUT="$(cargo test --profile ci -p buzz-test-client --test relay_v2_d0_seed -- --ignored --nocapture 2>&1 | grep '^D0_SEED ' || true)"
-          test -n "${SEED_OUT}" || { echo "seed produced no output" >&2; exit 1; }
-          echo "${SEED_OUT#D0_SEED }" | tee /tmp/d0-seed.env
-          cat /tmp/d0-seed.env >> "$GITHUB_OUTPUT"
         env:
           RELAY_URL: ${{ steps.relay.outputs.RELAY_URL }}
           DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz?sslmode=disable
           PGSSLMODE: disable
-          SEED_NSEC: ${{ env.SEED_NSEC }}
+        run: |
+          set -euo pipefail
+          export SEED_NSEC="$(openssl rand -hex 32)"
+          SEED_OUT="$(cargo test --profile ci -p buzz-test-client --test relay_v2_d0_seed -- --ignored --nocapture 2>&1 | grep '^D0_SEED ' || true)"
+          test -n "${SEED_OUT}" || { echo "seed produced no output" >&2; exit 1; }
+          echo "${SEED_OUT#D0_SEED }" | tee /tmp/d0-seed.env
+          cat /tmp/d0-seed.env >> "$GITHUB_OUTPUT"
 
       - name: Run the D0 helper proof
         run: |
