@@ -241,7 +241,13 @@ impl Host {
                 Ok(ReaderMessage::Frame(bytes)) => {
                     let frame = match decode_any_frame(&bytes, &self.limits) {
                         Ok(frame) => frame,
-                        Err(error) => return self.fail(error),
+                        Err(error) => {
+                            eprintln!(
+                                "native host frame rejected: error={error}; {}",
+                                frame_debug_summary(&bytes, &self.limits)
+                            );
+                            return self.fail(error);
+                        }
                     };
                     if let Err(error) = self.handle_decoded(frame) {
                         return self.fail(error);
@@ -1543,6 +1549,39 @@ fn decode_any_frame(frame: &[u8], limits: &ProtocolLimits) -> Result<DecodedFram
         }
         decode_frame(frame, limits).map(DecodedFrame::V1)
     }
+}
+
+fn frame_debug_summary(frame: &[u8], limits: &ProtocolLimits) -> String {
+    let value = frame
+        .strip_prefix(limits.frame_prefix.as_bytes())
+        .and_then(|json| serde_json::from_slice::<serde_json::Value>(json).ok());
+    let object = value.as_ref().and_then(serde_json::Value::as_object);
+    let protocol_version = object
+        .and_then(|object| object.get("protocolVersion"))
+        .and_then(serde_json::Value::as_u64);
+    let frame_type = object
+        .and_then(|object| object.get("type"))
+        .and_then(serde_json::Value::as_str);
+    let registry_digest_len = object
+        .and_then(|object| object.get("registryDigest"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::len);
+    let root_versions = v2::root_protocol_versions(frame, limits).ok();
+    format!(
+        concat!(
+            "frame_type={:?} protocol_version={:?} ",
+            "envelope_expected_version={} v2_expected_version={} ",
+            "root_versions={:?} identity_launch_present={} ",
+            "registry_digest_len={:?}"
+        ),
+        frame_type,
+        protocol_version,
+        limits.version,
+        v2::VERSION,
+        root_versions,
+        object.is_some_and(|object| object.contains_key("identityLaunch")),
+        registry_digest_len,
+    )
 }
 
 fn select_launch_mode(

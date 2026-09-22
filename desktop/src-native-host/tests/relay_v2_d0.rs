@@ -17,8 +17,8 @@
 //! disposable and confined to the isolated database.
 
 use std::{
-    io::{BufRead, BufReader, Write},
-    process::{Child, ChildStdin, Command, Stdio},
+    io::{BufRead, BufReader, Read, Write},
+    process::{Child, ChildStderr, ChildStdin, Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -37,6 +37,7 @@ struct Harness {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<std::process::ChildStdout>,
+    stderr: BufReader<ChildStderr>,
     sequence: u64,
 }
 
@@ -47,17 +48,19 @@ impl Harness {
             .arg("--relay-v2")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .env_remove("BUZZ_RELAY_URL")
             .env_remove("COLONY_STAGE0_FAULT")
             .env_remove("COLONY_STAGE0_TEST_DEADLINE_MS");
         let mut child = command.spawn().expect("helper should spawn");
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
         Self {
             child,
             stdin,
             stdout: BufReader::new(stdout),
+            stderr: BufReader::new(stderr),
             sequence: 1,
         }
     }
@@ -80,7 +83,15 @@ impl Harness {
                 panic!("timed out waiting for helper frame");
             }
             let mut line = String::new();
-            self.stdout.read_line(&mut line).expect("stdout readable");
+            let bytes = self.stdout.read_line(&mut line).expect("stdout readable");
+            if bytes == 0 {
+                let status = self.child.wait().expect("helper status readable");
+                let mut stderr = String::new();
+                self.stderr
+                    .read_to_string(&mut stderr)
+                    .expect("stderr readable");
+                panic!("helper closed stdout before frame: status={status:?} stderr={stderr:?}");
+            }
             let line = line.trim();
             if line.is_empty() {
                 continue;
