@@ -1,0 +1,53 @@
+name: Colony iOS runtime proof
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - ".github/workflows/colony-ios-runtime.yml"
+      - "mobile/ios/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+      - "scripts/ios-runtime-proof.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: colony-ios-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IOS_RUNTIME_RUN_ROOT: ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  ios-runtime:
+    name: iOS simulator landing and relaunch
+    runs-on: macos-14
+    timeout-minutes: 55
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Run the fresh-simulator proof
+        shell: bash
+        run: /bin/bash scripts/ios-runtime-proof.sh
+
+      - name: Upload bounded iOS runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ env.IOS_RUNTIME_RUN_ROOT }}/ios-runtime-manifest.json
+            ${{ env.IOS_RUNTIME_RUN_ROOT }}/attachments/*.png
