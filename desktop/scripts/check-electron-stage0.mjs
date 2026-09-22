@@ -317,6 +317,27 @@ function assertReactPackageProvenance(archivePath, flavor) {
     .update(readFileSync(archivePath))
     .digest("hex");
   if (actual !== expected) {
+    // Failure-path diagnostics only: enumerate per-entry content digests
+    // so the next reader can name the differing file outright. The pin,
+    // the comparison, and every pass/fail condition above are untouched.
+    try {
+      const { entries: diagEntries, extractEntry: diagExtract } =
+        inspectAsarEntries(archivePath);
+      const perEntry = [...diagEntries]
+        .sort()
+        .map((entry) => {
+          const digest = createHash("sha256")
+            .update(diagExtract(entry))
+            .digest("hex");
+          return `    ${entry}: ${digest}`;
+        })
+        .join("\n");
+      process.stderr.write(
+        `asar entry digests for ${flavor} (expected archive ${expected}, actual ${actual}):\n${perEntry}\n`,
+      );
+    } catch {
+      // Diagnostics must never mask the authoritative mismatch failure.
+    }
     fail(
       `${flavor} app.asar digest ${actual} does not match the reviewed React package`,
     );
