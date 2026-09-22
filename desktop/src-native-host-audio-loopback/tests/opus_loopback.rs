@@ -82,6 +82,9 @@ fn sine_level_flows_from_fixture_to_header_to_ui_norm() {
         (0.833..=1.0).contains(&norm),
         "sine fixture norm {norm} outside upstream-derived band [0.833, 1.0]"
     );
+    // Self-documenting reading: the hosted log carries the measured norm
+    // on every green run, so future readers never have to re-derive it.
+    println!("sine fixture norm: {norm} (level {expected_level} dBov)");
 }
 
 #[test]
