@@ -1621,9 +1621,9 @@ fn main() {
     };
     let launch_mode = launch_mode_from_args();
     if launch_mode.is_relay() {
-        // The relay socket path is the only TLS user in this helper. Pin the
-        // single rustls provider exactly like the Tauri transport so wss
-        // authorities can never hit an ambiguous-provider panic.
+        // The relay socket path is the only TLS user in this helper. rustls
+        // panics when two providers are visible without an explicit default,
+        // so pin exactly one here before any wss dial.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     }
     let (crash_after_reservation, crash_after_b1) = crash_controls_from_args(launch_mode);
