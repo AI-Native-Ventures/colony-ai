@@ -202,6 +202,7 @@ fn relay_v2_d0_disposable_proof() {
     let relay_url = required_env("RELAY_V2_D0_URL");
     let user_data_root = required_env("RELAY_V2_D0_HOME");
     let authority_ref = "a".repeat(64);
+    std::fs::create_dir_all(&user_data_root).expect("D0 identity root should be creatable");
 
     let mut harness = Harness::spawn();
     let ready = harness.hello(json!({
