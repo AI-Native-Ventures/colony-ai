@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   _electron as electron,
@@ -46,22 +46,23 @@ test("packaged main process proves real Electron clipboard read/write", async ()
       .filter({ hasText: "READY" })
       .waitFor();
     // application.evaluate runs in the packaged main process, where the real
-    // Electron `clipboard` module is available. The proof helper is staged
-    // into the ASAR next to main.mjs by the isolated clipboard lane (owned
-    // entry, shared packager untouched); it is required via the app path so
-    // no renderer surface or developer-machine clipboard is involved.
-    // Hosted runner only: fresh GUI session, unique per-run token.
-    const report = await application.evaluate(async () => {
-      // Playwright injects this function into the packaged main process;
-      // the Electron main bundle runs it with Node require available.
-      const electronModule = eval("require")("electron") as typeof import("electron");
-      const pathModule = eval("require")("path") as typeof import("path");
-      const proofPath = pathModule.join(
-        electronModule.app.getAppPath(),
-        "src-electron",
-        "shell-clipboard.proof.mjs",
-      );
-      const { runRealClipboardProof } = (await import(proofPath)) as {
+    // Electron `clipboard` module is available. Playwright serializes the
+    // function into an isolated utility world with no require(), so the spec
+    // passes the proof-file path as a plain argument and the evaluated code
+    // uses dynamic import only. The proof helper is staged into the ASAR next
+    // to main.mjs by the isolated clipboard lane (shared packager untouched)
+    // and resolved via the app path, so no renderer surface or
+    // developer-machine clipboard is involved. Hosted runner only: fresh GUI
+    // session, unique per-run token.
+    const appPath = await application.evaluate(async () => {
+      const electronModule = (await import("electron")) as typeof import("electron");
+      return electronModule.app.getAppPath();
+    });
+    const proofFileUrl = pathToFileURL(
+      path.join(appPath, "src-electron", "shell-clipboard.proof.mjs"),
+    ).toString();
+    const report = await application.evaluate(async (fileUrl: string) => {
+      const { runRealClipboardProof } = (await import(fileUrl)) as {
         runRealClipboardProof: (
           clipboard: unknown,
         ) => {
@@ -72,8 +73,9 @@ test("packaged main process proves real Electron clipboard read/write", async ()
           backendErrorVocabulary: string;
         };
       };
+      const electronModule = (await import("electron")) as typeof import("electron");
       return runRealClipboardProof(electronModule.clipboard);
-    });
+    }, proofFileUrl);
     assert.equal(report.ok, true);
     assert.equal(report.plainRoundTrip, true);
     assert.equal(report.htmlAlternateRoundTrip, true);
