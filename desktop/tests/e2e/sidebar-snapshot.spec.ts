@@ -393,6 +393,32 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
     .toEqual([]);
 });
 
+test("tracker observes rows removed in the same task", async ({ page }) => {
+  // Browser control for the tracker's detached-node semantics, without
+  // app scheduling: append a subtree with known snapshot ids and remove
+  // it synchronously in the same evaluate callback. MutationObserver
+  // callbacks run as a microtask afterwards, so the addedNodes records
+  // still carry the inserted subtree even though the current DOM count
+  // is already 0.
+  await trackSnapshotRows(page);
+  await page.goto("/");
+  const ids = ["snapshot-00", "snapshot-01", "snapshot-02"];
+  await page.evaluate((rowIds) => {
+    const parent = document.createElement("div");
+    for (const id of rowIds) {
+      const row = document.createElement("div");
+      row.setAttribute("data-channel-id", id);
+      parent.appendChild(row);
+    }
+    document.body.appendChild(parent);
+    parent.remove();
+  }, ids);
+  await expect
+    .poll(() => getTrackedSnapshotRows(page))
+    .toEqual(ids);
+  await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
+});
+
 test("display-only community pubkey cannot expose another identity's snapshot", async ({
   page,
 }) => {
