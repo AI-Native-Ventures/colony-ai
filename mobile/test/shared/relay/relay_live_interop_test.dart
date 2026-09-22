@@ -252,6 +252,14 @@ void main() {
     late String channelId;
     var ready = false;
 
+    // markTestSkipped in setUpAll does not stop test bodies from
+    // running on every runner: each test re-checks readiness first.
+    void requireReady() {
+      if (!ready) {
+        markTestSkipped('disposable relay unreachable at $_relayHttp');
+      }
+    }
+
     setUpAll(() async {
       switch (_relayGateDecision(
         reachable: await _isRelayReachable(Uri.parse(_relayHttp)),
@@ -294,6 +302,7 @@ void main() {
     test(
       'bidirectional channel message and thread reply',
       () async {
+        requireReady();
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await mobile.publishMessage(
           channelId: channelId,
@@ -327,6 +336,7 @@ void main() {
     test(
       'fresh session catches up history exactly once',
       () async {
+        requireReady();
         final sent = await mobile.publishMessage(
           channelId: channelId,
           content: 'catchup probe ${DateTime.now().millisecondsSinceEpoch}',
@@ -356,6 +366,7 @@ void main() {
     test(
       'reconnect replays missed message exactly once',
       () async {
+        requireReady();
         mobile.session.debugHandleDisconnected('harness drop');
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await oracle.publishMessage(
@@ -376,6 +387,7 @@ void main() {
     test(
       'restart retains identity and resubscribes',
       () async {
+        requireReady();
         final beforePubkey = mobile.pubkeyHex;
         final nsec = mobile.nsec;
         await mobile.dispose();
@@ -401,6 +413,7 @@ void main() {
     test(
       'foreign channel events stay isolated',
       () async {
+        requireReady();
         final foreign = await oracle.publishMessage(
           channelId: 'foreign-${DateTime.now().millisecondsSinceEpoch}',
           content: 'not for the matrix',
