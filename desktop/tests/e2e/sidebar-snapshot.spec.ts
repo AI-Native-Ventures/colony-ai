@@ -507,12 +507,17 @@ test("hash mismatch replaces the snapshot with the full live list", async ({
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,
   });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
-  await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
-    FULL_SNAPSHOT.length,
-    { timeout: 500 },
-  );
+  // The boot frame must paint the seeded snapshot before revalidation
+  // replaces it: assert the rows were observed at least once via the
+  // mutation observer, not only at one polling instant. A later
+  // row-count of zero is the expected post-replacement state, so an
+  // instant count cannot distinguish "never painted" from "replaced".
+  await expect
+    .poll(() => getTrackedSnapshotRows(page), { timeout: 5_000 })
+    .toEqual(FULL_SNAPSHOT.map((channel) => channel.id));
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "stale-hash" }]);
