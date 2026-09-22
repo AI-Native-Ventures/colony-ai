@@ -25,8 +25,8 @@ pub struct DomLines(pub i32);
 /// stable thing here. macOS "natural scrolling" flips what a given finger
 /// motion reports, so a rule stated as "swipe up goes back" is correct for
 /// one preference setting and backwards for the other. Stated against
-/// `deltaY` it is correct for both: **negative DOM lines — the direction
-/// that scrolls a web page toward the top of the document — go back into
+/// `deltaY` it is correct for both: **negative DOM lines (the direction
+/// that scrolls a web page toward the top of the document) go back into
 /// history**, which is positive in the engine's `Scroll::Delta`
 /// convention.
 ///

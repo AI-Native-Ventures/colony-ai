@@ -13,7 +13,7 @@ operating on the real engine frame types via a path dependency on
 seam. `wire.rs` is the upstream wire-publication mapper with the
 UI-runtime channel send removed (returns the frame; the host pipe owns
 delivery). `scroll.rs` is the upstream crossing, unchanged. Only
-the UI-runtime channel/state/command wrappers stay behind — they belong
+the UI-runtime channel/state/command wrappers stay behind: they belong
 to the native owner's integration step.
 
 Upstream source (`origin/develop`): `terminal_runtime.rs` (sessions,
