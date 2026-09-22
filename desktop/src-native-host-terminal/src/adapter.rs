@@ -270,9 +270,7 @@ mod tests {
         let fragment = registry_fragment();
         assert_eq!(fragment.capability, "terminal-pty");
         assert!(!fragment.binary);
-        // GATE-PROBE: intentionally wrong (9 methods, not 7). Revert after
-        // the hosted gate proves it sees this target.
-        assert_eq!(fragment.methods.len(), 7);
+        assert_eq!(fragment.methods.len(), 9);
         let standard: Vec<_> = fragment
             .methods
             .iter()
