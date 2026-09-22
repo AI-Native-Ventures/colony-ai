@@ -28,8 +28,20 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
-import { app, clipboard } from "electron";
+// FIRST-LINE PROBE (diagnostic): unconditional synchronous stdout write
+// before anything Electron-related loads. If this line never appears in the
+// hosted log, the child never reaches our code and the problem is spawn or
+// app boot, not exit handling. Uses only node:fs to avoid loader issues.
+try {
+  writeFileSync(1, "shell-clipboard-proof: probe-entry\n");
+} catch {
+  // If even fd 1 is unwritable, there is nothing more to observe.
+}
+
+const require = createRequire(import.meta.url);
+const { app, clipboard } = require("electron");
 
 import { copyTextToClipboard, readClipboardText } from "./shell-clipboard.mjs";
 import { CLIPBOARD_PROOF_TOKEN_PREFIX } from "./shell-clipboard.proof.mjs";
