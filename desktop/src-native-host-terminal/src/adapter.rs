@@ -68,7 +68,7 @@ pub enum DeadlineClass {
     Request,
     /// Session-teardown class, mirroring the relay table's `close` class
     /// (2500 ms). Upstream `terminal_close` runs the draining shutdown:
-    /// SIGTERM, bounded grace, SIGKILL, reap — the same shape as closing
+    /// SIGTERM, bounded grace, SIGKILL, reap: the same shape as closing
     /// a socket, not an interactive op. The first revision of this table
     /// proposed a uniform 10 s including close; that contradicted the
     /// existing 2500 ms close-class precedent in the system this fragment
@@ -80,7 +80,7 @@ pub enum DeadlineClass {
 /// (`terminal_runtime.rs` lines 370/600/620/638/667/734/752/773/793,
 /// all nine registered in `lib.rs:524-532`):
 /// attach, detach, close, input, resize, scroll, ack, viewport_ready,
-/// focus. The earlier "ten" count in lane prose was an error — it
+/// focus. The earlier "ten" count in lane prose was an error: it
 /// double-counted the internal `publish_viewport` helper (line 716),
 /// which is not a command, has no IPC boundary, and needs no registry
 /// entry: it republishes the viewport after input-driven
@@ -215,10 +215,10 @@ pub fn validate_dispatch(dispatch: &Dispatch) -> Result<(), &'static str> {
 /// Rebind-fault contract: on renderer rebind the native hook must call
 /// `fault()` for every live terminal subscription while leaving PTY
 /// sessions (child, reader, grid) untouched. What this function and its
-/// test actually cover: the `fault()` call surface — it faults a bare
+/// test actually cover: the `fault()` call surface (it faults a bare
 /// `FramePublisher` and reports whether a subscription was dropped.
 /// PTY-session survival (child/reader/grid untouched) is NOT observed
-/// here — the publisher owns no session — and stays a native-side
+/// here (the publisher owns no session) and stays a native-side
 /// obligation for the integration gate to prove, not a claim of this
 /// test.
 pub fn rebind_fault_subscription(
@@ -232,7 +232,7 @@ pub fn rebind_fault_subscription(
 /// `registry_document()`. Serialized here so the proposal is exact and
 /// reviewable; the native owner owns the merge and digest recompute.
 ///
-/// WARNING — schema names referenced below do not exist yet. The eight
+/// WARNING: schema names referenced below do not exist yet. The eight
 /// request schemas (`terminal-attach/detach/close/input/resize/scroll/`,
 /// `terminal-ack-request/viewport-ready/focus`), three response schemas
 /// (`attach-response`, `terminal-viewport`, `terminal-ack`), and the
@@ -264,10 +264,10 @@ pub struct RegistryMethod {
 }
 
 /// Build the fragment the native registry edit must contain (schemas
-/// still to land — see the WARNING above). Mechanical derivation from
+/// still to land (see the WARNING above). Mechanical derivation from
 /// `TERMINAL_METHODS`, so drift fails tests. What the derivation test
 /// actually covers: internal mapping consistency between the table and
-/// the fragment — NOT upstream parity. A tenth upstream command added
+/// the fragment: NOT upstream parity. A tenth upstream command added
 /// tomorrow would leave this test green; the 1:1 mapping against
 /// `terminal_runtime.rs` stays a review-time check, not a test
 /// property.

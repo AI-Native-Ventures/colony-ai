@@ -8,7 +8,7 @@
 //! PTY behavior (output bytes through the emulator, input echo, resize
 //! propagation, child exit) is exercised through `portable_pty` +
 //! `buzz_terminal` directly, against the extracted `FramePublisher`
-//! ordering machine — the same production seam the future host binary
+//! ordering machine: the same production seam the future host binary
 //! will call.
 //!
 //! Passing these tests proves the contract state machine and the wire
@@ -302,7 +302,7 @@ fn id_string() -> String {
 // The tests below spawn real PTYs (`portable-pty`, unix-only like the
 // upstream runtime) and drive the extracted `FramePublisher` + wire
 // mapper with the real engine. They prove output/input/resize/exit and
-// bounded-buffer failure behavior in an isolated CI process — the
+// bounded-buffer failure behavior in an isolated CI process: the
 // acceptance proof for this lane, distinct from full app wiring.
 
 #[cfg(unix)]
