@@ -76,15 +76,17 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       .waitFor();
 
     // HALF 1: live backend round-trip inside the packaged main process.
-    // Mismatch errors carry both values with lengths and name the leg, so
-    // one hosted run diagnoses the cause (this cannot be reproduced locally:
-    // a dev Mac has a real window server, the runner does not).
-    const live = await application.evaluate(({ clipboard }) => {
+    // Electron 44 models clipboard on the W3C async API: writeText/readText
+    // return Promises, so the callback is async and every backend call is
+    // awaited. Mismatch errors carry both values with lengths and name the
+    // leg, so one hosted run diagnoses the cause (this cannot be reproduced
+    // locally: a dev Mac has a real window server, the runner does not).
+    const live = await application.evaluate(async ({ clipboard }) => {
       const describe = (label: string, value: unknown) =>
         `${label} typeof=${typeof value} tag=${Object.prototype.toString.call(value)} json=${JSON.stringify(value)} len=${typeof value === "string" ? value.length : -1}`;
       const token = `colony-clipboard-proof-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
-      clipboard.writeText(token);
-      const plain: unknown = clipboard.readText();
+      await clipboard.writeText(token);
+      const plain: unknown = await clipboard.readText();
       if (plain !== token) {
         throw new Error(
           `clipboard error: real backend plain leg mismatch: wrote ${describe("wrote", token)}, read ${describe("read", plain)}`,
@@ -92,14 +94,14 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       }
       const textAlternate = `${token}-text-alternate`;
       const htmlAlternate = `<b>${token}-html</b>`;
-      clipboard.write({ text: textAlternate, html: htmlAlternate });
-      const alternate: unknown = clipboard.readText();
+      await clipboard.write({ text: textAlternate, html: htmlAlternate });
+      const alternate: unknown = await clipboard.readText();
       if (alternate !== textAlternate) {
         throw new Error(
           `clipboard error: real backend html leg mismatch: wrote ${describe("wrote", textAlternate)}, read ${describe("read", alternate)}`,
         );
       }
-      clipboard.writeText("");
+      await clipboard.writeText("");
       return { token, textAlternate, htmlAlternate };
     });
     assert.match(live.token, /^colony-clipboard-proof-/);

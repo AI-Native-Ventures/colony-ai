@@ -22,6 +22,17 @@
  * collapse into the direct-call mapping below, which keeps the upstream
  * `clipboard error: ` prefix verbatim.
  *
+ * INTERFACE FACT (finding, not workaround): Electron 44 models this module
+ * on the W3C async clipboard API — `readText()`/`writeText()`/`write()`
+ * return Promises (`electron.d.ts`: `readText(): Promise<string>`). The
+ * upstream Tauri/arboard contract this adapter maps onto is synchronous
+ * (`Result<String, String>` off a blocking `get_text`). The adapter itself
+ * stays synchronous and keeps the upstream call/return shape; the ASYNC
+ * boundary is owned by the caller (the future main.mjs wiring must
+ * `await` the backend calls before/while invoking the adapter, or the
+ * adapter must grow an async variant at integration time — a transport-owned
+ * sequencing decision, recorded here so it is not discovered twice).
+ *
  * Trust boundary: this module runs in trusted main only and takes the Electron
  * `clipboard` object as an injected dependency so it stays testable under
  * plain Node. It exposes no renderer surface itself; renderer access must go
