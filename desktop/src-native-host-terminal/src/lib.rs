@@ -44,6 +44,7 @@
 //! delivery remain the hosted runtime gate and are explicitly not claimed
 //! here.
 
+pub mod adapter;
 pub mod events;
 pub mod publisher;
 pub mod scroll;
