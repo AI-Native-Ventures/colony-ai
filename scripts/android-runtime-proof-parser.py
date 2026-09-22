@@ -24,6 +24,9 @@ FOREGROUND_MARKERS = (
 WINDOW_HEADER_RE = re.compile(
     r"^\s*Window #\d+\s+Window\{[^}]*\bu\d+\s+([^\s}]+)\}:"
 )
+COMPONENT_PACKAGE_RE = re.compile(
+    r"(?<![A-Za-z0-9_.])([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)/"
+)
 
 
 def valid_package(package: str) -> bool:
@@ -73,32 +76,36 @@ def foreground_has_package(dumpsys_text: str, expected_package: str) -> bool:
     only when no explicit focus marker is present.
     """
 
-    package_token = re.compile(rf"(?<![A-Za-z0-9_.]){re.escape(expected_package)}/")
     focused_lines = [
         line
         for line in dumpsys_text.splitlines()
         if any(marker in line for marker in FOREGROUND_MARKERS)
     ]
     if focused_lines:
-        return any(package_token.search(line) is not None for line in focused_lines)
+        focused_packages: list[str] = []
+        for line in focused_lines:
+            packages = COMPONENT_PACKAGE_RE.findall(line)
+            if len(packages) != 1:
+                return False
+            focused_packages.append(packages[0])
+        return all(package == expected_package for package in focused_packages)
 
     current_component: str | None = None
     on_screen = False
     visible = False
+    visible_application_packages: set[str] = set()
 
-    def visible_expected_window() -> bool:
-        return (
-            current_component is not None
-            and current_component.startswith(f"{expected_package}/")
-            and on_screen
-            and visible
-        )
+    def record_visible_application() -> None:
+        if current_component is None or not (on_screen and visible):
+            return
+        package, separator, _ = current_component.partition("/")
+        if separator == "/" and valid_package(package):
+            visible_application_packages.add(package)
 
     for line in dumpsys_text.splitlines():
         header = WINDOW_HEADER_RE.match(line)
         if header:
-            if visible_expected_window():
-                return True
+            record_visible_application()
             current_component = header.group(1)
             on_screen = False
             visible = False
@@ -107,7 +114,8 @@ def foreground_has_package(dumpsys_text: str, expected_package: str) -> bool:
             on_screen = on_screen or "isOnScreen=true" in line
             visible = visible or "isVisible=true" in line
 
-    return visible_expected_window()
+    record_visible_application()
+    return visible_application_packages == {expected_package}
 
 
 def read_bounded(path: Path) -> str:
@@ -153,6 +161,14 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
         "xyz.block.buzz.mobile/.MainActivity",
         "com.google.android.apps.nexuslauncher/.NexusLauncherActivity",
     )
+    competing_api35_visible_foreground = api35_visible_foreground.replace(
+        "isOnScreen=false\n  isVisible=false",
+        "isOnScreen=true\n  isVisible=true",
+    )
+    conflicting_foreground = (
+        "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}\n"
+        "mFocusedApp=Window{def u0 com.android.launcher3/.Launcher}"
+    )
 
     assert ui_has_labels(valid_xml, package)
     assert not ui_has_labels(wrong_package_xml, package)
@@ -161,6 +177,8 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
     assert not foreground_has_package(wrong_foreground, package)
     assert foreground_has_package(api35_visible_foreground, package)
     assert not foreground_has_package(wrong_api35_visible_foreground, package)
+    assert not foreground_has_package(competing_api35_visible_foreground, package)
+    assert not foreground_has_package(conflicting_foreground, package)
     assert valid_component(package, f"{package}/.MainActivity")
     assert not valid_component(package, "com.example.other/.MainActivity")
 
@@ -171,6 +189,7 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
     print("wrong-package labels: old assertion would pass; package-aware parser rejected")
     print("wrong foreground: UI labels valid; foreground assertion rejected")
     print("API-35 visible window: expected package accepted; wrong package rejected")
+    print("ambiguous visible/conflicting foreground: rejected")
     print("mismatched component: component-prefix assertion rejected")
     print("stale/invalid XML: XML-aware parser rejected")
     print("valid package/component/foreground/UI: accepted")
