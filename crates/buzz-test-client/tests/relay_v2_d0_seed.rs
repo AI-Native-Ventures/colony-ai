@@ -77,10 +77,18 @@ async fn d0_seed_disposable_channel() {
         .send()
         .await
         .expect("create channel");
+    // The envelope is not the answer: POST /events returns 200 with a
+    // body carrying {event_id, accepted, message}, and a refused event is
+    // a successful HTTP request containing a refusal. Read the letter.
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.expect("event response body");
+    let accepted = body
+        .get("accepted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     assert!(
-        resp.status().is_success(),
-        "channel seed: {}",
-        resp.status()
+        status.is_success() && accepted,
+        "channel seed refused: status={status} body={body}"
     );
 
     // Kind-9 seed event over NIP-42 WS so the helper proof retrieves it
@@ -89,10 +97,11 @@ async fn d0_seed_disposable_channel() {
     let mut client = BuzzTestClient::connect(&url, &keys)
         .await
         .expect("seed connect");
-    client
+    let ok = client
         .send_text_message(&keys, &channel_uuid.to_string(), "d0 seed", 9)
         .await
         .expect("seed event");
+    assert!(ok.accepted, "seed kind-9 refused: {}", ok.message);
     // Leave the connection open briefly so the relay persists before the
     // proof subscribes; then close.
     tokio::time::sleep(Duration::from_millis(500)).await;
