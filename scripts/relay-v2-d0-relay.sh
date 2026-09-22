@@ -43,6 +43,10 @@ nohup env \
   BUZZ_RELAY_PRIVATE_KEY="${TEST_RELAY_PRIVATE_KEY}" \
   BUZZ_REQUIRE_AUTH_TOKEN=false \
   BUZZ_RECONCILE_CHANNELS=true \
+  BUZZ_S3_ENDPOINT="${BUZZ_S3_ENDPOINT:-http://localhost:9000}" \
+  BUZZ_S3_ACCESS_KEY="${BUZZ_S3_ACCESS_KEY:-buzz_dev}" \
+  BUZZ_S3_SECRET_KEY="${BUZZ_S3_SECRET_KEY:-buzz_dev_secret}" \
+  BUZZ_S3_BUCKET="${BUZZ_S3_BUCKET:-buzz-media}" \
   "${BIN}" > "${LOG}" 2>&1 &
 RELAY_PID=$!
 echo "${RELAY_PID}" > /tmp/relay-v2-d0.pid
