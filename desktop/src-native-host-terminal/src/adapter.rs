@@ -11,11 +11,16 @@
 //! edits at schedule time; until then this module is verified by tests
 //! that drive the terminal-owned side of each boundary.
 //!
-//! Agreed interfaces (native owner `bc9add6f`, root-witnessed):
+//! Agreed interfaces (native owner `bc9add6f`, PROPOSAL — see item 1):
 //!
-//! 1. Payloads: per-method validated request schemas under the
+//! 1. Payloads: per-method validated request schemas under a new
 //!    `terminal-pty` capability (no envelope change; the `{}` rule is
-//!    identity-lane-specific).
+//!    identity-lane-specific). PROPOSAL, not settled contract: the
+//!    per-method shapes, the deadline split in item 4, and the event
+//!    names in item 3 were agreed with the native owner in A2A
+//!    coordination, which the current root coordinator did not witness.
+//!    Nothing here binds the native lane until it signs off in its own
+//!    review of this proposal.
 //! 2. Responses: shape-only entries in the v2 `payloadSchemas` table
 //!    (`attach-response`, `terminal-viewport`, `terminal-ack`); byte
 //!    bounds enforced in Rust dispatch.
@@ -96,7 +101,7 @@ pub const TERMINAL_METHODS: [MethodSpec; 9] = [
         deadline_ms: 10_000,
         request_schema: "terminal-detach",
         response_schema: "terminal-ack",
-        side_effect: "none",
+        side_effect: "drops-subscription",
     },
     MethodSpec {
         method: "terminal_close",
@@ -152,10 +157,18 @@ pub const TERMINAL_METHODS: [MethodSpec; 9] = [
         deadline_ms: 10_000,
         request_schema: "terminal-focus",
         response_schema: "terminal-ack",
-        side_effect: "writes-pty",
+        side_effect: "writes-pty-if-focus-reporting",
     },
 ];
 
+/// `terminal_focus` writes the focus escape (`\x1b[I`/`\x1b[O]`) ONLY
+/// when the terminal's focus-reporting input mode is enabled
+/// (`terminal_runtime.rs:799-812`); a native arm built to always write
+/// would inject bytes the emulator never requested. `terminal_detach`
+/// clears the renderer channel on success (`terminal_runtime.rs:613-615`),
+/// a real delivery-state change, not `none`. Both labels corrected from
+/// the first revision of this table after independent review.
+///
 /// Native-side dispatch contract for one terminal request, expressed in
 /// terminal-owned terms. The native owner maps each arm onto this enum;
 /// the `Err` code is the exact v2 error the dispatch must emit.
@@ -193,9 +206,13 @@ pub fn validate_dispatch(dispatch: &Dispatch) -> Result<(), &'static str> {
 
 /// Rebind-fault contract: on renderer rebind the native hook must call
 /// `fault()` for every live terminal subscription while leaving PTY
-/// sessions (child, reader, grid) untouched. This function is the
-/// terminal-owned assertion of that split: it faults the publisher and
-/// reports whether a subscription was actually dropped.
+/// sessions (child, reader, grid) untouched. What this function and its
+/// test actually cover: the `fault()` call surface — it faults a bare
+/// `FramePublisher` and reports whether a subscription was dropped.
+/// PTY-session survival (child/reader/grid untouched) is NOT observed
+/// here — the publisher owns no session — and stays a native-side
+/// obligation for the integration gate to prove, not a claim of this
+/// test.
 pub fn rebind_fault_subscription(
     publisher: &mut crate::FramePublisher,
     id: crate::SubscriptionId,
@@ -206,6 +223,18 @@ pub fn rebind_fault_subscription(
 /// Shape-only registry fragment the native side merges into
 /// `registry_document()`. Serialized here so the proposal is exact and
 /// reviewable; the native owner owns the merge and digest recompute.
+///
+/// WARNING — schema names referenced below do not exist yet. The eight
+/// request schemas (`terminal-attach/detach/close/input/resize/scroll/`,
+/// `terminal-ack-request/viewport-ready/focus`), three response schemas
+/// (`attach-response`, `terminal-viewport`, `terminal-ack`), and the
+/// `terminal-event` schema have zero hits outside this file. The host
+/// validator rejects any registry entry whose schema does not resolve
+/// (`v2.rs` unresolved-reference path), so merging this fragment
+/// verbatim WITHOUT first landing those twelve schemas makes the host
+/// refuse its registry at startup. Either land the schemas first or do
+/// not merge this fragment mechanically. The schemas are terminal-owned
+/// follow-on work, explicitly not contained in this commit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryFragment {
     pub capability: String,
@@ -226,8 +255,14 @@ pub struct RegistryMethod {
     pub side_effect: String,
 }
 
-/// Build the exact fragment the native registry edit must contain.
-/// Mechanical: derived from `TERMINAL_METHODS`, so drift fails tests.
+/// Build the fragment the native registry edit must contain (schemas
+/// still to land — see the WARNING above). Mechanical derivation from
+/// `TERMINAL_METHODS`, so drift fails tests. What the derivation test
+/// actually covers: internal mapping consistency between the table and
+/// the fragment — NOT upstream parity. A tenth upstream command added
+/// tomorrow would leave this test green; the 1:1 mapping against
+/// `terminal_runtime.rs` stays a review-time check, not a test
+/// property.
 pub fn registry_fragment() -> RegistryFragment {
     RegistryFragment {
         capability: TERMINAL_CAPABILITY.to_string(),
@@ -266,7 +301,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fragment_names_nine_methods_with_agreed_deadline_split() {
+    fn fragment_names_nine_methods_with_current_deadline_proposal() {
         let fragment = registry_fragment();
         assert_eq!(fragment.capability, "terminal-pty");
         assert!(!fragment.binary);
@@ -289,8 +324,21 @@ mod tests {
     }
 
     #[test]
+    fn fragment_side_effect_labels_match_upstream_behavior() {
+        // Guards the two corrected labels: focus writes conditionally on
+        // focus-reporting mode, detach drops delivery state. Catches a
+        // regression to the first-revision labels (`writes-pty`, `none`).
+        let by_method: std::collections::HashMap<_, _> = registry_fragment()
+            .methods
+            .iter()
+            .map(|m| (m.method.as_str(), m.side_effect.as_str()))
+            .collect();
+        assert_eq!(by_method["terminal_focus"], "writes-pty-if-focus-reporting");
+        assert_eq!(by_method["terminal_detach"], "drops-subscription");
+    }
+
+    #[test]
     fn dispatch_bounds_reject_oversize_input_and_zero_resize() {
-        assert!(validate_dispatch(&Dispatch::Input { bytes: 1 }).is_ok());
         assert!(validate_dispatch(&Dispatch::Input {
             bytes: crate::MAX_INPUT_BYTES + 1
         })
