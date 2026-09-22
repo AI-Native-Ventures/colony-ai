@@ -89,7 +89,12 @@ jobs:
           PGPORT: "5432"
           PGUSER: buzz
           PGPASSWORD: buzz_dev
-          PGDATABASE: postgres
+          # pgschema reads the target database from PGDATABASE (its --db
+          # flag/env), NOT from any psql --dbname flag. The job-level env
+          # sets PGDATABASE=postgres for the service health context; this
+          # step must override it to buzz or the schema lands in postgres
+          # while reconcile/seed run against buzz.
+          PGDATABASE: buzz
           PG_BIN_DIR: /usr/bin
           PGSSLMODE: disable
           PGSCHEMA_PLAN_HOST: localhost
