@@ -23,7 +23,7 @@ concurrency:
 jobs:
   ios-runtime:
     name: iOS simulator landing and relaunch
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 55
     steps:
       - name: Check out the reviewed commit
