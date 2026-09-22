@@ -15,23 +15,34 @@
  *   `read_clipboard_text` with no arguments and `copy_text_to_clipboard` with
  *   `{ html, text }`.
  *
- * Electron mapping: the trusted main process calls Electron's `clipboard`
- * module directly (`writeText` / `write({ text, html })` / `readText`). The
- * main process IS the UI thread, so Tauri's `run_on_main_thread` dispatch and
- * one-shot result channel have no Electron equivalent; those two failure modes
+ * Electron mapping: the trusted main process calls Electron 44's `clipboard`
+ * module directly. Electron 44 models this module on the W3C async clipboard
+ * API (`desktop/node_modules/electron/electron.d.ts:6978-7012`):
+ * `readText(): Promise<string>`, `writeText(text): Promise<void>`,
+ * `write(data: ClipboardItem[]): Promise<void>` — there is NO `writeHTML`,
+ * NO `readHTML`, and NO `write({ text, html })` overload. The main process
+ * IS the UI thread, so Tauri's `run_on_main_thread` dispatch and one-shot
+ * result channel have no Electron equivalent; those two failure modes
  * collapse into the direct-call mapping below, which keeps the upstream
  * `clipboard error: ` prefix verbatim.
  *
- * INTERFACE FACT (finding, not workaround): Electron 44 models this module
- * on the W3C async clipboard API — `readText()`/`writeText()`/`write()`
- * return Promises (`electron.d.ts`: `readText(): Promise<string>`). The
- * upstream Tauri/arboard contract this adapter maps onto is synchronous
- * (`Result<String, String>` off a blocking `get_text`). The adapter itself
- * stays synchronous and keeps the upstream call/return shape; the ASYNC
- * boundary is owned by the caller (the future main.mjs wiring must
- * `await` the backend calls before/while invoking the adapter, or the
- * adapter must grow an async variant at integration time — a transport-owned
- * sequencing decision, recorded here so it is not discovered twice).
+ * ASYNC ADAPTER (decision recorded, not workaround): the platform API is
+ * asynchronous and there is no honest synchronous wrapper — only blocking
+ * hacks or a cached last-value, and a cached clipboard read is a correctness
+ * bug waiting for a user. Upstream arboard being synchronous is a fact about
+ * arboard, not a constraint on us. So `copyTextToClipboard` and
+ * `readClipboardText` are async and await the backend; the future main.mjs
+ * wiring awaits them in turn. Do NOT "fix" this back to sync.
+ *
+ * HTML BRANCH: upstream arboard `set_html(html, Some(text))` maps onto a
+ * single ClipboardItem carrying both MIME types, committed atomically by one
+ * `write()` call (the point of the single-call form per the electron docs):
+ * `write([new ClipboardItem({ "text/plain": text, "text/html": html })])`.
+ * `ClipboardItem` is constructed in the trusted main process (it is part of
+ * the Electron module, not the injected backend surface), so the adapter
+ * takes a `clipboardItem` factory alongside the backend — injected for the
+ * same testability reason as the backend itself. Constructor reference:
+ * `electron.d.ts:7045`.
  *
  * Trust boundary: this module runs in trusted main only and takes the Electron
  * `clipboard` object as an injected dependency so it stays testable under
@@ -103,17 +114,28 @@ function requireBackend(clipboard, method) {
 /**
  * Write text (with optional html alternate) to the system clipboard.
  * Mirrors upstream `copy_text_to_clipboard`: html present selects the
- * html+text write, otherwise the plain-text write. Returns frozen `{ ok: true }`.
+ * atomic single-ClipboardItem write carrying both MIME types, otherwise the
+ * plain-text write. Async: awaits the Electron backend. Returns frozen
+ * `{ ok: true }`.
  */
-export function copyTextToClipboard(args, clipboard) {
+export async function copyTextToClipboard(args, clipboard, clipboardItem) {
   const { text, html } = validateCopyTextArgs(args);
   try {
     if (html !== null) {
       const write = requireBackend(clipboard, "write");
-      write({ text, html });
+      if (
+        !clipboardItem ||
+        typeof clipboardItem !== "object" ||
+        typeof clipboardItem.create !== "function"
+      ) {
+        throw new Error(BACKEND_UNAVAILABLE);
+      }
+      await write([
+        clipboardItem.create({ "text/plain": text, "text/html": html }),
+      ]);
     } else {
       const writeText = requireBackend(clipboard, "writeText");
-      writeText(text);
+      await writeText(text);
     }
   } catch (error) {
     if (error instanceof Error && error.message === INVALID_PAYLOAD)
@@ -129,13 +151,13 @@ export function copyTextToClipboard(args, clipboard) {
 /**
  * Read plain text from the system clipboard.
  * Mirrors upstream `read_clipboard_text`, including the empty-string success.
- * Returns frozen `{ ok: true, text }`.
+ * Async: awaits the Electron backend. Returns frozen `{ ok: true, text }`.
  */
-export function readClipboardText(clipboard) {
+export async function readClipboardText(clipboard) {
   let text;
   try {
     const readText = requireBackend(clipboard, "readText");
-    text = readText();
+    text = await readText();
   } catch (error) {
     if (error instanceof Error && error.message === BACKEND_UNAVAILABLE) {
       throw error;
@@ -151,10 +173,13 @@ export function readClipboardText(clipboard) {
 /**
  * Describe the exact integration patch the root must sequence. This function
  * wires nothing; it returns the capability name, the upstream-compatible
- * method names, and bound handlers closing over the injected main-process
- * `clipboard` object, so the future `main.mjs`/preload diff is mechanical.
+ * method names, and bound async handlers closing over the injected
+ * main-process `clipboard` object AND the injected `clipboardItem` factory
+ * (`{ create: (record) => new ClipboardItem(record) }` in production), so
+ * the future `main.mjs`/preload diff is mechanical. Handlers are async —
+ * the wiring must await them.
  */
-export function createShellClipboardIpc({ clipboard }) {
+export function createShellClipboardIpc({ clipboard, clipboardItem }) {
   if (!clipboard || typeof clipboard !== "object") {
     throw invalidPayload();
   }
@@ -162,7 +187,7 @@ export function createShellClipboardIpc({ clipboard }) {
     capability: SHELL_CLIPBOARD_CAPABILITY,
     methods: Object.freeze({
       [SHELL_CLIPBOARD_METHODS.COPY_TEXT]: (args) =>
-        copyTextToClipboard(args, clipboard),
+        copyTextToClipboard(args, clipboard, clipboardItem),
       [SHELL_CLIPBOARD_METHODS.READ_TEXT]: () => readClipboardText(clipboard),
     }),
   });
