@@ -75,7 +75,6 @@ impl Harness {
         encoded.push(b'\n');
         let line = format!("{PREFIX}{}", String::from_utf8(encoded).expect("utf8"));
         self.stdin.write_all(line.as_bytes()).expect("stdin write");
-        self.stdin.write_all(b"\n").expect("frame terminator");
         self.stdin.flush().expect("stdin flush");
         self.recv()
     }
