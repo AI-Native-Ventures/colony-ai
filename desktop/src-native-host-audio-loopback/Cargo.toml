@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "colony-native-host-audio-loopback"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+publish = false
+description = "Hosted-only synthetic Opus loopback for Phase 1 audio parity (fixture PCM encode, wire frames, NetEq drain; no devices, no relay)"
+
+[dependencies]
+colony-native-host-audio = { path = "../src-native-host-audio" }
+opus = "0.3"
+neteq = { version = "0.8", default-features = false }

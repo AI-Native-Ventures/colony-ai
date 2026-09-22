@@ -1,0 +1,75 @@
+name: Colony audio loopback
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/src-native-host-audio-loopback/**"
+      - ".github/workflows/colony-audio-loopback.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: macOS arm64 synthetic Opus loopback
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert hosted runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "This lane requires a native macOS arm64 runner; got $machine" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+
+      - name: Check loopback formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo fmt --manifest-path desktop/src-native-host-audio-loopback/Cargo.toml -- --check
+
+      - name: Prove the loopback package has no device or UI imports
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Path-scoped scan: real `use` imports and `::` paths only,
+          # so upstream-reference prose in doc comments cannot trip it.
+          if grep -r -E -i "^[[:space:]]*use[[:space:]]+(tauri|rodio|cpal)(::|[[:space:];])" \
+            desktop/src-native-host-audio-loopback/src desktop/src-native-host-audio-loopback/tests; then
+            echo "forbidden device/UI import in the loopback package" >&2
+            exit 1
+          fi
+          if grep -r -E "(tauri|rodio|cpal)::" \
+            desktop/src-native-host-audio-loopback/src desktop/src-native-host-audio-loopback/tests; then
+            echo "forbidden device/UI path in the loopback package" >&2
+            exit 1
+          fi
+          echo "loopback import scan passed"
+
+      - name: Run the synthetic Opus loopback tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo test --manifest-path desktop/src-native-host-audio-loopback/Cargo.toml -- --nocapture
