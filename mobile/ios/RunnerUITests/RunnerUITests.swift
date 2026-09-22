@@ -38,7 +38,7 @@ final class RunnerUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(
       app.wait(for: .runningForeground, timeout: landingTimeout),
-      "app did not reach foreground during \\(phase)"
+      "app did not reach foreground during \(phase)"
     )
 
     let welcome = app.staticTexts["Welcome to Buzz"]
@@ -47,20 +47,20 @@ final class RunnerUITests: XCTestCase {
 
     XCTAssertTrue(
       welcome.waitForExistence(timeout: landingTimeout),
-      "landing welcome label missing during \\(phase)"
+      "landing welcome label missing during \(phase)"
     )
     XCTAssertTrue(
       scan.waitForExistence(timeout: landingTimeout),
-      "QR scan action missing during \\(phase)"
+      "QR scan action missing during \(phase)"
     )
     XCTAssertTrue(
       pairingCode.waitForExistence(timeout: landingTimeout),
-      "pairing-code action missing during \\(phase)"
+      "pairing-code action missing during \(phase)"
     )
-    XCTAssertTrue(scan.isHittable, "QR scan action is not hittable during \\(phase)")
+    XCTAssertTrue(scan.isHittable, "QR scan action is not hittable during \(phase)")
     XCTAssertTrue(
       pairingCode.isHittable,
-      "pairing-code action is not hittable during \\(phase)"
+      "pairing-code action is not hittable during \(phase)"
     )
 
     let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
