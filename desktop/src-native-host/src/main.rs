@@ -1357,12 +1357,18 @@ impl Host {
         payload: &serde_json::Value,
         binding: &Binding,
     ) -> Result<serde_json::Value, ContractError> {
-        let session = self.relay.as_mut().ok_or(ContractError::HostUnavailable)?;
         match operation {
             "relay-transport/connect" => {
+                // Borrow discipline: complete the blocking dial first, then
+                // report lifecycle transitions; holding the session borrow
+                // across a &mut self send is a borrow error.
                 self.send_host_lifecycle_relay(binding, "relay_connecting", None)
                     .map_err(|_| ContractError::HostUnavailable)?;
-                match session.connect() {
+                let dialed = match self.relay.as_mut() {
+                    Some(session) => session.connect(),
+                    None => return Err(ContractError::HostUnavailable),
+                };
+                match dialed {
                     Ok(connection_id) => {
                         self.send_host_lifecycle_relay(binding, "relay_authenticated", None)
                             .map_err(|_| ContractError::HostUnavailable)?;
@@ -1375,23 +1381,35 @@ impl Host {
                     }
                 }
             }
-            "relay-transport/authenticate" => match session.live_connection_id() {
-                Some(connection_id) => Ok(serde_json::json!({
-                    "authenticated": true,
-                    "connectionId": connection_id,
-                })),
-                None => Err(ContractError::AuthRequired),
-            },
+            "relay-transport/authenticate" => {
+                let connection_id = match self.relay.as_ref() {
+                    Some(session) => session.live_connection_id(),
+                    None => return Err(ContractError::HostUnavailable),
+                };
+                match connection_id {
+                    Some(connection_id) => Ok(serde_json::json!({
+                        "authenticated": true,
+                        "connectionId": connection_id,
+                    })),
+                    None => Err(ContractError::AuthRequired),
+                }
+            }
             "relay-transport/subscribe" => {
                 let subscription_id = payload
                     .get("subscriptionId")
                     .and_then(|value| value.as_str())
                     .ok_or(ContractError::InvalidPayload)?;
                 let filter = payload.get("filter").ok_or(ContractError::InvalidPayload)?;
-                session.subscribe(subscription_id, filter)?;
-                let connection_id = session
-                    .live_connection_id()
-                    .ok_or(ContractError::AuthRequired)?;
+                let connection_id = match self.relay.as_mut() {
+                    Some(session) => {
+                        session.subscribe(subscription_id, filter)?;
+                        session
+                            .live_connection_id()
+                            .ok_or(ContractError::AuthRequired)?
+                            .to_string()
+                    }
+                    None => return Err(ContractError::HostUnavailable),
+                };
                 Ok(serde_json::json!({
                     "connectionId": connection_id,
                     "subscriptionId": subscription_id,
@@ -1406,7 +1424,10 @@ impl Host {
                     .get("connectionId")
                     .and_then(|value| value.as_str())
                     .ok_or(ContractError::InvalidPayload)?;
-                session.unsubscribe(subscription_id)?;
+                match self.relay.as_mut() {
+                    Some(session) => session.unsubscribe(subscription_id)?,
+                    None => return Err(ContractError::HostUnavailable),
+                };
                 Ok(serde_json::json!({
                     "connectionId": connection_id,
                     "subscriptionId": subscription_id,
@@ -1422,7 +1443,10 @@ impl Host {
                     .get("connectionId")
                     .and_then(|value| value.as_str())
                     .ok_or(ContractError::InvalidPayload)?;
-                session.publish(handle)?;
+                match self.relay.as_mut() {
+                    Some(session) => session.publish(handle)?,
+                    None => return Err(ContractError::HostUnavailable),
+                };
                 Ok(serde_json::json!({
                     "accepted": true,
                     "connectionId": connection_id,
@@ -1437,7 +1461,10 @@ impl Host {
                     .get("connectionId")
                     .and_then(|value| value.as_str())
                     .ok_or(ContractError::InvalidPayload)?;
-                session.close_connection();
+                match self.relay.as_mut() {
+                    Some(session) => session.close_connection(),
+                    None => return Err(ContractError::HostUnavailable),
+                };
                 Ok(serde_json::json!({
                     "connectionId": connection_id,
                     "subscriptionId": connection_id,
@@ -1448,7 +1475,10 @@ impl Host {
             | "identity-sign/sign_presence"
             | "identity-sign/sign_typing"
             | "identity-sign/sign_user_status" => {
-                let (handle, event) = session.sign(operation, payload)?;
+                let (handle, event) = match self.relay.as_mut() {
+                    Some(session) => session.sign(operation, payload)?,
+                    None => return Err(ContractError::HostUnavailable),
+                };
                 Ok(serde_json::json!({
                     "eventHandle": handle,
                     "signedEvent": event,

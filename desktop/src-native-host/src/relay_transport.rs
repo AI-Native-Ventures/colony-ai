@@ -134,6 +134,7 @@ impl TungsteniteSocket {
             match TcpStream::connect_timeout(&address, timeout) {
                 Ok(stream) => {
                     let _ = stream.set_nodelay(true);
+                    let url = url.to_string();
                     let socket = match uri.scheme_str() {
                         Some("wss") => {
                             match client_tls_with_config(url, stream, Some(config), None) {
@@ -142,7 +143,15 @@ impl TungsteniteSocket {
                             }
                         }
                         _ => match client_with_config(url, stream, Some(config)) {
-                            Ok((socket, _)) => socket,
+                            Ok((socket, _)) => {
+                                // Normalize the plain stream into the same
+                                // MaybeTlsStream envelope the struct holds.
+                                WebSocket::from_raw_socket(
+                                    MaybeTlsStream::Plain(socket.into_inner()),
+                                    tungstenite::protocol::Role::Client,
+                                    Some(config),
+                                )
+                            }
                             Err(_) => return Err(ContractError::InvalidConnection),
                         },
                     };
