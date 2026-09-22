@@ -1,0 +1,46 @@
+name: Colony shell clipboard adapter proof
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/src-electron/shell-clipboard.mjs"
+      - "desktop/src-electron/shell-clipboard.test.mjs"
+      - ".github/workflows/colony-shell-clipboard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-proof:
+    name: Shell clipboard adapter (mocked backend proof)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up the pinned Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.14.1
+
+      - name: Syntax-check the adapter and its tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check desktop/src-electron/shell-clipboard.mjs
+          node --check desktop/src-electron/shell-clipboard.test.mjs
+
+      # Mocked proof only: the Electron `clipboard` backend is injected as a
+      # fake under plain Node. Real Electron clipboard proof (running inside
+      # the packaged shell) remains a separate integration gate and is NOT
+      # claimed by this workflow.
+      - name: Run the focused clipboard adapter tests
+        shell: bash
+        run: node --test desktop/src-electron/shell-clipboard.test.mjs
