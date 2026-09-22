@@ -66,6 +66,14 @@ pub struct MethodSpec {
 pub enum DeadlineClass {
     Standard,
     Request,
+    /// Session-teardown class, mirroring the relay table's `close` class
+    /// (2500 ms). Upstream `terminal_close` runs the draining shutdown:
+    /// SIGTERM, bounded grace, SIGKILL, reap — the same shape as closing
+    /// a socket, not an interactive op. The first revision of this table
+    /// proposed a uniform 10 s including close; that contradicted the
+    /// existing 2500 ms close-class precedent in the system this fragment
+    /// joins, so close aligns to it. All other values stay PROPOSAL.
+    Close,
 }
 
 /// The upstream command surface is exactly nine `terminal_*` commands
@@ -105,8 +113,8 @@ pub const TERMINAL_METHODS: [MethodSpec; 9] = [
     },
     MethodSpec {
         method: "terminal_close",
-        deadline_class: DeadlineClass::Request,
-        deadline_ms: 10_000,
+        deadline_class: DeadlineClass::Close,
+        deadline_ms: 2_500,
         request_schema: "terminal-close",
         response_schema: "terminal-ack",
         side_effect: "ends-session",
@@ -274,6 +282,7 @@ pub fn registry_fragment() -> RegistryFragment {
                 deadline_class: match spec.deadline_class {
                     DeadlineClass::Standard => "standard".to_string(),
                     DeadlineClass::Request => "request".to_string(),
+                    DeadlineClass::Close => "close".to_string(),
                 },
                 deadline_ms: spec.deadline_ms,
                 request_schema: spec.request_schema.to_string(),
