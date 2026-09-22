@@ -10,6 +10,6 @@ publish = false
 description = "Hosted-only synthetic Opus loopback for Phase 1 audio parity (fixture PCM encode, wire frames, NetEq drain; no devices, no relay)"
 
 [dependencies]
-colony_native_host_audio = { path = "../src-native-host-audio" }
+colony-native-host-audio = { path = "../src-native-host-audio" }
 opus = "0.3"
 neteq = { version = "0.8", default-features = false }
