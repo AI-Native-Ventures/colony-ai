@@ -3,6 +3,8 @@ mod identity;
 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
 mod identity_ownership;
 mod protocol;
+#[allow(dead_code)]
+mod relay_v2;
 mod v2;
 
 use std::{
