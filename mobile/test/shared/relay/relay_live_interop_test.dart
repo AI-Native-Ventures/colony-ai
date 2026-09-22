@@ -253,11 +253,12 @@ void main() {
     var ready = false;
 
     // markTestSkipped in setUpAll does not stop test bodies from
-    // running on every runner: each test re-checks readiness first.
-    void requireReady() {
-      if (!ready) {
-        markTestSkipped('disposable relay unreachable at $_relayHttp');
-      }
+    // running on every runner, and markTestSkipped itself does not
+    // halt the test body either: each test must return on false.
+    bool requireReady() {
+      if (ready) return true;
+      markTestSkipped('disposable relay unreachable at $_relayHttp');
+      return false;
     }
 
     setUpAll(() async {
@@ -302,7 +303,7 @@ void main() {
     test(
       'bidirectional channel message and thread reply',
       () async {
-        requireReady();
+        if (!requireReady()) return;
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await mobile.publishMessage(
           channelId: channelId,
@@ -336,7 +337,7 @@ void main() {
     test(
       'fresh session catches up history exactly once',
       () async {
-        requireReady();
+        if (!requireReady()) return;
         final sent = await mobile.publishMessage(
           channelId: channelId,
           content: 'catchup probe ${DateTime.now().millisecondsSinceEpoch}',
@@ -366,7 +367,7 @@ void main() {
     test(
       'reconnect replays missed message exactly once',
       () async {
-        requireReady();
+        if (!requireReady()) return;
         mobile.session.debugHandleDisconnected('harness drop');
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await oracle.publishMessage(
@@ -387,7 +388,7 @@ void main() {
     test(
       'restart retains identity and resubscribes',
       () async {
-        requireReady();
+        if (!requireReady()) return;
         final beforePubkey = mobile.pubkeyHex;
         final nsec = mobile.nsec;
         await mobile.dispose();
@@ -413,7 +414,7 @@ void main() {
     test(
       'foreign channel events stay isolated',
       () async {
-        requireReady();
+        if (!requireReady()) return;
         final foreign = await oracle.publishMessage(
           channelId: 'foreign-${DateTime.now().millisecondsSinceEpoch}',
           content: 'not for the matrix',
