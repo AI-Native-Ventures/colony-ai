@@ -93,10 +93,11 @@ class _LivePeer {
   late final String pubkeyHex;
   late ProviderContainer container;
   final List<NostrEvent> inbox = [];
-  final List<Future<void> Function()> _cleanupCallbacks = [];
+  final List<void Function()> _cleanupCallbacks = [];
   ProviderSubscription<SessionState>? _sessionListener;
 
-  RelaySessionNotifier get session => container.read(relaySessionProvider);
+  RelaySessionNotifier get session =>
+      container.read(relaySessionProvider.notifier);
 
   Future<void> start() async {
     final privHex = nostr.Nip19.decode(payload: nsec).data;
@@ -176,10 +177,10 @@ class _LivePeer {
 
   Future<void> dispose() async {
     for (final cleanup in _cleanupCallbacks.reversed) {
-      await cleanup();
+      cleanup();
     }
     _cleanupCallbacks.clear();
-    await _sessionListener?.close();
+    _sessionListener?.close();
     container.dispose();
   }
 }
@@ -248,55 +249,55 @@ void main() {
     });
   });
 
-  group(
-    'live relay interop (disposable relay)',
-    () {
-      late http.Client httpClient;
-      late _LivePeer mobile;
-      late _LivePeer oracle;
-      late String channelId;
-      var ready = false;
+  group('live relay interop (disposable relay)', () {
+    late http.Client httpClient;
+    late _LivePeer mobile;
+    late _LivePeer oracle;
+    late String channelId;
+    var ready = false;
 
-      setUpAll(() async {
-        switch (_relayGateDecision(
-          reachable: await _isRelayReachable(Uri.parse(_relayHttp)),
-          required: _requireRelay,
-        )) {
-          case _RelayGate.proceed:
-            break;
-          case _RelayGate.skip:
-            markTestSkipped('disposable relay unreachable at $_relayHttp');
-            return;
-          case _RelayGate.failClosed:
-            fail('required disposable relay unreachable at $_relayHttp');
-        }
-        httpClient = http.Client();
-        final mobileKeys = nostr.Keys.generate();
-        final oracleKeys = nostr.Keys.generate();
-        mobile = _LivePeer(nsec: mobileKeys.nsec, name: 'mobile');
-        oracle = _LivePeer(nsec: oracleKeys.nsec, name: 'oracle');
-        await mobile.start();
-        await oracle.start();
-        await mobile.waitConnected();
-        await oracle.waitConnected();
-        channelId = await _createChannel(httpClient, mobileKeys.nsec);
-        debugPrint(
-          'interop channel=$channelId '
-          'mobile=${mobile.pubkeyHex} oracle=${oracle.pubkeyHex}',
-        );
-        await mobile.subscribeChannel(channelId);
-        await oracle.subscribeChannel(channelId);
-        ready = true;
-      });
+    setUpAll(() async {
+      switch (_relayGateDecision(
+        reachable: await _isRelayReachable(Uri.parse(_relayHttp)),
+        required: _requireRelay,
+      )) {
+        case _RelayGate.proceed:
+          break;
+        case _RelayGate.skip:
+          markTestSkipped('disposable relay unreachable at $_relayHttp');
+          return;
+        case _RelayGate.failClosed:
+          fail('required disposable relay unreachable at $_relayHttp');
+      }
+      httpClient = http.Client();
+      final mobileKeys = nostr.Keys.generate();
+      final oracleKeys = nostr.Keys.generate();
+      mobile = _LivePeer(nsec: mobileKeys.nsec, name: 'mobile');
+      oracle = _LivePeer(nsec: oracleKeys.nsec, name: 'oracle');
+      await mobile.start();
+      await oracle.start();
+      await mobile.waitConnected();
+      await oracle.waitConnected();
+      channelId = await _createChannel(httpClient, mobileKeys.nsec);
+      debugPrint(
+        'interop channel=$channelId '
+        'mobile=${mobile.pubkeyHex} oracle=${oracle.pubkeyHex}',
+      );
+      await mobile.subscribeChannel(channelId);
+      await oracle.subscribeChannel(channelId);
+      ready = true;
+    });
 
-      tearDownAll(() async {
-        if (!ready) return;
-        await mobile.dispose();
-        await oracle.dispose();
-        httpClient.close();
-      });
+    tearDownAll(() async {
+      if (!ready) return;
+      await mobile.dispose();
+      await oracle.dispose();
+      httpClient.close();
+    });
 
-      test('bidirectional channel message and thread reply', () async {
+    test(
+      'bidirectional channel message and thread reply',
+      () async {
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await mobile.publishMessage(
           channelId: channelId,
@@ -323,9 +324,13 @@ void main() {
           reason: 'thread reply must reference the root event',
         );
         debugPrint('interop matrix ok root=${sent.id} reply=${reply.id}');
-      });
+      },
+      timeout: const Timeout(Duration(minutes: 8)),
+    );
 
-      test('fresh session catches up history exactly once', () async {
+    test(
+      'fresh session catches up history exactly once',
+      () async {
         final sent = await mobile.publishMessage(
           channelId: channelId,
           content: 'catchup probe ${DateTime.now().millisecondsSinceEpoch}',
@@ -348,9 +353,13 @@ void main() {
         final matches = history.where((event) => event.id == sent.id).toList();
         expect(matches, hasLength(1));
         expect(matches.single.content, sent.content);
-      });
+      },
+      timeout: const Timeout(Duration(minutes: 8)),
+    );
 
-      test('reconnect replays missed message exactly once', () async {
+    test(
+      'reconnect replays missed message exactly once',
+      () async {
         mobile.session.debugHandleDisconnected('harness drop');
         final tag = DateTime.now().millisecondsSinceEpoch;
         final sent = await oracle.publishMessage(
@@ -364,9 +373,13 @@ void main() {
             .where((event) => event.id == sent.id)
             .toList();
         expect(duplicates, hasLength(1));
-      });
+      },
+      timeout: const Timeout(Duration(minutes: 8)),
+    );
 
-      test('restart retains identity and resubscribes', () async {
+    test(
+      'restart retains identity and resubscribes',
+      () async {
         final beforePubkey = mobile.pubkeyHex;
         final nsec = mobile.nsec;
         await mobile.dispose();
@@ -385,9 +398,13 @@ void main() {
           ),
         );
         expect(history, isNotEmpty);
-      });
+      },
+      timeout: const Timeout(Duration(minutes: 8)),
+    );
 
-      test('foreign channel events stay isolated', () async {
+    test(
+      'foreign channel events stay isolated',
+      () async {
         final foreign = await oracle.publishMessage(
           channelId: 'foreign-${DateTime.now().millisecondsSinceEpoch}',
           content: 'not for the matrix',
@@ -398,8 +415,12 @@ void main() {
           isFalse,
           reason: 'matrix subscription must not see other channels',
         );
-      });
-      test('undecodable identity fails closed before connect', () async {
+      },
+      timeout: const Timeout(Duration(minutes: 8)),
+    );
+    test(
+      'undecodable identity fails closed before connect',
+      () async {
         const garbage = 'nsec1invalidkeymaterial000000000000000';
         var terminalAtDecode = false;
         try {
@@ -415,12 +436,12 @@ void main() {
         await bad.start();
         await Future<void>.delayed(const Duration(seconds: 10));
         expect(
-          bad.container.read(relaySessionProvider).status,
+          bad.container.read(relaySessionProvider.notifier).status,
           isNot(SessionStatus.connected),
           reason: 'garbage identity must never authenticate',
         );
-      });
-    },
-    timeout: const Timeout(Duration(minutes: 8)),
-  );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  });
 }
