@@ -1,1 +1,771 @@
-{"authority":{"mainIssued":{"bytes":32,"format":"lowercase-hex-32-byte","meaning":"per-session opaque handle issued by trusted main","name":"authorityRef","pattern":"^[0-9a-f]{64}$","rendererMayProvide":false},"rendererInput":{"maxBytes":128,"maySelectDigest":false,"maySelectProfile":false,"maySelectUrl":false,"meaning":"existing trusted community-table key","minBytes":1,"name":"communityId","type":"string"},"resolution":"trusted-main maps communityId to one frozen {authorityRef,relayUrl,profileId,registryDigest}; helper accepts only that main-issued handle","unknown":"wrong_authority"},"capabilities":{"ready":["relay-transport","identity-sign"]},"entries":{"identity-sign/sign_message":{"authorization":"bound-session","binary":false,"capability":"identity-sign","deadlineClass":"standard","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"host-lifecycle-event","requestSchema":"identity-sign-message","responseSchema":"signed-event-handle","sideEffect":"none"},"identity-sign/sign_presence":{"authorization":"bound-session","binary":false,"capability":"identity-sign","deadlineClass":"standard","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"host-lifecycle-event","requestSchema":"identity-sign-presence","responseSchema":"signed-event-handle","sideEffect":"none"},"identity-sign/sign_typing":{"authorization":"bound-session","binary":false,"capability":"identity-sign","deadlineClass":"standard","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"host-lifecycle-event","requestSchema":"identity-sign-typing","responseSchema":"signed-event-handle","sideEffect":"none"},"identity-sign/sign_user_status":{"authorization":"bound-session","binary":false,"capability":"identity-sign","deadlineClass":"standard","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"host-lifecycle-event","requestSchema":"identity-sign-user-status","responseSchema":"signed-event-handle","sideEffect":"none"},"relay-transport/authenticate":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"auth","deadlineMs":5000,"direction":"renderer-to-host","eventSchema":"relay-lifecycle-event","requestSchema":"relay-authenticate","responseSchema":"relay-authenticated","sideEffect":"sends-auth"},"relay-transport/close":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"close","deadlineMs":2500,"direction":"renderer-to-host","eventSchema":"relay-lifecycle-event","requestSchema":"relay-close","responseSchema":"relay-closed","sideEffect":"closes-socket"},"relay-transport/close_subscription":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"close","deadlineMs":2500,"direction":"renderer-to-host","eventSchema":"relay-message-event","requestSchema":"relay-close-subscription","responseSchema":"relay-closed","sideEffect":"sends-close"},"relay-transport/connect":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"connect","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"relay-lifecycle-event","requestSchema":"relay-connect","responseSchema":"relay-connection","sideEffect":"opens-socket"},"relay-transport/publish":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"publish","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"relay-message-event","requestSchema":"relay-publish-handle","responseSchema":"relay-publish-accepted","sideEffect":"sends-event"},"relay-transport/subscribe":{"authorization":"bound-session","binary":false,"capability":"relay-transport","deadlineClass":"request","deadlineMs":10000,"direction":"renderer-to-host","eventSchema":"relay-message-event","requestSchema":"relay-subscribe","responseSchema":"relay-subscription","sideEffect":"sends-req"}},"errors":["invalid_payload","invalid_connection","stale_generation","future_generation","wrong_authority","auth_required","auth_timeout","auth_rejected","connect_timeout","request_timeout","oversized_frame","malformed_frame","queue_full","relay_closed","publish_rejected","host_unavailable","renderer_rebound","shutdown"],"filterKinds":[5,7,9,20001,20002,30315,39005,40001,40002,40003,40008,40099,48100,48101,48102,48103,9005],"inbound":{"classes":["AUTH","OK","EVENT","EOSE","CLOSED","NOTICE"],"eventKeys":["id","pubkey","created_at","kind","tags","content","sig"]},"limits":{"authBudgetMode":"single-absolute","authBudgetStart":"connection-created","authDeadlineMs":5000,"closeDeadlineMs":2500,"connectDeadlineMs":10000,"maxChallengeBytes":1024,"maxConnectionIdBytes":36,"maxContentBytes":262144,"maxFilterBytes":32768,"maxFilterCount":64,"maxFilterKinds":64,"maxFilterValueBytes":128,"maxFilterValues":64,"maxInboundFrames":256,"maxReasonBytes":128,"maxRelayUrlBytes":2048,"maxSignedEventBytes":524288,"maxSubscriptionIdBytes":64,"maxSubscriptions":1024,"maxTagCount":128,"maxTagItemBytes":2048,"maxTagItems":8,"outboundQueueLimit":64,"publishOkDeadlineMs":10000,"relayFrameBytes":524288,"requestDeadlineMs":10000,"shutdownGraceMs":250},"profile":"relay-v2","protocolVersion":2,"redactedCodes":{"closed":["auth_required","invalid_request","not_authorized","rate_limited","server_error","timeout","unknown"],"notice":["invalid_request","not_authorized","rate_limited","server_error","maintenance","unknown"],"ok":["accepted","rejected","duplicate","invalid_event","not_authorized","rate_limited","server_error","unknown"]},"requestSchemas":{"authenticate":["connectionId","challengeRef"],"close":["connectionId","reason"],"close_subscription":["connectionId","subscriptionId"],"connect":["authorityRef"],"publish":["connectionId","eventHandle"],"sign_message":["connectionId","channelId","content","mentionPubkeys","extraTags"],"sign_presence":["connectionId","status"],"sign_typing":["connectionId","channelId","parentEventId","rootEventId"],"sign_user_status":["connectionId","text","emoji","expiresAt"],"subscribe":["connectionId","subscriptionId","filter"]},"schemas":{"host-lifecycle-event":{"additionalProperties":false,"properties":{"error":{"maxBytes":64,"type":"string"},"generation":{"minimum":0,"type":"integer"},"state":{"enum":["ready","renderer_rebound","unavailable","relay_connecting","relay_authenticated","relay_closed","relay_failed"],"type":"string"}},"required":["generation","state"],"type":"object"},"identity-sign-message":{"additionalProperties":false,"properties":{"channelId":{"maxBytes":128,"minBytes":1,"type":"string"},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"content":{"maxBytes":262144,"type":"string"},"extraTags":{"items":{"items":{"maxBytes":2048,"type":"string"},"maxItems":8,"type":"array"},"maxItems":128,"type":"array"},"mentionPubkeys":{"items":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"maxItems":50,"type":"array"}},"required":["connectionId","channelId","content","mentionPubkeys","extraTags"],"type":"object"},"identity-sign-presence":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"status":{"enum":["online","away","offline"],"type":"string"}},"required":["connectionId","status"],"type":"object"},"identity-sign-typing":{"additionalProperties":false,"properties":{"channelId":{"maxBytes":128,"minBytes":1,"type":"string"},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"parentEventId":{"type":"nullable-event-id"},"rootEventId":{"type":"nullable-event-id"}},"required":["connectionId","channelId","parentEventId","rootEventId"],"type":"object"},"identity-sign-user-status":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"emoji":{"maxBytes":128,"type":"string"},"expiresAt":{"type":"nullable-uint"},"text":{"maxBytes":1024,"type":"string"}},"required":["connectionId","text","emoji","expiresAt"],"type":"object"},"relay-authenticate":{"additionalProperties":false,"properties":{"challengeRef":{"maxBytes":64,"minBytes":1,"type":"string"},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"}},"required":["connectionId","challengeRef"],"type":"object"},"relay-authenticated":{"additionalProperties":false,"properties":{"authenticated":{"const":true},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"}},"required":["authenticated","connectionId"],"type":"object"},"relay-close":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"reason":{"maxBytes":128,"type":"string"}},"required":["connectionId","reason"],"type":"object"},"relay-close-subscription":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["connectionId","subscriptionId"],"type":"object"},"relay-closed":{"additionalProperties":false,"properties":{"closed":{"const":true},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["connectionId","subscriptionId","closed"],"type":"object"},"relay-connect":{"additionalProperties":false,"properties":{"authorityRef":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["authorityRef"],"type":"object"},"relay-connection":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"pattern":"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$","type":"string"}},"required":["connectionId"],"type":"object"},"relay-filter":{"additionalProperties":false,"properties":{"#d":{"items":{"maxBytes":128,"type":"string"},"maxItems":64,"type":"array"},"#e":{"items":{"maxBytes":128,"type":"string"},"maxItems":64,"type":"array"},"#h":{"items":{"maxBytes":128,"type":"string"},"maxItems":64,"type":"array"},"#p":{"items":{"maxBytes":128,"type":"string"},"maxItems":64,"type":"array"},"authors":{"items":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"maxItems":64,"type":"array"},"ids":{"items":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"maxItems":64,"type":"array"},"kinds":{"items":{"enum":[5,7,9,20001,20002,30315,39005,40001,40002,40003,40008,40099,48100,48101,48102,48103,9005],"type":"integer"},"maxItems":64,"type":"array"},"limit":{"maximum":10000,"minimum":0,"type":"integer"},"since":{"minimum":0,"type":"integer"},"until":{"minimum":0,"type":"integer"}},"required":[],"type":"object"},"relay-lifecycle-event":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"generation":{"minimum":0,"type":"integer"},"state":{"enum":["connecting","challenge_pending","auth_sent","authenticated","closing","closed","failed"],"type":"string"}},"required":["connectionId","generation","state"],"type":"object"},"relay-message-event":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"generation":{"minimum":0,"type":"integer"},"messageType":{"enum":["AUTH","OK","EVENT","EOSE","CLOSED","NOTICE"],"type":"string"},"payload":{"additionalProperties":false,"payloadVariants":{"AUTH":{"additionalProperties":false,"properties":{"challengeRef":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["challengeRef"],"type":"object"},"CLOSED":{"additionalProperties":false,"properties":{"reasonCode":{"enum":["auth_required","invalid_request","not_authorized","rate_limited","server_error","timeout","unknown"],"type":"string"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["subscriptionId","reasonCode"],"type":"object"},"EOSE":{"additionalProperties":false,"properties":{"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["subscriptionId"],"type":"object"},"EVENT":{"additionalProperties":false,"properties":{"event":{"$ref":"signed-relay-event"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["subscriptionId","event"],"type":"object"},"NOTICE":{"additionalProperties":false,"properties":{"code":{"enum":["invalid_request","not_authorized","rate_limited","server_error","maintenance","unknown"],"type":"string"}},"required":["code"],"type":"object"},"OK":{"additionalProperties":false,"properties":{"accepted":{"type":"boolean"},"eventId":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"messageCode":{"enum":["accepted","rejected","duplicate","invalid_event","not_authorized","rate_limited","server_error","unknown"],"type":"string"}},"required":["eventId","accepted","messageCode"],"type":"object"}},"type":"object"}},"required":["connectionId","generation","messageType","payload"],"type":"object"},"relay-publish-accepted":{"additionalProperties":false,"properties":{"accepted":{"const":true},"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"eventHandle":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["accepted","connectionId","eventHandle"],"type":"object"},"relay-publish-handle":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"eventHandle":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["connectionId","eventHandle"],"type":"object"},"relay-subscribe":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"filter":{"$ref":"relay-filter"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["connectionId","subscriptionId","filter"],"type":"object"},"relay-subscription":{"additionalProperties":false,"properties":{"connectionId":{"maxBytes":36,"minBytes":36,"type":"string"},"subscriptionId":{"maxBytes":64,"minBytes":1,"type":"string"}},"required":["connectionId","subscriptionId"],"type":"object"},"signed-event-handle":{"additionalProperties":false,"properties":{"eventHandle":{"maxBytes":64,"minBytes":1,"type":"string"},"signedEvent":{"$ref":"signed-relay-event"}},"required":["eventHandle","signedEvent"],"type":"object"},"signed-relay-event":{"additionalProperties":false,"properties":{"content":{"maxBytes":262144,"type":"string"},"created_at":{"type":"uint"},"id":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"kind":{"type":"uint"},"pubkey":{"maxBytes":64,"minBytes":64,"pattern":"^[0-9a-f]{64}$","type":"string"},"sig":{"maxBytes":128,"minBytes":128,"pattern":"^[0-9a-f]{128}$","type":"string"},"tags":{"items":{"items":{"maxBytes":2048,"type":"string"},"maxItems":8,"type":"array"},"maxItems":128,"type":"array"}},"required":["id","pubkey","created_at","kind","tags","content","sig"],"type":"object"}},"signing":{"message":{"baseTags":[{"arity":2,"name":"h","required":true,"source":"channelId"}],"contentBytes":262144,"extraTagMaxItems":4,"extraTagNames":["e","h","p","q","broadcast"],"extraTagRules":{"broadcast":["1"],"e":["eventId64","","root|reply"],"h":["channelId"],"p":["pubkey64"],"q":["eventId64"]},"kind":9,"mentionTag":{"arity":2,"name":"p","source":"mentionPubkeys"}},"presence":{"contentBytes":128,"exactTags":[],"kind":20001},"typing":{"contentBytes":0,"kind":20002,"tagConstruction":{"reply":[["e","parentEventId","","reply"]],"required":[["h","channelId"]],"thread":[["e","rootEventId","","root"],["e","parentEventId","","reply"]]},"tagNames":["e","h"]},"user_status":{"contentBytes":1024,"kind":30315,"tagConstruction":{"optional":[["emoji","status.emoji"],["expiration","decimal(status.expiresAt)"]],"required":[["d","general"]]},"tagNames":["d","emoji","expiration"]}}}
+{
+  "authority": {
+    "mainIssued": {
+      "bytes": 32,
+      "format": "lowercase-hex-32-byte",
+      "meaning": "per-session opaque handle issued by trusted main",
+      "name": "authorityRef",
+      "pattern": "^[0-9a-f]{64}$",
+      "rendererMayProvide": false
+    },
+    "rendererInput": {
+      "maxBytes": 128,
+      "maySelectDigest": false,
+      "maySelectProfile": false,
+      "maySelectUrl": false,
+      "meaning": "existing trusted community-table key",
+      "minBytes": 1,
+      "name": "communityId",
+      "type": "string"
+    },
+    "resolution": "trusted-main maps communityId to one frozen {authorityRef,relayUrl,profileId,registryDigest}; helper accepts only that main-issued handle",
+    "unknown": "wrong_authority"
+  },
+  "capabilities": { "ready": ["relay-transport", "identity-sign"] },
+  "entries": {
+    "identity-sign/sign_message": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "identity-sign",
+      "deadlineClass": "standard",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "host-lifecycle-event",
+      "requestSchema": "identity-sign-message",
+      "responseSchema": "signed-event-handle",
+      "sideEffect": "none"
+    },
+    "identity-sign/sign_presence": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "identity-sign",
+      "deadlineClass": "standard",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "host-lifecycle-event",
+      "requestSchema": "identity-sign-presence",
+      "responseSchema": "signed-event-handle",
+      "sideEffect": "none"
+    },
+    "identity-sign/sign_typing": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "identity-sign",
+      "deadlineClass": "standard",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "host-lifecycle-event",
+      "requestSchema": "identity-sign-typing",
+      "responseSchema": "signed-event-handle",
+      "sideEffect": "none"
+    },
+    "identity-sign/sign_user_status": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "identity-sign",
+      "deadlineClass": "standard",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "host-lifecycle-event",
+      "requestSchema": "identity-sign-user-status",
+      "responseSchema": "signed-event-handle",
+      "sideEffect": "none"
+    },
+    "relay-transport/authenticate": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "auth",
+      "deadlineMs": 5000,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-lifecycle-event",
+      "requestSchema": "relay-authenticate",
+      "responseSchema": "relay-authenticated",
+      "sideEffect": "sends-auth"
+    },
+    "relay-transport/close": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "close",
+      "deadlineMs": 2500,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-lifecycle-event",
+      "requestSchema": "relay-close",
+      "responseSchema": "relay-closed",
+      "sideEffect": "closes-socket"
+    },
+    "relay-transport/close_subscription": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "close",
+      "deadlineMs": 2500,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-message-event",
+      "requestSchema": "relay-close-subscription",
+      "responseSchema": "relay-closed",
+      "sideEffect": "sends-close"
+    },
+    "relay-transport/connect": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "connect",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-lifecycle-event",
+      "requestSchema": "relay-connect",
+      "responseSchema": "relay-connection",
+      "sideEffect": "opens-socket"
+    },
+    "relay-transport/publish": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "publish",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-message-event",
+      "requestSchema": "relay-publish-handle",
+      "responseSchema": "relay-publish-accepted",
+      "sideEffect": "sends-event"
+    },
+    "relay-transport/subscribe": {
+      "authorization": "bound-session",
+      "binary": false,
+      "capability": "relay-transport",
+      "deadlineClass": "request",
+      "deadlineMs": 10000,
+      "direction": "renderer-to-host",
+      "eventSchema": "relay-message-event",
+      "requestSchema": "relay-subscribe",
+      "responseSchema": "relay-subscription",
+      "sideEffect": "sends-req"
+    }
+  },
+  "errors": [
+    "invalid_payload",
+    "invalid_connection",
+    "stale_generation",
+    "future_generation",
+    "wrong_authority",
+    "auth_required",
+    "auth_timeout",
+    "auth_rejected",
+    "connect_timeout",
+    "request_timeout",
+    "oversized_frame",
+    "malformed_frame",
+    "queue_full",
+    "relay_closed",
+    "publish_rejected",
+    "host_unavailable",
+    "renderer_rebound",
+    "shutdown"
+  ],
+  "filterKinds": [
+    5, 7, 9, 20001, 20002, 30315, 39005, 40001, 40002, 40003, 40008, 40099,
+    48100, 48101, 48102, 48103, 9005
+  ],
+  "inbound": {
+    "classes": ["AUTH", "OK", "EVENT", "EOSE", "CLOSED", "NOTICE"],
+    "eventKeys": [
+      "id",
+      "pubkey",
+      "created_at",
+      "kind",
+      "tags",
+      "content",
+      "sig"
+    ]
+  },
+  "limits": {
+    "authBudgetMode": "single-absolute",
+    "authBudgetStart": "connection-created",
+    "authDeadlineMs": 5000,
+    "closeDeadlineMs": 2500,
+    "connectDeadlineMs": 10000,
+    "maxChallengeBytes": 1024,
+    "maxConnectionIdBytes": 36,
+    "maxContentBytes": 262144,
+    "maxFilterBytes": 32768,
+    "maxFilterCount": 64,
+    "maxFilterKinds": 64,
+    "maxFilterValueBytes": 128,
+    "maxFilterValues": 64,
+    "maxInboundFrames": 256,
+    "maxReasonBytes": 128,
+    "maxRelayUrlBytes": 2048,
+    "maxSignedEventBytes": 524288,
+    "maxSubscriptionIdBytes": 64,
+    "maxSubscriptions": 1024,
+    "maxTagCount": 128,
+    "maxTagItemBytes": 2048,
+    "maxTagItems": 8,
+    "outboundQueueLimit": 64,
+    "publishOkDeadlineMs": 10000,
+    "relayFrameBytes": 524288,
+    "requestDeadlineMs": 10000,
+    "shutdownGraceMs": 250
+  },
+  "profile": "relay-v2",
+  "protocolVersion": 2,
+  "redactedCodes": {
+    "closed": [
+      "auth_required",
+      "invalid_request",
+      "not_authorized",
+      "rate_limited",
+      "server_error",
+      "timeout",
+      "unknown"
+    ],
+    "notice": [
+      "invalid_request",
+      "not_authorized",
+      "rate_limited",
+      "server_error",
+      "maintenance",
+      "unknown"
+    ],
+    "ok": [
+      "accepted",
+      "rejected",
+      "duplicate",
+      "invalid_event",
+      "not_authorized",
+      "rate_limited",
+      "server_error",
+      "unknown"
+    ]
+  },
+  "requestSchemas": {
+    "authenticate": ["connectionId", "challengeRef"],
+    "close": ["connectionId", "reason"],
+    "close_subscription": ["connectionId", "subscriptionId"],
+    "connect": ["authorityRef"],
+    "publish": ["connectionId", "eventHandle"],
+    "sign_message": [
+      "connectionId",
+      "channelId",
+      "content",
+      "mentionPubkeys",
+      "extraTags"
+    ],
+    "sign_presence": ["connectionId", "status"],
+    "sign_typing": [
+      "connectionId",
+      "channelId",
+      "parentEventId",
+      "rootEventId"
+    ],
+    "sign_user_status": ["connectionId", "text", "emoji", "expiresAt"],
+    "subscribe": ["connectionId", "subscriptionId", "filter"]
+  },
+  "schemas": {
+    "host-lifecycle-event": {
+      "additionalProperties": false,
+      "properties": {
+        "error": { "maxBytes": 64, "type": "string" },
+        "generation": { "minimum": 0, "type": "integer" },
+        "state": {
+          "enum": [
+            "ready",
+            "renderer_rebound",
+            "unavailable",
+            "relay_connecting",
+            "relay_authenticated",
+            "relay_closed",
+            "relay_failed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": ["generation", "state"],
+      "type": "object"
+    },
+    "identity-sign-message": {
+      "additionalProperties": false,
+      "properties": {
+        "channelId": { "maxBytes": 128, "minBytes": 1, "type": "string" },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "content": { "maxBytes": 262144, "type": "string" },
+        "extraTags": {
+          "items": {
+            "items": { "maxBytes": 2048, "type": "string" },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "maxItems": 128,
+          "type": "array"
+        },
+        "mentionPubkeys": {
+          "items": {
+            "maxBytes": 64,
+            "minBytes": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        }
+      },
+      "required": [
+        "connectionId",
+        "channelId",
+        "content",
+        "mentionPubkeys",
+        "extraTags"
+      ],
+      "type": "object"
+    },
+    "identity-sign-presence": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "status": { "enum": ["online", "away", "offline"], "type": "string" }
+      },
+      "required": ["connectionId", "status"],
+      "type": "object"
+    },
+    "identity-sign-typing": {
+      "additionalProperties": false,
+      "properties": {
+        "channelId": { "maxBytes": 128, "minBytes": 1, "type": "string" },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "parentEventId": { "type": "nullable-event-id" },
+        "rootEventId": { "type": "nullable-event-id" }
+      },
+      "required": ["connectionId", "channelId", "parentEventId", "rootEventId"],
+      "type": "object"
+    },
+    "identity-sign-user-status": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "emoji": { "maxBytes": 128, "type": "string" },
+        "expiresAt": { "type": "nullable-uint" },
+        "text": { "maxBytes": 1024, "type": "string" }
+      },
+      "required": ["connectionId", "text", "emoji", "expiresAt"],
+      "type": "object"
+    },
+    "relay-authenticate": {
+      "additionalProperties": false,
+      "properties": {
+        "challengeRef": { "maxBytes": 64, "minBytes": 1, "type": "string" },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" }
+      },
+      "required": ["connectionId", "challengeRef"],
+      "type": "object"
+    },
+    "relay-authenticated": {
+      "additionalProperties": false,
+      "properties": {
+        "authenticated": { "const": true },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" }
+      },
+      "required": ["authenticated", "connectionId"],
+      "type": "object"
+    },
+    "relay-close": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "reason": { "maxBytes": 128, "type": "string" }
+      },
+      "required": ["connectionId", "reason"],
+      "type": "object"
+    },
+    "relay-close-subscription": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "subscriptionId": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["connectionId", "subscriptionId"],
+      "type": "object"
+    },
+    "relay-closed": {
+      "additionalProperties": false,
+      "properties": {
+        "closed": { "const": true },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "subscriptionId": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["connectionId", "subscriptionId", "closed"],
+      "type": "object"
+    },
+    "relay-connect": {
+      "additionalProperties": false,
+      "properties": {
+        "authorityRef": {
+          "maxBytes": 64,
+          "minBytes": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": ["authorityRef"],
+      "type": "object"
+    },
+    "relay-connection": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": {
+          "maxBytes": 36,
+          "minBytes": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        }
+      },
+      "required": ["connectionId"],
+      "type": "object"
+    },
+    "relay-filter": {
+      "additionalProperties": false,
+      "properties": {
+        "#d": {
+          "items": { "maxBytes": 128, "type": "string" },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "#e": {
+          "items": { "maxBytes": 128, "type": "string" },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "#h": {
+          "items": { "maxBytes": 128, "type": "string" },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "#p": {
+          "items": { "maxBytes": 128, "type": "string" },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "authors": {
+          "items": {
+            "maxBytes": 64,
+            "minBytes": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "ids": {
+          "items": {
+            "maxBytes": 64,
+            "minBytes": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "kinds": {
+          "items": {
+            "enum": [
+              5, 7, 9, 20001, 20002, 30315, 39005, 40001, 40002, 40003, 40008,
+              40099, 48100, 48101, 48102, 48103, 9005
+            ],
+            "type": "integer"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "limit": { "maximum": 10000, "minimum": 0, "type": "integer" },
+        "since": { "minimum": 0, "type": "integer" },
+        "until": { "minimum": 0, "type": "integer" }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "relay-lifecycle-event": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "generation": { "minimum": 0, "type": "integer" },
+        "state": {
+          "enum": [
+            "connecting",
+            "challenge_pending",
+            "auth_sent",
+            "authenticated",
+            "closing",
+            "closed",
+            "failed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": ["connectionId", "generation", "state"],
+      "type": "object"
+    },
+    "relay-message-event": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "generation": { "minimum": 0, "type": "integer" },
+        "messageType": {
+          "enum": ["AUTH", "OK", "EVENT", "EOSE", "CLOSED", "NOTICE"],
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": false,
+          "payloadVariants": {
+            "AUTH": {
+              "additionalProperties": false,
+              "properties": {
+                "challengeRef": {
+                  "maxBytes": 64,
+                  "minBytes": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["challengeRef"],
+              "type": "object"
+            },
+            "CLOSED": {
+              "additionalProperties": false,
+              "properties": {
+                "reasonCode": {
+                  "enum": [
+                    "auth_required",
+                    "invalid_request",
+                    "not_authorized",
+                    "rate_limited",
+                    "server_error",
+                    "timeout",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                "subscriptionId": {
+                  "maxBytes": 64,
+                  "minBytes": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["subscriptionId", "reasonCode"],
+              "type": "object"
+            },
+            "EOSE": {
+              "additionalProperties": false,
+              "properties": {
+                "subscriptionId": {
+                  "maxBytes": 64,
+                  "minBytes": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["subscriptionId"],
+              "type": "object"
+            },
+            "EVENT": {
+              "additionalProperties": false,
+              "properties": {
+                "event": { "$ref": "signed-relay-event" },
+                "subscriptionId": {
+                  "maxBytes": 64,
+                  "minBytes": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["subscriptionId", "event"],
+              "type": "object"
+            },
+            "NOTICE": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "invalid_request",
+                    "not_authorized",
+                    "rate_limited",
+                    "server_error",
+                    "maintenance",
+                    "unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": ["code"],
+              "type": "object"
+            },
+            "OK": {
+              "additionalProperties": false,
+              "properties": {
+                "accepted": { "type": "boolean" },
+                "eventId": {
+                  "maxBytes": 64,
+                  "minBytes": 64,
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "messageCode": {
+                  "enum": [
+                    "accepted",
+                    "rejected",
+                    "duplicate",
+                    "invalid_event",
+                    "not_authorized",
+                    "rate_limited",
+                    "server_error",
+                    "unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": ["eventId", "accepted", "messageCode"],
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": ["connectionId", "generation", "messageType", "payload"],
+      "type": "object"
+    },
+    "relay-publish-accepted": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "const": true },
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "eventHandle": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["accepted", "connectionId", "eventHandle"],
+      "type": "object"
+    },
+    "relay-publish-handle": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "eventHandle": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["connectionId", "eventHandle"],
+      "type": "object"
+    },
+    "relay-subscribe": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "filter": { "$ref": "relay-filter" },
+        "subscriptionId": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["connectionId", "subscriptionId", "filter"],
+      "type": "object"
+    },
+    "relay-subscription": {
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": { "maxBytes": 36, "minBytes": 36, "type": "string" },
+        "subscriptionId": { "maxBytes": 64, "minBytes": 1, "type": "string" }
+      },
+      "required": ["connectionId", "subscriptionId"],
+      "type": "object"
+    },
+    "signed-event-handle": {
+      "additionalProperties": false,
+      "properties": {
+        "eventHandle": { "maxBytes": 64, "minBytes": 1, "type": "string" },
+        "signedEvent": { "$ref": "signed-relay-event" }
+      },
+      "required": ["eventHandle", "signedEvent"],
+      "type": "object"
+    },
+    "signed-relay-event": {
+      "additionalProperties": false,
+      "properties": {
+        "content": { "maxBytes": 262144, "type": "string" },
+        "created_at": { "type": "uint" },
+        "id": {
+          "maxBytes": 64,
+          "minBytes": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "kind": { "type": "uint" },
+        "pubkey": {
+          "maxBytes": 64,
+          "minBytes": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sig": {
+          "maxBytes": 128,
+          "minBytes": 128,
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "items": { "maxBytes": 2048, "type": "string" },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "maxItems": 128,
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "pubkey",
+        "created_at",
+        "kind",
+        "tags",
+        "content",
+        "sig"
+      ],
+      "type": "object"
+    }
+  },
+  "signing": {
+    "message": {
+      "baseTags": [
+        { "arity": 2, "name": "h", "required": true, "source": "channelId" }
+      ],
+      "contentBytes": 262144,
+      "extraTagMaxItems": 4,
+      "extraTagNames": ["e", "h", "p", "q", "broadcast"],
+      "extraTagRules": {
+        "broadcast": ["1"],
+        "e": ["eventId64", "", "root|reply"],
+        "h": ["channelId"],
+        "p": ["pubkey64"],
+        "q": ["eventId64"]
+      },
+      "kind": 9,
+      "mentionTag": { "arity": 2, "name": "p", "source": "mentionPubkeys" }
+    },
+    "presence": { "contentBytes": 128, "exactTags": [], "kind": 20001 },
+    "typing": {
+      "contentBytes": 0,
+      "kind": 20002,
+      "tagConstruction": {
+        "reply": [["e", "parentEventId", "", "reply"]],
+        "required": [["h", "channelId"]],
+        "thread": [
+          ["e", "rootEventId", "", "root"],
+          ["e", "parentEventId", "", "reply"]
+        ]
+      },
+      "tagNames": ["e", "h"]
+    },
+    "user_status": {
+      "contentBytes": 1024,
+      "kind": 30315,
+      "tagConstruction": {
+        "optional": [
+          ["emoji", "status.emoji"],
+          ["expiration", "decimal(status.expiresAt)"]
+        ],
+        "required": [["d", "general"]]
+      },
+      "tagNames": ["d", "emoji", "expiration"]
+    }
+  }
+}

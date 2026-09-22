@@ -30,7 +30,7 @@ export const RELAY_V2_LEGACY_REGISTRY_DIGESTS = Object.freeze({
 
 export const RELAY_V2_NATIVE_REGISTRY_PROVENANCE = Object.freeze({
   source: "desktop/src-native-host/relay_v2_registry.json",
-  sourceCommit: "ba7ce3a2ac8c6bf0f0222005a03240b9dc84bea1",
+  sourceCommit: "2473757b5a7cb3c7c27d56430e2a1e0b2970765c",
   sourceBytes: 15_724,
   canonicalBytes: RELAY_V2_CANONICAL_REGISTRY_BYTES,
   canonicalDigest: RELAY_V2_REGISTRY_DIGEST,
@@ -813,10 +813,10 @@ function validateConnectionId(value) {
 
 function validateStringConstraints(schema, value) {
   const bytes = byteLength(value);
-  if (
-    (hasOwn(schema, "minBytes") && bytes < schema.minBytes) ||
-    (hasOwn(schema, "maxBytes") && bytes > schema.maxBytes)
-  ) {
+  if (hasOwn(schema, "minBytes") && bytes < schema.minBytes) {
+    fail("invalid_payload");
+  }
+  if (hasOwn(schema, "maxBytes") && bytes > schema.maxBytes) {
     fail("oversized_frame");
   }
   if (hasOwn(schema, "pattern")) {

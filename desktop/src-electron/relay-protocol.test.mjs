@@ -337,7 +337,11 @@ test("filters enforce byte bounds and the exact 30315 general status coordinate"
     () => validateRelayV2Filter({ kinds: [30_315], "#d": ["other"] }),
     "invalid_filter",
   );
-  expectCode(() => validateRelayV2Filter({ ids: ["A"] }), "oversized_frame");
+  expectCode(() => validateRelayV2Filter({ ids: ["A"] }), "invalid_payload");
+  expectCode(
+    () => validateRelayV2Filter({ ids: ["h".repeat(129)] }),
+    "oversized_frame",
+  );
   const oversized = {
     ids: Array.from({ length: 64 }, () => EVENT_ID),
     authors: Array.from({ length: 64 }, () => PUBKEY),
