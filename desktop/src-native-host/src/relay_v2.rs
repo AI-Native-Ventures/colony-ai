@@ -1004,6 +1004,12 @@ fn validate_schema_descriptor(
         references.insert(reference.to_string());
         return Ok(());
     }
+    if map.contains_key("const") && !map.contains_key("type") {
+        if map.len() != 1 {
+            return Err(ContractError::InvalidRegistry);
+        }
+        return Ok(());
+    }
     let schema_type = string_field(map, "type")?;
     if !ALLOWED_SCHEMA_TYPES.contains(&schema_type) {
         return Err(ContractError::InvalidRegistry);
@@ -1114,6 +1120,9 @@ fn validate_instance(
         if !array(enums)?.iter().any(|candidate| candidate == value) {
             return Err(ContractError::InvalidPayload);
         }
+    }
+    if schema.get("const").is_some() && !schema.contains_key("type") {
+        return Ok(());
     }
 
     let schema_type = string_field(schema, "type")?;
