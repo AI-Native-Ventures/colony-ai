@@ -76,12 +76,17 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       .waitFor();
 
     // HALF 1: live backend round-trip inside the packaged main process.
+    // Mismatch errors carry both values with lengths and name the leg, so
+    // one hosted run diagnoses the cause (this cannot be reproduced locally:
+    // a dev Mac has a real window server, the runner does not).
     const live = await application.evaluate(({ clipboard }) => {
       const token = `colony-clipboard-proof-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
       clipboard.writeText(token);
       const plain = clipboard.readText();
       if (plain !== token) {
-        throw new Error("clipboard error: real backend round-trip mismatch");
+        throw new Error(
+          `clipboard error: real backend plain leg mismatch: wrote ${JSON.stringify(token)} (len ${token.length}), read ${JSON.stringify(plain)} (len ${typeof plain === "string" ? plain.length : -1})`,
+        );
       }
       const textAlternate = `${token}-text-alternate`;
       const htmlAlternate = `<b>${token}-html</b>`;
@@ -89,7 +94,7 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       const alternate = clipboard.readText();
       if (alternate !== textAlternate) {
         throw new Error(
-          "clipboard error: real backend html-alternate mismatch",
+          `clipboard error: real backend html leg mismatch: wrote text ${JSON.stringify(textAlternate)} (len ${textAlternate.length}), read ${JSON.stringify(alternate)} (len ${typeof alternate === "string" ? alternate.length : -1})`,
         );
       }
       clipboard.writeText("");
