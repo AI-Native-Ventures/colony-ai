@@ -186,7 +186,7 @@ const observedReactRendererAssets = Object.freeze({
 // Update these values only with a new hosted package-provenance record and
 // review.
 const observedReactPackageAsarDigests = Object.freeze({
-  normal: "3d641a94855d9b095e7d8959ea2af0141a693542d88f53b13ac9b000c441edcd",
+  normal: "c983a87519ce526a988519134307f4a2af734d60fef3b9f1b50a431b3ceb1c38",
   instrumented:
     "bbb6613c4452fbbd73a0a9cc10b28078c0fee16c5e606758683b7bf05d8ef437",
 });
