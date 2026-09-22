@@ -122,14 +122,9 @@ impl LoopbackDrain {
             max_packets_in_buffer: colony_native_host_audio::PCM_QUEUE_DEPTH,
             ..Default::default()
         })?;
-        neteq.register_decoder(
-            OPUS_PAYLOAD_TYPE,
-            Box::new(
-                OpusDecoder::new().map_err(|e| {
-                    neteq::NetEqError::DecoderError(format!("opus decoder init: {e}"))
-                })?,
-            ),
-        );
+        let decoder = OpusDecoder::new()
+            .map_err(|e| neteq::NetEqError::DecoderError(format!("opus decoder init: {e}")))?;
+        neteq.register_decoder(OPUS_PAYLOAD_TYPE, Box::new(decoder));
         Ok(Self {
             neteq,
             ssrc: u32::from(peer_index),
