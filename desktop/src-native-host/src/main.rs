@@ -290,7 +290,15 @@ impl Host {
         match frame {
             DecodedFrame::V1(envelope) => {
                 if self.launch_mode.is_relay() {
-                    return self.handle_v1_relay(envelope);
+                    // RelayV2 is main-selected; the same envelope framing is
+                    // dispatched into the relay table with its own profile,
+                    // digest, and session mode.
+                    if self.session_mode == SessionMode::RelayV2
+                        || envelope.frame_type.as_str() == "HELLO"
+                    {
+                        return self.handle_relay_frame(envelope);
+                    }
+                    return Err(ProtocolError::WrongBinding);
                 }
                 if self.launch_mode.is_identity() || self.session_mode == SessionMode::V2 {
                     return Err(ProtocolError::IdentityModeRequired);
@@ -312,7 +320,7 @@ impl Host {
         }
     }
 
-    fn handle_v1_relay(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
+    fn handle_relay_frame(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
         match envelope.frame_type.as_str() {
             "HELLO" => self.handle_hello_relay(&envelope),
             "REHELLO" => {
@@ -331,7 +339,7 @@ impl Host {
             }
             "CANCEL" => {
                 if self.session_mode == SessionMode::RelayV2 {
-                    self.handle_cancel(&envelope)
+                    self.handle_cancel(envelope)
                 } else {
                     Err(ProtocolError::WrongBinding)
                 }
@@ -500,18 +508,20 @@ impl Host {
             .pending
             .remove(request_id)
             .ok_or(ProtocolError::Closed)?;
-        // Relay ops always complete inline through the relay dispatcher, so
-        // reaching here means a logic defect; surface it instead of hanging.
-        if pending.kind == PendingKind::RelayOp {
-            return self.send_response(
-                &pending.binding,
-                request_id.to_string(),
-                "error",
-                None,
-                Some("host_unavailable"),
-            );
-        }
         match pending.kind {
+            // Relay ops always complete inline through the relay dispatcher,
+            // so reaching here means a logic defect; fail closed loudly.
+            // Cancel/expiry races drain through this arm with outcome
+            // forwarding instead of the normal completed-ok path.
+            PendingKind::RelayOp => {
+                return self.send_response(
+                    &pending.binding,
+                    request_id.to_string(),
+                    "error",
+                    None,
+                    Some("host_unavailable"),
+                );
+            }
             PendingKind::V1Health => {
                 let relay_url = configured_relay_url();
                 self.send_response(
@@ -1347,7 +1357,7 @@ impl Host {
         payload: &serde_json::Value,
         binding: &Binding,
     ) -> Result<serde_json::Value, ContractError> {
-        let session = self.relay.as_mut().ok_or(ContractError::Closed)?;
+        let session = self.relay.as_mut().ok_or(ContractError::HostUnavailable)?;
         match operation {
             "relay-transport/connect" => {
                 self.send_host_lifecycle_relay(binding, "relay_connecting", None)

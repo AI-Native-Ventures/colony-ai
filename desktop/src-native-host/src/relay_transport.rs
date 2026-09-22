@@ -16,6 +16,7 @@
 //! enter errors or logs; only op names, connection ids, and outcomes do.
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -25,8 +26,8 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use nostr::{EventBuilder, Keys, RelayUrl};
-use tungstenite::{client_tls_with_config, client_with_config, Message, WebSocket};
-use tungstenite::{http::Uri, stream::MaybeTlsStream};
+use tungstenite::{client::client_with_config, http::Uri, stream::MaybeTlsStream};
+use tungstenite::{client_tls_with_config, Message, WebSocket};
 use uuid::Uuid;
 
 use crate::relay_v2::{self, ContractError, ContractResult};
@@ -123,10 +124,8 @@ impl TungsteniteSocket {
         if timeout.is_zero() {
             return Err(ContractError::ConnectTimeout);
         }
-        let config = tungstenite::protocol::WebSocketConfig {
-            max_message_size: Some(WIRE_CAP),
-            ..Default::default()
-        };
+        let config =
+            tungstenite::protocol::WebSocketConfig::default().max_message_size(Some(WIRE_CAP));
         let mut last_error = ContractError::InvalidConnection;
         for address in (host, port)
             .to_socket_addrs()
@@ -500,13 +499,17 @@ pub fn build_auth_event(
 
 /// Reader outcome posted to the host: validated inbound traffic or a
 /// terminal connection failure. Only ids and codes cross this boundary.
+/// (Retained for the host-facing API; the current reader reports through the
+/// validated inbox plus polled health instead of this enum.)
+#[allow(dead_code)]
 pub enum ReaderOutcome {
     Inbound(TypedInbound),
     Failed(ContractError),
 }
 
 /// A live authenticated relay connection: shared socket, background reader,
-/// generation tag, and authority binding.
+/// generation tag, and authority binding. No `Debug`: the socket, keys, and
+/// reader handles must never format into logs.
 pub struct RelayConnection {
     socket: Arc<Mutex<Box<dyn SocketIo>>>,
     reader_shutdown: Arc<AtomicBool>,
@@ -518,6 +521,18 @@ pub struct RelayConnection {
     authority_ref: String,
     state: TransportState,
     subscriptions: HashMap<String, ()>,
+}
+
+impl fmt::Debug for RelayConnection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RelayConnection")
+            .field("connection_id", &self.connection_id)
+            .field("generation", &self.generation)
+            .field("state", &self.state)
+            .field("subscriptions", &self.subscriptions.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl RelayConnection {
@@ -643,8 +658,10 @@ impl Drop for RelayConnection {
 /// Spawn the background reader for an authenticated socket. Every parsed
 /// frame is validated and forwarded with `generation`; the reader exits on
 /// shutdown, socket failure, or a full inbound queue (bounded memory wins
-/// over delivery, and the failure is surfaced through health).
-pub fn spawn_reader<S: SocketIo + 'static>(
+/// over delivery, and the failure is surfaced through health). The socket
+/// is already erased behind `Box<dyn SocketIo>`, so no type parameter is
+/// needed — production and fake sockets share the seam.
+pub fn spawn_reader(
     socket: Arc<Mutex<Box<dyn SocketIo>>>,
     inbox: mpsc::SyncSender<TypedInbound>,
     shutdown: Arc<AtomicBool>,
@@ -944,7 +961,8 @@ mod tests {
         assert!(parse_inbound(&auth_frame("c"), 3).is_ok());
         assert!(parse_inbound(r#"["COUNT",{"kinds":[1]}]"#, 3).is_err());
         assert!(parse_inbound("not json", 3).is_err());
-        let big = format!(r#"["NOTICE",{{"code":"{:a<600000}"}}]"#, "");
+        let oversized = "x".repeat(RELAY_FRAME_CAP + 1);
+        let big = serde_json::json!(["NOTICE", {"code": oversized}]).to_string();
         assert_eq!(
             parse_inbound(&big, 3).unwrap_err(),
             ContractError::Oversized
@@ -1680,7 +1698,7 @@ mod session_tests {
     const LIVE_ID: &str = "11111111-1111-1111-1111-111111111111";
 
     fn attach_live_connection(session: &mut RelaySession) {
-        session.connection = Some(RelayConnection {
+        let connection = RelayConnection {
             socket: Arc::new(Mutex::new(
                 Box::new(FakeSocket::scripted(vec![])) as Box<dyn SocketIo>
             )),
@@ -1689,11 +1707,13 @@ mod session_tests {
             reader_alive: Arc::new(AtomicBool::new(true)),
             reader_failed: Arc::new(Mutex::new(None)),
             connection_id: LIVE_ID.to_string(),
-            generation: 1,
+            generation: session.generation,
             authority_ref: "a".repeat(64),
             state: TransportState::Authenticated,
             subscriptions: HashMap::new(),
-        });
+        };
+        session.generation = 1;
+        session.connection = Some(connection);
     }
 
     fn presence_payload() -> serde_json::Value {
