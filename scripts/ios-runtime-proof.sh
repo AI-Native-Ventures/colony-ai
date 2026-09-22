@@ -248,8 +248,11 @@ app_sha256="$(ditto -c -k --sequesterRsrc --keepParent "$app_path" - | \
 
 log "installing and verifying the exact app package"
 xcrun simctl install "$sim_udid" "$app_path" >/dev/null
-xcrun simctl listapps "$sim_udid" >"$run_root/installed-apps.plist"
-python3 - "$run_root/installed-apps.plist" "$app_bundle_id" <<'PY'
+installed_apps_plist="$run_root/installed-apps.plist"
+installed_apps_xml="$run_root/installed-apps.xml"
+xcrun simctl listapps "$sim_udid" >"$installed_apps_plist"
+plutil -convert xml1 -o "$installed_apps_xml" "$installed_apps_plist"
+python3 - "$installed_apps_xml" "$app_bundle_id" <<'PY'
 import plistlib
 import sys
 
