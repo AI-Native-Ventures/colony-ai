@@ -74,8 +74,14 @@ fn sine_level_flows_from_fixture_to_header_to_ui_norm() {
     let (_wire, header, _opus) = encode_fixture(&pcm);
     assert_eq!(header.level_dbov, expected_level);
     let norm = normalized_speaker_level(header.level_dbov);
-    assert!((0.0..=1.0).contains(&norm));
-    assert!(norm > 0.4 && norm < 0.6);
+    // Upstream-derived band, not tuned to observed output: wire.rs pins
+    // this 0.3-amplitude 1 kHz sine to -20..=-8 dBov, and playout.rs
+    // normalizes (db + 60) / 48, so the UI norm must land in
+    // [40/48, 52/48 clamped to 1.0] = [0.833, 1.0].
+    assert!(
+        (0.833..=1.0).contains(&norm),
+        "sine fixture norm {norm} outside upstream-derived band [0.833, 1.0]"
+    );
 }
 
 #[test]
