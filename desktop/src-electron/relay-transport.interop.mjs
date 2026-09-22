@@ -40,6 +40,33 @@ const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const FRAME_TIMEOUT_MS = 8_000;
 const CLOSE_TIMEOUT_MS = 3_000;
 const AUTHORITY = "a".repeat(64);
+const STDERR_CAPTURE_LIMIT_CHARS = 200;
+const STDERR_FORBIDDEN_PATTERNS = [
+  /nsec1[0-9a-z]+/i,
+  /[0-9a-f]{64,}/,
+  /private[_-]?key/i,
+  /secret/i,
+  /key material/i,
+  /authorization:/i,
+];
+
+/**
+ * Finite redacted pre-READY diagnostic: exit code/signal plus a bounded
+ * stderr excerpt with secret-like patterns replaced. Never raw stderr.
+ */
+function redactedExitDiagnostic(closeInfo, stderrText) {
+  const excerpt = String(stderrText ?? "").slice(0, STDERR_CAPTURE_LIMIT_CHARS);
+  let redacted = excerpt.replace(/[^ -~]/g, "?");
+  for (const pattern of STDERR_FORBIDDEN_PATTERNS) {
+    redacted = redacted.replace(pattern, "[redacted]");
+  }
+  return (
+    `helper exited before READY ` +
+    `(code=${closeInfo?.code ?? "unknown"}, ` +
+    `signal=${closeInfo?.signal ?? "none"}, ` +
+    `stderr=${JSON.stringify(redacted)})`
+  );
+}
 
 function helperCandidates() {
   const configured = process.env.COLONY_NATIVE_HOST_BIN;
@@ -67,7 +94,6 @@ function findHelper() {
   return null;
 }
 
-/** Minimal child-transport shim over the real helper stdio lifecycle. */
 class RealChild {
   constructor(executablePath) {
     this.executablePath = executablePath;
@@ -125,11 +151,7 @@ class RealChild {
       this.child.on("close", (code, signal) => {
         this.closeInfo = { code, signal };
         if (this.frames.length === 0 && this.waiters.length > 0) {
-          settleReject(
-            new Error(
-              `helper exited before READY (code=${code}, signal=${signal}, stderr=${JSON.stringify(this.stderrText.slice(0, 200))})`,
-            ),
-          );
+          settleReject(new Error(redactedExitDiagnostic(this.closeInfo, this.stderrText)));
         } else {
           settleResolve();
         }
