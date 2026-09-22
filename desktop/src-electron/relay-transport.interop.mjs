@@ -12,6 +12,13 @@
 // Locally this file SKIPS unless COLONY_NATIVE_HOST_BIN points at a built
 // helper. Hosted, the workflow builds the real helper and sets
 // COLONY_RELAY_TRANSPORT_INTEROP_REQUIRED=1, which makes absence fatal.
+// The interop file ALSO fails closed when the helper lacks the RelayV2
+// runtime surface (pre-D1 identity-only binaries): a successful HELLO
+// handshake that never yields a relay-v2 READY is a hard failure, never
+// a skip, so a green run always means real RelayV2 operation/event/
+// failure proof against a D1-capable binary. Until native PR24 merges,
+// runs against develop helpers are expected to fail at the READY gate;
+// that failure is the recorded pending-integration state, not interop.
 // No secrets are printed; stderr capture is bounded and scanned.
 
 import assert from "node:assert/strict";
@@ -185,7 +192,14 @@ if (!helper && !required) {
       registryDigest: RELAY_V2_REGISTRY_DIGEST,
     });
     const ready = await child.nextFrame();
-    assert.equal(ready.type ?? ready.frame_type, "READY");
+    // Pre-D1 identity-only helpers reject the relay-v2 HELLO outright
+    // (fatal exit or error frame). That is the pending-integration state:
+    // fail here, never skip, so green always means a D1-capable binary.
+    assert.equal(
+      ready.type ?? ready.frame_type,
+      "READY",
+      "helper must speak relay-v2 READY (D1 primitive required)",
+    );
     const payload = ready.payload ?? ready;
     assert.ok(
       JSON.stringify(payload).includes("relay-v2"),
@@ -195,7 +209,6 @@ if (!helper && !required) {
       JSON.stringify(ready).includes(RELAY_V2_REGISTRY_DIGEST.slice(0, 16)),
       "READY must carry the frozen registry digest",
     );
-    assert.equal(child.frames.length >= 0, true);
     await child.close();
   });
 
