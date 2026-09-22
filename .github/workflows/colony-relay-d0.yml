@@ -1,0 +1,159 @@
+name: Colony RelayV2 D0 disposable relay
+
+# Hosted-only D0 proof: real helper binary against a disposable
+# source-built relay. Ubuntu only (postgres/redis services + relay build).
+# Never contacts shared or production relays.
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/src-native-host/src/relay_transport.rs"
+      - "desktop/src-native-host/src/relay_v2.rs"
+      - "desktop/src-native-host/src/main.rs"
+      - "desktop/src-native-host/tests/relay_v2_d0.rs"
+      - "desktop/src-native-host/Cargo.toml"
+      - "desktop/src-native-host/Cargo.lock"
+      - "scripts/relay-v2-d0-relay.sh"
+      - "scripts/relay-v2-d0-seed.mjs"
+      - ".github/workflows/colony-relay-d0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  d0-proof:
+    name: RelayV2 D0 disposable relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: buzz
+          POSTGRES_PASSWORD: buzz_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U buzz -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: buzz
+      PGPASSWORD: buzz_dev
+      PGDATABASE: postgres
+      DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Tune disposable PostgreSQL
+        run: |
+          psql --dbname postgres --set ON_ERROR_STOP=1 <<'SQL'
+          ALTER SYSTEM SET fsync = off;
+          ALTER SYSTEM SET full_page_writes = off;
+          ALTER SYSTEM SET synchronous_commit = off;
+          SELECT pg_reload_conf();
+          SQL
+
+      - name: Apply schema then seed the deployment community
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: buzz
+          PGPASSWORD: buzz_dev
+          PGDATABASE: buzz
+          PGSCHEMA_PLAN_HOST: localhost
+          PGSCHEMA_PLAN_PORT: "5432"
+          PGSCHEMA_PLAN_DB: buzz
+          PGSCHEMA_PLAN_USER: buzz
+          PGSCHEMA_PLAN_PASSWORD: buzz_dev
+        run: |
+          set -euo pipefail
+          # Schema first (the relay migrates at boot via BUZZ_AUTO_MIGRATE,
+          # but that is too late for the pre-boot community seed).
+          ./bin/pgschema apply --file schema/schema.sql --auto-approve
+          psql -v ON_ERROR_STOP=1 < scripts/reconcile-schema-after-pgschema.sql
+          # Deployment community MUST exist before relay boot: the channel
+          # reconciler binds it once outside its retry loop and exits on an
+          # unmapped host. lower(host) is the unique index.
+          psql -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO communities (host) VALUES ('127.0.0.1:18081') ON CONFLICT (lower(host)) DO NOTHING;"
+
+      - name: Start the disposable relay
+        id: relay
+        run: |
+          set -euo pipefail
+          ./scripts/relay-v2-d0-relay.sh --build --port 18081 | tee /tmp/d0-relay.env
+          cat /tmp/d0-relay.env >> "$GITHUB_OUTPUT"
+
+      - name: Seed the disposable channel, member, and event
+        id: seed
+        run: |
+          set -euo pipefail
+          SEED_OUT="$(cargo test --profile ci -p buzz-test-client --test relay_v2_d0_seed -- --ignored --nocapture 2>&1 | grep '^D0_SEED ' || true)"
+          test -n "${SEED_OUT}" || { echo "seed produced no output" >&2; exit 1; }
+          echo "${SEED_OUT#D0_SEED }" | tee /tmp/d0-seed.env
+          cat /tmp/d0-seed.env >> "$GITHUB_OUTPUT"
+        env:
+          RELAY_URL: ${{ steps.relay.outputs.RELAY_URL }}
+          DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz
+          SEED_NSEC: ${{ env.SEED_NSEC }}
+
+      - name: Run the D0 helper proof
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            --test relay_v2_d0 -- --ignored --nocapture
+        env:
+          RELAY_V2_D0_URL: ${{ steps.relay.outputs.RELAY_URL }}
+          RELAY_V2_D0_CHANNEL: ${{ steps.seed.outputs.CHANNEL_ID }}
+          RELAY_V2_D0_HOME: /tmp/relay-v2-d0-home
+
+      - name: Prove no owned process or port remains
+        if: always()
+        run: |
+          set -euo pipefail
+          kill "${{ steps.relay.outputs.RELAY_PID }}" 2>/dev/null || true
+          sleep 2
+          if kill -0 "${{ steps.relay.outputs.RELAY_PID }}" 2>/dev/null; then
+            echo "relay process survived teardown" >&2
+            exit 1
+          fi
+          if (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q ":18081 "; then
+            echo "relay port still bound after teardown" >&2
+            exit 1
+          fi
+          rm -rf /tmp/relay-v2-d0-home
+
+      - name: Upload the disposable relay log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: relay-v2-d0-relay-log
+          path: ${{ steps.relay.outputs.RELAY_LOG }}
+          if-no-files-found: ignore
