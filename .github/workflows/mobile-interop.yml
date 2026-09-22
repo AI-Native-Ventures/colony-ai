@@ -48,9 +48,12 @@ jobs:
         working-directory: mobile
         # Harness prints pubkeys, event/channel IDs, and correlation IDs
         # only — never nsec material, auth headers, or storage contents.
+        # INTEROP_REQUIRE_RELAY=true makes a missing relay fail the run:
+        # a green hosted proof always executed every test.
         run: >
           flutter test test/shared/relay/relay_live_interop_test.dart
           --dart-define=BUZZ_PUSH_GATEWAY_URL=https://push.example
+          --dart-define=INTEROP_REQUIRE_RELAY=true
           --reporter expanded 2>&1 | tee "${RUNNER_TEMP}/mobile-interop-harness.log"
         env:
           INTEROP_RELAY_HTTP: http://localhost:3000

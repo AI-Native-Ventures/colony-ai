@@ -6,7 +6,10 @@
 // session acts as the oracle peer until the Electron peer lands
 // (blocked on PR19/PR20 socket activation).
 //
-// Skips cleanly when the relay is unreachable. Prints pubkeys, event
+// Relay presence is MANDATORY when INTEROP_REQUIRE_RELAY=true (the
+// hosted workflow sets it): a missing relay fails the run instead of
+// skipping, so a green hosted proof always executed every test. Local
+// invocation without the flag skips cleanly. Prints pubkeys, event
 // IDs, and channel IDs only — never nsec material, auth headers, or
 // secure-storage contents.
 import 'dart:async';
@@ -28,6 +31,34 @@ const _relayHttp = String.fromEnvironment(
   'INTEROP_RELAY_HTTP',
   defaultValue: 'http://localhost:3000',
 );
+
+/// Hosted CI sets this to require the disposable relay: a missing relay
+/// must fail the run, never produce a green skip.
+const _requireRelay = bool.fromEnvironment('INTEROP_REQUIRE_RELAY');
+
+/// Fail-closed gate decision, unit-tested below without any relay.
+enum _RelayGate { proceed, skip, failClosed }
+
+_RelayGate _relayGateDecision({
+  required bool reachable,
+  required bool required,
+}) {
+  if (reachable) return _RelayGate.proceed;
+  return required ? _RelayGate.failClosed : _RelayGate.skip;
+}
+
+Future<bool> _isRelayReachable(Uri uri) async {
+  final client = http.Client();
+  try {
+    // Any HTTP response (even 404) proves the relay process is up.
+    await client.get(uri).timeout(const Duration(seconds: 5));
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    client.close();
+  }
+}
 
 String get _relayWs => _relayHttp.startsWith('https')
     ? _relayHttp.replaceFirst('https', 'wss')
@@ -185,6 +216,38 @@ Future<String> _createChannel(http.Client httpClient, String nsec) async {
 }
 
 void main() {
+  group('relay gate decision (no relay needed)', () {
+    test('reachable always proceeds', () {
+      expect(
+        _relayGateDecision(reachable: true, required: true),
+        _RelayGate.proceed,
+      );
+      expect(
+        _relayGateDecision(reachable: true, required: false),
+        _RelayGate.proceed,
+      );
+    });
+
+    test('unreachable skips only when not required', () {
+      expect(
+        _relayGateDecision(reachable: false, required: false),
+        _RelayGate.skip,
+      );
+    });
+
+    test('unreachable fails closed when required', () {
+      expect(
+        _relayGateDecision(reachable: false, required: true),
+        _RelayGate.failClosed,
+      );
+    });
+
+    test('closed port is unreachable', () async {
+      // Port 1 is never bound: proves the detector reports absence.
+      expect(await _isRelayReachable(Uri.parse('http://127.0.0.1:1')), isFalse);
+    });
+  });
+
   group(
     'live relay interop (disposable relay)',
     () {
@@ -192,17 +255,22 @@ void main() {
       late _LivePeer mobile;
       late _LivePeer oracle;
       late String channelId;
+      var ready = false;
 
       setUpAll(() async {
-        httpClient = http.Client();
-        try {
-          await httpClient
-              .get(Uri.parse(_relayHttp))
-              .timeout(const Duration(seconds: 5));
-        } catch (_) {
-          markTestSkipped('disposable relay unreachable at $_relayHttp');
-          return;
+        switch (_relayGateDecision(
+          reachable: await _isRelayReachable(Uri.parse(_relayHttp)),
+          required: _requireRelay,
+        )) {
+          case _RelayGate.proceed:
+            break;
+          case _RelayGate.skip:
+            markTestSkipped('disposable relay unreachable at $_relayHttp');
+            return;
+          case _RelayGate.failClosed:
+            fail('required disposable relay unreachable at $_relayHttp');
         }
+        httpClient = http.Client();
         final mobileKeys = nostr.Keys.generate();
         final oracleKeys = nostr.Keys.generate();
         mobile = _LivePeer(nsec: mobileKeys.nsec, name: 'mobile');
@@ -218,9 +286,11 @@ void main() {
         );
         await mobile.subscribeChannel(channelId);
         await oracle.subscribeChannel(channelId);
+        ready = true;
       });
 
       tearDownAll(() async {
+        if (!ready) return;
         await mobile.dispose();
         await oracle.dispose();
         httpClient.close();
@@ -327,6 +397,27 @@ void main() {
           mobile.inbox.any((event) => event.id == foreign.id),
           isFalse,
           reason: 'matrix subscription must not see other channels',
+        );
+      });
+      test('undecodable identity fails closed before connect', () async {
+        const garbage = 'nsec1invalidkeymaterial000000000000000';
+        var terminalAtDecode = false;
+        try {
+          nostr.Nip19.decode(payload: garbage);
+        } catch (_) {
+          terminalAtDecode = true;
+        }
+        if (terminalAtDecode) return;
+        // Unexpected branch: the string decoded, so the session itself
+        // must still never authenticate with it.
+        final bad = _LivePeer(nsec: garbage, name: 'bad-identity');
+        addTearDown(bad.dispose);
+        await bad.start();
+        await Future<void>.delayed(const Duration(seconds: 10));
+        expect(
+          bad.container.read(relaySessionProvider).status,
+          isNot(SessionStatus.connected),
+          reason: 'garbage identity must never authenticate',
         );
       });
     },
