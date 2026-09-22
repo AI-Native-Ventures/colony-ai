@@ -1,0 +1,81 @@
+name: Colony audio contract
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - "desktop/src-native-host-audio/**"
+      - ".github/workflows/colony-audio-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: macOS arm64 synthetic audio contract
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert hosted runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "This lane requires a native macOS arm64 runner; got $machine" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+
+      - name: Check isolated audio formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo fmt --manifest-path desktop/src-native-host-audio/Cargo.toml -- --check
+
+      - name: Prove the audio package has no device or runtime imports
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Path-scoped scan: real `use` imports and `crate::` paths only,
+          # so upstream-reference prose in doc comments cannot trip it.
+          if grep -r -E -i "^[[:space:]]*use[[:space:]]+(tauri|rodio|cpal|opus|neteq)(::|[[:space:];])" \
+            desktop/src-native-host-audio/src desktop/src-native-host-audio/tests; then
+            echo "forbidden audio/device/runtime import in the synthetic contract package" >&2
+            exit 1
+          fi
+          if grep -r -E "(tauri|rodio|cpal|opus|neteq)::" \
+            desktop/src-native-host-audio/src desktop/src-native-host-audio/tests; then
+            echo "forbidden audio/device/runtime path in the synthetic contract package" >&2
+            exit 1
+          fi
+          # The package is dependency-free by design; any [dependencies]
+          # section would need lane review before it can land.
+          if grep -q '^\[dependencies\]' desktop/src-native-host-audio/Cargo.toml; then
+            echo "unexpected [dependencies] in the synthetic contract package" >&2
+            exit 1
+          fi
+          echo "audio import scan passed"
+
+      - name: Run the synthetic audio contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo test --manifest-path desktop/src-native-host-audio
