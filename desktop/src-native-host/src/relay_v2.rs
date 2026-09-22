@@ -276,7 +276,11 @@ pub fn validate_registry_document(document: &Value) -> ContractResult<()> {
 
     let schemas = object(root.get("schemas").ok_or(ContractError::InvalidRegistry)?)?;
     if schemas.len() != 21 {
-        return Err(ContractError::InvalidRegistry);
+        return Err(if schemas.len() < 21 {
+            ContractError::UnresolvedReference
+        } else {
+            ContractError::InvalidRegistry
+        });
     }
     let mut references = BTreeSet::new();
     for schema in schemas.values() {
@@ -1174,7 +1178,7 @@ fn validate_instance(
                 if values.keys().any(|key| !properties.contains_key(key)) {
                     return Err(ContractError::InvalidPayload);
                 }
-            } else if !values.is_empty() {
+            } else if !values.is_empty() && !schema.contains_key("payloadVariants") {
                 return Err(ContractError::InvalidPayload);
             }
             if let Some(required) = schema.get("required") {
