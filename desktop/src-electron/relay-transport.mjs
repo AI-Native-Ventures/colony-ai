@@ -95,8 +95,14 @@ function defaultNow() {
 /**
  * Typed RelayV2 adapter over a caller-owned child transport.
  *
- * child must provide:
- *   request({ capability, method, payload, deadlineMs }) -> Promise<response>
+ * child must provide ONE of:
+ *   A. request({ capability, method, payload, requestId, deadlineMs })
+ *      -> Promise<responsePayload> (mock/test doubles resolve the decoded
+ *      response payload directly);
+ *   B. request({ capability, method, payload, requestId, deadlineMs })
+ *      -> Promise<responseEnvelope> where the envelope is the native
+ *      stdio RESPONSE frame ({ type:"RESPONSE", outcome, payload, error })
+ *      (real helper path; the adapter unwraps and validates the payload).
  *   onLifecycle(listener) -> unsubscribe
  *   getBindingState() -> { generationId, ... } | null
  *
@@ -234,9 +240,10 @@ export class RelayTransport {
       let dispatch;
       try {
         dispatch = this.child.request({
-          capability: "relay-transport",
-          method: operation,
+          capability: operation.split("/")[0],
+          method: operation.split("/")[1],
           payload: JSON.parse(encoded.toString("utf8")),
+          requestId: id,
           deadlineMs: timeout,
         });
       } catch (error) {
@@ -306,27 +313,52 @@ export class RelayTransport {
   #settleResponse(id, generation, operation, response, resolve, reject) {
     const pending = this.pending.get(id);
     if (pending === undefined) return;
-    if (generation !== this.generation || this.disposed) {
+    const settleFail = (error) => {
       this.pending.delete(id);
       try {
         clearTimeout(pending.timer);
       } catch {
         // Timer cleanup is best-effort.
       }
-      reject(new RelayTransportError("stale_generation"));
+      reject(
+        error instanceof RelayTransportError
+          ? error
+          : new RelayTransportError(redactedRelayTransportCode(error)),
+      );
+    };
+    if (generation !== this.generation || this.disposed) {
+      settleFail(new RelayTransportError("stale_generation"));
       return;
+    }
+    // Real-helper path: unwrap the native stdio RESPONSE envelope. Mock
+    // doubles resolve the decoded payload directly and skip this branch.
+    let payload = response;
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      const frameType = payload.type ?? payload.frame_type;
+      if (frameType === "RESPONSE") {
+        const outcome = payload.outcome;
+        if (outcome === "ok") {
+          payload = payload.payload;
+        } else if (outcome === "error") {
+          settleFail(
+            new RelayTransportError(
+              redactedRelayTransportCode(
+                payload.error?.code ?? "invalid_payload",
+              ),
+            ),
+          );
+          return;
+        } else {
+          settleFail(new RelayTransportError("invalid_payload"));
+          return;
+        }
+      }
     }
     let value;
     try {
-      value = validateRelayV2Response(operation, response);
+      value = validateRelayV2Response(operation, payload);
     } catch (error) {
-      this.pending.delete(id);
-      try {
-        clearTimeout(pending.timer);
-      } catch {
-        // Timer cleanup is best-effort.
-      }
-      reject(new RelayTransportError(redactedRelayTransportCode(error)));
+      settleFail(error);
       return;
     }
     this.pending.delete(id);

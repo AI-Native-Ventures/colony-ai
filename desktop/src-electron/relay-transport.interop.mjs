@@ -23,7 +23,8 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
@@ -211,10 +212,40 @@ class RealChild {
     });
   }
 
-  async request() {
-    throw new Error(
-      "relay ops unavailable until the D1 socket primitive lands",
-    );
+  async request({ capability, method, payload, requestId, deadlineMs }) {
+    const id =
+      typeof requestId === "string" && requestId.length > 0
+        ? requestId
+        : `interop-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
+    const frame = {
+      type: "REQUEST",
+      protocolVersion: RELAY_V2_PROTOCOL_VERSION,
+      profileId: "relay-v2",
+      sessionId: "relay-transport-interop",
+      generationId: this.binding?.generationId ?? 1,
+      buildId: "relay-transport-interop",
+      registryDigest: RELAY_V2_REGISTRY_DIGEST,
+      requestId: id,
+      capability,
+      method,
+      payload,
+    };
+    if (deadlineMs !== undefined) frame.deadlineMs = deadlineMs;
+    await new Promise((resolve, reject) => {
+      this.child.stdin.write(`${JSON.stringify(frame)}\n`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    const timeoutMs = FRAME_TIMEOUT_MS;
+    for (;;) {
+      const response = await this.nextFrame(timeoutMs);
+      const rid = response.requestId ?? response.request_id;
+      if (rid !== undefined && rid !== id) continue;
+      // Return the RAW native RESPONSE envelope; the adapter under test
+      // unwraps outcome/payload/error itself.
+      return response;
+    }
   }
 
   onLifecycle(listener) {
@@ -250,17 +281,34 @@ if (!helper && !required) {
     throw new Error("relay transport interop helper is required but missing");
   }
 
-  test("real helper emits production relay-v2 READY fingerprint", async () => {
-    const child = new RealChild(helper);
-    await child.startHello({
-      type: "HELLO",
-      protocolVersion: RELAY_V2_PROTOCOL_VERSION,
-      profileId: "relay-v2",
-      sessionId: "relay-transport-interop",
-      generationId: 1,
-      buildId: "relay-transport-interop",
-      registryDigest: RELAY_V2_REGISTRY_DIGEST,
+  test("real helper emits production relay-v2 READY fingerprint", async (t) => {
+    const userDataRoot = mkdtempSync(path.join(os.tmpdir(), "relay-interop-"));
+    t.after(() => {
+      try {
+        rmSync(userDataRoot, { recursive: true, force: true });
+      } catch {
+        // Disposable namespace cleanup is best-effort.
+      }
     });
+    const child = new RealChild(helper);
+    await child.startHello(
+      {
+        type: "HELLO",
+        protocolVersion: RELAY_V2_PROTOCOL_VERSION,
+        profileId: "relay-v2",
+        sessionId: "relay-transport-interop",
+        generationId: 1,
+        buildId: "relay-transport-interop",
+        registryDigest: RELAY_V2_REGISTRY_DIGEST,
+        payload: {
+          relayUrl: "ws://127.0.0.1:9",
+          authorityRef: AUTHORITY,
+          userDataRoot,
+          flavor: "normal",
+        },
+      },
+      { args: ["--relay-v2"] },
+    );
     const ready = await child.nextFrame();
     // Native fail-closed semantics: a wrong-profile HELLO kills the helper
     // with NO stdout (fatal exit, possibly stderr only). nextFrame() throws
@@ -287,12 +335,52 @@ if (!helper && !required) {
     await child.close();
   });
 
-  test("RelayTransport pins the real helper generation and redacts failures", async () => {
+  test("RelayTransport drives a real connect op through the D1 helper", async (t) => {
+    const userDataRoot = mkdtempSync(path.join(os.tmpdir(), "relay-interop-"));
+    t.after(() => {
+      try {
+        rmSync(userDataRoot, { recursive: true, force: true });
+      } catch {
+        // Disposable namespace cleanup is best-effort.
+      }
+    });
     const child = new RealChild(helper);
+    await child.startHello(
+      {
+        type: "HELLO",
+        protocolVersion: RELAY_V2_PROTOCOL_VERSION,
+        profileId: "relay-v2",
+        sessionId: "relay-transport-interop",
+        generationId: 1,
+        buildId: "relay-transport-interop",
+        registryDigest: RELAY_V2_REGISTRY_DIGEST,
+        payload: {
+          relayUrl: "ws://127.0.0.1:9",
+          authorityRef: AUTHORITY,
+          userDataRoot,
+          flavor: "normal",
+        },
+      },
+      { args: ["--relay-v2"] },
+    );
+    const ready = await child.nextFrame();
+    assert.equal(ready.type ?? ready.frame_type, "READY");
     child.binding = { generationId: 1 };
     const transport = new RelayTransport({ child });
-    const attached = transport.attach({ authorityRef: AUTHORITY });
-    assert.equal(attached.generationId, 1);
+    transport.attach({ authorityRef: AUTHORITY });
+    // Unreachable test URL: the D1 helper fail-closes the dial with a
+    // finite redacted code (invalid_connection), proving the full
+    // adapter->helper->adapter path is live (not mocked). A wrong code
+    // or a hang fails this test.
+    await assert.rejects(
+      transport.invoke("relay-transport/connect", {
+        authorityRef: AUTHORITY,
+      }),
+      (error) => {
+        assert.equal(error?.code, "invalid_connection");
+        return true;
+      },
+    );
     assert.equal(transport.pendingCount(), 0);
     await child.close();
     transport.dispose();

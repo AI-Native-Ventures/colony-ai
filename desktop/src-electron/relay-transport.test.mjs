@@ -130,7 +130,11 @@ function mockChild({ onRequest = null, binding = { generationId: 1 } } = {}) {
     request(call) {
       calls.push(call);
       if (onRequest) return onRequest(call);
-      return Promise.resolve(responseFor(call.method));
+      return Promise.resolve({
+        type: "RESPONSE",
+        outcome: "ok",
+        payload: responseFor(`${call.capability}/${call.method}`),
+      });
     },
     onLifecycle(listener) {
       listeners.add(listener);
@@ -171,7 +175,7 @@ test("all ten operations validate before dispatch and accept valid responses", a
     const response = await transport.invoke(operation, payload);
     assert.deepEqual(response, responseFor(operation));
     assert.equal(child.calls.length, 1);
-    assert.equal(child.calls[0].method, operation);
+    assert.equal(child.calls[0].method, operation.split("/")[1]);
     assert.deepEqual(
       child.calls[0].payload,
       JSON.parse(expected),
