@@ -1,3 +1,24 @@
+//! Pre-existing clippy debt uncovered (not introduced) by the CI
+//! path-filter fix that routes `desktop/src-native-host*/**` to the
+//! desktop-rust lint jobs. Count at introduction: 27 errors in this bin,
+//! 18 in the bin test target, 1 in `stdio_contract` (dead code from the
+//! v1/v2 dual path, collapsible-if, needless as_bytes/mut, sort_by_key,
+//! too_many_arguments, only_used_in_recursion). Owned by bc9add6f for
+//! triage once PR24 lands; remove this allow then, never widen it.
+//!
+//! Each lint is named explicitly: a blanket allow would hide new debt
+//! behind the old count.
+
+#![allow(
+    dead_code,
+    clippy::too_many_arguments,
+    clippy::collapsible_if,
+    clippy::needless_as_bytes,
+    clippy::unnecessary_sort_by,
+    clippy::only_used_in_recursion,
+    clippy::needless_pass_by_value
+)]
+
 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
 mod identity;
 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]

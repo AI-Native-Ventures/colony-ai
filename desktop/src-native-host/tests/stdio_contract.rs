@@ -685,7 +685,7 @@ fn eof_rejects_pending_work_and_is_the_explicit_shutdown_mechanism() {
 
 #[test]
 fn early_exit_and_malformed_faults_are_bounded_process_only_failures() {
-    let mut early = Harness::spawn(Some("exit-before-ready"), None);
+    let early = Harness::spawn(Some("exit-before-ready"), None);
     let early_status = early.finish();
     assert_eq!(early_status.code(), Some(17));
 
