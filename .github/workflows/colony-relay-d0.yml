@@ -103,8 +103,9 @@ jobs:
           # The postgres:16 service image boots with only the postgres db;
           # create the buzz database first (same as the _ci-relay lanes,
           # which connect their tools to it).
-          psql --dbname postgres -v ON_ERROR_STOP=1 -c \
-            "SELECT 'CREATE DATABASE buzz' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'buzz')\gexec"
+          psql --dbname postgres -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT 'CREATE DATABASE buzz' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'buzz')\gexec
+          SQL
           # Schema first (the relay migrates at boot via BUZZ_AUTO_MIGRATE,
           # but that is too late for the pre-boot community seed).
           ./bin/pgschema apply --file schema/schema.sql --auto-approve
@@ -112,8 +113,9 @@ jobs:
           # Deployment community MUST exist before relay boot: the channel
           # reconciler binds it once outside its retry loop and exits on an
           # unmapped host. lower(host) is the unique index.
-          psql --dbname buzz -v ON_ERROR_STOP=1 -c \
-            "INSERT INTO communities (host) VALUES ('127.0.0.1:18081') ON CONFLICT (lower(host)) DO NOTHING;"
+          psql --dbname buzz -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO communities (host) VALUES ('127.0.0.1:18081') ON CONFLICT (lower(host)) DO NOTHING;
+          SQL
 
       - name: Start the disposable relay
         id: relay

@@ -66,7 +66,7 @@ async fn d0_seed_disposable_channel() {
             Tag::parse(["h", &channel_uuid.to_string()]).unwrap(),
             Tag::parse(["name", "relay-v2-d0"]).unwrap(),
             Tag::parse(["channel_type", "stream"]).unwrap(),
-            Tag::parse(["visibility", "open"])).unwrap(),
+            Tag::parse(["visibility", "open"]).unwrap(),
         ])
         .sign_with_keys(&keys)
         .unwrap();
