@@ -20,9 +20,6 @@ concurrency:
   group: colony-ios-runtime-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  IOS_RUNTIME_RUN_ROOT: ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}
-
 jobs:
   ios-runtime:
     name: iOS simulator landing and relaunch
@@ -49,5 +46,5 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
           path: |
-            ${{ env.IOS_RUNTIME_RUN_ROOT }}/ios-runtime-manifest.json
-            ${{ env.IOS_RUNTIME_RUN_ROOT }}/attachments/*.png
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/ios-runtime-manifest.json
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/attachments/*.png
