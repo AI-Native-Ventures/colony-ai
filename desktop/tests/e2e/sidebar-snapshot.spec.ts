@@ -515,9 +515,15 @@ test("hash mismatch replaces the snapshot with the full live list", async ({
   // mutation observer, not only at one polling instant. A later
   // row-count of zero is the expected post-replacement state, so an
   // instant count cannot distinguish "never painted" from "replaced".
+  // The observer is registered before navigation (addInitScript runs
+  // before any app render) and records only rows actually inserted
+  // into the DOM; all 14 seeded ids must appear.
   await expect
     .poll(() => getTrackedSnapshotRows(page), { timeout: 5_000 })
     .toEqual(FULL_SNAPSHOT.map((channel) => channel.id));
+  // The live revalidation still sends the stale hash first: the
+  // replacement path is unchanged, only the boot-frame observation is
+  // race-free.
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "stale-hash" }]);
