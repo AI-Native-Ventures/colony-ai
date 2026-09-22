@@ -2,9 +2,10 @@
 //!
 //! Extraction of the `WireRow`/`WireSpan`/`WireCluster`/`WireStyle`/
 //! `WireCursor`/`FrameMessage` mapping in upstream
-//! `desktop/src-tauri/src/terminal_runtime.rs` (`wire_publication`), with
-//! the Tauri channel send removed: this module maps a publication to its
-//! wire form and returns it, so the host pipe owns delivery.
+//! `desktop/src-tauri/src/terminal_runtime.rs` (the wire-publication
+//! mapper), with the UI-runtime channel send removed: this module maps a
+//! publication to its wire form and returns it, so the host pipe owns
+//! delivery.
 //!
 //! Mapping rules preserved verbatim:
 //!
@@ -99,8 +100,8 @@ pub struct WireCursor {
     pub visible: bool,
 }
 
-/// Host-neutral frame message. Field-for-field the upstream
-/// `FrameMessage`, minus the Tauri channel envelope.
+/// Host-neutral frame message. Field-for-field the upstream frame
+/// message, minus the UI-runtime channel envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WireFrame {

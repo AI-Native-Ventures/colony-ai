@@ -1,8 +1,8 @@
 # Isolated terminal/PTY contract (`src-native-host-terminal`)
 
 Bounded Phase 1 lane: the host-neutral extraction of the upstream
-terminal PTY service that can be proven without Tauri, Electron, or the
-shared host binary.
+terminal PTY service that can be proven without the desktop UI runtime,
+Electron, or the shared host binary.
 
 ## Extraction status (read this first)
 
@@ -10,10 +10,10 @@ This package is an **extraction, not a reimplementation**: `publisher.rs`
 is the upstream `terminal_transport.rs` `FramePublisher` state machine
 operating on the real engine frame types via a path dependency on
 `../src-tauri/crates/buzz-terminal`, so its tests bind the production
-seam. `wire.rs` is the upstream `wire_publication` mapper with the Tauri
-channel send removed (returns the frame; the host pipe owns delivery).
-`scroll.rs` is the upstream `scroll_sign.rs` crossing, unchanged. Only
-the Tauri `Channel`/`State`/command wrappers stay behind — they belong
+seam. `wire.rs` is the upstream wire-publication mapper with the
+UI-runtime channel send removed (returns the frame; the host pipe owns
+delivery). `scroll.rs` is the upstream crossing, unchanged. Only
+the UI-runtime channel/state/command wrappers stay behind — they belong
 to the native owner's integration step.
 
 Upstream source (`origin/develop`): `terminal_runtime.rs` (sessions,

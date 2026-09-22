@@ -1,13 +1,14 @@
 //! Host-neutral terminal event and request shapes.
 //!
-//! These types describe the PTY service boundary without naming Tauri,
-//! Electron, or any renderer transport. A host binary maps them onto its
-//! pipe frames; a shell adapter maps them onto window operations. The
-//! shapes mirror the upstream Tauri command surface (`terminal_attach`,
-//! `terminal_detach`, `terminal_close`, `terminal_input`,
-//! `terminal_resize`, `terminal_scroll`, `terminal_ack`,
-//! `terminal_viewport_ready`, `terminal_focus`) and the `TerminalMessage`
-//! event union, with the Tauri `Channel` and `State` parameters removed.
+//! These types describe the PTY service boundary without naming the
+//! desktop UI runtime, Electron, or any renderer transport. A host binary
+//! maps them onto its pipe frames; a shell adapter maps them onto window
+//! operations. The shapes mirror the upstream command surface
+//! (`terminal_attach`, `terminal_detach`, `terminal_close`,
+//! `terminal_input`, `terminal_resize`, `terminal_scroll`,
+//! `terminal_ack`, `terminal_viewport_ready`, `terminal_focus`) and the
+//! message event union, with the UI-runtime channel and state parameters
+//! removed.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,8 +30,8 @@ pub struct Viewport {
 /// Attach (or reattach) a renderer subscription to a PTY-backed session.
 ///
 /// `session_id` present means remount onto an existing session; absent
-/// means spawn. Mirrors upstream `AttachRequest` exactly, minus the Tauri
-/// channel which becomes the host's event sink.
+/// means spawn. Mirrors the upstream attach request exactly, minus the
+/// UI-runtime channel which becomes the host's event sink.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachRequest {

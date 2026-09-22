@@ -3,7 +3,8 @@
 //! Every test here is process-local and std-scoped: fixed viewports,
 //! fixed subscription IDs, fixed engine frames from byte fixtures, fixed
 //! shell commands (`printf`/`exit`) for the PTY lifecycle tests. No
-//! Tauri, no Electron, no relay, no network, no old Colony state. Real
+//! desktop UI runtime, no Electron, no relay, no network, no old Colony
+//! state. Real
 //! PTY behavior (output bytes through the emulator, input echo, resize
 //! propagation, child exit) is exercised through `portable_pty` +
 //! `buzz_terminal` directly, against the extracted `FramePublisher`

@@ -2,15 +2,16 @@
 //!
 //! Faithful extraction of upstream
 //! `desktop/src-tauri/src/terminal_transport.rs` (`FramePublisher`),
-//! decoupled from Tauri only: `tauri::ipc::Channel` never appears here,
+//! decoupled from the desktop UI runtime only: the channel type never
+//! appears here,
 //! and the state machine operates on the real engine frame types via the
 //! `buzz-terminal` path dependency, so these tests bind the production
 //! seam (review-proven rule 3) instead of a parallel test-only model.
 //!
 //! Rules preserved verbatim from upstream:
 //!
-//! - Tauri channels are ordered but expose no consumer credit, and channel
-//!   delivery is unordered against invoke responses: one frame on the wire,
+//! - Ordered channels expose no consumer credit, and channel delivery is
+//!   unordered against invoke responses: one frame on the wire,
 //!   at most one newer complete snapshot retained, resized viewport gated
 //!   until the renderer confirms the applied viewport.
 //! - Frames for an overtaken viewport are inert.

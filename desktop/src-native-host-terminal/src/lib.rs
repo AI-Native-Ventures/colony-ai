@@ -2,10 +2,10 @@
 //!
 //! Scope: this crate pins the host-neutral event interface and the
 //! transport state machine the extracted PTY service must obey, proven
-//! without spawning a PTY, touching Tauri, or wiring the shared host
-//! binary. It owns constants, the wire event/request shapes, the credit
-//! and viewport-ordering state machine (a faithful port of the upstream
-//! `terminal_transport.rs` `FramePublisher`), the wire wireframe mapper,
+//! without spawning a PTY, touching the desktop UI runtime, or wiring
+//! the shared host binary. It owns constants, the wire event/request
+//! shapes, the credit and viewport-ordering state machine (a faithful
+//! port of the upstream transport module), the wire wireframe mapper,
 //! and the scroll-sign crossing. Real PTY spawn, reader threads, renderer
 //! channels, and host-binary dispatch are explicitly future work owned by
 //! the native-owner integration step, not claimed here.
@@ -15,9 +15,9 @@
 //! - `desktop/src-tauri/src/terminal_runtime.rs`: `TerminalSessions`,
 //!   `terminal_attach/detach/close/input/resize/scroll/ack/viewport_ready/`
 //!   `focus`, PTY spawn via `portable_pty`, reader/action threads,
-//!   `Channel<TerminalMessage>` delivery, `MAX_LIVE_SESSIONS = 20`,
+//!   channel-based message delivery, `MAX_LIVE_SESSIONS = 20`,
 //!   `MAX_INPUT_BYTES = 1 MiB`, non-zero dimension guard.
-//! - `desktop/src-tauri/src/terminal_transport.rs`: `FramePublisher`
+//! - Upstream transport module: `FramePublisher`
 //!   credit (one frame in flight, at most one pending snapshot), viewport
 //!   generation gating, `attach/offer/acknowledge/viewport_ready/fault/`
 //!   `close`, `SubscriptionId`, `OfferError::PendingFrameMustBeSnapshot`.
