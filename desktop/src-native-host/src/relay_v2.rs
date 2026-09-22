@@ -11,12 +11,6 @@ use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visit
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::protocol::EXPECTED_REGISTRY_DIGEST;
-use crate::v2::{
-    PRODUCTION_REGISTRY_DIGEST as IDENTITY_V2_PRODUCTION_REGISTRY_DIGEST,
-    REGISTRY_DIGEST as IDENTITY_V2_REGISTRY_DIGEST,
-};
-
 pub const PROTOCOL_VERSION: u64 = 2;
 pub const PROFILE_ID: &str = "relay-v2";
 pub const REGISTRY_DIGEST: &str =
@@ -496,7 +490,7 @@ fn validate_subscribe(
     )?;
     let serialized = canonicalize(filter)?;
     let max_filter_bytes = field_u64(
-        root.get("limits").ok_or(ContractError::InvalidRegistry)?,
+        object(root.get("limits").ok_or(ContractError::InvalidRegistry)?)?,
         "maxFilterBytes",
     )? as usize;
     if serialized.len() > max_filter_bytes || serialized.len() > MAX_FILTER_BYTES {
@@ -611,12 +605,13 @@ fn validate_typing_signing(payload: &Value, root: &Map<String, Value>) -> Contra
 }
 
 fn signing_kind(root: &Map<String, Value>, policy_name: &str) -> ContractResult<u64> {
-    field_u64(
-        object(root.get("signing").ok_or(ContractError::InvalidRegistry)?)?
+    let signing = object(root.get("signing").ok_or(ContractError::InvalidRegistry)?)?;
+    let policy = object(
+        signing
             .get(policy_name)
             .ok_or(ContractError::InvalidRegistry)?,
-        "kind",
-    )
+    )?;
+    field_u64(policy, "kind")
 }
 
 fn validate_capabilities(value: &Value) -> ContractResult<()> {
@@ -1151,27 +1146,29 @@ fn validate_instance(
         }
         "object" => {
             let values = object(value)?;
-            let properties = schema
-                .get("properties")
-                .map(object)
-                .transpose()?
-                .unwrap_or_default();
+            let properties = schema.get("properties").map(object).transpose()?;
             if schema.get("additionalProperties").and_then(Value::as_bool) != Some(false) {
                 return Err(ContractError::InvalidRegistry);
             }
-            if values.keys().any(|key| !properties.contains_key(key)) {
+            if let Some(properties) = properties {
+                if values.keys().any(|key| !properties.contains_key(key)) {
+                    return Err(ContractError::InvalidPayload);
+                }
+            } else if !values.is_empty() {
                 return Err(ContractError::InvalidPayload);
             }
             if let Some(required) = schema.get("required") {
                 for field in field_string_array_value(required)? {
-                    if !values.contains_key(field) {
+                    if !values.contains_key(&field) {
                         return Err(ContractError::InvalidPayload);
                     }
                 }
             }
-            for (field, descriptor) in properties {
-                if let Some(value) = values.get(field) {
-                    validate_instance(descriptor, value, schemas, stack)?;
+            if let Some(properties) = properties {
+                for (field, descriptor) in properties {
+                    if let Some(value) = values.get(field) {
+                        validate_instance(descriptor, value, schemas, stack)?;
+                    }
                 }
             }
             if let Some(variants) = schema.get("payloadVariants") {
