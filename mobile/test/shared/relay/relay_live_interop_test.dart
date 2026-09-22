@@ -365,7 +365,12 @@ void main() {
         );
         final matches = history.where((event) => event.id == sent.id).toList();
         expect(matches, hasLength(1));
-        expect(matches.single.content, sent.content);
+        expect(
+          matches.single.content,
+          sent.content,
+          reason: 'catch-up must return the probe content, got '
+              '${matches.single.content}',
+        );
       },
       timeout: const Timeout(Duration(minutes: 8)),
     );
@@ -421,12 +426,26 @@ void main() {
       'foreign channel events stay isolated',
       () async {
         if (!requireReady()) return;
-        // Valid UUID outside the matrix channel: must parse (so the
-        // relay consults membership and rejects) rather than fail the
-        // UUID parse itself.
-        final foreign = await oracle.publishMessage(
-          channelId: const Uuid().v4(),
+        // Real isolation needs a real foreign channel with a real owner:
+        // create it as a second identity (bootstraps that key as owner),
+        // publish into it as that owner, then assert the matrix peer —
+        // subscribed only to the matrix channel — sees nothing. A bare
+        // UUID nobody owns only proves the relay rejects unknown channels.
+        final foreignKeys = nostr.Keys.generate();
+        final foreignChannelId = await _createChannel(
+          httpClient,
+          foreignKeys.nsec,
+        );
+        final foreignSubmitter = SignedEventRelay(
+          session: oracle.session,
+          nsec: foreignKeys.nsec,
+        );
+        final foreign = await foreignSubmitter.submit(
+          kind: 9,
           content: 'not for the matrix',
+          tags: [
+            ['h', foreignChannelId],
+          ],
         );
         await Future<void>.delayed(const Duration(seconds: 3));
         expect(
