@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:nostr/nostr.dart' as nostr;
+import 'package:uuid/uuid.dart';
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/shared/auth/auth_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
@@ -183,7 +184,12 @@ class _LivePeer {
 
 Future<String> _createChannel(http.Client httpClient, String nsec) async {
   final privHex = nostr.Nip19.decode(payload: nsec).data;
-  final channelId = 'interop-${DateTime.now().millisecondsSinceEpoch}';
+  // Fresh v4 UUID per run: the relay's kind-9007 path requires the h tag
+  // to parse as a UUID (otherwise the REQ gate rejects with
+  // 'restricted: not a channel member' without consulting membership),
+  // and bootstraps the creator as owner in channel_members only when
+  // the channel row is newly created.
+  final channelId = const Uuid().v4();
   final event = nostr.Event.from(
     kind: 9007,
     content: '',
@@ -415,8 +421,11 @@ void main() {
       'foreign channel events stay isolated',
       () async {
         if (!requireReady()) return;
+        // Valid UUID outside the matrix channel: must parse (so the
+        // relay consults membership and rejects) rather than fail the
+        // UUID parse itself.
         final foreign = await oracle.publishMessage(
-          channelId: 'foreign-${DateTime.now().millisecondsSinceEpoch}',
+          channelId: const Uuid().v4(),
           content: 'not for the matrix',
         );
         await Future<void>.delayed(const Duration(seconds: 3));
