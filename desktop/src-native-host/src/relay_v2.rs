@@ -173,6 +173,20 @@ pub enum ContractError {
     InvalidCode,
     Oversized,
     UnsupportedMessageType,
+    InvalidConnection,
+    ConnectTimeout,
+    AuthRequired,
+    AuthTimeout,
+    AuthRejected,
+    RequestTimeout,
+    MalformedFrame,
+    RelayClosed,
+    PublishRejected,
+    HostUnavailable,
+    QueueFull,
+    Shutdown,
+    StaleGeneration,
+    FutureGeneration,
 }
 
 impl ContractError {
@@ -199,6 +213,20 @@ impl ContractError {
             Self::InvalidTags => "invalid_tags",
             Self::InvalidCode => "invalid_code",
             Self::UnsupportedMessageType => "invalid_payload",
+            Self::InvalidConnection => "invalid_connection",
+            Self::ConnectTimeout => "connect_timeout",
+            Self::AuthRequired => "auth_required",
+            Self::AuthTimeout => "auth_timeout",
+            Self::AuthRejected => "auth_rejected",
+            Self::RequestTimeout => "request_timeout",
+            Self::MalformedFrame => "malformed_frame",
+            Self::RelayClosed => "relay_closed",
+            Self::PublishRejected => "publish_rejected",
+            Self::HostUnavailable => "host_unavailable",
+            Self::QueueFull => "queue_full",
+            Self::Shutdown => "shutdown",
+            Self::StaleGeneration => "stale_generation",
+            Self::FutureGeneration => "future_generation",
         }
     }
 }
@@ -434,6 +462,38 @@ pub fn validate_operation_kind(operation: &str, kind: u64) -> ContractResult<()>
         Ok(())
     } else {
         Err(ContractError::InvalidKind)
+    }
+}
+
+/// The frozen public error vocabulary. Only these codes may cross the host
+/// boundary; anything else (relay prose, content, tokens) is rejected here.
+pub const REDACTED_ERROR_CODES: [&str; 18] = [
+    "invalid_payload",
+    "invalid_connection",
+    "stale_generation",
+    "future_generation",
+    "wrong_authority",
+    "auth_required",
+    "auth_timeout",
+    "auth_rejected",
+    "connect_timeout",
+    "request_timeout",
+    "oversized_frame",
+    "malformed_frame",
+    "queue_full",
+    "relay_closed",
+    "publish_rejected",
+    "host_unavailable",
+    "renderer_rebound",
+    "shutdown",
+];
+
+/// Accept only a finite redacted code. Raw relay or caller prose fails here.
+pub fn validate_redacted_code(code: &str) -> ContractResult<()> {
+    if REDACTED_ERROR_CODES.contains(&code) {
+        Ok(())
+    } else {
+        Err(ContractError::InvalidCode)
     }
 }
 

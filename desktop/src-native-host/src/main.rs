@@ -3,6 +3,7 @@ mod identity;
 #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
 mod identity_ownership;
 mod protocol;
+mod relay_transport;
 #[allow(dead_code)]
 mod relay_v2;
 mod v2;
@@ -21,6 +22,10 @@ use protocol::{
     decode_frame, encode_frame, load_manifest, Binding, Envelope, ErrorBody, IdentityProfiles,
     OutboundFrame, ProtocolError, ProtocolLimits, FALLBACK_RELAY_URL, TEST_DEADLINE_ENV,
 };
+use relay_transport::{
+    relay_host_lifecycle_event, relay_operation_for, RelayHello, RelaySession, TypedInbound,
+};
+use relay_v2::{ContractError, RequestContext};
 
 const FAULT_ENV: &str = "COLONY_STAGE0_FAULT";
 const EXIT_BEFORE_READY_CODE: i32 = 17;
@@ -61,6 +66,7 @@ enum LaunchMode {
     IdentityV2Test,
     IdentityV2Derivative,
     IdentityV2Production,
+    RelayV2,
 }
 
 impl LaunchMode {
@@ -69,6 +75,10 @@ impl LaunchMode {
             self,
             Self::IdentityV2Test | Self::IdentityV2Derivative | Self::IdentityV2Production
         )
+    }
+
+    fn is_relay(self) -> bool {
+        matches!(self, Self::RelayV2)
     }
 
     fn is_production(self) -> bool {
@@ -88,6 +98,7 @@ enum SessionMode {
     Undecided,
     V1,
     V2,
+    RelayV2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +107,7 @@ enum PendingKind {
     V2Health,
     V2SharedIdentity,
     V2Identity,
+    RelayOp,
 }
 
 impl PendingKind {
@@ -105,6 +117,7 @@ impl PendingKind {
             Self::V2Health => Some("relay-url"),
             Self::V2SharedIdentity => Some("boolean"),
             Self::V2Identity => Some("identity-snapshot"),
+            Self::RelayOp => None,
         }
     }
 }
@@ -169,6 +182,7 @@ struct Host {
     crash_after_reservation: bool,
     crash_after_b1: bool,
     session_mode: SessionMode,
+    relay: Option<RelaySession>,
     #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
     identity: Option<identity::IdentityRuntime>,
 }
@@ -203,6 +217,7 @@ impl Host {
             crash_after_reservation,
             crash_after_b1,
             session_mode: SessionMode::Undecided,
+            relay: None,
             #[cfg(any(feature = "identity-file-only", feature = "identity-system-keyring"))]
             identity: None,
         }
@@ -215,6 +230,10 @@ impl Host {
     ) -> Result<(), ProtocolError> {
         loop {
             self.observe_writer_failure(&writer_failures)?;
+            if self.session_mode == SessionMode::RelayV2 {
+                self.drain_relay_inbox()?;
+                self.check_relay_health()?;
+            }
             if let Err(error) = self.expire_pending() {
                 return self.fail(error);
             }
@@ -270,6 +289,9 @@ impl Host {
     fn handle_decoded(&mut self, frame: DecodedFrame) -> Result<(), ProtocolError> {
         match frame {
             DecodedFrame::V1(envelope) => {
+                if self.launch_mode.is_relay() {
+                    return self.handle_v1_relay(envelope);
+                }
                 if self.launch_mode.is_identity() || self.session_mode == SessionMode::V2 {
                     return Err(ProtocolError::IdentityModeRequired);
                 }
@@ -277,12 +299,44 @@ impl Host {
                 self.handle_v1(envelope)
             }
             DecodedFrame::V2(frame) => {
-                if !self.launch_mode.is_identity() || self.session_mode == SessionMode::V1 {
+                if self.launch_mode.is_relay() || !self.launch_mode.is_identity() {
+                    return Err(ProtocolError::IdentityModeRequired);
+                }
+                if self.session_mode == SessionMode::V1 || self.session_mode == SessionMode::RelayV2
+                {
                     return Err(ProtocolError::IdentityModeRequired);
                 }
                 self.session_mode = SessionMode::V2;
                 self.handle_v2(frame)
             }
+        }
+    }
+
+    fn handle_v1_relay(&mut self, envelope: Envelope) -> Result<(), ProtocolError> {
+        match envelope.frame_type.as_str() {
+            "HELLO" => self.handle_hello_relay(&envelope),
+            "REHELLO" => {
+                if self.session_mode == SessionMode::RelayV2 {
+                    self.handle_rehello_relay(&envelope)
+                } else {
+                    Err(ProtocolError::WrongBinding)
+                }
+            }
+            "REQUEST" => {
+                if self.session_mode == SessionMode::RelayV2 {
+                    self.handle_request_relay(&envelope)
+                } else {
+                    Err(ProtocolError::WrongBinding)
+                }
+            }
+            "CANCEL" => {
+                if self.session_mode == SessionMode::RelayV2 {
+                    self.handle_cancel(&envelope)
+                } else {
+                    Err(ProtocolError::WrongBinding)
+                }
+            }
+            _ => Err(ProtocolError::UnknownFrame),
         }
     }
 
@@ -446,6 +500,17 @@ impl Host {
             .pending
             .remove(request_id)
             .ok_or(ProtocolError::Closed)?;
+        // Relay ops always complete inline through the relay dispatcher, so
+        // reaching here means a logic defect; surface it instead of hanging.
+        if pending.kind == PendingKind::RelayOp {
+            return self.send_response(
+                &pending.binding,
+                request_id.to_string(),
+                "error",
+                None,
+                Some("host_unavailable"),
+            );
+        }
         match pending.kind {
             PendingKind::V1Health => {
                 let relay_url = configured_relay_url();
@@ -567,6 +632,11 @@ impl Host {
     ) -> Result<(), ProtocolError> {
         match pending.kind {
             PendingKind::V1Health => {
+                self.send_response(&pending.binding, request_id, outcome, payload, error_code)
+            }
+            // Relay ops complete inline with typed responses; this arm only
+            // serves cancel/expiry races, which forward their outcome as-is.
+            PendingKind::RelayOp => {
                 self.send_response(&pending.binding, request_id, outcome, payload, error_code)
             }
             PendingKind::V2Health | PendingKind::V2SharedIdentity | PendingKind::V2Identity => self
@@ -948,6 +1018,436 @@ impl Host {
         Ok(())
     }
 
+    // ---- RelayV2 session (trusted-main selected launch mode) ----
+    //
+    // The relay surface reuses the V1 envelope framing with a distinct
+    // session mode, profile, digest, and op table. Validation runs through
+    // the frozen relay registry before any socket dispatch; every execution
+    // error answers with a finite redacted code, never a fatal host error.
+
+    fn relay_response(
+        &mut self,
+        binding: &Binding,
+        request_id: String,
+        result: Result<serde_json::Value, ContractError>,
+    ) -> Result<(), ProtocolError> {
+        match result {
+            Ok(payload) => self.send_response(binding, request_id, "ok", Some(payload), None),
+            Err(error) => {
+                self.send_response(binding, request_id, "error", None, Some(error.code()))
+            }
+        }
+    }
+
+    fn send_ready_relay(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "READY".to_string(),
+            protocol_version: self.limits.version,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: Some(
+                serde_json::json!({"capabilities": ["relay-transport", "identity-sign"]}),
+            ),
+            error: None,
+            event: None,
+            sequence: None,
+            registry_digest: Some(relay_v2::REGISTRY_DIGEST.to_string()),
+        })
+    }
+
+    fn send_host_lifecycle_relay(
+        &mut self,
+        binding: &Binding,
+        state: &str,
+        error: Option<&str>,
+    ) -> Result<(), ProtocolError> {
+        let payload = relay_host_lifecycle_event(binding.generation_id, state, error)
+            .map_err(|_| ProtocolError::Serialization)?;
+        self.write(OutboundFrame {
+            frame_type: "EVENT".to_string(),
+            protocol_version: self.limits.version,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: Some(payload),
+            error: None,
+            event: Some("host_lifecycle".to_string()),
+            sequence: Some(self.sequence),
+            registry_digest: None,
+        })
+    }
+
+    fn send_relay_message_event(
+        &mut self,
+        binding: &Binding,
+        inbound: &TypedInbound,
+    ) -> Result<(), ProtocolError> {
+        let connection_id = match self
+            .relay
+            .as_ref()
+            .and_then(|session| session.live_connection_id())
+        {
+            Some(id) => id.to_string(),
+            None => return Ok(()),
+        };
+        let payload = serde_json::json!({
+            "connectionId": connection_id,
+            "generation": binding.generation_id,
+            "messageType": inbound.message_type,
+            "payload": inbound.payload,
+        });
+        self.write(OutboundFrame {
+            frame_type: "EVENT".to_string(),
+            protocol_version: self.limits.version,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: Some(payload),
+            error: None,
+            event: Some("relay_message".to_string()),
+            sequence: Some(self.sequence),
+            registry_digest: None,
+        })
+    }
+
+    fn handle_hello_relay(&mut self, envelope: &Envelope) -> Result<(), ProtocolError> {
+        if self.binding.is_some() {
+            return Err(ProtocolError::WrongBinding);
+        }
+        let binding = Binding::from_envelope(envelope)?;
+        if binding.profile_id != "relay-v2"
+            || binding.profile_id != self.expected_profile_id
+            || binding.generation_id != 1
+        {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if envelope.build_id.as_deref().is_none_or(str::is_empty) {
+            return Err(ProtocolError::MissingField("build_id"));
+        }
+        let descriptor = envelope
+            .payload
+            .as_ref()
+            .ok_or(ProtocolError::MissingField("payload"))?;
+        let hello = RelayHello::parse(descriptor).map_err(|_| ProtocolError::WrongBinding)?;
+        let service = self
+            .identity_profiles
+            .for_flavor(&hello.flavor)
+            .ok_or(ProtocolError::WrongBinding)?
+            .keychain_service
+            .clone();
+        let session = RelaySession::establish(hello, &service, binding.generation_id)
+            .map_err(|_| ProtocolError::IdentityInitializationFailed)?;
+        self.binding = Some(binding.clone());
+        self.session_mode = SessionMode::RelayV2;
+        self.relay = Some(session);
+        self.sequence = 1;
+        self.send_ready_relay(&binding)?;
+        self.send_host_lifecycle_relay(&binding, "ready", None)
+    }
+
+    fn handle_rehello_relay(&mut self, envelope: &Envelope) -> Result<(), ProtocolError> {
+        let current = self.binding.clone().ok_or(ProtocolError::WrongBinding)?;
+        if !current.matches(envelope) || envelope.protocol_version != self.limits.version {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if envelope.generation_id == current.generation_id {
+            return self.send_rebound_relay(&current);
+        }
+        if envelope.generation_id != current.generation_id.saturating_add(1) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        let next = Binding {
+            profile_id: current.profile_id,
+            session_id: current.session_id,
+            generation_id: envelope.generation_id,
+        };
+        self.reject_pending("renderer_rebound")?;
+        if let Some(session) = self.relay.as_mut() {
+            session.abort_all();
+        }
+        self.binding = Some(next.clone());
+        self.send_rebound_relay(&next)?;
+        self.sequence = self.sequence.saturating_add(1);
+        self.send_host_lifecycle_relay(&next, "renderer_rebound", None)
+    }
+
+    fn send_rebound_relay(&mut self, binding: &Binding) -> Result<(), ProtocolError> {
+        self.write(OutboundFrame {
+            frame_type: "REBOUND".to_string(),
+            protocol_version: self.limits.version,
+            profile_id: binding.profile_id.clone(),
+            session_id: binding.session_id.clone(),
+            generation_id: binding.generation_id,
+            request_id: None,
+            outcome: None,
+            payload: None,
+            error: None,
+            event: None,
+            sequence: None,
+            registry_digest: Some(relay_v2::REGISTRY_DIGEST.to_string()),
+        })
+    }
+
+    fn drain_relay_inbox(&mut self) -> Result<(), ProtocolError> {
+        let binding = match self.binding.clone() {
+            Some(binding) => binding,
+            None => return Ok(()),
+        };
+        let inbound = match self.relay.as_mut() {
+            Some(session) => session.drain_inbox(),
+            None => return Ok(()),
+        };
+        for event in inbound {
+            let forward = match event.message_type {
+                "EVENT" | "EOSE" => {
+                    let subscription = event
+                        .payload
+                        .get("subscriptionId")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    self.relay
+                        .as_ref()
+                        .is_some_and(|session| session.is_subscribed(subscription))
+                }
+                _ => true,
+            };
+            if !forward {
+                continue;
+            }
+            if event.message_type == "CLOSED" {
+                if let Some(subscription) = event
+                    .payload
+                    .get("subscriptionId")
+                    .and_then(|value| value.as_str())
+                {
+                    let subscription = subscription.to_string();
+                    if let Some(session) = self.relay.as_mut() {
+                        session.note_relay_closed(&subscription);
+                    }
+                }
+            }
+            self.send_relay_message_event(&binding, &event)?;
+        }
+        Ok(())
+    }
+
+    fn check_relay_health(&mut self) -> Result<(), ProtocolError> {
+        let failed = match self.relay.as_mut() {
+            Some(session) => session.poll_health().err(),
+            None => return Ok(()),
+        };
+        if let Some(error) = failed {
+            if let Some(binding) = self.binding.clone() {
+                self.send_host_lifecycle_relay(&binding, "relay_failed", Some(error.code()))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_request_relay(&mut self, envelope: &Envelope) -> Result<(), ProtocolError> {
+        let current = self.binding.clone().ok_or(ProtocolError::WrongBinding)?;
+        let request_id = envelope
+            .request_id
+            .clone()
+            .ok_or(ProtocolError::MissingField("request_id"))?;
+        if !current.matches(envelope) {
+            return Err(ProtocolError::WrongBinding);
+        }
+        if envelope.generation_id != current.generation_id {
+            let code = if envelope.generation_id < current.generation_id {
+                "stale_generation"
+            } else {
+                "future_generation"
+            };
+            return self.send_response(&current, request_id, "error", None, Some(code));
+        }
+        if self.seen_request_ids.contains(&request_id) {
+            return self.send_response(
+                &current,
+                request_id,
+                "error",
+                None,
+                Some("duplicate_request_id"),
+            );
+        }
+        if self.seen_request_ids.len()
+            >= self
+                .limits
+                .in_flight_limit
+                .saturating_mul(MAX_SEEN_REQUEST_IDS_MULTIPLIER)
+        {
+            return self.send_response(&current, request_id, "error", None, Some("host_busy"));
+        }
+        let capability = envelope.capability.as_deref().unwrap_or("");
+        let method = envelope.method.as_deref().unwrap_or("");
+        let (operation, expected_capability, op_deadline) =
+            match relay_operation_for(capability, method) {
+                Ok(mapping) => mapping,
+                Err(code) => {
+                    return self.send_response(&current, request_id, "error", None, Some(code))
+                }
+            };
+        let payload = envelope.payload.clone().unwrap_or(serde_json::Value::Null);
+        let authority = match self.relay.as_ref() {
+            Some(session) => session.authority_ref().to_string(),
+            None => return Err(ProtocolError::Closed),
+        };
+        let context = RequestContext {
+            protocol_version: 2,
+            profile: "relay-v2",
+            registry_digest: relay_v2::REGISTRY_DIGEST,
+            operation,
+            capability: expected_capability,
+            authority_ref: Some(authority.as_str()),
+            connection_id: payload
+                .as_object()
+                .and_then(|object| object.get("connectionId"))
+                .and_then(|value| value.as_str()),
+        };
+        if let Err(error) = relay_v2::validate_request(&context, &payload) {
+            return self.send_response(&current, request_id, "error", None, Some(error.code()));
+        }
+        self.seen_request_ids.insert(request_id.clone());
+        if self.pending.len() >= self.limits.in_flight_limit {
+            return self.send_response(&current, request_id, "error", None, Some("host_busy"));
+        }
+        let backstop = Instant::now() + op_deadline + Duration::from_secs(2);
+        self.pending.insert(
+            request_id.clone(),
+            PendingRequest {
+                binding: current.clone(),
+                deadline: backstop,
+                kind: PendingKind::RelayOp,
+            },
+        );
+        let delayed = match self.fault {
+            FaultMode::DelayResponse => !self.delayed_once,
+            FaultMode::HoldResponses => true,
+            FaultMode::None => false,
+        };
+        self.delayed_once |= delayed;
+        if delayed {
+            return Ok(());
+        }
+        let outcome = self.execute_relay_operation(operation, &payload, &current);
+        self.pending.remove(&request_id);
+        self.relay_response(&current, request_id, outcome)
+    }
+
+    fn execute_relay_operation(
+        &mut self,
+        operation: &str,
+        payload: &serde_json::Value,
+        binding: &Binding,
+    ) -> Result<serde_json::Value, ContractError> {
+        let session = self.relay.as_mut().ok_or(ContractError::Closed)?;
+        match operation {
+            "relay-transport/connect" => {
+                self.send_host_lifecycle_relay(binding, "relay_connecting", None)
+                    .map_err(|_| ContractError::HostUnavailable)?;
+                match session.connect() {
+                    Ok(connection_id) => {
+                        self.send_host_lifecycle_relay(binding, "relay_authenticated", None)
+                            .map_err(|_| ContractError::HostUnavailable)?;
+                        Ok(serde_json::json!({"connectionId": connection_id}))
+                    }
+                    Err(error) => {
+                        self.send_host_lifecycle_relay(binding, "relay_failed", Some(error.code()))
+                            .map_err(|_| ContractError::HostUnavailable)?;
+                        Err(error)
+                    }
+                }
+            }
+            "relay-transport/authenticate" => match session.live_connection_id() {
+                Some(connection_id) => Ok(serde_json::json!({
+                    "authenticated": true,
+                    "connectionId": connection_id,
+                })),
+                None => Err(ContractError::AuthRequired),
+            },
+            "relay-transport/subscribe" => {
+                let subscription_id = payload
+                    .get("subscriptionId")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                let filter = payload.get("filter").ok_or(ContractError::InvalidPayload)?;
+                session.subscribe(subscription_id, filter)?;
+                let connection_id = session
+                    .live_connection_id()
+                    .ok_or(ContractError::AuthRequired)?;
+                Ok(serde_json::json!({
+                    "connectionId": connection_id,
+                    "subscriptionId": subscription_id,
+                }))
+            }
+            "relay-transport/close_subscription" => {
+                let subscription_id = payload
+                    .get("subscriptionId")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                let connection_id = payload
+                    .get("connectionId")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                session.unsubscribe(subscription_id)?;
+                Ok(serde_json::json!({
+                    "connectionId": connection_id,
+                    "subscriptionId": subscription_id,
+                    "closed": true,
+                }))
+            }
+            "relay-transport/publish" => {
+                let handle = payload
+                    .get("eventHandle")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                let connection_id = payload
+                    .get("connectionId")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                session.publish(handle)?;
+                Ok(serde_json::json!({
+                    "accepted": true,
+                    "connectionId": connection_id,
+                    "eventHandle": handle,
+                }))
+            }
+            "relay-transport/close" => {
+                // The frozen relay-closed schema requires a subscription id;
+                // for a whole-connection close the connection id fills it.
+                // Responses key off request ids, so this stays unambiguous.
+                let connection_id = payload
+                    .get("connectionId")
+                    .and_then(|value| value.as_str())
+                    .ok_or(ContractError::InvalidPayload)?;
+                session.close_connection();
+                Ok(serde_json::json!({
+                    "connectionId": connection_id,
+                    "subscriptionId": connection_id,
+                    "closed": true,
+                }))
+            }
+            "identity-sign/sign_message"
+            | "identity-sign/sign_presence"
+            | "identity-sign/sign_typing"
+            | "identity-sign/sign_user_status" => {
+                let (handle, event) = session.sign(operation, payload)?;
+                Ok(serde_json::json!({
+                    "eventHandle": handle,
+                    "signedEvent": event,
+                }))
+            }
+            _ => Err(ContractError::UnknownOperation),
+        }
+    }
+
     fn write(&mut self, frame: OutboundFrame) -> Result<(), ProtocolError> {
         if frame.protocol_version == v2::VERSION {
             return self.write_v2(frame, None);
@@ -1005,32 +1505,50 @@ fn decode_any_frame(frame: &[u8], limits: &ProtocolLimits) -> Result<DecodedFram
     }
 }
 
-fn launch_mode_from_args() -> LaunchMode {
-    let arguments = env::args().skip(1).collect::<Vec<_>>();
-    let test = arguments
-        .iter()
-        .any(|argument| argument == "--identity-v2-test");
-    let derivative = arguments
-        .iter()
-        .any(|argument| argument == "--identity-v2-file-test");
-    let production = arguments.iter().any(|argument| argument == "--identity-v2");
-    if [test, derivative, production]
+fn select_launch_mode(
+    test: bool,
+    derivative: bool,
+    production: bool,
+    relay: bool,
+) -> Option<LaunchMode> {
+    if [test, derivative, production, relay]
         .into_iter()
         .filter(|enabled| *enabled)
         .count()
         > 1
     {
-        eprintln!("native host startup rejected mixed identity launch modes");
-        process::exit(PROTOCOL_FAILURE_CODE);
+        return None;
     }
     if production {
-        LaunchMode::IdentityV2Production
+        Some(LaunchMode::IdentityV2Production)
     } else if derivative {
-        LaunchMode::IdentityV2Derivative
+        Some(LaunchMode::IdentityV2Derivative)
+    } else if relay {
+        Some(LaunchMode::RelayV2)
     } else if test {
-        LaunchMode::IdentityV2Test
+        Some(LaunchMode::IdentityV2Test)
     } else {
-        LaunchMode::HealthOnly
+        Some(LaunchMode::HealthOnly)
+    }
+}
+
+fn launch_mode_from_args() -> LaunchMode {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    match select_launch_mode(
+        arguments
+            .iter()
+            .any(|argument| argument == "--identity-v2-test"),
+        arguments
+            .iter()
+            .any(|argument| argument == "--identity-v2-file-test"),
+        arguments.iter().any(|argument| argument == "--identity-v2"),
+        arguments.iter().any(|argument| argument == "--relay-v2"),
+    ) {
+        Some(mode) => mode,
+        None => {
+            eprintln!("native host startup rejected mixed launch modes");
+            process::exit(PROTOCOL_FAILURE_CODE);
+        }
     }
 }
 
@@ -1062,6 +1580,12 @@ fn main() {
         }
     };
     let launch_mode = launch_mode_from_args();
+    if launch_mode.is_relay() {
+        // The relay socket path is the only TLS user in this helper. Pin the
+        // single rustls provider exactly like the Tauri transport so wss
+        // authorities can never hit an ambiguous-provider panic.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
     let (crash_after_reservation, crash_after_b1) = crash_controls_from_args(launch_mode);
     if launch_mode != LaunchMode::IdentityV2Production {
         match env::var(FAULT_ENV).ok().as_deref() {
@@ -1079,7 +1603,13 @@ fn main() {
     let queue_limit = manifest.protocol.outbound_queue_limit;
     let frame_limit = manifest.protocol.frame_limit_bytes;
     let writer_deadline = test_or_manifest_deadline(&manifest.protocol, launch_mode);
-    let expected_profile_id = manifest.namespace.profile_id.clone();
+    // RelayV2 is main-selected, never renderer-selected: the expected profile
+    // is the frozen relay profile, not the manifest identity namespace.
+    let expected_profile_id = if launch_mode.is_relay() {
+        relay_v2::PROFILE_ID.to_string()
+    } else {
+        manifest.namespace.profile_id.clone()
+    };
     let (input_sender, receiver) = mpsc::sync_channel(queue_limit);
     let (output_sender, output_receiver) = mpsc::sync_channel(queue_limit);
     let (writer_done_sender, writer_done_receiver) = mpsc::channel();
@@ -1365,5 +1895,23 @@ mod tests {
             .expect_err("limit mismatch must fail closed");
         assert_eq!(error.code(), "invalid_manifest");
         assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn relay_launch_mode_is_exclusive_and_distinct() {
+        assert_eq!(
+            select_launch_mode(false, false, false, true),
+            Some(LaunchMode::RelayV2)
+        );
+        assert_eq!(
+            select_launch_mode(false, false, false, false),
+            Some(LaunchMode::HealthOnly)
+        );
+        assert_eq!(select_launch_mode(true, false, false, true), None);
+        assert_eq!(select_launch_mode(false, false, true, true), None);
+        assert_eq!(select_launch_mode(false, true, false, true), None);
+        assert!(LaunchMode::RelayV2.is_relay());
+        assert!(!LaunchMode::RelayV2.is_identity());
+        assert!(!LaunchMode::HealthOnly.is_relay());
     }
 }
