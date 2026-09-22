@@ -461,11 +461,14 @@ pub fn parse_inbound(text: &str, generation: u64) -> ContractResult<TypedInbound
 }
 
 /// Read until `predicate` accepts a parsed inbound frame or `deadline`
-/// passes with `timeout_code`. Ticks keep shutdown observable.
+/// passes with `timeout_code`. Ticks keep shutdown observable. The parsed
+/// frames are tagged with `generation` so stale traffic is fenced here,
+/// not delivered.
 pub fn read_until<S, F>(
     socket: &mut S,
     deadline: Instant,
     timeout_code: ContractError,
+    generation: u64,
     mut predicate: F,
 ) -> ContractResult<TypedInbound>
 where
@@ -478,8 +481,8 @@ where
         }
         match socket.read_text(deadline) {
             Ok(Some(text)) => {
-                let inbound = parse_inbound(&text, 0)?;
-                if predicate(&inbound) {
+                let inbound = parse_inbound(&text, generation)?;
+                if inbound.generation == generation && predicate(&inbound) {
                     return Ok(inbound);
                 }
             }
@@ -735,6 +738,7 @@ impl ConnectionFactory {
             &mut socket,
             auth_deadline,
             ContractError::AuthTimeout,
+            generation,
             |inbound| inbound.message_type == "AUTH",
         )?;
         let challenge_ref = challenge
@@ -752,6 +756,7 @@ impl ConnectionFactory {
             &mut socket,
             auth_deadline,
             ContractError::AuthTimeout,
+            generation,
             |inbound| {
                 inbound.message_type == "OK"
                     && inbound.payload.get("eventId").and_then(|v| v.as_str())
@@ -843,14 +848,31 @@ mod tests {
     use super::*;
 
     const EVENT_ID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const CONNECTION_ID: &str = "11111111-1111-1111-1111-111111111111";
+
+    /// Full contract envelope for a relay message class. The frozen
+    /// `relay-message-event` schema requires connectionId, generation,
+    /// messageType, and payload — bare `["TYPE", payload]` pairs are a
+    /// fixture shape, not relay traffic.
+    fn envelope_frame(message_type: &str, payload: serde_json::Value) -> String {
+        serde_json::json!({
+            "connectionId": CONNECTION_ID,
+            "generation": 1,
+            "messageType": message_type,
+            "payload": payload,
+        })
+        .to_string()
+    }
 
     fn auth_frame(challenge: &str) -> String {
-        serde_json::json!(["AUTH", {"challengeRef": challenge}]).to_string()
+        envelope_frame("AUTH", serde_json::json!({"challengeRef": challenge}))
     }
 
     fn ok_frame(event_id: &str, accepted: bool, code: &str) -> String {
-        serde_json::json!(["OK", {"eventId": event_id, "accepted": accepted, "messageCode": code}])
-            .to_string()
+        envelope_frame(
+            "OK",
+            serde_json::json!({"eventId": event_id, "accepted": accepted, "messageCode": code}),
+        )
     }
 
     fn test_connection() -> RelayConnection {
@@ -968,10 +990,12 @@ mod tests {
         assert_eq!(ok.message_type, "OK");
         assert_eq!(ok.generation, 3);
         assert!(parse_inbound(&auth_frame("c"), 3).is_ok());
+        // Bare pairs and unknown classes are not envelopes — rejected.
         assert!(parse_inbound(r#"["COUNT",{"kinds":[1]}]"#, 3).is_err());
+        assert!(parse_inbound(r#"["OK",{"eventId":"x"}]"#, 3).is_err());
         assert!(parse_inbound("not json", 3).is_err());
         let oversized = "x".repeat(RELAY_FRAME_CAP + 1);
-        let big = serde_json::json!(["NOTICE", {"code": oversized}]).to_string();
+        let big = envelope_frame("NOTICE", serde_json::json!({"code": oversized}));
         assert_eq!(
             parse_inbound(&big, 3).unwrap_err(),
             ContractError::Oversized
@@ -1173,6 +1197,10 @@ impl RelaySession {
 
     pub fn live_connection_id(&self) -> Option<&str> {
         self.connection.as_ref().map(|c| c.connection_id.as_str())
+    }
+
+    pub fn connection_state(&self) -> Option<TransportState> {
+        self.connection.as_ref().map(|c| c.state())
     }
 
     /// Dial and run the NIP-42 handshake inside the absolute auth budget,
@@ -1771,6 +1799,10 @@ mod session_tests {
             .expect("signed id")
             .to_string();
         attach_live_connection(&mut session);
+        assert_eq!(
+            session.connection_state(),
+            Some(TransportState::Authenticated)
+        );
         inject_ok(&session, &event_id, true, "accepted");
         assert!(session.publish(&handle).is_ok());
         assert!(!session.handles.contains_key(&handle));
