@@ -163,6 +163,10 @@ pub fn step(seq: u16, ts_48k: u32) -> (u16, u32) {
     (next_seq(seq), next_ts_48k(ts_48k))
 }
 
+pub fn clippy_gate_probe(value: usize) -> bool {
+    value % 2 == 0
+}
+
 #[cfg(test)]
 mod unit_tests {
     use super::*;
