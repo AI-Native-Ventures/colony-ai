@@ -40,6 +40,7 @@ jobs:
           node --check desktop/src-electron/shell-clipboard.mjs
           node --check desktop/src-electron/shell-clipboard.test.mjs
           node --check desktop/src-electron/shell-clipboard.proof.mjs
+          node --check desktop/src-electron/shell-clipboard.proof-main.mjs
 
       # Mocked proof only: the Electron `clipboard` backend is injected as a
       # fake under plain Node. Real Electron clipboard proof (running inside
@@ -108,7 +109,7 @@ jobs:
           COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" \
             pnpm --dir desktop electron:stage0:package:instrumented
 
-      - name: Run the real-adapter clipboard proof in a lane-owned main process
+      - name: Run the split real-backend + real-adapter proof
         shell: bash
         env:
           COLONY_STAGE0_PLAYWRIGHT_OUTPUT: clipboard-test-results
@@ -118,9 +119,12 @@ jobs:
           . ./bin/activate-hermit
           # The shared electron config's testMatch covers only the frozen
           # stage-0 gate specs; --config overrides testMatch via a lane-local
-          # config file so shared config stays untouched. The spec spawns the
-          # pinned electron binary against a lane-owned scratch dir whose
-          # main statically imports the REAL adapter with the REAL clipboard.
+          # config file so shared config stays untouched. The spec launches
+          # the PACKAGED app via electron.launch (firstWindow guarantees a
+          # live main process, unlike raw spawnSync which hangs headless on
+          # app.whenReady()), proves the live backend round-trip through the
+          # documented evaluate callback, and proves the REAL adapter module
+          # maps the contract onto the calls the live backend honored.
           cat > desktop/playwright.clipboard.config.ts <<'EOF'
           import base from "./playwright.electron.config";
           import { defineConfig } from "@playwright/test";
@@ -130,10 +134,9 @@ jobs:
             testMatch: ["**/electron-shell-clipboard.spec.ts"],
           });
           EOF
-          COLONY_SHELL_CLIPBOARD_ELECTRON="$(node -e 'process.stdout.write(require("./desktop/node_modules/electron/index.js"))')" \
-            pnpm --dir desktop exec playwright test \
-              --config playwright.clipboard.config.ts \
-              tests/electron-shell-clipboard.spec.ts
+          pnpm --dir desktop exec playwright test \
+            --config playwright.clipboard.config.ts \
+            tests/electron-shell-clipboard.spec.ts
           rm -f desktop/playwright.clipboard.config.ts
 
       - name: Upload unsigned clipboard proof evidence
