@@ -101,7 +101,12 @@ try {
   );
   process.exitCode = 1;
 } finally {
+  // No windows are ever created; quit the app explicitly. app.quit() alone
+  // can leave the process alive when nothing else drives the loop, so force
+  // a synchronous exit after flushing stdio. The report file is already
+  // written by main(), so no evidence is lost.
   app.quit();
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
-process.exit(process.exitCode ?? 0);
+process.stdout.write("", () => process.exit(process.exitCode ?? 0));
+setTimeout(() => process.exit(process.exitCode ?? 0), 2000).unref();
