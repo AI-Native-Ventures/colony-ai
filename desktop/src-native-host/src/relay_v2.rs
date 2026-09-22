@@ -302,7 +302,7 @@ pub fn validate_registry_document(document: &Value) -> ContractResult<()> {
     }
     let schema_names = schemas.keys().cloned().collect::<BTreeSet<_>>();
     if references != schema_names {
-        return Err(ContractError::InvalidRegistry);
+        return Err(ContractError::UnresolvedReference);
     }
     Ok(())
 }
@@ -441,8 +441,17 @@ pub fn validate_inbound_message(message_type: &str, payload: &Value) -> Contract
     let schema = schemas
         .get("relay-message-event")
         .ok_or(ContractError::UnresolvedReference)?;
+    let payload_schema = object(
+        object(
+            schema
+                .get("properties")
+                .ok_or(ContractError::InvalidRegistry)?,
+        )?
+        .get("payload")
+        .ok_or(ContractError::InvalidRegistry)?,
+    )?;
     let variants = object(
-        schema
+        payload_schema
             .get("payloadVariants")
             .ok_or(ContractError::InvalidRegistry)?,
     )?;
@@ -1243,10 +1252,13 @@ fn validate_string_constraints(schema: &Map<String, Value>, value: &str) -> Cont
         .get("minBytes")
         .and_then(Value::as_u64)
         .is_some_and(|minimum| bytes < minimum)
-        || schema
-            .get("maxBytes")
-            .and_then(Value::as_u64)
-            .is_some_and(|maximum| bytes > maximum)
+    {
+        return Err(ContractError::InvalidPayload);
+    }
+    if schema
+        .get("maxBytes")
+        .and_then(Value::as_u64)
+        .is_some_and(|maximum| bytes > maximum)
     {
         return Err(ContractError::Oversized);
     }
