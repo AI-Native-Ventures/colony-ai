@@ -1051,37 +1051,65 @@ pub fn relay_host_lifecycle_event(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub mod wire_fixtures {
+    pub const EVENT_ID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    pub const CONNECTION_ID: &str = "11111111-1111-1111-1111-111111111111";
 
-    const EVENT_ID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    const CONNECTION_ID: &str = "11111111-1111-1111-1111-111111111111";
-
-    /// Raw upstream wire frames. Real relays send bare arrays; envelopes
-    /// are constructed by the translator, never hand-written in fixtures.
-    fn auth_wire(challenge: &str) -> String {
+    /// Raw upstream wire frames shared by both test modules. Real relays
+    /// send bare arrays; envelopes are constructed by the translator, never
+    /// hand-written in fixtures.
+    pub fn auth_wire(challenge: &str) -> String {
         serde_json::json!(["AUTH", challenge]).to_string()
     }
 
-    fn ok_wire(event_id: &str, accepted: bool, message: &str) -> String {
+    pub fn ok_wire(event_id: &str, accepted: bool, message: &str) -> String {
         serde_json::json!(["OK", event_id, accepted, message]).to_string()
     }
 
-    fn event_wire(subscription_id: &str, event: serde_json::Value) -> String {
+    pub fn event_wire(subscription_id: &str, event: serde_json::Value) -> String {
         serde_json::json!(["EVENT", subscription_id, event]).to_string()
     }
 
-    fn eose_wire(subscription_id: &str) -> String {
+    pub fn eose_wire(subscription_id: &str) -> String {
         serde_json::json!(["EOSE", subscription_id]).to_string()
     }
 
-    fn closed_wire(subscription_id: &str, message: &str) -> String {
-        serde_json::json!(["CLOSED", subscription_id, message]).to_string()
-    }
-
-    fn notice_wire(message: &str) -> String {
+    pub fn notice_wire(message: &str) -> String {
         serde_json::json!(["NOTICE", message]).to_string()
     }
+
+    /// Positive-vector coverage for the remaining wire classes, so every
+    /// variant the translator accepts is proven parseable from real wire.
+    #[test]
+    fn wire_parser_covers_event_closed_shapes() {
+        let event = serde_json::json!({
+            "id": EVENT_ID,
+            "pubkey": EVENT_ID,
+            "created_at": 1,
+            "kind": 9,
+            "tags": [],
+            "content": "hello",
+            "sig": "c".repeat(128),
+        });
+        assert!(matches!(
+            parse_wire(&event_wire("sub-1", event)).expect("EVENT parses"),
+            WireInbound::Event { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&closed_wire("sub-1", "auth_required")).expect("CLOSED parses"),
+            WireInbound::Closed { .. }
+        ));
+        assert!(matches!(
+            parse_wire(&notice_wire("maintenance")).expect("NOTICE parses"),
+            WireInbound::Notice { .. }
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::relay_transport::wire_fixtures::*;
 
     fn test_connection() -> RelayConnection {
         RelayConnection {
@@ -1799,6 +1827,7 @@ fn sign_operation(
 #[cfg(test)]
 mod session_tests {
     use super::*;
+    use crate::relay_transport::wire_fixtures::ok_wire;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(name: &str) -> std::path::PathBuf {
