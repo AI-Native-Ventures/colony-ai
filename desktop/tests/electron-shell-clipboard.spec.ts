@@ -82,6 +82,13 @@ test("real backend round-trips and real adapter maps the contract", async () => 
     // leg, so one hosted run diagnoses the cause (this cannot be reproduced
     // locally: a dev Mac has a real window server, the runner does not).
     const live = await application.evaluate(async ({ clipboard }) => {
+      const keys: unknown = (() => {
+        try {
+          return Object.keys(clipboard).slice(0, 20);
+        } catch {
+          return "keys-unavailable";
+        }
+      })();
       const describe = (label: string, value: unknown) =>
         `${label} typeof=${typeof value} tag=${Object.prototype.toString.call(value)} json=${JSON.stringify(value)} len=${typeof value === "string" ? value.length : -1}`;
       const token = `colony-clipboard-proof-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
@@ -89,7 +96,7 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       const plain: unknown = await clipboard.readText();
       if (plain !== token) {
         throw new Error(
-          `clipboard error: real backend plain leg mismatch: wrote ${describe("wrote", token)}, read ${describe("read", plain)}`,
+          `clipboard error: real backend plain leg mismatch: clipboard keys=${JSON.stringify(keys)}; wrote ${describe("wrote", token)}, read ${describe("read", plain)}`,
         );
       }
       const textAlternate = `${token}-text-alternate`;
@@ -98,7 +105,7 @@ test("real backend round-trips and real adapter maps the contract", async () => 
       const alternate: unknown = await clipboard.readText();
       if (alternate !== textAlternate) {
         throw new Error(
-          `clipboard error: real backend html leg mismatch: wrote ${describe("wrote", textAlternate)}, read ${describe("read", alternate)}`,
+          `clipboard error: real backend html leg mismatch: clipboard keys=${JSON.stringify(keys)}; wrote ${describe("wrote", textAlternate)}, read ${describe("read", alternate)}`,
         );
       }
       await clipboard.writeText("");
