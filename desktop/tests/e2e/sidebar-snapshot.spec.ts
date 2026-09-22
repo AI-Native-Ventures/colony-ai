@@ -357,9 +357,7 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
   expect((await getFullSidebarMeasure(page)).markCount).toBeGreaterThan(0);
   // Negative observer control: with no seeded snapshot nothing may ever
   // be recorded, even though the live list paints afterwards.
-  await expect
-    .poll(() => getTrackedSnapshotRows(page))
-    .toEqual([]);
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual([]);
 });
 
 test("a different identity's snapshot is ignored", async ({ page }) => {
@@ -388,9 +386,7 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
   await expect(page.getByTestId("channel-general")).toBeVisible();
   // Negative observer control: the foreign snapshot must never paint,
   // so the tracker records nothing even after the live list settles.
-  await expect
-    .poll(() => getTrackedSnapshotRows(page))
-    .toEqual([]);
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual([]);
 });
 
 test("tracker observes rows removed in the same task", async ({ page }) => {
@@ -413,9 +409,7 @@ test("tracker observes rows removed in the same task", async ({ page }) => {
     document.body.appendChild(parent);
     parent.remove();
   }, ids);
-  await expect
-    .poll(() => getTrackedSnapshotRows(page))
-    .toEqual(ids);
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual(ids);
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
 });
 
