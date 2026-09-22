@@ -40,13 +40,12 @@ async fn d0_seed_disposable_channel() {
         .connect(&std::env::var("DATABASE_URL").expect("DATABASE_URL"))
         .await
         .expect("seed pool");
-    let community_id: uuid::Uuid = sqlx::query_scalar(
-        "SELECT id FROM communities WHERE lower(host) = lower($1)",
-    )
-    .bind(&host)
-    .fetch_one(&pool)
-    .await
-    .expect("seed community must exist");
+    let community_id: uuid::Uuid =
+        sqlx::query_scalar("SELECT id FROM communities WHERE lower(host) = lower($1)")
+            .bind(&host)
+            .fetch_one(&pool)
+            .await
+            .expect("seed community must exist");
     sqlx::query(
         "INSERT INTO relay_members (community_id, pubkey, role, added_by) \
          VALUES ($1, $2, 'member', NULL) \
@@ -78,7 +77,11 @@ async fn d0_seed_disposable_channel() {
         .send()
         .await
         .expect("create channel");
-    assert!(resp.status().is_success(), "channel seed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "channel seed: {}",
+        resp.status()
+    );
 
     // Kind-9 seed event over NIP-42 WS so the helper proof retrieves it
     // from the persisted store, not from any test memory.

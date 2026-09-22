@@ -102,7 +102,8 @@ jobs:
           set -euo pipefail
           # The postgres:16 service image boots with only the postgres db;
           # create the buzz database first (same as the _ci-relay lanes,
-          # which connect their tools to it).
+          # which connect their tools to it). pgschema targets buzz via
+          # PGDATABASE, so every statement below uses --dbname buzz too.
           psql --dbname postgres -v ON_ERROR_STOP=1 <<'SQL'
           SELECT 'CREATE DATABASE buzz' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'buzz')\gexec
           SQL
