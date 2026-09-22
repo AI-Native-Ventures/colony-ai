@@ -77,9 +77,11 @@ class RealChild {
     this.waiters = [];
     this.listeners = new Set();
     this.binding = null;
+    this.stderrText = "";
+    this.closeInfo = null;
   }
 
-  startHello(hello) {
+  startHello(hello, { args = [], timeoutMs = FRAME_TIMEOUT_MS } = {}) {
     const environment = { ...process.env };
     for (const key of [
       "BUZZ_AUTH_TAG",
@@ -90,14 +92,53 @@ class RealChild {
     ]) {
       delete environment[key];
     }
-    this.child = spawn(this.executablePath, [], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      env: environment,
+    return new Promise((resolve, reject) => {
+      this.child = spawn(this.executablePath, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+        env: environment,
+      });
+      const timer = setTimeout(() => {
+        reject(new Error("helper produced no process output before exit-or-timeout"));
+      }, timeoutMs);
+      timer.unref?.();
+      let settled = false;
+      const settleResolve = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const settleReject = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      };
+      this.child.stdout.setEncoding("utf8");
+      this.child.stdout.on("data", (chunk) => this.#onData(String(chunk)));
+      this.child.stderr.setEncoding("utf8");
+      this.child.stderr.on("data", (chunk) => {
+        this.stderrText += String(chunk).slice(0, 4096 - this.stderrText.length);
+      });
+      this.child.on("error", (error) => settleReject(error));
+      this.child.on("close", (code, signal) => {
+        this.closeInfo = { code, signal };
+        if (this.frames.length === 0 && this.waiters.length > 0) {
+          settleReject(
+            new Error(
+              `helper exited before READY (code=${code}, signal=${signal}, stderr=${JSON.stringify(this.stderrText.slice(0, 200))})`,
+            ),
+          );
+        } else {
+          settleResolve();
+        }
+      });
+      this.child.stdin.write(`${JSON.stringify(hello)}\n`, (error) => {
+        if (error) settleReject(error);
+        else settleResolve();
+      });
     });
-    this.child.stdout.setEncoding("utf8");
-    this.child.stdout.on("data", (chunk) => this.#onData(String(chunk)));
-    this.child.stdin.write(`${JSON.stringify(hello)}\n`);
   }
 
   #onData(chunk) {
@@ -182,7 +223,7 @@ if (!helper && !required) {
 
   test("real helper emits production relay-v2 READY fingerprint", async () => {
     const child = new RealChild(helper);
-    child.startHello({
+    await child.startHello({
       type: "HELLO",
       protocolVersion: RELAY_V2_PROTOCOL_VERSION,
       profileId: "relay-v2",
@@ -192,6 +233,11 @@ if (!helper && !required) {
       registryDigest: RELAY_V2_REGISTRY_DIGEST,
     });
     const ready = await child.nextFrame();
+    // Native fail-closed semantics: a wrong-profile HELLO kills the helper
+    // with NO stdout (fatal exit, possibly stderr only). nextFrame() throws
+    // "helper exited before READY" in that case — that IS the recorded
+    // pending-D1 evidence, and it fails (never skips). A READY frame means
+    // a D1-capable binary and is asserted byte-exact below.
     // Pre-D1 identity-only helpers reject the relay-v2 HELLO outright
     // (fatal exit or error frame). That is the pending-integration state:
     // fail here, never skip, so green always means a D1-capable binary.
