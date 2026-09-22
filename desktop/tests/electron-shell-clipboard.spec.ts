@@ -80,21 +80,23 @@ test("real backend round-trips and real adapter maps the contract", async () => 
     // one hosted run diagnoses the cause (this cannot be reproduced locally:
     // a dev Mac has a real window server, the runner does not).
     const live = await application.evaluate(({ clipboard }) => {
+      const describe = (label: string, value: unknown) =>
+        `${label} typeof=${typeof value} tag=${Object.prototype.toString.call(value)} json=${JSON.stringify(value)} len=${typeof value === "string" ? value.length : -1}`;
       const token = `colony-clipboard-proof-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
       clipboard.writeText(token);
-      const plain = clipboard.readText();
+      const plain: unknown = clipboard.readText();
       if (plain !== token) {
         throw new Error(
-          `clipboard error: real backend plain leg mismatch: wrote ${JSON.stringify(token)} (len ${token.length}), read ${JSON.stringify(plain)} (len ${typeof plain === "string" ? plain.length : -1})`,
+          `clipboard error: real backend plain leg mismatch: wrote ${describe("wrote", token)}, read ${describe("read", plain)}`,
         );
       }
       const textAlternate = `${token}-text-alternate`;
       const htmlAlternate = `<b>${token}-html</b>`;
       clipboard.write({ text: textAlternate, html: htmlAlternate });
-      const alternate = clipboard.readText();
+      const alternate: unknown = clipboard.readText();
       if (alternate !== textAlternate) {
         throw new Error(
-          `clipboard error: real backend html leg mismatch: wrote text ${JSON.stringify(textAlternate)} (len ${textAlternate.length}), read ${JSON.stringify(alternate)} (len ${typeof alternate === "string" ? alternate.length : -1})`,
+          `clipboard error: real backend html leg mismatch: wrote ${describe("wrote", textAlternate)}, read ${describe("read", alternate)}`,
         );
       }
       clipboard.writeText("");
