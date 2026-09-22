@@ -11,13 +11,13 @@
 //! edits at schedule time; until then this module is verified by tests
 //! that drive the terminal-owned side of each boundary.
 //!
-//! Agreed interfaces (native owner `bc9add6f`, PROPOSAL — see item 1):
+//! Proposed interfaces (native owner `bc9add6f`, PROPOSAL, see item 1):
 //!
 //! 1. Payloads: per-method validated request schemas under a new
 //!    `terminal-pty` capability (no envelope change; the `{}` rule is
 //!    identity-lane-specific). PROPOSAL, not settled contract: the
 //!    per-method shapes, the deadline split in item 4, and the event
-//!    names in item 3 were agreed with the native owner in A2A
+//!    names in item 3 were suggested by the native owner in A2A
 //!    coordination, which the current root coordinator did not witness.
 //!    Nothing here binds the native lane until it signs off in its own
 //!    review of this proposal.
@@ -337,7 +337,8 @@ mod tests {
         // Guards the two corrected labels: focus writes conditionally on
         // focus-reporting mode, detach drops delivery state. Catches a
         // regression to the first-revision labels (`writes-pty`, `none`).
-        let by_method: std::collections::HashMap<_, _> = registry_fragment()
+        let fragment = registry_fragment();
+        let by_method: std::collections::HashMap<_, _> = fragment
             .methods
             .iter()
             .map(|m| (m.method.as_str(), m.side_effect.as_str()))
