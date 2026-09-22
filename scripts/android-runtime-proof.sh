@@ -12,6 +12,8 @@ source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
 ui_timeout_seconds="${ANDROID_RUNTIME_UI_TIMEOUT_SECONDS:-90}"
 adb_timeout_seconds="${ANDROID_RUNTIME_ADB_TIMEOUT_SECONDS:-20}"
 install_timeout_seconds="${ANDROID_RUNTIME_INSTALL_TIMEOUT_SECONDS:-60}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+parser_path="${ANDROID_RUNTIME_PARSER:-$script_dir/android-runtime-proof-parser.py}"
 
 mkdir -p "$output_dir"
 exec > >(tee "$output_dir/harness.log") 2>&1
@@ -23,8 +25,10 @@ die() {
 
 [[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] ||
     die "ANDROID_PACKAGE is not a valid application id"
-[[ "$activity" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*/\.[A-Za-z_][A-Za-z0-9_]*$ ]] ||
-    die "ANDROID_ACTIVITY is not a valid component name"
+[[ -f "$parser_path" ]] || die "Android runtime parser is missing: $parser_path"
+command -v python3 >/dev/null 2>&1 || die "python3 is not available"
+python3 "$parser_path" component --package "$package" --component "$activity" ||
+    die "ANDROID_ACTIVITY does not belong to ANDROID_PACKAGE"
 [[ -s "$apk_path" ]] || die "APK does not exist or is empty: $apk_path"
 command -v adb >/dev/null 2>&1 || die "adb is not available"
 command -v timeout >/dev/null 2>&1 || die "timeout is not available"
@@ -91,6 +95,7 @@ apk_sha256="$(sha256sum "$apk_path" | awk '{ print $1 }')"
     echo "screen=$(adb_target shell wm size | tr -d '\r\n')"
     echo "package=$package"
     echo "activity=$activity"
+    echo "apk_signing=debug-signed"
     echo "apk_path=$apk_path"
     echo "apk_sha256=$apk_sha256"
     echo "installed_path=$(adb_target shell pm path "$package" | tr -d '\r\n')"
@@ -103,13 +108,32 @@ apk_sha256="$(sha256sum "$apk_path" | awk '{ print $1 }')"
 dump_ui() {
     local label="$1"
     local remote_path="/sdcard/colony-android-runtime-${label}.xml"
-    adb_target shell uiautomator dump "$remote_path" >/dev/null
-    adb_target exec-out cat "$remote_path" > "$output_dir/${label}.xml"
-    adb_target shell rm -f "$remote_path"
+    local output_path="$output_dir/${label}.xml"
+    local temp_path="${output_path}.tmp"
+    rm -f "$output_path" "$temp_path"
+    # Remove the remote dump first so a failed dump cannot be mistaken for a
+    # previous iteration's hierarchy when the same emulator is polled again.
+    adb_target shell rm -f "$remote_path" >/dev/null || return 1
+    adb_target shell uiautomator dump "$remote_path" >/dev/null || return 1
+    adb_target exec-out cat "$remote_path" > "$temp_path" || {
+        rm -f "$temp_path"
+        return 1
+    }
+    adb_target shell rm -f "$remote_path" >/dev/null || {
+        rm -f "$temp_path"
+        return 1
+    }
+    if ! test -s "$temp_path"; then
+        rm -f "$temp_path"
+        return 1
+    fi
+    mv "$temp_path" "$output_path"
 }
 
 capture_screen() {
     local label="$1"
+    foreground_is_expected "$label" ||
+        die "expected package is not foreground before ${label} screenshot"
     adb_target exec-out screencap -p > "$output_dir/${label}.png"
     test -s "$output_dir/${label}.png"
     file "$output_dir/${label}.png"
@@ -117,17 +141,28 @@ capture_screen() {
 
 assert_initial_ui() {
     local ui_file="$1"
-    # Flutter exposes these labels through Android accessibility semantics,
-    # which UIAutomator records as content-desc rather than text attributes.
-    grep -Fq 'content-desc="Welcome to Buzz"' "$ui_file" || return 1
-    grep -Fq 'content-desc="Scan a QR code"' "$ui_file" || return 1
+    python3 "$parser_path" ui --package "$package" "$ui_file"
+}
+
+foreground_is_expected() {
+    local label="$1"
+    local foreground_file="$output_dir/${label}-foreground.txt"
+    local foreground_error="$output_dir/${label}-foreground-error.log"
+    local foreground_output
+    rm -f "$foreground_file"
+    foreground_output="$(adb_target shell dumpsys window windows 2>"$foreground_error" | tr -d '\r')" ||
+        return 1
+    printf '%s\n' "$foreground_output" > "$foreground_file"
+    python3 "$parser_path" foreground --package "$package" < "$foreground_file"
 }
 
 wait_for_initial_ui() {
     local label="$1"
     local deadline=$((SECONDS + ui_timeout_seconds))
+    rm -f "$output_dir/${label}.xml" "$output_dir/${label}-foreground.txt"
     while ((SECONDS < deadline)); do
-        if dump_ui "$label" 2>"$output_dir/${label}-dump-error.log" &&
+        if foreground_is_expected "$label" &&
+            dump_ui "$label" 2>"$output_dir/${label}-dump-error.log" &&
             assert_initial_ui "$output_dir/${label}.xml"; then
             echo "Initial UI assertion passed: $label"
             return 0

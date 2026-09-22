@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/colony-android-runtime.yml"
       - "scripts/android-runtime-proof.sh"
+      - "scripts/android-runtime-proof-parser.py"
       - "scripts/mobile-worktree-overrides.sh"
       - "justfile"
       - "mobile/android/**"
@@ -23,6 +24,7 @@ on:
     paths:
       - ".github/workflows/colony-android-runtime.yml"
       - "scripts/android-runtime-proof.sh"
+      - "scripts/android-runtime-proof-parser.py"
       - "scripts/mobile-worktree-overrides.sh"
       - "justfile"
       - "mobile/android/**"
@@ -80,6 +82,9 @@ jobs:
       - name: Prime the pinned Flutter toolchain
         run: flutter --version
 
+      - name: Verify Android runtime parser fixtures
+        run: python3 scripts/android-runtime-proof-parser.py --self-test
+
       - name: Save Hermit package cache
         if: always() && steps.hermit-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -107,7 +112,7 @@ jobs:
           path: ~/.pub-cache
           key: ${{ runner.os }}-android-runtime-pub-${{ hashFiles('mobile/pubspec.lock') }}
 
-      - name: Build the existing unsigned debug APK
+      - name: Build the existing debug-signed APK
         run: |
           just mobile-build-android
           test -s "$APK_PATH"
