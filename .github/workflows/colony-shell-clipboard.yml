@@ -7,6 +7,8 @@ on:
     paths:
       - "desktop/src-electron/shell-clipboard.mjs"
       - "desktop/src-electron/shell-clipboard.test.mjs"
+      - "desktop/src-electron/shell-clipboard.proof.mjs"
+      - "desktop/tests/electron-shell-clipboard.spec.ts"
       - ".github/workflows/colony-shell-clipboard.yml"
   workflow_dispatch:
 
@@ -36,6 +38,7 @@ jobs:
           set -euo pipefail
           node --check desktop/src-electron/shell-clipboard.mjs
           node --check desktop/src-electron/shell-clipboard.test.mjs
+          node --check desktop/src-electron/shell-clipboard.proof.mjs
 
       # Mocked proof only: the Electron `clipboard` backend is injected as a
       # fake under plain Node. Real Electron clipboard proof (running inside
@@ -44,3 +47,88 @@ jobs:
       - name: Run the focused clipboard adapter tests
         shell: bash
         run: node --test desktop/src-electron/shell-clipboard.test.mjs
+
+  real-backend-proof:
+    name: Real Electron clipboard backend proof (macOS arm64)
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Assert native macOS arm64 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine="$(uname -m)"
+          echo "runner_architecture=$machine"
+          case "$machine" in
+            arm64|aarch64) ;;
+            *)
+              echo "real clipboard proof requires a native arm64 runner" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Activate the pinned toolchain and install desktop dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node --version
+          pnpm --version
+          pnpm install --frozen-lockfile --filter buzz
+          pnpm --dir desktop exec install-electron
+
+      - name: Build the standalone arm64 helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          cargo build --locked --manifest-path desktop/src-native-host/Cargo.toml \
+            --release --target aarch64-apple-darwin \
+            --no-default-features --features identity-system-keyring
+
+      - name: Stage the instrumented candidate with the owned proof helper
+        shell: bash
+        env:
+          COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          # The owned proof helper (shell-clipboard.proof.mjs) is staged into
+          # the ASAR next to main.mjs. Shared stage/pack scripts are NOT
+          # modified: the copy is an explicit lane-local step so the stage-0
+          # package guard keeps proving the frozen file list.
+          rm -rf desktop/dist-electron-instrumented desktop/.stage0-package-instrumented
+          pnpm --dir desktop electron:stage0:stage:instrumented
+          cp desktop/src-electron/shell-clipboard.mjs \
+            desktop/.stage0-package-instrumented/src-electron/shell-clipboard.mjs
+          cp desktop/src-electron/shell-clipboard.proof.mjs \
+            desktop/.stage0-package-instrumented/src-electron/shell-clipboard.proof.mjs
+          COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" \
+            pnpm --dir desktop electron:stage0:package:instrumented
+
+      - name: Run the real-backend clipboard proof in the packaged main process
+        shell: bash
+        env:
+          COLONY_STAGE0_PLAYWRIGHT_OUTPUT: clipboard-test-results
+          COLONY_STAGE0_PLAYWRIGHT_REPORT: clipboard-playwright-electron-report
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright test \
+            --config playwright.electron.config.ts \
+            tests/electron-shell-clipboard.spec.ts
+
+      - name: Upload unsigned clipboard proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-shell-clipboard-macos-arm64-${{ github.sha }}
+          path: |
+            desktop/clipboard-playwright-electron-report
+            desktop/clipboard-test-results
+          if-no-files-found: ignore
+          retention-days: 7
