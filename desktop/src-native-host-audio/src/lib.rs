@@ -5,7 +5,8 @@
 //! microphone, speaker, relay, or the shared host binary. It owns constants,
 //! the v2 frame-header codec (independent reimplementation verified against
 //! upstream fixture vectors, not a code extraction), relay-frame parsing,
-//! dBov level ports, ordering/cancellation/generation rules, and the
+//! dBov level ports, wrapping progression/cancellation/generation rules,
+//! and the
 //! bounded base64 / batch / device-name validators. It performs no audio
 //! I/O, no Opus encode/decode, no jitter-buffer playout, and no
 //! Electron/JS wiring.
@@ -48,7 +49,9 @@
 //! What this crate proves (synthetic/contract only): header round-trips
 //! against upstream fixture vectors, relay-frame parsing, dBov level ports
 //! against upstream vectors, reserved-flag tolerance, short-frame and
-//! empty-payload rejection, wrapping sequence progression and ordering,
+//! empty-payload rejection, wrapping sequence progression (upstream v2 has
+//! no sequence-based stale-fencing; delayed frames after index reassignment
+//! cannot be fenced until v3 per playout.rs),
 //! timestamp stepping, base64 bounds (transport ceiling + 100 KB audio
 //! profile), PCM batch caps, device-name pass-through, cancellation state
 //! transitions with late-completion discard, and generation fencing. Real
@@ -161,19 +164,11 @@ impl FrameHeader {
         ))
     }
 
-    /// True for DTX / comfort-noise frames.
-    pub fn is_dtx(self) -> bool {
+    /// True for DTX / comfort-noise frames. Takes `&self` exactly like
+    /// upstream `wire.rs`.
+    pub fn is_dtx(&self) -> bool {
         self.flags & FLAG_DTX != 0
     }
-}
-
-/// Wrapping "is `next` newer than `prev`?" comparison for 16-bit sequence
-/// numbers. A forward distance in `1..=32768` counts as newer; zero and the
-/// far half of the ring count as stale/duplicate, so a delayed packet from a
-/// previous occupant can never fence out fresh frames after reassignment.
-pub fn seq_is_newer(prev: u16, next: u16) -> bool {
-    let distance = next.wrapping_sub(prev);
-    distance != 0 && distance <= 0x8000
 }
 
 /// Expected timestamp delta for `frame_count` consecutive 20 ms frames.

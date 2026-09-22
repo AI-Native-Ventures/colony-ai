@@ -10,7 +10,7 @@
 
 use colony_native_host_audio::{
     audio_backpressure, audio_level_dbov, expected_ts_delta, generation_is_current, next_seq,
-    next_ts_48k, normalized_speaker_level, parse_relay_frame, pcm_batch_is_decodable, seq_is_newer,
+    next_ts_48k, normalized_speaker_level, parse_relay_frame, pcm_batch_is_decodable,
     transition_audio_request, validate_audio_batch_base64, validate_bounded_base64_field,
     validate_output_device_name, validate_pcm_batch_bytes, validate_pcm_frame_samples,
     AudioRequestEvent, AudioRequestState, FrameHeader, CHANNELS, FLAG_DTX, FRAME_SAMPLES_20MS,
@@ -135,7 +135,10 @@ fn seq_and_ts_step_like_the_upstream_send_loop() {
     }
     assert_eq!((seq, ts), (3, 3 * 960));
     assert_eq!(next_seq(0xFFFF), 0);
-    assert!(seq_is_newer(0xFFFF, next_seq(0xFFFF)));
+    // Upstream v2 has no sequence-based stale-fencing: a delayed frame
+    // after an index reassignment cannot be fenced until v3
+    // (playout.rs: occupancy epoch + roster gate). Wrapping progression
+    // above is the only ordering claim this lane makes.
 }
 
 #[test]
@@ -181,16 +184,6 @@ fn dtx_flag_detected_only_on_bit_zero() {
     };
     assert!(!plain.is_dtx());
     assert!(dtx.is_dtx());
-}
-
-#[test]
-fn sequence_ordering_fences_stale_and_duplicate_frames() {
-    assert!(seq_is_newer(100, 101));
-    assert!(!seq_is_newer(100, 100));
-    assert!(!seq_is_newer(101, 100));
-    // Wrapping: 0xFFFF + 1 == 0 is newer.
-    assert!(seq_is_newer(0xFFFF, 0));
-    assert!(!seq_is_newer(0, 0xFFFF));
 }
 
 #[test]
