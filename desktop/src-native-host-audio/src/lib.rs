@@ -3,9 +3,12 @@
 //! Scope: this crate pins the smallest host-neutral extraction of the upstream
 //! Huddle/raw-PCM/audio-output transport that can be proven without touching a
 //! microphone, speaker, relay, or the shared host binary. It owns constants,
-//! the v2 frame-header codec, ordering/cancellation/generation rules, and the
-//! bounded base64/device-name validators. It performs no audio I/O, no Opus
-//! encode/decode, no jitter-buffer playout, and no Electron/JS wiring.
+//! the v2 frame-header codec (independent reimplementation verified against
+//! upstream fixture vectors, not a code extraction), relay-frame parsing,
+//! dBov level ports, ordering/cancellation/generation rules, and the
+//! bounded base64 / batch / device-name validators. It performs no audio
+//! I/O, no Opus encode/decode, no jitter-buffer playout, and no
+//! Electron/JS wiring.
 //!
 //! Upstream baseline (`origin/develop` in `colony-ai`, Buzz behavior at
 //! `ef2aa1ae`):
@@ -21,6 +24,14 @@
 //!   `CancellationToken`; dropping the sender or `cancel()` shuts the relay
 //!   task down; TTS 24 kHz is upsampled 2x to 48 kHz and chunked into 960-
 //!   sample frames.
+//! - `desktop/src-tauri/src/huddle/mod.rs` (`push_audio_pcm`): renderer
+//!   AudioWorklet PCM arrives as raw f32-LE IPC bodies capped at 100 KB per
+//!   batch; batches fan out to STT and best-effort to the relay encoder.
+//!   The mic lives in the renderer; the host never captures audio.
+//! - `desktop/src-tauri/src/huddle/relay_api.rs` encode loop: Opus VoIP,
+//!   48 kHz mono, 32 kbps, DTX on; f32-LE decode, 960-sample chunks with
+//!   zero-padding, `len % 4 != 0` batches skipped; encoded length ≤ 2 bytes
+//!   flags DTX; `seq`/`ts_48k` start at 0 and wrap-add 1/960 per frame.
 //! - `desktop/src-tauri/src/huddle/audio_output.rs`: `rodio`/`cpal` device
 //!   enumeration `(name, is_default)`; preferred-device name takes effect on
 //!   the next join with fallback to the system default.
@@ -34,13 +45,16 @@
 //! monotonic transport `generationId` fencing, at-most-one terminal response,
 //! no automatic retry of effectful work.
 //!
-//! What this crate proves (synthetic/contract only): header round-trips, level
-//! clamping, reserved-flag tolerance, short-frame rejection, wrapping sequence
-//! ordering, timestamp deltas, base64 bounds, device-name validation,
-//! cancellation state transitions with late-completion discard, and generation
-//! fencing. Real microphone capture, speaker playout, Opus, NetEq/jitter,
-//! relay audio sockets, and renderer/Electron playback remain future hosted
-//! gates and are explicitly not claimed here.
+//! What this crate proves (synthetic/contract only): header round-trips
+//! against upstream fixture vectors, relay-frame parsing, dBov level ports
+//! against upstream vectors, reserved-flag tolerance, short-frame and
+//! empty-payload rejection, wrapping sequence progression and ordering,
+//! timestamp stepping, base64 bounds (transport ceiling + 100 KB audio
+//! profile), PCM batch caps, device-name pass-through, cancellation state
+//! transitions with late-completion discard, and generation fencing. Real
+//! microphone capture, speaker playout, Opus, NetEq/jitter, relay audio
+//! sockets, and renderer/Electron playback remain future hosted gates and
+//! are explicitly not claimed here.
 
 /// Audio sample rate for Huddle voice transport (Opus VoIP, mono).
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
@@ -74,8 +88,25 @@ pub const MAX_BINARY_BYTES_PER_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// Maximum in-flight audio requests per host session.
 pub const MAX_IN_FLIGHT_AUDIO_REQUESTS: usize = 128;
-/// Maximum audio device-name length in bytes.
-pub const MAX_DEVICE_NAME_BYTES: usize = 256;
+/// Maximum renderer-to-host PCM batch size in bytes.
+///
+/// Mirrors `MAX_AUDIO_BATCH_BYTES` in
+/// `desktop/src-tauri/src/huddle/mod.rs`: the upstream `push_audio_pcm`
+/// command accepts raw f32-LE IPC bodies up to 100 KB (a 100 ms batch at
+/// 48 kHz mono f32 is ~19 KB; 100 KB allows headroom without letting a
+/// malformed IPC call allocate unbounded memory). Batches above the cap are
+/// rejected; batches whose length is not a multiple of 4 are accepted at
+/// the IPC boundary and skipped encode-side, exactly like upstream.
+pub const MAX_AUDIO_BATCH_BYTES: usize = 100 * 1024;
+
+/// Maximum encoded Opus packet size in bytes.
+///
+/// Mirrors the 4000-byte encoder output buffers in upstream
+/// `relay_api.rs` (mic send loop) and `jitter.rs` (silence-frame fixture).
+/// Opus packets never cross the renderer/host boundary (encoding stays
+/// host-side), so this bound constrains the future host-internal
+/// runtime slice, not RPC payloads.
+pub const MAX_OPUS_PACKET_BYTES: usize = 4000;
 
 /// Parsed view of one v2 header. Cheap (`Copy`). Semantics mirror
 /// `desktop/src-tauri/src/huddle/wire.rs::FrameHeader`.
@@ -183,26 +214,117 @@ pub fn validate_bounded_base64_field(
     Ok(())
 }
 
-/// Validate a preferred audio-output device name. Empty selects the system
-/// default (upstream `set_audio_output_device` semantics). Non-empty names
-/// must be 1-256 bytes of printable UTF-8 with no NUL, newline, or carriage
-/// return; path separators and `..` are rejected so a device name can never
-/// smuggle a filesystem path into the host.
-pub fn validate_output_device_name(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
-        return Ok(());
+/// Validate one audio-batch base64 field: exact base64 length-math for the
+/// declared decoded length, plus the audio-profile cap
+/// (`MAX_AUDIO_BATCH_BYTES`, mirroring the upstream 100 KB IPC gate).
+/// The 8 MiB `MAX_BINARY_BYTES_PER_FRAME` remains the transport-wide
+/// ceiling enforced beneath this; audio batches never approach it.
+pub fn validate_audio_batch_base64(
+    base64_len: usize,
+    declared_len: usize,
+) -> Result<(), &'static str> {
+    if declared_len > MAX_AUDIO_BATCH_BYTES {
+        return Err("audio_batch_too_large");
     }
-    let len = name.len();
-    if len > MAX_DEVICE_NAME_BYTES {
-        return Err("device_name_too_long");
+    validate_bounded_base64_field(base64_len, declared_len)
+}
+
+/// Parse a complete relay-to-client v2 frame: one `peer_index` prefix byte,
+/// then the 8-byte header, then a non-empty Opus payload.
+///
+/// Mirrors `parse_relay_frame` in upstream `wire.rs`, including the
+/// non-empty-payload rule (a header with no payload is rejected). The relay
+/// authors the prefix byte; clients must never send it.
+pub fn parse_relay_frame(bytes: &[u8]) -> Option<(u8, FrameHeader, &[u8])> {
+    let (&peer_index, framed_audio) = bytes.split_first()?;
+    let (header, opus_payload) = FrameHeader::parse(framed_audio)?;
+    if opus_payload.is_empty() {
+        return None;
     }
-    if name.bytes().any(|b| b == 0 || b == b'\n' || b == b'\r') {
-        return Err("device_name_invalid");
+    Some((peer_index, header, opus_payload))
+}
+
+/// Compute a dBov audio level for a normalized f32 PCM frame.
+///
+/// Exact port of `audio_level_dbov` in upstream `wire.rs`: RMS in dB
+/// relative to full scale (peak 1.0), clamped to `-127..=0`. Empty or
+/// all-silent input returns `-127`; full-scale returns `0`. Runs once per
+/// 20 ms frame on the encode side, before Opus encoding.
+pub fn audio_level_dbov(samples: &[f32]) -> i8 {
+    if samples.is_empty() {
+        return -127;
     }
-    if name.contains('/') || name.contains('\\') || name.contains("..") {
-        return Err("device_name_invalid");
+    let mean_square: f64 = samples
+        .iter()
+        .map(|&s| (s as f64) * (s as f64))
+        .sum::<f64>()
+        / samples.len() as f64;
+    if mean_square <= 0.0 {
+        return -127;
     }
+    let db = 20.0 * mean_square.sqrt().log10();
+    if !db.is_finite() || db <= -127.0 {
+        -127
+    } else if db >= 0.0 {
+        0
+    } else {
+        db.round() as i8
+    }
+}
+
+/// Map a sender-authored dBov level into the 0.0-1.0 UI range.
+///
+/// Exact port of `normalized_speaker_level` in upstream `playout.rs`:
+/// conversational speech sits roughly between -60 and -12 dBov.
+pub fn normalized_speaker_level(level_dbov: i8) -> f32 {
+    ((f32::from(level_dbov) + 60.0) / 48.0).clamp(0.0, 1.0)
+}
+
+/// Advance a wrapping 16-bit sequence number by one frame, mirroring the
+/// upstream send loop (`seq.wrapping_add(1)` per emitted frame).
+pub fn next_seq(seq: u16) -> u16 {
+    seq.wrapping_add(1)
+}
+
+/// Advance a 48 kHz media timestamp by one 20 ms frame, mirroring the
+/// upstream send loop (`ts_48k.wrapping_add(FRAME_TIMESTAMP_DELTA)`).
+pub fn next_ts_48k(ts_48k: u32) -> u32 {
+    ts_48k.wrapping_add(FRAME_TIMESTAMP_DELTA)
+}
+/// Validate a preferred audio-output device name.
+/// Mirrors upstream `set_audio_output_device` in
+/// `desktop/src-tauri/src/huddle/audio_output.rs` exactly: the name is an
+/// opaque string, empty selects the system default, and upstream imposes no
+/// content or length restriction of its own. Any JSON string is therefore
+/// accepted here; the host envelope caps (16 MiB frame, 8 MiB JSON) are the
+/// only transport bounds. A previous revision of this contract invented
+/// path-separator and length restrictions upstream does not have; they are
+/// removed.
+pub fn validate_output_device_name(_name: &str) -> Result<(), &'static str> {
     Ok(())
+}
+
+/// Validate one renderer-to-host PCM batch length in bytes.
+///
+/// Accepts `0..=MAX_AUDIO_BATCH_BYTES`, mirroring the upstream IPC gate.
+/// A zero-length batch is accepted and encodes to nothing (upstream forwards
+/// it; the encode loop emits no frame for empty input).
+pub fn validate_pcm_batch_bytes(len: usize) -> Result<(), &'static str> {
+    if len <= MAX_AUDIO_BATCH_BYTES {
+        Ok(())
+    } else {
+        Err("audio_batch_too_large")
+    }
+}
+
+/// True when a PCM batch length can be decoded as f32-LE samples.
+///
+/// Upstream splits batches with `chunks_exact(4)` and skips the whole batch
+/// (`continue`) when `len % 4 != 0`. The IPC boundary itself accepts such
+/// batches; the encode side drops them. Callers implementing the encode
+/// side must apply this check and skip, never error, on mismatch.
+pub fn pcm_batch_is_decodable(len: usize) -> bool {
+    len % 4 == 0
 }
 
 /// Lifecycle of one host-bound audio request. Mirrors the host-protocol

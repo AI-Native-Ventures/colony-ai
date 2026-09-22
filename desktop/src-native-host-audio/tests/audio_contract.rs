@@ -9,12 +9,14 @@
 //! ticket artifact).
 
 use colony_native_host_audio::{
-    audio_backpressure, expected_ts_delta, generation_is_current, seq_is_newer,
-    transition_audio_request, validate_bounded_base64_field, validate_output_device_name,
-    validate_pcm_frame_samples, AudioRequestEvent, AudioRequestState, FrameHeader, CHANNELS,
-    FLAG_DTX, FRAME_SAMPLES_20MS, FRAME_TIMESTAMP_DELTA, MAX_BINARY_BYTES_PER_FRAME,
-    PCM_QUEUE_DEPTH, PLAYOUT_SAMPLES_10MS, PLAYOUT_TICK_MS, PROTOCOL_VERSION, SAMPLE_RATE_HZ,
-    V2_HEADER_LEN,
+    audio_backpressure, audio_level_dbov, expected_ts_delta, generation_is_current, next_seq,
+    next_ts_48k, normalized_speaker_level, parse_relay_frame, pcm_batch_is_decodable, seq_is_newer,
+    transition_audio_request, validate_audio_batch_base64, validate_bounded_base64_field,
+    validate_output_device_name, validate_pcm_batch_bytes, validate_pcm_frame_samples,
+    AudioRequestEvent, AudioRequestState, FrameHeader, CHANNELS, FLAG_DTX, FRAME_SAMPLES_20MS,
+    FRAME_TIMESTAMP_DELTA, MAX_AUDIO_BATCH_BYTES, MAX_BINARY_BYTES_PER_FRAME,
+    MAX_OPUS_PACKET_BYTES, PCM_QUEUE_DEPTH, PLAYOUT_SAMPLES_10MS, PLAYOUT_TICK_MS,
+    PROTOCOL_VERSION, SAMPLE_RATE_HZ, V2_HEADER_LEN,
 };
 
 #[test]
@@ -28,6 +30,10 @@ fn pcm_constants_match_upstream_huddle_transport() {
     assert_eq!(PROTOCOL_VERSION, 2);
     assert_eq!(V2_HEADER_LEN, 8);
     assert_eq!(PCM_QUEUE_DEPTH, 50);
+    // Upstream IPC gate (huddle/mod.rs) and encoder output buffers
+    // (relay_api.rs send loop, jitter.rs silence fixture).
+    assert_eq!(MAX_AUDIO_BATCH_BYTES, 100 * 1024);
+    assert_eq!(MAX_OPUS_PACKET_BYTES, 4000);
 }
 
 #[test]
@@ -44,6 +50,91 @@ fn header_encode_parse_round_trip_with_payload_remainder() {
     assert_eq!(parsed, header);
     assert_eq!(rest, &[0xDE, 0xAD, 0xBE, 0xEF]);
     assert!(!parsed.is_dtx());
+}
+
+#[test]
+fn header_matches_upstream_fixture_vectors() {
+    // Vectors from wire.rs@origin/develop: round-trip fixture
+    // (seq 0xABCD, ts 0x12345678) and the network-byte-order fixture
+    // (seq 0x0102 -> [0x01, 0x02], ts 0x03040506 -> [0x03..0x06],
+    // level -1 -> 0xFF).
+    let header = FrameHeader {
+        seq: 0xABCD,
+        ts_48k: 0x1234_5678,
+        level_dbov: -30,
+        flags: FLAG_DTX,
+    };
+    let (parsed, tail) = FrameHeader::parse(&header.encode()).expect("parses");
+    assert_eq!(parsed, header);
+    assert!(tail.is_empty());
+
+    let ordered = FrameHeader {
+        seq: 0x0102,
+        ts_48k: 0x0304_0506,
+        level_dbov: -1,
+        flags: 0,
+    }
+    .encode();
+    assert_eq!(ordered[0..2], [0x01, 0x02]);
+    assert_eq!(ordered[2..6], [0x03, 0x04, 0x05, 0x06]);
+    assert_eq!(ordered[6], 0xFF);
+    assert_eq!(ordered[7], 0x00);
+}
+
+#[test]
+fn relay_frame_matches_upstream_prefix_and_payload_rules() {
+    // wire.rs@origin/develop: peer_index 7 + header + b"opus" parses;
+    // a header with no payload is rejected.
+    let header = FrameHeader {
+        seq: 0x0102,
+        ts_48k: 0x0102 * 960,
+        level_dbov: -40,
+        flags: 0,
+    };
+    let mut frame = vec![7u8];
+    frame.extend_from_slice(&header.encode());
+    frame.extend_from_slice(b"opus");
+    let (peer, parsed, payload) = parse_relay_frame(&frame).expect("parses");
+    assert_eq!(peer, 7);
+    assert_eq!(parsed, header);
+    assert_eq!(payload, b"opus");
+
+    let mut header_only = vec![7u8];
+    header_only.extend_from_slice(&header.encode());
+    assert!(parse_relay_frame(&header_only).is_none());
+    assert!(parse_relay_frame(&[]).is_none());
+}
+
+#[test]
+fn level_ports_match_upstream_vectors() {
+    // Vectors from wire.rs@origin/develop audio_level_dbov tests.
+    assert_eq!(audio_level_dbov(&[]), -127);
+    assert_eq!(audio_level_dbov(&[0.0_f32; 960]), -127);
+    assert_eq!(audio_level_dbov(&[1.0_f32; 960]), 0);
+    let sine: Vec<f32> = (0..960)
+        .map(|i| {
+            let t = i as f32 / 48_000.0;
+            0.3 * (2.0 * core::f32::consts::PI * 1_000.0 * t).sin()
+        })
+        .collect();
+    assert!((-20..=-8).contains(&audio_level_dbov(&sine)));
+    // playout.rs normalized_speaker_level: (db + 60) / 48 clamped.
+    assert_eq!(normalized_speaker_level(-127), 0.0);
+    assert_eq!(normalized_speaker_level(0), 1.0);
+    assert!((normalized_speaker_level(-36) - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn seq_and_ts_step_like_the_upstream_send_loop() {
+    // relay_api.rs: seq/ts start at 0, wrapping_add(1)/wrapping_add(960).
+    let (mut seq, mut ts) = (0u16, 0u32);
+    for _ in 0..3 {
+        seq = next_seq(seq);
+        ts = next_ts_48k(ts);
+    }
+    assert_eq!((seq, ts), (3, 3 * 960));
+    assert_eq!(next_seq(0xFFFF), 0);
+    assert!(seq_is_newer(0xFFFF, next_seq(0xFFFF)));
 }
 
 #[test]
@@ -125,14 +216,43 @@ fn base64_bounds_reject_over_cap_declarations() {
 }
 
 #[test]
-fn device_names_accept_default_and_reject_path_smuggling() {
+fn device_names_are_upstream_opaque_strings() {
+    // audio_output.rs@origin/develop: any string is accepted, empty selects
+    // the system default, and upstream imposes no content/length rules.
+    // A prior revision of this contract invented path/length rejections;
+    // they are removed here to match upstream exactly.
     assert!(validate_output_device_name("").is_ok());
     assert!(validate_output_device_name("MacBook Pro Speakers").is_ok());
-    assert!(validate_output_device_name("a/b").is_err());
-    assert!(validate_output_device_name("..").is_err());
-    assert!(validate_output_device_name("name\nwith-newline").is_err());
-    assert!(validate_output_device_name(&"x".repeat(257)).is_err());
-    assert!(validate_output_device_name(&"x".repeat(256)).is_ok());
+    assert!(validate_output_device_name("a/b").is_ok());
+    assert!(validate_output_device_name("..").is_ok());
+    assert!(validate_output_device_name("name\nwith-newline").is_ok());
+    assert!(validate_output_device_name(&"x".repeat(1024)).is_ok());
+}
+
+#[test]
+fn pcm_batches_mirror_the_upstream_ipc_gate() {
+    // mod.rs@origin/develop MAX_AUDIO_BATCH_BYTES = 100 KB; a nominal
+    // 100 ms f32-LE batch is ~19 KB (4800 samples * 4 bytes).
+    assert!(validate_pcm_batch_bytes(0).is_ok());
+    assert!(validate_pcm_batch_bytes(19_200).is_ok());
+    assert!(validate_pcm_batch_bytes(100 * 1024).is_ok());
+    assert!(validate_pcm_batch_bytes(100 * 1024 + 1).is_err());
+    // Encode-side rule (relay_api.rs): non-multiple-of-4 batches are
+    // skipped, never rejected at the IPC boundary.
+    assert!(pcm_batch_is_decodable(19_200));
+    assert!(!pcm_batch_is_decodable(19_201));
+}
+
+#[test]
+fn audio_base64_profile_caps_batches_below_transport_ceiling() {
+    // Nominal 100 ms batch: 4800 f32 samples = 19200 bytes -> 25600 chars.
+    assert!(validate_audio_batch_base64(25_600, 19_200).is_ok());
+    // Full 100 KB batch: 102400 bytes = 3*34133+1 -> 34133*4+4 chars.
+    assert!(validate_audio_batch_base64(136_536, 102_400).is_ok());
+    assert!(validate_audio_batch_base64(136_535, 102_400).is_err());
+    // Above the audio profile but below the 8 MiB transport ceiling:
+    // rejected as audio, even though the transport could carry it.
+    assert!(validate_audio_batch_base64(136_536, 102_401).is_err());
 }
 
 #[test]
