@@ -27,6 +27,10 @@ use serde_json::{json, Value};
 const PREFIX: &str = "@colony-native:";
 const PROFILE_ID: &str = "relay-v2";
 const SESSION_ID: &str = "relay-v2-d0-proof";
+// RelayV2 uses the v1 stdio envelope as its carrier. The RelayV2 protocol
+// version is enforced inside the host's typed operation context, not on this
+// outer HELLO/REQUEST envelope.
+const ENVELOPE_PROTOCOL_VERSION: u64 = 1;
 const FRAME_LIMIT: usize = 16_777_216;
 
 fn required_env(name: &str) -> String {
@@ -103,16 +107,35 @@ impl Harness {
 
     fn hello(&mut self, payload: Value) -> Value {
         self.sequence = 1;
-        self.send(json!({
+        let ready = self.send(json!({
             "type": "HELLO",
-            "protocolVersion": 2,
+            "protocolVersion": ENVELOPE_PROTOCOL_VERSION,
             "profileId": PROFILE_ID,
             "sessionId": SESSION_ID,
             "generationId": 1,
             "buildId": "relay-v2-d0",
-            "registryDigest": "unused-in-relay-mode",
             "payload": payload,
-        }))
+        }));
+        let lifecycle = self.recv();
+        assert_eq!(
+            lifecycle.get("type").and_then(|value| value.as_str()),
+            Some("EVENT"),
+            "relay-v2 ready lifecycle event, got {lifecycle}"
+        );
+        assert_eq!(
+            lifecycle.get("event").and_then(|value| value.as_str()),
+            Some("host_lifecycle"),
+            "relay-v2 ready lifecycle event, got {lifecycle}"
+        );
+        assert_eq!(
+            lifecycle
+                .get("payload")
+                .and_then(|payload| payload.get("state"))
+                .and_then(|value| value.as_str()),
+            Some("ready"),
+            "relay-v2 ready lifecycle event, got {lifecycle}"
+        );
+        ready
     }
 
     fn request(&mut self, capability: &str, method: &str, payload: Value) -> Value {
@@ -120,7 +143,7 @@ impl Harness {
         self.sequence += 1;
         self.send(json!({
             "type": "REQUEST",
-            "protocolVersion": 2,
+            "protocolVersion": ENVELOPE_PROTOCOL_VERSION,
             "profileId": PROFILE_ID,
             "sessionId": SESSION_ID,
             "generationId": 1,
@@ -165,7 +188,7 @@ fn next_event(harness: &mut Harness) -> Value {
     // Responses are RESPONSE frames; anything else here is a harness bug.
     loop {
         let frame = harness.recv();
-        match frame.get("frame_type").and_then(|v| v.as_str()) {
+        match frame.get("type").and_then(|v| v.as_str()) {
             Some("EVENT") => return frame,
             Some("RESPONSE") => panic!("expected streaming EVENT, got RESPONSE {frame}"),
             other => panic!("unexpected frame type {other:?} in {frame}"),
@@ -188,12 +211,12 @@ fn relay_v2_d0_disposable_proof() {
         "flavor": "normal",
     }));
     assert_eq!(
-        ready.get("frame_type").and_then(|v| v.as_str()),
+        ready.get("type").and_then(|v| v.as_str()),
         Some("READY"),
         "relay-v2 READY, got {ready}"
     );
     let digest = ready
-        .get("registry_digest")
+        .get("registryDigest")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     assert!(
