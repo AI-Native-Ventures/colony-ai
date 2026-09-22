@@ -142,6 +142,12 @@ class _LivePeer {
     _cleanupCallbacks.add(cleanup);
   }
 
+  /// Publish over this peer's own authenticated session and return the
+  /// event as signed and sent. The relay OK response carries only the
+  /// acceptance message, so the returned content/id/tags are the signed
+  /// values, never the OK payload. The relay binds EVENT pubkey to the
+  /// NIP-42 identity, so cross-identity publish must use a separate peer,
+  /// not this method with another key.
   Future<NostrEvent> publishMessage({
     required String channelId,
     required String content,
@@ -155,7 +161,14 @@ class _LivePeer {
       tags.add(['e', replyToRootId, '', 'reply']);
     }
     final submitter = SignedEventRelay(session: session, nsec: nsec);
-    return submitter.submit(kind: 9, content: content, tags: tags);
+    NostrEvent? signed;
+    await submitter.submit(
+      kind: 9,
+      content: content,
+      tags: tags,
+      onSigned: (event) => signed = event,
+    );
+    return signed!;
   }
 
   Future<NostrEvent> waitForEvent(
@@ -365,12 +378,11 @@ void main() {
         );
         final matches = history.where((event) => event.id == sent.id).toList();
         expect(matches, hasLength(1));
-        expect(
-          matches.single.content,
-          sent.content,
+        expect(matches.single.content, sent.content);
+        debugPrint(
+          'interop catch-up ok id=${sent.id} '
+          'history=${history.length} content=${matches.single.content}',
         );
-        debugPrint('interop catch-up ok id=${sent.id} '
-            'history=${history.length} content=${matches.single.content}');
       },
       timeout: const Timeout(Duration(minutes: 8)),
     );
@@ -426,26 +438,27 @@ void main() {
       'foreign channel events stay isolated',
       () async {
         if (!requireReady()) return;
-        // Real isolation needs a real foreign channel with a real owner:
-        // create it as a second identity (bootstraps that key as owner),
-        // publish into it as that owner, then assert the matrix peer —
-        // subscribed only to the matrix channel — sees nothing. A bare
-        // UUID nobody owns only proves the relay rejects unknown channels.
+        // Real isolation needs a real foreign channel with a real owner
+        // on a real second connection: NIP-42 binds one pubkey per
+        // connection, so publishing as the foreign owner requires a
+        // session authenticated as that key — not this peer's session
+        // with another key. A bare UUID nobody owns only proves the
+        // relay rejects unknown channels.
         final foreignKeys = nostr.Keys.generate();
         final foreignChannelId = await _createChannel(
           httpClient,
           foreignKeys.nsec,
         );
-        final foreignSubmitter = SignedEventRelay(
-          session: oracle.session,
+        final foreignPeer = _LivePeer(
           nsec: foreignKeys.nsec,
+          name: 'foreign-owner',
         );
-        final foreign = await foreignSubmitter.submit(
-          kind: 9,
+        addTearDown(foreignPeer.dispose);
+        await foreignPeer.start();
+        await foreignPeer.waitConnected();
+        final foreign = await foreignPeer.publishMessage(
+          channelId: foreignChannelId,
           content: 'not for the matrix',
-          tags: [
-            ['h', foreignChannelId],
-          ],
         );
         await Future<void>.delayed(const Duration(seconds: 3));
         expect(
