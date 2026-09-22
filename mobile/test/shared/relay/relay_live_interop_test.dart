@@ -368,10 +368,9 @@ void main() {
         expect(
           matches.single.content,
           sent.content,
-          reason:
-              'catch-up must return the probe content, got '
-              '${matches.single.content}',
         );
+        debugPrint('interop catch-up ok id=${sent.id} '
+            'history=${history.length} content=${matches.single.content}');
       },
       timeout: const Timeout(Duration(minutes: 8)),
     );
