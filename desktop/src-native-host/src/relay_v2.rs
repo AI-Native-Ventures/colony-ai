@@ -1052,7 +1052,9 @@ fn validate_schema_descriptor(
         let pattern = pattern.as_str().ok_or(ContractError::InvalidRegistry)?;
         if !matches!(
             pattern,
-            "^[0-9a-f]{64}$" | "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            "^[0-9a-f]{64}$"
+                | "^[0-9a-f]{128}$"
+                | "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         ) {
             return Err(ContractError::InvalidRegistry);
         }
@@ -1242,6 +1244,7 @@ fn validate_string_constraints(schema: &Map<String, Value>, value: &str) -> Cont
     if let Some(pattern) = schema.get("pattern").and_then(Value::as_str) {
         let matches = match pattern {
             "^[0-9a-f]{64}$" => is_lower_hex(value, 64),
+            "^[0-9a-f]{128}$" => is_lower_hex(value, 128),
             "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" => is_uuid(value),
             _ => false,
         };
