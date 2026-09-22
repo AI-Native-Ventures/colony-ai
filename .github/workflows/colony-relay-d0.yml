@@ -32,6 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
+      # Bring-up intentionally mirrors scripts/start-relay-for-tests.sh
+      # shape-for-shape (service images, health gates, S3 bucket init) but
+      # on an isolated port tuple: a D0 relay on :3000 could collide with a
+      # dev or shared relay on the same runner, so D0 binds 18081 with a
+      # 127.0.0.1:18081 tenant. Only the ports diverge; never "simplify"
+      # this block back onto the shared script without preserving that.
       postgres:
         image: postgres:16
         env:
@@ -54,18 +60,11 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
-      minio:
-        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-        env:
-          MINIO_ROOT_USER: buzz_dev
-          MINIO_ROOT_PASSWORD: buzz_dev_secret
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+      # NOTE: MinIO cannot run here. It needs `server /data` as its
+      # container command, and services: has no key for command args
+      # (options map to docker-create flags placed before the image).
+      # MinIO + bucket init come up via docker compose in a step below,
+      # mirroring docker-compose.yml (pinned quay images, health gate).
     env:
       PGHOST: localhost
       PGPORT: "5432"
@@ -145,11 +144,17 @@ jobs:
         id: relay
         run: |
           set -euo pipefail
-          # Bucket must exist before relay boot (A3 conformance probe is
-          # fatal at startup); same mc image/pin as the harness compose.
-          docker run --rm --network host \
-            quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727 \
-            /bin/sh -c "mc alias set local http://127.0.0.1:9000 buzz_dev buzz_dev_secret && mc mb --ignore-existing local/buzz-media && mc anonymous set none local/buzz-media"
+          # MinIO via compose (service containers cannot take the `server
+          # /data` command); same pinned images + health shape as
+          # docker-compose.yml. Bucket init mirrors minio-init.
+          docker compose up -d minio minio-init
+          for _ in $(seq 1 60); do
+            status="$(docker inspect --format='{{.State.Health.Status}}' buzz-minio 2>/dev/null || echo not_found)"
+            [[ "${status}" == "healthy" ]] && break
+            sleep 2
+          done
+          [[ "$(docker inspect --format='{{.State.Health.Status}}' buzz-minio)" == "healthy" ]] \
+            || { echo "minio did not become healthy" >&2; docker logs buzz-minio || true; exit 1; }
           ./scripts/relay-v2-d0-relay.sh --build --port 18081 | tee /tmp/d0-relay.env
           cat /tmp/d0-relay.env >> "$GITHUB_OUTPUT"
 
