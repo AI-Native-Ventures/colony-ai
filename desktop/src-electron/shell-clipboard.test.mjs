@@ -31,8 +31,16 @@ function fakeClipboard({ text = "", onWrite, onRead, failWith } = {}) {
       calls.push(["write", items]);
       if (failWith) throw failWith;
       if (onWrite) onWrite(items);
+      // No fallback: the double's surface matches the real backend exactly.
+      // A ClipboardItem without the injected record shape is a test bug, and
+      // must fail loudly here rather than pass quietly against a fiction.
       const record = items?.[0]?.record;
-      stored = record?.["text/plain"] ?? valueText(items);
+      if (!record || typeof record["text/plain"] !== "string") {
+        throw new Error(
+          "clipboard error: fake backend received non-record ClipboardItem",
+        );
+      }
+      stored = record["text/plain"];
     },
     async readText() {
       calls.push(["readText"]);
@@ -41,10 +49,6 @@ function fakeClipboard({ text = "", onWrite, onRead, failWith } = {}) {
       return stored;
     },
   };
-}
-
-function valueText(items) {
-  return items?.[0]?.text ?? "";
 }
 
 // Injected ClipboardItem factory shape: { create: (record) => item }.
