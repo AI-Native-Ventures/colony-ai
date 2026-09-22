@@ -91,27 +91,24 @@ jobs:
             --release --target aarch64-apple-darwin \
             --no-default-features --features identity-system-keyring
 
-      - name: Stage the instrumented candidate with the owned proof helper
+      - name: Stage the instrumented candidate (unchanged proof surface)
         shell: bash
         env:
           COLONY_NATIVE_HOST_BIN: ${{ github.workspace }}/desktop/src-native-host/target/aarch64-apple-darwin/release/colony-native-host
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
-          # The owned proof contract (shell-clipboard.proof.mjs) is staged into
-          # the ASAR next to main.mjs for provenance only - the spec drives
-          # the real backend through the documented evaluate callback, with
-          # no imports inside the serialized function. Shared stage/pack
-          # scripts are NOT modified: the copy is an explicit lane-local step
-          # so the stage-0 package guard keeps proving the frozen file list.
+          # The packaged app still launches for the normal/reload surface, but
+          # the clipboard adapter proof runs in its own lane-owned Electron
+          # main process (see the next step). Shared stage/pack scripts are
+          # NOT modified. The stage-0 package guard keeps proving the frozen
+          # file list because this lane adds no files to the package.
           rm -rf desktop/dist-electron-instrumented desktop/.stage0-package-instrumented
           pnpm --dir desktop electron:stage0:stage:instrumented
-          cp desktop/src-electron/shell-clipboard.proof.mjs \
-            desktop/.stage0-package-instrumented/src-electron/shell-clipboard.proof.mjs
           COLONY_NATIVE_HOST_BIN="$COLONY_NATIVE_HOST_BIN" \
             pnpm --dir desktop electron:stage0:package:instrumented
 
-      - name: Run the real-backend clipboard proof in the packaged main process
+      - name: Run the real-adapter clipboard proof in a lane-owned main process
         shell: bash
         env:
           COLONY_STAGE0_PLAYWRIGHT_OUTPUT: clipboard-test-results
@@ -121,7 +118,9 @@ jobs:
           . ./bin/activate-hermit
           # The shared electron config's testMatch covers only the frozen
           # stage-0 gate specs; --config overrides testMatch via a lane-local
-          # config file so shared config stays untouched.
+          # config file so shared config stays untouched. The spec spawns the
+          # pinned electron binary against a lane-owned scratch dir whose
+          # main statically imports the REAL adapter with the REAL clipboard.
           cat > desktop/playwright.clipboard.config.ts <<'EOF'
           import base from "./playwright.electron.config";
           import { defineConfig } from "@playwright/test";
@@ -131,9 +130,10 @@ jobs:
             testMatch: ["**/electron-shell-clipboard.spec.ts"],
           });
           EOF
-          pnpm --dir desktop exec playwright test \
-            --config playwright.clipboard.config.ts \
-            tests/electron-shell-clipboard.spec.ts
+          COLONY_SHELL_CLIPBOARD_ELECTRON="$(node -e 'process.stdout.write(require("./desktop/node_modules/electron/index.js"))')" \
+            pnpm --dir desktop exec playwright test \
+              --config playwright.clipboard.config.ts \
+              tests/electron-shell-clipboard.spec.ts
           rm -f desktop/playwright.clipboard.config.ts
 
       - name: Upload unsigned clipboard proof evidence
