@@ -60,6 +60,9 @@ jobs:
       PGUSER: buzz
       PGPASSWORD: buzz_dev
       PGDATABASE: postgres
+      PG_BIN_DIR: /usr/bin
+      PGSSLMODE: disable
+      BUZZ_POSTGRES_ADMIN_URL: postgres://buzz:buzz_dev@localhost:5432/postgres
       DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz
       REDIS_URL: redis://localhost:6379
     steps:
@@ -86,22 +89,30 @@ jobs:
           PGPORT: "5432"
           PGUSER: buzz
           PGPASSWORD: buzz_dev
-          PGDATABASE: buzz
+          PGDATABASE: postgres
+          PG_BIN_DIR: /usr/bin
+          PGSSLMODE: disable
           PGSCHEMA_PLAN_HOST: localhost
           PGSCHEMA_PLAN_PORT: "5432"
           PGSCHEMA_PLAN_DB: buzz
           PGSCHEMA_PLAN_USER: buzz
           PGSCHEMA_PLAN_PASSWORD: buzz_dev
+          BUZZ_POSTGRES_ADMIN_URL: postgres://buzz:buzz_dev@localhost:5432/postgres
         run: |
           set -euo pipefail
+          # The postgres:16 service image boots with only the postgres db;
+          # create the buzz database first (same as the _ci-relay lanes,
+          # which connect their tools to it).
+          psql --dbname postgres -v ON_ERROR_STOP=1 -c \
+            "SELECT 'CREATE DATABASE buzz' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'buzz')\gexec"
           # Schema first (the relay migrates at boot via BUZZ_AUTO_MIGRATE,
           # but that is too late for the pre-boot community seed).
           ./bin/pgschema apply --file schema/schema.sql --auto-approve
-          psql -v ON_ERROR_STOP=1 < scripts/reconcile-schema-after-pgschema.sql
+          psql --dbname buzz -v ON_ERROR_STOP=1 < scripts/reconcile-schema-after-pgschema.sql
           # Deployment community MUST exist before relay boot: the channel
           # reconciler binds it once outside its retry loop and exits on an
           # unmapped host. lower(host) is the unique index.
-          psql -v ON_ERROR_STOP=1 -c \
+          psql --dbname buzz -v ON_ERROR_STOP=1 -c \
             "INSERT INTO communities (host) VALUES ('127.0.0.1:18081') ON CONFLICT (lower(host)) DO NOTHING;"
 
       - name: Start the disposable relay
@@ -115,13 +126,15 @@ jobs:
         id: seed
         run: |
           set -euo pipefail
+          SEED_NSEC="$(openssl rand -hex 32)"
           SEED_OUT="$(cargo test --profile ci -p buzz-test-client --test relay_v2_d0_seed -- --ignored --nocapture 2>&1 | grep '^D0_SEED ' || true)"
           test -n "${SEED_OUT}" || { echo "seed produced no output" >&2; exit 1; }
           echo "${SEED_OUT#D0_SEED }" | tee /tmp/d0-seed.env
           cat /tmp/d0-seed.env >> "$GITHUB_OUTPUT"
         env:
           RELAY_URL: ${{ steps.relay.outputs.RELAY_URL }}
-          DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz
+          DATABASE_URL: postgres://buzz:buzz_dev@localhost:5432/buzz?sslmode=disable
+          PGSSLMODE: disable
           SEED_NSEC: ${{ env.SEED_NSEC }}
 
       - name: Run the D0 helper proof
@@ -155,5 +168,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: relay-v2-d0-relay-log
-          path: ${{ steps.relay.outputs.RELAY_LOG }}
-          if-no-files-found: ignore
+          path: /tmp/relay-v2-d0.*.log
+          if-no-files-found: warn

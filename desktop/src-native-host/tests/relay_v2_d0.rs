@@ -67,9 +67,7 @@ impl Harness {
         assert!(encoded.len() < FRAME_LIMIT, "frame within host limit");
         encoded.push(b'\n');
         let line = format!("{PREFIX}{}", String::from_utf8(encoded).expect("utf8"));
-        self.stdin
-            .write_all(line.as_bytes())
-            .expect("stdin write");
+        self.stdin.write_all(line.as_bytes()).expect("stdin write");
         self.stdin.write_all(b"\n").expect("frame terminator");
         self.stdin.flush().expect("stdin flush");
         self.recv()
@@ -82,9 +80,7 @@ impl Harness {
                 panic!("timed out waiting for helper frame");
             }
             let mut line = String::new();
-            self.stdout
-                .read_line(&mut line)
-                .expect("stdout readable");
+            self.stdout.read_line(&mut line).expect("stdout readable");
             let line = line.trim();
             if line.is_empty() {
                 continue;
