@@ -21,6 +21,9 @@ FOREGROUND_MARKERS = (
     "mResumedActivity:",
     "mTopResumedActivity:",
 )
+WINDOW_HEADER_RE = re.compile(
+    r"^\s*Window #\d+\s+Window\{[^}]*\bu\d+\s+([^\s}]+)\}:"
+)
 
 
 def valid_package(package: str) -> bool:
@@ -31,7 +34,11 @@ def valid_component(package: str, component: str) -> bool:
     if not valid_package(package):
         return False
     prefix, separator, activity = component.partition("/")
-    return separator == "/" and prefix == package and CLASS_RE.fullmatch(activity) is not None
+    return (
+        separator == "/"
+        and prefix == package
+        and CLASS_RE.fullmatch(activity) is not None
+    )
 
 
 def ui_has_labels(xml_text: str, expected_package: str) -> bool:
@@ -58,14 +65,49 @@ def ui_has_labels(xml_text: str, expected_package: str) -> bool:
 
 
 def foreground_has_package(dumpsys_text: str, expected_package: str) -> bool:
-    """Require the expected package on a focused/resumed window line."""
+    """Require expected focused/resumed or visible-window package ownership.
+
+    Android API 35 no longer emits the older focus markers in every
+    ``dumpsys window windows`` response. Its window blocks still identify the
+    activity component and expose ``isOnScreen``/``isVisible``; use that shape
+    only when no explicit focus marker is present.
+    """
 
     package_token = re.compile(rf"(?<![A-Za-z0-9_.]){re.escape(expected_package)}/")
-    return any(
-        any(marker in line for marker in FOREGROUND_MARKERS)
-        and package_token.search(line) is not None
+    focused_lines = [
+        line
         for line in dumpsys_text.splitlines()
-    )
+        if any(marker in line for marker in FOREGROUND_MARKERS)
+    ]
+    if focused_lines:
+        return any(package_token.search(line) is not None for line in focused_lines)
+
+    current_component: str | None = None
+    on_screen = False
+    visible = False
+
+    def visible_expected_window() -> bool:
+        return (
+            current_component is not None
+            and current_component.startswith(f"{expected_package}/")
+            and on_screen
+            and visible
+        )
+
+    for line in dumpsys_text.splitlines():
+        header = WINDOW_HEADER_RE.match(line)
+        if header:
+            if visible_expected_window():
+                return True
+            current_component = header.group(1)
+            on_screen = False
+            visible = False
+            continue
+        if current_component is not None:
+            on_screen = on_screen or "isOnScreen=true" in line
+            visible = visible or "isVisible=true" in line
+
+    return visible_expected_window()
 
 
 def read_bounded(path: Path) -> str:
@@ -99,12 +141,26 @@ def run_self_test() -> None:
         "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}"
     )
     wrong_foreground = "mCurrentFocus=Window{abc u0 com.android.launcher3/.Launcher}"
+    api35_visible_foreground = """Window #8 Window{abc u0 xyz.block.buzz.mobile/.MainActivity}:
+  mHasSurface=true isReadyForDisplay=true
+  isOnScreen=true
+  isVisible=true
+Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}:
+  isOnScreen=false
+  isVisible=false
+"""
+    wrong_api35_visible_foreground = api35_visible_foreground.replace(
+        "xyz.block.buzz.mobile/.MainActivity",
+        "com.google.android.apps.nexuslauncher/.NexusLauncherActivity",
+    )
 
     assert ui_has_labels(valid_xml, package)
     assert not ui_has_labels(wrong_package_xml, package)
     assert not ui_has_labels(invalid_xml, package)
     assert foreground_has_package(valid_foreground, package)
     assert not foreground_has_package(wrong_foreground, package)
+    assert foreground_has_package(api35_visible_foreground, package)
+    assert not foreground_has_package(wrong_api35_visible_foreground, package)
     assert valid_component(package, f"{package}/.MainActivity")
     assert not valid_component(package, "com.example.other/.MainActivity")
 
@@ -114,6 +170,7 @@ def run_self_test() -> None:
     print("android-runtime-proof-parser self-test passed")
     print("wrong-package labels: old assertion would pass; package-aware parser rejected")
     print("wrong foreground: UI labels valid; foreground assertion rejected")
+    print("API-35 visible window: expected package accepted; wrong package rejected")
     print("mismatched component: component-prefix assertion rejected")
     print("stale/invalid XML: XML-aware parser rejected")
     print("valid package/component/foreground/UI: accepted")
