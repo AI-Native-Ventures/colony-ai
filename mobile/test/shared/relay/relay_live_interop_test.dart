@@ -12,7 +12,6 @@
 // invocation without the flag skips cleanly. Prints pubkeys, event
 // IDs, and channel IDs only — never nsec material, auth headers, or
 // secure-storage contents.
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -22,10 +21,7 @@ import 'package:http/http.dart' as http;
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/shared/auth/auth_provider.dart';
-import 'package:buzz/shared/relay/nostr_models.dart';
 import 'package:buzz/shared/relay/relay.dart';
-import 'package:buzz/shared/relay/relay_session.dart';
-import 'package:buzz/shared/relay/signed_event_relay.dart';
 
 const _relayHttp = String.fromEnvironment(
   'INTEROP_RELAY_HTTP',
