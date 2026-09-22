@@ -1194,18 +1194,20 @@ fn validate_instance(
                         validate_instance(descriptor, value, schemas, stack)?;
                     }
                 }
-            }
-            if let Some(variants) = schema.get("payloadVariants") {
-                let variants = object(variants)?;
-                let message_type = values
-                    .get("messageType")
-                    .and_then(Value::as_str)
-                    .ok_or(ContractError::InvalidPayload)?;
-                let payload = values.get("payload").ok_or(ContractError::InvalidPayload)?;
-                let variant = variants
-                    .get(message_type)
-                    .ok_or(ContractError::UnsupportedMessageType)?;
-                validate_instance(variant, payload, schemas, stack)?;
+                if let Some(payload_schema) = properties.get("payload") {
+                    if let Some(variants) = payload_schema.get("payloadVariants") {
+                        let variants = object(variants)?;
+                        let message_type = values
+                            .get("messageType")
+                            .and_then(Value::as_str)
+                            .ok_or(ContractError::InvalidPayload)?;
+                        let payload = values.get("payload").ok_or(ContractError::InvalidPayload)?;
+                        let variant = variants
+                            .get(message_type)
+                            .ok_or(ContractError::UnsupportedMessageType)?;
+                        validate_instance(variant, payload, schemas, stack)?;
+                    }
+                }
             }
         }
         "string" => {
@@ -1608,6 +1610,15 @@ mod tests {
         })
     }
 
+    fn inbound_envelope(message_type: &str, payload: Value) -> Value {
+        json!({
+            "connectionId": CONNECTION,
+            "generation": 1,
+            "messageType": message_type,
+            "payload": payload,
+        })
+    }
+
     #[test]
     fn frozen_vector_hash_and_reference_closure_are_stable() {
         validate_registry().expect("frozen RelayV2 vector should validate");
@@ -1806,6 +1817,80 @@ mod tests {
             "payload": {"subscriptionId": "sub-1"},
         }))
         .expect("typed message event should pass");
+    }
+
+    #[test]
+    fn inbound_envelopes_bind_parent_discriminator_and_frame_parser() {
+        let event = json!({
+            "id": "a".repeat(64),
+            "pubkey": "b".repeat(64),
+            "created_at": 1,
+            "kind": 9,
+            "tags": [],
+            "content": "hello",
+            "sig": "c".repeat(128),
+        });
+        let cases = vec![
+            ("AUTH", json!({"challengeRef": "challenge"})),
+            (
+                "OK",
+                json!({
+                    "eventId": "a".repeat(64),
+                    "accepted": true,
+                    "messageCode": "accepted",
+                }),
+            ),
+            (
+                "EVENT",
+                json!({
+                    "subscriptionId": "sub-1",
+                    "event": event,
+                }),
+            ),
+            ("EOSE", json!({"subscriptionId": "sub-1"})),
+            (
+                "CLOSED",
+                json!({
+                    "subscriptionId": "sub-1",
+                    "reasonCode": "timeout",
+                }),
+            ),
+            ("NOTICE", json!({"code": "maintenance"})),
+        ];
+
+        for (message_type, payload) in cases {
+            let frame = inbound_envelope(message_type, payload);
+            validate_inbound_event(&frame).expect("full envelope should validate");
+            let bytes = serde_json::to_vec(&frame).expect("envelope should serialize");
+            validate_inbound_frame(&bytes).expect("serialized envelope should validate");
+        }
+
+        let mut missing_discriminator =
+            inbound_envelope("EOSE", json!({"subscriptionId": "sub-1"}));
+        missing_discriminator
+            .as_object_mut()
+            .expect("envelope object")
+            .remove("messageType");
+        assert!(validate_inbound_event(&missing_discriminator).is_err());
+
+        let unknown_discriminator = inbound_envelope("UNKNOWN", json!({"subscriptionId": "sub-1"}));
+        assert!(validate_inbound_event(&unknown_discriminator).is_err());
+
+        let cross_variant = inbound_envelope("AUTH", json!({"subscriptionId": "sub-1"}));
+        let cross_variant_bytes =
+            serde_json::to_vec(&cross_variant).expect("cross-variant envelope should serialize");
+        assert!(validate_inbound_frame(&cross_variant_bytes).is_err());
+
+        let extra_field = inbound_envelope(
+            "EOSE",
+            json!({
+                "subscriptionId": "sub-1",
+                "unexpected": true,
+            }),
+        );
+        let extra_field_bytes =
+            serde_json::to_vec(&extra_field).expect("extra-field envelope should serialize");
+        assert!(validate_inbound_frame(&extra_field_bytes).is_err());
     }
 
     #[test]
