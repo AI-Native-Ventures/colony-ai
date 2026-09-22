@@ -140,7 +140,7 @@ impl Harness {
     fn request(&mut self, capability: &str, method: &str, payload: Value) -> Value {
         let request_id = format!("d0-{}", self.sequence);
         self.sequence += 1;
-        self.send(json!({
+        let mut frame = self.send(json!({
             "type": "REQUEST",
             "protocolVersion": ENVELOPE_PROTOCOL_VERSION,
             "profileId": PROFILE_ID,
@@ -150,7 +150,42 @@ impl Harness {
             "capability": capability,
             "method": method,
             "payload": payload,
-        }))
+        }));
+        let mut lifecycle_states = Vec::new();
+        loop {
+            match frame.get("type").and_then(|value| value.as_str()) {
+                Some("RESPONSE") => {
+                    assert_eq!(
+                        frame.get("requestId").and_then(|value| value.as_str()),
+                        Some(request_id.as_str()),
+                        "response for {method}, got {frame}"
+                    );
+                    if method == "connect" {
+                        assert_eq!(
+                            lifecycle_states,
+                            vec!["relay_connecting", "relay_authenticated"],
+                            "connect lifecycle, got {frame}"
+                        );
+                    }
+                    return frame;
+                }
+                Some("EVENT") => {
+                    assert_eq!(
+                        frame.get("event").and_then(|value| value.as_str()),
+                        Some("host_lifecycle"),
+                        "request lifecycle event, got {frame}"
+                    );
+                    let state = frame
+                        .get("payload")
+                        .and_then(|payload| payload.get("state"))
+                        .and_then(|value| value.as_str())
+                        .expect("lifecycle state");
+                    lifecycle_states.push(state.to_string());
+                }
+                other => panic!("expected RESPONSE or lifecycle EVENT, got {other:?}: {frame}"),
+            }
+            frame = self.recv();
+        }
     }
 
     fn stop(mut self) {
