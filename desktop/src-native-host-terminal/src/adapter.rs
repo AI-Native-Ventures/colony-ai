@@ -63,11 +63,23 @@ pub enum DeadlineClass {
     Request,
 }
 
-/// The nine terminal methods, exactly the upstream command surface.
-/// Control ops (attach/detach/viewport-ready/focus) are `standard`;
-/// streaming-adjacent paths (input/resize/scroll/ack/close) are
-/// `request`. `close` is `request`-class: it must terminate and reap a
-/// live child under the same deadline discipline as any other
+/// The upstream command surface is exactly nine `terminal_*` commands
+/// (`terminal_runtime.rs` lines 370/600/620/638/667/734/752/773/793,
+/// all nine registered in `lib.rs:524-532`):
+/// attach, detach, close, input, resize, scroll, ack, viewport_ready,
+/// focus. The earlier "ten" count in lane prose was an error — it
+/// double-counted the internal `publish_viewport` helper (line 716),
+/// which is not a command, has no IPC boundary, and needs no registry
+/// entry: it republishes the viewport after input-driven
+/// `scroll_to_bottom` inside the already-admitted `terminal_input`
+/// path. This fragment therefore names nine methods with no silent
+/// drop: every upstream command maps 1:1, and the internal helper rides
+/// the frame-credit machine it already rode upstream.
+///
+/// Deadline split: control ops (attach/detach/viewport-ready/focus) are
+/// `standard`; streaming-adjacent paths (input/resize/scroll/ack/close)
+/// are `request`. `close` is `request`-class: it must terminate and reap
+/// a live child under the same deadline discipline as any other
 /// potentially-blocking op, never the fire-and-forget class.
 pub const TERMINAL_METHODS: [MethodSpec; 9] = [
     MethodSpec {
