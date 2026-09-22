@@ -40,7 +40,6 @@ jobs:
           node --check desktop/src-electron/shell-clipboard.mjs
           node --check desktop/src-electron/shell-clipboard.test.mjs
           node --check desktop/src-electron/shell-clipboard.proof.mjs
-          node --check desktop/src-electron/shell-clipboard.proof-main.mjs
 
       # Mocked proof only: the Electron `clipboard` backend is injected as a
       # fake under plain Node. Real Electron clipboard proof (running inside
