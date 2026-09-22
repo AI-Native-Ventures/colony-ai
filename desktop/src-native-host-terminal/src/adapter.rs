@@ -317,13 +317,13 @@ mod tests {
         };
         let mut publisher = FramePublisher::new(v0);
         let id = crate::SubscriptionId::new();
-        let engine = buzz_terminal::Viewport {
-            generation: 0,
+        let engine_size = buzz_terminal::Size {
             columns: 80,
             screen_lines: 24,
+            ..buzz_terminal::Size::default()
         };
         let (term, _actions) =
-            buzz_terminal::Terminal::new(engine.into(), buzz_terminal::Fences::default());
+            buzz_terminal::Terminal::new(engine_size, buzz_terminal::Fences::default());
         let shared = buzz_terminal::SharedTerminal::new(term);
         let mut encoder = buzz_terminal::damage::Encoder::new();
         let snapshot = shared.snapshot(&mut encoder);
