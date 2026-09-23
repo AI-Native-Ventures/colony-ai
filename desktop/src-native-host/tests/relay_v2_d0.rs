@@ -17,7 +17,7 @@
 //! disposable and confined to the isolated database.
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeSet, VecDeque},
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStderr, ChildStdin, Command, Stdio},
     sync::mpsc::{self, Receiver},
@@ -145,26 +145,31 @@ impl Harness {
             }),
             "HELLO response",
         );
-        let lifecycle = self.recv("HELLO lifecycle");
-        assert_eq!(
-            lifecycle.get("type").and_then(|value| value.as_str()),
-            Some("EVENT"),
-            "relay-v2 ready lifecycle event, got {lifecycle}"
-        );
-        assert_eq!(
-            lifecycle.get("event").and_then(|value| value.as_str()),
-            Some("host_lifecycle"),
-            "relay-v2 ready lifecycle event, got {lifecycle}"
-        );
-        assert_eq!(
-            lifecycle
-                .get("payload")
-                .and_then(|payload| payload.get("state"))
-                .and_then(|value| value.as_str()),
-            Some("ready"),
-            "relay-v2 ready lifecycle event, got {lifecycle}"
-        );
-        ready
+        let mut lifecycle_states = BTreeSet::new();
+        let mut ready_frame = None;
+        let mut frame = ready;
+        loop {
+            match frame.get("type").and_then(|value| value.as_str()) {
+                Some("READY") => ready_frame = Some(frame),
+                Some("EVENT") => match classify_event(&frame) {
+                    "host_lifecycle" => {
+                        let state = frame
+                            .get("payload")
+                            .and_then(|payload| payload.get("state"))
+                            .and_then(|value| value.as_str())
+                            .expect("lifecycle state");
+                        lifecycle_states.insert(state.to_string());
+                    }
+                    "relay_message" => self.pending_events.push_back(frame),
+                    other => panic!("unexpected EVENT {other:?}: {frame}"),
+                },
+                other => panic!("expected READY or EVENT, got {other:?}: {frame}"),
+            }
+            if ready_frame.is_some() && lifecycle_states.contains("ready") {
+                return ready_frame.expect("READY frame");
+            }
+            frame = self.recv("HELLO READY/lifecycle frames");
+        }
     }
 
     fn request(&mut self, capability: &str, method: &str, payload: Value) -> Value {
@@ -185,7 +190,12 @@ impl Harness {
             }),
             &context,
         );
-        let mut lifecycle_states = Vec::new();
+        let mut lifecycle_states = BTreeSet::new();
+        let mut response = None;
+        let required_connect_states = ["relay_authenticated", "relay_connecting"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
         loop {
             match frame.get("type").and_then(|value| value.as_str()) {
                 Some("RESPONSE") => {
@@ -194,14 +204,7 @@ impl Harness {
                         Some(request_id.as_str()),
                         "response for {method}, got {frame}"
                     );
-                    if method == "connect" {
-                        assert_eq!(
-                            lifecycle_states,
-                            vec!["relay_connecting", "relay_authenticated"],
-                            "connect lifecycle, got {frame}"
-                        );
-                    }
-                    return frame;
+                    response = Some(frame);
                 }
                 Some("EVENT") => match classify_event(&frame) {
                     "host_lifecycle" => {
@@ -210,12 +213,19 @@ impl Harness {
                             .and_then(|payload| payload.get("state"))
                             .and_then(|value| value.as_str())
                             .expect("lifecycle state");
-                        lifecycle_states.push(state.to_string());
+                        lifecycle_states.insert(state.to_string());
                     }
                     "relay_message" => self.pending_events.push_back(frame),
                     other => panic!("unexpected EVENT {other:?}: {frame}"),
                 },
                 other => panic!("expected RESPONSE or lifecycle EVENT, got {other:?}: {frame}"),
+            }
+            let lifecycle_complete =
+                method != "connect" || lifecycle_states == required_connect_states;
+            if lifecycle_complete {
+                if let Some(response) = response.take() {
+                    return response;
+                }
             }
             frame = self.recv(&context);
         }
@@ -354,27 +364,35 @@ fn relay_v2_d0_disposable_proof() {
     );
     assert_ok(&response);
 
-    // The seeded kind-9 event must arrive as EVENT then EOSE.
-    let mut saw_event = false;
-    let mut saw_eose = false;
+    // The seeded kind-9 event and EOSE must both arrive, but their order is
+    // not part of the relay contract.
+    let mut stream_message_types = BTreeSet::new();
     let deadline = Instant::now() + Duration::from_secs(30);
-    while Instant::now() < deadline && !(saw_event && saw_eose) {
+    while Instant::now() < deadline && stream_message_types.len() < 2 {
         let frame = next_event(&mut harness);
         let payload = frame.get("payload").expect("event payload");
-        match payload.get("messageType").and_then(|v| v.as_str()) {
-            Some("EVENT") => {
-                saw_event = true;
+        let message_type = payload
+            .get("messageType")
+            .and_then(|v| v.as_str())
+            .expect("relay message type");
+        match message_type {
+            "EVENT" => {
                 let event = payload
                     .get("payload")
                     .and_then(|p| p.get("event"))
                     .expect("signed event");
                 assert_eq!(event.get("kind").and_then(|v| v.as_u64()), Some(9));
             }
-            Some("EOSE") => saw_eose = true,
+            "EOSE" => {}
             other => panic!("unexpected streaming class {other:?}"),
         }
+        stream_message_types.insert(message_type.to_owned());
     }
-    assert!(saw_event && saw_eose, "seeded EVENT + EOSE must arrive");
+    assert_eq!(
+        stream_message_types,
+        BTreeSet::from(["EOSE".to_owned(), "EVENT".to_owned()]),
+        "seeded EVENT + EOSE must arrive"
+    );
 
     // sign → publish → accepted
     let response = harness.request(

@@ -908,6 +908,11 @@ pub fn spawn_reader(
                     // The reader releases the shared socket after each timed
                     // poll. Keep a bounded pause before reacquiring it so a
                     // quiet relay cannot starve outbound REQ/EVENT writes.
+                    // An empty 100ms poll plus this 100ms yield can delay an
+                    // inbound frame by up to one tick. That bounded latency is
+                    // intentional: outbound writers must get a fair chance at
+                    // the shared socket instead of being starved by a quiet
+                    // relay.
                     thread::sleep(READ_TICK);
                 }
                 Err(ContractError::RequestTimeout) => {}
