@@ -17,6 +17,7 @@
 //! disposable and confined to the isolated database.
 
 use std::{
+    collections::VecDeque,
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStderr, ChildStdin, Command, Stdio},
     sync::mpsc::{self, Receiver},
@@ -43,6 +44,7 @@ struct Harness {
     stdin: ChildStdin,
     stdout: Receiver<String>,
     stderr: BufReader<ChildStderr>,
+    pending_events: VecDeque<Value>,
     sequence: u64,
 }
 
@@ -80,6 +82,7 @@ impl Harness {
             stdin,
             stdout: stdout_receiver,
             stderr: BufReader::new(stderr),
+            pending_events: VecDeque::new(),
             sequence: 1,
         }
     }
@@ -200,19 +203,18 @@ impl Harness {
                     }
                     return frame;
                 }
-                Some("EVENT") => {
-                    assert_eq!(
-                        frame.get("event").and_then(|value| value.as_str()),
-                        Some("host_lifecycle"),
-                        "request lifecycle event, got {frame}"
-                    );
-                    let state = frame
-                        .get("payload")
-                        .and_then(|payload| payload.get("state"))
-                        .and_then(|value| value.as_str())
-                        .expect("lifecycle state");
-                    lifecycle_states.push(state.to_string());
-                }
+                Some("EVENT") => match frame.get("event").and_then(|value| value.as_str()) {
+                    Some("host_lifecycle") => {
+                        let state = frame
+                            .get("payload")
+                            .and_then(|payload| payload.get("state"))
+                            .and_then(|value| value.as_str())
+                            .expect("lifecycle state");
+                        lifecycle_states.push(state.to_string());
+                    }
+                    Some("relay_message") => self.pending_events.push_back(frame),
+                    other => panic!("unexpected EVENT {other:?}: {frame}"),
+                },
                 other => panic!("expected RESPONSE or lifecycle EVENT, got {other:?}: {frame}"),
             }
             frame = self.recv(&context);
@@ -252,7 +254,10 @@ fn next_event(harness: &mut Harness) -> Value {
     // request responses; pump until one arrives (bounded by recv timeout).
     // Responses are RESPONSE frames; anything else here is a harness bug.
     loop {
-        let frame = harness.recv("relay stream event");
+        let frame = match harness.pending_events.pop_front() {
+            Some(frame) => frame,
+            None => harness.recv("relay stream event"),
+        };
         match frame.get("type").and_then(|v| v.as_str()) {
             Some("EVENT") => return frame,
             Some("RESPONSE") => panic!("expected streaming EVENT, got RESPONSE {frame}"),
