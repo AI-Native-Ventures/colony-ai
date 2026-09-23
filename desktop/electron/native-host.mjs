@@ -4,6 +4,7 @@ import { createWriteStream } from "node:fs";
 
 const PREFIX = "@colony-native:";
 const MAX_FRAME = 16 * 1024 * 1024;
+const MAX_NATIVE_HOST_LOG_BYTES = 2 * 1024 * 1024;
 
 /** Long-running native commands get a longer deadline than ordinary calls. */
 const LONG_COMMANDS = new Map([["save_onboarding_memories", 5 * 60_000]]);
@@ -39,10 +40,11 @@ export class NativeHost extends EventEmitter {
     });
     this.stderrLog = env.COLONY_NATIVE_HOST_LOG
       ? createWriteStream(env.COLONY_NATIVE_HOST_LOG, {
-          flags: "a",
+          flags: "w",
           mode: 0o600,
         })
       : null;
+    this.stderrLogBytes = 0;
     this.stderrLog?.on("error", () => {
       this.stderrLog?.destroy();
       this.stderrLog = null;
@@ -60,7 +62,15 @@ export class NativeHost extends EventEmitter {
     this.child.stdout.on("data", (data) => this.receive(data));
     // Native stderr is private unless an explicit diagnostic path opts in.
     this.child.stderr.on("data", (data) => {
-      this.stderrLog?.write(data);
+      if (!this.stderrLog) return;
+      const remaining = MAX_NATIVE_HOST_LOG_BYTES - this.stderrLogBytes;
+      const captured = data.subarray(0, remaining);
+      this.stderrLogBytes += captured.length;
+      this.stderrLog.write(captured);
+      if (this.stderrLogBytes >= MAX_NATIVE_HOST_LOG_BYTES) {
+        this.stderrLog.end();
+        this.stderrLog = null;
+      }
     });
     this.child.on("error", () => this.fail("Native host could not start"));
     this.exited = new Promise((resolve) =>
