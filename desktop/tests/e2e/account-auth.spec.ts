@@ -213,6 +213,14 @@ test("account auth screens never show key wording", async ({ page }) => {
   await expectNoKeyCopy(page);
   await page.getByTestId("account-auth-create").click();
   await expectNoKeyCopy(page);
+  await page.getByLabel("Email").fill("guard@example.com");
+  await page
+    .getByLabel("Password (at least 10 characters)")
+    .fill("correct-horse-12");
+  await page.getByTestId("account-auth-submit-signup").click();
+  await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
+  await expectNoKeyCopy(page);
+  await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByTestId("account-auth-signin").click();
   await expectNoKeyCopy(page);
@@ -272,6 +280,7 @@ test("contract errors are announced and email_unverified moves to verification",
   await expect(page.getByRole("status")).toContainText(
     "Your email still needs verification.",
   );
+  await expectNoKeyCopy(page);
 
   await page.getByLabel("6-digit code").fill("123456");
   await queueAuthError(page, "verifyEmail", { error: "invalid_credentials" });
@@ -374,12 +383,14 @@ test("claim verification can be deferred without blocking the workspace", async 
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId("account-claim-start").click();
+  await expectNoKeyCopy(page);
   await page.getByLabel("Email").fill("later@example.com");
   await page
     .getByLabel("Password (at least 10 characters)")
     .fill("claim-password-12");
   await page.getByTestId("account-auth-submit-claim").click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
+  await expectNoKeyCopy(page);
 
   await page
     .getByTestId("account-auth-screen-verify")
