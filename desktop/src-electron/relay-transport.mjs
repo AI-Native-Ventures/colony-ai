@@ -95,14 +95,11 @@ function defaultNow() {
 /**
  * Typed RelayV2 adapter over a caller-owned child transport.
  *
- * child must provide ONE of:
- *   A. request({ capability, method, payload, requestId, deadlineMs })
- *      -> Promise<responsePayload> (mock/test doubles resolve the decoded
- *      response payload directly);
- *   B. request({ capability, method, payload, requestId, deadlineMs })
+ * child must provide:
+ *   request({ capability, method, payload, requestId, deadlineMs })
  *      -> Promise<responseEnvelope> where the envelope is the native
  *      stdio RESPONSE frame ({ type:"RESPONSE", outcome, payload, error })
- *      (real helper path; the adapter unwraps and validates the payload).
+ *      (the adapter unwraps and validates the payload);
  *   onLifecycle(listener) -> unsubscribe
  *   getBindingState() -> { generationId, ... } | null
  *
@@ -330,8 +327,8 @@ export class RelayTransport {
       settleFail(new RelayTransportError("stale_generation"));
       return;
     }
-    // Real-helper path: unwrap the native stdio RESPONSE envelope. Mock
-    // doubles resolve the decoded payload directly and skip this branch.
+    // Unwrap the native stdio RESPONSE envelope before validating the
+    // operation-specific RelayV2 payload.
     let payload = response;
     if (payload && typeof payload === "object" && !Array.isArray(payload)) {
       const frameType = payload.type ?? payload.frame_type;
@@ -407,21 +404,33 @@ export class RelayTransport {
       }
       return;
     }
-    const messageType = frame?.messageType;
-    const payload = frame?.payload;
-    if (typeof messageType !== "string" || payload === undefined) return;
+    // Native relay traffic is an outer stdio EVENT whose `event` classifier
+    // selects an inner RelayV2 relay-message envelope. Keep direct inner
+    // frames as a compatibility seam for callers that already decoded the
+    // outer event, but make the production wrapper the exercised path.
+    const relayFrame =
+      frame?.type === "EVENT" && frame?.event === "relay_message"
+        ? frame.payload
+        : frame;
+    const messageType = relayFrame?.messageType;
+    const payload = relayFrame?.payload;
+    const relayGeneration =
+      relayFrame?.generation ?? frame?.generationId ?? this.generation;
+    if (
+      typeof messageType !== "string" ||
+      payload === undefined ||
+      relayGeneration !== this.generation
+    )
+      return;
     let event;
     try {
-      if (frame?.rawFrame instanceof Uint8Array) {
-        event = validateRelayV2InboundFrame(frame.rawFrame);
-      } else {
-        event = validateRelayV2InboundEvent({
-          connectionId: frame.connectionId ?? this.connectionId,
-          generation: this.generation,
-          messageType,
-          payload,
-        });
-      }
+      event = validateRelayV2InboundEvent({
+        connectionId:
+          relayFrame?.connectionId ?? frame?.connectionId ?? this.connectionId,
+        generation: relayGeneration,
+        messageType,
+        payload,
+      });
     } catch {
       return;
     }

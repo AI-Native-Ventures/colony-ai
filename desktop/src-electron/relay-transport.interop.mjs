@@ -1,7 +1,9 @@
 // Real-helper interop for the RelayV2 transport adapter (hosted only).
 //
 // Spawns the actual native helper binary and drives RelayTransport through
-// it. Until native PR24 merges, the helper exposes only the frozen
+// it. The helper carries RelayV2 operations inside the v1 stdio envelope;
+// RelayV2's protocolVersion:2 applies to the typed operation context. Until
+// native PR24 merges, the helper exposes only the frozen
 // lifecycle/validation surface (READY/digest pinning, malformed rejection,
 // rebind fencing) — no socket opens. Cases are written against the frozen
 // contract so they hold identically once the D1 socket primitive lands:
@@ -33,11 +35,14 @@ import { fileURLToPath } from "node:url";
 import { RelayTransport } from "./relay-transport.mjs";
 import {
   RELAY_V2_PROFILE_ID,
-  RELAY_V2_PROTOCOL_VERSION,
   RELAY_V2_REGISTRY_DIGEST,
 } from "./relay-protocol.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+const NATIVE_FRAME_PREFIX = "@colony-native:";
+const NATIVE_ENVELOPE_PROTOCOL_VERSION = 1;
+const RELAY_V2_ARGS = Object.freeze(["--relay-v2"]);
+const RELAY_V2_SESSION_ID = "relay-transport-interop";
 const FRAME_TIMEOUT_MS = 8_000;
 const CLOSE_TIMEOUT_MS = 3_000;
 const AUTHORITY = "a".repeat(64);
@@ -108,7 +113,10 @@ class RealChild {
     this.closeInfo = null;
   }
 
-  startHello(hello, { args = [], timeoutMs = FRAME_TIMEOUT_MS } = {}) {
+  startHello(
+    hello,
+    { args = RELAY_V2_ARGS, timeoutMs = FRAME_TIMEOUT_MS } = {},
+  ) {
     const environment = { ...process.env };
     for (const key of [
       "BUZZ_AUTH_TAG",
@@ -164,10 +172,13 @@ class RealChild {
           settleResolve();
         }
       });
-      this.child.stdin.write(`${JSON.stringify(hello)}\n`, (error) => {
-        if (error) settleReject(error);
-        else settleResolve();
-      });
+      this.child.stdin.write(
+        `${NATIVE_FRAME_PREFIX}${JSON.stringify(hello)}\n`,
+        (error) => {
+          if (error) settleReject(error);
+          else settleResolve();
+        },
+      );
     });
   }
 
@@ -179,9 +190,10 @@ class RealChild {
       const line = this.buffer.slice(0, index).trim();
       this.buffer = this.buffer.slice(index + 1);
       if (line.length === 0) continue;
+      if (!line.startsWith(NATIVE_FRAME_PREFIX)) continue;
       let frame;
       try {
-        frame = JSON.parse(line);
+        frame = JSON.parse(line.slice(NATIVE_FRAME_PREFIX.length));
       } catch {
         continue;
       }
@@ -212,34 +224,39 @@ class RealChild {
     });
   }
 
-  async request({ capability, method, payload, requestId, deadlineMs }) {
+  async request({ capability, method, payload, requestId }) {
     const id =
       typeof requestId === "string" && requestId.length > 0
         ? requestId
         : `interop-${Date.now()}-${Math.floor(Math.random() * 2 ** 32).toString(16)}`;
     const frame = {
       type: "REQUEST",
-      protocolVersion: RELAY_V2_PROTOCOL_VERSION,
-      profileId: "relay-v2",
-      sessionId: "relay-transport-interop",
+      protocolVersion: NATIVE_ENVELOPE_PROTOCOL_VERSION,
+      profileId: RELAY_V2_PROFILE_ID,
+      sessionId: RELAY_V2_SESSION_ID,
       generationId: this.binding?.generationId ?? 1,
-      buildId: "relay-transport-interop",
-      registryDigest: RELAY_V2_REGISTRY_DIGEST,
       requestId: id,
       capability,
       method,
       payload,
     };
-    if (deadlineMs !== undefined) frame.deadlineMs = deadlineMs;
     await new Promise((resolve, reject) => {
-      this.child.stdin.write(`${JSON.stringify(frame)}\n`, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
+      this.child.stdin.write(
+        `${NATIVE_FRAME_PREFIX}${JSON.stringify(frame)}\n`,
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        },
+      );
     });
     const timeoutMs = FRAME_TIMEOUT_MS;
     for (;;) {
       const response = await this.nextFrame(timeoutMs);
+      const frameType = response.type ?? response.frame_type;
+      if (frameType === "EVENT") continue;
+      if (frameType !== "RESPONSE") {
+        throw new Error("helper returned an unexpected frame type");
+      }
       const rid = response.requestId ?? response.request_id;
       if (rid !== undefined && rid !== id) continue;
       // Return the RAW native RESPONSE envelope; the adapter under test
@@ -294,12 +311,11 @@ if (!helper && !required) {
     await child.startHello(
       {
         type: "HELLO",
-        protocolVersion: RELAY_V2_PROTOCOL_VERSION,
-        profileId: "relay-v2",
-        sessionId: "relay-transport-interop",
+        protocolVersion: NATIVE_ENVELOPE_PROTOCOL_VERSION,
+        profileId: RELAY_V2_PROFILE_ID,
+        sessionId: RELAY_V2_SESSION_ID,
         generationId: 1,
         buildId: "relay-transport-interop",
-        registryDigest: RELAY_V2_REGISTRY_DIGEST,
         payload: {
           relayUrl: "ws://127.0.0.1:9",
           authorityRef: AUTHORITY,
@@ -307,7 +323,7 @@ if (!helper && !required) {
           flavor: "normal",
         },
       },
-      { args: ["--relay-v2"] },
+      { args: RELAY_V2_ARGS },
     );
     const ready = await child.nextFrame();
     // Native fail-closed semantics: a wrong-profile HELLO kills the helper
@@ -348,12 +364,11 @@ if (!helper && !required) {
     await child.startHello(
       {
         type: "HELLO",
-        protocolVersion: RELAY_V2_PROTOCOL_VERSION,
-        profileId: "relay-v2",
-        sessionId: "relay-transport-interop",
+        protocolVersion: NATIVE_ENVELOPE_PROTOCOL_VERSION,
+        profileId: RELAY_V2_PROFILE_ID,
+        sessionId: RELAY_V2_SESSION_ID,
         generationId: 1,
         buildId: "relay-transport-interop",
-        registryDigest: RELAY_V2_REGISTRY_DIGEST,
         payload: {
           relayUrl: "ws://127.0.0.1:9",
           authorityRef: AUTHORITY,
@@ -361,7 +376,7 @@ if (!helper && !required) {
           flavor: "normal",
         },
       },
-      { args: ["--relay-v2"] },
+      { args: RELAY_V2_ARGS },
     );
     const ready = await child.nextFrame();
     assert.equal(ready.type ?? ready.frame_type, "READY");
