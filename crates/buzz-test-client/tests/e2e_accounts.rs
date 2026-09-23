@@ -8,6 +8,7 @@
 //! ```
 
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -21,6 +22,7 @@ use uuid::Uuid;
 const MAIL_LOG: &str = "/tmp/buzz-relay.log";
 const MAIL_CODE_WAIT: Duration = Duration::from_secs(30);
 const MAIL_LOG_TAIL_BYTES: u64 = 64 * 1024;
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 struct AccountSession {
     pubkey: String,
@@ -31,6 +33,10 @@ struct AccountSession {
 
 fn relay_url() -> String {
     std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://localhost:3000".to_string())
+}
+
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(reqwest::Client::new)
 }
 
 fn relay_http_url() -> String {
@@ -76,7 +82,7 @@ async fn post_json_nip98(path: &str, body: &Value, keys: &Keys) -> reqwest::Resp
 async fn request_json(path: &str, body: &Value, signer: Option<&Keys>) -> reqwest::Response {
     let url = format!("{}{}", relay_http_url(), path);
     let serialized = serde_json::to_string(body).expect("serialize account request");
-    let mut request = reqwest::Client::new()
+    let mut request = http_client()
         .post(&url)
         .header(reqwest::header::CONTENT_TYPE, "application/json");
     if let Some(keys) = signer {
@@ -261,7 +267,7 @@ async fn post_google_token(email: &str, subject: &str) -> String {
         .unwrap_or_else(|_| "http://127.0.0.1:8765/token".to_string());
     let audience = std::env::var("COLONY_TEST_GOOGLE_AUDIENCE")
         .unwrap_or_else(|_| "colony-auth-e2e-client".to_string());
-    let response = reqwest::Client::new()
+    let response = http_client()
         .post(token_url)
         .json(&json!({ "email": email, "subject": subject, "audience": audience }))
         .send()
