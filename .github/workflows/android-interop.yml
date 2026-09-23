@@ -1,0 +1,184 @@
+name: Android relay interop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+    paths:
+      - ".github/workflows/android-interop.yml"
+      - "scripts/interop/android-interop-*"
+      - "scripts/start-relay-for-tests.sh"
+      - "scripts/reconcile-schema-after-pgschema.sql"
+      - "schema/schema.sql"
+      - "justfile"
+      - "docker-compose.yml"
+      - "crates/buzz-core/**"
+      - "crates/buzz-db/**"
+      - "crates/buzz-auth/**"
+      - "crates/buzz-relay/**"
+      - "mobile/android/**"
+      - "mobile/assets/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+      - "mobile/test/shared/relay/relay_live_interop_test.dart"
+      - "desktop/src/features/messages/**"
+  pull_request:
+    branches:
+      - feat/phase1-drive
+    paths:
+      - ".github/workflows/android-interop.yml"
+      - "scripts/interop/android-interop-*"
+      - "scripts/start-relay-for-tests.sh"
+      - "scripts/reconcile-schema-after-pgschema.sql"
+      - "schema/schema.sql"
+      - "justfile"
+      - "docker-compose.yml"
+      - "crates/buzz-core/**"
+      - "crates/buzz-db/**"
+      - "crates/buzz-auth/**"
+      - "crates/buzz-relay/**"
+      - "mobile/android/**"
+      - "mobile/assets/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+      - "mobile/test/shared/relay/relay_live_interop_test.dart"
+      - "desktop/src/features/messages/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-interop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PACKAGE: xyz.block.buzz.mobile
+  ANDROID_ACTIVITY: xyz.block.buzz.mobile/.MainActivity
+  APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
+  ANDROID_INTEROP_ARTIFACT_DIR: android-interop-artifacts
+  SOURCE_SHA: ${{ github.sha }}
+  INTEROP_RELAY_HTTP: http://localhost:3000
+  CARGO_BUILD_JOBS: 4
+
+jobs:
+  android-interop:
+    name: Android emulator with live relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Prime Flutter and Rust toolchains
+        run: |
+          flutter --version
+          cargo --version
+
+      - name: Set up Node for the nostr-tools peer
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Install the pinned Nostr peer dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          peer_dir="$RUNNER_TEMP/android-interop-peer"
+          mkdir -p "$peer_dir"
+          npm install --prefix "$peer_dir" --no-save --package-lock=false \
+            --ignore-scripts --no-audit --no-fund nostr-tools@2.23.12
+          cp scripts/interop/android-interop-peer.mjs "$peer_dir/android-interop-peer.mjs"
+          echo "ANDROID_INTEROP_PEER_DIR=$peer_dir" >> "$GITHUB_ENV"
+          node "$peer_dir/android-interop-peer.mjs" verify
+          node "$peer_dir/android-interop-peer.mjs" provision \
+            --key "$RUNNER_TEMP/android-interop-peer/peer-key.json" \
+            --invite "$RUNNER_TEMP/android-interop-peer/invite.json"
+
+      - name: Restore Flutter package cache
+        id: pub-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-android-interop-pub-${{ hashFiles('mobile/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-android-interop-pub-
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Save Flutter package cache
+        if: always() && steps.pub-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        continue-on-error: true
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-android-interop-pub-${{ hashFiles('mobile/pubspec.lock') }}
+
+      - name: Build the debug Android app
+        run: |
+          just mobile-build-android
+          test -s "$APK_PATH"
+          sha256sum "$APK_PATH"
+
+      - name: Start and seed the disposable relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/start-relay-for-tests.sh
+          bash scripts/interop/android-interop-relay.sh seed-owner
+          node "$ANDROID_INTEROP_PEER_DIR/android-interop-peer.mjs" mint-invite \
+            --output "$ANDROID_INTEROP_INVITE_PATH"
+
+      - name: Require the normal Linux emulator acceleration path
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Sign in and prove Android live relay interoperability
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 420
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash scripts/interop/android-interop-proof.sh
+
+      - name: Stop disposable relay services
+        if: always()
+        shell: bash
+        run: |
+          if [[ -s /tmp/buzz-relay.pid ]]; then
+            kill -TERM "$(cat /tmp/buzz-relay.pid)" 2>/dev/null || true
+          fi
+          docker compose down -v || true
+
+      - name: Upload Android interop screenshots and protocol evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-interop-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: android-interop-artifacts
