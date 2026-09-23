@@ -305,6 +305,8 @@ test("contract errors are announced and email_unverified moves to verification",
     page.getByRole("button", { name: "Resend code in 60s" }),
   ).toBeDisabled();
   await page.clock.fastForward(60_000);
+  const rateLimitTime = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(new Date(rateLimitTime));
   await queueAuthError(page, "resendCode", {
     error: "rate_limited",
     retry_after_secs: 2,
