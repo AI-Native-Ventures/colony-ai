@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { app, ipcMain, net, protocol, screen, shell } from "electron";
+import { Menu, app, ipcMain, net, protocol, screen, shell } from "electron";
+import { installAppMenu } from "./app-menu.mjs";
 import { createAppWindow, validWindowLabel } from "./app-window.mjs";
 import { NativeHost } from "./native-host.mjs";
 
@@ -27,6 +28,8 @@ function nativeHostPath() {
   );
 }
 
+// Product name shown in the macOS app menu and About panel.
+app.setName("Buzz");
 app.setPath(
   "userData",
   process.env.COLONY_ELECTRON_USER_DATA ||
@@ -152,6 +155,7 @@ function applyWindowAction(window, action) {
 
 async function boot() {
   await app.whenReady();
+  installAppMenu({ Menu, app });
   const html = devUrl
     ? await (await fetch(devUrl)).text()
     : await readFile(path.join(desktop, "dist", "index.html"), "utf8");
