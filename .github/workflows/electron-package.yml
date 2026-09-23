@@ -187,6 +187,8 @@ jobs:
       - name: Smoke launch packaged app (macOS and Linux)
         if: runner.os != 'Windows'
         shell: bash
+        env:
+          NODE_OPTIONS: ""
         run: |
           set -euo pipefail
           if [ "${{ matrix.platform }}" = "linux" ]; then
@@ -218,6 +220,8 @@ jobs:
       - name: Smoke launch packaged app (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          NODE_OPTIONS: ""
         run: |
           $env:COLONY_ELECTRON_SMOKE = "1"
           $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/Buzz.exe"
