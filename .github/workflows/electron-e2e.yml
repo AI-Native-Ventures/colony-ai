@@ -353,9 +353,11 @@ jobs:
             proof_home="$proof_root/home"
             proof_config="$proof_root/config"
             proof_runtime="$proof_root/runtime"
+            runner_home="$HOME"
+            export HERMIT_STATE_DIR="$runner_home/.cache/hermit"
             mkdir -p "$proof_home/.local/share/keyrings" "$proof_config" "$proof_runtime"
             chmod 700 "$proof_home" "$proof_runtime"
-            trap 'rm -rf "$proof_root"' EXIT
+            trap 'rm -rf "$proof_home/.local/share/keyrings" "$proof_config" "$proof_runtime/keyring"' EXIT
             export HOME="$proof_home"
             export XDG_CONFIG_HOME="$proof_config"
             export XDG_RUNTIME_DIR="$proof_runtime"
