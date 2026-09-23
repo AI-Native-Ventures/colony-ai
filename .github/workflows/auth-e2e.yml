@@ -1,0 +1,57 @@
+name: Account Auth E2E
+
+on:
+  push:
+    branches:
+      - feat/phase3-auth
+  pull_request:
+    branches:
+      - feat/phase3-auth
+    paths:
+      - ".github/workflows/auth-e2e.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/buzz-auth/**"
+      - "crates/buzz-core/**"
+      - "crates/buzz-db/**"
+      - "crates/buzz-relay/**"
+      - "crates/buzz-test-client/Cargo.toml"
+      - "crates/buzz-test-client/tests/e2e_accounts.rs"
+      - "crates/buzz-ws-client/**"
+      - "docs/auth-accounts.md"
+      - "migrations/**"
+      - "schema/schema.sql"
+      - "scripts/auth-e2e/**"
+      - "scripts/reconcile-schema-after-pgschema.sql"
+      - "scripts/start-relay-for-tests.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  accounts:
+    name: Account auth against disposable relay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      - name: Run account auth E2E
+        shell: bash
+        run: scripts/auth-e2e/run.sh 2>&1 | tee /tmp/auth-e2e-harness.log
