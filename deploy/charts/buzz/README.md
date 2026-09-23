@@ -50,6 +50,12 @@ extension and `gif` descriptor in NIP-11, then receive KLIPY-hosted media URLs.
 See [`docs/gif-search.md`](../../../docs/gif-search.md) for the protocol and
 security boundaries.
 
+To enable email and Google accounts, add `COLONY_ACCOUNT_KEK` to the Secret as
+base64 for 32 random bytes and keep it stable while account envelopes use it.
+Add `RESEND_API_KEY` and `COLONY_MAIL_FROM` for email delivery, and set
+`COLONY_GOOGLE_CLIENT_IDS` to the comma-separated OAuth client ids. The relay
+uses the same keys from the Secret selected by `secrets.existingSecret`.
+
 See:
 
 - [`examples/argocd-app.yaml`](examples/argocd-app.yaml) — ArgoCD Application

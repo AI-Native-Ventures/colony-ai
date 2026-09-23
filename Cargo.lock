@@ -1123,6 +1123,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -1313,7 +1314,9 @@ dependencies = [
 name = "buzz-relay"
 version = "0.2.1"
 dependencies = [
+ "aes-gcm",
  "anyhow",
+ "argon2",
  "async-compression",
  "async-trait",
  "axum",
@@ -1343,6 +1346,7 @@ dependencies = [
  "hex",
  "hmac 0.13.0",
  "infer",
+ "jsonwebtoken",
  "mesh-llm-host-runtime",
  "mesh-llm-sdk",
  "metrics",
@@ -1378,6 +1382,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

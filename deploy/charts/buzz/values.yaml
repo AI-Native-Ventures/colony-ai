@@ -95,6 +95,10 @@ ownerPubkey: ""
 #   BUZZ_S3_ACCESS_KEY            — S3 access key
 #   BUZZ_S3_SECRET_KEY            — S3 secret key
 #   BUZZ_KLIPY_API_KEY            — KLIPY GIF search key; omit to disable GIF search
+#   COLONY_ACCOUNT_KEK            : base64 of 32 random bytes; keep stable for account custody
+#   RESEND_API_KEY                : Resend API token; omit to disable email delivery
+#   COLONY_MAIL_FROM              : sender address for account mail
+#   COLONY_GOOGLE_CLIENT_IDS      : comma-separated Google OAuth client audiences
 secrets:
   existingSecret: ""
   # Inline overrides (NOT recommended for production; they land in values).
