@@ -185,6 +185,26 @@ def wait_input(timeout_seconds: int) -> ET.Element:
     raise UiError(f"timed out waiting for message input; UI={brief_tree(last_root)}")
 
 
+def wait_input_value(expected: str, timeout_seconds: int) -> ET.Element:
+    deadline = time.monotonic() + timeout_seconds
+    last_value = ""
+    while time.monotonic() < deadline:
+        try:
+            field = input_node(dump_xml())
+            if field is not None:
+                last_value = field.attrib.get("text", "")
+                if last_value == expected:
+                    print(f"PASS ui-input-value length={len(expected)}")
+                    return field
+        except UiError as error:
+            print(f"WAIT ui-dump-retry error={error}", file=sys.stderr)
+        time.sleep(1)
+    raise UiError(
+        f"timed out waiting for full composer text of length {len(expected)}; "
+        f"observed length {len(last_value)}"
+    )
+
+
 def tap_bounds(node: ET.Element, label: str) -> None:
     left, top, right, bottom = bounds(node)
     x = (left + right) // 2
@@ -261,6 +281,10 @@ def main() -> None:
     wait_input_parser = commands.add_parser("wait-input")
     wait_input_parser.add_argument("--timeout", type=int, default=90)
 
+    wait_input_value_parser = commands.add_parser("wait-input-value")
+    wait_input_value_parser.add_argument("value")
+    wait_input_value_parser.add_argument("--timeout", type=int, default=20)
+
     tap_input_parser = commands.add_parser("tap-input")
     tap_input_parser.add_argument("--timeout", type=int, default=30)
 
@@ -275,6 +299,8 @@ def main() -> None:
         tap_bounds(wait_text(args.value, args.exact, args.timeout), args.value)
     elif args.command == "wait-input":
         wait_input(args.timeout)
+    elif args.command == "wait-input-value":
+        wait_input_value(args.value, args.timeout)
     elif args.command == "tap-input":
         tap_bounds(wait_input(args.timeout), "message-input")
     elif args.command == "tap-send":

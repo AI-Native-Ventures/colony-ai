@@ -92,6 +92,19 @@ tap_text() {
   ui tap-text "$1" --timeout "${2:-30}"
 }
 
+type_text() {
+  local value="$1"
+  local offset=0
+  local chunk
+  while ((offset < ${#value})); do
+    chunk="${value:offset:3}"
+    adb_target shell input text "$chunk"
+    offset=$((offset + ${#chunk}))
+    sleep 0.2
+  done
+  ui wait-input-value "$value" --timeout 20
+}
+
 launch_deeplink() {
   local link="$1"
   local launch_output
@@ -173,8 +186,7 @@ root_id="$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(
 
 android_message="androidmsg${run_id}a${run_attempt}"
 ui tap-input --timeout 30
-adb_target shell input text "$android_message"
-sleep 1
+type_text "$android_message"
 ui tap-send
 node "$peer_script" wait-event \
   --events "$events_file" --channel "$channel_id" \
@@ -188,8 +200,7 @@ tap_text "$peer_root" 30
 ui wait-input --timeout 45
 android_reply="androidreply${run_id}a${run_attempt}"
 ui tap-input --timeout 30
-adb_target shell input text "$android_reply"
-sleep 1
+type_text "$android_reply"
 ui tap-send
 node "$peer_script" wait-event \
   --events "$events_file" --channel "$channel_id" \
