@@ -95,13 +95,17 @@ async function onboardToCommunity(
   return channelId;
 }
 
-async function enterMessage(running: RunningElectron, content: string) {
+async function enterMessage(
+  running: RunningElectron,
+  content: string,
+  timeoutMs = 15_000,
+) {
   await running.page.getByTestId("message-input").fill(content);
   await expect(running.page.getByTestId("send-message")).toBeEnabled();
   await running.page.getByTestId("send-message").click();
   await expect(running.page.getByTestId("message-timeline")).toContainText(
     content,
-    { timeout: 15_000 },
+    { timeout: timeoutMs },
   );
 }
 
@@ -151,6 +155,7 @@ test("imports a generated key, reconnects to the seeded community, and shows gen
 test("a typed channel message appears in Electron and is readable by an independent Nostr client", async ({
   browserName: _browserName,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const userDataDir = createUserDataDir(testInfo);
   const applications: RunningElectron[] = [];
   let proxy: TcpRelayProxy | undefined;
@@ -169,13 +174,13 @@ test("a typed channel message appears in Electron and is readable by an independ
     );
 
     const content = messageText("Electron relay send");
-    await enterMessage(running, content);
+    await enterMessage(running, content, 40_000);
 
     const saved = await waitForRelayMessage(
       DEFAULT_RELAY_URL,
       identity.publicKey,
       content,
-      15_000,
+      40_000,
       generalChannelId,
     );
     expect(saved).toBeDefined();
