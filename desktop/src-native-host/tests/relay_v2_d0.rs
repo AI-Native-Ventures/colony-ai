@@ -435,7 +435,8 @@ fn relay_v2_d0_disposable_proof() {
     // Unknown method on a known capability.
     let response = harness.request("relay-transport", "send_raw", json!({}));
     assert_eq!(assert_err(&response), "unknown_method");
-    // Oversized filter value (over maxFilterValueBytes 128) fails closed.
+    // Oversized filter value (over maxFilterValueBytes 128) fails closed with
+    // the frozen oversized-frame code.
     let response = harness.request(
         "relay-transport",
         "subscribe",
@@ -445,7 +446,7 @@ fn relay_v2_d0_disposable_proof() {
             "filter": {"kinds": [9], "#h": ["x".repeat(200)]},
         }),
     );
-    assert_eq!(assert_err(&response), "invalid_payload");
+    assert_eq!(assert_err(&response), "oversized_frame");
 
     harness.stop();
 }
