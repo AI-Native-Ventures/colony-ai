@@ -187,7 +187,15 @@ jobs:
         run: |
           set -euo pipefail
           kill "${{ steps.relay.outputs.RELAY_PID }}" 2>/dev/null || true
-          sleep 2
+          # buzz-relay deliberately keeps a five-second readiness/drain grace
+          # after SIGTERM before its listeners close. Poll for its bounded
+          # shutdown instead of declaring a clean D0 proof failed at 2s.
+          for _ in $(seq 1 15); do
+            if ! kill -0 "${{ steps.relay.outputs.RELAY_PID }}" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
           if kill -0 "${{ steps.relay.outputs.RELAY_PID }}" 2>/dev/null; then
             echo "relay process survived teardown" >&2
             exit 1
