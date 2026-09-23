@@ -169,6 +169,13 @@ export function createElectronTauriInternals(desktop: ColonyDesktopBridge) {
         message: decodeResult(message.payload),
       });
     } else if (message.type === "shell-event") {
+      if (message.event === "electron-shell:notification-activated") {
+        window.dispatchEvent(
+          new CustomEvent("buzz:desktop-notification-action", {
+            detail: message.payload,
+          }),
+        );
+      }
       for (const [eventId, listener] of listeners) {
         if (listener.event === message.event) {
           dispatch(eventId, message.event, message.payload);

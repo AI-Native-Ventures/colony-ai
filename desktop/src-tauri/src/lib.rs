@@ -551,6 +551,8 @@ pub fn run() {
             clear_pending_navigation_deep_links,
             take_pending_entity_deep_link,
             acknowledge_pending_entity_deep_link,
+            #[cfg(feature = "electron-host")]
+            electron_host::deep_links::handle_electron_deep_link,
             start_builderlab_login,
             cancel_builderlab_login,
             get_builderlab_auth,

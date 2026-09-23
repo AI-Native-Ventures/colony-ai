@@ -1,3 +1,7 @@
+import { createElectronDialogs } from "./dialogs.mjs";
+import { createNativeNotificationHandler } from "./notifications.mjs";
+import { revealElectronWindow } from "./window-activation.mjs";
+
 /*
  * React call sites -> Tauri command or event (verified against @tauri-apps/api 2.11.1):
  * - app/useCloseWindowShortcut.ts:49, features/huddle/components/HuddleBar.tsx:348,525 -> plugin:window|close
@@ -22,6 +26,14 @@
 const WINDOW_COMMAND_PREFIX = "plugin:window|";
 const WEBVIEW_COMMAND_PREFIX = "plugin:webview|";
 const APP_COMMAND_PREFIX = "plugin:app|";
+const EXTERNAL_URL_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "mailto:",
+  "tel:",
+  "x-apple.systempreferences:",
+  "ms-settings:",
+]);
 
 function currentTheme(nativeTheme) {
   return nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -49,15 +61,17 @@ async function readInnerSize(window) {
 export function createShellPlugins({
   app,
   shell,
+  clipboard,
+  dialog,
+  Notification,
+  backgroundMode = false,
   nativeTheme,
   getWindow,
   emit,
 }) {
-  // Opener commands stay on the host because it can open URLs and reveal files without a visible window.
   // Notification permission checks stay on the host; requestPermission uses the renderer Notification API and issues no command.
   // Updater commands stay on the host because the existing Tauri updater owns native update checks and installs.
   // Path commands stay on the host because Tauri resolves the configured OS directories there.
-  void shell;
 
   let attentionRequestId;
 
@@ -69,6 +83,17 @@ export function createShellPlugins({
     return window;
   }
 
+  function revealWindow() {
+    revealElectronWindow(requireWindow(), { backgroundMode });
+  }
+
+  const dialogs = createElectronDialogs({ dialog, getWindow });
+  const showNativeNotification = createNativeNotificationHandler({
+    Notification,
+    revealWindow,
+    emit,
+  });
+
   const commands = new Map([
     [
       "plugin:window|scale_factor",
@@ -76,6 +101,10 @@ export function createShellPlugins({
     ],
     ["plugin:window|inner_size", async () => readInnerSize(requireWindow())],
     ["plugin:window|is_fullscreen", () => requireWindow().isFullScreen()],
+    [
+      "plugin:window|set_fullscreen",
+      ({ value }) => requireWindow().setFullScreen(Boolean(value)),
+    ],
     ["plugin:window|is_focused", () => requireWindow().isFocused()],
     ["plugin:window|theme", () => currentTheme(nativeTheme)],
     [
@@ -175,6 +204,33 @@ export function createShellPlugins({
         app.exit(code ?? 0);
       },
     ],
+    [
+      "plugin:opener|open_url",
+      async ({ url }) => {
+        if (typeof url !== "string") throw new Error("Invalid external URL");
+        let parsed;
+        try {
+          parsed = new URL(url);
+        } catch {
+          throw new Error("Invalid external URL");
+        }
+        if (!EXTERNAL_URL_PROTOCOLS.has(parsed.protocol)) {
+          throw new Error("Unsupported external URL protocol");
+        }
+        await shell.openExternal(parsed.href);
+      },
+    ],
+    [
+      "copy_text_to_clipboard",
+      ({ text, html }) => {
+        if (typeof text !== "string")
+          throw new Error("Clipboard text is required");
+        if (typeof html === "string") clipboard.write({ text, html });
+        else clipboard.writeText(text);
+      },
+    ],
+    ["read_clipboard_text", () => clipboard.readText()],
+    ["show_native_notification", showNativeNotification],
   ]);
 
   function handles(command) {
@@ -183,11 +239,19 @@ export function createShellPlugins({
       command.startsWith(WEBVIEW_COMMAND_PREFIX) ||
       command.startsWith(APP_COMMAND_PREFIX) ||
       command === "plugin:process|restart" ||
-      command === "plugin:process|exit"
+      command === "plugin:process|exit" ||
+      command === "plugin:opener|open_url" ||
+      command === "copy_text_to_clipboard" ||
+      command === "read_clipboard_text" ||
+      command === "show_native_notification" ||
+      dialogs.handles(command)
     );
   }
 
   async function invoke(command, args = {}) {
+    if (dialogs.handles(command)) {
+      return (await dialogs.invoke(command, args ?? {})) ?? null;
+    }
     const handler = commands.get(command);
     if (!handler) {
       throw new Error(`Unsupported shell command: ${command}`);
@@ -215,6 +279,8 @@ export function createShellPlugins({
     };
 
     window.on("resize", onResize);
+    window.on("enter-full-screen", onResize);
+    window.on("leave-full-screen", onResize);
     nativeTheme.on("updated", onThemeUpdated);
 
     return () => {
@@ -224,6 +290,8 @@ export function createShellPlugins({
       disposed = true;
       resizeGeneration += 1;
       window.removeListener("resize", onResize);
+      window.removeListener("enter-full-screen", onResize);
+      window.removeListener("leave-full-screen", onResize);
       nativeTheme.removeListener("updated", onThemeUpdated);
     };
   }
