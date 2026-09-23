@@ -319,7 +319,7 @@ pub fn validate_pcm_batch_bytes(len: usize) -> Result<(), &'static str> {
 /// batches; the encode side drops them. Callers implementing the encode
 /// side must apply this check and skip, never error, on mismatch.
 pub fn pcm_batch_is_decodable(len: usize) -> bool {
-    len % 4 == 0
+    len.is_multiple_of(4)
 }
 
 /// Lifecycle of one host-bound audio request. Mirrors the host-protocol
