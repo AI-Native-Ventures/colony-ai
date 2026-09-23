@@ -409,7 +409,7 @@ mod tests {
 
     use axum::{body::Bytes, extract::State, http::StatusCode, routing::post, Json, Router};
     use tokio::net::TcpListener;
-    use url::Url;
+    use url::{form_urlencoded, Url};
 
     use super::{
         pkce_challenge, run_google_oauth, GoogleOAuthEndpoints, GoogleOAuthError, CALLBACK_PATH,
