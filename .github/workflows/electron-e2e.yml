@@ -69,6 +69,7 @@ jobs:
             file \
             gnome-keyring \
             libayatana-appindicator3-dev \
+            libasound2-dev \
             libdbus-1-dev \
             libsecret-1-dev \
             librsvg2-dev \
