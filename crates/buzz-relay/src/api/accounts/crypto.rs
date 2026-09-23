@@ -350,9 +350,14 @@ mod tests {
         )
         .expect("opened nsec");
         assert_eq!(opened.as_str(), nsec.as_str());
+        let mismatched_pubkey = format!(
+            "{}{}",
+            &pubkey[..63],
+            if pubkey.ends_with('0') { "1" } else { "0" }
+        );
         assert!(open_nsec(
             &kek,
-            &format!("{}0", &pubkey[..63]),
+            &mismatched_pubkey,
             &envelope.kek_id,
             &envelope.wrapped_dek,
             &envelope.sealed_nsec,

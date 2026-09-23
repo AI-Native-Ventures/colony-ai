@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::config::{AccountMailMode, Config};
+use crate::config::{AccountConfig, AccountMailMode, Config};
 use crate::state::AppState;
 use buzz_db::accounts::{
     AccountCodePurpose, AccountRecord, ConsumeAccountCodeOutcome, CreateAccountOutcome, NewAccount,
@@ -46,16 +46,21 @@ pub struct AccountServices {
 impl AccountServices {
     /// Construct account clients for the relay process.
     pub fn new() -> Self {
-        Self {
-            google_verifier: google::GoogleIdTokenVerifier::google_default(),
-            http_client: reqwest::Client::new(),
-        }
+        Self::with_google_verifier(google::GoogleIdTokenVerifier::google_default())
     }
 
-    #[cfg(test)]
-    fn with_google_jwks_url(jwks_url: impl Into<String>) -> Self {
+    /// Construct account clients from the validated relay account settings.
+    pub(crate) fn from_config(config: &AccountConfig) -> Self {
+        let verifier = match config.google_jwks_url() {
+            Some(jwks_url) => google::GoogleIdTokenVerifier::new(jwks_url),
+            None => google::GoogleIdTokenVerifier::google_default(),
+        };
+        Self::with_google_verifier(verifier)
+    }
+
+    fn with_google_verifier(google_verifier: google::GoogleIdTokenVerifier) -> Self {
         Self {
-            google_verifier: google::GoogleIdTokenVerifier::new(jwks_url),
+            google_verifier,
             http_client: reqwest::Client::new(),
         }
     }
@@ -771,7 +776,7 @@ async fn me(
         .account_by_pubkey(&signer.to_hex())
         .await
         .map_err(|error| map_db_error("me", error))?
-        .ok_or_else(invalid_credentials)?;
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "account_not_found"))?;
     email_rate_limit(&state, "/api/accounts/me", &account.email).await?;
     Ok(Json(PublicAccount::from(&account)))
 }

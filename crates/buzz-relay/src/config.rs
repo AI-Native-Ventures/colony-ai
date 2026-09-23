@@ -121,6 +121,7 @@ pub struct AccountConfig {
     mail_from: Option<String>,
     mail_mode: Option<AccountMailMode>,
     google_client_ids: Vec<String>,
+    google_jwks_url: Option<String>,
 }
 
 /// Configured way to deliver account verification and reset codes.
@@ -163,11 +164,17 @@ impl AccountConfig {
         &self.google_client_ids
     }
 
+    /// Return a test-only Google JWKS URL override, when configured.
+    pub(crate) fn google_jwks_url(&self) -> Option<&str> {
+        self.google_jwks_url.as_deref()
+    }
+
     #[cfg(test)]
     pub(crate) fn test_config(
         account_kek: Option<[u8; 32]>,
         mail_mode: Option<AccountMailMode>,
         google_client_ids: Vec<String>,
+        google_jwks_url: Option<String>,
     ) -> Self {
         Self {
             account_kek: account_kek.map(|key| Arc::new(Zeroizing::new(key))),
@@ -175,6 +182,7 @@ impl AccountConfig {
             mail_from: None,
             mail_mode,
             google_client_ids,
+            google_jwks_url,
         }
     }
 }
@@ -199,6 +207,10 @@ impl std::fmt::Debug for AccountConfig {
                 }),
             )
             .field("google_client_ids", &self.google_client_ids)
+            .field(
+                "google_jwks_url",
+                &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
+            )
             .finish()
     }
 }
@@ -268,6 +280,32 @@ fn account_config_from_lookup(
         .map(str::to_owned)
         .collect();
 
+    let google_jwks_url = lookup("COLONY_GOOGLE_JWKS_URL")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(jwks_url) = google_jwks_url.as_deref() {
+        if mail_mode != Some(AccountMailMode::Log) {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL is only allowed with COLONY_MAIL_SINK=log".to_owned(),
+            ));
+        }
+        let parsed_url = reqwest::Url::parse(jwks_url).map_err(|_| {
+            ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL".to_owned(),
+            )
+        })?;
+        if !matches!(parsed_url.scheme(), "http" | "https")
+            || parsed_url.host_str().is_none()
+            || !parsed_url.username().is_empty()
+            || parsed_url.password().is_some()
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL without credentials"
+                    .to_owned(),
+            ));
+        }
+    }
+
     if account_kek.is_none() && (mail_mode.is_some() || !google_client_ids.is_empty()) {
         return Err(ConfigError::InvalidValue(
             "COLONY_ACCOUNT_KEK is required when account login is configured".to_owned(),
@@ -280,6 +318,7 @@ fn account_config_from_lookup(
         mail_from,
         mail_mode,
         google_client_ids,
+        google_jwks_url,
     })
 }
 
@@ -1512,6 +1551,31 @@ mod tests {
             "COLONY_ACCOUNT_KEK",
             "not-base64-or-32-bytes",
         )]))
+        .is_err());
+    }
+
+    #[test]
+    fn account_config_google_jwks_override_requires_log_sink_and_http_url() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let local_jwks = "http://127.0.0.1:48123/jwks";
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_ok());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_err());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", "file:///etc/passwd"),
+        ]))
         .is_err());
     }
 

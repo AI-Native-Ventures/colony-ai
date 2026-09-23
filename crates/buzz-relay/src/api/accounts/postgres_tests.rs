@@ -53,6 +53,7 @@ async fn test_state(
         Some(TEST_KEK),
         Some(AccountMailMode::Log),
         google_client_ids,
+        google_jwks_url,
     );
     let host = format!("account-test-{}.example", Uuid::new_v4().simple());
     config.relay_url = format!("wss://{host}");
@@ -105,9 +106,6 @@ async fn test_state(
         media_storage,
     );
     state.nip98_replay = Arc::new(AlwaysFreshReplayGuard);
-    if let Some(url) = google_jwks_url {
-        state.account_services = Arc::new(AccountServices::with_google_jwks_url(url));
-    }
     (Arc::new(state), pool, host)
 }
 
@@ -275,6 +273,33 @@ async fn fake_google_jwks() -> (String, tokio::task::JoinHandle<()>) {
             .expect("serve local fake JWKS");
     });
     (format!("http://{address}/jwks"), task)
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn me_returns_account_not_found_for_unclaimed_nip98_signer() {
+    let (state, _pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let signer = Keys::generate();
+    let response = crate::router::build_router(state)
+        .oneshot(request_with_ip(
+            "GET",
+            "/api/accounts/me",
+            &host,
+            ip,
+            Vec::new(),
+            Some(nip98_header(
+                &signer,
+                "GET",
+                &format!("https://{host}/api/accounts/me"),
+                None,
+            )),
+        ))
+        .await
+        .expect("account profile response for unclaimed signer");
+    let (status, body) = json_response(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({ "error": "account_not_found" }));
 }
 
 #[tokio::test]
