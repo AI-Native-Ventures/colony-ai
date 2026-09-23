@@ -166,16 +166,20 @@ async function main() {
   ]);
 
   if (uiMode === "react") {
+    const packagedAppDirectory = path.join(
+      outputDirectory,
+      `${appName}-${target.packageSuffix}`,
+    );
     const archivePath =
       target.bundleKind === "app"
         ? path.join(
-            outputDirectory,
+            packagedAppDirectory,
             `${appName}.app`,
             "Contents",
             "Resources",
             "app.asar",
           )
-        : path.join(outputDirectory, "resources", "app.asar");
+        : path.join(packagedAppDirectory, "resources", "app.asar");
     await emitReactPackageDigestDiagnostics(archivePath);
   }
 }
