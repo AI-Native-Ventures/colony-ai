@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstat, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  inspectAsarEntries,
+  observedReactPackageAsarDigests,
+} from "./check-electron-stage0.mjs";
 import { getStage0TargetFromArguments } from "../src-electron/stage0-platform.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +56,34 @@ function run(command, args) {
   if (result.status !== 0) {
     process.exitCode = result.status ?? 1;
     throw new Error(`${path.basename(command)} exited with ${result.status}`);
+  }
+}
+
+async function emitReactPackageDigestDiagnostics(archivePath) {
+  const expected = observedReactPackageAsarDigests[flavor];
+  if (!expected) return;
+
+  try {
+    const actual = createHash("sha256")
+      .update(await readFile(archivePath))
+      .digest("hex");
+    if (actual === expected) return;
+
+    const { fileEntries, extractEntry } = inspectAsarEntries(archivePath);
+    const entries = fileEntries.sort().map((entry) => {
+      const digest = createHash("sha256")
+        .update(extractEntry(entry))
+        .digest("hex");
+      return `    ${entry}: ${digest}`;
+    });
+    process.stderr.write(
+      `React app.asar entry digests (expected archive ${expected}, actual ${actual}):\n${entries.join("\n")}\n`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(
+      `React app.asar entry digests unavailable after archive mismatch: ${message}\n`,
+    );
   }
 }
 
@@ -131,6 +164,20 @@ async function main() {
     `--app-bundle-id=${appId}`,
     `--extra-resource=${path.join(resourceDirectory, target.helperName)}`,
   ]);
+
+  if (uiMode === "react") {
+    const archivePath =
+      target.bundleKind === "app"
+        ? path.join(
+            outputDirectory,
+            `${appName}.app`,
+            "Contents",
+            "Resources",
+            "app.asar",
+          )
+        : path.join(outputDirectory, "resources", "app.asar");
+    await emitReactPackageDigestDiagnostics(archivePath);
+  }
 }
 
 main().catch((error) => {

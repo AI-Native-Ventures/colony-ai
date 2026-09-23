@@ -185,7 +185,7 @@ const observedReactRendererAssets = Object.freeze({
 // the package digest binds every renderer exception to the reviewed bytes.
 // Update these values only with a new hosted package-provenance record and
 // review.
-const observedReactPackageAsarDigests = Object.freeze({
+export const observedReactPackageAsarDigests = Object.freeze({
   normal: "3d641a94855d9b095e7d8959ea2af0141a693542d88f53b13ac9b000c441edcd",
   instrumented:
     "bbb6613c4452fbbd73a0a9cc10b28078c0fee16c5e606758683b7bf05d8ef437",
