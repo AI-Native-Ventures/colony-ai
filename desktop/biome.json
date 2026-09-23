@@ -1,9 +1,3 @@
 {
-  "extends": ["../biome.json"],
-  "overrides": [
-    {
-      "includes": ["src-native-host/relay_v2_registry.json"],
-      "formatter": { "enabled": false }
-    }
-  ]
+  "extends": ["../biome.json"]
 }
