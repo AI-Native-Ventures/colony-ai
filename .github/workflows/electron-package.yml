@@ -211,16 +211,24 @@ jobs:
             "buzz",
           ];
           if (platform !== "win32") names.push("buzz-backend-kubernetes");
-          const metadata = JSON.parse(execFileSync(
+          const targetDirectory = (manifestPath) => JSON.parse(execFileSync(
             "cargo",
-            ["metadata", "--manifest-path", "Cargo.toml", "--format-version", "1", "--no-deps"],
+            ["metadata", "--manifest-path", manifestPath, "--format-version", "1", "--no-deps"],
             { encoding: "utf8" },
-          ));
-          const releaseDir = path.join(metadata.target_directory, "release");
+          )).target_directory;
+          const hostReleaseDir = path.join(
+            targetDirectory("desktop/src-tauri/Cargo.toml"),
+            "release",
+          );
+          const sidecarReleaseDir = path.join(
+            targetDirectory("Cargo.toml"),
+            "release",
+          );
           const runtimeDir = path.join(process.env.RUNNER_TEMP, "colony-electron-runtime");
           mkdirSync(runtimeDir, { recursive: true });
           for (const name of names) {
             const filename = `${name}${suffix}`;
+            const releaseDir = name === "colony-native-host" ? hostReleaseDir : sidecarReleaseDir;
             const source = path.join(releaseDir, filename);
             const sourceStat = statSync(source);
             if (!sourceStat.isFile() || sourceStat.size === 0) {
