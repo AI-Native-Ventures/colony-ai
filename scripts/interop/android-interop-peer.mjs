@@ -417,13 +417,21 @@ async function waitEvent({
         continue;
       }
       if (replyRoot) {
-        const hasRoot = event.tags.some(
-          (tag) => tag[0] === 'e' && tag[1] === replyRoot && tag[3] === 'root',
+        const rootTags = event.tags.filter(
+          (tag) => tag[0] === 'e' && tag[3] === 'root',
         );
-        const hasReply = event.tags.some(
-          (tag) => tag[0] === 'e' && tag[1] === replyRoot && tag[3] === 'reply',
+        const replyTags = event.tags.filter(
+          (tag) => tag[0] === 'e' && tag[3] === 'reply',
         );
-        if (!hasRoot || !hasReply) continue;
+        // Buzz marks a direct reply to the thread root with one `reply` tag.
+        // The separate `root` + `reply` pair is reserved for nested replies.
+        if (
+          rootTags.length !== 0 ||
+          replyTags.length !== 1 ||
+          replyTags[0][1] !== replyRoot
+        ) {
+          continue;
+        }
       }
       console.log(
         `PASS relay-event id=${event.id} kind=9 channel=${channelId} content=${content} reply_root=${replyRoot ?? 'none'}`,
