@@ -58,16 +58,54 @@ function run(command, args) {
   }
 }
 
+async function installedPackageVersion(packageName) {
+  let directory = path.dirname(fileURLToPath(import.meta.resolve(packageName)));
+  while (true) {
+    try {
+      const packageJson = JSON.parse(
+        await readFile(path.join(directory, "package.json"), "utf8"),
+      );
+      if (packageJson.name === packageName) return packageJson.version;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) {
+      throw new Error(`could not find package.json for ${packageName}`);
+    }
+    directory = parentDirectory;
+  }
+}
+
 async function emitReactViteInputDiagnostics(outDirectory) {
   try {
     const modeEnv = loadEnv(reactViteMode, desktopDirectory, "");
     const protectedFeaturesEnabled =
       (process.env.VITE_BUZZ_BESTIE ?? modeEnv.VITE_BUZZ_BESTIE) === "1";
+    const version = async (packageName) => {
+      try {
+        return await installedPackageVersion(packageName);
+      } catch (error) {
+        return `unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    };
+    const [viteVersion, reactPluginVersion, routerPluginVersion] =
+      await Promise.all([
+        version("vite"),
+        version("@vitejs/plugin-react"),
+        version("@tanstack/router-plugin"),
+      ]);
     process.stderr.write(
       `React Vite inputs: ${JSON.stringify({
         command: "build",
         mode: reactViteMode,
+        node: process.version,
         NODE_ENV: process.env.NODE_ENV ?? null,
+        versions: {
+          vite: viteVersion,
+          reactPlugin: reactPluginVersion,
+          routerPlugin: routerPluginVersion,
+        },
         processEnv: {
           VITE_BUZZ_BESTIE: process.env.VITE_BUZZ_BESTIE ?? null,
         },
