@@ -113,11 +113,9 @@ async function main() {
     desktopDirectory,
     `.stage0-package-resources-${flavor}`,
   );
-  // Match package-electron-stage0.mjs and keep renderer variants disjoint.
-  const rendererBuildDirectory = path.join(
-    desktopDirectory,
-    `.stage0-ui-dist-${flavor}`,
-  );
+  // Match package-electron-stage0.mjs. The caller removes this reviewed Vite
+  // output before each sequential flavor build.
+  const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
   const rendererSource =
     uiMode === "react"
       ? "src-electron/stage0-renderer.react.mjs"

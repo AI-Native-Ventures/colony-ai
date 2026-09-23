@@ -38,12 +38,9 @@ const resourceDirectory = path.join(
   `.stage0-package-resources-${flavor}`,
 );
 const outputDirectory = path.join(desktopDirectory, `dist-electron-${flavor}`);
-// Keep normal and instrumented renderer builds disjoint. A shared output path
-// can retain the other variant if packaging is ever started concurrently.
-const rendererBuildDirectory = path.join(
-  desktopDirectory,
-  `.stage0-ui-dist-${flavor}`,
-);
+// Vite/Rolldown's content-addressed chunk graph is tied to this output path.
+// Keep the reviewed path and remove it before every sequential flavor build.
+const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
 const appName =
   target.executableName ??
   (flavor === "normal" ? "Buzz Stage0 Normal" : "Buzz Stage0 Instrumented");
