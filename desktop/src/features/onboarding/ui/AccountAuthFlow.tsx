@@ -586,7 +586,17 @@ export function AccountAuthFlow({
             >
               Back
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              className={ONBOARDING_SECONDARY_CTA_CLASS}
+              disabled={pending}
+              onClick={() => onCancel?.()}
+              type="button"
+              variant="ghost"
+            >
+              Later
+            </Button>
+          )}
         </form>
       ) : null}
 

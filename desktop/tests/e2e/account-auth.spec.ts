@@ -366,3 +366,25 @@ test("claim verification connects the existing identity and clears the prompt", 
     "POST /api/accounts/verify",
   );
 });
+
+test("claim verification can be deferred without blocking the workspace", async ({
+  page,
+}) => {
+  await installMockBridge(page, { accountLinked: false });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await page.getByTestId("account-claim-start").click();
+  await page.getByLabel("Email").fill("later@example.com");
+  await page
+    .getByLabel("Password (at least 10 characters)")
+    .fill("claim-password-12");
+  await page.getByTestId("account-auth-submit-claim").click();
+  await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
+
+  await page
+    .getByTestId("account-auth-screen-verify")
+    .getByRole("button", { name: "Later" })
+    .click();
+  await expect(page.getByTestId("account-claim-start")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
