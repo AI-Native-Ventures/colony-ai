@@ -16,6 +16,8 @@ import {
 import { installFakeCamera } from "../helpers/fakeCamera";
 import {
   E2E_IDENTITY_OVERRIDE_STORAGE_KEY,
+  openAdvancedIdentityPath,
+  openExistingKeyImport,
   seedActiveIdentity,
 } from "../helpers/onboarding";
 
@@ -724,7 +726,7 @@ test("fresh existing-identity path leads with private-key recovery", async ({
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   await expect(
     page.getByRole("heading", { name: "Enter your private key" }),
   ).toBeVisible();
@@ -815,7 +817,7 @@ test("first-launch key import continues to machine setup", async ({ page }) => {
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
   await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
   await page.getByTestId("nostr-import-submit").click();
@@ -838,7 +840,7 @@ test("key import locks host navigation and ignores rapid duplicate submits", asy
   );
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
   await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
   const submit = page.getByTestId("nostr-import-submit");
@@ -860,7 +862,7 @@ test("key import keeps alternate recovery methods disabled while submitting", as
   );
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
   await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
   await page.getByTestId("nostr-import-submit").click();
@@ -887,7 +889,7 @@ test("imported-key users can skip out of harness setup", async ({ page }) => {
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
   await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
   await page.getByTestId("nostr-import-submit").click();
@@ -938,6 +940,7 @@ test("fresh-key harness completion continues directly into profile onboarding", 
   });
   await page.goto("/");
 
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
   await page.getByTestId("onboarding-next").click();
@@ -1043,7 +1046,7 @@ test("first-launch encrypted backup import asks for a passphrase and continues",
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
   // Spec-vector blob the mock bridge accepts with the mock passphrase.
   const mockNcryptsec =
     "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p";
@@ -1097,7 +1100,7 @@ test("first-launch import accepts an .ncryptsec backup file", async ({
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
+  await openExistingKeyImport(page);
 
   // The spotlight variant must expose a file path: a wiped user returns with
   // exactly the identity.ncryptsec our own save dialog produced. The accept

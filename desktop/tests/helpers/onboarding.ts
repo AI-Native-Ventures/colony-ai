@@ -25,6 +25,12 @@ export async function openAdvancedIdentityPath(page: Page) {
   ).toBeVisible();
 }
 
+/** Open key import through the account screen's Advanced path. */
+export async function openExistingKeyImport(page: Page) {
+  await openAdvancedIdentityPath(page);
+  await page.getByRole("button", { name: "Use an existing key" }).click();
+}
+
 /** Continue past the created-key page without opening optional backup options. */
 export async function passThroughBackupStep(page: Page) {
   await expect(page.getByTestId("onboarding-page-backup")).toBeVisible();
