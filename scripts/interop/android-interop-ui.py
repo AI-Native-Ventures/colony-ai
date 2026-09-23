@@ -180,6 +180,28 @@ def wait_text(needle: str, exact: bool, timeout_seconds: int) -> ET.Element:
     )
 
 
+def wait_either_text(needles: list[str], timeout_seconds: int) -> str:
+    deadline = time.monotonic() + timeout_seconds
+    last_root: ET.Element | None = None
+    system_anr_recoveries = 0
+    while time.monotonic() < deadline:
+        try:
+            last_root = dump_xml()
+            if system_anr_message(last_root) is not None:
+                if recover_system_anr(last_root, system_anr_recoveries):
+                    system_anr_recoveries += 1
+                    continue
+            for needle in needles:
+                if best_text_match(last_root, needle, exact=False) is not None:
+                    return needle
+        except UiError as error:
+            print(f"WAIT ui-dump-retry error={error}", file=sys.stderr)
+        time.sleep(1)
+    raise UiError(
+        f"timed out waiting for any of {needles!r}; UI={brief_tree(last_root)}"
+    )
+
+
 def input_node(root: ET.Element) -> ET.Element | None:
     fields = [
         node
@@ -314,6 +336,10 @@ def main() -> None:
     wait_text_parser.add_argument("--exact", action="store_true")
     wait_text_parser.add_argument("--timeout", type=int, default=90)
 
+    wait_either_parser = commands.add_parser("wait-either-text")
+    wait_either_parser.add_argument("values", nargs="+")
+    wait_either_parser.add_argument("--timeout", type=int, default=90)
+
     tap_text_parser = commands.add_parser("tap-text")
     tap_text_parser.add_argument("value")
     tap_text_parser.add_argument("--exact", action="store_true")
@@ -336,6 +362,8 @@ def main() -> None:
         print(brief_tree(dump_xml()))
     elif args.command == "wait-text":
         wait_text(args.value, args.exact, args.timeout)
+    elif args.command == "wait-either-text":
+        print(wait_either_text(args.values, args.timeout))
     elif args.command == "tap-text":
         tap_bounds(wait_text(args.value, args.exact, args.timeout), args.value)
     elif args.command == "wait-input":

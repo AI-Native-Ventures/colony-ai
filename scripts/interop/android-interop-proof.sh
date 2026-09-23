@@ -18,8 +18,44 @@ max_screenshot_bytes=$((20 * 1024 * 1024))
 mkdir -p "$artifact_dir"
 exec > >(tee "$artifact_dir/harness.log") 2>&1
 
+collect_runtime_diagnostics() {
+  local label="$1"
+  local screen_path="$artifact_dir/screen-${label}.png"
+  local logcat_path="$artifact_dir/android-logcat-${label}.txt"
+  local relay_error_path="$artifact_dir/relay-errors-${label}.log"
+  local screen_state=unavailable
+  local logcat_bytes=0
+  local relay_error_bytes=0
+
+  if [[ -n "$serial" ]]; then
+    timeout --preserve-status 15s adb -s "$serial" exec-out screencap -p \
+      > "$screen_path" 2>&1 || true
+    if [[ -s "$screen_path" ]]; then
+      local screenshot_bytes
+      screenshot_bytes="$(stat -c '%s' "$screen_path")"
+      if ((screenshot_bytes <= max_screenshot_bytes)); then
+        screen_state=captured
+      else
+        rm -f "$screen_path"
+      fi
+    fi
+    timeout --preserve-status 15s adb -s "$serial" logcat -d -v time -t 2000 \
+      -s flutter:E AndroidRuntime:E System.err:E 2>&1 |
+      head -c 1048576 > "$logcat_path" || true
+    logcat_bytes="$(wc -c < "$logcat_path" 2>/dev/null || echo 0)"
+  fi
+
+  if [[ -s /tmp/buzz-relay.log ]]; then
+    awk 'length($0) <= 4096 && /WARN|ERROR/' /tmp/buzz-relay.log |
+      tail -n 200 | head -c 524288 > "$relay_error_path" || true
+    relay_error_bytes="$(wc -c < "$relay_error_path")"
+  fi
+  echo "DIAGNOSTICS screen=$screen_state logcat_bytes=$logcat_bytes relay_error_bytes=$relay_error_bytes"
+}
+
 fail() {
   echo "FAIL $*" >&2
+  collect_runtime_diagnostics failure
   exit 1
 }
 
@@ -197,7 +233,20 @@ launch_deeplink "$invite_link"
 wait_text 'Join this Buzz community?' 120
 capture invite-confirmation
 tap_exact 'Join' 30
-wait_text 'Continue to #welcome-everyone' 180
+join_state="$(ui wait-either-text 'Continue to #welcome-everyone' 'Retry setup' --timeout 180)" ||
+  fail "invite join did not reach the community or its recovery action"
+echo "PASS ui-state-found value=$join_state"
+if [[ "$join_state" == 'Retry setup' ]]; then
+  capture starter-setup-retry-needed
+  collect_runtime_diagnostics starter-setup-retry
+  tap_exact 'Retry setup' 30
+  join_state="$(ui wait-either-text 'Continue to #welcome-everyone' 'Retry setup' --timeout 120)" ||
+    fail "invite starter setup retry did not reach the community or its recovery action"
+  echo "PASS ui-state-found value=$join_state"
+  [[ "$join_state" == 'Continue to #welcome-everyone' ]] ||
+    fail "starter channel setup still requires retry after one recovery attempt"
+  echo "PASS invite-starter-setup-recovered-after-retry"
+fi
 capture joined-community
 tap_exact 'Continue to #welcome-everyone' 30
 ui wait-input --timeout 180
