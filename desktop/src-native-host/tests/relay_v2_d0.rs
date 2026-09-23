@@ -19,6 +19,7 @@
 use std::{
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStderr, ChildStdin, Command, Stdio},
+    sync::mpsc::{self, Receiver},
     time::{Duration, Instant},
 };
 
@@ -40,7 +41,7 @@ fn required_env(name: &str) -> String {
 struct Harness {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<std::process::ChildStdout>,
+    stdout: Receiver<String>,
     stderr: BufReader<ChildStderr>,
     sequence: u64,
 }
@@ -60,10 +61,24 @@ impl Harness {
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
+        let (stdout_sender, stdout_receiver) = mpsc::sync_channel(32);
+        std::thread::spawn(move || {
+            let stdout = BufReader::new(stdout);
+            for line in stdout.lines() {
+                match line {
+                    Ok(line) => {
+                        if stdout_sender.send(line).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
         Self {
             child,
             stdin,
-            stdout: BufReader::new(stdout),
+            stdout: stdout_receiver,
             stderr: BufReader::new(stderr),
             sequence: 1,
         }
@@ -85,16 +100,25 @@ impl Harness {
             if Instant::now() >= deadline {
                 panic!("timed out waiting for helper frame");
             }
-            let mut line = String::new();
-            let bytes = self.stdout.read_line(&mut line).expect("stdout readable");
-            if bytes == 0 {
-                let status = self.child.wait().expect("helper status readable");
-                let mut stderr = String::new();
-                self.stderr
-                    .read_to_string(&mut stderr)
-                    .expect("stderr readable");
-                panic!("helper closed stdout before frame: status={status:?} stderr={stderr:?}");
-            }
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .unwrap_or(Duration::ZERO);
+            let line = match self.stdout.recv_timeout(remaining) {
+                Ok(line) => line,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    panic!("timed out waiting for helper frame after 30s")
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    let status = self.child.wait().expect("helper status readable");
+                    let mut stderr = String::new();
+                    self.stderr
+                        .read_to_string(&mut stderr)
+                        .expect("stderr readable");
+                    panic!(
+                        "helper closed stdout before frame: status={status:?} stderr={stderr:?}"
+                    );
+                }
+            };
             let line = line.trim();
             if line.is_empty() {
                 continue;
