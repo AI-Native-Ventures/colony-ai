@@ -40,7 +40,6 @@ jobs:
       matrix:
         os:
           - macos-14
-          - ubuntu-22.04
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
@@ -131,6 +130,26 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           pnpm --dir desktop exec vite build
+
+      - name: Install Docker for the isolated relay services
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install colima docker docker-compose
+          docker_config="$RUNNER_TEMP/docker-config"
+          mkdir -p "$docker_config"
+          printf '{"cliPluginsExtraDirs":["%s"]}\n' "$(brew --prefix)/lib/docker/cli-plugins" \
+            > "$docker_config/config.json"
+          echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
+          colima start --cpu 4 --memory 6 --disk 40
+          for attempt in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker info
 
       - name: Prepare the disposable database and pre-seed fixture members
         shell: bash
