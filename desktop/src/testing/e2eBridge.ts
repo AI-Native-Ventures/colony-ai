@@ -38,6 +38,11 @@ import type {
   FeedItemCategory,
   RelayEvent,
 } from "@/shared/api/types";
+import type {
+  AccountAuthClient,
+  AccountAuthRecord,
+} from "@/features/onboarding/accountAuthClient";
+import type { AccountAuthTestCall } from "@/features/onboarding/accountAuthAdapter";
 import { getMarkdownParseCount } from "@/shared/ui/markdown/nodeCache";
 import { syncAgentTurnsFromEvents } from "@/features/agents/activeAgentTurnsStore";
 import { recordTimeoutFromRejection } from "@/features/moderation/lib/timeoutStore";
@@ -226,6 +231,8 @@ type E2eConfig = {
       name?: string;
       expiresAt: string;
     } | null;
+    /** Account state returned by the mocked account API. Defaults to linked. */
+    accountLinked?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -11360,6 +11367,163 @@ export function maybeInstallE2eTauriMocks() {
     return;
   }
   window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
+
+  let mockAccountLinked = config.mock?.accountLinked ?? true;
+  let mockAccountEmail = "person@example.com";
+  const accountAuthCalls: AccountAuthTestCall[] = [];
+  const queuedAccountAuthErrors: Array<{
+    method: keyof AccountAuthClient;
+    error: Record<string, unknown>;
+  }> = [];
+  const accountRecord = (email = mockAccountEmail): AccountAuthRecord => ({
+    id: "e2e-account",
+    email,
+    pubkey: DEFAULT_MOCK_IDENTITY.pubkey,
+    hasPassword: true,
+    googleLinked: false,
+  });
+  const verificationSent = () => ({ status: "verification_sent" as const });
+  const accountAuthCall = async <T>(
+    method: keyof AccountAuthClient,
+    route: string,
+    email: string | undefined,
+    purpose: "verify" | "reset" | undefined,
+    result: () => T,
+  ): Promise<T> => {
+    accountAuthCalls.push({
+      method,
+      route,
+      ...(email ? { email } : {}),
+      ...(purpose ? { purpose } : {}),
+    });
+    const errorIndex = queuedAccountAuthErrors.findIndex(
+      (entry) => entry.method === method,
+    );
+    if (errorIndex >= 0) {
+      const [{ error }] = queuedAccountAuthErrors.splice(errorIndex, 1);
+      throw Object.assign(
+        new Error(
+          typeof error.error === "string"
+            ? error.error
+            : "Mock account request failed",
+        ),
+        error,
+      );
+    }
+    return result();
+  };
+  window.__BUZZ_E2E_ACCOUNT_AUTH_CALLS__ = accountAuthCalls;
+  window.__BUZZ_E2E_QUEUE_ACCOUNT_AUTH_ERROR__ = (method, error) => {
+    queuedAccountAuthErrors.push({ method, error });
+  };
+  window.__BUZZ_E2E_SET_ACCOUNT_LINKED__ = (linked, email) => {
+    mockAccountLinked = linked;
+    if (email) mockAccountEmail = email;
+  };
+  window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__ = {
+    signUp: (email) =>
+      accountAuthCall(
+        "signUp",
+        "POST /api/accounts/signup",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          return verificationSent();
+        },
+      ),
+    verifyEmail: (email) =>
+      accountAuthCall(
+        "verifyEmail",
+        "POST /api/accounts/verify",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    resendCode: (email, purpose) =>
+      accountAuthCall(
+        "resendCode",
+        "POST /api/accounts/resend-code",
+        email,
+        purpose,
+        () => verificationSent(),
+      ),
+    signIn: (email) =>
+      accountAuthCall(
+        "signIn",
+        "POST /api/accounts/signin",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    signInWithGoogle: () =>
+      accountAuthCall(
+        "signInWithGoogle",
+        "POST /api/accounts/google",
+        undefined,
+        undefined,
+        () => {
+          mockAccountEmail = "google@example.com";
+          mockAccountLinked = true;
+          return accountRecord(mockAccountEmail);
+        },
+      ),
+    requestReset: (email) =>
+      accountAuthCall(
+        "requestReset",
+        "POST /api/accounts/reset/request",
+        email,
+        undefined,
+        () => verificationSent(),
+      ),
+    confirmReset: (email) =>
+      accountAuthCall(
+        "confirmReset",
+        "POST /api/accounts/reset/confirm",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    claimAccount: (email) =>
+      accountAuthCall(
+        "claimAccount",
+        "POST /api/accounts/claim",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          return verificationSent();
+        },
+      ),
+    changePassword: () =>
+      accountAuthCall(
+        "changePassword",
+        "POST /api/accounts/password",
+        undefined,
+        undefined,
+        () => undefined,
+      ),
+    getAccount: () =>
+      accountAuthCall(
+        "getAccount",
+        "GET /api/accounts/me",
+        undefined,
+        undefined,
+        () => (mockAccountLinked ? accountRecord() : null),
+      ),
+  };
 
   mockClosedChannelLiveSubscription = false;
   mockWebsocketUnavailable = false;

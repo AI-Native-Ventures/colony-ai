@@ -1,6 +1,7 @@
 import type { NativeCapability } from "@/shared/api/nativeBridge";
 
 export type MachineOnboardingPage =
+  | "account-auth"
   | "identity"
   | "identity-key-intro"
   | "identity-key-help"
@@ -25,19 +26,15 @@ export function resolveInitialMachineOnboardingState({
   initialPage?: MachineOnboardingPage;
   supportsCapability: (capability: NativeCapability) => boolean;
 }): MachineOnboardingInitialState {
-  if (!identityLost) {
+  if (identityLost && !supportsCapability("identity-import")) {
     return {
-      page: initialPage ?? "identity",
-      unsupportedCapability: null,
+      page: "unsupported",
+      unsupportedCapability: "identity-import",
     };
   }
 
-  if (supportsCapability("identity-import")) {
-    return { page: "key-import", unsupportedCapability: null };
-  }
-
   return {
-    page: "unsupported",
-    unsupportedCapability: "identity-import",
+    page: initialPage ?? "account-auth",
+    unsupportedCapability: null,
   };
 }

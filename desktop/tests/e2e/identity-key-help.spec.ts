@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openAdvancedIdentityPath } from "../helpers/onboarding";
 
 const HELP_SEEN_KEY = "buzz.machine-onboarding.identity-key-help-seen.v1";
 
@@ -11,6 +12,7 @@ test("identity key help explains the first-run choice", async ({ page }) => {
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
 
   const trigger = page.getByTestId("identity-key-help-trigger");
   // No initial opacity-0 assertion: on a slow runner the 2s reveal timer can
@@ -46,6 +48,7 @@ test("identity key help explains the first-run choice", async ({ page }) => {
   await expect(trigger).toHaveCSS("opacity", "1");
 
   await page.reload();
+  await openAdvancedIdentityPath(page);
   await expect(page.getByTestId("identity-key-help-trigger")).toHaveCSS(
     "opacity",
     "1",
@@ -61,6 +64,7 @@ test("identity key help stays readable when the app resolves dark mode", async (
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
 
   // Fresh profiles follow the system scheme, so the emulated dark scheme is
   // the first-run repro: the app resolves the dark theme while onboarding.

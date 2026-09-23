@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
-import { passThroughBackupStep } from "../helpers/onboarding";
+import {
+  openAdvancedIdentityPath,
+  passThroughBackupStep,
+} from "../helpers/onboarding";
 
 function runtime(
   id: "buzz-agent" | "claude" | "codex" | "goose",
@@ -39,6 +42,7 @@ async function navigateToSetupPage(
   page: Parameters<typeof installMockBridge>[0],
   method: "subscription" | "api" | null = "subscription",
 ) {
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
   await passThroughBackupStep(page);

@@ -26,6 +26,8 @@ import { KnownAgentPubkeysProvider } from "@/features/agents/useKnownAgentPubkey
 import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { useAppOnboardingState } from "@/features/onboarding/hooks";
 import { useMachineOnboardingState } from "@/features/onboarding/machineOnboarding";
+import { AccountClaimPrompt } from "@/features/account/AccountClaimPrompt";
+import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import {
   type FirstCommunityPage,
   useCommunityOnboarding,
@@ -311,6 +313,7 @@ function AppReady({
   isCommunitySwitch: boolean;
 }) {
   const onboarding = useAppOnboardingState(isSharedIdentity);
+  const authClient = getAccountAuthClient();
 
   if (onboarding.stage === "reset-failed") {
     return <ResetFailedScreen />;
@@ -356,6 +359,9 @@ function AppReady({
     >
       <KnownAgentPubkeysProvider>
         <RouterProvider router={router} />
+        {huddleWindowChannelId() === null ? (
+          <AccountClaimPrompt authClient={authClient} />
+        ) : null}
       </KnownAgentPubkeysProvider>
     </EncryptedBackupProvider>
   );
@@ -709,6 +715,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const [machineInitialPage, setMachineInitialPage] =
     useState<MachineOnboardingPage>();
   const [continueOnboarding, setContinueOnboarding] = useState(false);
+  const authClient = getAccountAuthClient();
 
   const reopenMachineConfig = useCallback(() => {
     setContinueOnboarding(false);
@@ -779,6 +786,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
           identityLost={machine.identityLost}
           initialPage={undefined}
           queryClient={machine.queryClient}
+          authClient={authClient}
         />
       );
     }
@@ -810,6 +818,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         identityLost={machine.identityLost}
         initialPage={machineInitialPage}
         queryClient={machine.queryClient}
+        authClient={authClient}
       />
       {shouldAcknowledgeDeepLink ? <PendingInviteGate /> : null}
     </>
