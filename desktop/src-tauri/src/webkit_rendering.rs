@@ -92,12 +92,16 @@ enum Plan {
 ///
 /// `Err` carries a user-facing diagnostic; the caller reports it and exits.
 pub fn apply() -> Result<(), String> {
-    match plan_for_host(
-        std::env::args_os(),
-        &|key| std::env::var_os(key),
-        Path::new(DRM_ROOT),
-        crate::electron_host::enabled(),
-    ) {
+    let args = std::env::args_os();
+    let env = &|key| std::env::var_os(key);
+    let drm_root = Path::new(DRM_ROOT);
+    let plan = if crate::electron_host::enabled() {
+        plan_for_host(args, env, drm_root, true)
+    } else {
+        plan(args, env, drm_root)
+    };
+
+    match plan {
         Plan::Apply { vars, why } => {
             for var in vars {
                 // Safe here and only here — see the doc comment above.

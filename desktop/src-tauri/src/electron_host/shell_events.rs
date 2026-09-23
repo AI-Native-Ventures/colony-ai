@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Runtime};
 
 pub(crate) const SHOW_WINDOW: &str = "electron-shell:show-window";
+#[cfg(target_os = "macos")]
 pub(crate) const QUIT_APP: &str = "electron-shell:quit";
 pub(crate) const WINDOW_ACTION: &str = "electron-shell:window-action";
 pub(crate) const SET_WINDOW_VIBRANCY: &str = "electron-shell:set-window-vibrancy";
@@ -12,8 +13,10 @@ pub(crate) const CLOSE_HUDDLE_WINDOW: &str = "electron-shell:close-huddle-window
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum WindowAction {
+    #[cfg(target_os = "macos")]
     Minimize,
     ToggleMaximize,
+    #[cfg(target_os = "macos")]
     FillWorkArea,
 }
 
@@ -72,14 +75,19 @@ mod tests {
     }
 
     #[test]
+    fn toggle_maximize_payload_matches_the_electron_shell_contract() {
+        assert_eq!(
+            window_action_payload(WindowAction::ToggleMaximize),
+            json!({ "action": "toggle-maximize" })
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn window_action_payloads_match_the_electron_shell_contract() {
         assert_eq!(
             window_action_payload(WindowAction::Minimize),
             json!({ "action": "minimize" })
-        );
-        assert_eq!(
-            window_action_payload(WindowAction::ToggleMaximize),
-            json!({ "action": "toggle-maximize" })
         );
         assert_eq!(
             window_action_payload(WindowAction::FillWorkArea),
@@ -90,6 +98,7 @@ mod tests {
     #[test]
     fn huddle_and_vibrancy_payloads_match_the_electron_shell_contract() {
         assert_eq!(SHOW_WINDOW, "electron-shell:show-window");
+        #[cfg(target_os = "macos")]
         assert_eq!(QUIT_APP, "electron-shell:quit");
         assert_eq!(OPEN_HUDDLE_WINDOW, "electron-shell:open-huddle-window");
         assert_eq!(CLOSE_HUDDLE_WINDOW, "electron-shell:close-huddle-window");

@@ -81,6 +81,7 @@ pub(crate) fn route_show_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) ->
     shell_events::emit(app, shell_events::SHOW_WINDOW, serde_json::Value::Null)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn emit_application_event<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     event: &str,
