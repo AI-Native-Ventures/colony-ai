@@ -203,8 +203,8 @@ impl Harness {
                     }
                     return frame;
                 }
-                Some("EVENT") => match frame.get("event").and_then(|value| value.as_str()) {
-                    Some("host_lifecycle") => {
+                Some("EVENT") => match classify_event(&frame) {
+                    "host_lifecycle" => {
                         let state = frame
                             .get("payload")
                             .and_then(|payload| payload.get("state"))
@@ -212,7 +212,7 @@ impl Harness {
                             .expect("lifecycle state");
                         lifecycle_states.push(state.to_string());
                     }
-                    Some("relay_message") => self.pending_events.push_back(frame),
+                    "relay_message" => self.pending_events.push_back(frame),
                     other => panic!("unexpected EVENT {other:?}: {frame}"),
                 },
                 other => panic!("expected RESPONSE or lifecycle EVENT, got {other:?}: {frame}"),
@@ -249,17 +249,47 @@ fn assert_err(frame: &Value) -> &str {
         .expect("error code")
 }
 
+fn classify_event(frame: &Value) -> &str {
+    let event = frame
+        .get("event")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| panic!("EVENT missing event name: {frame}"));
+    match event {
+        "host_lifecycle" => {
+            frame
+                .get("payload")
+                .and_then(|payload| payload.get("state"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_else(|| panic!("host_lifecycle missing state: {frame}"));
+        }
+        "relay_message" => {
+            frame
+                .get("payload")
+                .and_then(|payload| payload.get("messageType"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_else(|| panic!("relay_message missing messageType: {frame}"));
+        }
+        other => panic!("unexpected EVENT name {other:?}: {frame}"),
+    }
+    event
+}
+
 fn next_event(harness: &mut Harness) -> Value {
     // Streaming relay traffic arrives as unsolicited EVENT frames between
-    // request responses; pump until one arrives (bounded by recv timeout).
-    // Responses are RESPONSE frames; anything else here is a harness bug.
+    // request responses. Return the relay message the caller is waiting for;
+    // known lifecycle events are classified and consumed, while unknown
+    // event names remain a loud protocol failure.
     loop {
         let frame = match harness.pending_events.pop_front() {
             Some(frame) => frame,
             None => harness.recv("relay stream event"),
         };
         match frame.get("type").and_then(|v| v.as_str()) {
-            Some("EVENT") => return frame,
+            Some("EVENT") => {
+                if classify_event(&frame) == "relay_message" {
+                    return frame;
+                }
+            }
             Some("RESPONSE") => panic!("expected streaming EVENT, got RESPONSE {frame}"),
             other => panic!("unexpected frame type {other:?} in {frame}"),
         }

@@ -87,29 +87,6 @@ async function emitReactPackageDigestDiagnostics(archivePath) {
   }
 }
 
-async function emitReactPackageEntryManifest(archivePath) {
-  try {
-    const actual = createHash("sha256")
-      .update(await readFile(archivePath))
-      .digest("hex");
-    const { fileEntries, extractEntry } = inspectAsarEntries(archivePath);
-    const entries = fileEntries.sort().map((entry) => {
-      const digest = createHash("sha256")
-        .update(extractEntry(entry))
-        .digest("hex");
-      return `    ${entry}: ${digest}`;
-    });
-    process.stderr.write(
-      `React app.asar entry manifest (archive ${actual}):\n${entries.join("\n")}\n`,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(
-      `React app.asar entry manifest unavailable: ${message}\n`,
-    );
-  }
-}
-
 const ELECTRON_PUBLIC_PATHS = Object.freeze([
   "/landing/",
   "/buzz.svg",
@@ -204,7 +181,6 @@ async function main() {
           )
         : path.join(packagedAppDirectory, "resources", "app.asar");
     await emitReactPackageDigestDiagnostics(archivePath);
-    await emitReactPackageEntryManifest(archivePath);
   }
 }
 
