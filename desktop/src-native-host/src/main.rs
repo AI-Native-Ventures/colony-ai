@@ -541,13 +541,13 @@ impl Host {
             // Cancel/expiry races drain through this arm with outcome
             // forwarding instead of the normal completed-ok path.
             PendingKind::RelayOp => {
-                return self.send_response(
+                self.send_response(
                     &pending.binding,
                     request_id.to_string(),
                     "error",
                     None,
                     Some("host_unavailable"),
-                );
+                )
             }
             PendingKind::V1Health => {
                 let relay_url = configured_relay_url();

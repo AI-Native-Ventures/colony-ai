@@ -165,8 +165,10 @@ impl Harness {
                 },
                 other => panic!("expected READY or EVENT, got {other:?}: {frame}"),
             }
-            if ready_frame.is_some() && lifecycle_states.contains("ready") {
-                return ready_frame.expect("READY frame");
+            if lifecycle_states.contains("ready") {
+                if let Some(ready_frame) = ready_frame.take() {
+                    return ready_frame;
+                }
             }
             frame = self.recv("HELLO READY/lifecycle frames");
         }
