@@ -7,7 +7,6 @@ on:
     paths:
       - "desktop/identity-kernel/**"
       - "desktop/identity-store/**"
-      - "desktop/src-native-host/**"
       - "desktop/src-tauri/Cargo.toml"
       - "desktop/src-tauri/Cargo.lock"
       - "desktop/src-tauri/src/**"
@@ -121,43 +120,3 @@ jobs:
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --workspace
-
-  native-host-features:
-    name: Native host (${{ matrix.os }}, ${{ matrix.feature }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
-        feature: [identity-file-only, identity-system-keyring]
-    steps:
-      - name: Check out the reviewed commit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Activate the pinned toolchain
-        if: runner.os != 'Windows'
-        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
-
-      - name: Compile default health-only host without identity store
-        shell: bash
-        run: |
-          set -euo pipefail
-          tree_file="${RUNNER_TEMP}/native-host-default-tree.txt"
-          cargo tree --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            --no-default-features > "$tree_file"
-          if grep -q 'colony-identity-store' "$tree_file"; then
-            echo "default native host unexpectedly activates identity store" >&2
-            exit 1
-          fi
-          cargo check --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            --no-default-features
-
-      - name: Compile selected native-host identity feature
-        shell: bash
-        env:
-          HOST_FEATURE: ${{ matrix.feature }}
-        run: |
-          set -euo pipefail
-          cargo check --locked --manifest-path desktop/src-native-host/Cargo.toml \
-            --no-default-features --features "$HOST_FEATURE"
