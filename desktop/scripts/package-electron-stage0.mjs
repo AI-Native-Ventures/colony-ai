@@ -117,6 +117,30 @@ async function emitReactPackageEntryManifest(archivePath) {
   }
 }
 
+// Temporary evidence: inventory the renderer output before staging so a
+// duplicate can be attributed to Vite output or to the staging copy.
+async function emitReactRendererBuildInventory(directory) {
+  const files = [];
+  const visit = async (currentDirectory) => {
+    const entries = await readdir(currentDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      const filePath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(filePath);
+      } else if (entry.isFile()) {
+        files.push(
+          path.relative(directory, filePath).split(path.sep).join("/"),
+        );
+      }
+    }
+  };
+  await visit(directory);
+  files.sort();
+  process.stderr.write(
+    `React renderer output before staging: directory=${directory} file_count=${files.length}\n${files.map((file) => `    ${file}`).join("\n")}\n`,
+  );
+}
+
 const ELECTRON_PUBLIC_PATHS = Object.freeze([
   "/landing/",
   "/buzz.svg",
@@ -164,6 +188,7 @@ async function main() {
       rendererBuildDirectory,
     ]);
     await rewriteElectronPublicPaths(rendererBuildDirectory);
+    await emitReactRendererBuildInventory(rendererBuildDirectory);
   }
   run(process.execPath, [
     path.join(desktopDirectory, "scripts", "stage-electron-stage0.mjs"),
