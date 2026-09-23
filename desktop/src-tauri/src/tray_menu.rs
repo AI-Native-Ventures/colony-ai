@@ -13,6 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::electron_host::shell_events::QUIT_APP;
 #[cfg(target_os = "macos")]
 use objc2::MainThreadMarker;
 #[cfg(target_os = "macos")]
@@ -221,6 +222,9 @@ pub enum TrayAction {
 }
 
 pub(crate) fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+    if crate::electron_host::route_show_window(app) {
+        return;
+    }
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -451,7 +455,12 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
             show_main_window(app);
             queue_tray_action(app, TrayAction::NewChannel);
         }
-        QUIT_ID => app.exit(0),
+        QUIT_ID => {
+            if !crate::electron_host::emit_application_event(app, QUIT_APP, serde_json::Value::Null)
+            {
+                app.exit(0);
+            }
+        }
         _ => {
             let Some(channel_id) = id.strip_prefix(OPEN_CHANNEL_PREFIX) else {
                 return;

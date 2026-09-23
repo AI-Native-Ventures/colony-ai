@@ -40,6 +40,10 @@ pub fn set_window_vibrancy(
     #[allow(unused_variables)] material: Option<String>,
     #[allow(unused_variables)] app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    if crate::electron_host::route_window_vibrancy(&app_handle, enabled, material.clone()) {
+        return Ok(());
+    }
+
     #[cfg(target_os = "macos")]
     {
         use window_vibrancy::{apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial};

@@ -111,8 +111,8 @@ const scenarios = [
   ["desktop", ["desktop/src/main.tsx"], ["desktop"]],
   ["Tauri", ["desktop/src-tauri/src/main.rs"], ["desktop", "desktop-rust"]],
   [
-    "isolated native host lane",
-    ["desktop/src-native-host-audio/src/lib.rs"],
+    "Tauri Rust lane",
+    ["desktop/src-tauri/src/electron_host/mod.rs"],
     ["desktop", "desktop-rust"],
   ],
   ["relay", ["crates/buzz-relay/src/main.rs"], ["rust"]],

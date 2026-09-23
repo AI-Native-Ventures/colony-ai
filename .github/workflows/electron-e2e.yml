@@ -1,0 +1,435 @@
+name: Electron relay end-to-end
+
+on:
+  pull_request:
+    branches:
+      - feat/phase1-drive
+    paths:
+      - ".github/workflows/electron-e2e.yml"
+      - "Cargo.lock"
+      - "Justfile"
+      - "desktop/electron/**"
+      - "desktop/package.json"
+      - "desktop/playwright.electron-app.config.ts"
+      - "desktop/src/shared/api/electronTauriShim.ts"
+      - "desktop/src/**"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/src/**"
+      - "desktop/identity-kernel/**"
+      - "desktop/identity-store/**"
+      - "desktop/tests/electron/**"
+      - "pnpm-lock.yaml"
+      - "crates/buzz-auth/**"
+      - "crates/buzz-core/**"
+      - "crates/buzz-db/**"
+      - "crates/buzz-relay/**"
+      - "scripts/start-relay-for-tests.sh"
+      - "scripts/setup-desktop-test-data.sh"
+      - "schema/schema.sql"
+      - "scripts/reconcile-schema-after-pgschema.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  electron-relay-e2e:
+    name: Electron relay E2E (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Activate the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          rustc -vV
+          node --version
+          pnpm --version
+
+      - name: Install Linux desktop and display dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            dbus \
+            dbus-x11 \
+            file \
+            gnome-keyring \
+            libasound2-dev \
+            libayatana-appindicator3-dev \
+            libdbus-1-dev \
+            libsecret-1-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config \
+            postgresql-client \
+            xvfb
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install desktop JavaScript dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm install --frozen-lockfile --filter buzz
+
+      - name: Install Linux Electron runtime dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright install-deps chromium
+
+      - name: Generate isolated Nostr identities for the relay fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          fixture_file="$RUNNER_TEMP/colony-electron-identities.json"
+          pnpm --dir desktop exec node tests/electron/prepare-fixtures.mjs "$fixture_file"
+          echo "COLONY_ELECTRON_FIXTURE_FILE=$fixture_file" >> "$GITHUB_ENV"
+
+      - name: Build the Electron native host
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          just _ensure-sidecar-stubs
+          cargo build --locked --features electron-host --bin colony-native-host \
+            --manifest-path desktop/src-tauri/Cargo.toml
+          target_directory="$(cargo metadata --manifest-path desktop/src-tauri/Cargo.toml \
+            --no-deps --format-version=1 | node -e 'let input="";process.stdin.on("data",chunk=>input+=chunk).on("end",()=>process.stdout.write(JSON.parse(input).target_directory))')"
+          source_host="$target_directory/debug/colony-native-host"
+          test -x "$source_host"
+          private_host="$RUNNER_TEMP/colony-native-host"
+          cp "$source_host" "$private_host"
+          chmod 700 "$private_host"
+          echo "COLONY_NATIVE_HOST=$private_host" >> "$GITHUB_ENV"
+
+      - name: Build the React renderer for colony://app
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec vite build
+
+      - name: Install native PostgreSQL and Redis for the relay
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install postgresql@17 redis
+          echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix redis)/bin" >> "$GITHUB_PATH"
+
+      - name: Start isolated relay database services
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          docker compose up -d postgres redis minio minio-init
+          for container in buzz-postgres buzz-redis buzz-minio; do
+            ready=false
+            for attempt in $(seq 1 60); do
+              health_state="$(docker inspect --format='{{.State.Health.Status}}' \
+                "$container" 2>/dev/null || echo not_found)"
+              if [[ "$health_state" == healthy ]]; then
+                ready=true
+                break
+              fi
+              sleep 2
+            done
+            if [[ "$ready" != true ]]; then
+              docker logs "$container" || true
+              echo "$container did not become healthy" >&2
+              exit 1
+            fi
+          done
+          minio_init_succeeded=false
+          for attempt in $(seq 1 60); do
+            minio_init_state="$(docker inspect --format='{{.State.Status}}' \
+              buzz-minio-init 2>/dev/null || echo not_found)"
+            if [[ "$minio_init_state" == exited ]]; then
+              minio_init_code="$(docker inspect --format='{{.State.ExitCode}}' \
+                buzz-minio-init 2>/dev/null || echo 1)"
+              if [[ "$minio_init_code" == 0 ]]; then
+                minio_init_succeeded=true
+              fi
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$minio_init_succeeded" != true ]]; then
+            docker logs buzz-minio-init || true
+            echo "MinIO bucket initialization did not complete successfully" >&2
+            exit 1
+          fi
+
+      - name: Prepare the disposable macOS database and fixture members
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          export PATH="$(brew --prefix postgresql@17)/bin:$(brew --prefix redis)/bin:$PATH"
+          database_root="$RUNNER_TEMP/colony-postgres"
+          initdb -D "$database_root" --username="$(whoami)" \
+            --auth-local=trust --auth-host=trust
+          pg_ctl -D "$database_root" -l "$RUNNER_TEMP/postgres.log" \
+            -o "-h 127.0.0.1 -p 5432" -w start
+          psql -h 127.0.0.1 -p 5432 -U "$(whoami)" -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE buzz WITH LOGIN SUPERUSER PASSWORD 'buzz_dev'"
+          createdb -h 127.0.0.1 -p 5432 -U "$(whoami)" -O buzz buzz
+          redis-server --bind 127.0.0.1 --port 6379 --daemonize yes \
+            --pidfile "$RUNNER_TEMP/redis.pid" --logfile "$RUNNER_TEMP/redis.log"
+          for attempt in $(seq 1 60); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U buzz >/dev/null 2>&1 \
+              && redis-cli -h 127.0.0.1 -p 6379 ping | rg -q PONG; then
+              break
+            fi
+            sleep 1
+          done
+          pg_isready -h 127.0.0.1 -p 5432 -U buzz
+          redis-cli -h 127.0.0.1 -p 6379 ping
+          export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=buzz PGPASSWORD=buzz_dev PGDATABASE=buzz
+          export PGSCHEMA_PLAN_HOST=127.0.0.1 PGSCHEMA_PLAN_PORT=5432
+          export PGSCHEMA_PLAN_DB=buzz PGSCHEMA_PLAN_USER=buzz PGSCHEMA_PLAN_PASSWORD=buzz_dev
+          ./bin/pgschema apply --file schema/schema.sql --auto-approve
+          psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
+            < scripts/reconcile-schema-after-pgschema.sql
+          bash scripts/setup-desktop-test-data.sh
+          BUZZ_COMMUNITY_HOST=localhost:3001 bash scripts/setup-desktop-test-data.sh
+          COLONY_ELECTRON_FIXTURE_FILE="$COLONY_ELECTRON_FIXTURE_FILE" \
+            pnpm --dir desktop exec node tests/electron/seed-fixtures.mjs
+
+      - name: Build and start the disposable relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            # pgschema currently tries to drop an inherited partition key on
+            # the fresh Postgres 17 container. Load the canonical schema into
+            # this disposable database, then apply its documented convergence
+            # step before starting the relay.
+            docker exec -i -e PGPASSWORD=buzz_dev buzz-postgres \
+              psql -U buzz -d buzz -v ON_ERROR_STOP=1 < schema/schema.sql
+            docker exec -i -e PGPASSWORD=buzz_dev buzz-postgres \
+              psql -U buzz -d buzz -v ON_ERROR_STOP=1 \
+              < scripts/reconcile-schema-after-pgschema.sql
+            docker exec -e PGPASSWORD=buzz_dev buzz-postgres psql \
+              -U buzz -d buzz -v ON_ERROR_STOP=1 -c "
+            INSERT INTO communities (id, host)
+            VALUES ('00000000-0000-4000-8000-00000000c0de', 'localhost:3000')
+            ON CONFLICT (lower(host)) DO NOTHING;"
+            cargo build --locked --profile ci -p buzz-relay -p git-credential-nostr
+            relay_key="$(openssl rand -hex 32)"
+            nohup env \
+              DATABASE_URL=postgres://buzz:buzz_dev@127.0.0.1:5432/buzz \
+              REDIS_URL=redis://127.0.0.1:6379 \
+              RELAY_URL=ws://localhost:3000 \
+              BUZZ_BIND_ADDR=0.0.0.0:3000 \
+              BUZZ_RELAY_PRIVATE_KEY="$relay_key" \
+              BUZZ_REQUIRE_AUTH_TOKEN=false \
+              BUZZ_RECONCILE_CHANNELS=true \
+              BUZZ_GIT_CONFORMANCE_PROBE=false \
+              BUZZ_GIT_PROBE_WRITERS=8 \
+              ./target/ci/buzz-relay > /tmp/buzz-relay.log 2>&1 &
+            echo "$!" > /tmp/buzz-relay.pid
+            for attempt in $(seq 1 60); do
+              if ! kill -0 "$(cat /tmp/buzz-relay.pid)" 2>/dev/null; then
+                cat /tmp/buzz-relay.log
+                echo "Relay process exited before becoming ready" >&2
+                exit 1
+              fi
+              relay_http_status="$(curl -s -o /dev/null -w "%{http_code}" \
+                http://127.0.0.1:3000/_readiness || true)"
+              if [[ "$relay_http_status" == 200 ]]; then
+                break
+              fi
+              sleep 1
+            done
+            if [[ "$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:3000/_readiness || true)" != 200 ]]; then
+              cat /tmp/buzz-relay.log
+              echo "Relay did not become ready within 60 seconds" >&2
+              exit 1
+            fi
+          else
+            cargo build --locked --profile ci -p buzz-relay -p git-credential-nostr
+            relay_key="$(openssl rand -hex 32)"
+            nohup env \
+              DATABASE_URL=postgres://buzz:buzz_dev@127.0.0.1:5432/buzz \
+              REDIS_URL=redis://127.0.0.1:6379 \
+              RELAY_URL=ws://localhost:3000 \
+              BUZZ_BIND_ADDR=0.0.0.0:3000 \
+              BUZZ_RELAY_PRIVATE_KEY="$relay_key" \
+              BUZZ_REQUIRE_AUTH_TOKEN=false \
+              BUZZ_RECONCILE_CHANNELS=true \
+              BUZZ_GIT_CONFORMANCE_PROBE=false \
+              BUZZ_GIT_PROBE_WRITERS=8 \
+              ./target/ci/buzz-relay > /tmp/buzz-relay.log 2>&1 &
+            echo "$!" > /tmp/buzz-relay.pid
+            for attempt in $(seq 1 60); do
+              if ! kill -0 "$(cat /tmp/buzz-relay.pid)" 2>/dev/null; then
+                cat /tmp/buzz-relay.log
+                echo "Relay process exited before becoming ready" >&2
+                exit 1
+              fi
+              relay_http_status="$(curl -s -o /dev/null -w "%{http_code}" \
+                http://127.0.0.1:3000/_readiness || true)"
+              if [[ "$relay_http_status" == 200 ]]; then
+                exit 0
+              fi
+              sleep 1
+            done
+            cat /tmp/buzz-relay.log
+            echo "Relay did not become ready within 60 seconds" >&2
+            exit 1
+          fi
+
+      - name: Seed Linux community fixtures and member identities
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=buzz PGPASSWORD=buzz_dev PGDATABASE=buzz
+          bash scripts/setup-desktop-test-data.sh
+          BUZZ_COMMUNITY_HOST=localhost:3001 bash scripts/setup-desktop-test-data.sh
+          COLONY_ELECTRON_FIXTURE_FILE="$COLONY_ELECTRON_FIXTURE_FILE" \
+            pnpm --dir desktop exec node tests/electron/seed-fixtures.mjs
+
+      - name: Prepare an isolated macOS keychain for generated test identities
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_home="$RUNNER_TEMP/colony-electron-e2e-home"
+          keychain="$RUNNER_TEMP/colony-electron-e2e.keychain-db"
+          runner_home="$HOME"
+          mkdir -p "$proof_home/Library/Preferences" \
+            "$proof_home/Library/Application Support/Colony/dev"
+          HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
+          HOME="$proof_home" security set-keychain-settings -lut 7200 "$keychain"
+          HOME="$proof_home" security unlock-keychain -p "" "$keychain"
+          HOME="$proof_home" security list-keychains -d user -s "$keychain"
+          HOME="$proof_home" security default-keychain -d user -s "$keychain"
+          echo "HERMIT_STATE_DIR=$runner_home/Library/Caches/hermit" >> "$GITHUB_ENV"
+          echo "HOME=$proof_home" >> "$GITHUB_ENV"
+
+      - name: Run the real Electron messaging and reconnect suite
+        shell: bash
+        env:
+          BUZZ_RELAY_URL: ws://localhost:3000
+          COLONY_ELECTRON_FIXTURE_FILE: ${{ runner.temp }}/colony-electron-identities.json
+          COLONY_ELECTRON_RELAY_LOG: /tmp/buzz-relay.log
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            proof_root="$RUNNER_TEMP/colony-electron-e2e-secret-service"
+            proof_home="$proof_root/home"
+            proof_config="$proof_root/config"
+            proof_runtime="$proof_root/runtime"
+            runner_home="$HOME"
+            export HERMIT_STATE_DIR="$runner_home/.cache/hermit"
+            mkdir -p "$proof_home/.local/share/keyrings" "$proof_config" "$proof_runtime"
+            chmod 700 "$proof_home" "$proof_runtime"
+            trap 'rm -rf "$proof_home/.local/share/keyrings" "$proof_config" "$proof_runtime/keyring"' EXIT
+            export HOME="$proof_home"
+            export XDG_CONFIG_HOME="$proof_config"
+            export XDG_RUNTIME_DIR="$proof_runtime"
+            dbus-run-session -- bash -euo pipefail -c '
+              printf "colony-ci-password" | gnome-keyring-daemon --unlock
+              xvfb-run -a pnpm --dir desktop test:electron
+            '
+          else
+            pnpm --dir desktop test:electron
+          fi
+
+      - name: Copy relay log into the artifact directory
+        if: always()
+        run: |
+          mkdir -p desktop/test-results-electron
+          if [[ -f /tmp/buzz-relay.log ]]; then
+            cp /tmp/buzz-relay.log desktop/test-results-electron/buzz-relay.log
+          fi
+          if [[ -f "$RUNNER_TEMP/postgres.log" ]]; then
+            cp "$RUNNER_TEMP/postgres.log" desktop/test-results-electron/postgres.log
+          fi
+          if [[ -f "$RUNNER_TEMP/redis.log" ]]; then
+            cp "$RUNNER_TEMP/redis.log" desktop/test-results-electron/redis.log
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            docker logs buzz-postgres > desktop/test-results-electron/postgres.log 2>&1 || true
+            docker logs buzz-redis > desktop/test-results-electron/redis.log 2>&1 || true
+            docker logs buzz-minio > desktop/test-results-electron/minio.log 2>&1 || true
+          fi
+
+      - name: Upload traces, screenshots, videos, and runtime logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-relay-e2e-${{ matrix.os }}
+          path: |
+            desktop/test-results-electron
+            desktop/playwright-electron-app-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove the disposable macOS identity keychain
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/colony-electron-e2e.keychain-db"
+          proof_home="$RUNNER_TEMP/colony-electron-e2e-home"
+          if [[ -f "$keychain" ]]; then
+            HOME="$HOME" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -f "$keychain"
+          fi
+          rm -rf "$proof_home/Library/Preferences" \
+            "$proof_home/Library/Application Support/Colony/dev"
+
+      - name: Stop disposable relay services
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f /tmp/buzz-relay.pid ]]; then
+            kill "$(cat /tmp/buzz-relay.pid)" 2>/dev/null || true
+          fi
+          if [[ -d "$RUNNER_TEMP/colony-postgres" ]]; then
+            "$(brew --prefix postgresql@17)/bin/pg_ctl" \
+              -D "$RUNNER_TEMP/colony-postgres" -m fast stop || true
+          fi
+          if [[ -f "$RUNNER_TEMP/redis.pid" ]]; then
+            "$(brew --prefix redis)/bin/redis-cli" \
+              -h 127.0.0.1 -p 6379 shutdown || true
+          fi
+
+      - name: Stop disposable Linux containers
+        if: always() && runner.os == 'Linux'
+        run: docker compose down --volumes --remove-orphans || true

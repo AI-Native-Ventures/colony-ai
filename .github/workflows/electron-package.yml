@@ -1,0 +1,330 @@
+name: Electron package
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/electron-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_BUILD_JOBS: 4
+
+jobs:
+  package:
+    name: Package Electron (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: darwin
+            arch: arm64
+          - runner: windows-latest
+            platform: win32
+            arch: x64
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: x64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate Hermit toolchain (macOS and Linux)
+        if: runner.os != 'Windows'
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Set up Node and pnpm (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+
+      - name: Set up pnpm (Windows)
+        if: runner.os == 'Windows'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.4.0
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            . ./bin/activate-hermit
+          fi
+          rustc -vV
+          cargo --version
+          node --version
+          pnpm --version
+
+      - name: Install Tauri dependencies (Linux)
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            -o DPkg::Lock::Timeout=120 \
+            build-essential \
+            curl \
+            file \
+            libasound2-dev \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            xvfb
+
+      - name: Install desktop dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile --filter buzz
+
+      - name: Run packaging config and path tests
+        shell: bash
+        run: >-
+          node --test
+          desktop/electron/runtime-paths.test.mjs
+          desktop/scripts/electron-package-config.test.mjs
+
+      - name: Build frontend
+        shell: bash
+        run: pnpm --dir desktop build
+
+      - name: Prepare Tauri external binary placeholders
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { closeSync, existsSync, openSync, readFileSync, mkdirSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          import path from "node:path";
+
+          const manifestDir = path.join("desktop", "src-tauri");
+          const platform = {
+            darwin: "macos",
+            linux: "linux",
+            win32: "windows",
+          }[process.platform];
+          if (!platform) throw new Error(`Unsupported runner platform: ${process.platform}`);
+
+          const config = JSON.parse(
+            readFileSync(path.join(manifestDir, "tauri.conf.json"), "utf8"),
+          );
+          const platformConfigPath = path.join(
+            manifestDir,
+            `tauri.${platform}.conf.json`,
+          );
+          if (existsSync(platformConfigPath)) {
+            const platformConfig = JSON.parse(readFileSync(platformConfigPath, "utf8"));
+            if (platformConfig.bundle?.externalBin) {
+              config.bundle.externalBin = platformConfig.bundle.externalBin;
+            }
+          }
+
+          const hostTriple = execFileSync("rustc", ["-vV"], { encoding: "utf8" })
+            .match(/^host: (.+)$/m)?.[1];
+          if (!hostTriple) throw new Error("Could not determine the Rust host triple.");
+          const extension = platform === "windows" ? ".exe" : "";
+          for (const binary of config.bundle.externalBin ?? []) {
+            const placeholder = path.join(
+              manifestDir,
+              `${binary}-${hostTriple}${extension}`,
+            );
+            mkdirSync(path.dirname(placeholder), { recursive: true });
+            closeSync(openSync(placeholder, "a"));
+          }
+          NODE
+
+      - name: Build native host
+        shell: bash
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: >-
+          cargo build --locked --release
+          --features electron-host
+          --bin colony-native-host
+          --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Build bundled sidecars
+        shell: bash
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          if [ "$COLONY_PACKAGE_PLATFORM" = "win32" ]; then
+            cargo build --locked --release \
+              -p buzz-acp \
+              -p buzz-agent \
+              -p buzz-dev-mcp \
+              -p git-credential-nostr \
+              -p buzz-cli \
+              --manifest-path Cargo.toml
+          else
+            cargo build --locked --release \
+              -p buzz-acp \
+              -p buzz-agent \
+              -p buzz-backend-kubernetes \
+              -p buzz-dev-mcp \
+              -p git-credential-nostr \
+              -p buzz-cli \
+              --manifest-path Cargo.toml
+          fi
+
+      - name: Copy release binaries to private staging
+        shell: bash
+        env:
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, chmodSync, copyFileSync, mkdirSync, statSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          import os from "node:os";
+          import path from "node:path";
+
+          const platform = process.env.COLONY_PACKAGE_PLATFORM;
+          const suffix = platform === "win32" ? ".exe" : "";
+          const names = [
+            "colony-native-host",
+            "buzz-acp",
+            "buzz-agent",
+            "buzz-dev-mcp",
+            "git-credential-nostr",
+            "buzz",
+          ];
+          if (platform !== "win32") names.push("buzz-backend-kubernetes");
+          const targetDirectory = (manifestPath) => JSON.parse(execFileSync(
+            "cargo",
+            ["metadata", "--manifest-path", manifestPath, "--format-version", "1", "--no-deps"],
+            { encoding: "utf8" },
+          )).target_directory;
+          const hostReleaseDir = path.join(
+            targetDirectory("desktop/src-tauri/Cargo.toml"),
+            "release",
+          );
+          const sidecarReleaseDir = path.join(
+            targetDirectory("Cargo.toml"),
+            "release",
+          );
+          const runtimeDir = path.join(process.env.RUNNER_TEMP, "colony-electron-runtime");
+          mkdirSync(runtimeDir, { recursive: true });
+          for (const name of names) {
+            const filename = `${name}${suffix}`;
+            const releaseDir = name === "colony-native-host" ? hostReleaseDir : sidecarReleaseDir;
+            const source = path.join(releaseDir, filename);
+            const sourceStat = statSync(source);
+            if (!sourceStat.isFile() || sourceStat.size === 0) {
+              throw new Error(`Missing real release binary: ${source}`);
+            }
+            if (platform !== "win32" && !(sourceStat.mode & 0o111)) {
+              throw new Error(`Release binary is not executable: ${source}`);
+            }
+            const destination = path.join(runtimeDir, filename);
+            copyFileSync(source, destination);
+            if (platform !== "win32") chmodSync(destination, sourceStat.mode & 0o777);
+          }
+          appendFileSync(process.env.GITHUB_ENV, `COLONY_ELECTRON_RUNTIME=${runtimeDir}${os.EOL}`);
+          NODE
+
+      - name: Package Electron app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            host="$COLONY_ELECTRON_RUNTIME/colony-native-host.exe"
+          else
+            host="$COLONY_ELECTRON_RUNTIME/colony-native-host"
+          fi
+          pnpm --dir desktop run electron:package \
+            --platform=${{ matrix.platform }} \
+            --arch=${{ matrix.arch }} \
+            --host="$host"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colony-electron-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            desktop/dist-electron/${{ matrix.platform }}-${{ matrix.arch }}
+            desktop/dist-electron/${{ matrix.platform }}-${{ matrix.arch }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Smoke launch packaged app (macOS and Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          NODE_OPTIONS: ""
+          COLONY_NATIVE_HOST: ""
+          COLONY_ELECTRON_SMOKE: "1"
+          COLONY_ELECTRON_BACKGROUND: "1"
+          COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            command=(xvfb-run -a "$GITHUB_WORKSPACE/desktop/dist-electron/linux-x64/Buzz")
+          else
+            command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/Buzz.app/Contents/MacOS/Buzz")
+          fi
+          python3 - "${command[@]}" <<'PY'
+          import os
+          import signal
+          import subprocess
+          import sys
+
+          child = subprocess.Popen(sys.argv[1:], env=os.environ.copy(), start_new_session=True)
+          try:
+              status = child.wait(timeout=90)
+          except subprocess.TimeoutExpired:
+              os.killpg(child.pid, signal.SIGTERM)
+              try:
+                  child.wait(timeout=5)
+              except subprocess.TimeoutExpired:
+                  os.killpg(child.pid, signal.SIGKILL)
+                  child.wait()
+              raise SystemExit("Packaged Electron smoke did not exit within 90 seconds.")
+          if status != 0:
+              raise SystemExit(f"Packaged Electron smoke exited with status {status}.")
+          PY
+
+      - name: Smoke launch packaged app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NODE_OPTIONS: ""
+          COLONY_NATIVE_HOST: ""
+          COLONY_ELECTRON_SMOKE: "1"
+          COLONY_ELECTRON_BACKGROUND: "1"
+        run: |
+          $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
+          $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/Buzz.exe"
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stderr.log"
+          $process = Start-Process -FilePath $appPath -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+          if (-not $process.WaitForExit(90000)) {
+            $process.Kill($true)
+            throw "Packaged Electron smoke did not exit within 90 seconds."
+          }
+          if (Test-Path $stdoutPath) { Get-Content $stdoutPath }
+          if (Test-Path $stderrPath) { Get-Content $stderrPath }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged Electron smoke exited with status $($process.ExitCode)."
+          }

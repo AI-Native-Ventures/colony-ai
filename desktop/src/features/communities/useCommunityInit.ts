@@ -4,6 +4,7 @@ import { isMacPlatform } from "@/shared/lib/platform";
 
 import { relayClient } from "@/shared/api/relayClient";
 import { resetRateLimitGate } from "@/shared/api/relayRateLimitGate";
+import { resetRelayWebSocketOperationPacer } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   autoConnectDefaultRelayEnabled,
   getDefaultRelayUrl,
@@ -66,6 +67,7 @@ async function resetCommunityState({
   resetAvatarState: boolean;
 }): Promise<void> {
   relayClient.disconnect();
+  resetRelayWebSocketOperationPacer();
   await resetNavigationDeepLinkDrain();
   resetRateLimitGate();
   clearAllDrafts();

@@ -122,6 +122,35 @@ export function waitForRateLimit(): Promise<void> {
 }
 
 /**
+ * Waits for the shared gate to clear, returning false when the caller's wait
+ * budget expires first. The same gate promise is retained when later relay
+ * hints extend the window, so this remains correct for overlapping signals.
+ */
+export function waitForRateLimitWithin(maxWaitMs: number): Promise<boolean> {
+  if (!isRateLimited() || gatePromise === null) {
+    return Promise.resolve(true);
+  }
+  if (maxWaitMs <= 0) {
+    return Promise.resolve(false);
+  }
+
+  const activeGate = gatePromise;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timeout = 0;
+    const finish = (cleared: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(cleared);
+    };
+    timeout = window.setTimeout(() => finish(false), maxWaitMs);
+
+    void activeGate.then(() => finish(true));
+  });
+}
+
+/**
  * Returns the milliseconds remaining on the active gate, or 0 when inactive.
  *
  * Use this instead of re-deriving the hint from the message so that a shorter
