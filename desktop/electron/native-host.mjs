@@ -1,8 +1,10 @@
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 
 const PREFIX = "@colony-native:";
 const MAX_FRAME = 16 * 1024 * 1024;
+const MAX_NATIVE_HOST_LOG_BYTES = 2 * 1024 * 1024;
 
 /** Long-running native commands get a longer deadline than ordinary calls. */
 const LONG_COMMANDS = new Map([["save_onboarding_memories", 5 * 60_000]]);
@@ -36,6 +38,17 @@ export class NativeHost extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    this.stderrLog = env.COLONY_NATIVE_HOST_LOG
+      ? createWriteStream(env.COLONY_NATIVE_HOST_LOG, {
+          flags: "w",
+          mode: 0o600,
+        })
+      : null;
+    this.stderrLogBytes = 0;
+    this.stderrLog?.on("error", () => {
+      this.stderrLog?.destroy();
+      this.stderrLog = null;
+    });
     this.ready = new Promise((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;
@@ -47,12 +60,24 @@ export class NativeHost extends EventEmitter {
       timeout,
     );
     this.child.stdout.on("data", (data) => this.receive(data));
-    // Do not forward native logs: existing commands may include local paths/data.
-    this.child.stderr.on("data", () => {});
+    // Native stderr is private unless an explicit diagnostic path opts in.
+    this.child.stderr.on("data", (data) => {
+      if (!this.stderrLog) return;
+      const remaining = MAX_NATIVE_HOST_LOG_BYTES - this.stderrLogBytes;
+      const captured = data.subarray(0, remaining);
+      this.stderrLogBytes += captured.length;
+      this.stderrLog.write(captured);
+      if (this.stderrLogBytes >= MAX_NATIVE_HOST_LOG_BYTES) {
+        this.stderrLog.end();
+        this.stderrLog = null;
+      }
+    });
     this.child.on("error", () => this.fail("Native host could not start"));
     this.exited = new Promise((resolve) =>
       this.child.once("exit", (code, signal) => {
         this.childExited = true;
+        this.stderrLog?.end();
+        this.stderrLog = null;
         clearTimeout(this.killTimer);
         this.fail(
           `Native host exited (code ${code ?? "none"}, signal ${signal ?? "none"})`,

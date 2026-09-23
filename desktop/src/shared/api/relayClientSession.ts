@@ -66,6 +66,7 @@ import {
   STALL_IDLE_TIMEOUT_MS,
 } from "@/shared/api/relayClientTimings";
 import { closeWebSocket } from "@/shared/api/relayWebSocketClose";
+import { sendPacedRelayOperation } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   armRelayAuthentication,
   AuthOkTracker,
@@ -641,14 +642,22 @@ export class RelayClient {
     if (this.wsId === null) {
       throw new Error("Relay socket is not connected.");
     }
+    const wsId = this.wsId;
+    const generation = this.connectionGeneration;
+    const ownership = this.sessionEpoch;
 
-    await invoke("plugin:websocket|send", {
-      id: this.wsId,
-      message: {
-        type: "Text",
-        data: JSON.stringify(payload),
-      },
-    });
+    try {
+      await this.sendRawOnSocket(payload, wsId, generation, ownership);
+    } catch (error) {
+      if (ownership !== this.sessionEpoch) {
+        throw new Error("Relay disconnected for community switch.");
+      }
+      // A queued REQ from an old connection is already covered by replay on
+      // the replacement generation. Do not let that stale queue entry tear it
+      // down after the new socket is live.
+      if (generation !== this.connectionGeneration) return;
+      throw error;
+    }
   }
 
   private async sendRawForGeneration(payload: unknown[], generation: number) {
@@ -656,10 +665,28 @@ export class RelayClient {
       throw new Error("Relay publish was superseded by a session change.");
     }
     const wsId = this.wsId;
-    await invoke("plugin:websocket|send", {
-      id: wsId,
-      message: { type: "Text", data: JSON.stringify(payload) },
-    });
+    const ownership = this.sessionEpoch;
+    await this.sendRawOnSocket(payload, wsId, generation, ownership);
+  }
+
+  private async sendRawOnSocket(
+    payload: unknown[],
+    wsId: number,
+    generation: number,
+    ownership: number,
+  ) {
+    await sendPacedRelayOperation(
+      payload,
+      () =>
+        this.wsId === wsId &&
+        this.connectionGeneration === generation &&
+        this.sessionEpoch === ownership,
+      () =>
+        invoke("plugin:websocket|send", {
+          id: wsId,
+          message: { type: "Text", data: JSON.stringify(payload) },
+        }),
+    );
   }
 
   private normalizeRelayError(error: unknown, fallbackMessage: string) {
@@ -679,21 +706,50 @@ export class RelayClient {
     payload: unknown[],
     fallbackMessage: string,
   ) {
+    const ownership = this.sessionEpoch;
+    const generation = this.connectionGeneration;
     try {
-      await this.sendRaw(payload);
+      await this.sendRawForGeneration(payload, generation);
     } catch (error) {
+      if (ownership !== this.sessionEpoch) {
+        throw new Error("Relay disconnected for community switch.");
+      }
+
+      // The paced send may have been queued while an independent reconnect
+      // completed. Retry against that generation without resetting it again.
+      if (generation !== this.connectionGeneration) {
+        let retryGeneration: number | null = null;
+        try {
+          retryGeneration = await this.ensureConnected();
+          await this.sendRawForGeneration(payload, retryGeneration);
+          return;
+        } catch (retryError) {
+          if (ownership !== this.sessionEpoch) {
+            throw new Error("Relay disconnected for community switch.");
+          }
+          throw retryGeneration !== null &&
+            this.connectionGeneration === retryGeneration
+            ? this.recoverFromSocketFailure(retryError, fallbackMessage)
+            : this.normalizeRelayError(retryError, fallbackMessage);
+        }
+      }
+
       const normalizedError = this.recoverFromSocketFailure(
         error,
         fallbackMessage,
       );
+      let retryGeneration: number | null = null;
       try {
-        await this.ensureConnected();
-        await this.sendRaw(payload);
+        retryGeneration = await this.ensureConnected();
+        await this.sendRawForGeneration(payload, retryGeneration);
       } catch (retryError) {
-        throw this.recoverFromSocketFailure(
-          retryError,
-          normalizedError.message,
-        );
+        if (ownership !== this.sessionEpoch) {
+          throw new Error("Relay disconnected for community switch.");
+        }
+        throw retryGeneration !== null &&
+          this.connectionGeneration === retryGeneration
+          ? this.recoverFromSocketFailure(retryError, normalizedError.message)
+          : this.normalizeRelayError(retryError, normalizedError.message);
       }
     }
   }
