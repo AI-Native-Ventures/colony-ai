@@ -84,21 +84,21 @@ impl Harness {
         }
     }
 
-    fn send(&mut self, value: Value) -> Value {
+    fn send(&mut self, value: Value, context: &str) -> Value {
         let mut encoded = serde_json::to_vec(&value).expect("frame encodes");
         assert!(encoded.len() < FRAME_LIMIT, "frame within host limit");
         encoded.push(b'\n');
         let line = format!("{PREFIX}{}", String::from_utf8(encoded).expect("utf8"));
         self.stdin.write_all(line.as_bytes()).expect("stdin write");
         self.stdin.flush().expect("stdin flush");
-        self.recv()
+        self.recv(context)
     }
 
-    fn recv(&mut self) -> Value {
+    fn recv(&mut self, context: &str) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             if Instant::now() >= deadline {
-                panic!("timed out waiting for helper frame");
+                panic!("timed out waiting for helper frame: {context}");
             }
             let remaining = deadline
                 .checked_duration_since(Instant::now())
@@ -106,7 +106,7 @@ impl Harness {
             let line = match self.stdout.recv_timeout(remaining) {
                 Ok(line) => line,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    panic!("timed out waiting for helper frame after 30s")
+                    panic!("timed out waiting for helper frame after 30s: {context}")
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     let status = self.child.wait().expect("helper status readable");
@@ -130,7 +130,8 @@ impl Harness {
 
     fn hello(&mut self, payload: Value) -> Value {
         self.sequence = 1;
-        let ready = self.send(json!({
+        let ready = self.send(
+            json!({
             "type": "HELLO",
             "protocolVersion": ENVELOPE_PROTOCOL_VERSION,
             "profileId": PROFILE_ID,
@@ -138,8 +139,10 @@ impl Harness {
             "generationId": 1,
             "buildId": "relay-v2-d0",
             "payload": payload,
-        }));
-        let lifecycle = self.recv();
+            }),
+            "HELLO response",
+        );
+        let lifecycle = self.recv("HELLO lifecycle");
         assert_eq!(
             lifecycle.get("type").and_then(|value| value.as_str()),
             Some("EVENT"),
@@ -164,7 +167,9 @@ impl Harness {
     fn request(&mut self, capability: &str, method: &str, payload: Value) -> Value {
         let request_id = format!("d0-{}", self.sequence);
         self.sequence += 1;
-        let mut frame = self.send(json!({
+        let context = format!("REQUEST {request_id} {capability}/{method}");
+        let mut frame = self.send(
+            json!({
             "type": "REQUEST",
             "protocolVersion": ENVELOPE_PROTOCOL_VERSION,
             "profileId": PROFILE_ID,
@@ -174,7 +179,9 @@ impl Harness {
             "capability": capability,
             "method": method,
             "payload": payload,
-        }));
+            }),
+            &context,
+        );
         let mut lifecycle_states = Vec::new();
         loop {
             match frame.get("type").and_then(|value| value.as_str()) {
@@ -208,7 +215,7 @@ impl Harness {
                 }
                 other => panic!("expected RESPONSE or lifecycle EVENT, got {other:?}: {frame}"),
             }
-            frame = self.recv();
+            frame = self.recv(&context);
         }
     }
 
@@ -245,7 +252,7 @@ fn next_event(harness: &mut Harness) -> Value {
     // request responses; pump until one arrives (bounded by recv timeout).
     // Responses are RESPONSE frames; anything else here is a harness bug.
     loop {
-        let frame = harness.recv();
+        let frame = harness.recv("relay stream event");
         match frame.get("type").and_then(|v| v.as_str()) {
             Some("EVENT") => return frame,
             Some("RESPONSE") => panic!("expected streaming EVENT, got RESPONSE {frame}"),
