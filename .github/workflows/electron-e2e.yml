@@ -229,7 +229,53 @@ jobs:
           set -euo pipefail
           . ./bin/activate-hermit
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            ./scripts/start-relay-for-tests.sh
+            # pgschema currently tries to drop an inherited partition key on
+            # the fresh Postgres 17 container. Load the canonical schema into
+            # this disposable database, then apply its documented convergence
+            # step before starting the relay.
+            docker exec -i -e PGPASSWORD=buzz_dev buzz-postgres \
+              psql -U buzz -d buzz -v ON_ERROR_STOP=1 < schema/schema.sql
+            docker exec -i -e PGPASSWORD=buzz_dev buzz-postgres \
+              psql -U buzz -d buzz -v ON_ERROR_STOP=1 \
+              < scripts/reconcile-schema-after-pgschema.sql
+            docker exec -e PGPASSWORD=buzz_dev buzz-postgres psql \
+              -U buzz -d buzz -v ON_ERROR_STOP=1 -c "
+            INSERT INTO communities (id, host)
+            VALUES ('00000000-0000-4000-8000-00000000c0de', 'localhost:3000')
+            ON CONFLICT (lower(host)) DO NOTHING;"
+            cargo build --locked --profile ci -p buzz-relay -p git-credential-nostr
+            relay_key="$(openssl rand -hex 32)"
+            nohup env \
+              DATABASE_URL=postgres://buzz:buzz_dev@127.0.0.1:5432/buzz \
+              REDIS_URL=redis://127.0.0.1:6379 \
+              RELAY_URL=ws://localhost:3000 \
+              BUZZ_BIND_ADDR=0.0.0.0:3000 \
+              BUZZ_RELAY_PRIVATE_KEY="$relay_key" \
+              BUZZ_REQUIRE_AUTH_TOKEN=false \
+              BUZZ_RECONCILE_CHANNELS=true \
+              BUZZ_GIT_CONFORMANCE_PROBE=false \
+              BUZZ_GIT_PROBE_WRITERS=8 \
+              ./target/ci/buzz-relay > /tmp/buzz-relay.log 2>&1 &
+            echo "$!" > /tmp/buzz-relay.pid
+            for attempt in $(seq 1 60); do
+              if ! kill -0 "$(cat /tmp/buzz-relay.pid)" 2>/dev/null; then
+                cat /tmp/buzz-relay.log
+                echo "Relay process exited before becoming ready" >&2
+                exit 1
+              fi
+              relay_http_status="$(curl -s -o /dev/null -w "%{http_code}" \
+                http://127.0.0.1:3000/_readiness || true)"
+              if [[ "$relay_http_status" == 200 ]]; then
+                break
+              fi
+              sleep 1
+            done
+            if [[ "$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:3000/_readiness || true)" != 200 ]]; then
+              cat /tmp/buzz-relay.log
+              echo "Relay did not become ready within 60 seconds" >&2
+              exit 1
+            fi
           else
             cargo build --locked --profile ci -p buzz-relay -p git-credential-nostr
             relay_key="$(openssl rand -hex 32)"
@@ -298,6 +344,7 @@ jobs:
         env:
           BUZZ_RELAY_URL: ws://localhost:3000
           COLONY_ELECTRON_FIXTURE_FILE: ${{ runner.temp }}/colony-electron-identities.json
+          COLONY_ELECTRON_RELAY_LOG: /tmp/buzz-relay.log
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
@@ -356,11 +403,13 @@ jobs:
         run: |
           set -euo pipefail
           keychain="$RUNNER_TEMP/colony-electron-e2e.keychain-db"
+          proof_home="$RUNNER_TEMP/colony-electron-e2e-home"
           if [[ -f "$keychain" ]]; then
             HOME="$HOME" security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -f "$keychain"
           fi
-          chmod -R u+w "$RUNNER_TEMP/colony-electron-e2e-home" 2>/dev/null || true
-          rm -rf "$RUNNER_TEMP/colony-electron-e2e-home"
+          rm -rf "$proof_home/Library/Preferences" \
+            "$proof_home/Library/Application Support/Colony/dev"
 
       - name: Stop disposable relay services
         if: always() && runner.os == 'macOS'

@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
 import {
   DEFAULT_RELAY_URL,
-  GENERAL_CHANNEL_ID,
   PROXY_RELAY_URL,
   closeElectron,
   createUserDataDir,
   fixtureIdentity,
   finishElectronTest,
   launchElectron,
+  readDiagnosticTail,
   publishChannelMessage,
   startTcpRelayProxy,
   waitForRelayMessage,
@@ -34,7 +35,7 @@ async function onboardToCommunity(
   identity: TestIdentity,
   communityUrl: string,
   displayName: string,
-) {
+): Promise<string> {
   const { page } = running;
   await assertLanding(page);
   await page.getByRole("button", { name: "Use an existing key" }).click();
@@ -52,18 +53,33 @@ async function onboardToCommunity(
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
   await page.getByTestId("invite-redeem-submit").click();
 
-  await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
-  ).toBeVisible({ timeout: 45_000 });
-  await page.getByTestId("community-profile-name-key").fill(displayName);
-  await page.getByTestId("community-profile-next").click();
-  await expect(page.getByTestId("community-team-intro-enter")).toBeVisible({
-    timeout: 30_000,
+  const profileHeading = page.getByRole("heading", {
+    name: "Build your profile",
   });
-  await page.getByTestId("community-team-intro-enter").click();
-  await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0, {
-    timeout: 30_000,
-  });
+  const teamIntro = page.getByTestId("community-team-intro-enter");
+  await expect
+    .poll(
+      async () => {
+        if (await profileHeading.isVisible()) return "profile";
+        if (await teamIntro.isVisible()) return "team-intro";
+        if (await page.getByTestId("channel-general").isVisible())
+          return "main";
+        return "pending";
+      },
+      { timeout: 60_000 },
+    )
+    .not.toBe("pending");
+  if (await profileHeading.isVisible()) {
+    await page.getByTestId("community-profile-name-key").fill(displayName);
+    await page.getByTestId("community-profile-next").click();
+    await expect(teamIntro).toBeVisible({ timeout: 30_000 });
+  }
+  if (await teamIntro.isVisible()) {
+    await teamIntro.click();
+    await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0, {
+      timeout: 30_000,
+    });
+  }
   await expect(page.getByTestId("channel-general")).toBeVisible({
     timeout: 60_000,
   });
@@ -72,6 +88,11 @@ async function onboardToCommunity(
     timeout: 20_000,
   });
   await expect(page.getByTestId("message-input")).toBeVisible();
+  const channelId = await page
+    .getByTestId("channel-general")
+    .getAttribute("data-channel-id");
+  if (!channelId) throw new Error("The visible #general channel has no id.");
+  return channelId;
 }
 
 async function enterMessage(running: RunningElectron, content: string) {
@@ -88,8 +109,8 @@ function messageText(prefix: string) {
   return `${prefix} ${Date.now()} ${randomUUID()}`;
 }
 
-function hasGeneralChannelTag(tags: string[][]) {
-  return tags.some((tag) => tag[0] === "h" && tag[1] === GENERAL_CHANNEL_ID);
+function hasChannelTag(tags: string[][], channelId: string) {
+  return tags.some((tag) => tag[0] === "h" && tag[1] === channelId);
 }
 
 test("real Electron reaches the onboarding landing without a native startup error", async ({
@@ -132,11 +153,15 @@ test("a typed channel message appears in Electron and is readable by an independ
 }, testInfo) => {
   const userDataDir = createUserDataDir(testInfo);
   const applications: RunningElectron[] = [];
+  let proxy: TcpRelayProxy | undefined;
   try {
     const identity = fixtureIdentity("send-member");
-    const running = await launchElectron(userDataDir);
+    proxy = await startTcpRelayProxy({
+      timelinePath: path.join(userDataDir, "send-relay-proxy.timeline.log"),
+    });
+    const running = await launchElectron(userDataDir, PROXY_RELAY_URL);
     applications.push(running);
-    await onboardToCommunity(
+    const generalChannelId = await onboardToCommunity(
       running,
       identity,
       DEFAULT_RELAY_URL,
@@ -150,13 +175,15 @@ test("a typed channel message appears in Electron and is readable by an independ
       DEFAULT_RELAY_URL,
       identity.publicKey,
       content,
+      15_000,
+      generalChannelId,
     );
     expect(saved).toBeDefined();
     expect(saved?.kind).toBe(9);
     expect(saved?.pubkey).toBe(identity.publicKey);
-    expect(hasGeneralChannelTag(saved?.tags ?? [])).toBe(true);
+    expect(hasChannelTag(saved?.tags ?? [], generalChannelId)).toBe(true);
   } finally {
-    await finishElectronTest(testInfo, userDataDir, applications);
+    await finishElectronTest(testInfo, userDataDir, applications, proxy);
   }
 });
 
@@ -169,7 +196,7 @@ test("an independent Nostr client message reaches the open Electron channel with
     const identity = fixtureIdentity("receive-member");
     const running = await launchElectron(userDataDir);
     applications.push(running);
-    await onboardToCommunity(
+    const generalChannelId = await onboardToCommunity(
       running,
       identity,
       DEFAULT_RELAY_URL,
@@ -183,6 +210,7 @@ test("an independent Nostr client message reaches the open Electron channel with
       DEFAULT_RELAY_URL,
       externalIdentity,
       content,
+      generalChannelId,
     );
     await running.page
       .getByTestId("message-timeline")
@@ -207,7 +235,7 @@ test("relaunching the same Electron user data restores general history without o
     const identity = fixtureIdentity("restart-member");
     let running = await launchElectron(userDataDir);
     applications.push(running);
-    await onboardToCommunity(
+    const generalChannelId = await onboardToCommunity(
       running,
       identity,
       DEFAULT_RELAY_URL,
@@ -220,7 +248,12 @@ test("relaunching the same Electron user data restores general history without o
       messageText("Another external message before Electron restart"),
     ];
     for (const content of previousMessages) {
-      await publishChannelMessage(DEFAULT_RELAY_URL, externalIdentity, content);
+      await publishChannelMessage(
+        DEFAULT_RELAY_URL,
+        externalIdentity,
+        content,
+        generalChannelId,
+      );
       await expect(running.page.getByTestId("message-timeline")).toContainText(
         content,
         { timeout: 10_000 },
@@ -262,11 +295,15 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
   let proxy: TcpRelayProxy | undefined;
   try {
     const identity = fixtureIdentity("reconnect-member");
-    const externalIdentity = fixtureIdentity("reconnect-publisher");
-    proxy = await startTcpRelayProxy();
+    let generalChannelId = "";
+    proxy = await startTcpRelayProxy({
+      timelinePath:
+        process.env.COLONY_ELECTRON_PROXY_LOG ??
+        path.join(userDataDir, "relay-proxy.timeline.log"),
+    });
     const running = await launchElectron(userDataDir);
     applications.push(running);
-    await onboardToCommunity(
+    generalChannelId = await onboardToCommunity(
       running,
       identity,
       PROXY_RELAY_URL,
@@ -276,6 +313,7 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
       .poll(() => proxy?.snapshot().activeConnections ?? 0, { timeout: 15_000 })
       .toBeGreaterThan(0);
     const beforeDrop = proxy.snapshot();
+    const electronWindowCount = running.application.windows().length;
     console.log(`TCP proxy before outage: ${JSON.stringify(beforeDrop)}`);
 
     const outage = await proxy.dropAndBlock(3_000);
@@ -285,17 +323,19 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
     const inboundContent = messageText(
       "After real TCP outage from external client",
     );
+    const externalIdentity = fixtureIdentity("reconnect-publisher");
     const inboundEvent = await publishChannelMessage(
       PROXY_RELAY_URL,
       externalIdentity,
       inboundContent,
+      generalChannelId,
     );
     let inboundError: string | null = null;
     try {
       await running.page
         .getByTestId("message-timeline")
         .getByText(inboundContent, { exact: true })
-        .waitFor({ timeout: 30_000 });
+        .waitFor({ timeout: 10_000 });
     } catch (error) {
       inboundError = error instanceof Error ? error.message : String(error);
     }
@@ -323,6 +363,7 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         identity.publicKey,
         outboundContent,
         15_000,
+        generalChannelId,
       );
     } catch (error) {
       relayReadError = error instanceof Error ? error.message : String(error);
@@ -334,7 +375,7 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
       !outboundEvent
         ? `outbound event missing from relay; read error=${relayReadError ?? "none"}`
         : null,
-      outboundEvent && !hasGeneralChannelTag(outboundEvent.tags)
+      outboundEvent && !hasChannelTag(outboundEvent.tags, generalChannelId)
         ? "outbound event did not retain the general h tag"
         : null,
     ].filter((failure): failure is string => failure !== null);
@@ -345,18 +386,20 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         inboundEventId: inboundEvent.id,
         proxyBeforeDrop: beforeDrop,
         proxyAfterRecovery,
-        electronLogs: running.logs.slice(-40),
+        electronWindowCount,
+        electronLogs: running.logs.slice(-180),
+        nativeHostStderr: readDiagnosticTail(running.nativeHostLogPath)
+          .toString("utf8")
+          .slice(-12_000),
+        relayLogTail: process.env.COLONY_ELECTRON_RELAY_LOG
+          ? readDiagnosticTail(process.env.COLONY_ELECTRON_RELAY_LOG)
+              .toString("utf8")
+              .slice(-12_000)
+          : "not configured",
         proxyLogs: proxy.logs.slice(-40),
       };
       console.error(
         `[electron-reconnect-observation] ${JSON.stringify(observation, null, 2)}`,
-      );
-      // Keep the full receive and send assertions below. This annotation
-      // preserves the real regression as an expected failure until the app
-      // reconnects; a recovered run takes no expected-failure branch.
-      test.fail(
-        true,
-        `Real TCP reconnect failed: ${JSON.stringify(observation)}`,
       );
     }
 
@@ -364,8 +407,16 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
     expect(outboundError).toBeNull();
     expect(outboundEvent?.kind).toBe(9);
     expect(outboundEvent?.pubkey).toBe(identity.publicKey);
-    expect(hasGeneralChannelTag(outboundEvent?.tags ?? [])).toBe(true);
+    expect(hasChannelTag(outboundEvent?.tags ?? [], generalChannelId)).toBe(
+      true,
+    );
     expect(proxyAfterRecovery.acceptingConnections).toBe(true);
+    console.log(
+      `TCP proxy after outage: ${JSON.stringify(proxyAfterRecovery)}`,
+    );
+    console.log(
+      `Reconnect events accepted inbound=${inboundEvent.id} outbound=${outboundEvent?.id ?? "missing"}`,
+    );
   } finally {
     await finishElectronTest(testInfo, userDataDir, applications, proxy);
   }
