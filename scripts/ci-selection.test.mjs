@@ -110,6 +110,11 @@ const scenarios = [
   ["mobile release script", ["scripts/mobile-release.sh"], ["mobile"]],
   ["desktop", ["desktop/src/main.tsx"], ["desktop"]],
   ["Tauri", ["desktop/src-tauri/src/main.rs"], ["desktop", "desktop-rust"]],
+  [
+    "isolated native host lane",
+    ["desktop/src-native-host-audio/src/lib.rs"],
+    ["desktop", "desktop-rust"],
+  ],
   ["relay", ["crates/buzz-relay/src/main.rs"], ["rust"]],
   ["migration", ["migrations/123.sql"], ["rust"]],
   ["shared workflow", [".github/workflows/ci.yml"], ["rust", "mobile"]],
