@@ -62,6 +62,7 @@ protocol.registerSchemesAsPrivileged([
 let host = null;
 let quitting = false;
 let mainWindow = null;
+let quitApp = async () => app.quit();
 
 app.on("second-instance", () => revealWindow());
 
@@ -175,8 +176,14 @@ async function boot() {
   rendererHost.on("event", send);
   rendererHost.on("channel", send);
   host.on("disconnected", (message) => {
+    if (quitting) return;
+    // A clean host exit is a native quit request (tray or app menu Quit).
+    if (host.child.exitCode === 0) {
+      void quitApp();
+      return;
+    }
+    console.error(`Colony native host stopped: ${message}`);
     send({ type: "shell", name: "disconnected", payload: message });
-    if (!quitting) console.error(`Colony native host stopped: ${message}`);
   });
 
   const origin = devUrl ? new URL(devUrl).origin : "colony://app";
@@ -250,13 +257,22 @@ async function boot() {
   window.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
+    // Upstream keeps the app running on macOS so it can be reopened from the
+    // dock or tray; elsewhere closing the window quits.
+    if (process.platform === "darwin") {
+      window.hide();
+      return;
+    }
+    void quitApp();
+  });
+  quitApp = async () => {
+    if (quitting) return;
     quitting = true;
     disposeWindowEvents();
-    void shutdown().finally(() => {
-      window.destroy();
-      app.quit();
-    });
-  });
+    await shutdown();
+    if (!window.isDestroyed()) window.destroy();
+    app.quit();
+  };
 
   await host.ready;
   // Native code (tray, notifications, reopen) asks for the main window here.
@@ -304,9 +320,13 @@ async function shutdown() {
   }
 }
 
-app.on("before-quit", () => {
-  quitting = true;
+// Quitting from the dock menu or Cmd+Q must also stop the native host.
+app.on("before-quit", (event) => {
+  if (quitting || !host) return;
+  event.preventDefault();
+  void quitApp();
 });
+app.on("activate", () => revealWindow());
 app.on("window-all-closed", () => app.quit());
 
 if (primaryInstance)
