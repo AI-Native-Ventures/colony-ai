@@ -60,9 +60,17 @@ async fn test_state(
     let pool = PgPool::connect(&database_url)
         .await
         .expect("connect account integration test Postgres");
-    buzz_db::migration::run_migrations(&pool)
-        .await
-        .expect("apply account integration schema");
+    // The shared PostgreSQL test harness clones the current desired schema,
+    // which intentionally has no historical migration ledger. Local runs
+    // against an empty database still need the normal migration path.
+    if !matches!(
+        std::env::var("BUZZ_TEST_SCHEMA_MODE").as_deref(),
+        Ok("desired")
+    ) {
+        buzz_db::migration::run_migrations(&pool)
+            .await
+            .expect("apply account integration schema");
+    }
     let db = Db::from_pool(pool.clone());
     db.ensure_configured_community(&host)
         .await
