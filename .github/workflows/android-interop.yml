@@ -165,6 +165,16 @@ jobs:
           node "$ANDROID_INTEROP_PEER_DIR/android-interop-peer.mjs" mint-invite \
             --output "$ANDROID_INTEROP_INVITE_PATH"
 
+      - name: Initialize Android interop evidence directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ANDROID_INTEROP_ARTIFACT_DIR"
+          cat > "$ANDROID_INTEROP_ARTIFACT_DIR/RUN.txt" <<'EOF'
+          Android interop evidence directory initialized before emulator setup.
+          Screenshots and protocol evidence are added when the proof harness starts.
+          EOF
+
       - name: Require the normal Linux emulator acceleration path
         shell: bash
         run: |
@@ -175,6 +185,34 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           test -e /dev/kvm
           ls -l /dev/kvm
+
+      - name: Prepare Android emulator package with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$sdk_root" ]]; then
+            echo "Android SDK root is not configured" >&2
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            echo "Installing Android Emulator package (attempt $attempt/3)"
+            if sdkmanager --install emulator --channel=0 &&
+              [[ -x "$sdk_root/emulator/emulator" ]] &&
+              "$sdk_root/emulator/emulator" -version; then
+              exit 0
+            fi
+
+            echo "Emulator package is missing or invalid after attempt $attempt" >&2
+            rm -rf "$sdk_root/emulator"
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep $((attempt * 5))
+            fi
+          done
+
+          echo "Android Emulator could not be installed after three attempts" >&2
+          exit 1
 
       - name: Sign in and prove Android live relay interoperability
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
