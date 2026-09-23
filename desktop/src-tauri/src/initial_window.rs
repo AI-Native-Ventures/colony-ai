@@ -4,6 +4,10 @@
 pub(crate) const INITIAL_RENDER_READY_EVENT: &str = "initial-render-ready";
 
 pub(crate) fn reveal_initial_window<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    // Under Electron the Tauri window is a hidden dispatch context only.
+    if crate::electron_host::enabled() {
+        return;
+    }
     if let Err(error) = window.show() {
         eprintln!("buzz-desktop: failed to reveal main window: {error}");
         return;

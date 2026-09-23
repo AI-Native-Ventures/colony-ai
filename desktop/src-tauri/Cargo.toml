@@ -21,8 +21,16 @@ edition = "2021"
 name = "buzz_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "colony-native-host"
+path = "src/electron_host/main.rs"
+required-features = ["electron-host"]
+
 [features]
 default = ["system-keyring"]
+# Headless host served to the Electron shell over stdio. Only the
+# `colony-native-host` binary enables it; ordinary Tauri builds never do.
+electron-host = []
 mesh-llm = ["dep:iroh", "dep:mesh-llm-sdk", "dep:mesh-llm-host-runtime", "dep:mesh-llm-client", "dep:mesh-llm-node", "dep:mesh-llm-system", "dep:mesh-llm-events"]
 # OS keyring backing for desktop secret storage (nsec private keys). When
 # disabled, secrets fall back to 0o600 files. On by default for real builds.
