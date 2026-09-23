@@ -2,18 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  nativeTheme,
-  net,
-  protocol,
-  shell,
-} from "electron";
+import { app, ipcMain, net, protocol, screen, shell } from "electron";
+import { createAppWindow, validWindowLabel } from "./app-window.mjs";
 import { NativeHost } from "./native-host.mjs";
-import { RendererHost } from "./renderer-host.mjs";
-import { createShellPlugins } from "./shell-plugins.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
@@ -121,6 +112,44 @@ function serveRenderer(csp) {
   });
 }
 
+/** Host events through which native code drives the Electron windows. */
+const SHELL_EVENTS = {
+  showWindow: SHOW_WINDOW_EVENT,
+  quit: "electron-shell:quit",
+  windowAction: "electron-shell:window-action",
+  vibrancy: "electron-shell:set-window-vibrancy",
+  openHuddle: "electron-shell:open-huddle-window",
+  closeHuddle: "electron-shell:close-huddle-window",
+};
+
+/** Open-window registry keyed by webContents id. */
+const windows = new Map();
+
+function windowByLabel(label) {
+  for (const entry of windows.values()) if (entry.label === label) return entry;
+  return null;
+}
+
+function openExternal(url) {
+  // External links open in the system browser, never inside the app.
+  try {
+    const parsed = new URL(url);
+    if (["https:", "http:", "mailto:"].includes(parsed.protocol))
+      void shell.openExternal(parsed.href);
+  } catch {
+    // Ignore malformed targets.
+  }
+}
+
+function applyWindowAction(window, action) {
+  if (action === "minimize") window.minimize();
+  else if (action === "toggle-maximize") {
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  } else if (action === "fill-work-area")
+    window.setBounds(screen.getDisplayMatching(window.getBounds()).workArea);
+}
+
 async function boot() {
   await app.whenReady();
   const html = devUrl
@@ -141,51 +170,8 @@ async function boot() {
     },
     timeout: 120_000,
   });
-  const rendererHost = new RendererHost(host);
 
-  const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 800,
-    minHeight: 500,
-    show: false,
-    title: "Buzz",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#17151b" : "#ffffff",
-    webPreferences: {
-      preload: path.join(desktop, "electron", "preload.cjs"),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  mainWindow = window;
-
-  const send = (message) => {
-    if (!window.isDestroyed()) window.webContents.send("colony:event", message);
-  };
-  const shellPlugins = createShellPlugins({
-    app,
-    shell,
-    nativeTheme,
-    getWindow: () => window,
-    emit: (event, payload) => send({ type: "shell-event", event, payload }),
-  });
-  const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
-
-  rendererHost.on("event", send);
-  rendererHost.on("channel", send);
-  host.on("disconnected", (message) => {
-    if (quitting) return;
-    // A clean host exit is a native quit request (tray or app menu Quit).
-    if (host.child.exitCode === 0) {
-      void quitApp();
-      return;
-    }
-    console.error(`Colony native host stopped: ${message}`);
-    send({ type: "shell", name: "disconnected", payload: message });
-  });
-
+  const appUrl = devUrl || "colony://app/";
   const origin = devUrl ? new URL(devUrl).origin : "colony://app";
   const trusted = (url) => {
     try {
@@ -196,56 +182,56 @@ async function boot() {
       return false;
     }
   };
-  window.webContents.on("will-navigate", (event, url) => {
-    if (!trusted(url)) event.preventDefault();
+  const openWindow = (label, browserOptions) => {
+    const entry = createAppWindow({
+      label,
+      host,
+      desktop,
+      trusted,
+      onUntrustedOpen: openExternal,
+      browserOptions,
+    });
+    const id = entry.window.webContents.id;
+    windows.set(id, entry);
+    entry.window.on("closed", () => windows.delete(id));
+    return entry;
+  };
+
+  const main = openWindow("main", {
+    width: 1280,
+    height: 820,
+    minWidth: 800,
+    minHeight: 500,
+    title: "Buzz",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
   });
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    // External links open in the system browser, never inside the app.
-    try {
-      const parsed = new URL(url);
-      if (["https:", "http:", "mailto:"].includes(parsed.protocol))
-        void shell.openExternal(parsed.href);
-    } catch {
-      // Ignore malformed targets.
-    }
-    return { action: "deny" };
-  });
-  let initialNavigation = true;
-  window.webContents.on("did-start-navigation", (details) => {
-    if (!details.isMainFrame || details.isSameDocument) return;
-    if (initialNavigation) {
-      initialNavigation = false;
+  const window = main.window;
+  mainWindow = window;
+
+  host.on("disconnected", (message) => {
+    if (quitting) return;
+    // A clean host exit is a native quit request (tray or app menu Quit).
+    if (host.child.exitCode === 0) {
+      void quitApp();
       return;
     }
-    // A reload retires the previous renderer's subscriptions and channels
-    // before the new one may issue commands.
-    void rendererHost.reset().catch(() => {
-      send({
-        type: "shell",
-        name: "disconnected",
-        payload: "Native renderer cleanup failed; restart the app",
-      });
-    });
+    console.error(`Colony native host stopped: ${message}`);
+    for (const entry of windows.values())
+      entry.send({ type: "shell", name: "disconnected", payload: message });
   });
 
-  const dispatch = async (event, type, payload = {}) => {
-    if (
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !trusted(event.senderFrame.url)
-    )
-      throw new Error("Untrusted desktop caller");
-    if (!payload || typeof payload !== "object" || Array.isArray(payload))
-      throw new Error("Invalid request");
-    if (type === "invoke" && shellPlugins.handles(payload.command))
-      return shellPlugins.invoke(payload.command, payload.args ?? {});
-    if (["invoke", "listen", "unlisten", "emit"].includes(type))
-      return rendererHost.request(type, payload);
-    throw new Error("Unsupported desktop request");
-  };
-  ipcMain.handle("colony:request", async (...args) => {
+  ipcMain.handle("colony:request", async (event, type, payload = {}) => {
     try {
-      return { ok: true, result: await dispatch(...args) };
+      const entry = windows.get(event.sender.id);
+      if (
+        !entry ||
+        event.senderFrame !== entry.window.webContents.mainFrame ||
+        !trusted(event.senderFrame.url)
+      )
+        throw new Error("Untrusted desktop caller");
+      if (!payload || typeof payload !== "object" || Array.isArray(payload))
+        throw new Error("Invalid request");
+      return { ok: true, result: await entry.dispatch(type, payload) };
     } catch (error) {
       return {
         ok: false,
@@ -258,7 +244,7 @@ async function boot() {
     if (quitting) return;
     event.preventDefault();
     // Upstream keeps the app running on macOS so it can be reopened from the
-    // dock or tray; elsewhere closing the window quits.
+    // dock or tray; elsewhere closing the main window quits.
     if (process.platform === "darwin") {
       window.hide();
       return;
@@ -268,19 +254,59 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
-    disposeWindowEvents();
+    await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
     await shutdown();
-    if (!window.isDestroyed()) window.destroy();
+    for (const entry of windows.values())
+      if (!entry.window.isDestroyed()) entry.window.destroy();
     app.quit();
   };
 
   await host.ready;
-  // Native code (tray, notifications, reopen) asks for the main window here.
-  const showId = host.nextId();
-  host.on("event", (message) => {
-    if (message.id === showId) revealWindow();
-  });
-  await host.request("listen", { event: SHOW_WINDOW_EVENT }, showId);
+  // Native code (tray, menus, notifications, huddle) drives windows here.
+  const handlers = {
+    [SHELL_EVENTS.showWindow]: () => revealWindow(),
+    [SHELL_EVENTS.quit]: () => void quitApp(),
+    [SHELL_EVENTS.windowAction]: (payload) =>
+      applyWindowAction(window, payload?.action),
+    [SHELL_EVENTS.vibrancy]: (payload) => {
+      if (process.platform !== "darwin") return;
+      window.setVibrancy(
+        payload?.enabled ? payload.material || "under-window" : null,
+      );
+    },
+    [SHELL_EVENTS.openHuddle]: (payload) => {
+      const label = `huddle-${payload?.channelId}`;
+      if (!validWindowLabel(label)) return;
+      const existing = windowByLabel(label);
+      if (existing) {
+        existing.window.show();
+        existing.window.focus();
+        return;
+      }
+      const huddle = openWindow(label, {
+        width: 960,
+        height: 720,
+        minWidth: 720,
+        minHeight: 520,
+        title: "Huddle",
+      });
+      huddle.window.on("close", () => void huddle.dispose());
+      void huddle.load(appUrl).then(() => huddle.window.show());
+    },
+    [SHELL_EVENTS.closeHuddle]: (payload) => {
+      const entry = windowByLabel(`huddle-${payload?.channelId}`);
+      if (entry && !entry.window.isDestroyed()) entry.window.close();
+    },
+  };
+  const subscriptions = new Map();
+  host.on("event", (message) =>
+    subscriptions.get(message.id)?.(message.payload),
+  );
+  for (const [event, handler] of Object.entries(handlers)) {
+    const id = host.nextId();
+    subscriptions.set(id, handler);
+    await host.request("listen", { event }, id);
+  }
 
   if (smoke) {
     const relay = await host.request("invoke", {
@@ -291,10 +317,7 @@ async function boot() {
       throw new Error("Native host returned no default relay URL");
   }
 
-  await window.loadURL(devUrl || "colony://app/");
-  await window.webContents.insertCSS(
-    "[data-tauri-drag-region]{-webkit-app-region:drag} [data-tauri-drag-region] button,[data-tauri-drag-region] input,[data-tauri-drag-region] a{-webkit-app-region:no-drag}",
-  );
+  await main.load(appUrl);
   if (smoke) {
     console.log("colony-electron-smoke: ok");
     quitting = true;

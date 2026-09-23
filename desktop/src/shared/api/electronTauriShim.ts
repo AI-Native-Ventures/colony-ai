@@ -21,6 +21,8 @@ type DesktopMessage =
 /** Bridge exposed by `electron/preload.cjs`. */
 export type ColonyDesktopBridge = {
   platform: string;
+  /** Tauri-style label of this window: `main` or `huddle-<uuid>`. */
+  windowLabel?: string;
   request: (type: string, payload: unknown) => Promise<unknown>;
   subscribe: (callback: (message: DesktopMessage) => void) => () => void;
 };
@@ -218,8 +220,11 @@ export function createElectronTauriInternals(desktop: ColonyDesktopBridge) {
       return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
     },
     metadata: {
-      currentWindow: { label: "main" },
-      currentWebview: { windowLabel: "main", label: "main" },
+      currentWindow: { label: desktop.windowLabel ?? "main" },
+      currentWebview: {
+        windowLabel: desktop.windowLabel ?? "main",
+        label: desktop.windowLabel ?? "main",
+      },
     },
     plugins: {
       path: {

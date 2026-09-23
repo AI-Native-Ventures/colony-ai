@@ -13,9 +13,23 @@ export class RendererHost extends EventEmitter {
   barrier = Promise.resolve();
   failure = null;
 
-  constructor(host) {
+  /**
+   * @param host shared native host transport
+   * @param options.resetCommands native commands that retire resources owned
+   *   by this renderer on reload. Only the main window owns every native
+   *   socket, so only it may disconnect them all.
+   */
+  constructor(
+    host,
+    {
+      resetCommands = [
+        { command: "plugin:websocket|disconnect_all", args: {} },
+      ],
+    } = {},
+  ) {
     super();
     this.host = host;
+    this.resetCommands = resetCommands;
     host.on("channel", (message) => {
       const id = this.channels.get(message.id);
       if (id !== undefined && !this.failure)
@@ -123,10 +137,9 @@ export class RendererHost extends EventEmitter {
           }
           if (failed) throw new Error("Native subscription retirement failed");
         })(),
-        this.host.request("invoke", {
-          command: "plugin:websocket|disconnect_all",
-          args: {},
-        }),
+        ...this.resetCommands.map((command) =>
+          this.host.request("invoke", command),
+        ),
       ]);
       // Native command rejections are serialized values. An Error from the
       // transport means completion is unknown, so reopening would be unsafe.
