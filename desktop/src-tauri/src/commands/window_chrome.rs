@@ -1,3 +1,5 @@
+use tauri::Manager;
+
 /// Performs the platform's default sidebar alignment haptic when available.
 #[tauri::command]
 pub fn perform_sidebar_default_haptic() {
@@ -32,30 +34,25 @@ pub fn perform_sidebar_default_haptic() {
 /// behavior).
 #[tauri::command]
 pub fn title_bar_double_click(window: tauri::Window) {
+    let action = preferred_double_click_action();
+    if crate::electron_host::enabled() {
+        if let Some(action) = action {
+            let _ = crate::electron_host::route_window_action(window.app_handle(), action);
+        }
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     {
-        let action = {
-            let output = std::process::Command::new("defaults")
-                .args(["read", "-g", "AppleActionOnDoubleClick"])
-                .output();
-            match output {
-                Ok(output) if output.status.success() => {
-                    String::from_utf8_lossy(&output.stdout).trim().to_string()
-                }
-                _ => "Maximize".to_string(),
-            }
-        };
-
-        match action.as_str() {
-            "None" => {}
-            "Minimize" => {
+        match action {
+            None => {}
+            Some(crate::electron_host::WindowAction::Minimize) => {
                 let _ = window.minimize();
             }
-            "Fill" => {
+            Some(crate::electron_host::WindowAction::FillWorkArea) => {
                 fill_window(&window);
             }
-            // "Maximize" or any unexpected value.
-            _ => {
+            Some(crate::electron_host::WindowAction::ToggleMaximize) => {
                 toggle_maximize(&window);
             }
         }
@@ -63,8 +60,45 @@ pub fn title_bar_double_click(window: tauri::Window) {
 
     #[cfg(not(target_os = "macos"))]
     {
-        toggle_maximize(&window);
+        if matches!(
+            action,
+            Some(crate::electron_host::WindowAction::ToggleMaximize)
+        ) {
+            toggle_maximize(&window);
+        }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn preferred_double_click_action() -> Option<crate::electron_host::WindowAction> {
+    let output = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleActionOnDoubleClick"])
+        .output();
+    let preference = match output {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => "Maximize".to_string(),
+    };
+
+    action_for_apple_preference(&preference)
+}
+
+#[cfg(target_os = "macos")]
+fn action_for_apple_preference(preference: &str) -> Option<crate::electron_host::WindowAction> {
+    use crate::electron_host::WindowAction;
+
+    match preference {
+        "None" => None,
+        "Minimize" => Some(WindowAction::Minimize),
+        "Fill" => Some(WindowAction::FillWorkArea),
+        _ => Some(WindowAction::ToggleMaximize),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn preferred_double_click_action() -> Option<crate::electron_host::WindowAction> {
+    Some(crate::electron_host::WindowAction::ToggleMaximize)
 }
 
 /// Fills the current display work area, excluding system UI like the menu bar
@@ -97,5 +131,33 @@ fn toggle_maximize(window: &tauri::Window) {
         _ => {
             let _ = window.maximize();
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apple_double_click_preference_maps_to_shell_actions() {
+        use crate::electron_host::WindowAction;
+
+        assert_eq!(action_for_apple_preference("None"), None);
+        assert_eq!(
+            action_for_apple_preference("Minimize"),
+            Some(WindowAction::Minimize)
+        );
+        assert_eq!(
+            action_for_apple_preference("Fill"),
+            Some(WindowAction::FillWorkArea)
+        );
+        assert_eq!(
+            action_for_apple_preference("Maximize"),
+            Some(WindowAction::ToggleMaximize)
+        );
+        assert_eq!(
+            action_for_apple_preference("unexpected"),
+            Some(WindowAction::ToggleMaximize)
+        );
     }
 }

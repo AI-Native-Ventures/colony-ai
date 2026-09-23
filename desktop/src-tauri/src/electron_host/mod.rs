@@ -8,14 +8,10 @@
 
 #[cfg(feature = "electron-host")]
 mod runtime;
+pub(crate) mod shell_events;
 #[cfg(feature = "electron-host")]
 mod wire;
-
-/// Event the host emits when native code asks for the main window. The Electron
-/// parent listens for it and reveals its own window instead.
-// Only the macOS tray reveals the main window today.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) const SHOW_WINDOW_EVENT: &str = "electron-shell:show-window";
+pub(crate) use shell_events::WindowAction;
 
 /// Whether this process is serving an Electron parent.
 pub(crate) fn enabled() -> bool {
@@ -81,16 +77,48 @@ pub(crate) fn start(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
 ///
 /// Returns `true` when the request was routed to Electron, in which case the
 /// caller must not touch the hidden Tauri window.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn route_show_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
-    if !enabled() {
-        return false;
-    }
-    use tauri::Emitter;
-    if let Err(error) = app.emit(SHOW_WINDOW_EVENT, ()) {
-        eprintln!("colony-native: failed to request window reveal: {error}");
-    }
-    true
+    shell_events::emit(app, shell_events::SHOW_WINDOW, serde_json::Value::Null)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn emit_application_event<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    event: &str,
+    payload: serde_json::Value,
+) -> bool {
+    shell_events::emit(app, event, payload)
+}
+
+pub(crate) fn route_window_action<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    action: shell_events::WindowAction,
+) -> bool {
+    shell_events::emit(
+        app,
+        shell_events::WINDOW_ACTION,
+        shell_events::window_action_payload(action),
+    )
+}
+
+pub(crate) fn route_window_vibrancy<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    enabled: bool,
+    material: Option<String>,
+) -> bool {
+    shell_events::emit(
+        app,
+        shell_events::SET_WINDOW_VIBRANCY,
+        shell_events::vibrancy_payload(enabled, material),
+    )
+}
+
+pub(crate) fn route_huddle_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    event: &str,
+    channel_id: &str,
+) -> bool {
+    shell_events::emit(app, event, shell_events::huddle_window_payload(channel_id))
 }
 
 #[cfg(test)]

@@ -48,7 +48,6 @@ fn direction_for_swipe(delta_x: f64) -> Option<&'static str> {
 pub fn init<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     use block2::RcBlock;
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventType};
-    use tauri::Emitter;
 
     let app = app_handle.clone();
     let block = RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
@@ -58,11 +57,10 @@ pub fn init<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
         match ev.r#type() {
             NSEventType::OtherMouseUp => {
                 if let Some(direction) = direction_for_button(ev.buttonNumber()) {
-                    // Emit to the main window explicitly instead of
-                    // broadcasting (`emit`) so navigation stays scoped if
-                    // multi-window ever lands. "main" is the default label
-                    // for the single configured window (see deep_link.rs).
-                    let _ = app.emit_to("main", "mouse-nav", direction);
+                    // Tauri keeps navigation scoped to the main window.
+                    // Electron receives an app-wide event because its shell
+                    // forwards broadcasts from the hidden host.
+                    emit_navigation(&app, direction);
                     // Swallow the release: nothing downstream should also act
                     // on it. The matching press deliberately passes through:
                     // WKWebView never delivers X1/X2 to the page, so the
@@ -73,7 +71,7 @@ pub fn init<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
             }
             NSEventType::Swipe => {
                 if let Some(direction) = direction_for_swipe(ev.deltaX()) {
-                    let _ = app.emit_to("main", "mouse-nav", direction);
+                    emit_navigation(&app, direction);
                 }
                 // Pass swipes through: nothing else navigates on them, and
                 // swallowing mid-gesture events could confuse AppKit's
@@ -100,6 +98,15 @@ pub fn init<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     } else {
         eprintln!("buzz-desktop: mouse-nav: failed to install NSEvent monitor");
     }
+}
+
+fn emit_navigation<R: tauri::Runtime>(app: &tauri::AppHandle<R>, direction: &str) {
+    if crate::electron_host::emit_application_event(app, "mouse-nav", serde_json::json!(direction))
+    {
+        return;
+    }
+    use tauri::Emitter;
+    let _ = app.emit_to("main", "mouse-nav", direction);
 }
 
 #[cfg(test)]

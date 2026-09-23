@@ -99,6 +99,7 @@ mod linux {
                     return;
                 }
 
+                crate::electron_host::route_show_window(&app);
                 // The frontend focuses the window on activation (the same path
                 // every other platform uses), so we only forward the target.
                 let _ = app.emit(NATIVE_NOTIFICATION_ACTIVATED_EVENT, target);
