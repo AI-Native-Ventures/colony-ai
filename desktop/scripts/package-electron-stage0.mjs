@@ -87,6 +87,8 @@ async function emitReactPackageDigestDiagnostics(archivePath) {
   }
 }
 
+// Temporary evidence: keep the complete React archive manifest on pass and fail
+// while we isolate the reviewed-digest mismatch; remove it after that question is closed.
 async function emitReactPackageEntryManifest(archivePath) {
   try {
     const actual = createHash("sha256")
