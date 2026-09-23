@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import {
   ELECTRON_BUNDLE_ID,
@@ -64,19 +65,20 @@ test("package arguments reject duplicates, unknown flags, and an empty host", ()
 
 test("each platform gets the requested output directory and archive format", () => {
   const base = { desktop: "/checkout/desktop", arch: "x64" };
+  const outputRoot = path.join(base.desktop, "dist-electron");
 
   assert.deepEqual(electronPackagePaths({ ...base, platform: "darwin" }), {
-    outputDir: "/checkout/desktop/dist-electron/darwin-x64",
-    archivePath: "/checkout/desktop/dist-electron/darwin-x64.zip",
-    packagerOutputDir: "/checkout/desktop/dist-electron",
+    outputDir: path.join(outputRoot, "darwin-x64"),
+    archivePath: path.join(outputRoot, "darwin-x64.zip"),
+    packagerOutputDir: outputRoot,
   });
   assert.equal(
     electronPackagePaths({ ...base, platform: "win32" }).archivePath,
-    "/checkout/desktop/dist-electron/win32-x64.zip",
+    path.join(outputRoot, "win32-x64.zip"),
   );
   assert.equal(
     electronPackagePaths({ ...base, platform: "linux" }).archivePath,
-    "/checkout/desktop/dist-electron/linux-x64.tar.gz",
+    path.join(outputRoot, "linux-x64.tar.gz"),
   );
   assert.equal(nativeHostFilename("darwin"), "colony-native-host");
   assert.equal(nativeHostFilename("win32"), "colony-native-host.exe");
