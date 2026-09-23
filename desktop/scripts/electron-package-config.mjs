@@ -113,6 +113,14 @@ export function createPackagerOptions({
     prune: false,
     overwrite: true,
     extraResource,
+    ...(platform === "darwin"
+      ? {
+          extendInfo: {
+            NSMicrophoneUsageDescription:
+              "Your microphone is used to send and receive audio in huddles.",
+          },
+        }
+      : {}),
     ...(platform === "win32"
       ? { win32metadata: { CompanyName: productName } }
       : {}),

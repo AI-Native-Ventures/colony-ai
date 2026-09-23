@@ -125,6 +125,24 @@ test("Windows package metadata uses the configured product name", () => {
   assert.deepEqual(options.win32metadata, { CompanyName: "Buzz" });
 });
 
+test("macOS package declares why the app needs microphone access", () => {
+  const options = createPackagerOptions({
+    dir: "/tmp/staged-app",
+    out: "/checkout/desktop/dist-electron",
+    productName: "Buzz",
+    appVersion: "0.5.23",
+    electronVersion: "44.4.3",
+    platform: "darwin",
+    arch: "arm64",
+    extraResource: ["/tmp/staged-app/colony-native-host"],
+  });
+
+  assert.deepEqual(options.extendInfo, {
+    NSMicrophoneUsageDescription:
+      "Your microphone is used to send and receive audio in huddles.",
+  });
+});
+
 test("sidecar staging includes real runtime binaries for each platform", () => {
   assert.deepEqual(sidecarFilenames("darwin"), [
     "buzz-acp",
