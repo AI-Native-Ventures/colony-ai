@@ -4,7 +4,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Menu, app, ipcMain, net, protocol, screen, shell } from "electron";
 import { installAppMenu } from "./app-menu.mjs";
-import { createAppWindow, validWindowLabel } from "./app-window.mjs";
+import {
+  applyWindowAction,
+  createAppWindow,
+  validWindowLabel,
+} from "./app-window.mjs";
 import { NativeHost } from "./native-host.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
@@ -144,15 +148,6 @@ function openExternal(url) {
   }
 }
 
-function applyWindowAction(window, action) {
-  if (action === "minimize") window.minimize();
-  else if (action === "toggle-maximize") {
-    if (window.isMaximized()) window.unmaximize();
-    else window.maximize();
-  } else if (action === "fill-work-area")
-    window.setBounds(screen.getDisplayMatching(window.getBounds()).workArea);
-}
-
 async function boot() {
   await app.whenReady();
   installAppMenu({ Menu, app });
@@ -271,7 +266,7 @@ async function boot() {
     [SHELL_EVENTS.showWindow]: () => revealWindow(),
     [SHELL_EVENTS.quit]: () => void quitApp(),
     [SHELL_EVENTS.windowAction]: (payload) =>
-      applyWindowAction(window, payload?.action),
+      applyWindowAction(window, payload?.action, screen),
     [SHELL_EVENTS.vibrancy]: (payload) => {
       if (process.platform !== "darwin") return;
       window.setVibrancy(

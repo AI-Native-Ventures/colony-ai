@@ -2,19 +2,12 @@ import path from "node:path";
 import { BrowserWindow, app, nativeTheme, shell } from "electron";
 import { RendererHost } from "./renderer-host.mjs";
 import { createShellPlugins } from "./shell-plugins.mjs";
+import { validWindowLabel } from "./window-rules.mjs";
+
+export { applyWindowAction, validWindowLabel } from "./window-rules.mjs";
 
 const DRAG_REGION_CSS =
   "[data-tauri-drag-region]{-webkit-app-region:drag} [data-tauri-drag-region] button,[data-tauri-drag-region] input,[data-tauri-drag-region] a{-webkit-app-region:no-drag}";
-
-/** Window labels follow Tauri's: `main`, or `huddle-<channel uuid>`. */
-export function validWindowLabel(label) {
-  return (
-    label === "main" ||
-    /^huddle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      label,
-    )
-  );
-}
 
 /**
  * One app window: its own renderer generation fence and shell plugins over the
