@@ -186,6 +186,11 @@ jobs:
           test -e /dev/kvm
           ls -l /dev/kvm
 
+      - name: Install Android emulator runtime dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes libpulse0
+
       - name: Prepare Android emulator package with bounded retries
         shell: bash
         run: |
