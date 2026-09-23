@@ -968,4 +968,4 @@ async fn retry_mail(
 }
 
 #[cfg(test)]
-mod tests;
+mod postgres_tests;
