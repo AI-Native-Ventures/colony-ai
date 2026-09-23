@@ -106,3 +106,18 @@ test("packager config keeps Buzz identity and places runtime files in asar", () 
     "/tmp/staged-app/colony-native-host",
   ]);
 });
+
+test("Windows package metadata uses the configured product name", () => {
+  const options = createPackagerOptions({
+    dir: "/tmp/staged-app",
+    out: "/checkout/desktop/dist-electron",
+    productName: "Buzz",
+    appVersion: "0.5.23",
+    electronVersion: "44.4.3",
+    platform: "win32",
+    arch: "x64",
+    extraResource: ["/tmp/staged-app/colony-native-host.exe"],
+  });
+
+  assert.deepEqual(options.win32metadata, { CompanyName: "Buzz" });
+});

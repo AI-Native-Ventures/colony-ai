@@ -98,5 +98,8 @@ export function createPackagerOptions({
     prune: false,
     overwrite: true,
     extraResource,
+    ...(platform === "win32"
+      ? { win32metadata: { CompanyName: productName } }
+      : {}),
   };
 }
