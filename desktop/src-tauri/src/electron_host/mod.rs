@@ -7,6 +7,8 @@
 //! never open this transport.
 
 #[cfg(feature = "electron-host")]
+pub(crate) mod deep_links;
+#[cfg(feature = "electron-host")]
 mod runtime;
 pub(crate) mod shell_events;
 #[cfg(feature = "electron-host")]

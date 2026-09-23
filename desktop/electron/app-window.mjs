@@ -1,5 +1,13 @@
 import path from "node:path";
-import { BrowserWindow, app, nativeTheme, shell } from "electron";
+import {
+  BrowserWindow,
+  Notification,
+  app,
+  clipboard,
+  dialog,
+  nativeTheme,
+  shell,
+} from "electron";
 import { RendererHost } from "./renderer-host.mjs";
 import { createShellPlugins } from "./shell-plugins.mjs";
 import { validWindowLabel } from "./window-rules.mjs";
@@ -46,6 +54,9 @@ export function createAppWindow({
   const shellPlugins = createShellPlugins({
     app,
     shell,
+    clipboard,
+    dialog,
+    Notification,
     nativeTheme,
     getWindow: () => window,
     emit: (event, payload) => send({ type: "shell-event", event, payload }),

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -9,7 +10,13 @@ import {
   createAppWindow,
   validWindowLabel,
 } from "./app-window.mjs";
+import {
+  createDeepLinkRouter,
+  deepLinkSchemesFromConfig,
+  registerDeepLinkSchemes,
+} from "./deep-links.mjs";
 import { NativeHost } from "./native-host.mjs";
+import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
@@ -17,6 +24,10 @@ const devUrl = app.isPackaged
   ? null
   : process.env.COLONY_ELECTRON_DEV_URL || null;
 const SHOW_WINDOW_EVENT = "electron-shell:show-window";
+const tauriConfig = JSON.parse(
+  readFileSync(path.join(desktop, "src-tauri", "tauri.conf.json"), "utf8"),
+);
+const deepLinkSchemes = deepLinkSchemesFromConfig(tauriConfig);
 
 function nativeHostPath() {
   const exe = process.platform === "win32" ? ".exe" : "";
@@ -55,6 +66,16 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
     },
   },
+  {
+    scheme: "buzz-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
 ]);
 
 let host = null;
@@ -62,7 +83,15 @@ let quitting = false;
 let mainWindow = null;
 let quitApp = async () => app.quit();
 
-app.on("second-instance", () => revealWindow());
+const deepLinks = createDeepLinkRouter({
+  schemes: deepLinkSchemes,
+  revealWindow,
+});
+
+app.on("open-url", (event, url) => deepLinks.handleOpenUrl(event, url));
+app.on("second-instance", (_event, commandLine) =>
+  deepLinks.handleSecondInstance(commandLine),
+);
 
 function revealWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -151,6 +180,12 @@ function openExternal(url) {
 async function boot() {
   await app.whenReady();
   installAppMenu({ Menu, app });
+  registerDeepLinkSchemes(app, deepLinkSchemes, {
+    isDefaultApp: process.defaultApp,
+    executablePath: process.execPath,
+    appPath: path.resolve(process.argv[1] || app.getAppPath()),
+  });
+  deepLinks.handleInitialArgv(process.argv);
   const html = devUrl
     ? await (await fetch(devUrl)).text()
     : await readFile(path.join(desktop, "dist", "index.html"), "utf8");
@@ -261,6 +296,19 @@ async function boot() {
   };
 
   await host.ready;
+  protocol.handle(
+    "buzz-media",
+    createBuzzMediaProtocolHandler({
+      host,
+      fetch: (url, options) => net.fetch(url, options),
+    }),
+  );
+  await deepLinks.setHost(host).catch((error) => {
+    console.error(
+      "Colony native deep-link delivery failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
   // Native code (tray, menus, notifications, huddle) drives windows here.
   const handlers = {
     [SHELL_EVENTS.showWindow]: () => revealWindow(),
@@ -348,7 +396,15 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   void quitApp();
 });
-app.on("activate", () => revealWindow());
+app.on("activate", () => {
+  revealWindow();
+  void deepLinks.retryPending().catch((error) => {
+    console.error(
+      "Colony native deep-link retry failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+});
 app.on("window-all-closed", () => app.quit());
 
 if (primaryInstance)

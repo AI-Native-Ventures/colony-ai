@@ -15,6 +15,10 @@ function createHarness({ withDock = true } = {}) {
     calls.push(["isFullScreen"]);
     return true;
   };
+  window.setFullScreen = (value) => {
+    calls.push(["setFullScreen", value]);
+  };
+  window.isMinimized = () => false;
   window.isFocused = () => {
     calls.push(["isFocused"]);
     return false;
@@ -61,21 +65,70 @@ function createHarness({ withDock = true } = {}) {
   }
 
   const shell = {
-    openExternal: (url) => calls.push(["openExternal", url]),
+    openExternal: async (url) => calls.push(["openExternal", url]),
     openPath: (path) => calls.push(["openPath", path]),
     showItemInFolder: (path) => calls.push(["showItemInFolder", path]),
   };
+  const clipboard = {
+    write: (value) => calls.push(["clipboardWrite", value]),
+    writeText: (value) => calls.push(["clipboardWriteText", value]),
+    readText: () => {
+      calls.push(["clipboardReadText"]);
+      return "clipboard-value";
+    },
+  };
+  const dialog = {
+    showOpenDialog: async (...args) => {
+      calls.push(["showOpenDialog", ...args]);
+      return { canceled: true, filePaths: [] };
+    },
+    showSaveDialog: async (...args) => {
+      calls.push(["showSaveDialog", ...args]);
+      return { canceled: true, filePath: undefined };
+    },
+  };
+  const notifications = [];
+  class TestNotification extends EventEmitter {
+    static isSupported() {
+      return true;
+    }
+
+    constructor(options) {
+      super();
+      this.options = options;
+      notifications.push(this);
+      calls.push(["notification", options]);
+    }
+
+    show() {
+      calls.push(["notificationShow"]);
+    }
+  }
   const nativeTheme = new EventEmitter();
   nativeTheme.shouldUseDarkColors = true;
   const plugins = createShellPlugins({
     app,
     shell,
+    clipboard,
+    dialog,
+    Notification: TestNotification,
     nativeTheme,
     getWindow: () => window,
     emit: (eventName, payload) => emitted.push({ eventName, payload }),
   });
 
-  return { app, calls, emitted, nativeTheme, plugins, shell, window };
+  return {
+    app,
+    calls,
+    clipboard,
+    dialog,
+    emitted,
+    nativeTheme,
+    notifications,
+    plugins,
+    shell,
+    window,
+  };
 }
 
 const commandCases = [
@@ -96,6 +149,12 @@ const commandCases = [
     command: "plugin:window|is_fullscreen",
     result: true,
     calls: [["isFullScreen"]],
+  },
+  {
+    command: "plugin:window|set_fullscreen",
+    args: { value: true },
+    result: null,
+    calls: [["setFullScreen", true]],
   },
   {
     command: "plugin:window|is_focused",
@@ -189,6 +248,23 @@ const commandCases = [
     result: null,
     calls: [["exit", 9]],
   },
+  {
+    command: "plugin:opener|open_url",
+    args: { url: "https://example.test/path" },
+    result: null,
+    calls: [["openExternal", "https://example.test/path"]],
+  },
+  {
+    command: "copy_text_to_clipboard",
+    args: { text: "plain", html: "<b>rich</b>" },
+    result: null,
+    calls: [["clipboardWrite", { text: "plain", html: "<b>rich</b>" }]],
+  },
+  {
+    command: "read_clipboard_text",
+    result: "clipboard-value",
+    calls: [["clipboardReadText"]],
+  },
 ];
 
 for (const { command, args, result, calls } of commandCases) {
@@ -248,7 +324,7 @@ test("process exit defaults to code zero", async () => {
   assert.deepEqual(harness.calls, [["exit", 0]]);
 });
 
-test("handles all visible shell families and only the two process lifecycle calls", () => {
+test("routes exact app services and the supported Electron shell families", () => {
   const { plugins } = createHarness();
   for (const command of [
     "plugin:window|unknown_window_call",
@@ -256,12 +332,18 @@ test("handles all visible shell families and only the two process lifecycle call
     "plugin:app|unknown_app_call",
     "plugin:process|restart",
     "plugin:process|exit",
+    "plugin:dialog|open",
+    "plugin:dialog|save",
+    "plugin:opener|open_url",
+    "copy_text_to_clipboard",
+    "read_clipboard_text",
+    "show_native_notification",
   ]) {
     assert.equal(plugins.handles(command), true, command);
   }
   for (const command of [
     "plugin:process|unknown_process_call",
-    "plugin:opener|open_url",
+    "plugin:dialog|unknown",
     "plugin:opener|open_path",
     "plugin:opener|reveal_item_in_dir",
     "plugin:notification|is_permission_granted",
@@ -271,16 +353,53 @@ test("handles all visible shell families and only the two process lifecycle call
     "plugin:updater|install",
     "plugin:updater|download_and_install",
     "plugin:path|resolve_directory",
-    "show_native_notification",
   ]) {
     assert.equal(plugins.handles(command), false, command);
   }
 });
 
-test("host-owned plugin calls do not use Electron shell helpers", () => {
+test("updater and path plugin calls remain host-owned", () => {
   const { calls, plugins } = createHarness();
-  assert.equal(plugins.handles("plugin:opener|open_url"), false);
+  assert.equal(plugins.handles("plugin:updater|check"), false);
+  assert.equal(plugins.handles("plugin:path|resolve_directory"), false);
   assert.deepEqual(calls, []);
+});
+
+test("opener rejects unsafe URLs before asking Electron to launch them", async () => {
+  const { calls, plugins } = createHarness();
+  await assert.rejects(
+    plugins.invoke("plugin:opener|open_url", { url: "javascript:alert(1)" }),
+    /Unsupported external URL protocol/,
+  );
+  await assert.rejects(
+    plugins.invoke("plugin:opener|open_url", { url: "not a URL" }),
+    /Invalid external URL/,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("native message notification click reveals the window and forwards its target", async () => {
+  const { calls, emitted, notifications, plugins } = createHarness();
+  await plugins.invoke("show_native_notification", {
+    title: "Message in #general",
+    body: "Hello",
+    target: { channelId: "channel-1", eventId: "event-1" },
+  });
+  assert.deepEqual(calls, [
+    [
+      "notification",
+      { title: "Message in #general", body: "Hello", silent: true },
+    ],
+    ["notificationShow"],
+  ]);
+  notifications[0].emit("click");
+  assert.deepEqual(calls.slice(2), [["show"], ["focus"]]);
+  assert.deepEqual(emitted, [
+    {
+      eventName: "electron-shell:notification-activated",
+      payload: { channelId: "channel-1", eventId: "event-1" },
+    },
+  ]);
 });
 
 test("unknown shell commands fail with their command name", async () => {
@@ -312,6 +431,26 @@ test("resize listener emits the Tauri physical size payload and disposes", async
   harness.window.emit("resize");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(harness.emitted.length, 1);
+});
+
+test("fullscreen enter and leave events update the Tauri resize subscribers", async () => {
+  const harness = createHarness();
+  const dispose = harness.plugins.attachWindowEvents(harness.window);
+  harness.window.emit("enter-full-screen");
+  await new Promise((resolve) => setImmediate(resolve));
+  harness.window.emit("leave-full-screen");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(harness.emitted, [
+    {
+      eventName: "tauri://resize",
+      payload: { width: 1600, height: 900 },
+    },
+    {
+      eventName: "tauri://resize",
+      payload: { width: 1600, height: 900 },
+    },
+  ]);
+  dispose();
 });
 
 test("theme listener emits the Tauri theme payload and disposes", () => {
