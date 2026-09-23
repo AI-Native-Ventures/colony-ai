@@ -195,6 +195,12 @@ jobs:
             echo "Android SDK root is not configured" >&2
             exit 1
           fi
+          sdkmanager_dir="$sdk_root/cmdline-tools/latest/bin"
+          if [[ ! -x "$sdkmanager_dir/sdkmanager" ]]; then
+            echo "Android SDK manager was not found at $sdkmanager_dir" >&2
+            exit 1
+          fi
+          export PATH="$sdkmanager_dir:$sdk_root/platform-tools:$PATH"
 
           for attempt in 1 2 3; do
             echo "Installing Android Emulator package (attempt $attempt/3)"
