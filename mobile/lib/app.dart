@@ -12,6 +12,8 @@ import 'features/age_gate/age_signal_provider.dart';
 import 'features/activity/activity_provider.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
+import 'features/auth/account_claim_prompt.dart';
+import 'features/auth/auth_entry_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
 import 'features/channels/channels_provider.dart';
@@ -409,17 +411,22 @@ class App extends HookConsumerWidget {
       },
       home: authState.when(
         loading: () => const _SplashScreen(),
-        error: (_, _) => const PairingPage(),
+        error: (_, _) => AuthEntryPage(
+          advancedIdentityPageBuilder: (_) => const PairingPage(),
+        ),
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => DeepLinkDispatcher(
             child: HomePage(
               settingsPageBuilder: _buildSettingsPage,
               hasUnreadInbox: hasUnreadInbox,
+              accountClaimPrompt: const AccountClaimPrompt(),
             ),
           ),
-          _ => const DeepLinkDispatcher(
+          _ => DeepLinkDispatcher(
             dispatchMessageLinks: false,
-            child: PairingPage(),
+            child: AuthEntryPage(
+              advancedIdentityPageBuilder: (_) => const PairingPage(),
+            ),
           ),
         },
       ),

@@ -73,7 +73,7 @@ with `retry_after_secs`. Never reveal whether an email exists except
 | `POST /api/accounts/reset/confirm` | `{email, code, new_password}` | `200` session payload (same key as before: history preserved) |
 | `POST /api/accounts/claim` | NIP-98 signed; `{email, password, nsec}` | `202 verification_sent`; binds an existing key-based identity to a new account; `nsec` must match the NIP-98 signer |
 | `POST /api/accounts/password` | NIP-98 signed; `{new_password}` | `204` |
-| `GET /api/accounts/me` | NIP-98 signed | `200 {account}` |
+| `GET /api/accounts/me` | NIP-98 signed | `200 {account}`; `404 {"error":"account_not_found"}` when the signer has no account (clients use this to offer the claim prompt) |
 | `DELETE /api/accounts/me` | NIP-98 signed | `204` |
 
 Session payload: `{account: {id, email, pubkey, has_password, google_linked}, nsec}`.

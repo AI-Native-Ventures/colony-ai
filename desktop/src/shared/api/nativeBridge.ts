@@ -15,6 +15,7 @@ export type NativeCapability =
   | "identity-import"
   | "identity-recovery"
   | "identity-backup"
+  | "google-oauth"
   | "legacy-migration"
   | "deep-links"
   | "nostr-bind"
