@@ -4,6 +4,7 @@ import { lstat, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadEnv } from "vite";
 import {
   inspectAsarEntries,
   observedReactPackageAsarDigests,
@@ -50,6 +51,7 @@ const appId =
   flavor === "normal"
     ? "xyz.ainative.ventures.colony.stage0.normal"
     : "xyz.ainative.ventures.colony.stage0.instrumented";
+const reactViteMode = "production";
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -62,6 +64,48 @@ function run(command, args) {
     process.exitCode = result.status ?? 1;
     throw new Error(`${path.basename(command)} exited with ${result.status}`);
   }
+}
+
+async function installedPackageVersion(packageName) {
+  const packageJsonPath = fileURLToPath(
+    import.meta.resolve(`${packageName}/package.json`),
+  );
+  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
+  return packageJson.version;
+}
+
+async function emitReactViteInputDiagnostics(outDirectory) {
+  const modeEnv = loadEnv(reactViteMode, desktopDirectory, "");
+  const protectedFeaturesEnabled =
+    (process.env.VITE_BUZZ_BESTIE ?? modeEnv.VITE_BUZZ_BESTIE) === "1";
+  const [viteVersion, reactPluginVersion, routerPluginVersion] =
+    await Promise.all([
+      installedPackageVersion("vite"),
+      installedPackageVersion("@vitejs/plugin-react"),
+      installedPackageVersion("@tanstack/router-plugin"),
+    ]);
+  process.stderr.write(
+    `React Vite inputs: ${JSON.stringify({
+      command: "build",
+      mode: reactViteMode,
+      node: process.version,
+      NODE_ENV: process.env.NODE_ENV ?? null,
+      versions: {
+        vite: viteVersion,
+        reactPlugin: reactPluginVersion,
+        routerPlugin: routerPluginVersion,
+      },
+      processEnv: {
+        VITE_BUZZ_BESTIE: process.env.VITE_BUZZ_BESTIE ?? null,
+      },
+      loadEnv: {
+        VITE_BUZZ_BESTIE: modeEnv.VITE_BUZZ_BESTIE ?? null,
+      },
+      protectedFeaturesEnabled,
+      base: "./",
+      outDirectory,
+    })}\n`,
+  );
 }
 
 async function emitReactPackageDigestDiagnostics(archivePath) {
@@ -178,9 +222,7 @@ async function rewriteElectronPublicPaths(directory) {
 async function main() {
   await rm(outputDirectory, { recursive: true, force: true });
   if (uiMode === "react") {
-    process.stderr.write(
-      `React Vite input: VITE_BUZZ_BESTIE=${JSON.stringify(process.env.VITE_BUZZ_BESTIE ?? null)}\n`,
-    );
+    await emitReactViteInputDiagnostics(rendererBuildDirectory);
     await rm(rendererBuildDirectory, { recursive: true, force: true });
     run(process.execPath, [
       path.join(desktopDirectory, "node_modules", "vite", "bin", "vite.js"),
