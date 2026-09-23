@@ -840,10 +840,14 @@ impl RelayConnection {
     /// grace bound.
     pub fn close(&mut self) {
         let deadline = Instant::now() + CLOSE_TIMEOUT;
+        // Signal the reader before contending for the shared socket. The
+        // reader's bounded poll observes this flag and releases the socket;
+        // taking the mutex first can otherwise strand teardown behind a
+        // blocked read.
+        self.reader_shutdown.store(true, Ordering::SeqCst);
         if let Ok(mut socket) = self.socket.lock() {
             socket.close_handshake(deadline);
         }
-        self.reader_shutdown.store(true, Ordering::SeqCst);
         if let Some(handle) = self.reader_handle.take() {
             let grace_deadline = Instant::now() + SHUTDOWN_GRACE + CLOSE_TIMEOUT;
             while !handle.is_finished() {
@@ -889,7 +893,7 @@ pub fn spawn_reader(
             }
             let next = {
                 let mut guard = socket.lock().map_err(|_| ContractError::HostUnavailable)?;
-                guard.read_text(Instant::now() + Duration::from_secs(60))
+                guard.read_text(Instant::now() + READ_TICK)
             };
             match next {
                 Ok(Some(text)) => match parse_inbound(&text, &connection_id, generation) {
@@ -900,7 +904,12 @@ pub fn spawn_reader(
                     }
                     Err(error) => return Err(error),
                 },
-                Ok(None) => {}
+                Ok(None) => {
+                    // The reader releases the shared socket after each timed
+                    // poll. Keep a bounded pause before reacquiring it so a
+                    // quiet relay cannot starve outbound REQ/EVENT writes.
+                    thread::sleep(READ_TICK);
+                }
                 Err(ContractError::RequestTimeout) => {}
                 Err(error) => return Err(error),
             }
