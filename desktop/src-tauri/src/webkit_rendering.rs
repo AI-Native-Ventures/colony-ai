@@ -92,10 +92,11 @@ enum Plan {
 ///
 /// `Err` carries a user-facing diagnostic; the caller reports it and exits.
 pub fn apply() -> Result<(), String> {
-    match plan(
+    match plan_for_host(
         std::env::args_os(),
         &|key| std::env::var_os(key),
         Path::new(DRM_ROOT),
+        crate::electron_host::enabled(),
     ) {
         Plan::Apply { vars, why } => {
             for var in vars {
@@ -121,6 +122,21 @@ fn plan(
     env: EnvLookup<'_>,
     drm_root: &Path,
 ) -> Plan {
+    plan_for_host(args, env, drm_root, false)
+}
+
+fn plan_for_host(
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    env: EnvLookup<'_>,
+    drm_root: &Path,
+    electron_host: bool,
+) -> Plan {
+    if electron_host {
+        return Plan::Leave {
+            why: "Electron renders the visible UI and does not use WebKit".to_string(),
+        };
+    }
+
     let safe_rendering = args
         .into_iter()
         .any(|arg| arg.as_ref() == OsStr::new(SAFE_RENDERING));

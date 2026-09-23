@@ -143,18 +143,23 @@ pub fn run() {
     let builder = electron_host::configure(builder)
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(
+        .plugin(tauri_plugin_opener::init());
+    let builder = if electron_host::enabled() {
+        builder
+    } else {
+        builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 // Visibility is excluded: the native reveal plugin below
                 // shows the window after saved geometry has been restored.
                 .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
                 .build(),
         )
+    };
+    let builder = builder
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("initial-window-reveal")
                 .on_webview_ready(|webview| {
-                    if webview.label() != "main" {
+                    if webview.label() != "main" || electron_host::enabled() {
                         return;
                     }
                     // Linux/WebKitGTK needs media-stream settings and a
@@ -900,6 +905,10 @@ pub fn run() {
             event: WindowEvent::CloseRequested { api, .. },
             ..
         } if label == "main" => {
+            if electron_host::enabled() {
+                api.prevent_close();
+                return;
+            }
             // Keep the webview alive so Buzz can be reopened from its tray menu.
             api.prevent_close();
             if let Some(window) = app_handle.get_webview_window("main") {

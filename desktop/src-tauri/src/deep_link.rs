@@ -238,6 +238,9 @@ fn queue_entity_deep_link(app: &tauri::AppHandle, href: String) -> PendingEntity
 }
 
 fn activate_main_window(app: &tauri::AppHandle) {
+    if crate::electron_host::route_show_window(app) {
+        return;
+    }
     let Some(window) = app.get_webview_window("main") else {
         return;
     };

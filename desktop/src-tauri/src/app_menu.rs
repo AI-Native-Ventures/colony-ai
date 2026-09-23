@@ -32,8 +32,19 @@ use tauri::{Builder, Runtime};
 /// the Cmd+W accelerator does not exist.
 pub fn install<R: Runtime>(builder: Builder<R>) -> Builder<R> {
     #[cfg(target_os = "macos")]
-    let builder = builder.menu(build);
+    let builder = if crate::electron_host::enabled() {
+        builder.menu(build_empty)
+    } else {
+        builder.menu(build)
+    };
     builder
+}
+
+#[cfg(target_os = "macos")]
+fn build_empty<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    // Electron owns the visible menu. The hidden host must not install menu
+    // items whose native actions target its dispatch window.
+    Menu::with_items(app, &[])
 }
 
 /// Mirrors `Menu::default()` with every `close_window` item omitted.
