@@ -286,7 +286,10 @@ async function boot() {
     app.exit(0);
     return;
   }
-  window.show();
+  // Automated runs must never steal focus or keystrokes from the person
+  // using this machine.
+  if (process.env.COLONY_ELECTRON_BACKGROUND === "1") window.showInactive();
+  else window.show();
 }
 
 async function shutdown() {
