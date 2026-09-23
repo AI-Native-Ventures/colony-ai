@@ -91,11 +91,23 @@ tap_exact() {
 launch_deeplink() {
   local link="$1"
   local launch_output
-  launch_output="$(adb_target shell am start \
-    -a android.intent.action.VIEW -d "$link" -n "$activity" 2>&1)" ||
-    fail "Android app did not accept the test deep link"
-  [[ "$launch_output" == *"Starting: Intent"* ]] ||
-    fail "Android did not report a started deep-link activity"
+  local remote_link remote_activity safe_launch_output
+  # adb shell builds a remote shell command. Keep the URI's query separators
+  # inside the -d argument instead of letting the remote shell treat '&' as a
+  # background operator.
+  printf -v remote_link '%q' "$link"
+  printf -v remote_activity '%q' "$activity"
+  launch_output="$(adb_target shell \
+    "am start -a android.intent.action.VIEW -d $remote_link -n $remote_activity" \
+    2>&1 | tr -d '\r')" || {
+      safe_launch_output="$(printf '%s' "$launch_output" | sed -E 's/(code=)[^& }]+/\1[redacted]/g')"
+      fail "Android app did not accept the test deep link: $safe_launch_output"
+    }
+  if [[ "$launch_output" != *"Starting: Intent"* &&
+    "$launch_output" != *"Warning: Activity not started, intent has been delivered"* ]]; then
+    safe_launch_output="$(printf '%s' "$launch_output" | sed -E 's/(code=)[^& }]+/\1[redacted]/g')"
+    fail "Android did not report a started deep-link activity: $safe_launch_output"
+  fi
 }
 
 echo "Android hosted relay interop proof"
