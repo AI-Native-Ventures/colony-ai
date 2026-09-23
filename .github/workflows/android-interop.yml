@@ -183,8 +183,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          cores: 4
           emulator-boot-timeout: 420
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
           disable-animations: true
           script: bash scripts/interop/android-interop-proof.sh
 

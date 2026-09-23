@@ -131,12 +131,42 @@ def best_text_match(root: ET.Element, needle: str, exact: bool) -> ET.Element | 
     )
 
 
+def system_anr_message(root: ET.Element) -> str | None:
+    for node in root.iter("node"):
+        for value in node_values(node):
+            if "isn't responding" in value.lower():
+                return value
+    return None
+
+
+def recover_system_anr(root: ET.Element, recoveries: int) -> bool:
+    message = system_anr_message(root)
+    if message is None:
+        return False
+    if recoveries >= 3:
+        raise UiError(
+            f"system app remained unresponsive after {recoveries} waits: {message}"
+        )
+    wait_button = best_text_match(root, "Wait", exact=True)
+    if wait_button is None:
+        raise UiError(f"system app is unresponsive without a Wait action: {message}")
+    tap_bounds(wait_button, "system-anr-wait")
+    print(f"WAIT system-anr-recovery count={recoveries + 1}")
+    time.sleep(2)
+    return True
+
+
 def wait_text(needle: str, exact: bool, timeout_seconds: int) -> ET.Element:
     deadline = time.monotonic() + timeout_seconds
     last_root: ET.Element | None = None
+    system_anr_recoveries = 0
     while time.monotonic() < deadline:
         try:
             last_root = dump_xml()
+            if system_anr_message(last_root) is not None:
+                if recover_system_anr(last_root, system_anr_recoveries):
+                    system_anr_recoveries += 1
+                    continue
             match = best_text_match(last_root, needle, exact)
             if match is not None:
                 print(f"PASS ui-text-found value={needle}")
@@ -172,9 +202,14 @@ def input_node(root: ET.Element) -> ET.Element | None:
 def wait_input(timeout_seconds: int) -> ET.Element:
     deadline = time.monotonic() + timeout_seconds
     last_root: ET.Element | None = None
+    system_anr_recoveries = 0
     while time.monotonic() < deadline:
         try:
             last_root = dump_xml()
+            if system_anr_message(last_root) is not None:
+                if recover_system_anr(last_root, system_anr_recoveries):
+                    system_anr_recoveries += 1
+                    continue
             field = input_node(last_root)
             if field is not None:
                 print(f"PASS ui-input-ready hint={' '.join(node_values(field))}")
@@ -188,9 +223,15 @@ def wait_input(timeout_seconds: int) -> ET.Element:
 def wait_input_value(expected: str, timeout_seconds: int) -> ET.Element:
     deadline = time.monotonic() + timeout_seconds
     last_value = ""
+    system_anr_recoveries = 0
     while time.monotonic() < deadline:
         try:
-            field = input_node(dump_xml())
+            root = dump_xml()
+            if system_anr_message(root) is not None:
+                if recover_system_anr(root, system_anr_recoveries):
+                    system_anr_recoveries += 1
+                    continue
+            field = input_node(root)
             if field is not None:
                 last_value = field.attrib.get("text", "")
                 if last_value == expected:
