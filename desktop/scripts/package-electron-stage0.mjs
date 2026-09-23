@@ -82,6 +82,14 @@ async function installedPackageVersion(packageName) {
   }
 }
 
+function prefixedEnvironmentValues(environment, prefix) {
+  return Object.fromEntries(
+    Object.entries(environment)
+      .filter(([key]) => key.startsWith(prefix))
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
 async function emitReactViteInputDiagnostics(outDirectory) {
   try {
     const modeEnv = loadEnv(reactViteMode, desktopDirectory, "");
@@ -112,11 +120,11 @@ async function emitReactViteInputDiagnostics(outDirectory) {
           routerPlugin: routerPluginVersion,
         },
         processEnv: {
-          VITE_BUZZ_BESTIE: process.env.VITE_BUZZ_BESTIE ?? null,
+          ...prefixedEnvironmentValues(process.env, "VITE_"),
+          CI: process.env.CI ?? null,
+          TAURI_DEV_HOST: process.env.TAURI_DEV_HOST ?? null,
         },
-        loadEnv: {
-          VITE_BUZZ_BESTIE: modeEnv.VITE_BUZZ_BESTIE ?? null,
-        },
+        loadEnv: prefixedEnvironmentValues(modeEnv, "VITE_"),
         protectedFeaturesEnabled,
         base: "./",
         outDirectory,
