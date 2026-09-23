@@ -124,6 +124,7 @@ async function provision(keyPath, invitePath, githubEnvPath) {
   writeJson(invitePath, { relay: relayWs, code: '', channelId: '' });
 
   if (githubEnvPath && existsSync(githubEnvPath)) {
+    process.stdout.write(`::add-mask::${secretKeyHex}\n`);
     appendFileSync(
       githubEnvPath,
       [
