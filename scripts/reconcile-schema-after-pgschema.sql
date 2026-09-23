@@ -197,6 +197,40 @@ BEGIN
     END IF;
 END $$;
 
+-- pgschema does not apply operator-global registry seed rows. These accounts
+-- span all communities on a deployment and must never enter tenant deletion.
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('accounts', 'deployment-global identities and server-held signing-key custody'),
+    ('account_google_identities', 'deployment-global provider links to account identities'),
+    ('account_codes', 'deployment-global one-time account recovery and verification codes'),
+    ('account_mail_outbox', 'deployment-global durable account email delivery retry queue'),
+    ('account_test_mail', 'development and CI account mail sink; not tenant-visible')
+ON CONFLICT (table_name) DO UPDATE SET reason = EXCLUDED.reason;
+
+DO $$
+DECLARE
+    missing TEXT[];
+BEGIN
+    SELECT array_agg(table_name ORDER BY table_name)
+    INTO missing
+    FROM (VALUES
+        ('accounts'),
+        ('account_google_identities'),
+        ('account_codes'),
+        ('account_mail_outbox'),
+        ('account_test_mail')
+    ) AS required(table_name)
+    WHERE to_regclass(format('%I.%I', current_schema(), required.table_name)) IS NULL
+       OR NOT EXISTS (
+            SELECT 1 FROM _operator_global_tables AS registry
+            WHERE registry.table_name = required.table_name
+       );
+
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'account tables must exist and be operator-global after pgschema apply: %', missing;
+    END IF;
+END $$;
+
 -- pgschema reconciles DDL but does not apply seed DML or table storage
 -- parameters from schema/schema.sql. Restore those parts of the desired-state
 -- contract explicitly and fail the bootstrap if the live catalog disagrees.
