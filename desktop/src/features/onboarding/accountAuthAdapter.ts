@@ -1,3 +1,4 @@
+import { authService } from "../auth/authService";
 import type { AccountAuthClient } from "./accountAuthClient";
 
 export type AccountAuthTestCall = {
@@ -19,42 +20,8 @@ declare global {
   }
 }
 
-const accountAuthUnavailable: AccountAuthClient = {
-  async signUp() {
-    throw new Error("Account service unavailable");
-  },
-  async verifyEmail() {
-    throw new Error("Account service unavailable");
-  },
-  async resendCode() {
-    throw new Error("Account service unavailable");
-  },
-  async signIn() {
-    throw new Error("Account service unavailable");
-  },
-  async signInWithGoogle() {
-    throw new Error("Account service unavailable");
-  },
-  async requestReset() {
-    throw new Error("Account service unavailable");
-  },
-  async confirmReset() {
-    throw new Error("Account service unavailable");
-  },
-  async claimAccount() {
-    throw new Error("Account service unavailable");
-  },
-  async changePassword() {
-    throw new Error("Account service unavailable");
-  },
-  async getAccount() {
-    throw new Error("Account service unavailable");
-  },
-};
-
 /**
- * Local seam for the account UI. The auth feature replaces the production
- * fallback once its client module lands; Playwright injects a typed mock here.
+ * Returns the shared account service; Playwright injects a typed mock here.
  */
 export function getAccountAuthClient(): AccountAuthClient {
   if (
@@ -63,5 +30,5 @@ export function getAccountAuthClient(): AccountAuthClient {
   ) {
     return window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__;
   }
-  return accountAuthUnavailable;
+  return authService;
 }
