@@ -540,15 +540,13 @@ impl Host {
             // so reaching here means a logic defect; fail closed loudly.
             // Cancel/expiry races drain through this arm with outcome
             // forwarding instead of the normal completed-ok path.
-            PendingKind::RelayOp => {
-                self.send_response(
-                    &pending.binding,
-                    request_id.to_string(),
-                    "error",
-                    None,
-                    Some("host_unavailable"),
-                )
-            }
+            PendingKind::RelayOp => self.send_response(
+                &pending.binding,
+                request_id.to_string(),
+                "error",
+                None,
+                Some("host_unavailable"),
+            ),
             PendingKind::V1Health => {
                 let relay_url = configured_relay_url();
                 self.send_response(
