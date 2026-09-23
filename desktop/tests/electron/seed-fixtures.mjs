@@ -121,5 +121,5 @@ if (result.error || result.status !== 0) {
   );
 }
 console.log(
-  `Seeded ${publicKeys.length} generated identities in general for localhost:3000 and localhost:3001 before relay startup`,
+  `Seeded ${publicKeys.length} generated identities in general for localhost:3000 and localhost:3001`,
 );

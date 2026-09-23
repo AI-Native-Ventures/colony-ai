@@ -141,65 +141,83 @@ jobs:
           echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix redis)/bin" >> "$GITHUB_PATH"
 
-      - name: Prepare the disposable database and pre-seed fixture members
+      - name: Start isolated relay database services
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            docker compose up -d postgres redis minio minio-init
-            for container in buzz-postgres buzz-redis buzz-minio; do
-              ready=false
-              for attempt in $(seq 1 60); do
-                status="$(docker inspect --format='{{.State.Health.Status}}' \
-                  "$container" 2>/dev/null || echo not_found)"
-                if [[ "$status" == healthy ]]; then
-                  ready=true
-                  break
-                fi
-                sleep 2
-              done
-              if [[ "$ready" != true ]]; then
-                docker logs "$container" || true
-                echo "$container did not become healthy" >&2
-                exit 1
-              fi
-            done
-          else
-            export PATH="$(brew --prefix postgresql@17)/bin:$(brew --prefix redis)/bin:$PATH"
-            database_root="$RUNNER_TEMP/colony-postgres"
-            initdb -D "$database_root" --username="$(whoami)" \
-              --auth-local=trust --auth-host=trust
-            pg_ctl -D "$database_root" -l "$RUNNER_TEMP/postgres.log" \
-              -o "-h 127.0.0.1 -p 5432" -w start
-            psql -h 127.0.0.1 -p 5432 -U "$(whoami)" -d postgres \
-              -v ON_ERROR_STOP=1 \
-              -c "CREATE ROLE buzz WITH LOGIN SUPERUSER PASSWORD 'buzz_dev'"
-            createdb -h 127.0.0.1 -p 5432 -U "$(whoami)" -O buzz buzz
-            redis-server --bind 127.0.0.1 --port 6379 --daemonize yes \
-              --pidfile "$RUNNER_TEMP/redis.pid" --logfile "$RUNNER_TEMP/redis.log"
+          docker compose up -d postgres redis minio minio-init
+          for container in buzz-postgres buzz-redis buzz-minio; do
+            ready=false
             for attempt in $(seq 1 60); do
-              if pg_isready -h 127.0.0.1 -p 5432 -U buzz >/dev/null 2>&1 \
-                && redis-cli -h 127.0.0.1 -p 6379 ping | rg -q PONG; then
+              health_state="$(docker inspect --format='{{.State.Health.Status}}' \
+                "$container" 2>/dev/null || echo not_found)"
+              if [[ "$health_state" == healthy ]]; then
+                ready=true
                 break
               fi
-              sleep 1
+              sleep 2
             done
-            pg_isready -h 127.0.0.1 -p 5432 -U buzz
-            redis-cli -h 127.0.0.1 -p 6379 ping
+            if [[ "$ready" != true ]]; then
+              docker logs "$container" || true
+              echo "$container did not become healthy" >&2
+              exit 1
+            fi
+          done
+          minio_init_succeeded=false
+          for attempt in $(seq 1 60); do
+            minio_init_state="$(docker inspect --format='{{.State.Status}}' \
+              buzz-minio-init 2>/dev/null || echo not_found)"
+            if [[ "$minio_init_state" == exited ]]; then
+              minio_init_code="$(docker inspect --format='{{.State.ExitCode}}' \
+                buzz-minio-init 2>/dev/null || echo 1)"
+              if [[ "$minio_init_code" == 0 ]]; then
+                minio_init_succeeded=true
+              fi
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$minio_init_succeeded" != true ]]; then
+            docker logs buzz-minio-init || true
+            echo "MinIO bucket initialization did not complete successfully" >&2
+            exit 1
           fi
+
+      - name: Prepare the disposable macOS database and fixture members
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          export PATH="$(brew --prefix postgresql@17)/bin:$(brew --prefix redis)/bin:$PATH"
+          database_root="$RUNNER_TEMP/colony-postgres"
+          initdb -D "$database_root" --username="$(whoami)" \
+            --auth-local=trust --auth-host=trust
+          pg_ctl -D "$database_root" -l "$RUNNER_TEMP/postgres.log" \
+            -o "-h 127.0.0.1 -p 5432" -w start
+          psql -h 127.0.0.1 -p 5432 -U "$(whoami)" -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE buzz WITH LOGIN SUPERUSER PASSWORD 'buzz_dev'"
+          createdb -h 127.0.0.1 -p 5432 -U "$(whoami)" -O buzz buzz
+          redis-server --bind 127.0.0.1 --port 6379 --daemonize yes \
+            --pidfile "$RUNNER_TEMP/redis.pid" --logfile "$RUNNER_TEMP/redis.log"
+          for attempt in $(seq 1 60); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U buzz >/dev/null 2>&1 \
+              && redis-cli -h 127.0.0.1 -p 6379 ping | rg -q PONG; then
+              break
+            fi
+            sleep 1
+          done
+          pg_isready -h 127.0.0.1 -p 5432 -U buzz
+          redis-cli -h 127.0.0.1 -p 6379 ping
           export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=buzz PGPASSWORD=buzz_dev PGDATABASE=buzz
           export PGSCHEMA_PLAN_HOST=127.0.0.1 PGSCHEMA_PLAN_PORT=5432
           export PGSCHEMA_PLAN_DB=buzz PGSCHEMA_PLAN_USER=buzz PGSCHEMA_PLAN_PASSWORD=buzz_dev
           ./bin/pgschema apply --file schema/schema.sql --auto-approve
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            docker exec -i -e PGPASSWORD="$PGPASSWORD" buzz-postgres \
-              psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
-              < scripts/reconcile-schema-after-pgschema.sql
-          else
-            psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
-              < scripts/reconcile-schema-after-pgschema.sql
-          fi
+          psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
+            < scripts/reconcile-schema-after-pgschema.sql
           bash scripts/setup-desktop-test-data.sh
           BUZZ_COMMUNITY_HOST=localhost:3001 bash scripts/setup-desktop-test-data.sh
           COLONY_ELECTRON_FIXTURE_FILE="$COLONY_ELECTRON_FIXTURE_FILE" \
@@ -233,9 +251,9 @@ jobs:
                 echo "Relay process exited before becoming ready" >&2
                 exit 1
               fi
-              status="$(curl -s -o /dev/null -w "%{http_code}" \
+              relay_http_status="$(curl -s -o /dev/null -w "%{http_code}" \
                 http://127.0.0.1:3000/_readiness || true)"
-              if [[ "$status" == 200 ]]; then
+              if [[ "$relay_http_status" == 200 ]]; then
                 exit 0
               fi
               sleep 1
@@ -245,6 +263,18 @@ jobs:
             exit 1
           fi
 
+      - name: Seed Linux community fixtures and member identities
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=buzz PGPASSWORD=buzz_dev PGDATABASE=buzz
+          bash scripts/setup-desktop-test-data.sh
+          BUZZ_COMMUNITY_HOST=localhost:3001 bash scripts/setup-desktop-test-data.sh
+          COLONY_ELECTRON_FIXTURE_FILE="$COLONY_ELECTRON_FIXTURE_FILE" \
+            pnpm --dir desktop exec node tests/electron/seed-fixtures.mjs
+
       - name: Prepare an isolated macOS keychain for generated test identities
         if: runner.os == 'macOS'
         shell: bash
@@ -252,6 +282,7 @@ jobs:
           set -euo pipefail
           proof_home="$RUNNER_TEMP/colony-electron-e2e-home"
           keychain="$RUNNER_TEMP/colony-electron-e2e.keychain-db"
+          runner_home="$HOME"
           mkdir -p "$proof_home/Library/Preferences" \
             "$proof_home/Library/Application Support/Colony/dev"
           HOME="$proof_home" security create-keychain -p "" "$keychain" >/dev/null
@@ -259,6 +290,7 @@ jobs:
           HOME="$proof_home" security unlock-keychain -p "" "$keychain"
           HOME="$proof_home" security list-keychains -d user -s "$keychain"
           HOME="$proof_home" security default-keychain -d user -s "$keychain"
+          echo "HERMIT_STATE_DIR=$runner_home/Library/Caches/hermit" >> "$GITHUB_ENV"
           echo "HOME=$proof_home" >> "$GITHUB_ENV"
 
       - name: Run the real Electron messaging and reconnect suite
@@ -327,6 +359,7 @@ jobs:
           if [[ -f "$keychain" ]]; then
             HOME="$HOME" security delete-keychain "$keychain" >/dev/null 2>&1 || true
           fi
+          chmod -R u+w "$RUNNER_TEMP/colony-electron-e2e-home" 2>/dev/null || true
           rm -rf "$RUNNER_TEMP/colony-electron-e2e-home"
 
       - name: Stop disposable relay services

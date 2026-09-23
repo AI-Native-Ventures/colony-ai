@@ -214,25 +214,18 @@ test("relaunching the same Electron user data restores general history without o
       "Electron Restart Member",
     );
 
-    const localContent = messageText("Before Electron restart");
     const externalIdentity = fixtureIdentity("restart-publisher");
-    const externalContent = messageText("External before Electron restart");
-    await enterMessage(running, localContent);
-    const localEvent = await waitForRelayMessage(
-      DEFAULT_RELAY_URL,
-      identity.publicKey,
-      localContent,
-    );
-    expect(localEvent).toBeDefined();
-    await publishChannelMessage(
-      DEFAULT_RELAY_URL,
-      externalIdentity,
-      externalContent,
-    );
-    await expect(running.page.getByTestId("message-timeline")).toContainText(
-      externalContent,
-      { timeout: 10_000 },
-    );
+    const previousMessages = [
+      messageText("External before Electron restart"),
+      messageText("Another external message before Electron restart"),
+    ];
+    for (const content of previousMessages) {
+      await publishChannelMessage(DEFAULT_RELAY_URL, externalIdentity, content);
+      await expect(running.page.getByTestId("message-timeline")).toContainText(
+        content,
+        { timeout: 10_000 },
+      );
+    }
 
     await closeElectron(running);
     running = await launchElectron(userDataDir);
@@ -249,14 +242,12 @@ test("relaunching the same Electron user data restores general history without o
     });
     await running.page.getByTestId("channel-general").click();
     await expect(running.page.getByTestId("chat-title")).toHaveText("general");
-    await expect(running.page.getByTestId("message-timeline")).toContainText(
-      localContent,
-      { timeout: 20_000 },
-    );
-    await expect(running.page.getByTestId("message-timeline")).toContainText(
-      externalContent,
-      { timeout: 20_000 },
-    );
+    for (const content of previousMessages) {
+      await expect(running.page.getByTestId("message-timeline")).toContainText(
+        content,
+        { timeout: 20_000 },
+      );
+    }
   } finally {
     await finishElectronTest(testInfo, userDataDir, applications);
   }
