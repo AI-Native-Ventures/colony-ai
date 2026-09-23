@@ -70,6 +70,4 @@ done
 RELAY_PID="$(<"${RELAY_PID_FILE}")"
 
 cargo test -p buzz-test-client --test e2e_accounts -- \
-  --ignored --nocapture --test-threads=1 --skip google_create_and_link_accounts
-
-echo "Google account create and link remains pending until the relay test-JWKS hook lands."
+  --ignored --nocapture --test-threads=1

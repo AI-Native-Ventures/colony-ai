@@ -7,7 +7,6 @@
 //! cargo test -p buzz-test-client --test e2e_accounts -- --ignored --nocapture --test-threads=1
 //! ```
 
-use std::io::{Read, Seek, SeekFrom};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -19,10 +18,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-const MAIL_LOG: &str = "/tmp/buzz-relay.log";
 const MAIL_CODE_WAIT: Duration = Duration::from_secs(30);
-const MAIL_LOG_TAIL_BYTES: u64 = 64 * 1024;
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static DATABASE_POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
 struct AccountSession {
     pubkey: String,
@@ -158,56 +156,42 @@ async fn parse_session(response: reqwest::Response) -> AccountSession {
     }
 }
 
-fn mail_code_from_json_line(line: &str, email: &str, purpose: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(line).ok()?;
-    let object = value.as_object()?;
-    let line_email = ["email", "to", "recipient"]
-        .iter()
-        .find_map(|key| object.get(*key).and_then(Value::as_str))?;
-    let line_purpose = object.get("purpose").and_then(Value::as_str)?;
-    let code = object.get("code").and_then(Value::as_str)?;
-    if !line_email.eq_ignore_ascii_case(email)
-        || !line_purpose.to_ascii_lowercase().contains(purpose)
-        || code.len() != 6
-        || !code.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return None;
-    }
-    Some(code.to_string())
-}
-
-fn mail_code_from_text_line(line: &str, email: &str, purpose: &str) -> Option<String> {
-    if !line
-        .to_ascii_lowercase()
-        .contains(&email.to_ascii_lowercase())
-        || !line.to_ascii_lowercase().contains(purpose)
-    {
-        return None;
-    }
-    let lower = line.to_ascii_lowercase();
-    let code_key = lower.find("code")?;
-    let tail = line[code_key + "code".len()..].trim_start_matches(|character: char| {
-        character.is_ascii_whitespace() || matches!(character, '=' | ':' | '"' | '\'')
-    });
-    let code: String = tail.chars().take_while(char::is_ascii_digit).collect();
-    if code.len() == 6 {
-        Some(code)
-    } else {
-        None
-    }
+async fn database_pool() -> &'static sqlx::PgPool {
+    DATABASE_POOL
+        .get_or_init(|| async {
+            let database_url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string());
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(5))
+                .connect(&database_url)
+                .await
+                .expect("connect to disposable E2E Postgres")
+        })
+        .await
 }
 
 async fn mail_code(email: &str, purpose: &str) -> String {
+    let purpose = match purpose {
+        "verify" => "verify_email",
+        "reset" => "reset_password",
+        _ => panic!("unsupported test mail purpose"),
+    };
     let deadline = Instant::now() + MAIL_CODE_WAIT;
     loop {
-        if let Some(contents) = mail_log_tail() {
-            for line in contents.lines().rev() {
-                if let Some(code) = mail_code_from_json_line(line, email, purpose)
-                    .or_else(|| mail_code_from_text_line(line, email, purpose))
-                {
-                    return code;
-                }
-            }
+        let code = sqlx::query_scalar::<_, String>(
+            "SELECT test_mail.code FROM account_test_mail AS test_mail \
+             JOIN accounts ON accounts.id = test_mail.account_id \
+             WHERE accounts.email = $1 AND test_mail.purpose = $2 \
+             ORDER BY test_mail.delivered_at DESC LIMIT 1",
+        )
+        .bind(email)
+        .bind(purpose)
+        .fetch_optional(database_pool().await)
+        .await
+        .expect("read code from test-only mail sink");
+        if let Some(code) = code {
+            return code;
         }
         assert!(
             Instant::now() < deadline,
@@ -215,18 +199,6 @@ async fn mail_code(email: &str, purpose: &str) -> String {
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-}
-
-fn mail_log_tail() -> Option<String> {
-    let mut file = std::fs::File::open(MAIL_LOG).ok()?;
-    let length = file.metadata().ok()?.len();
-    let start = length.saturating_sub(MAIL_LOG_TAIL_BYTES);
-    file.seek(SeekFrom::Start(start)).ok()?;
-    let mut bytes = Vec::new();
-    file.take(MAIL_LOG_TAIL_BYTES)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 async fn sign_up(email: &str, password: &str) {
@@ -426,7 +398,7 @@ async fn email_signup_signin_and_reset_preserve_identity_and_history() {
 }
 
 #[tokio::test]
-#[ignore = "pending relay lane local Google JWKS verifier hook"]
+#[ignore]
 async fn google_create_and_link_accounts() {
     let google_email = unique_email("google-created");
     let google_subject = Uuid::new_v4().to_string();
@@ -512,25 +484,21 @@ async fn expired_verification_code_is_rejected() {
     let email = unique_email("expired-code");
     sign_up(&email, "expired-code-password-123").await;
     let code = mail_code(&email, "verify").await;
-    let code_hash = Sha256::digest(code.as_bytes()).to_vec();
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string());
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&database_url)
-        .await
-        .expect("connect to disposable E2E Postgres");
     let update = sqlx::query(
         "UPDATE account_codes SET expires_at = now() - interval '1 second' \
-         WHERE code_hash = $1 AND consumed_at IS NULL",
+         WHERE id = ( \
+             SELECT account_codes.id FROM account_codes \
+             JOIN accounts ON accounts.id = account_codes.account_id \
+             WHERE accounts.email = $1 AND account_codes.purpose = 'verify_email' \
+               AND account_codes.consumed_at IS NULL \
+             ORDER BY account_codes.created_at DESC LIMIT 1 \
+         )",
     )
-    .bind(code_hash)
-    .execute(&pool)
+    .bind(&email)
+    .execute(database_pool().await)
     .await
     .expect("expire signup code in disposable E2E database");
     assert_eq!(update.rows_affected(), 1, "signup code row was not found");
-    pool.close().await;
-
     let response = post_json(
         "/api/accounts/verify",
         &json!({ "email": email, "code": code }),
