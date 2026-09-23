@@ -40,6 +40,21 @@ pub(super) fn channel(
     true
 }
 
+/// The origin Tauri treats as its own app assets, which is what capability ACLs
+/// match invokes against. Mirrors `tauri::manager::AppManager::tauri_protocol_url`:
+/// Windows and Android serve assets from `http(s)://tauri.localhost`.
+fn local_origin(use_https: bool) -> &'static str {
+    if cfg!(windows) || cfg!(target_os = "android") {
+        if use_https {
+            "https://tauri.localhost"
+        } else {
+            "http://tauri.localhost"
+        }
+    } else {
+        "tauri://localhost"
+    }
+}
+
 fn error(id: u64, message: &str) {
     let _ = wire::send(&json!({"type":"response", "id":id, "error":message}));
 }
@@ -95,7 +110,13 @@ fn invoke(
         };
         parsed_headers.insert(name, value);
     }
-    let Ok(url) = url::Url::parse("tauri://localhost") else {
+    let use_https = app
+        .config()
+        .app
+        .windows
+        .first()
+        .is_some_and(|window| window.use_https_scheme);
+    let Ok(url) = url::Url::parse(local_origin(use_https)) else {
         error(id, "Native origin is unavailable");
         return;
     };
@@ -212,4 +233,21 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
             app.exit(0);
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_origin;
+
+    #[test]
+    fn invokes_use_the_origin_tauri_trusts_on_this_platform() {
+        if cfg!(windows) {
+            assert_eq!(local_origin(false), "http://tauri.localhost");
+            assert_eq!(local_origin(true), "https://tauri.localhost");
+        } else {
+            assert_eq!(local_origin(false), "tauri://localhost");
+            assert_eq!(local_origin(true), "tauri://localhost");
+        }
+        assert!(url::Url::parse(local_origin(false)).is_ok());
+    }
 }
