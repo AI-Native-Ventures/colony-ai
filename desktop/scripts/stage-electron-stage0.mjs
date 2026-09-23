@@ -113,7 +113,11 @@ async function main() {
     desktopDirectory,
     `.stage0-package-resources-${flavor}`,
   );
-  const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
+  // Match package-electron-stage0.mjs and keep renderer variants disjoint.
+  const rendererBuildDirectory = path.join(
+    desktopDirectory,
+    `.stage0-ui-dist-${flavor}`,
+  );
   const rendererSource =
     uiMode === "react"
       ? "src-electron/stage0-renderer.react.mjs"

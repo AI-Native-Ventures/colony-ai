@@ -37,7 +37,12 @@ const resourceDirectory = path.join(
   `.stage0-package-resources-${flavor}`,
 );
 const outputDirectory = path.join(desktopDirectory, `dist-electron-${flavor}`);
-const rendererBuildDirectory = path.join(desktopDirectory, ".stage0-ui-dist");
+// Keep normal and instrumented renderer builds disjoint. A shared output path
+// can retain the other variant if packaging is ever started concurrently.
+const rendererBuildDirectory = path.join(
+  desktopDirectory,
+  `.stage0-ui-dist-${flavor}`,
+);
 const appName =
   target.executableName ??
   (flavor === "normal" ? "Buzz Stage0 Normal" : "Buzz Stage0 Instrumented");
