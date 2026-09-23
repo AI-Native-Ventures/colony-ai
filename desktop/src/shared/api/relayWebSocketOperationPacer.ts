@@ -1,16 +1,22 @@
 const RELAY_ADMISSION_FRAME_TYPES = new Set(["REQ", "COUNT", "EVENT"]);
 const RELAY_OPERATION_INTERVAL_MS = 125;
+// The relay's default shared WS budget is 50 operations per five seconds.
+// An eight-operation burst plus an eight-per-second refill stays below that
+// fixed-window budget while allowing initial app subscriptions to start at once.
+const RELAY_OPERATION_BURST_CAPACITY = 8;
 const MAX_QUEUED_RELAY_OPERATIONS = 256;
 
 type PacerState = {
-  nextSendAt: number;
+  tokens: number;
+  lastRefillAt: number;
   queued: number;
   tail: Promise<void>;
 };
 
 function createPacerState(): PacerState {
   return {
-    nextSendAt: 0,
+    tokens: RELAY_OPERATION_BURST_CAPACITY,
+    lastRefillAt: Date.now(),
     queued: 0,
     tail: Promise.resolve(),
   };
@@ -24,9 +30,44 @@ function isAdmissionFrame(frame: unknown[]): boolean {
   );
 }
 
+function isSyntheticE2eRelay(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.__BUZZ_E2E_USES_REAL_RELAY__ === false
+  );
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
+  });
+}
+
+function refillTokens(state: PacerState, now: number): void {
+  const elapsedMs = Math.max(0, now - state.lastRefillAt);
+  state.tokens = Math.min(
+    RELAY_OPERATION_BURST_CAPACITY,
+    state.tokens + elapsedMs / RELAY_OPERATION_INTERVAL_MS,
+  );
+  state.lastRefillAt = now;
+}
+
+function acquireToken(state: PacerState): Promise<void> | null {
+  if (state !== activeState) {
+    throw new Error("Relay operation was superseded before sending.");
+  }
+
+  const now = Date.now();
+  refillTokens(state, now);
+  if (state.tokens >= 1) {
+    state.tokens -= 1;
+    return null;
+  }
+
+  const delayMs = Math.ceil((1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS);
+  return wait(Math.max(1, delayMs)).then(() => {
+    const retry = acquireToken(state);
+    return retry ?? undefined;
   });
 }
 
@@ -42,7 +83,7 @@ export async function sendPacedRelayOperation<T>(
   isCurrent: () => boolean,
   send: () => Promise<T>,
 ): Promise<T> {
-  if (!isAdmissionFrame(frame)) {
+  if (isSyntheticE2eRelay() || !isAdmissionFrame(frame)) {
     if (!isCurrent()) {
       throw new Error("Relay operation was superseded before sending.");
     }
@@ -60,14 +101,13 @@ export async function sendPacedRelayOperation<T>(
       throw new Error("Relay operation was superseded before sending.");
     }
 
-    const delayMs = Math.max(0, state.nextSendAt - Date.now());
-    if (delayMs > 0) await wait(delayMs);
+    const tokenWait = acquireToken(state);
+    if (tokenWait) await tokenWait;
 
     if (state !== activeState || !isCurrent()) {
       throw new Error("Relay operation was superseded before sending.");
     }
 
-    state.nextSendAt = Date.now() + RELAY_OPERATION_INTERVAL_MS;
     return send();
   });
   state.tail = operation.then(

@@ -53,8 +53,8 @@ const { resetRelayWebSocketOperationPacer } = await import(
 
 function reset() {
   resetRateLimitGate();
-  resetRelayWebSocketOperationPacer();
   fakeNow = 0;
+  resetRelayWebSocketOperationPacer();
   invokeError = null;
   pendingTimers.clear();
   nextTimerId = 1;
@@ -409,27 +409,51 @@ test("HTTP failure does not clear an existing WS backoff", async () => {
   assert.equal(await published, event);
 });
 
-test("initial live subscriptions share the production relay operation pacer", async () => {
+test("initial live subscriptions use an immediate burst before production pacing", async () => {
   reset();
   const client = connectedClient();
-  const subscriptions = [
-    client.subscribeLive({ kinds: [1], limit: 10 }, () => {}),
-    client.subscribeLive({ kinds: [2], limit: 10 }, () => {}),
-    client.subscribeLive({ kinds: [3], limit: 10 }, () => {}),
-  ];
+  const subscriptions = Array.from({ length: 10 }, (_, index) =>
+    client.subscribeLive({ kinds: [index + 1], limit: 10 }, () => {}),
+  );
 
-  await advanceTimersUntil(() => requestFrames().length === 3);
+  await flushMicrotasks(200);
+  await advanceTimersUntil(
+    () => requestFrames().length === subscriptions.length,
+  );
 
   assert.deepEqual(
     sendTimes,
-    [0, 125, 250],
-    "REQ frames from concurrent startup subscriptions must be spaced at 8/s",
+    [0, 0, 0, 0, 0, 0, 0, 0, 125, 250],
+    "the first eight startup REQs are immediate, then paced at 8/s",
   );
   for (const { message } of requestFrames()) {
     const [, subId] = JSON.parse(message.data);
     await deliver(client, ["EOSE", subId]);
   }
   await Promise.all(subscriptions);
+});
+
+test("synthetic E2E relay does not spend a real relay quota budget", async () => {
+  reset();
+  window.__BUZZ_E2E_USES_REAL_RELAY__ = false;
+  try {
+    const client = connectedClient();
+    const subscriptions = Array.from({ length: 10 }, (_, index) =>
+      client.subscribeLive({ kinds: [index + 1], limit: 10 }, () => {}),
+    );
+
+    await flushMicrotasks(500);
+
+    assert.equal(requestFrames().length, subscriptions.length);
+    assert.deepEqual(sendTimes, Array(10).fill(0));
+    for (const { message } of requestFrames()) {
+      const [, subId] = JSON.parse(message.data);
+      await deliver(client, ["EOSE", subId]);
+    }
+    await Promise.all(subscriptions);
+  } finally {
+    delete window.__BUZZ_E2E_USES_REAL_RELAY__;
+  }
 });
 
 test("a rate-limited publish retries the same signed event after the relay hint", async () => {
@@ -456,6 +480,7 @@ test("a rate-limited publish retries the same signed event after the relay hint"
     );
 
     await flushUntil(() => eventFrames().length === 1);
+    assert.equal(sendTimes[0], 0, "a lone publish must send immediately");
     const firstFrame = JSON.parse(eventFrames()[0].message.data)[1];
     await deliver(client, [
       "OK",

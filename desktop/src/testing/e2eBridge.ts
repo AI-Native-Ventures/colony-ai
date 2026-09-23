@@ -1242,6 +1242,8 @@ async function writeClipboardFlavors({
 declare global {
   interface Window {
     __BUZZ_E2E__?: E2eConfig;
+    /** The in-page relay is synthetic unless a relay-mode test opts in. */
+    __BUZZ_E2E_USES_REAL_RELAY__?: boolean;
     /** Last payload written through the native clipboard command. */
     __BUZZ_E2E_LAST_CLIPBOARD__?: { html: string | null; text: string };
     __BUZZ_E2E_COMMANDS__?: string[];
@@ -11357,6 +11359,7 @@ export function maybeInstallE2eTauriMocks() {
   if (!config) {
     return;
   }
+  window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
 
   mockClosedChannelLiveSubscription = false;
   mockWebsocketUnavailable = false;
