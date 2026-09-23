@@ -96,6 +96,8 @@ type_text() {
   local value="$1"
   local offset=0
   local chunk
+  # The first text event can race Android's IME startup after the input tap.
+  sleep 1
   while ((offset < ${#value})); do
     chunk="${value:offset:1}"
     adb_target shell input text "$chunk"
