@@ -201,7 +201,7 @@ def wait_input_value(expected: str, timeout_seconds: int) -> ET.Element:
         time.sleep(1)
     raise UiError(
         f"timed out waiting for full composer text of length {len(expected)}; "
-        f"observed length {len(last_value)}"
+        f"observed {last_value!r} (length {len(last_value)})"
     )
 
 

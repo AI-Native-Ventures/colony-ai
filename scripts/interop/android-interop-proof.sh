@@ -97,12 +97,12 @@ type_text() {
   local offset=0
   local chunk
   while ((offset < ${#value})); do
-    chunk="${value:offset:3}"
+    chunk="${value:offset:1}"
     adb_target shell input text "$chunk"
     offset=$((offset + ${#chunk}))
-    sleep 0.2
+    sleep 0.25
   done
-  ui wait-input-value "$value" --timeout 20
+  ui wait-input-value "$value" --timeout 35
 }
 
 launch_deeplink() {
