@@ -57,6 +57,7 @@ export function createAppWindow({
     clipboard,
     dialog,
     Notification,
+    backgroundMode: process.env.COLONY_ELECTRON_BACKGROUND === "1",
     nativeTheme,
     getWindow: () => window,
     emit: (event, payload) => send({ type: "shell-event", event, payload }),

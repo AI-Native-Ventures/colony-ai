@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { createShellPlugins } from "./shell-plugins.mjs";
 
-function createHarness({ withDock = true } = {}) {
+function createHarness({ withDock = true, backgroundMode = false } = {}) {
   const calls = [];
   const emitted = [];
   const window = new EventEmitter();
@@ -19,12 +19,14 @@ function createHarness({ withDock = true } = {}) {
     calls.push(["setFullScreen", value]);
   };
   window.isMinimized = () => false;
+  window.isDestroyed = () => false;
   window.isFocused = () => {
     calls.push(["isFocused"]);
     return false;
   };
   window.setTitle = (value) => calls.push(["setTitle", value]);
   window.show = () => calls.push(["show"]);
+  window.showInactive = () => calls.push(["showInactive"]);
   window.hide = () => calls.push(["hide"]);
   window.minimize = () => calls.push(["minimize"]);
   window.restore = () => calls.push(["restore"]);
@@ -112,6 +114,7 @@ function createHarness({ withDock = true } = {}) {
     clipboard,
     dialog,
     Notification: TestNotification,
+    backgroundMode,
     nativeTheme,
     getWindow: () => window,
     emit: (eventName, payload) => emitted.push({ eventName, payload }),
@@ -400,6 +403,20 @@ test("native message notification click reveals the window and forwards its targ
       payload: { channelId: "channel-1", eventId: "event-1" },
     },
   ]);
+});
+
+test("notification click preserves background mode without focusing the app", async () => {
+  const { calls, notifications, plugins } = createHarness({
+    backgroundMode: true,
+  });
+  await plugins.invoke("show_native_notification", {
+    title: "Background check",
+    body: "No focus change",
+  });
+
+  notifications[0].emit("click");
+
+  assert.deepEqual(calls.slice(2), [["showInactive"]]);
 });
 
 test("unknown shell commands fail with their command name", async () => {

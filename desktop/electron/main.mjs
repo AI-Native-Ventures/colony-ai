@@ -17,6 +17,7 @@ import {
 } from "./deep-links.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
+import { revealElectronWindow } from "./window-activation.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
@@ -94,10 +95,9 @@ app.on("second-instance", (_event, commandLine) =>
 );
 
 function revealWindow() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  revealElectronWindow(mainWindow, {
+    backgroundMode: process.env.COLONY_ELECTRON_BACKGROUND === "1",
+  });
 }
 
 /** Content-Security-Policy from the Tauri config, adapted to the colony scheme. */

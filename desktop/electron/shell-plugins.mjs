@@ -1,5 +1,6 @@
 import { createElectronDialogs } from "./dialogs.mjs";
 import { createNativeNotificationHandler } from "./notifications.mjs";
+import { revealElectronWindow } from "./window-activation.mjs";
 
 /*
  * React call sites -> Tauri command or event (verified against @tauri-apps/api 2.11.1):
@@ -63,6 +64,7 @@ export function createShellPlugins({
   clipboard,
   dialog,
   Notification,
+  backgroundMode = false,
   nativeTheme,
   getWindow,
   emit,
@@ -82,10 +84,7 @@ export function createShellPlugins({
   }
 
   function revealWindow() {
-    const window = requireWindow();
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
+    revealElectronWindow(requireWindow(), { backgroundMode });
   }
 
   const dialogs = createElectronDialogs({ dialog, getWindow });
