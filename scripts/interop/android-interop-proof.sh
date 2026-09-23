@@ -127,6 +127,42 @@ launch_deeplink() {
   fi
 }
 
+start_relay_process() {
+  local profile="${CARGO_PROFILE:-ci}"
+  local relay_binary="./target/${profile}/buzz-relay"
+  local relay_pid
+
+  [[ -x "$relay_binary" ]] || fail "built relay binary is missing: $relay_binary"
+  : "${BUZZ_RELAY_PRIVATE_KEY:?BUZZ_RELAY_PRIVATE_KEY is required to restart the relay}"
+  nohup env \
+    DATABASE_URL=postgres://buzz:buzz_dev@localhost:5432/buzz \
+    REDIS_URL=redis://localhost:6379 \
+    RELAY_URL=ws://localhost:3000 \
+    BUZZ_BIND_ADDR=0.0.0.0:3000 \
+    BUZZ_RELAY_PRIVATE_KEY="$BUZZ_RELAY_PRIVATE_KEY" \
+    BUZZ_REQUIRE_AUTH_TOKEN=false \
+    BUZZ_RECONCILE_CHANNELS=true \
+    BUZZ_GIT_PROBE_WRITERS=8 \
+    "$relay_binary" > /tmp/buzz-relay.log 2>&1 &
+  echo $! > /tmp/buzz-relay.pid
+  relay_pid="$(cat /tmp/buzz-relay.pid)"
+
+  for _ in $(seq 1 60); do
+    if ! kill -0 "$relay_pid" 2>/dev/null; then
+      cat /tmp/buzz-relay.log
+      fail "relay process exited during restart"
+    fi
+    if curl --silent --show-error --fail http://127.0.0.1:3000/_readiness >/dev/null 2>&1; then
+      echo "PASS relay-restarted profile=$profile"
+      return
+    fi
+    sleep 1
+  done
+
+  cat /tmp/buzz-relay.log
+  fail "restarted relay did not become ready within 60s"
+}
+
 echo "Android hosted relay interop proof"
 echo "source_sha=${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
 echo "run_id=$run_id attempt=$run_attempt"
@@ -250,7 +286,20 @@ fi
 [[ "$relay_down" == true ]] || fail "relay readiness stayed up after termination"
 echo "PASS relay-outage confirmed"
 
-bash scripts/start-relay-for-tests.sh --no-build
+relay_stopped=false
+for _ in $(seq 1 30); do
+  if ! kill -0 "$relay_pid" 2>/dev/null; then
+    relay_stopped=true
+    break
+  fi
+  sleep 1
+done
+[[ "$relay_stopped" == true ]] || fail "relay process stayed alive after termination"
+echo "PASS relay-process-stopped"
+
+# The schema and seed are already in place. Restart only the relay process so
+# this outage test does not reapply pgschema to populated partition tables.
+start_relay_process
 node "$peer_script" wait-ready --events "$events_file" --count 2 --timeout 90
 reconnected_message="reconnected${run_id}a${run_attempt}"
 node "$peer_script" publish --channel "$channel_id" --content "$reconnected_message"
