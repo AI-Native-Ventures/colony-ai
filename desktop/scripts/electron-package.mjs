@@ -1,4 +1,5 @@
 import { packager } from "@electron/packager";
+import { extractFile } from "@electron/asar";
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import {
@@ -21,17 +22,23 @@ import {
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
+  sidecarFilenames,
 } from "./electron-package-config.mjs";
 
 const exec = promisify(execFile);
 const desktop = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(desktop);
-const { platform, arch, host } = parseElectronPackageArgs(
+const { platform, arch, host, sidecarDir } = parseElectronPackageArgs(
   process.argv.slice(2),
 );
 const hostFilename = nativeHostFilename(platform);
+const defaultReleaseDir = host ? undefined : await cargoReleaseDir();
 const hostPath = path.resolve(
-  host ?? path.join(desktop, "src-tauri", "target", "release", hostFilename),
+  host ?? path.join(defaultReleaseDir, hostFilename),
+);
+const sidecarSourceDir = path.resolve(sidecarDir ?? path.dirname(hostPath));
+const sidecarPaths = sidecarFilenames(platform).map((filename) =>
+  path.join(sidecarSourceDir, filename),
 );
 const distPath = path.join(desktop, "dist");
 const sourceElectronPath = path.join(desktop, "electron");
@@ -55,6 +62,22 @@ async function requireFile(filePath, label) {
   if (!fileStat.isFile() || fileStat.size === 0)
     throw new Error(`${label} must be a non-empty file: ${filePath}`);
   return fileStat;
+}
+
+async function cargoReleaseDir() {
+  const { stdout } = await exec(
+    "cargo",
+    [
+      "metadata",
+      "--manifest-path",
+      path.join(desktop, "src-tauri", "Cargo.toml"),
+      "--format-version",
+      "1",
+      "--no-deps",
+    ],
+    { cwd: repo, windowsHide: true },
+  );
+  return path.join(JSON.parse(stdout).target_directory, "release");
 }
 
 async function makeArchive(outputDir, archivePath) {
@@ -127,6 +150,15 @@ if (platform === "win32" && !hostPath.toLowerCase().endsWith(".exe"))
   throw new Error(
     `Windows native host must have an .exe extension: ${hostPath}`,
   );
+const sidecarStats = await Promise.all(
+  sidecarPaths.map((sidecarPath) => requireFile(sidecarPath, "Sidecar")),
+);
+if (platform !== "win32") {
+  for (const [index, sidecarStat] of sidecarStats.entries()) {
+    if (!(sidecarStat.mode & 0o111))
+      throw new Error(`Sidecar is not executable: ${sidecarPaths[index]}`);
+  }
+}
 
 const [desktopPackage, tauriConfig] = await Promise.all([
   readFile(packageJsonPath, "utf8").then(JSON.parse),
@@ -149,7 +181,15 @@ const stageRoot = await mkdtemp(
 const stageDir = path.join(stageRoot, "app");
 const stagedElectronPath = path.join(stageDir, "electron");
 const stagedDistPath = path.join(stageDir, "dist");
+const stagedTauriConfigPath = path.join(
+  stageDir,
+  "src-tauri",
+  "tauri.conf.json",
+);
 const stagedHostPath = path.join(stageRoot, hostFilename);
+const stagedSidecarPaths = sidecarPaths.map((sidecarPath) =>
+  path.join(stageRoot, path.basename(sidecarPath)),
+);
 
 try {
   await mkdir(stageDir, { recursive: true });
@@ -160,7 +200,18 @@ try {
       (!/\.test\.mjs$/i.test(source) && path.basename(source) !== "README.md"),
   });
   await cp(distPath, stagedDistPath, { recursive: true });
+  await mkdir(path.dirname(stagedTauriConfigPath), { recursive: true });
+  await copyFile(tauriConfigPath, stagedTauriConfigPath);
   await copyFile(hostPath, stagedHostPath, fsConstants.COPYFILE_FICLONE);
+  await Promise.all(
+    sidecarPaths.map((sidecarPath, index) =>
+      copyFile(
+        sidecarPath,
+        stagedSidecarPaths[index],
+        fsConstants.COPYFILE_FICLONE,
+      ),
+    ),
+  );
 
   const stagedPackageJson = {
     ...desktopPackage,
@@ -179,7 +230,7 @@ try {
     electronVersion,
     platform,
     arch,
-    extraResource: [stagedHostPath],
+    extraResource: [stagedHostPath, ...stagedSidecarPaths],
   });
   const packagedPaths = await packager(options);
   if (packagedPaths.length !== 1)
@@ -197,14 +248,38 @@ try {
           "Resources",
         )
       : path.join(packagePaths.outputDir, "resources");
-  await requireFile(
-    path.join(appResourcesPath, "app.asar"),
-    "Packaged application archive",
+  const appAsarPath = path.join(appResourcesPath, "app.asar");
+  await requireFile(appAsarPath, "Packaged application archive");
+  const packagedTauriConfig = extractFile(
+    appAsarPath,
+    "src-tauri/tauri.conf.json",
   );
-  await requireFile(
+  const stagedTauriConfig = await readFile(stagedTauriConfigPath);
+  if (!packagedTauriConfig.equals(stagedTauriConfig))
+    throw new Error("Packaged app is missing the staged Tauri configuration.");
+
+  const packagedRuntimePaths = [
     path.join(appResourcesPath, hostFilename),
-    "Packaged native host",
+    ...sidecarFilenames(platform).map((filename) =>
+      path.join(appResourcesPath, filename),
+    ),
+  ];
+  const packagedRuntimeStats = await Promise.all(
+    packagedRuntimePaths.map((runtimePath, index) =>
+      requireFile(
+        runtimePath,
+        index === 0 ? "Packaged native host" : "Packaged sidecar",
+      ),
+    ),
   );
+  if (platform !== "win32") {
+    for (const [index, runtimeStat] of packagedRuntimeStats.entries()) {
+      if (!(runtimeStat.mode & 0o111))
+        throw new Error(
+          `Packaged runtime binary is not executable: ${packagedRuntimePaths[index]}`,
+        );
+    }
+  }
 
   await makeArchive(packagePaths.outputDir, packagePaths.archivePath);
   const archiveStat = await stat(packagePaths.archivePath);

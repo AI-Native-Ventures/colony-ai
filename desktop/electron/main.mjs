@@ -10,27 +10,19 @@ import {
   validWindowLabel,
 } from "./app-window.mjs";
 import { NativeHost } from "./native-host.mjs";
+import { runtimePaths } from "./runtime-paths.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
-const devUrl = app.isPackaged
-  ? null
-  : process.env.COLONY_ELECTRON_DEV_URL || null;
+const runtime = runtimePaths({
+  packaged: app.isPackaged,
+  appPath: desktop,
+  resourcesPath: process.resourcesPath,
+  env: process.env,
+  platform: process.platform,
+});
+const devUrl = runtime.devUrl || null;
 const SHOW_WINDOW_EVENT = "electron-shell:show-window";
-
-function nativeHostPath() {
-  const exe = process.platform === "win32" ? ".exe" : "";
-  if (process.env.COLONY_NATIVE_HOST) return process.env.COLONY_NATIVE_HOST;
-  if (app.isPackaged)
-    return path.join(process.resourcesPath, `colony-native-host${exe}`);
-  return path.join(
-    desktop,
-    "src-tauri",
-    "target",
-    "debug",
-    `colony-native-host${exe}`,
-  );
-}
 
 // Product name shown in the macOS app menu and About panel.
 app.setName("Buzz");
@@ -100,7 +92,7 @@ async function contentSecurityPolicy(html) {
 }
 
 function serveRenderer(csp) {
-  const root = path.join(desktop, "dist");
+  const root = runtime.rendererRoot;
   protocol.handle("colony", async (request) => {
     const url = new URL(request.url);
     if (url.hostname !== "app")
@@ -153,7 +145,7 @@ async function boot() {
   installAppMenu({ Menu, app });
   const html = devUrl
     ? await (await fetch(devUrl)).text()
-    : await readFile(path.join(desktop, "dist", "index.html"), "utf8");
+    : await readFile(path.join(runtime.rendererRoot, "index.html"), "utf8");
   const csp = await contentSecurityPolicy(html);
   serveRenderer(csp);
 
@@ -161,7 +153,7 @@ async function boot() {
     .update(app.getPath("userData"))
     .digest("hex")
     .slice(0, 16);
-  host = new NativeHost(nativeHostPath(), {
+  host = new NativeHost(runtime.nativeHost, {
     env: {
       ...process.env,
       COLONY_ELECTRON_PACKAGED: app.isPackaged ? "1" : "0",

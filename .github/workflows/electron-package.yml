@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_BUILD_JOBS: 4
+
 jobs:
   package:
     name: Package Electron (${{ matrix.platform }}-${{ matrix.arch }})
@@ -159,15 +162,88 @@ jobs:
           --bin colony-native-host
           --manifest-path desktop/src-tauri/Cargo.toml
 
+      - name: Build bundled sidecars
+        shell: bash
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          if [ "$COLONY_PACKAGE_PLATFORM" = "win32" ]; then
+            cargo build --locked --release \
+              -p buzz-acp \
+              -p buzz-agent \
+              -p buzz-dev-mcp \
+              -p git-credential-nostr \
+              -p buzz-cli \
+              --manifest-path Cargo.toml
+          else
+            cargo build --locked --release \
+              -p buzz-acp \
+              -p buzz-agent \
+              -p buzz-backend-kubernetes \
+              -p buzz-dev-mcp \
+              -p git-credential-nostr \
+              -p buzz-cli \
+              --manifest-path Cargo.toml
+          fi
+
+      - name: Copy release binaries to private staging
+        shell: bash
+        env:
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, chmodSync, copyFileSync, mkdirSync, statSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          import os from "node:os";
+          import path from "node:path";
+
+          const platform = process.env.COLONY_PACKAGE_PLATFORM;
+          const suffix = platform === "win32" ? ".exe" : "";
+          const names = [
+            "colony-native-host",
+            "buzz-acp",
+            "buzz-agent",
+            "buzz-dev-mcp",
+            "git-credential-nostr",
+            "buzz",
+          ];
+          if (platform !== "win32") names.push("buzz-backend-kubernetes");
+          const metadata = JSON.parse(execFileSync(
+            "cargo",
+            ["metadata", "--manifest-path", "Cargo.toml", "--format-version", "1", "--no-deps"],
+            { encoding: "utf8" },
+          ));
+          const releaseDir = path.join(metadata.target_directory, "release");
+          const runtimeDir = path.join(process.env.RUNNER_TEMP, "colony-electron-runtime");
+          mkdirSync(runtimeDir, { recursive: true });
+          for (const name of names) {
+            const filename = `${name}${suffix}`;
+            const source = path.join(releaseDir, filename);
+            const sourceStat = statSync(source);
+            if (!sourceStat.isFile() || sourceStat.size === 0) {
+              throw new Error(`Missing real release binary: ${source}`);
+            }
+            if (platform !== "win32" && !(sourceStat.mode & 0o111)) {
+              throw new Error(`Release binary is not executable: ${source}`);
+            }
+            const destination = path.join(runtimeDir, filename);
+            copyFileSync(source, destination);
+            if (platform !== "win32") chmodSync(destination, sourceStat.mode & 0o777);
+          }
+          appendFileSync(process.env.GITHUB_ENV, `COLONY_ELECTRON_RUNTIME=${runtimeDir}${os.EOL}`);
+          NODE
+
       - name: Package Electron app
         shell: bash
         run: |
           set -euo pipefail
-          target_dir="$(cargo metadata --manifest-path desktop/src-tauri/Cargo.toml --format-version 1 --no-deps | node -e 'let input="";process.stdin.on("data", chunk => input += chunk).on("end", () => process.stdout.write(JSON.parse(input).target_directory))')"
           if [ "${{ matrix.platform }}" = "win32" ]; then
-            host="$target_dir/release/colony-native-host.exe"
+            host="$COLONY_ELECTRON_RUNTIME/colony-native-host.exe"
           else
-            host="$target_dir/release/colony-native-host"
+            host="$COLONY_ELECTRON_RUNTIME/colony-native-host"
           fi
           pnpm --dir desktop run electron:package \
             --platform=${{ matrix.platform }} \
@@ -189,6 +265,10 @@ jobs:
         shell: bash
         env:
           NODE_OPTIONS: ""
+          COLONY_NATIVE_HOST: ""
+          COLONY_ELECTRON_SMOKE: "1"
+          COLONY_ELECTRON_BACKGROUND: "1"
+          COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
           if [ "${{ matrix.platform }}" = "linux" ]; then
@@ -196,7 +276,7 @@ jobs:
           else
             command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/Buzz.app/Contents/MacOS/Buzz")
           fi
-          COLONY_ELECTRON_SMOKE=1 python3 - "${command[@]}" <<'PY'
+          python3 - "${command[@]}" <<'PY'
           import os
           import signal
           import subprocess
@@ -222,8 +302,11 @@ jobs:
         shell: pwsh
         env:
           NODE_OPTIONS: ""
+          COLONY_NATIVE_HOST: ""
+          COLONY_ELECTRON_SMOKE: "1"
+          COLONY_ELECTRON_BACKGROUND: "1"
         run: |
-          $env:COLONY_ELECTRON_SMOKE = "1"
+          $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
           $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/Buzz.exe"
           $stdoutPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stdout.log"
           $stderrPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stderr.log"

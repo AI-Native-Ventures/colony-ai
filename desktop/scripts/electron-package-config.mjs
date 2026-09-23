@@ -32,6 +32,7 @@ export function parseElectronPackageArgs(args) {
       "--platform": "platform",
       "--arch": "arch",
       "--host": "host",
+      "--sidecar-dir": "sidecarDir",
     }[flag];
 
     if (!key) throw new Error(`Unknown argument ${JSON.stringify(argument)}.`);
@@ -69,6 +70,20 @@ export function electronPackagePaths({ desktop, platform, arch }) {
 export function nativeHostFilename(platform) {
   assertPlatform(platform);
   return `colony-native-host${platform === "win32" ? ".exe" : ""}`;
+}
+
+export function sidecarFilenames(platform) {
+  assertPlatform(platform);
+  const extension = platform === "win32" ? ".exe" : "";
+  const binaries = [
+    "buzz-acp",
+    "buzz-agent",
+    "buzz-dev-mcp",
+    "git-credential-nostr",
+    "buzz",
+  ];
+  if (platform !== "win32") binaries.push("buzz-backend-kubernetes");
+  return binaries.map((binary) => `${binary}${extension}`);
 }
 
 export function createPackagerOptions({

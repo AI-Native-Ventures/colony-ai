@@ -7,6 +7,7 @@ import {
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
+  sidecarFilenames,
 } from "./electron-package-config.mjs";
 
 test("package arguments require a supported platform and architecture", () => {
@@ -15,11 +16,13 @@ test("package arguments require a supported platform and architecture", () => {
       "--platform=darwin",
       "--arch=arm64",
       "--host=/tmp/native host=release",
+      "--sidecar-dir=/tmp/native runtime",
     ]),
     {
       platform: "darwin",
       arch: "arm64",
       host: "/tmp/native host=release",
+      sidecarDir: "/tmp/native runtime",
     },
   );
 
@@ -120,4 +123,24 @@ test("Windows package metadata uses the configured product name", () => {
   });
 
   assert.deepEqual(options.win32metadata, { CompanyName: "Buzz" });
+});
+
+test("sidecar staging includes real runtime binaries for each platform", () => {
+  assert.deepEqual(sidecarFilenames("darwin"), [
+    "buzz-acp",
+    "buzz-agent",
+    "buzz-dev-mcp",
+    "git-credential-nostr",
+    "buzz",
+    "buzz-backend-kubernetes",
+  ]);
+  assert.deepEqual(sidecarFilenames("linux"), sidecarFilenames("darwin"));
+  assert.deepEqual(sidecarFilenames("win32"), [
+    "buzz-acp.exe",
+    "buzz-agent.exe",
+    "buzz-dev-mcp.exe",
+    "git-credential-nostr.exe",
+    "buzz.exe",
+  ]);
+  assert.throws(() => sidecarFilenames("freebsd"), /Unsupported platform/);
 });
