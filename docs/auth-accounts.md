@@ -51,7 +51,7 @@ below) removes the account row and wipes custody material.
 - `account_google_identities`: `sub text pk`, `account_id fk`, `email`,
   `created_at`.
 - `account_codes`: one-time 6-digit codes for `verify_email` and
-  `reset_password`; store SHA-256 of the code, `expires_at` (15 min),
+  `reset_password`; store HMAC-SHA256 of the code keyed by a key derived from `COLONY_ACCOUNT_KEK` (plain hashes of six-digit codes are brute-forceable from a database dump), `expires_at` (15 min),
   `attempts` (max 5), `consumed_at`.
 
 ## Endpoints (JSON over HTTPS on any community host)
