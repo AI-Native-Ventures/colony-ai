@@ -13,6 +13,8 @@ mod wire;
 
 /// Event the host emits when native code asks for the main window. The Electron
 /// parent listens for it and reveals its own window instead.
+// Only the macOS tray reveals the main window today.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) const SHOW_WINDOW_EVENT: &str = "electron-shell:show-window";
 
 /// Whether this process is serving an Electron parent.
@@ -79,6 +81,7 @@ pub(crate) fn start(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
 ///
 /// Returns `true` when the request was routed to Electron, in which case the
 /// caller must not touch the hidden Tauri window.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn route_show_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     if !enabled() {
         return false;
