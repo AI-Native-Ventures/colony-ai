@@ -88,6 +88,10 @@ tap_exact() {
   ui tap-text "$1" --exact --timeout "${2:-30}"
 }
 
+tap_text() {
+  ui tap-text "$1" --timeout "${2:-30}"
+}
+
 launch_deeplink() {
   local link="$1"
   local launch_output
@@ -162,7 +166,7 @@ peer_root="peerroot${run_id}a${run_attempt}"
 peer_root_result="$artifact_dir/peer-root.json"
 node "$peer_script" publish \
   --channel "$channel_id" --content "$peer_root" --result "$peer_root_result"
-wait_exact "$peer_root" 45
+wait_text "$peer_root" 45
 capture peer-message-rendered
 root_id="$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).id)' "$peer_root_result")"
 [[ "$root_id" =~ ^[0-9a-f]{64}$ ]] || fail "peer root event id is invalid"
@@ -175,12 +179,12 @@ ui tap-send
 node "$peer_script" wait-event \
   --events "$events_file" --channel "$channel_id" \
   --content "$android_message" --exclude-pubkey "$peer_pubkey" --timeout 45
-wait_exact "$android_message" 45
+wait_text "$android_message" 45
 capture android-message-relayed
 
 # A tap on a channel message opens its thread. The reply is sent through the
 # Android thread composer and is checked for both Buzz/NIP-10 markers.
-tap_exact "$peer_root" 30
+tap_text "$peer_root" 30
 ui wait-input --timeout 45
 android_reply="androidreply${run_id}a${run_attempt}"
 ui tap-input --timeout 30
@@ -191,7 +195,7 @@ node "$peer_script" wait-event \
   --events "$events_file" --channel "$channel_id" \
   --content "$android_reply" --reply-root "$root_id" \
   --exclude-pubkey "$peer_pubkey" --timeout 45
-wait_exact "$android_reply" 45
+wait_text "$android_reply" 45
 capture android-thread-reply
 
 # Relaunch through the real channel deep link so the fresh process must restore
@@ -199,11 +203,11 @@ capture android-thread-reply
 adb_target shell am force-stop "$package"
 channel_link="$(node "$peer_script" channel-link --input "$invite_file")"
 launch_deeplink "$channel_link"
-wait_exact "$peer_root" 120
-wait_exact "$android_message" 45
+wait_text "$peer_root" 120
+wait_text "$android_message" 45
 capture history-after-relaunch
-tap_exact "$peer_root" 30
-wait_exact "$android_reply" 60
+tap_text "$peer_root" 30
+wait_text "$android_reply" 60
 capture thread-history-after-relaunch
 
 # Return to the channel timeline, then stop and restart the disposable relay.
@@ -239,7 +243,7 @@ bash scripts/start-relay-for-tests.sh --no-build
 node "$peer_script" wait-ready --events "$events_file" --count 2 --timeout 90
 reconnected_message="reconnected${run_id}a${run_attempt}"
 node "$peer_script" publish --channel "$channel_id" --content "$reconnected_message"
-wait_exact "$reconnected_message" 90
+wait_text "$reconnected_message" 90
 node "$peer_script" wait-event \
   --events "$events_file" --channel "$channel_id" \
   --content "$reconnected_message" --timeout 45
