@@ -178,6 +178,9 @@ async function rewriteElectronPublicPaths(directory) {
 async function main() {
   await rm(outputDirectory, { recursive: true, force: true });
   if (uiMode === "react") {
+    process.stderr.write(
+      `React Vite input: VITE_BUZZ_BESTIE=${JSON.stringify(process.env.VITE_BUZZ_BESTIE ?? null)}\n`,
+    );
     await rm(rendererBuildDirectory, { recursive: true, force: true });
     run(process.execPath, [
       path.join(desktopDirectory, "node_modules", "vite", "bin", "vite.js"),
