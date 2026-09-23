@@ -18,11 +18,13 @@ class HomePage extends HookConsumerWidget {
   const HomePage({
     required this.settingsPageBuilder,
     required this.hasUnreadInbox,
+    this.accountClaimPrompt,
     super.key,
   });
 
   final WidgetBuilder settingsPageBuilder;
   final bool hasUnreadInbox;
+  final Widget? accountClaimPrompt;
 
   static const double _tabBarHeight = mobileTabBarHeight;
   static const double _tabBarRadius = _tabBarHeight / 2;
@@ -137,55 +139,60 @@ class HomePage extends HookConsumerWidget {
             // keyboard is visible on any tab.
             resizeToAvoidBottomInset: false,
             extendBody: true,
-            body: SizedBox.expand(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned.fill(
-                    child: ColoredBox(color: context.colors.surface),
-                  ),
-                  Positioned.fill(
-                    child: MediaQuery(
-                      data: _mediaQueryWithFloatingTabBarClearance(
-                        context,
-                        HomePage._fabClearance,
+            body: Column(
+              children: [
+                ?accountClaimPrompt,
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: ColoredBox(color: context.colors.surface),
                       ),
-                      child: DirectionalTransitionScope(
-                        horizontalOffset:
-                            tabContentTransitionDirection.value *
-                            _tabContentTransitionDistance *
-                            (1 - tabContentTransitionProgress),
-                        opacity: tabContentTransitionProgress,
-                        child: ClipRect(
-                          child: IndexedStack(
-                            index: tabIndex.value,
-                            children: pages,
+                      Positioned.fill(
+                        child: MediaQuery(
+                          data: _mediaQueryWithFloatingTabBarClearance(
+                            context,
+                            HomePage._fabClearance,
+                          ),
+                          child: DirectionalTransitionScope(
+                            horizontalOffset:
+                                tabContentTransitionDirection.value *
+                                _tabContentTransitionDistance *
+                                (1 - tabContentTransitionProgress),
+                            opacity: tabContentTransitionProgress,
+                            child: ClipRect(
+                              child: IndexedStack(
+                                index: tabIndex.value,
+                                children: pages,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: IgnorePointer(
-                      child: MobileTabFooterBackdrop(
-                        height: mobileTabFooterBackdropHeight(context),
-                        tint: context.colors.primaryContainer,
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: IgnorePointer(
+                          child: MobileTabFooterBackdrop(
+                            height: mobileTabFooterBackdropHeight(context),
+                            tint: context.colors.primaryContainer,
+                          ),
+                        ),
                       ),
-                    ),
+                      Positioned.fill(
+                        child: ChannelQuickActionsLauncher(
+                          visible: tabIndex.value == 0,
+                          navigationBarHeight: HomePage._tabBarHeight,
+                          navigationBarBottomGap: HomePage._tabBarBottomGap,
+                          navigationBarWidth: navigationBarWidth,
+                          systemBottomInset: systemBottomInset,
+                          rightInset: Grid.sm,
+                        ),
+                      ),
+                    ],
                   ),
-                  Positioned.fill(
-                    child: ChannelQuickActionsLauncher(
-                      visible: tabIndex.value == 0,
-                      navigationBarHeight: HomePage._tabBarHeight,
-                      navigationBarBottomGap: HomePage._tabBarBottomGap,
-                      navigationBarWidth: navigationBarWidth,
-                      systemBottomInset: systemBottomInset,
-                      rightInset: Grid.sm,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
             bottomNavigationBar: _FloatingTabBar(
               selectedIndex: tabIndex.value,
