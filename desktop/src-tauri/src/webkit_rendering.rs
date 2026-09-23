@@ -93,7 +93,7 @@ enum Plan {
 /// `Err` carries a user-facing diagnostic; the caller reports it and exits.
 pub fn apply() -> Result<(), String> {
     let args = std::env::args_os();
-    let env = &|key| std::env::var_os(key);
+    let env: EnvLookup<'_> = &|key: &str| std::env::var_os(key);
     let drm_root = Path::new(DRM_ROOT);
     let plan = if crate::electron_host::enabled() {
         plan_for_host(args, env, drm_root, true)
