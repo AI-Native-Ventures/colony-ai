@@ -131,6 +131,95 @@ async function emitReactViteInputDiagnostics(outDirectory) {
   }
 }
 
+function writeReactBuildInputDiagnostic(message) {
+  try {
+    process.stderr.write(`${message}\n`);
+  } catch {
+    // Diagnostics must never affect the packaging result.
+  }
+}
+
+async function collectReactBuildInputFiles() {
+  const files = [];
+  const visit = async (directory, relativeDirectory) => {
+    const entries = (await readdir(directory, { withFileTypes: true })).sort(
+      (left, right) => left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      const absolutePath = path.join(directory, entry.name);
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath, relativePath);
+      } else if (entry.isFile()) {
+        files.push({ absolutePath, relativePath });
+      }
+    }
+  };
+
+  await visit(path.join(desktopDirectory, "src"), "src");
+  const topLevelEntries = await readdir(desktopDirectory, {
+    withFileTypes: true,
+  });
+  for (const entry of topLevelEntries) {
+    if (
+      entry.isFile() &&
+      (entry.name === "index.html" ||
+        entry.name.startsWith("vite.config.") ||
+        entry.name.startsWith("tsconfig"))
+    ) {
+      files.push({
+        absolutePath: path.join(desktopDirectory, entry.name),
+        relativePath: entry.name,
+      });
+    }
+  }
+  return files.sort((left, right) =>
+    left.relativePath.localeCompare(right.relativePath),
+  );
+}
+
+async function emitReactBuildInputFingerprints() {
+  try {
+    const inputFiles = await collectReactBuildInputFiles();
+    const sourceHash = createHash("sha256");
+    for (const file of inputFiles) {
+      sourceHash.update(file.relativePath);
+      sourceHash.update("\0");
+      sourceHash.update(await readFile(file.absolutePath));
+      sourceHash.update("\0");
+    }
+
+    const lockfilePath = path.resolve(desktopDirectory, "..", "pnpm-lock.yaml");
+    const lockfileHash = createHash("sha256")
+      .update(await readFile(lockfilePath))
+      .digest("hex");
+    const pnpmDirectory = path.join(desktopDirectory, "node_modules", ".pnpm");
+    const pnpmEntryCount = (
+      await readdir(pnpmDirectory, { withFileTypes: true })
+    ).length;
+    const dependencyStateHash = createHash("sha256")
+      .update(lockfileHash)
+      .update("\0")
+      .update(String(pnpmEntryCount))
+      .digest("hex");
+
+    writeReactBuildInputDiagnostic(
+      `React build input fingerprints: ${JSON.stringify({
+        sourceTreeSha256: sourceHash.digest("hex"),
+        sourceFileCount: inputFiles.length,
+        dependencyStateSha256: dependencyStateHash,
+        pnpmLockSha256: lockfileHash,
+        pnpmEntryCount,
+      })}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeReactBuildInputDiagnostic(
+      `React build input fingerprints unavailable: ${message}`,
+    );
+  }
+}
+
 // Temporary evidence: keep the complete React archive manifest on pass and fail
 // while we isolate the reviewed-digest mismatch; remove it after that question is closed.
 async function emitReactPackageEntryManifest(archivePath) {
@@ -218,6 +307,7 @@ async function main() {
   await rm(outputDirectory, { recursive: true, force: true });
   if (uiMode === "react") {
     await emitReactViteInputDiagnostics(rendererBuildDirectory);
+    await emitReactBuildInputFingerprints();
     await rm(rendererBuildDirectory, { recursive: true, force: true });
     run(process.execPath, [
       path.join(desktopDirectory, "node_modules", "vite", "bin", "vite.js"),
