@@ -67,11 +67,22 @@ function run(command, args) {
 }
 
 async function installedPackageVersion(packageName) {
-  const packageJsonPath = fileURLToPath(
-    import.meta.resolve(`${packageName}/package.json`),
-  );
-  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-  return packageJson.version;
+  let directory = path.dirname(fileURLToPath(import.meta.resolve(packageName)));
+  while (true) {
+    try {
+      const packageJson = JSON.parse(
+        await readFile(path.join(directory, "package.json"), "utf8"),
+      );
+      if (packageJson.name === packageName) return packageJson.version;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) {
+      throw new Error(`could not find package.json for ${packageName}`);
+    }
+    directory = parentDirectory;
+  }
 }
 
 async function emitReactViteInputDiagnostics(outDirectory) {
