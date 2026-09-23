@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstat, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { inspectAsarEntries } from "./check-electron-stage0.mjs";
 import { getStage0TargetFromArguments } from "../src-electron/stage0-platform.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +53,31 @@ function run(command, args) {
   if (result.status !== 0) {
     process.exitCode = result.status ?? 1;
     throw new Error(`${path.basename(command)} exited with ${result.status}`);
+  }
+}
+
+// Temporary evidence: keep the complete React archive manifest on pass and fail
+// while we isolate the reviewed-digest mismatch; remove it after that question is closed.
+async function emitReactPackageEntryManifest(archivePath) {
+  try {
+    const actual = createHash("sha256")
+      .update(await readFile(archivePath))
+      .digest("hex");
+    const { fileEntries, extractEntry } = inspectAsarEntries(archivePath);
+    const entries = fileEntries.sort().map((entry) => {
+      const digest = createHash("sha256")
+        .update(extractEntry(entry))
+        .digest("hex");
+      return `    ${entry}: ${digest}`;
+    });
+    process.stderr.write(
+      `React app.asar entry manifest (archive ${actual}):\n${entries.join("\n")}\n`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(
+      `React app.asar entry manifest unavailable: ${message}\n`,
+    );
   }
 }
 
@@ -131,6 +158,24 @@ async function main() {
     `--app-bundle-id=${appId}`,
     `--extra-resource=${path.join(resourceDirectory, target.helperName)}`,
   ]);
+
+  if (uiMode === "react") {
+    const packagedAppDirectory = path.join(
+      outputDirectory,
+      `${appName}-${target.packageSuffix}`,
+    );
+    const archivePath =
+      target.bundleKind === "app"
+        ? path.join(
+            packagedAppDirectory,
+            `${appName}.app`,
+            "Contents",
+            "Resources",
+            "app.asar",
+          )
+        : path.join(packagedAppDirectory, "resources", "app.asar");
+    await emitReactPackageEntryManifest(archivePath);
+  }
 }
 
 main().catch((error) => {
