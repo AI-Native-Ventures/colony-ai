@@ -10,6 +10,8 @@ pub mod allowlist;
 pub mod api_token;
 /// Relay-scoped archived identity persistence (NIP-IA).
 pub mod archived_identities;
+/// Client-scoped business-record conversion claims.
+pub mod business_records;
 /// Channel lifecycle and metadata persistence.
 pub mod channel;
 /// Channel membership and roster persistence.
