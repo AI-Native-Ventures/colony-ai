@@ -72,7 +72,7 @@ The deployment builds runtime-canary, pushes a full-commit sha-<commit>
 image tag, snapshots the Postgres volume, then runs pgschema apply followed
 by scripts/reconcile-schema-after-pgschema.sql as Fly's release command.
 It verifies the running image, NIP-11, and
-GET /api/communities/config.
+POST /api/accounts/reset/request (expects 202).
 
 ## Roll back the image
 
