@@ -100,14 +100,17 @@ test.describe("visual comparison captures", () => {
         // (Satoshi's license bars its file from a public repo). Serve the
         // reference's own Manrope file in place of Satoshi so diffs measure
         // layout, not typeface.
-        await referencePage.route("**/satoshi-variable.woff2", async (route) => {
-          const manrope = new URL(
-            "manrope-latin.woff2",
-            new URL(route.request().url()),
-          ).toString();
-          const response = await route.fetch({ url: manrope });
-          await route.fulfill({ response });
-        });
+        await referencePage.route(
+          "**/satoshi-variable.woff2",
+          async (route) => {
+            const manrope = new URL(
+              "manrope-latin.woff2",
+              new URL(route.request().url()),
+            ).toString();
+            const response = await route.fetch({ url: manrope });
+            await route.fulfill({ response });
+          },
+        );
         await seedStorage(
           referencePage,
           entry.referencePrefs,

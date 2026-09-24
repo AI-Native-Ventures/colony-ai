@@ -16,7 +16,8 @@
     --buzz-type-scale: 1;
     --buzz-type-rem: calc(1rem * var(--buzz-type-scale));
     --colony-font-sans:
-      "Manrope Variable", "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+      "Manrope Variable", "Inter Variable", Inter, "Avenir Next", "Segoe UI",
+      sans-serif;
     --colony-text-body: calc(var(--buzz-type-rem) * 0.875);
     --colony-text-compact: calc(var(--buzz-type-rem) * 0.8125);
     --colony-text-field: calc(var(--buzz-type-rem) * 0.9);
