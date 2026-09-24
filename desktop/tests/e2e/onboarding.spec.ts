@@ -1541,9 +1541,6 @@ test("first-community owner can replace a mismatched account identity", async ({
   await page
     .getByRole("button", { name: "Use this device's identity" })
     .click();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
     .toEqual(
@@ -1552,6 +1549,13 @@ test("first-community owner can replace a mismatched account identity", async ({
         "bind_builderlab_nostr_identity",
       ]),
     );
+  await expect(
+    page.getByRole("heading", { name: "No communities to connect" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Community name" }),
+  ).toHaveCount(0);
 });
 
 test("first-community owner recovers from an npub-only account identity", async ({
@@ -1734,8 +1738,12 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("textbox", { name: "Community name" }),
+    page.getByRole("heading", { name: "No communities to connect" }),
   ).toBeVisible();
+  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Community name" }),
+  ).toHaveCount(0);
 });
 
 test("first-community explains when the local identity belongs to another account", async ({

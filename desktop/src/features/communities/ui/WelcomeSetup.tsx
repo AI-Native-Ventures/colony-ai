@@ -343,7 +343,10 @@ export function WelcomeSetup({
           {isHostedSignInOpen && page !== "owned" ? (
             <HostedCommunityOnboarding
               allowCreate={false}
-              onBack={() => setIsHostedSignInOpen(false)}
+              onBack={() => {
+                setIsHostedSignInOpen(false);
+                showPage("welcome", "backward");
+              }}
               onReady={() => {
                 setIsHostedSignInOpen(false);
                 showPage("owned");
