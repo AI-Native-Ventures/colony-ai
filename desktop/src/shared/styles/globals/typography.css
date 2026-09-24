@@ -1,11 +1,19 @@
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     /*
      * Two independent dials compose here:
      *
      * - Cmd +/- zoom scales the real root font-size (see
-     *   useWebviewZoomShortcuts), so every rem in the app — text, gaps,
-     *   widths, radii — grows and shrinks together. True zoom.
+     *   useWebviewZoomShortcuts), so every rem in the app, including text,
+     *   gaps, widths, and radii, grows and shrinks together. True zoom.
      * - The Font size preference sets `data-font-size` on the root; it nudges
      *   only the type scale below, so text changes without moving layout.
      *
@@ -15,6 +23,17 @@
      */
     --buzz-type-scale: 1;
     --buzz-type-rem: calc(1rem * var(--buzz-type-scale));
+    --colony-font-sans:
+      "Satoshi", "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+    --colony-text-body: calc(var(--buzz-type-rem) * 0.875);
+    --colony-text-compact: calc(var(--buzz-type-rem) * 0.8125);
+    --colony-text-field: calc(var(--buzz-type-rem) * 0.9);
+    --colony-text-label: calc(var(--buzz-type-rem) * 0.79);
+    --colony-text-workspace-button: calc(var(--buzz-type-rem) * 0.74);
+    --colony-text-onboarding-button: calc(var(--buzz-type-rem) * 0.81);
+    --colony-display-tracking: -0.042em;
+    --colony-onboarding-heading-size: 2.15rem;
+    --colony-onboarding-display-size: clamp(2.5rem, 3.8vw, 4rem);
     --text-xs: calc(var(--buzz-type-rem) * 0.75);
     --text-sm: calc(var(--buzz-type-rem) * 0.875);
     --text-base: var(--buzz-type-rem);
