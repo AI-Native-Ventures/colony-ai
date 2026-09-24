@@ -141,32 +141,33 @@ test("embedded browser isolates business and client profiles without exposing th
     const clientA = await createProbeTabAndWait(running, probe.url, bounds, {
       businessId: "business-a",
       clientId: "client-a",
+      cookie: "client-a",
     });
     const clientB = await createProbeTabAndWait(running, probe.url, bounds, {
       businessId: "business-a",
       clientId: "client-b",
-      cookie: "client-b",
     });
-    const reopenedClientB = await createProbeTabAndWait(
+    const reopenedClientA = await createProbeTabAndWait(
       running,
       probe.url,
       bounds,
-      { businessId: "business-a", clientId: "client-b" },
+      { businessId: "business-a", clientId: "client-a" },
     );
 
     expect(businessA.cookie).toContain("scope_cookie=business-a");
     expect(businessB.cookie).not.toContain("scope_cookie=business-a");
+    expect(clientA.cookie).toContain("scope_cookie=client-a");
     expect(clientA.cookie).not.toContain("scope_cookie=business-a");
-    expect(clientA.cookie).not.toContain("scope_cookie=client-b");
-    expect(clientB.cookie).toContain("scope_cookie=client-b");
+    expect(clientB.cookie).not.toContain("scope_cookie=client-a");
     expect(clientB.cookie).not.toContain("scope_cookie=business-a");
-    expect(reopenedClientB.cookie).toContain("scope_cookie=client-b");
+    expect(reopenedClientA.cookie).toContain("scope_cookie=client-a");
+    expect(reopenedClientA.cookie).not.toContain("scope_cookie=business-a");
     for (const result of [
       businessA,
       businessB,
       clientA,
       clientB,
-      reopenedClientB,
+      reopenedClientA,
     ]) {
       expect(result.tauri).toBe("undefined");
       expect(result.desktopBridge).toBe("undefined");

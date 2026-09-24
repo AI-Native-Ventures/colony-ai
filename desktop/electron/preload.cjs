@@ -72,6 +72,14 @@ contextBridge.exposeInMainWorld("colonyBrowserHost", {
   setControlOwner: (tabId, controlOwner) =>
     browserRequest("control-owner", { tabId, controlOwner }),
   closeTab: (tabId) => browserRequest("close", { tabId }),
+  closeBusiness: (businessId) =>
+    browserRequest("close-business", { businessId }),
+  closeClient: (businessId, clientId) =>
+    browserRequest("close-client", { businessId, clientId }),
+  forgetBusiness: (businessId) =>
+    browserRequest("forget-business", { businessId }),
+  forgetClient: (businessId, clientId) =>
+    browserRequest("forget-client", { businessId, clientId }),
   onEvent: (callback) => {
     if (typeof callback !== "function")
       throw new Error("Invalid browser listener");

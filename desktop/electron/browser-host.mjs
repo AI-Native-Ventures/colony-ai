@@ -20,11 +20,13 @@ export function createBrowserHost({
   session,
   userDataPath,
   maxTabs = MAX_BROWSER_TABS,
+  maxProfiles,
   maxActiveDownloads,
   maxDownloadBytes,
 }) {
   const tabs = new Map();
   const tabsByContents = new Map();
+  const pendingScopedCreates = new Map();
   let pendingCreates = 0;
 
   function emit(webContents, event) {
@@ -64,6 +66,7 @@ export function createBrowserHost({
   const browserSessions = createBrowserSessionStore({
     session,
     userDataPath,
+    maxProfiles,
     maxActiveDownloads,
     maxDownloadBytes,
     getTabForContents: (contentsId) => tabsByContents.get(contentsId),
@@ -218,22 +221,28 @@ export function createBrowserHost({
     if (tabs.size + pendingCreates >= maxTabs)
       throw new Error("Browser tab limit reached");
     pendingCreates += 1;
+    const tabId = randomUUID();
+    let reservedProfileHash = null;
+    let pendingScope = null;
     try {
       const businessId = checkedScopeId(options.businessId, "business id");
       const clientId =
         options.clientId === undefined || options.clientId === null
           ? null
           : checkedScopeId(options.clientId, "client id");
+      pendingScope = beginScopedCreate(businessId, clientId);
       const url = options.url === undefined ? null : checkedUrl(options.url);
-      const browserSession = await browserSessions.forScope(
+      const browserProfile = await browserSessions.forScope(
         businessId,
         clientId,
+        tabId,
       );
+      reservedProfileHash = browserProfile.profileHash;
       if (appWebContents.isDestroyed() || ownerWindow.isDestroyed())
         throw new Error("The main app window is unavailable");
       const view = new WebContentsView({
         webPreferences: {
-          session: browserSession,
+          session: browserProfile.session,
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,
@@ -243,9 +252,10 @@ export function createBrowserHost({
         },
       });
       const tab = {
-        id: randomUUID(),
+        id: tabId,
         businessId,
         clientId,
+        profileHash: browserProfile.profileHash,
         url: url || "about:blank",
         title: "",
         error: null,
@@ -264,6 +274,7 @@ export function createBrowserHost({
       };
       tabs.set(tab.id, tab);
       tabsByContents.set(tab.webContents.id, tab);
+      reservedProfileHash = null;
       wireWebContents(tab);
       emit(appWebContents, {
         type: options.openedFrom ? "new-tab" : "created",
@@ -275,7 +286,14 @@ export function createBrowserHost({
           if (tabs.has(tab.id)) updateError(tab, navigationFailure(error));
         });
       return snapshot(tab);
+    } catch (error) {
+      const tab = tabs.get(tabId);
+      if (tab) closeRecord(tab);
+      else if (reservedProfileHash)
+        browserSessions.releaseTab(reservedProfileHash, tabId);
+      throw error;
     } finally {
+      if (pendingScope) finishScopedCreate(pendingScope);
       pendingCreates -= 1;
     }
   }
@@ -344,10 +362,47 @@ export function createBrowserHost({
     if (tab.attached && !tab.ownerWindow.isDestroyed())
       tab.ownerWindow.contentView.removeChildView(tab.view);
     browserSessions.cancelTabDownloads(tab.id);
+    browserSessions.releaseTab(tab.profileHash, tab.id);
     tabs.delete(tab.id);
     tabsByContents.delete(tab.webContents.id);
     sendTabEvent(tab, "closed");
     if (!tab.webContents.isDestroyed()) tab.webContents.destroy();
+  }
+
+  function beginScopedCreate(businessId, clientId) {
+    const key = JSON.stringify([businessId, clientId]);
+    let pending = pendingScopedCreates.get(key);
+    if (!pending) {
+      pending = { businessId, clientId, count: 0, waiters: [] };
+      pendingScopedCreates.set(key, pending);
+    }
+    pending.count += 1;
+    return pending;
+  }
+
+  function finishScopedCreate(pending) {
+    pending.count -= 1;
+    if (pending.count !== 0) return;
+    pendingScopedCreates.delete(
+      JSON.stringify([pending.businessId, pending.clientId]),
+    );
+    for (const resolve of pending.waiters) resolve();
+  }
+
+  function waitForScopedCreates(businessId, clientId, allClients = false) {
+    const pending = [...pendingScopedCreates.values()].filter(
+      (entry) =>
+        entry.businessId === businessId &&
+        (allClients || entry.clientId === clientId),
+    );
+    return Promise.all(
+      pending.map(
+        (entry) =>
+          new Promise((resolve) => {
+            entry.waiters.push(resolve);
+          }),
+      ),
+    );
   }
 
   async function handleRequest(ownerWindow, sender, action, payload) {
@@ -365,6 +420,43 @@ export function createBrowserHost({
       return [...tabs.values()]
         .filter((tab) => tab.appWebContents.id === sender.id)
         .map(snapshot);
+    }
+
+    if (action === "close-business" || action === "close-client") {
+      const businessId = checkedScopeId(payload.businessId, "business id");
+      const clientId =
+        action === "close-client"
+          ? checkedScopeId(payload.clientId, "client id")
+          : null;
+      await waitForScopedCreates(
+        businessId,
+        clientId,
+        action === "close-business",
+      );
+      let closedTabs = 0;
+      for (const tab of [...tabs.values()]) {
+        if (
+          tab.businessId !== businessId ||
+          (clientId !== null && tab.clientId !== clientId)
+        )
+          continue;
+        closeRecord(tab);
+        closedTabs += 1;
+      }
+      return { closedTabs };
+    }
+
+    if (action === "forget-business") {
+      const businessId = checkedScopeId(payload.businessId, "business id");
+      await waitForScopedCreates(businessId, null, true);
+      return browserSessions.forgetBusiness(businessId);
+    }
+
+    if (action === "forget-client") {
+      const businessId = checkedScopeId(payload.businessId, "business id");
+      const clientId = checkedScopeId(payload.clientId, "client id");
+      await waitForScopedCreates(businessId, clientId);
+      return browserSessions.forgetClient(businessId, clientId);
     }
 
     const tab = findOwnedTab(payload.tabId, sender.id);

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 
 export const MAX_BROWSER_TABS = 12;
+export const MAX_BROWSER_PROFILES = 32;
 export const MAX_ACTIVE_BROWSER_DOWNLOADS = 4;
 export const MAX_BROWSER_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 export const MAX_BROWSER_BOUNDS = 8_192;
@@ -132,4 +133,13 @@ export function browserPartition(businessId, clientId) {
   const scope = JSON.stringify([businessId, clientId]);
   const digest = createHash("sha256").update(scope).digest("hex").slice(0, 40);
   return `persist:colony-browser-${digest}`;
+}
+
+export function browserProfileIdentity(businessId, clientId) {
+  const partition = browserPartition(businessId, clientId);
+  const profileHash = partition.slice("persist:colony-browser-".length);
+  const businessHash = browserPartition(businessId, null).slice(
+    "persist:colony-browser-".length,
+  );
+  return { partition, profileHash, businessHash };
 }

@@ -45,6 +45,11 @@ export type CreateBrowserTabOptions = {
   url?: string;
 };
 
+export type BrowserProfileLifecycleResult = {
+  closedTabs: number;
+  forgottenProfiles?: number;
+};
+
 export type BrowserHostApi = {
   createTab(options: CreateBrowserTabOptions): Promise<BrowserTabState>;
   listTabs(): Promise<BrowserTabState[]>;
@@ -64,6 +69,20 @@ export type BrowserHostApi = {
     controlOwner: BrowserControlOwner,
   ): Promise<BrowserTabState>;
   closeTab(tabId: string): Promise<{ closed: boolean }>;
+  /** Close the business's browser tabs while retaining profile data. */
+  closeBusiness(businessId: string): Promise<BrowserProfileLifecycleResult>;
+  /** Close the client's browser tabs while retaining profile data. */
+  closeClient(
+    businessId: string,
+    clientId: string,
+  ): Promise<BrowserProfileLifecycleResult>;
+  /** Explicitly clear inactive browser profiles and their downloads. */
+  forgetBusiness(businessId: string): Promise<{ forgottenProfiles: number }>;
+  /** Explicitly clear an inactive client profile and its downloads. */
+  forgetClient(
+    businessId: string,
+    clientId: string,
+  ): Promise<{ forgottenProfiles: number }>;
   onEvent(callback: (event: BrowserHostEvent) => void): () => void;
 };
 
@@ -99,6 +118,14 @@ export const browserHost = {
   setControlOwner: (tabId: string, controlOwner: BrowserControlOwner) =>
     requireBrowserHost().setControlOwner(tabId, controlOwner),
   closeTab: (tabId: string) => requireBrowserHost().closeTab(tabId),
+  closeBusiness: (businessId: string) =>
+    requireBrowserHost().closeBusiness(businessId),
+  closeClient: (businessId: string, clientId: string) =>
+    requireBrowserHost().closeClient(businessId, clientId),
+  forgetBusiness: (businessId: string) =>
+    requireBrowserHost().forgetBusiness(businessId),
+  forgetClient: (businessId: string, clientId: string) =>
+    requireBrowserHost().forgetClient(businessId, clientId),
   onEvent: (callback: (event: BrowserHostEvent) => void) =>
     requireBrowserHost().onEvent(callback),
 };
