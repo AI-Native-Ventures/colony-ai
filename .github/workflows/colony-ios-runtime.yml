@@ -36,6 +36,10 @@ jobs:
 
       - name: Run the fresh-simulator proof
         shell: bash
+        env:
+          COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID }}
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
+          COLONY_GOOGLE_REVERSED_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME }}
         run: /bin/bash scripts/ios-runtime-proof.sh
 
       - name: Upload bounded iOS runtime evidence

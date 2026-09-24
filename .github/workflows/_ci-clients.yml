@@ -117,6 +117,8 @@ jobs:
       - name: Test mobile recipe argument forwarding
         run: /bin/bash scripts/test-mobile-gateway-recipes.sh
       - name: Build Android debug APK
+        env:
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
         run: just mobile-build-android
 
   mobile-swift:
@@ -136,11 +138,26 @@ jobs:
       - name: Test
         run: swift test --package-path mobile/ios/BuzzPushKit
       - name: Build complete iOS simulator app
-        run: cd mobile && flutter build ios --simulator --debug --no-pub
+        env:
+          COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID }}
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
+          COLONY_GOOGLE_REVERSED_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME }}
+        run: |
+          /bin/bash scripts/mobile-google-auth-xcconfig.sh dogfood
+          cd mobile && flutter build ios --simulator --debug --no-pub \
+            --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID" \
+            --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_SERVER_CLIENT_ID"
       - name: Build complete unsigned iOS release
+        env:
+          COLONY_GOOGLE_IOS_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_CLIENT_ID }}
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
+          COLONY_GOOGLE_REVERSED_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_URL_SCHEME }}
         run: |
           /bin/bash scripts/test-mobile-gateway-recipes.sh
-          cd mobile && flutter build ios --release --no-codesign --no-pub
+          /bin/bash scripts/mobile-google-auth-xcconfig.sh release
+          cd mobile && flutter build ios --release --no-codesign --no-pub \
+            --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_CLIENT_ID" \
+            --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_SERVER_CLIENT_ID"
 
   results:
     name: Results

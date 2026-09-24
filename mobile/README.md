@@ -31,6 +31,45 @@ just mobile-dev
 cd mobile && flutter run --dart-define=BUZZ_PUSH_GATEWAY_URL=https://push.example
 ```
 
+### Google account sign-in
+
+Google sign-in reads public OAuth client IDs from Dart defines. For a local
+iOS dogfood build, load these public values from the repository variables in
+`AI-Native-Ventures/colony-ai` into your shell:
+
+```bash
+export COLONY_GOOGLE_WEB_CLIENT_ID='<web client id>'
+export COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID='<iOS dogfood client id>'
+export COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME='<iOS dogfood URL scheme>'
+COLONY_GOOGLE_REVERSED_CLIENT_ID="$COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME" \
+  ./scripts/mobile-google-auth-xcconfig.sh dogfood
+cd mobile && flutter run \
+  --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID" \
+  --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_WEB_CLIENT_ID"
+```
+
+The helper writes an ignored Xcode config used by Debug builds. For a local iOS
+release build, use the release client and scheme from repository variables:
+
+```bash
+export COLONY_GOOGLE_IOS_CLIENT_ID='<iOS release client id>'
+export COLONY_GOOGLE_IOS_URL_SCHEME='<iOS release URL scheme>'
+export COLONY_GOOGLE_WEB_CLIENT_ID='<web client id>'
+COLONY_GOOGLE_REVERSED_CLIENT_ID="$COLONY_GOOGLE_IOS_URL_SCHEME" \
+  ./scripts/mobile-google-auth-xcconfig.sh release
+cd mobile && flutter build ios --release --no-codesign \
+  --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_CLIENT_ID" \
+  --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_WEB_CLIENT_ID"
+```
+
+GitHub builds read these public values from repository variables and select the
+matching iOS flavor. No Google client secret is used by mobile.
+
+Android Google sign-in is still pending. Register an Android OAuth client after
+the release signing SHA-1 is available from CI signing, then add its native
+configuration before enabling Android sign-in. Until then, mobile builds pass
+the web server client ID only, and Android Google sign-in is not configured.
+
 ### Worktree-aware debug identity
 
 Debug builds produced from a git worktree get a unique app identifier keyed

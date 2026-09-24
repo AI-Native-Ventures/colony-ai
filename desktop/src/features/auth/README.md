@@ -47,10 +47,12 @@ automatically; UI retry controls should wait for that interval.
 
 ## Google desktop configuration
 
-Set COLONY_GOOGLE_DESKTOP_CLIENT_ID in the desktop build environment. The Vite
-build embeds only this public client ID. The service invokes the native
-google_desktop_sign_in command, which owns the 127.0.0.1 callback listener,
-PKCE verifier, state check, system-browser launch, timeout, and authorization
-code exchange. The native command returns only the ID token needed by
+Set COLONY_GOOGLE_DESKTOP_CLIENT_ID in the desktop build environment and
+COLONY_GOOGLE_DESKTOP_CLIENT_SECRET only for the native host Cargo build. The
+Vite build embeds only the public client ID. The secret is read at compile time
+by the native host and is never added to renderer configuration. The service
+invokes the native google_desktop_sign_in command, which owns the 127.0.0.1
+callback listener, PKCE verifier, state check, system-browser launch, timeout,
+and authorization code exchange. The native command returns only the ID token needed by
 POST /api/accounts/google; it stores and logs neither the token nor the
 authorization code.

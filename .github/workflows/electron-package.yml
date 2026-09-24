@@ -106,6 +106,8 @@ jobs:
 
       - name: Build frontend
         shell: bash
+        env:
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
         run: pnpm --dir desktop build
 
       - name: Prepare Tauri external binary placeholders
@@ -156,6 +158,8 @@ jobs:
         shell: bash
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
+          COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: >-
           cargo build --locked --release
           --features electron-host

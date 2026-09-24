@@ -5,6 +5,9 @@ repo_root=$(cd "$(dirname "$0")/.." && pwd)
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 mkdir -p "$fixture/bin" "$fixture/scripts" "$fixture/mobile/ios/Flutter"
+cp "$repo_root/scripts/mobile-google-auth-xcconfig.sh" \
+  "$fixture/scripts/mobile-google-auth-xcconfig.sh"
+chmod +x "$fixture/scripts/mobile-google-auth-xcconfig.sh"
 for recipe in mobile-dev mobile-build-android; do
   # Render with the real task runner before installing stubs: a Hermit just
   # shim can otherwise prepend the real Flutter to PATH ahead of our stub.
@@ -26,7 +29,9 @@ STUB
 chmod +x "$fixture/bin/flutter" "$fixture/bin/pgrep" "$fixture/scripts/mobile-worktree-overrides.sh"
 export PATH="$fixture/bin:$PATH"
 export CALL_LOG="$fixture/arguments"
-unset BUZZ_PUSH_GATEWAY_URL
+unset BUZZ_PUSH_GATEWAY_URL COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID
+unset COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME COLONY_GOOGLE_SERVER_CLIENT_ID
+unset COLONY_GOOGLE_WEB_CLIENT_ID COLONY_GOOGLE_REVERSED_CLIENT_ID
 
 for recipe in mobile-dev mobile-build-android; do
   for mode in omitted supplied; do
@@ -56,3 +61,41 @@ printf '%s\n' 'BUZZ_PUSH_GATEWAY_URL = https:/$()/push.example' > "$fixture/mobi
 printf '%s\n' run '--dart-define=BUZZ_PUSH_GATEWAY_URL=https://push.example' > "$fixture/expected"
 diff -u "$fixture/expected" "$CALL_LOG"
 printf 'PASS mobile-dev Xcode override\n'
+
+export COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID='generated-test-dogfood-client-id'
+export COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME='com.googleusercontent.apps.generated-dogfood'
+export COLONY_GOOGLE_SERVER_CLIENT_ID='generated-test-web-client-id'
+(cd "$fixture" && /bin/bash "$fixture/mobile-dev")
+printf '%s\n' run \
+  '--dart-define=BUZZ_PUSH_GATEWAY_URL=https://push.example' \
+  "--dart-define=COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID" \
+  "--dart-define=COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_SERVER_CLIENT_ID" \
+  >"$fixture/expected"
+diff -u "$fixture/expected" "$CALL_LOG"
+printf '%s\n' \
+  'COLONY_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.generated-dogfood' \
+  >"$fixture/expected"
+diff -u "$fixture/expected" "$fixture/mobile/ios/Flutter/GoogleAuthDebug.xcconfig"
+grep -q '#include? "GoogleAuthDebug.xcconfig"' \
+  "$repo_root/mobile/ios/Flutter/Debug.xcconfig"
+printf 'PASS mobile-dev dogfood Google configuration\n'
+
+COLONY_GOOGLE_REVERSED_CLIENT_ID='com.googleusercontent.apps.generated-release' \
+  /bin/bash "$fixture/scripts/mobile-google-auth-xcconfig.sh" release
+printf '%s\n' \
+  'COLONY_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.generated-release' \
+  >"$fixture/expected"
+diff -u "$fixture/expected" "$fixture/mobile/ios/Flutter/GoogleAuthRelease.xcconfig"
+grep -q '#include? "GoogleAuthRelease.xcconfig"' \
+  "$repo_root/mobile/ios/Flutter/Release.xcconfig"
+git -C "$repo_root" check-ignore -q mobile/ios/Flutter/GoogleAuthDebug.xcconfig
+git -C "$repo_root" check-ignore -q mobile/ios/Flutter/GoogleAuthRelease.xcconfig
+printf 'PASS iOS release Google callback configuration\n'
+
+unset COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME
+(cd "$fixture" && /bin/bash "$fixture/mobile-build-android")
+printf '%s\n' build apk --debug --no-pub \
+  "--dart-define=COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_SERVER_CLIENT_ID" \
+  >"$fixture/expected"
+diff -u "$fixture/expected" "$CALL_LOG"
+printf 'PASS mobile-build-android server client ID\n'

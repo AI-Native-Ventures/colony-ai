@@ -113,6 +113,8 @@ jobs:
           key: ${{ runner.os }}-android-runtime-pub-${{ hashFiles('mobile/pubspec.lock') }}
 
       - name: Build the existing debug-signed APK
+        env:
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
         run: |
           just mobile-build-android
           test -s "$APK_PATH"

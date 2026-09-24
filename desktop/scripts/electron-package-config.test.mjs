@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { loadConfigFromFile } from "vite";
 import {
   ELECTRON_BUNDLE_ID,
   createPackagerOptions,
@@ -9,6 +11,53 @@ import {
   parseElectronPackageArgs,
   sidecarFilenames,
 } from "./electron-package-config.mjs";
+
+test("Vite exposes the public Google client ID without exposing its secret", async () => {
+  const desktopDirectory = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  const viteConfigPath = path.join(desktopDirectory, "vite.config.ts");
+  const previousClientId = process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID;
+  const previousClientSecret = process.env.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET;
+  const generatedClientId = "generated-test-google-desktop-client-id";
+  const generatedClientSecret = "generated-test-google-desktop-client-secret";
+
+  try {
+    process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID = generatedClientId;
+    process.env.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET = generatedClientSecret;
+
+    const loaded = await loadConfigFromFile(
+      { command: "build", mode: "test" },
+      viteConfigPath,
+      desktopDirectory,
+      "silent",
+    );
+
+    assert.ok(loaded, "Vite config should load");
+    const rendererDefines = loaded.config.define ?? {};
+    assert.equal(
+      rendererDefines["import.meta.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID"],
+      JSON.stringify(generatedClientId),
+    );
+    assert.equal(
+      rendererDefines["import.meta.env.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET"],
+      undefined,
+    );
+    assert.ok(!JSON.stringify(rendererDefines).includes(generatedClientSecret));
+  } finally {
+    if (previousClientId === undefined) {
+      delete process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID;
+    } else {
+      process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID = previousClientId;
+    }
+    if (previousClientSecret === undefined) {
+      delete process.env.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET;
+    } else {
+      process.env.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET = previousClientSecret;
+    }
+  }
+});
 
 test("package arguments require a supported platform and architecture", () => {
   assert.deepEqual(

@@ -71,6 +71,10 @@ jobs:
               - 'pnpm-lock.yaml'
             mobile:
               - 'mobile/**'
+              - 'scripts/mobile-google-auth-xcconfig.sh'
+              - 'scripts/test-mobile-gateway-recipes.sh'
+              - 'scripts/ios-runtime-proof.sh'
+              - 'scripts/interop/desktop-mobile-canary.sh'
               - 'scripts/mobile-release.sh'
               - 'scripts/mobile-worktree-overrides.sh'
               - 'scripts/mobile-worktree-clean.sh'

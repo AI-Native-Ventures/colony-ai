@@ -83,6 +83,13 @@ command -v python3 >/dev/null || fail "python3 is unavailable"
 
 unset BUZZ_RELAY_URL BUZZ_PRIVATE_KEY BUZZ_AUTH_TAG BUZZ_PUSH_GATEWAY_URL
 
+google_reversed_client_id="${COLONY_GOOGLE_REVERSED_CLIENT_ID:-}"
+if [[ -n "$google_reversed_client_id" &&
+  ( ! "$google_reversed_client_id" =~ ^[A-Za-z0-9.-]+$ ||
+    ${#google_reversed_client_id} -gt 512 ) ]]; then
+  fail "COLONY_GOOGLE_REVERSED_CLIENT_ID must be a URL scheme"
+fi
+
 log "collecting toolchain and simulator inventory"
 xcodebuild -version >"$run_root/xcode-version.txt"
 xcrun simctl list runtimes available -j >"$run_root/runtimes.json"
@@ -166,12 +173,29 @@ printf '%s\n' \
   "BUNDLE_IDENTIFIER = $app_bundle_id" \
   >"$override_path"
 override_created=1
+if [[ -n "$google_reversed_client_id" ]]; then
+  printf 'COLONY_GOOGLE_REVERSED_CLIENT_ID = %s\n' \
+    "$google_reversed_client_id" >>"$override_path"
+fi
 
 log "installing Flutter dependencies and generating the simulator app"
 run_logged "$run_root/flutter-pub-get.log" run_in_dir "$mobile_root" flutter pub get
-run_logged "$run_root/flutter-build.log" run_in_dir "$mobile_root" \
-  flutter build ios --simulator --debug --no-pub \
+flutter_build_args=(
+  build ios --simulator --debug --no-pub
   --dart-define=BUZZ_AGE_GATING_ENABLED=false
+)
+if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID:-}" ]]; then
+  flutter_build_args+=(
+    "--dart-define=COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID"
+  )
+fi
+if [[ -n "${COLONY_GOOGLE_SERVER_CLIENT_ID:-}" ]]; then
+  flutter_build_args+=(
+    "--dart-define=COLONY_GOOGLE_SERVER_CLIENT_ID=$COLONY_GOOGLE_SERVER_CLIENT_ID"
+  )
+fi
+run_logged "$run_root/flutter-build.log" run_in_dir "$mobile_root" \
+  flutter "${flutter_build_args[@]}"
 run_logged "$run_root/pod-install.log" run_in_dir "$ios_root" pod install --deployment
 
 mkdir -p "$derived_data"

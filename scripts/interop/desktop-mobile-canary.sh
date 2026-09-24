@@ -230,7 +230,23 @@ case "$action" in
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
     cp "$native_host_source" "$run_dir/colony-native-host"
     chmod 700 "$run_dir/colony-native-host"
-    CARGO_BUILD_JOBS=4 flutter build ios --simulator --debug
+    mobile_build_args=(build ios --simulator --debug)
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME:-}" ]]; then
+      COLONY_GOOGLE_REVERSED_CLIENT_ID="$COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME" \
+        "$repo_root/scripts/mobile-google-auth-xcconfig.sh" dogfood
+    fi
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID:-}" ]]; then
+      mobile_build_args+=(
+        "--dart-define=COLONY_GOOGLE_IOS_CLIENT_ID=$COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID"
+      )
+    fi
+    server_client_id="${COLONY_GOOGLE_SERVER_CLIENT_ID:-${COLONY_GOOGLE_WEB_CLIENT_ID:-}}"
+    if [[ -n "$server_client_id" ]]; then
+      mobile_build_args+=(
+        "--dart-define=COLONY_GOOGLE_SERVER_CLIENT_ID=$server_client_id"
+      )
+    fi
+    CARGO_BUILD_JOBS=4 flutter "${mobile_build_args[@]}"
     [[ -d "$app_path" ]] || fail "Flutter did not produce $app_path"
     bundle_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app_path/Info.plist")"
     [[ "$bundle_id" == "$expected_mobile_bundle_id" ]] || fail "Unexpected mobile bundle id: $bundle_id"
