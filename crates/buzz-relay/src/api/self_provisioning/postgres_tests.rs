@@ -126,7 +126,8 @@ async fn signed_request(
     body: Option<String>,
     client_ip: Option<&str>,
 ) -> axum::response::Response {
-    signed_request_with_signature_path(state, keys, host, method, path, path, body, client_ip).await
+    signed_request_with_signature_path(state, keys, host, method, (path, path), body, client_ip)
+        .await
 }
 
 async fn signed_request_with_signature_path(
@@ -134,11 +135,11 @@ async fn signed_request_with_signature_path(
     keys: &Keys,
     host: &str,
     method: &str,
-    request_path: &str,
-    signature_path: &str,
+    paths: (&str, &str),
     body: Option<String>,
     client_ip: Option<&str>,
 ) -> axum::response::Response {
+    let (request_path, signature_path) = paths;
     // `relay_url` is WSS in these integration states, so the NIP-98 HTTP URL
     // uses HTTPS just like the production desktop client.
     let url = format!("https://{host}{signature_path}");
@@ -256,8 +257,10 @@ async fn create_grants_owner_membership_and_mine_lists_it() {
         &owner,
         &ingress_host,
         "GET",
-        "/api/communities/mine?scope=member",
-        "/api/communities/mine",
+        (
+            "/api/communities/mine?scope=member",
+            "/api/communities/mine",
+        ),
         None,
         None,
     )
