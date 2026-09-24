@@ -61,7 +61,7 @@ jobs:
             echo "- Docker target: runtime-canary (linux/amd64)"
             echo "- Pre-release backup: snapshot the Postgres volume in $DATABASE_APP"
             echo "- Fly release command: pgschema apply, then schema reconciliation"
-            echo "- Live checks: NIP-11 and GET /api/communities/config"
+            echo "- Live checks: NIP-11 and the phase-3 accounts API (POST /api/accounts/reset/request)"
             echo "- Deploy action: skipped because dry_run is true"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Parsed config saved at $rendered_config"
@@ -268,8 +268,16 @@ jobs:
             <<< "$nip11_json" >/dev/null
           echo "NIP-11 reports relay version $VERSION."
 
-          config_json="$(curl --fail --silent --show-error --retry 12 \
-            --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
-            "$CANARY_BASE_URL/api/communities/config")"
-          jq -e 'type == "object"' <<< "$config_json" >/dev/null
-          echo "GET /api/communities/config returned a JSON object."
+          # The accounts service answers 202 for any well-formed reset request
+          # (it never reveals whether the email exists), so a reserved,
+          # undeliverable address proves the route is live without sending mail.
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --retry 12 --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
+            -H 'content-type: application/json' \
+            --data '{"email":"deploy-probe@example.invalid"}' \
+            "$CANARY_BASE_URL/api/accounts/reset/request")"
+          if [ "$status" != "202" ]; then
+            echo "::error::POST /api/accounts/reset/request returned $status, expected 202"
+            exit 1
+          fi
+          echo "POST /api/accounts/reset/request returned 202."
