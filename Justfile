@@ -844,7 +844,7 @@ mobile-test:
 mobile-emoji-data:
     node {{mobile_dir}}/scripts/generate-emoji-data.mjs
 
-# Compile an unsigned Android debug APK (worktree-aware debug identity)
+# Compile an Android debug APK (worktree-aware debug identity)
 mobile-build-android:
     #!/usr/bin/env bash
     set -euo pipefail

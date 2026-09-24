@@ -14,8 +14,8 @@ if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-app_bundle_id="xyz.block.buzz.dogfood.mobile.ci.r${run_id}a${run_attempt}"
-if [[ ! "$app_bundle_id" =~ ^xyz\.block\.buzz\.dogfood\.mobile\.ci\.r[0-9]+a[0-9]+$ ]]; then
+app_bundle_id="ventures.ainative.colony.dogfood.ci.r${run_id}a${run_attempt}"
+if [[ ! "$app_bundle_id" =~ ^ventures\.ainative\.colony\.dogfood\.ci\.r[0-9]+a[0-9]+$ ]]; then
   printf 'invalid generated app bundle identifier\n' >&2
   exit 2
 fi
@@ -256,7 +256,7 @@ actual_executable="$(read_plist_value CFBundleExecutable "$app_path/Info.plist")
 actual_version="$(read_plist_value CFBundleShortVersionString "$app_path/Info.plist")"
 [[ "$actual_app_id" == "$app_bundle_id" ]] || fail "app CFBundleIdentifier mismatch"
 [[ -n "$actual_executable" && -n "$actual_version" ]] || fail "app metadata is incomplete"
-[[ "$actual_app_id" != "xyz.block.buzz.mobile" ]] || fail "release app identifier was selected"
+[[ "$actual_app_id" != "ventures.ainative.colony" ]] || fail "release app identifier was selected"
 
 extension_id=""
 extension_plist="$app_path/PlugIns/NotificationService.appex/Info.plist"

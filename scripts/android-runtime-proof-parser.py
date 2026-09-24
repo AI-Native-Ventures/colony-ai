@@ -198,7 +198,8 @@ def old_unbound_label_grep_would_pass(
 
 
 def run_self_test() -> None:
-    package = "xyz.block.buzz.mobile"
+    package = "ventures.ainative.colony.dogfood"
+    activity = f"{package}/xyz.block.buzz.mobile.MainActivity"
     valid_account_xml = f"""<hierarchy package=\"{package}\">
   <node class=\"android.view.View\" content-desc=\"Welcome to Buzz\" />
   <node class=\"android.widget.Button\" content-desc=\"Create account\" />
@@ -212,19 +213,19 @@ def run_self_test() -> None:
     wrong_package_xml = valid_account_xml.replace(package, "com.android.launcher3")
     invalid_xml = f'<hierarchy package="{package}"><node content-desc="Welcome to Buzz">'
     valid_foreground = (
-        "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}"
+        f"mCurrentFocus=Window{{abc u0 {activity}}}"
     )
     wrong_foreground = "mCurrentFocus=Window{abc u0 com.android.launcher3/.Launcher}"
-    api35_visible_foreground = """Window #8 Window{abc u0 xyz.block.buzz.mobile/.MainActivity}:
+    api35_visible_foreground = f"""Window #8 Window{{abc u0 {activity}}}:
   mHasSurface=true isReadyForDisplay=true
   isOnScreen=true
   isVisible=true
-Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}:
+Window #9 Window{{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}}:
   isOnScreen=false
   isVisible=false
 """
     wrong_api35_visible_foreground = api35_visible_foreground.replace(
-        "xyz.block.buzz.mobile/.MainActivity",
+        activity,
         "com.google.android.apps.nexuslauncher/.NexusLauncherActivity",
     )
     competing_api35_visible_foreground = api35_visible_foreground.replace(
@@ -232,7 +233,7 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
         "isOnScreen=true\n  isVisible=true",
     )
     conflicting_foreground = (
-        "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}\n"
+        f"mCurrentFocus=Window{{abc u0 {activity}}}\n"
         "mFocusedApp=Window{def u0 com.android.launcher3/.Launcher}"
     )
 
@@ -258,7 +259,7 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
     assert not foreground_has_package(wrong_api35_visible_foreground, package)
     assert not foreground_has_package(competing_api35_visible_foreground, package)
     assert not foreground_has_package(conflicting_foreground, package)
-    assert valid_component(package, f"{package}/.MainActivity")
+    assert valid_component(package, activity)
     assert not valid_component(package, "com.example.other/.MainActivity")
 
     # The old grep-only assertion would accept the wrong-package fixture.

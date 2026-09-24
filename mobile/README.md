@@ -74,8 +74,8 @@ the web server client ID only, and Android Google sign-in is not configured.
 
 Debug builds produced from a git worktree get a unique app identifier keyed
 to the **worktree directory name**
-(`xyz.block.buzz.dogfood.mobile.<slug>` on iOS,
-`xyz.block.buzz.mobile.<slug>` on Android) plus a display-only branch label
+(`ventures.ainative.colony.dogfood.<slug>` on iOS and Android) plus a
+display-only branch label
 in the app name (`Buzz (my-branch)`, or a short SHA when the worktree is
 detached). Because the identifier follows the directory rather than the
 branch, one worktree keeps exactly one installed app — and its login state —
@@ -112,8 +112,8 @@ For direct Xcode / Android Studio / `flutter run` development, run
 switch to refresh the display label (the install identity never changes);
 the persisted files are then picked up by any subsequent build. In the main
 checkout the script is a no-op that removes stale override files, restoring
-the plain `Buzz` identity. To enable push in direct Xcode builds and Runner tests, supply a
-`BUZZ_PUSH_GATEWAY_URL` build setting in the gitignored
+the standard dogfood ID and `Buzz` label. To enable push in direct Xcode builds
+and Runner tests, supply a `BUZZ_PUSH_GATEWAY_URL` build setting in the gitignored
 `mobile/ios/Flutter/AppOverrides.xcconfig`; the build phase validates and
 passes it through as a Flutter Dart define. Since `//` begins an xcconfig
 comment, spell the origin as `BUZZ_PUSH_GATEWAY_URL = https:/$()/push.example`.
@@ -130,7 +130,7 @@ BUZZ_ANDROID_DEBUG_ID_SUFFIX=".huddles_829c" \
 ```
 
 This example produces the debug-only package
-`xyz.block.buzz.mobile.huddles_829c` with the launcher label `Buzz Huddles`.
+`ventures.ainative.colony.huddles_829c` with the launcher label `Buzz Huddles`.
 The suffix must start with a dot followed by a lowercase letter and may contain
 only lowercase letters, digits, and underscores. Release and profile builds
 ignore these overrides and retain the production package and name.
@@ -179,7 +179,7 @@ For local physical-device development, override the identity and sandbox
 environments in the gitignored `mobile/ios/Flutter/AppOverrides.xcconfig`:
 
 ```xcconfig
-BUNDLE_IDENTIFIER = xyz.block.buzz.mobile
+BUNDLE_IDENTIFIER = ventures.ainative.colony
 BUZZ_DEVELOPMENT_TEAM = EYF346PHUG
 BUZZ_IOS_PUSH_ENVIRONMENT = development
 BUZZ_APP_ATTEST_ENVIRONMENT = development
@@ -194,14 +194,14 @@ artifact or enable the App Store profile in production. Validate dogfood APNs
 end to end by cutting an internal release, waiting for it to reach Mobile
 Releases/Comp Portal, and installing that signed artifact on a physical device.
 
-Parent app identifiers require Apple's Communication
-Notifications capability and a regenerated app provisioning profile. The
-Notification Service Extension profile does not require that capability.
-Enable it on the personal development App ID for local rich-presentation
-validation. Enabling it on the Block dogfood and eventual App Store App IDs is
-a release follow-up and is not performed by this repository change. Without a
-matching parent profile, source and unit validation still work, but the app
-cannot be signed for a physical device.
+The Colony production and dogfood bundle IDs, their Notification Service
+Extension IDs, App Groups, Keychain access groups, App Attest IDs, and APNs
+topics must be registered in the Apple Developer portal with matching
+capabilities and regenerated provisioning profiles before signed distribution.
+The Notification Service Extension profile does not require the parent's
+Communication Notifications capability. Without matching registrations,
+source and simulator validation still work, but the app cannot be signed for a
+physical device.
 
 APNs and the gateway continue to carry only the constant opaque wake-up. The
 extension fetches the message from the scoped relay, verifies message, sender
@@ -231,12 +231,26 @@ environment:
 - `BUZZ_ANDROID_UPLOAD_KEY_PASSWORD`
 
 The keystore path must be absolute, and the keystore must remain outside the
-repository. Development and debug builds do not require these variables.
+repository. By default, development and debug builds use Android's debug key
+and do not require these variables.
+
+The Colony Android emulator runtime workflow uses the same upload key for its
+debug APK when `COLONY_ANDROID_UPLOAD_KEYSTORE_B64`,
+`COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD`, `COLONY_ANDROID_UPLOAD_KEY_PASSWORD`,
+and the `COLONY_ANDROID_UPLOAD_KEY_ALIAS` repository variable are configured.
+It decodes the keystore under the runner's temporary directory and removes it
+after the build. Set `BUZZ_ANDROID_DEBUG_SIGNING=upload-keystore` to opt into
+that signing mode in other controlled CI builds.
 
 Release pipelines that sign through the central APK Signer service instead of
 a local upload keystore must set `BUZZ_ANDROID_RELEASE_SIGNING=external`. That
 mode produces an unsigned release bundle and refuses to run if any
 `BUZZ_ANDROID_UPLOAD_*` value is also set.
+
+The in-repo mobile release-candidate workflow only creates a source tag; it
+does not build a signed Android release. Any release builder that invokes
+Gradle for a signed Android artifact must provide the upload key outside the
+checkout and set the four `BUZZ_ANDROID_UPLOAD_*` variables above.
 
 ## Architecture
 

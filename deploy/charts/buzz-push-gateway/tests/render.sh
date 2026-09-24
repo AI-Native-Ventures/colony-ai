@@ -13,7 +13,7 @@ production_args=(
   -f deploy/charts/buzz-push-gateway/values-production.yaml
   --set 'image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   --set 'gatewayOrigin=https://push.example'
-  --set 'profiles.dogfood.appAttestAppId=REALTEAM.xyz.block.buzz.dogfood.mobile'
+  --set 'profiles.dogfood.appAttestAppId=REALTEAM.ventures.ainative.colony.dogfood'
   --set 'networkPolicy.postgresEgressCidrs[0]=10.42.0.0/16'
 )
 helm lint deploy/charts/buzz-push-gateway "${production_args[@]}" >/dev/null

@@ -4,8 +4,8 @@
 # state; those are later interoperability gates.
 set -euo pipefail
 
-package="${ANDROID_PACKAGE:-xyz.block.buzz.mobile}"
-activity="${ANDROID_ACTIVITY:-${package}/.MainActivity}"
+package="${ANDROID_PACKAGE:-ventures.ainative.colony.dogfood}"
+activity="${ANDROID_ACTIVITY:-${package}/xyz.block.buzz.mobile.MainActivity}"
 apk_path="${APK_PATH:-mobile/build/app/outputs/flutter-apk/app-debug.apk}"
 output_dir="${ANDROID_RUNTIME_ARTIFACT_DIR:-android-runtime-artifacts}"
 source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
@@ -95,7 +95,7 @@ apk_sha256="$(sha256sum "$apk_path" | awk '{ print $1 }')"
     echo "screen=$(adb_target shell wm size | tr -d '\r\n')"
     echo "package=$package"
     echo "activity=$activity"
-    echo "apk_signing=debug-signed"
+    echo "apk_signing=${ANDROID_APK_SIGNING:-android-debug}"
     echo "apk_path=$apk_path"
     echo "apk_sha256=$apk_sha256"
     echo "installed_path=$(adb_target shell pm path "$package" | tr -d '\r\n')"

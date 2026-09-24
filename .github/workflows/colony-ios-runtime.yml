@@ -3,6 +3,7 @@ name: Colony iOS runtime proof
 on:
   pull_request:
     branches:
+      - feat/phase3-auth
       - develop
     paths:
       - ".github/workflows/colony-ios-runtime.yml"

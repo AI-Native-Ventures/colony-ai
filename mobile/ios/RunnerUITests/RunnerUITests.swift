@@ -64,7 +64,7 @@ final class RunnerUITests: XCTestCase {
     }
 
     XCTAssertFalse(
-      value == "xyz.block.buzz.mobile",
+      value == "ventures.ainative.colony",
       "runtime proof must not target the release bundle identifier"
     )
     return value

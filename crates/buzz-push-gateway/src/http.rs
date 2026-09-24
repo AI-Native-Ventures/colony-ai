@@ -890,7 +890,7 @@ mod request_limit_tests {
 
     fn state() -> AppState {
         let app_attest = AppAttestVerifier::new(
-            "TEAMID.xyz.block.buzz.dogfood.mobile".to_owned(),
+            "TEAMID.ventures.ainative.colony.dogfood".to_owned(),
             include_bytes!("../tests/fixtures/apple-app-attestation-root.pem").to_vec(),
         )
         .expect("pinned Apple root fixture");
