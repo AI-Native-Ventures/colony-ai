@@ -5,7 +5,7 @@
 set -euo pipefail
 
 package="${ANDROID_PACKAGE:-ventures.ainative.colony.dogfood}"
-activity="${ANDROID_ACTIVITY:-${package}/.MainActivity}"
+activity="${ANDROID_ACTIVITY:-${package}/xyz.block.buzz.mobile.MainActivity}"
 apk_path="${APK_PATH:-mobile/build/app/outputs/flutter-apk/app-debug.apk}"
 output_dir="${ANDROID_RUNTIME_ARTIFACT_DIR:-android-runtime-artifacts}"
 source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"

@@ -58,7 +58,7 @@ concurrency:
 
 env:
   ANDROID_PACKAGE: ventures.ainative.colony.dogfood
-  ANDROID_ACTIVITY: ventures.ainative.colony.dogfood/.MainActivity
+  ANDROID_ACTIVITY: ventures.ainative.colony.dogfood/xyz.block.buzz.mobile.MainActivity
   APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
   ANDROID_INTEROP_ARTIFACT_DIR: android-interop-artifacts
   SOURCE_SHA: ${{ github.sha }}
