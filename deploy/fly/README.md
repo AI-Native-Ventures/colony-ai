@@ -69,8 +69,8 @@ gh workflow run fly-deploy-relay-canary.yml \
 ```
 
 The deployment builds runtime-canary, pushes a full-commit sha-<commit>
-image tag, snapshots the Postgres volume, then runs pgschema apply followed
-by scripts/reconcile-schema-after-pgschema.sql as Fly's release command.
+image tag, snapshots the Postgres volume, then deploys; the relay applies its
+embedded sqlx migrations at startup (BUZZ_AUTO_MIGRATE=true), as upstream does.
 It verifies the running image, NIP-11, and
 POST /api/accounts/reset/request (expects 202).
 

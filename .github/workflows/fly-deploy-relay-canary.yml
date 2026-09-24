@@ -60,7 +60,7 @@ jobs:
             echo "- GHCR image: $IMAGE_NAME:$tag"
             echo "- Docker target: runtime-canary (linux/amd64)"
             echo "- Pre-release backup: snapshot the Postgres volume in $DATABASE_APP"
-            echo "- Fly release command: pgschema apply, then schema reconciliation"
+            echo "- Schema: relay applies embedded sqlx migrations at startup (BUZZ_AUTO_MIGRATE)"
             echo "- Live checks: NIP-11 and the phase-3 accounts API (POST /api/accounts/reset/request)"
             echo "- Deploy action: skipped because dry_run is true"
           } >> "$GITHUB_STEP_SUMMARY"

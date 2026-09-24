@@ -9,7 +9,11 @@ BUZZ_BIND_ADDR = "0.0.0.0:3000"
 BUZZ_HEALTH_PORT = "8080"
 BUZZ_METRICS_PORT = "9102"
 BUZZ_GIT_REPO_PATH = "/data/git"
-BUZZ_AUTO_MIGRATE = "false"
+# The relay applies its embedded sqlx migrations at startup (upstream's
+# upgrade path), under a Postgres advisory lock. pgschema desired-state
+# apply cannot update a live database: it treats runtime-created event
+# partitions as drift and tries to drop them.
+BUZZ_AUTO_MIGRATE = "true"
 BUZZ_MEDIA_BASE_URL = "https://relay-canary.colony.ainative.ventures/media"
 BUZZ_ADMIN_HOST = "admin-canary.colony.ainative.ventures"
 RELAY_OPERATOR_API_ORIGIN = "https://admin-canary.colony.ainative.ventures"
@@ -46,6 +50,3 @@ interval = "15s"
 timeout = "5s"
 grace_period = "30s"
 
-[deploy]
-release_command = "/usr/local/bin/fly-apply-schema.py"
-release_command_timeout = "10m"
