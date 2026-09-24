@@ -1,11 +1,15 @@
 //! Relay configuration from environment variables.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tracing::warn;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Default maximum inbound WebSocket frame size in bytes.
 ///
@@ -109,6 +113,215 @@ impl std::fmt::Debug for KlipyConfig {
     }
 }
 
+/// Email, key-custody, and Google configuration for account routes.
+#[derive(Clone)]
+pub struct AccountConfig {
+    account_kek: Option<Arc<Zeroizing<[u8; 32]>>>,
+    resend_api_key: Option<Arc<Zeroizing<String>>>,
+    mail_from: Option<String>,
+    mail_mode: Option<AccountMailMode>,
+    google_client_ids: Vec<String>,
+    google_jwks_url: Option<String>,
+}
+
+/// Configured way to deliver account verification and reset codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AccountMailMode {
+    /// Send through the Resend HTTP API.
+    Resend,
+    /// Write delivery to the development and CI database sink.
+    Log,
+}
+
+impl AccountConfig {
+    /// Return the current account key-encryption key without formatting it.
+    pub(crate) fn account_kek(&self) -> Option<&[u8; 32]> {
+        self.account_kek.as_deref().map(|key| &**key)
+    }
+
+    /// Return the Resend API token without formatting it.
+    pub(crate) fn resend_api_key(&self) -> Option<&str> {
+        self.resend_api_key.as_deref().map(|key| key.as_str())
+    }
+
+    /// Return the configured sender address.
+    pub(crate) fn mail_from(&self) -> Option<&str> {
+        self.mail_from.as_deref()
+    }
+
+    /// Return the configured mail delivery mode.
+    pub(crate) fn mail_mode(&self) -> Option<AccountMailMode> {
+        self.mail_mode
+    }
+
+    /// Whether signup and reset email delivery is configured for the relay.
+    pub fn has_mail_delivery(&self) -> bool {
+        self.mail_mode.is_some()
+    }
+
+    /// Return configured Google OAuth client audiences.
+    pub(crate) fn google_client_ids(&self) -> &[String] {
+        &self.google_client_ids
+    }
+
+    /// Return a test-only Google JWKS URL override, when configured.
+    pub(crate) fn google_jwks_url(&self) -> Option<&str> {
+        self.google_jwks_url.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_config(
+        account_kek: Option<[u8; 32]>,
+        mail_mode: Option<AccountMailMode>,
+        google_client_ids: Vec<String>,
+        google_jwks_url: Option<String>,
+    ) -> Self {
+        Self {
+            account_kek: account_kek.map(|key| Arc::new(Zeroizing::new(key))),
+            resend_api_key: None,
+            mail_from: None,
+            mail_mode,
+            google_client_ids,
+            google_jwks_url,
+        }
+    }
+}
+
+impl std::fmt::Debug for AccountConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AccountConfig")
+            .field(
+                "account_kek",
+                &self.account_kek.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "resend_api_key",
+                &self.resend_api_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("mail_from", &self.mail_from)
+            .field(
+                "mail_mode",
+                &self.mail_mode.map(|mode| match mode {
+                    AccountMailMode::Resend => "resend",
+                    AccountMailMode::Log => "log",
+                }),
+            )
+            .field("google_client_ids", &self.google_client_ids)
+            .field(
+                "google_jwks_url",
+                &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
+            )
+            .finish()
+    }
+}
+
+fn account_config_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<AccountConfig, ConfigError> {
+    let account_kek = match lookup("COLONY_ACCOUNT_KEK") {
+        Some(mut encoded) => {
+            let decoded = BASE64.decode(encoded.trim());
+            encoded.zeroize();
+            let mut bytes = decoded.map_err(|_| {
+                ConfigError::InvalidValue(
+                    "COLONY_ACCOUNT_KEK must be base64 for exactly 32 random bytes".to_owned(),
+                )
+            })?;
+            if bytes.len() != 32 {
+                bytes.zeroize();
+                return Err(ConfigError::InvalidValue(
+                    "COLONY_ACCOUNT_KEK must be base64 for exactly 32 random bytes".to_owned(),
+                ));
+            }
+            let mut key = [0_u8; 32];
+            key.copy_from_slice(&bytes);
+            bytes.zeroize();
+            Some(Arc::new(Zeroizing::new(key)))
+        }
+        None => None,
+    };
+
+    let resend_api_key = lookup("RESEND_API_KEY")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let raw_sink = lookup("COLONY_MAIL_SINK")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let mail_mode = match (resend_api_key.is_some(), raw_sink.as_deref()) {
+        (true, Some("log")) => {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_MAIL_SINK=log cannot be used when RESEND_API_KEY is set".to_owned(),
+            ));
+        }
+        (_, Some("log")) => Some(AccountMailMode::Log),
+        (true, None) => Some(AccountMailMode::Resend),
+        (false, None) => None,
+        (_, Some(value)) => {
+            return Err(ConfigError::InvalidValue(format!(
+                "COLONY_MAIL_SINK must be log when set; got {value:?}"
+            )));
+        }
+    };
+
+    let mail_from = lookup("COLONY_MAIL_FROM")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if mail_mode == Some(AccountMailMode::Resend) && mail_from.is_none() {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_MAIL_FROM is required when RESEND_API_KEY is set".to_owned(),
+        ));
+    }
+
+    let google_client_ids: Vec<String> = lookup("COLONY_GOOGLE_CLIENT_IDS")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect();
+
+    let google_jwks_url = lookup("COLONY_GOOGLE_JWKS_URL")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(jwks_url) = google_jwks_url.as_deref() {
+        if mail_mode != Some(AccountMailMode::Log) {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL is only allowed with COLONY_MAIL_SINK=log".to_owned(),
+            ));
+        }
+        let parsed_url = reqwest::Url::parse(jwks_url).map_err(|_| {
+            ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL".to_owned(),
+            )
+        })?;
+        if !matches!(parsed_url.scheme(), "http" | "https")
+            || parsed_url.host_str().is_none()
+            || !parsed_url.username().is_empty()
+            || parsed_url.password().is_some()
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL without credentials"
+                    .to_owned(),
+            ));
+        }
+    }
+
+    if account_kek.is_none() && (mail_mode.is_some() || !google_client_ids.is_empty()) {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_ACCOUNT_KEK is required when account login is configured".to_owned(),
+        ));
+    }
+
+    Ok(AccountConfig {
+        account_kek,
+        resend_api_key,
+        mail_from,
+        mail_mode,
+        google_client_ids,
+        google_jwks_url,
+    })
+}
+
 /// Maximum configured jitter, leaving ten seconds of the hard-drain budget for
 /// WebSocket close-frame delivery after the final delayed cancellation.
 pub const MAX_DRAIN_JITTER_MS: u64 = 20_000;
@@ -178,6 +391,8 @@ pub struct Config {
     pub slow_client_grace_limit: u8,
     /// Authentication provider configuration.
     pub auth: buzz_auth::AuthConfig,
+    /// Email, password, Google, and server-held account key configuration.
+    pub accounts: AccountConfig,
     /// Whether REST API requests must present a valid token. Independent of
     /// WebSocket protocol auth, which is *always* required by REQ/EVENT/COUNT.
     pub require_auth_token: bool,
@@ -792,6 +1007,7 @@ impl Config {
         let auth = buzz_auth::AuthConfig {
             rate_limits: rate_limit_config_from_env()?,
         };
+        let accounts = account_config_from_lookup(|name| std::env::var(name).ok())?;
 
         if !require_auth_token {
             warn!(
@@ -1226,6 +1442,7 @@ impl Config {
             max_frame_bytes,
             slow_client_grace_limit,
             auth,
+            accounts,
             require_auth_token,
             cors_origins,
             relay_private_key,
@@ -1282,6 +1499,84 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn account_config_parses_key_mail_sink_and_google_audiences() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let config = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            (
+                "COLONY_GOOGLE_CLIENT_IDS",
+                "desktop-test-client, mobile-test-client",
+            ),
+        ]))
+        .expect("valid test account configuration");
+
+        assert_eq!(config.account_kek(), Some(&[0x5a; 32]));
+        assert_eq!(config.mail_mode(), Some(AccountMailMode::Log));
+        assert_eq!(
+            config.google_client_ids(),
+            &["desktop-test-client", "mobile-test-client"]
+        );
+        let debug = format!("{config:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains(&encoded_key));
+    }
+
+    #[test]
+    fn account_config_rejects_missing_key_bad_mail_and_log_sink_with_resend() {
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_GOOGLE_CLIENT_IDS",
+            "desktop-test-client",
+        )]))
+        .is_err());
+
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("RESEND_API_KEY", "test-resend-token"),
+        ]))
+        .is_err());
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("RESEND_API_KEY", "test-resend-token"),
+            ("COLONY_MAIL_FROM", "accounts@example.test"),
+            ("COLONY_MAIL_SINK", "log"),
+        ]))
+        .is_err());
+
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_ACCOUNT_KEK",
+            "not-base64-or-32-bytes",
+        )]))
+        .is_err());
+    }
+
+    #[test]
+    fn account_config_google_jwks_override_requires_log_sink_and_http_url() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let local_jwks = "http://127.0.0.1:48123/jwks";
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_ok());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_err());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", "file:///etc/passwd"),
+        ]))
+        .is_err());
     }
 
     // Mutex to serialize tests that mutate environment variables.

@@ -148,6 +148,8 @@ type MockInstallRuntimeResult = {
 type MockBridgeOptions = {
   /** Tauri window label exposed to the app. Defaults to the main window. */
   windowLabel?: string;
+  /** Account state returned by the mocked account API. Defaults to linked. */
+  accountLinked?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;

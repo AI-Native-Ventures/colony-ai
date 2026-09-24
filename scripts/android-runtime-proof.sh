@@ -139,9 +139,10 @@ capture_screen() {
     file "$output_dir/${label}.png"
 }
 
-assert_initial_ui() {
+assert_ui() {
     local ui_file="$1"
-    python3 "$parser_path" ui --package "$package" "$ui_file"
+    local screen="$2"
+    python3 "$parser_path" ui --package "$package" --screen "$screen" "$ui_file"
 }
 
 foreground_is_expected() {
@@ -156,21 +157,37 @@ foreground_is_expected() {
     python3 "$parser_path" foreground --package "$package" < "$foreground_file"
 }
 
-wait_for_initial_ui() {
+wait_for_ui() {
     local label="$1"
+    local screen="$2"
     local deadline=$((SECONDS + ui_timeout_seconds))
     rm -f "$output_dir/${label}.xml" "$output_dir/${label}-foreground.txt"
     while ((SECONDS < deadline)); do
         if foreground_is_expected "$label" &&
             dump_ui "$label" 2>"$output_dir/${label}-dump-error.log" &&
-            assert_initial_ui "$output_dir/${label}.xml"; then
-            echo "Initial UI assertion passed: $label"
+            assert_ui "$output_dir/${label}.xml" "$screen"; then
+            echo "UI assertion passed: screen=$screen label=$label"
             return 0
         fi
         sleep 2
     done
     echo "UI assertion timed out after ${ui_timeout_seconds}s: $label" >&2
     return 1
+}
+
+tap_app_label() {
+    local ui_file="$1"
+    local label="$2"
+    local point
+    local x
+    local y
+    point="$(python3 "$parser_path" tap-point --package "$package" --label "$label" "$ui_file")" ||
+        die "could not find a clickable app-owned UI label: $label"
+    read -r x y <<<"$point"
+    [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]] ||
+        die "parser returned invalid tap coordinates for: $label"
+    adb_target shell input tap "$x" "$y"
+    echo "Tapped app label: $label"
 }
 
 launch_app() {
@@ -191,8 +208,15 @@ launch_app() {
 if ! launch_app initial; then
     die "launcher activity did not start successfully; see initial-launch.txt"
 fi
-wait_for_initial_ui initial
+wait_for_ui initial account-entry
 capture_screen initial
+
+tap_app_label "$output_dir/initial.xml" "Advanced: use an existing Nostr identity"
+wait_for_ui advanced-pairing pairing
+capture_screen advanced-pairing
+
+adb_target shell input keyevent 4
+wait_for_ui after-advanced-back account-entry
 
 echo "Force-stopping $package"
 adb_target shell am force-stop "$package"
@@ -200,13 +224,15 @@ adb_target shell am force-stop "$package"
 if ! launch_app relaunch; then
     die "launcher activity did not restart successfully; see relaunch-launch.txt"
 fi
-wait_for_initial_ui relaunch
+wait_for_ui relaunch account-entry
 capture_screen relaunch
 
 {
     echo "relaunch=passed"
     echo "force_stop=issued"
-    echo "ui_assertion=Welcome to Buzz; Scan a QR code"
+    echo "fresh_install_ui=account-entry with create account, Google, sign in, and Advanced"
+    echo "advanced_pairing_ui=Scan a QR code reachable through Advanced"
+    echo "relaunch_ui=account-entry after force-stop"
 } > "$output_dir/lifecycle.txt"
 
 echo "Android emulator runtime proof passed"

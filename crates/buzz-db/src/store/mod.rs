@@ -1,5 +1,7 @@
 //! Domain-owned persistence implementations.
 
+/// Deployment-global email and Google account persistence.
+pub mod accounts;
 /// Explicit deployment-global admin report reads.
 pub mod admin_moderation;
 /// Community-scoped authentication allowlist persistence.

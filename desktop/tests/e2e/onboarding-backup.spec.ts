@@ -6,6 +6,7 @@ import {
   endWindowFileDrag,
   startWindowFileDrag,
 } from "../helpers/fileDrag";
+import { openAdvancedIdentityPath } from "../helpers/onboarding";
 
 async function enterMachineBackup(
   page: import("@playwright/test").Page,
@@ -16,6 +17,7 @@ async function enterMachineBackup(
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
 }
@@ -28,6 +30,7 @@ test("fresh-key path explains the identity key before creating it", async ({
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
 
   await page.getByRole("button", { name: "Create a new identity key" }).click();
 
@@ -62,6 +65,7 @@ test("identity creation failures stay visible on the intro page", async ({
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
 
@@ -488,6 +492,7 @@ test("copy shows inline error when get_nsec fails and Next still advances", asyn
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
 
@@ -512,6 +517,7 @@ test("Copy retries after an initial key read fails", async ({ page }) => {
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
 

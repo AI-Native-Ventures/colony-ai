@@ -1,0 +1,283 @@
+name: Deploy canary relay to Fly
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Render config and print the deployment plan only"
+        required: true
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: fly-deploy-relay-canary
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || 'ghcr.io/ai-native-ventures/colony-ai' }}
+  FLY_APP: colony-relay-canary
+  DATABASE_APP: colony-db-canary-iad
+  CANARY_BASE_URL: https://relay-canary.colony.ainative.ventures
+
+jobs:
+  dry-run:
+    if: inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout selected commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Parse and render local config and print plan
+        run: |
+          set -euo pipefail
+          rendered_config="$RUNNER_TEMP/fly-canary-rendered.json"
+          python3 - deploy/fly/fly.canary.toml > "$rendered_config" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import tomllib
+
+          with pathlib.Path(sys.argv[1]).open("rb") as config_file:
+              config = tomllib.load(config_file)
+          print(json.dumps(config, indent=2, sort_keys=True))
+          PY
+          cat "$rendered_config"
+          version="$(awk -F'"' '/^version = / { print $2; exit }' crates/buzz-relay/Cargo.toml)"
+          tag="sha-$GITHUB_SHA"
+          {
+            echo "### Canary deploy dry run"
+            echo
+            echo "- App: $FLY_APP"
+            echo "- Selected commit: $GITHUB_SHA"
+            echo "- Relay version: $version"
+            echo "- GHCR image: $IMAGE_NAME:$tag"
+            echo "- Docker target: runtime-canary (linux/amd64)"
+            echo "- Pre-release backup: snapshot the Postgres volume in $DATABASE_APP"
+            echo "- Fly release command: pgschema apply, then schema reconciliation"
+            echo "- Live checks: NIP-11 and the phase-3 accounts API (POST /api/accounts/reset/request)"
+            echo "- Deploy action: skipped because dry_run is true"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Parsed config saved at $rendered_config"
+          echo "No Fly CLI, API calls, or deployment operations were run."
+
+  deploy:
+    if: inputs.dry_run == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout selected commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve immutable image tag and relay version
+        id: target
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "workflow ref did not resolve to a full commit SHA" >&2
+            exit 1
+          fi
+          tag="sha-$GITHUB_SHA"
+          version="$(awk -F'"' '/^version = / { print $2; exit }' crates/buzz-relay/Cargo.toml)"
+          if [[ -z "$version" ]]; then
+            echo "could not read relay version from crates/buzz-relay/Cargo.toml" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $IMAGE_NAME:$tag for $FLY_APP"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Build and push canary image
+        id: image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime-canary
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.target.outputs.tag }}
+          labels: |
+            org.opencontainers.image.title=Buzz
+            org.opencontainers.image.description=WebSocket relay server for the Buzz communications platform
+            org.opencontainers.image.licenses=Apache-2.0
+          build-args: |
+            BUZZ_SOURCE_SHA=${{ github.sha }}
+            BUZZ_BUILD_ID=github-actions:${{ github.run_id }}:${{ github.run_attempt }}
+            BUZZ_BUILD_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+          cache-from: type=gha,scope=buzz-relay-canary-runtime
+          cache-to: type=gha,mode=max,scope=buzz-relay-canary-runtime
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@63da3ecc5e2793b98a3f2519b3d75d4f4c11cec2 # v1.5
+
+      - name: Copy the built image into Fly registry
+        id: fly-image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Build did not produce a valid image digest" >&2
+            exit 1
+          fi
+          source_image="$IMAGE_NAME@$DIGEST"
+          fly_image="registry.fly.io/$FLY_APP:$TAG"
+          docker pull --platform linux/amd64 "$source_image"
+          docker tag "$source_image" "$fly_image"
+          flyctl auth docker
+          docker push "$fly_image"
+          echo "image=$fly_image" >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot the Postgres volume before schema apply
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          volume_list="$(flyctl volumes list --app "$DATABASE_APP" --json)"
+          if ! jq -e 'type == "array" and all(.[]; (.id | type) == "string" and (.id | startswith("vol_")))' \
+            <<< "$volume_list" >/dev/null; then
+            echo "Fly returned an unexpected volume list for $DATABASE_APP" >&2
+            exit 1
+          fi
+          volume_ids_json="$(jq -c '[.[].id] | unique' <<< "$volume_list")"
+          volume_count="$(jq -r 'length' <<< "$volume_ids_json")"
+          if [[ "$volume_count" != "1" ]]; then
+            echo "expected one Postgres volume on $DATABASE_APP, found $volume_count" >&2
+            exit 1
+          fi
+
+          volume_id="$(jq -r '.[0]' <<< "$volume_ids_json")"
+          snapshot_json="$(flyctl volumes snapshots create "$volume_id" \
+            --app "$DATABASE_APP" --json)"
+          snapshot_id="$(jq -er '.id' <<< "$snapshot_json")"
+          echo "Waiting for Postgres volume snapshot $snapshot_id to complete."
+
+          ready=0
+          snapshot_status=""
+          for attempt in $(seq 1 60); do
+            snapshots_json="$(flyctl volumes snapshots list "$volume_id" \
+              --app "$DATABASE_APP" --json)"
+            snapshot_status="$(jq -r --arg id "$snapshot_id" \
+              '[.[] | select(.id == $id) | .status] | first // "missing"' \
+              <<< "$snapshots_json")"
+            case "$snapshot_status" in
+              created)
+                ready=1
+                break
+                ;;
+              failed|error)
+                echo "Postgres volume snapshot $snapshot_id failed with status $snapshot_status" >&2
+                exit 1
+                ;;
+            esac
+            echo "Snapshot status $snapshot_status on attempt $attempt/60; retrying in 10 seconds."
+            sleep 10
+          done
+          if [[ "$ready" != "1" ]]; then
+            echo "Postgres volume snapshot $snapshot_id did not reach created status" >&2
+            exit 1
+          fi
+          echo "Pre-release database snapshot is ready: $snapshot_id"
+          {
+            echo "### Pre-release database backup"
+            echo
+            echo "- Postgres app: $DATABASE_APP"
+            echo "- Volume: $volume_id"
+            echo "- Snapshot: $snapshot_id"
+            echo "- Status: $snapshot_status"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy the SHA-tagged image and apply desired-state schema
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_IMAGE: ${{ steps.fly-image.outputs.image }}
+        run: |
+          set -euo pipefail
+          flyctl deploy --config deploy/fly/fly.canary.toml \
+            --app "$FLY_APP" --image "$FLY_IMAGE" \
+            --strategy immediate --release-command-timeout 10m --yes
+
+      - name: Verify deployed image identity
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image_json="$RUNNER_TEMP/canary-image.json"
+          found=0
+          for attempt in $(seq 1 30); do
+            flyctl image show --app "$FLY_APP" --json > "$image_json"
+            if jq -e --arg tag "$TAG" '[.. | strings] | index($tag) != null' \
+              "$image_json" >/dev/null; then
+              found=1
+              break
+            fi
+            echo "Machine has not converged to $TAG on attempt $attempt/30."
+            sleep 10
+          done
+          if [[ "$found" != "1" ]]; then
+            cat "$image_json"
+            echo "$FLY_APP did not converge to image tag $TAG" >&2
+            exit 1
+          fi
+          if ! jq -e --arg app "$FLY_APP" '[.. | strings] | any(contains($app))' \
+            "$image_json" >/dev/null; then
+            echo "$FLY_APP is not running an image from its Fly registry repository" >&2
+            exit 1
+          fi
+          echo "$FLY_APP is running $TAG."
+
+      - name: Verify live NIP-11 and communities config
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          nip11_json="$(curl --fail --silent --show-error --retry 12 \
+            --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
+            -H 'Accept: application/nostr+json' "$CANARY_BASE_URL/")"
+          jq -e --arg version "$VERSION" \
+            'type == "object" and (.name | type == "string") and (.supported_nips | type == "array") and (.software | type == "string") and .version == $version' \
+            <<< "$nip11_json" >/dev/null
+          echo "NIP-11 reports relay version $VERSION."
+
+          # The accounts service answers 202 for any well-formed reset request
+          # (it never reveals whether the email exists), so a reserved,
+          # undeliverable address proves the route is live without sending mail.
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --retry 12 --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
+            -H 'content-type: application/json' \
+            --data '{"email":"deploy-probe@example.invalid"}' \
+            "$CANARY_BASE_URL/api/accounts/reset/request")"
+          if [ "$status" != "202" ]; then
+            echo "::error::POST /api/accounts/reset/request returned $status, expected 202"
+            exit 1
+          fi
+          echo "POST /api/accounts/reset/request returned 202."

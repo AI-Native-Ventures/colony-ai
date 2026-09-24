@@ -26,6 +26,13 @@ export default defineConfig(async ({ mode }) => {
       }),
       react(),
     ],
+    define: {
+      "import.meta.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID": JSON.stringify(
+        process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID ??
+          modeEnv.COLONY_GOOGLE_DESKTOP_CLIENT_ID ??
+          "",
+      ),
+    },
     resolve: {
       alias: {
         "@": "/src",

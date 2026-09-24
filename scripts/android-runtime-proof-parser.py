@@ -9,7 +9,14 @@ import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
-LABELS = ("Welcome to Buzz", "Scan a QR code")
+ACCOUNT_ENTRY_LABELS = (
+    "Welcome to Buzz",
+    "Create account",
+    "Continue with Google",
+    "Sign in",
+    "Advanced: use an existing Nostr identity",
+)
+PAIRING_LABELS = ("Scan a QR code",)
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 PACKAGE_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
 CLASS_RE = re.compile(
@@ -27,6 +34,7 @@ WINDOW_HEADER_RE = re.compile(
 COMPONENT_PACKAGE_RE = re.compile(
     r"(?<![A-Za-z0-9_.])([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)/"
 )
+BOUNDS_RE = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
 def valid_package(package: str) -> bool:
@@ -44,9 +52,18 @@ def valid_component(package: str, component: str) -> bool:
     )
 
 
-def ui_has_labels(xml_text: str, expected_package: str) -> bool:
+def labels_for_screen(screen: str) -> tuple[str, ...]:
+    if screen == "account-entry":
+        return ACCOUNT_ENTRY_LABELS
+    if screen == "pairing":
+        return PAIRING_LABELS
+    raise ValueError(f"unsupported UI screen: {screen}")
+
+
+def ui_has_labels(xml_text: str, expected_package: str, screen: str) -> bool:
     """Require exact labels whose package is expected or inherited from it."""
 
+    required_labels = labels_for_screen(screen)
     try:
         root = ElementTree.fromstring(xml_text)
     except ElementTree.ParseError:
@@ -58,13 +75,52 @@ def ui_has_labels(xml_text: str, expected_package: str) -> bool:
         package = node.attrib.get("package") or inherited_package
         if package == expected_package:
             label = node.attrib.get("content-desc")
-            if label in LABELS:
+            if label in required_labels:
                 found.add(label)
         for child in node:
             visit(child, package)
 
     visit(root, None)
-    return set(LABELS).issubset(found)
+    return set(required_labels).issubset(found)
+
+
+def labeled_tap_point(
+    xml_text: str, expected_package: str, label: str
+) -> tuple[int, int] | None:
+    """Return the center of an exact, clickable label owned by the app."""
+
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError:
+        return None
+
+    candidates: list[tuple[int, ElementTree.Element]] = []
+
+    def visit(node: ElementTree.Element, inherited_package: str | None) -> None:
+        package = node.attrib.get("package") or inherited_package
+        if (
+            package == expected_package
+            and node.attrib.get("content-desc") == label
+            and node.attrib.get("clickable") == "true"
+        ):
+            match = BOUNDS_RE.fullmatch(node.attrib.get("bounds", ""))
+            if match is not None:
+                left, top, right, bottom = (int(value) for value in match.groups())
+                if right > left and bottom > top:
+                    candidates.append(((right - left) * (bottom - top), node))
+        for child in node:
+            visit(child, package)
+
+    visit(root, None)
+    if not candidates:
+        return None
+
+    _, node = min(candidates, key=lambda item: item[0])
+    match = BOUNDS_RE.fullmatch(node.attrib["bounds"])
+    if match is None:
+        return None
+    left, top, right, bottom = (int(value) for value in match.groups())
+    return (left + right) // 2, (top + bottom) // 2
 
 
 def foreground_has_package(dumpsys_text: str, expected_package: str) -> bool:
@@ -131,19 +187,29 @@ def read_stdin_bounded() -> str:
     return text
 
 
-def old_unbound_label_grep_would_pass(xml_text: str) -> bool:
+def old_unbound_label_grep_would_pass(
+    xml_text: str, required_labels: tuple[str, ...]
+) -> bool:
     """Model the pre-review assertion for the negative regression fixture."""
 
-    return all(f'content-desc="{label}"' in xml_text for label in LABELS)
+    return all(
+        f'content-desc="{label}"' in xml_text for label in required_labels
+    )
 
 
 def run_self_test() -> None:
     package = "xyz.block.buzz.mobile"
-    valid_xml = f"""<hierarchy package=\"{package}\">
+    valid_account_xml = f"""<hierarchy package=\"{package}\">
   <node class=\"android.view.View\" content-desc=\"Welcome to Buzz\" />
+  <node class=\"android.widget.Button\" content-desc=\"Create account\" />
+  <node class=\"android.widget.Button\" content-desc=\"Continue with Google\" />
+  <node class=\"android.widget.Button\" content-desc=\"Sign in\" />
+  <node class=\"android.widget.Button\" clickable=\"true\" bounds=\"[10,20][290,80]\" content-desc=\"Advanced: use an existing Nostr identity\" />
+</hierarchy>"""
+    valid_pairing_xml = f"""<hierarchy package=\"{package}\">
   <node class=\"android.widget.Button\" content-desc=\"Scan a QR code\" />
 </hierarchy>"""
-    wrong_package_xml = valid_xml.replace(package, "com.android.launcher3")
+    wrong_package_xml = valid_account_xml.replace(package, "com.android.launcher3")
     invalid_xml = f'<hierarchy package="{package}"><node content-desc="Welcome to Buzz">'
     valid_foreground = (
         "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}"
@@ -170,9 +236,22 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
         "mFocusedApp=Window{def u0 com.android.launcher3/.Launcher}"
     )
 
-    assert ui_has_labels(valid_xml, package)
-    assert not ui_has_labels(wrong_package_xml, package)
-    assert not ui_has_labels(invalid_xml, package)
+    assert ui_has_labels(valid_account_xml, package, "account-entry")
+    assert ui_has_labels(valid_pairing_xml, package, "pairing")
+    assert not ui_has_labels(valid_pairing_xml, package, "account-entry")
+    assert not ui_has_labels(valid_account_xml, package, "pairing")
+    assert not ui_has_labels(wrong_package_xml, package, "account-entry")
+    assert not ui_has_labels(invalid_xml, package, "account-entry")
+    assert labeled_tap_point(
+        valid_account_xml,
+        package,
+        "Advanced: use an existing Nostr identity",
+    ) == (150, 50)
+    assert labeled_tap_point(
+        wrong_package_xml,
+        package,
+        "Advanced: use an existing Nostr identity",
+    ) is None
     assert foreground_has_package(valid_foreground, package)
     assert not foreground_has_package(wrong_foreground, package)
     assert foreground_has_package(api35_visible_foreground, package)
@@ -183,10 +262,14 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
     assert not valid_component(package, "com.example.other/.MainActivity")
 
     # The old grep-only assertion would accept the wrong-package fixture.
-    assert old_unbound_label_grep_would_pass(wrong_package_xml)
+    assert old_unbound_label_grep_would_pass(
+        wrong_package_xml, ACCOUNT_ENTRY_LABELS
+    )
 
     print("android-runtime-proof-parser self-test passed")
-    print("wrong-package labels: old assertion would pass; package-aware parser rejected")
+    print("wrong-package account labels: old assertion would pass; parser rejected")
+    print("account-first and pairing screens: exact labels accepted only per screen")
+    print("Advanced tap target: clickable app-owned bounds returned; wrong package rejected")
     print("wrong foreground: UI labels valid; foreground assertion rejected")
     print("API-35 visible window: expected package accepted; wrong package rejected")
     print("ambiguous visible/conflicting foreground: rejected")
@@ -209,7 +292,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     ui = subparsers.add_parser("ui")
     ui.add_argument("--package", required=True)
+    ui.add_argument(
+        "--screen", choices=("account-entry", "pairing"), required=True
+    )
     ui.add_argument("xml", type=Path)
+
+    tap_point = subparsers.add_parser("tap-point")
+    tap_point.add_argument("--package", required=True)
+    tap_point.add_argument("--label", required=True)
+    tap_point.add_argument("xml", type=Path)
     return parser
 
 
@@ -229,10 +320,28 @@ def main() -> int:
             return 1
     elif args.mode == "ui":
         try:
-            result = ui_has_labels(read_bounded(args.xml), args.package)
+            result = ui_has_labels(
+                read_bounded(args.xml), args.package, args.screen
+            )
         except (OSError, ValueError, UnicodeError) as error:
             print(f"android runtime UI rejected: {error}", file=sys.stderr)
             return 1
+    elif args.mode == "tap-point":
+        try:
+            point = labeled_tap_point(
+                read_bounded(args.xml), args.package, args.label
+            )
+        except (OSError, ValueError, UnicodeError) as error:
+            print(f"android runtime tap target rejected: {error}", file=sys.stderr)
+            return 1
+        if point is None:
+            print(
+                f"android runtime tap target rejected: no clickable app label {args.label!r}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"{point[0]} {point[1]}")
+        return 0
     else:
         build_parser().error("choose --self-test or a parser mode")
 

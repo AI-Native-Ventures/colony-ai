@@ -1,0 +1,50 @@
+# Colony canary relay. Deploy the immutable image selected by the manual
+# fly-deploy-relay-canary workflow. The release command applies desired state
+# before Fly replaces the running relay machines.
+app = "colony-relay-canary"
+primary_region = "iad"
+
+[env]
+BUZZ_BIND_ADDR = "0.0.0.0:3000"
+BUZZ_HEALTH_PORT = "8080"
+BUZZ_METRICS_PORT = "9102"
+BUZZ_GIT_REPO_PATH = "/data/git"
+BUZZ_AUTO_MIGRATE = "false"
+BUZZ_MEDIA_BASE_URL = "https://relay-canary.colony.ainative.ventures/media"
+BUZZ_ADMIN_HOST = "admin-canary.colony.ainative.ventures"
+RELAY_OPERATOR_API_ORIGIN = "https://admin-canary.colony.ainative.ventures"
+BUZZ_S3_ENDPOINT = "https://fly.storage.tigris.dev"
+BUZZ_S3_BUCKET = "colony-relay-canary-media"
+RELAY_URL = "wss://relay-canary.colony.ainative.ventures"
+BUZZ_REQUIRE_RELAY_MEMBERSHIP = "true"
+BUZZ_REQUIRE_AUTH_TOKEN = "true"
+BUZZ_ALLOW_NIP_OA_AUTH = "true"
+BUZZ_DB_POOL_SIZE = "6"
+BUZZ_DB_READ_POOL_SIZE = "8"
+COLONY_MAIL_FROM = "accounts@colony.ainative.ventures"
+
+[[mounts]]
+source = "colony_relay_canary_data"
+destination = "/data"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = "stop"
+auto_start_machines = true
+min_machines_running = 0
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "512mb"
+
+[checks.readiness]
+type = "tcp"
+port = 3000
+interval = "15s"
+timeout = "5s"
+grace_period = "30s"
+
+[deploy]
+release_command = "/usr/local/bin/fly-apply-schema.py"
+release_command_timeout = "10m"
