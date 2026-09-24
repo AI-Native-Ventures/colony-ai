@@ -198,7 +198,7 @@ def old_unbound_label_grep_would_pass(
 
 
 def run_self_test() -> None:
-    package = "xyz.block.buzz.mobile"
+    package = "ventures.ainative.colony.dogfood"
     valid_account_xml = f"""<hierarchy package=\"{package}\">
   <node class=\"android.view.View\" content-desc=\"Welcome to Buzz\" />
   <node class=\"android.widget.Button\" content-desc=\"Create account\" />
@@ -212,10 +212,10 @@ def run_self_test() -> None:
     wrong_package_xml = valid_account_xml.replace(package, "com.android.launcher3")
     invalid_xml = f'<hierarchy package="{package}"><node content-desc="Welcome to Buzz">'
     valid_foreground = (
-        "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}"
+        "mCurrentFocus=Window{abc u0 ventures.ainative.colony.dogfood/.MainActivity}"
     )
     wrong_foreground = "mCurrentFocus=Window{abc u0 com.android.launcher3/.Launcher}"
-    api35_visible_foreground = """Window #8 Window{abc u0 xyz.block.buzz.mobile/.MainActivity}:
+    api35_visible_foreground = """Window #8 Window{abc u0 ventures.ainative.colony.dogfood/.MainActivity}:
   mHasSurface=true isReadyForDisplay=true
   isOnScreen=true
   isVisible=true
@@ -224,7 +224,7 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
   isVisible=false
 """
     wrong_api35_visible_foreground = api35_visible_foreground.replace(
-        "xyz.block.buzz.mobile/.MainActivity",
+        "ventures.ainative.colony.dogfood/.MainActivity",
         "com.google.android.apps.nexuslauncher/.NexusLauncherActivity",
     )
     competing_api35_visible_foreground = api35_visible_foreground.replace(
@@ -232,7 +232,7 @@ Window #9 Window{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherActi
         "isOnScreen=true\n  isVisible=true",
     )
     conflicting_foreground = (
-        "mCurrentFocus=Window{abc u0 xyz.block.buzz.mobile/.MainActivity}\n"
+        "mCurrentFocus=Window{abc u0 ventures.ainative.colony.dogfood/.MainActivity}\n"
         "mFocusedApp=Window{def u0 com.android.launcher3/.Launcher}"
     )
 

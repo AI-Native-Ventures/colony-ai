@@ -25,7 +25,7 @@
 | `BUZZ_PUSH_TOKEN_KEYS` | Independent token-custody AEAD keyring in the same format. Never reuse grant keys. |
 
 The current MVP serves the dogfood application identity
-(`xyz.block.buzz.dogfood.mobile`). App Attest must cryptographically validate
+(`ventures.ainative.colony.dogfood`). App Attest must cryptographically validate
 the configured application ID before enrollment. Assertions and delivery use
 the server-owned APNs topic, certificate-backed connection pool, and
 environment. No client request or relay grant can supply or override an APNs
@@ -186,14 +186,14 @@ gateway profile in this MVP.
 
 Physical-device validation must use an application whose App Attest identity
 and APNs topic match the configured dogfood profile. The current gateway cannot
-enroll `xyz.block.buzz.mobile` or another bundle identifier merely by changing
+enroll `ventures.ainative.colony` or another bundle identifier merely by changing
 deployment values: adding another identity requires the explicit multi-profile
 work described above.
 
 Dogfood end-to-end release validation starts after this feature reaches `main`:
 publish the next immutable `mobile-vX.Y.Z-rc.N` candidate from the exact current
 `origin/main` commit, build that tag through the normal Block release pipeline,
-and wait for the signed `xyz.block.buzz.dogfood.mobile` artifact to appear in
+and wait for the signed `ventures.ainative.colony.dogfood` artifact to appear in
 Mobile Releases/Comp Portal before installing it on a physical device. Verify
 APNs delivery, fetched and signature-verified notification content, and
 exact-message tap routing against the configured gateway and a push-enabled
@@ -201,8 +201,8 @@ internal relay before widening the internal evaluation.
 
 Before that first candidate, the private dogfood builder's manual signing and
 export configuration must map separate distribution
-profiles for both `xyz.block.buzz.dogfood.mobile` and
-`xyz.block.buzz.dogfood.mobile.NotificationService`; an app-only profile does
+profiles for both `ventures.ainative.colony.dogfood` and
+`ventures.ainative.colony.dogfood.NotificationService`; an app-only profile does
 not provision the extension. App Store rollout remains off through relay and
 gateway deployment configuration until separately approved.
 Before enabling rich message presentation, enable Apple's Communication

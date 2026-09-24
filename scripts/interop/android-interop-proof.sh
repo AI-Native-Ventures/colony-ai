@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-package="${ANDROID_PACKAGE:-xyz.block.buzz.mobile}"
+package="${ANDROID_PACKAGE:-ventures.ainative.colony.dogfood}"
 activity="${ANDROID_ACTIVITY:-${package}/.MainActivity}"
 apk_path="${APK_PATH:-mobile/build/app/outputs/flutter-apk/app-debug.apk}"
 artifact_dir="${ANDROID_INTEROP_ARTIFACT_DIR:-android-interop-artifacts}"

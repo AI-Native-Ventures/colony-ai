@@ -57,8 +57,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ANDROID_PACKAGE: xyz.block.buzz.mobile
-  ANDROID_ACTIVITY: xyz.block.buzz.mobile/.MainActivity
+  ANDROID_PACKAGE: ventures.ainative.colony.dogfood
+  ANDROID_ACTIVITY: ventures.ainative.colony.dogfood/.MainActivity
   APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
   ANDROID_INTEROP_ARTIFACT_DIR: android-interop-artifacts
   SOURCE_SHA: ${{ github.sha }}

@@ -20,6 +20,7 @@ on:
       - "mobile/pubspec.lock"
   pull_request:
     branches:
+      - feat/phase3-auth
       - develop
     paths:
       - ".github/workflows/colony-android-runtime.yml"
@@ -41,8 +42,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ANDROID_PACKAGE: xyz.block.buzz.mobile
-  ANDROID_ACTIVITY: xyz.block.buzz.mobile/.MainActivity
+  ANDROID_PACKAGE: ventures.ainative.colony.dogfood
+  ANDROID_ACTIVITY: ventures.ainative.colony.dogfood/.MainActivity
   APK_PATH: mobile/build/app/outputs/flutter-apk/app-debug.apk
   ANDROID_RUNTIME_ARTIFACT_DIR: android-runtime-artifacts
   SOURCE_SHA: ${{ github.sha }}
@@ -104,6 +105,37 @@ jobs:
       - name: Resolve Flutter dependencies
         run: cd mobile && flutter pub get
 
+      - name: Prepare Colony upload signing when configured
+        id: android-signing
+        shell: bash
+        env:
+          COLONY_ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.COLONY_ANDROID_UPLOAD_KEYSTORE_B64 }}
+          COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          COLONY_ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.COLONY_ANDROID_UPLOAD_KEY_PASSWORD }}
+          COLONY_ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.COLONY_ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$COLONY_ANDROID_UPLOAD_KEYSTORE_B64" && \
+                -z "$COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD" && \
+                -z "$COLONY_ANDROID_UPLOAD_KEY_PASSWORD" && \
+                -z "$COLONY_ANDROID_UPLOAD_KEY_ALIAS" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$COLONY_ANDROID_UPLOAD_KEYSTORE_B64" || \
+                -z "$COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD" || \
+                -z "$COLONY_ANDROID_UPLOAD_KEY_PASSWORD" || \
+                -z "$COLONY_ANDROID_UPLOAD_KEY_ALIAS" ]]; then
+            echo "::error::Colony Android upload signing requires all three secrets and the upload alias variable"
+            exit 1
+          fi
+          keystore_path="$RUNNER_TEMP/colony-android-upload.jks"
+          printf '%s' "$COLONY_ANDROID_UPLOAD_KEYSTORE_B64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+          test -s "$keystore_path"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "path=$keystore_path" >> "$GITHUB_OUTPUT"
+
       - name: Save Flutter package cache
         if: always() && steps.pub-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -112,13 +144,28 @@ jobs:
           path: ~/.pub-cache
           key: ${{ runner.os }}-android-runtime-pub-${{ hashFiles('mobile/pubspec.lock') }}
 
-      - name: Build the existing debug-signed APK
+      - name: Build the Colony dogfood APK
         env:
           COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
+          BUZZ_ANDROID_DEBUG_SIGNING: ${{ steps.android-signing.outputs.enabled == 'true' && 'upload-keystore' || 'debug' }}
+          BUZZ_ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.android-signing.outputs.path }}
+          BUZZ_ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.COLONY_ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          BUZZ_ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.COLONY_ANDROID_UPLOAD_KEY_ALIAS }}
+          BUZZ_ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.COLONY_ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_APK_SIGNING: ${{ steps.android-signing.outputs.enabled == 'true' && 'colony-upload-key' || 'android-debug-key' }}
         run: |
           just mobile-build-android
           test -s "$APK_PATH"
           sha256sum "$APK_PATH"
+
+      - name: Remove temporary upload keystore
+        if: always()
+        env:
+          KEYSTORE_PATH: ${{ steps.android-signing.outputs.path }}
+        run: |
+          if [[ -n "$KEYSTORE_PATH" ]]; then
+            rm -f -- "$KEYSTORE_PATH"
+          fi
 
       - name: Require the normal Linux emulator acceleration path
         shell: bash
