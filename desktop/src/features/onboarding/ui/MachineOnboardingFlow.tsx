@@ -14,6 +14,11 @@ import {
 import type { IdentityStorage } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
+import type {
+  AccountAuthClient,
+  AccountAuthRecord,
+} from "../accountAuthClient";
+import { AccountAuthFlow } from "./AccountAuthFlow";
 import { BackupStep } from "./BackupStep";
 import { DefaultConfigStep } from "./DefaultConfigStep";
 import { DownloadKeyStep } from "./DownloadKeyStep";
@@ -61,7 +66,7 @@ function unavailableBody(capability: NativeCapability): string {
     case "identity-backup":
       return "Identity backup and private-key export are not available in this Electron build yet. Your key has not been exported or replaced.";
     case "identity-import":
-      return "Importing an existing identity is not available in this Electron build yet. No key material was read or changed.";
+      return "Importing an existing identity is not available in this Electron build yet. No identity data was read or changed.";
     case "identity-recovery":
       return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Buzz desktop build.";
     case "identity-create":
@@ -78,6 +83,7 @@ export function MachineOnboardingFlow({
   identityLost,
   initialPage,
   queryClient,
+  authClient,
 }: {
   complete: (
     pubkey?: string,
@@ -88,6 +94,7 @@ export function MachineOnboardingFlow({
   identityLost: boolean;
   initialPage?: MachineOnboardingPage;
   queryClient: QueryClient;
+  authClient: AccountAuthClient;
 }) {
   const initialState = resolveInitialMachineOnboardingState({
     identityLost,
@@ -106,6 +113,7 @@ export function MachineOnboardingFlow({
     );
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
+  const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
   const [keyImportStage, setKeyImportStage] =
     React.useState<NostrKeyImportStage>("key-entry");
   const [isKeyImporting, setIsKeyImporting] = React.useState(false);
@@ -273,6 +281,30 @@ export function MachineOnboardingFlow({
     [continueWithIdentity, queryClient, showUnsupported],
   );
 
+  const installAccount = React.useCallback(
+    async (account: AccountAuthRecord) => {
+      if (!supportsNativeCapability("identity-import")) {
+        showUnsupported("identity-import");
+        throw new Error(unavailableBody("identity-import"));
+      }
+      const identity = await getIdentity();
+      if (identity.pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
+        throw new Error(
+          "The signed-in identity could not be loaded. Try again.",
+        );
+      }
+      continueWithIdentity(identity.pubkey);
+      queryClient.setQueryData(["identity"], identity);
+      setIdentityWasImported(true);
+      setAccountAuthenticated(true);
+      setSelectedPubkey(identity.pubkey);
+      setIdentityStorage(identity.storage);
+      setTransitionDirection("forward");
+      setPage("setup");
+    },
+    [continueWithIdentity, queryClient, showUnsupported],
+  );
+
   const backFromKeyImport = React.useCallback(() => {
     if (keyImportStage === "backup-password") {
       setKeyImportFormKey((current) => current + 1);
@@ -302,6 +334,11 @@ export function MachineOnboardingFlow({
   }, [backupSession]);
 
   const backFromSetup = React.useCallback(() => {
+    if (accountAuthenticated) {
+      setTransitionDirection("backward");
+      setPage("account-auth");
+      return;
+    }
     if (identityWasImported) {
       setKeyImportFormKey((current) => current + 1);
       setKeyImportStage("key-entry");
@@ -316,7 +353,7 @@ export function MachineOnboardingFlow({
     setTransitionDirection("backward");
     setReturningFromSecurity(false);
     setPage("backup");
-  }, [backupSession, backupSubview, identityWasImported]);
+  }, [accountAuthenticated, backupSession, backupSubview, identityWasImported]);
 
   const backFromConfig = React.useCallback(() => {
     setupSelectionHandoffRef.current = false;
@@ -371,6 +408,29 @@ export function MachineOnboardingFlow({
                       onClick: backFromConfig,
                     }
                   : undefined;
+
+  if (page === "account-auth") {
+    return (
+      <div
+        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
+        data-testid="machine-onboarding-gate"
+      >
+        <StartupWindowDragRegion />
+        <LandingBees />
+        <OnboardingCard current={1} testId="machine-onboarding-card">
+          <AccountAuthFlow
+            authClient={authClient}
+            onAdvanced={() => {
+              setAccountAuthenticated(false);
+              setTransitionDirection("forward");
+              setPage("identity");
+            }}
+            onAuthenticated={installAccount}
+          />
+        </OnboardingCard>
+      </div>
+    );
+  }
 
   if (page === "identity") {
     return (
@@ -454,6 +514,17 @@ export function MachineOnboardingFlow({
                   setPage("identity-key-help");
                 }}
               />
+              <button
+                className="mt-2 rounded-sm px-2 py-1 text-sm text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                data-testid="account-auth-back-from-advanced"
+                onClick={() => {
+                  setTransitionDirection("backward");
+                  setPage("account-auth");
+                }}
+                type="button"
+              >
+                Back to account options
+              </button>
             </OnboardingSlideTransition>
           </div>
         </OnboardingFooterProvider>

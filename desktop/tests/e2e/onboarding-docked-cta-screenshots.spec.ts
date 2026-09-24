@@ -2,7 +2,10 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { seedActiveIdentity } from "../helpers/onboarding";
+import {
+  openAdvancedIdentityPath,
+  seedActiveIdentity,
+} from "../helpers/onboarding";
 
 const BLANK_TYLER_IDENTITY = {
   ...TEST_IDENTITIES.tyler,
@@ -219,6 +222,7 @@ test("machine onboarding: landing, backup, setup docked CTAs", async ({
   await waitForAnimations(page);
   await page.screenshot({ path: `${SHOT_DIR}/01-landing.png` });
 
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Use an existing key" }).click();
   await expect(
     page.getByRole("heading", { name: "Enter your private key" }),
@@ -595,6 +599,7 @@ test("machine key import remains usable in a short viewport", async ({
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Use an existing key" }).click();
 
   const heading = page.getByRole("heading", { name: "Enter your private key" });
@@ -635,6 +640,7 @@ test("identity-key help stays inside the onboarding card", async ({ page }) => {
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await expect(
     page.getByRole("button", { name: "Learn how identity keys work" }),

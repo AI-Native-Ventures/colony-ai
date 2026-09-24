@@ -16,6 +16,21 @@ export async function seedActiveIdentity(
   );
 }
 
+/** Enter the legacy identity setup behind the account screen's advanced link. */
+export async function openAdvancedIdentityPath(page: Page) {
+  await expect(page.getByTestId("account-auth-screen-choice")).toBeVisible();
+  await page.getByTestId("account-auth-advanced").click();
+  await expect(
+    page.getByRole("button", { name: "Create a new identity key" }),
+  ).toBeVisible();
+}
+
+/** Open key import through the account screen's Advanced path. */
+export async function openExistingKeyImport(page: Page) {
+  await openAdvancedIdentityPath(page);
+  await page.getByRole("button", { name: "Use an existing key" }).click();
+}
+
 /** Continue past the created-key page without opening optional backup options. */
 export async function passThroughBackupStep(page: Page) {
   await expect(page.getByTestId("onboarding-page-backup")).toBeVisible();

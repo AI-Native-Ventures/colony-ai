@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openAdvancedIdentityPath } from "../helpers/onboarding";
 
 const SAMPLE_NSEC =
   "nsec1u70xptkumvfc4k4hu0rc4fnzcexvw63zvq2ng9vmqujsaayhparqu8eju9";
@@ -13,6 +14,7 @@ test("key import masks the key with a reveal toggle", async ({ page }) => {
     skipOnboardingSeed: true,
   });
   await page.goto("/");
+  await openAdvancedIdentityPath(page);
 
   await page.getByRole("button", { name: "Use an existing key" }).click();
   const input = page.getByTestId("nostr-import-nsec-input");
