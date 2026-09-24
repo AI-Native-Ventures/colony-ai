@@ -320,7 +320,10 @@ mod tests {
             config.profile.apns_cert_path,
             PathBuf::from("/dogfood-identity.pem")
         );
-        assert_eq!(config.profile.apns_topic, "ventures.ainative.colony.dogfood");
+        assert_eq!(
+            config.profile.apns_topic,
+            "ventures.ainative.colony.dogfood"
+        );
 
         for variable in [
             "BUZZ_PUSH_DOGFOOD_APNS_CERT_PATH",
