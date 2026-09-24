@@ -184,3 +184,29 @@ FROM runtime-base AS runtime
 COPY --from=stripped-binaries /build/target/release/buzz-relay /usr/local/bin/buzz-relay
 COPY --from=stripped-binaries /build/target/release/buzz-admin /usr/local/bin/buzz-admin
 COPY --from=stripped-binaries /build/target/release/buzz-pair-relay /usr/local/bin/buzz-pair-relay
+
+# Resolve the repository-pinned pgschema package once at build time. Only the
+# canary target below receives this binary; the normal public relay image stays
+# small and does not need a schema planner.
+FROM builder AS pgschema-tool
+RUN ./bin/pgschema help >/dev/null \
+    && pgschema="$(find /root/.cache/hermit/pkg -type f -name pgschema -print -quit)" \
+    && test -n "${pgschema}" \
+    && install -D -m 0555 "${pgschema}" /out/pgschema
+
+# Fly release commands preserve Docker ENTRYPOINT and replace CMD. This
+# canary-only image adds the desired-state schema tools and a small entrypoint
+# that dispatches Fly's one-off release command without starting the relay.
+FROM runtime AS runtime-canary
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client python3-minimal \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=pgschema-tool /out/pgschema /usr/local/bin/pgschema
+COPY scripts/fly-apply-schema.py /usr/local/bin/fly-apply-schema.py
+COPY scripts/fly-entrypoint.sh /usr/local/bin/fly-entrypoint
+COPY schema/schema.sql /opt/buzz/schema/schema.sql
+COPY scripts/reconcile-schema-after-pgschema.sql /opt/buzz/schema/reconcile-schema-after-pgschema.sql
+RUN chmod 0555 /usr/local/bin/fly-apply-schema.py /usr/local/bin/fly-entrypoint
+USER buzz:buzz
+ENTRYPOINT ["/usr/local/bin/fly-entrypoint"]

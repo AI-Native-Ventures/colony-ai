@@ -39,7 +39,11 @@ coverage/
 dist/
 playwright-report/
 test-results/
-bin/
+bin/*
+!bin/hermit
+!bin/hermit.hcl
+!bin/pgschema
+!bin/.pgschema-1.7.4.pkg
 sidecars/
 
 # Docs the image doesn't ship. examples/ stays — examples/countdown-bot is
