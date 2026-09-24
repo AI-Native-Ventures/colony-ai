@@ -270,6 +270,9 @@ enum Cmd {
     /// Upload files to the relay's Blossom store
     #[command(subcommand)]
     Upload(UploadCmd),
+    /// Read and purchase account credits
+    #[command(subcommand)]
+    Credits(CreditsCmd),
     /// Agent engram management — persistent memory per NIP-AE
     #[command(subcommand)]
     Mem(MemCmd),
@@ -1975,6 +1978,35 @@ pub enum MemCmd {
     },
 }
 
+/// Subcommands for `buzz credits`.
+#[derive(Subcommand)]
+pub enum CreditsCmd {
+    /// Show the account's available credit balance.
+    Balance,
+    /// Show account credit usage recorded by the server ledger.
+    Usage,
+    /// Show confirmed account credit transactions.
+    History,
+    /// List server-priced PayFast credit packs.
+    Packs,
+    /// Create a hosted PayFast checkout for one pack.
+    Pay {
+        /// Pack identifier from `buzz credits packs`.
+        pack_id: String,
+        /// Email address sent to the checkout provider.
+        #[arg(long)]
+        email: String,
+        /// Reuse this key to safely recover a checkout after an unknown result.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Read one checkout intent by its reference.
+    Verify {
+        /// Reference returned by `buzz credits pay`.
+        reference: String,
+    },
+}
+
 /// Subcommands for `buzz pack`.
 #[derive(Subcommand)]
 pub enum PackCmd {
@@ -2190,6 +2222,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Pr(sub) => commands::pr::dispatch(sub, &client).await,
         Cmd::Media(sub) => commands::upload::dispatch_media(sub, &client).await,
         Cmd::Upload(sub) => commands::upload::dispatch(sub, &client).await,
+        Cmd::Credits(sub) => commands::credits::dispatch(sub, &client).await,
         Cmd::Mem(sub) => commands::mem::dispatch(sub, &client).await,
         Cmd::Moderation(sub) => commands::moderation::dispatch(sub, &client, &cli.format).await,
         Cmd::Pack(_) => unreachable!("handled above"),
@@ -2250,6 +2283,28 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn credits_checkout_accepts_a_stable_idempotency_key() {
+        let cli = parse_args([
+            "buzz",
+            "credits",
+            "pay",
+            "starter",
+            "--email",
+            "founder@example.com",
+            "--idempotency-key",
+            "12a5736a-5297-4acd-8475-706652df92dc",
+        ])
+        .expect("credits command parses");
+        assert!(matches!(
+            cli.command,
+            Cmd::Credits(CreditsCmd::Pay {
+                idempotency_key: Some(_),
+                ..
+            })
+        ));
     }
 
     #[test]
