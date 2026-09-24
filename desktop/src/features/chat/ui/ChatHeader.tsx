@@ -26,6 +26,7 @@ type ChatHeaderProps = {
   /** Ref to the outer chrome wrapper when `belowSystemChrome` is true. */
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   title: string;
+  titleClassName?: string;
   description?: string;
   channelType?: ChannelType;
   visibility?: ChannelVisibility;
@@ -91,6 +92,7 @@ export function ChatHeader({
   belowSystemChrome = false,
   chromeWrapperRef,
   title,
+  titleClassName,
   description,
   channelType,
   visibility,
@@ -140,6 +142,7 @@ export function ChatHeader({
               className={cn(
                 "min-w-0 truncate text-base font-semibold leading-6 tracking-tight",
                 channelType !== "dm" && "translate-y-px",
+                titleClassName,
               )}
               data-testid="chat-title"
               title={trimmedDescription || undefined}

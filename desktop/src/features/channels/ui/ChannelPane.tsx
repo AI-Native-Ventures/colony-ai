@@ -58,6 +58,7 @@ import {
 } from "@/features/channels/ui/ChannelPane.helpers";
 import { HuddleStartingView, HuddleTranscriptIntro } from "@/features/huddle";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
+import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
@@ -371,7 +372,9 @@ export const ChannelPane = React.memo(function ChannelPane({
     onOpenMembers,
     onWelcomeAddAgent: onAddAgent ? handleWelcomeAddAgent : undefined,
   });
-  const channelIntro = isHuddleTranscript ? null : standardChannelIntro;
+  const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
+  const channelIntro =
+    isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
   const { mainTimelineEntries, recentMentions, visibleMessages } =
     useChannelPaneMessages({
       activeChannel,
@@ -616,6 +619,9 @@ export const ChannelPane = React.memo(function ChannelPane({
           }
         >
           {isHuddleTranscript ? null : header}
+          {!isHuddleTranscript && activeChannel && hasOpenMessageThread ? (
+            <ChannelWorkspaceTabs />
+          ) : null}
           {isHuddleTranscript && huddleThreadRepliesError ? (
             <div className="px-5 pt-3">
               <ThreadRepliesErrorCard onRetry={onRetryHuddleThreadReplies} />

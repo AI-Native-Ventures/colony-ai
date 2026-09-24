@@ -35,6 +35,7 @@ type ChannelScreenHeaderProps = {
   activeChannel: Channel | null;
   activeChannelEphemeralDisplay: EphemeralChannelDisplay | null;
   activeChannelTitle: string;
+  referenceThreadPresentation?: boolean;
   actionsVariant?: "inline" | "compact";
   activeDmAvatarUrl: string | null;
   activeDmHeaderParticipants: ActiveDmHeaderParticipant[];
@@ -56,6 +57,7 @@ export function ChannelScreenHeader({
   activeChannel,
   activeChannelEphemeralDisplay,
   activeChannelTitle,
+  referenceThreadPresentation = false,
   actionsVariant = "inline",
   activeDmAvatarUrl,
   activeDmHeaderParticipants,
@@ -141,7 +143,7 @@ export function ChannelScreenHeader({
 
   return (
     <ChatHeader
-      belowSystemChrome
+      belowSystemChrome={!referenceThreadPresentation}
       chromeWrapperRef={chromeWrapperRef}
       actions={actions}
       channelType={activeChannel?.channelType}
@@ -209,6 +211,9 @@ export function ChannelScreenHeader({
         </>
       }
       title={activeChannelTitle}
+      titleClassName={
+        referenceThreadPresentation ? "text-channel-title" : undefined
+      }
       titleAdornment={
         activeChannel?.channelType === "dm" && !isGroupDm ? (
           <UserNameIndicators

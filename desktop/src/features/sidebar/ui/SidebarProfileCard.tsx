@@ -18,6 +18,7 @@ import { useMyRelayMembershipLookupQuery } from "@/features/community-members/ho
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
 import type { PresenceStatus, Profile, UserStatus } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
+import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
 
 type SidebarProfileCardProps = {
   activeCommunity: Community | null;
@@ -83,6 +84,20 @@ export function SidebarProfileCard({
     [toggleProfilePopover],
   );
   const hasStatus = Boolean(selfUserStatus?.text || selfUserStatus?.emoji);
+
+  React.useEffect(() => {
+    const openProfilePopover = () => setProfilePopoverOpen(true);
+    window.addEventListener(
+      OPEN_SIDEBAR_PROFILE_POPOVER_EVENT,
+      openProfilePopover,
+    );
+    return () =>
+      window.removeEventListener(
+        OPEN_SIDEBAR_PROFILE_POPOVER_EVENT,
+        openProfilePopover,
+      );
+  }, []);
+
   const communityLabel = activeCommunity?.name ?? "No community";
   const readonlyCommunityLabel = (
     <span

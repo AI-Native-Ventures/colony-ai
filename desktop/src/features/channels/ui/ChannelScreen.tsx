@@ -18,6 +18,7 @@ import {
 } from "@/features/channels/readState/readStateFormat";
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
+import { ChannelWorkspaceTopBar } from "@/features/channels/ui/ChannelWorkspaceTopBar";
 import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { ForumChannelContent } from "@/features/channels/ui/ForumChannelContent";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
@@ -744,6 +745,7 @@ export function ChannelScreen({
         activeChannel={activeChannel}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
+        referenceThreadPresentation={Boolean(openThreadHeadId)}
         actionsVariant={shouldCompactHeaderActions ? "compact" : "inline"}
         activeDmAvatarUrl={activeDmAvatarUrl}
         activeDmHeaderParticipants={activeDmHeaderParticipants}
@@ -764,6 +766,7 @@ export function ChannelScreen({
       activeChannel,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
+      openThreadHeadId,
       shouldCompactHeaderActions,
       activeDmAvatarUrl,
       activeDmHeaderParticipants,
@@ -805,10 +808,18 @@ export function ChannelScreen({
           }}
           open={emptyDeleteId !== null}
         />
-        <div
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          ref={channelContentRef}
-        >
+        <div className="colony-channel-route">
+          {activeChannel ? (
+            <ChannelWorkspaceTopBar
+              channelTitle={activeChannelTitle}
+              isThreadOpen={Boolean(openThreadHeadId)}
+              onOpenInbox={() => void goHome()}
+            />
+          ) : null}
+          <div
+            className="colony-channel-route-content"
+            ref={channelContentRef}
+          >
           {activeChannel ? (
             activeChannel.channelType === "forum" ? (
               searchForwarding.renderSearchAwareForum(
@@ -981,7 +992,7 @@ export function ChannelScreen({
           ) : (
             <ChannelScreenEmptyState />
           )}
-        </div>
+          </div>
         <MembersSidebar
           channel={activeChannel}
           currentPubkey={currentPubkey}
@@ -990,6 +1001,7 @@ export function ChannelScreen({
           onViewActivity={handleOpenAgentSession}
           relayUrl={activeCommunity?.relayUrl}
         />
+        </div>
       </ProfilePanelProvider>
     </AgentSessionProvider>
   );
