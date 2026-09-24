@@ -501,6 +501,23 @@ pub struct Config {
     /// Default: `false`. Set via `BUZZ_ALLOW_NIP_OA_AUTH=true`.
     pub allow_nip_oa_auth: bool,
 
+    /// Domain suffix for member self-serve community creation.
+    ///
+    /// When set, an authenticated signer can create `<slug>.<domain>` and
+    /// becomes its owner. `None` disables the self-serve endpoints.
+    pub self_provision_domain: Option<String>,
+
+    /// Allow signers without an existing community membership to create their
+    /// first community. Requires `self_provision_domain` and enables the
+    /// shared Redis-backed IP and deployment creation limits below.
+    pub self_provision_public: bool,
+
+    /// Public-mode community creation attempts allowed per source IP per hour.
+    pub self_provision_public_ip_limit: u32,
+
+    /// Public-mode community creation attempts allowed across the relay deployment per hour.
+    pub self_provision_public_global_limit: u32,
+
     /// Relay-owned KLIPY integration. Unset means GIF search is not advertised
     /// and its proxy routes return 404.
     pub klipy: Option<KlipyConfig>,
@@ -600,6 +617,50 @@ fn positive_u64_from_env(name: &str, default: u64) -> Result<u64, ConfigError> {
         Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
             "{name} must be valid Unicode"
         ))),
+    }
+}
+
+fn parse_positive_u32(name: &str, default: u32) -> Result<u32, ConfigError> {
+    match std::env::var(name) {
+        Ok(raw) => raw
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| ConfigError::InvalidValue(format!("{name} must be a positive integer"))),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
+            "{name} must be valid Unicode"
+        ))),
+    }
+}
+
+fn parse_self_provision_domain(raw: &str) -> Result<Option<String>, ConfigError> {
+    let domain = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    if domain.is_empty() {
+        return Ok(None);
+    }
+
+    // DNS limits each slug label to 63 octets, and the full host is stored in
+    // communities.host VARCHAR(255). Reserve room for the dot plus the longest
+    // accepted slug so every name accepted by availability can be persisted.
+    let valid = domain.len() <= 191
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        });
+    if valid {
+        Ok(Some(domain))
+    } else {
+        Err(ConfigError::InvalidValue(
+            "BUZZ_SELF_PROVISION_DOMAIN must be a bare domain that fits communities.host"
+                .to_string(),
+        ))
     }
 }
 
@@ -921,6 +982,29 @@ impl Config {
         let allow_nip_oa_auth = std::env::var("BUZZ_ALLOW_NIP_OA_AUTH")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
+
+        let self_provision_domain = match std::env::var("BUZZ_SELF_PROVISION_DOMAIN") {
+            Ok(value) => parse_self_provision_domain(&value)?,
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(ConfigError::InvalidValue(
+                    "BUZZ_SELF_PROVISION_DOMAIN must be valid Unicode".to_string(),
+                ));
+            }
+        };
+
+        let self_provision_public = std::env::var("BUZZ_SELF_PROVISION_PUBLIC")
+            .map(|value| value == "true" || value == "1")
+            .unwrap_or(false);
+        if self_provision_public && self_provision_domain.is_none() {
+            return Err(ConfigError::InvalidValue(
+                "BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN".to_string(),
+            ));
+        }
+        let self_provision_public_ip_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_IP_LIMIT", 3)?;
+        let self_provision_public_global_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_GLOBAL_LIMIT", 50)?;
 
         let klipy = std::env::var("BUZZ_KLIPY_API_KEY")
             .ok()
@@ -1458,6 +1542,10 @@ impl Config {
             relay_operator_api_origin,
             relay_operator_pubkeys,
             allow_nip_oa_auth,
+            self_provision_domain,
+            self_provision_public,
+            self_provision_public_ip_limit,
+            self_provision_public_global_limit,
             klipy,
             media,
             media_max_concurrent_uploads,
@@ -1489,6 +1577,40 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn self_provision_domain_reserves_room_for_the_longest_slug() {
+        let longest_domain = format!("{}.{}.{}.a", "a".repeat(63), "b".repeat(63), "c".repeat(61));
+        assert_eq!(longest_domain.len(), 191);
+        assert_eq!(
+            parse_self_provision_domain(&longest_domain).expect("valid maximum domain"),
+            Some(longest_domain.clone())
+        );
+        assert_eq!(format!("{}.{}", "s".repeat(63), longest_domain).len(), 255);
+
+        let too_long = format!(
+            "{}.{}.{}.ab",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(61)
+        );
+        assert_eq!(too_long.len(), 192);
+        assert!(parse_self_provision_domain(&too_long).is_err());
+    }
+
+    #[test]
+    fn self_provision_domain_normalizes_and_rejects_non_domain_values() {
+        assert_eq!(
+            parse_self_provision_domain(" Colony.Example. ").expect("domain"),
+            Some("colony.example".to_string())
+        );
+        assert_eq!(
+            parse_self_provision_domain("  ").expect("empty domain"),
+            None
+        );
+        assert!(parse_self_provision_domain("https://colony.example").is_err());
+        assert!(parse_self_provision_domain("-invalid.example").is_err());
+    }
 
     #[test]
     fn klipy_config_debug_redacts_the_api_key() {

@@ -229,6 +229,56 @@ async fn publish_membership_snapshot_if_required(
     }
 }
 
+/// Create a community for an authenticated owner without operator authority.
+///
+/// The caller must validate the host and authenticate the actor. The database
+/// transaction atomically enforces the owner cap, inserts the community, and
+/// grants the owner role. A same-owner retry returns the existing community,
+/// which lets the caller retry membership snapshot publication after a
+/// partial response failure.
+pub(crate) async fn create_community_for_owner(
+    state: &Arc<AppState>,
+    host: &str,
+    owner_pubkey: &str,
+    actor_pubkey: &str,
+) -> Result<buzz_db::CreatedCommunityRecord, String> {
+    let record = match state
+        .db
+        .create_community_with_owner(host, owner_pubkey)
+        .await
+        .map_err(|error| format!("failed to create community: {error}"))?
+    {
+        buzz_db::CreateCommunityWithOwnerResult::Created(record) => record,
+        buzz_db::CreateCommunityWithOwnerResult::HostExists => {
+            return Err("community already exists".to_string());
+        }
+        buzz_db::CreateCommunityWithOwnerResult::LimitReached => {
+            return Err(
+                "limit_reached: owner already owns the maximum number of communities".to_string(),
+            );
+        }
+    };
+
+    info!(
+        actor = %actor_pubkey,
+        community = %record.id,
+        host = %record.host,
+        owner = %owner_pubkey,
+        "community created via self-serve provisioning"
+    );
+
+    if state.config.require_relay_membership {
+        let tenant = TenantContext::resolved(record.id, &record.host);
+        crate::handlers::side_effects::publish_nip43_membership_list(&tenant, state)
+            .await
+            .map_err(|error| {
+                format!("community created but membership snapshot publication failed: {error}")
+            })?;
+    }
+
+    Ok(record)
+}
+
 /// Validate and execute a relay-operator community provisioning request.
 ///
 /// The caller is an HTTP operator endpoint, not the Nostr event ingest path.
