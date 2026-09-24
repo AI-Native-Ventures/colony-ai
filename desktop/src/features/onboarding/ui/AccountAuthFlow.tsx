@@ -18,6 +18,14 @@ import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "../accountAuthClient";
+import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
+import { LandingBees } from "./LandingBees";
+import { OnboardingCard } from "./OnboardingCard";
+import {
+  OnboardingScenePresentation,
+  type OnboardingSceneData,
+} from "./OnboardingScenePresentation";
+import type { OnboardingSceneId } from "./onboardingScenes";
 
 const MIN_PASSWORD_LENGTH = 10;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -28,6 +36,7 @@ type AccountAuthFlowProps = {
   onAdvanced?: () => void;
   onAuthenticated: (account: AccountAuthRecord) => Promise<void> | void;
   onCancel?: () => void;
+  standalone?: boolean;
 };
 
 function normalizedEmail(value: string) {
@@ -165,6 +174,7 @@ export function AccountAuthFlow({
   onAdvanced,
   onAuthenticated,
   onCancel,
+  standalone = false,
 }: AccountAuthFlowProps) {
   const [state, dispatch] = React.useReducer(
     accountAuthFlowReducer,
@@ -173,6 +183,7 @@ export function AccountAuthFlow({
   );
   const [password, setPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
+  const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [cooldownRequest, setCooldownRequest] = React.useState({
@@ -334,7 +345,7 @@ export function AccountAuthFlow({
     state.failure?.code === "rate_limited" && resendCooldown > 0;
   const waitLabel = rateLimitLocked ? `Try again in ${resendCooldown}s` : null;
 
-  return (
+  const legacyContent = (
     <section
       aria-labelledby="account-auth-title"
       className="mx-auto flex w-full max-w-[440px] flex-col items-stretch gap-6"
@@ -741,4 +752,78 @@ export function AccountAuthFlow({
       ) : null}
     </section>
   );
+
+  const designedScene =
+    state.screen === "signup"
+      ? state.failure?.code === "email_taken" ||
+        state.failure?.code === "identity_taken"
+        ? "account-error"
+        : "account"
+      : state.screen === "signin"
+        ? "signin"
+        : state.screen === "reset-request"
+          ? "forgot"
+          : null;
+
+  if (standalone && mode === "onboarding" && designedScene) {
+    const data: OnboardingSceneData = {
+      name,
+      email: state.email,
+      business: "",
+      website: "",
+      description: "",
+      pending,
+    };
+    const navigate = (scene: OnboardingSceneId) => {
+      if (scene === "account") dispatchAndClear({ type: "begin_signup" });
+      else if (scene === "signin") dispatchAndClear({ type: "show_signin" });
+      else if (scene === "forgot") dispatchAndClear({ type: "begin_reset" });
+    };
+    const submit =
+      state.screen === "signup"
+        ? submitSignup
+        : state.screen === "signin"
+          ? submitSignin
+          : submitResetRequest;
+
+    return (
+      <div
+        className="colony-onboarding-auth-root"
+        data-testid="machine-onboarding-gate"
+      >
+        <div data-testid={`account-auth-screen-${state.screen}`}>
+          <StartupWindowDragRegion />
+          <OnboardingScenePresentation
+            data={data}
+            error={failureText}
+            onEmailChange={(email) =>
+              dispatchAndClear({ type: "set_email", email })
+            }
+            onNameChange={setName}
+            onNavigate={navigate}
+            onPasswordChange={setPassword}
+            onSubmit={submit}
+            scene={designedScene}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (standalone && mode === "onboarding") {
+    return (
+      <div
+        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
+        data-testid="machine-onboarding-gate"
+      >
+        <StartupWindowDragRegion />
+        <LandingBees />
+        <OnboardingCard current={1} testId="machine-onboarding-card">
+          {legacyContent}
+        </OnboardingCard>
+      </div>
+    );
+  }
+
+  return legacyContent;
 }

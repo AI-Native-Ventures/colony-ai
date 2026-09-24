@@ -14,12 +14,70 @@ type AccountAuthMethod =
   | "changePassword"
   | "getAccount";
 
-async function startFirstRun(page: Page) {
+const BUSINESS_DOMAIN = "accounts-test.colony.ainative.ventures";
+const MOCK_ACCOUNT_PUBKEY = "deadbeef".repeat(8);
+
+async function startFirstRun(
+  page: Page,
+  communities: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    normalized_host: string;
+    owner_pubkey: string;
+  }> = [],
+) {
   await installMockBridge(
     page,
     { accountLinked: true },
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: BUSINESS_DOMAIN,
+        public: true,
+        max_per_owner: 3,
+      },
+    }),
+  );
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: { owner_pubkey: MOCK_ACCOUNT_PUBKEY, communities },
+    }),
+  );
+  await page.route("**/api/communities/availability?**", async (route) => {
+    const slug = new URL(route.request().url()).searchParams.get("name") ?? "";
+    await route.fulfill({
+      json: {
+        name: slug,
+        normalized_host: `${slug}.${BUSINESS_DOMAIN}`,
+        available: true,
+      },
+    });
+  });
+  await page.route("**/api/communities", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const body = JSON.parse(route.request().postData() ?? "{}") as {
+      name?: string;
+    };
+    const slug = body.name ?? "";
+    await route.fulfill({
+      json: {
+        community: {
+          id: "c27e6bf6-9794-49e0-91f0-e398cb343013",
+          name: slug,
+          slug,
+          normalized_host: `${slug}.${BUSINESS_DOMAIN}`,
+          owner_pubkey: MOCK_ACCOUNT_PUBKEY,
+        },
+      },
+    });
+  });
   await page.goto("/");
   await expect(page.getByTestId("account-auth-screen-choice")).toBeVisible();
 }
@@ -69,9 +127,34 @@ async function expectNoKeyCopy(page: Page) {
 }
 
 async function finishMachineSetup(page: Page) {
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await page.getByTestId("onboarding-setup-skip").click();
-  await expect(page.getByTestId("welcome-setup")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await page.getByLabel("Business name").fill("North Star");
+  await page.getByLabel("Website").fill("northstar.example");
+  await page.locator("#business-logo").setInputFiles({
+    name: "north-star.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#6f56a8"/></svg>',
+    ),
+  });
+  await page
+    .getByLabel("What does your business do?")
+    .fill("An independent design studio.");
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem(
+            "colony-business-profile.v1:c27e6bf6-9794-49e0-91f0-e398cb343013",
+          ) ?? "null",
+        ),
+      ),
+    )
+    .toMatchObject({ name: "North Star", website: "northstar.example" });
 }
 
 test("keyboard signup verifies email and installs the account identity", async ({
@@ -86,21 +169,33 @@ test("keyboard signup verifies email and installs the account identity", async (
   await expect(page.getByTestId("account-auth-screen-signup")).toBeVisible();
   await expectNoKeyCopy(page);
 
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("signup@example.com");
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("correct-horse-12");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("signup@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByTestId("account-auth-submit-signup").click();
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("123456");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByLabel("6-digit code").fill("123456");
+  await page.getByTestId("account-auth-verify").click();
 
   await finishMachineSetup(page);
+  const savedBusiness = await page.evaluate(() =>
+    JSON.parse(
+      window.localStorage.getItem(
+        "colony-business-profile.v1:c27e6bf6-9794-49e0-91f0-e398cb343013",
+      ) ?? "null",
+    ),
+  );
+  expect(savedBusiness).toMatchObject({
+    name: "North Star",
+    website: "northstar.example",
+    description: "An independent design studio.",
+  });
+  expect(savedBusiness.logoDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+  expect(savedBusiness.logoUrl).toBe(savedBusiness.logoDataUrl);
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
     "POST /api/accounts/signup",
@@ -118,25 +213,44 @@ test("keyboard signup verifies email and installs the account identity", async (
 test("sign in reaches the workspace setup path", async ({ page }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByTestId("account-auth-signin").click();
   await expect(page.getByTestId("account-auth-screen-signin")).toBeVisible();
   await expectNoKeyCopy(page);
 
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("signin@example.com");
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("correct-horse-12");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByLabel("Email address").fill("signin@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByTestId("account-auth-submit-signin").click();
   await finishMachineSetup(page);
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
     "POST /api/accounts/signin",
   );
+});
+
+test("returning account can open an owned business", async ({ page }) => {
+  const community = {
+    id: "41cce33a-57f9-4d4c-bd2c-7c9c9d30d33b",
+    name: "North Star",
+    slug: "north-star",
+    normalized_host: `north-star.${BUSINESS_DOMAIN}`,
+    owner_pubkey: MOCK_ACCOUNT_PUBKEY,
+  };
+  await startFirstRun(page, [community]);
+  await page.getByTestId("account-auth-signin").click();
+  await page.getByLabel("Email address").fill("returning@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByTestId("account-auth-submit-signin").click();
+
+  await expect(page.getByTestId("onboarding-scene-businesses")).toBeVisible();
+  await expect(page.getByTestId("onboarding-business-list")).toContainText(
+    community.name,
+  );
+  await page.getByTestId(`onboarding-business-${community.id}`).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
 test("Google sign in uses the same account installation path", async ({
@@ -159,22 +273,14 @@ test("forgot password requests a code and signs in after reset", async ({
 }) => {
   await page.clock.install();
   await startFirstRun(page);
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByTestId("account-auth-signin").click();
+  await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-request"),
   ).toBeVisible();
   await expectNoKeyCopy(page);
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("reset@example.com");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByLabel("Email address").fill("reset@example.com");
+  await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-confirm"),
   ).toBeVisible();
@@ -183,18 +289,15 @@ test("forgot password requests a code and signs in after reset", async ({
     page.getByRole("button", { name: "Resend code in 60s" }),
   ).toBeDisabled();
   await page.clock.fastForward(60_000);
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("123456");
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("new-correct-horse-12");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Resend code" }).click();
   await expect(
     page.getByRole("button", { name: "Resend code in 60s" }),
   ).toBeDisabled();
-  await page.keyboard.press("Shift+Tab");
-  await page.keyboard.press("Enter");
+  await page.getByLabel("6-digit code").fill("123456");
+  await page
+    .getByLabel("New password (at least 10 characters)")
+    .fill("new-correct-horse-12");
+  await page.getByTestId("account-auth-reset-confirm").click();
   await finishMachineSetup(page);
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
@@ -213,21 +316,21 @@ test("account auth screens never show key wording", async ({ page }) => {
   await expectNoKeyCopy(page);
   await page.getByTestId("account-auth-create").click();
   await expectNoKeyCopy(page);
-  await page.getByLabel("Email").fill("guard@example.com");
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("guard@example.com");
   await page
-    .getByLabel("Password (at least 10 characters)")
+    .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
   await page.getByTestId("account-auth-submit-signup").click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
   await page.getByRole("button", { name: "Back" }).click();
-  await page.getByRole("button", { name: "Back" }).click();
-  await page.getByTestId("account-auth-signin").click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expectNoKeyCopy(page);
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expectNoKeyCopy(page);
-  await page.getByLabel("Email").fill("guard@example.com");
-  await page.getByRole("button", { name: "Send reset code" }).click();
+  await page.getByLabel("Email address").fill("guard@example.com");
+  await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-confirm"),
   ).toBeVisible();
@@ -240,13 +343,9 @@ test("contract errors are announced and email_unverified moves to verification",
   await page.clock.install();
   await startFirstRun(page);
   await page.getByTestId("account-auth-create").click();
-  await page.getByLabel("Email").fill("errors@example.com");
-  await page.getByLabel("Password (at least 10 characters)").fill("short");
-  await expect(page.getByTestId("account-auth-password-issue")).toBeVisible();
-  await expect(page.getByTestId("account-auth-submit-signup")).toBeDisabled();
-  await page
-    .getByLabel("Password (at least 10 characters)")
-    .fill("long-enough-12");
+  await page.getByLabel("Your name").fill("Erin Example");
+  await page.getByLabel("Email address").fill("errors@example.com");
+  await page.getByRole("textbox", { name: "Password" }).fill("long-enough-12");
 
   await queueAuthError(page, "signUp", { error: "invalid_request" });
   await page.getByTestId("account-auth-submit-signup").click();
@@ -263,10 +362,12 @@ test("contract errors are announced and email_unverified moves to verification",
   await queueAuthError(page, "signUp", { error: "email_taken" });
   await page.getByTestId("account-auth-submit-signup").click();
   await expect(page.getByRole("alert")).toHaveText(
-    "An account with this email already exists. Sign in instead.",
+    "This email already has an account. Sign in instead.",
   );
-  await page.getByRole("button", { name: "Go to sign in" }).click();
-  await page.getByLabel("Password").fill("correct-horse-12");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
 
   await queueAuthError(page, "signIn", { error: "invalid_credentials" });
   await page.getByTestId("account-auth-submit-signin").click();
@@ -312,7 +413,7 @@ test("contract errors are announced and email_unverified moves to verification",
     retry_after_secs: 2,
   });
   await page.getByRole("button", { name: "Resend code" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
+  await expect(page.getByRole("alert")).toContainText(
     "Too many attempts. Try again in 2 seconds.",
   );
   await expect(

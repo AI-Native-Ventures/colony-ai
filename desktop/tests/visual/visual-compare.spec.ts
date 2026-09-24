@@ -96,11 +96,18 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
-        // Owner decision 2026-09-24: the app ships Manrope instead of Satoshi
-        // (Satoshi's license bars its file from a public repo). Serve the
-        // reference's own Manrope file in place of Satoshi so diffs measure
-        // layout, not typeface.
-        await referencePage.route("**/satoshi-variable.woff2", async (route) => {
+        // Owner decision 2026-09-24: compare the app and frozen reference in
+        // Manrope while keeping the reference package read-only.
+        await referencePage.route("**/*.css*", async (route) => {
+          const response = await route.fetch();
+          const css = (await response.text()).replaceAll(
+            "Satoshi",
+            "Manrope Variable",
+          );
+          await route.fulfill({ response, body: css });
+        });
+        // Serve the local reference Manrope face for the frozen font request.
+        await referencePage.route("**/*.woff2", async (route) => {
           const manrope = new URL(
             "manrope-latin.woff2",
             new URL(route.request().url()),
@@ -116,6 +123,7 @@ test.describe("visual comparison captures", () => {
         await referencePage.goto(entry.referenceUrl, {
           waitUntil: "domcontentloaded",
         });
+        await referencePage.waitForLoadState("load");
 
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
@@ -124,10 +132,11 @@ test.describe("visual comparison captures", () => {
         await appPage.goto(appUrl, {
           waitUntil: "domcontentloaded",
         });
+        await appPage.waitForLoadState("load");
 
         await waitForCaptureReady(
           referencePage,
-          "Satoshi",
+          "Manrope Variable",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -138,7 +147,7 @@ test.describe("visual comparison captures", () => {
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
-          "Satoshi",
+          "Manrope Variable",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -264,25 +273,30 @@ async function waitForCaptureReady(
     );
   }, expectedFont);
   await waitForAnimations(page);
-  const fontState = await page.evaluate((family) => {
-    const computed = getComputedStyle(document.body).fontFamily;
-    const available = Array.from(document.fonts).some((face) => {
-      const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
-      const weight = face.weight.trim();
-      const supports400 =
-        weight === "normal" ||
-        weight === "400" ||
-        (/^\d+\s+\d+$/.test(weight) &&
-          Number(weight.split(/\s+/)[0]) <= 400 &&
-          Number(weight.split(/\s+/)[1]) >= 400);
-      return name === family && face.status === "loaded" && supports400;
-    });
-    return {
-      computed,
-      available,
-      check: document.fonts.check(`400 14px "${family}"`),
-    };
-  }, expectedFont);
+  const fontState = await page.evaluate(
+    ({ family, selector }) => {
+      const fontTarget =
+        document.querySelector(selector ?? "") ?? document.body;
+      const computed = getComputedStyle(fontTarget).fontFamily;
+      const available = Array.from(document.fonts).some((face) => {
+        const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
+        const weight = face.weight.trim();
+        const supports400 =
+          weight === "normal" ||
+          weight === "400" ||
+          (/^\d+\s+\d+$/.test(weight) &&
+            Number(weight.split(/\s+/)[0]) <= 400 &&
+            Number(weight.split(/\s+/)[1]) >= 400);
+        return name === family && face.status === "loaded" && supports400;
+      });
+      return {
+        computed,
+        available,
+        check: document.fonts.check(`400 14px "${family}"`),
+      };
+    },
+    { family: expectedFont, selector: readySelector },
+  );
   if (
     !fontState.computed.includes(expectedFont) ||
     !fontState.available ||
