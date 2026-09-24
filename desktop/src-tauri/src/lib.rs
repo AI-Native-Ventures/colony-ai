@@ -11,6 +11,7 @@ mod egress_guard;
 mod electron_host;
 mod event_sync;
 mod events;
+mod factory_runtime;
 mod huddle;
 mod identity_storage;
 mod initial_window;
@@ -243,6 +244,7 @@ pub fn run() {
         .manage(BuilderlabLogin::default())
         .manage(commands::pairing::PairingHandle::new())
         .manage(terminal_runtime::TerminalSessions::default())
+        .manage(factory_runtime::FactoryRuntime::default())
         .manage(archive::sync::ArchiveSyncState::default())
         .manage(native_relay_client::NativeRelayClient::default())
         .manage(observed_unread::ObservedUnreadStore::default())
@@ -544,6 +546,14 @@ pub fn run() {
             terminal_runtime::terminal_ack,
             terminal_runtime::terminal_viewport_ready,
             terminal_runtime::terminal_focus,
+            factory_runtime::factory_run_create,
+            factory_runtime::factory_run_list,
+            factory_runtime::factory_run_snapshot,
+            factory_runtime::factory_run_reattach,
+            factory_runtime::factory_run_detach,
+            factory_runtime::factory_run_cancel,
+            factory_runtime::factory_run_set_draft,
+            factory_runtime::factory_run_get_draft,
             take_pending_community_deep_link,
             acknowledge_pending_community_deep_link,
             take_pending_navigation_deep_link,
