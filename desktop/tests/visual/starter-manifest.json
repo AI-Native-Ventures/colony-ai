@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "defaults": {
+    "theme": "light",
+    "referencePrefs": {
+      "localStorage": {
+        "colony-settings-review-v1": {
+          "version": 1,
+          "businesses": {
+            "Lerato Social": {
+              "mode": "light",
+              "style": "default",
+              "color1": "#895AF6",
+              "color2": "#5A9CF6",
+              "accent": "Blue",
+              "glass": false,
+              "opacity": 65,
+              "prominent": true,
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          },
+          "conversations": {
+            "links": "compact",
+            "threads": "split",
+            "size": "large"
+          }
+        }
+      },
+      "sessionStorage": {}
+    },
+    "appPrefs": {
+      "localStorage": {
+        "buzz-theme": "catppuccin-latte",
+        "buzz-follow-system": "false",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "true",
+        "buzz.appearance.fontSize": "larger",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz-sidebar-width": "220"
+      },
+      "sessionStorage": {},
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "actions": []
+  },
+  "cases": [
+    {
+      "id": "today-1728",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#today",
+      "appRoute": "/",
+      "viewport": "1728x1117"
+    },
+    {
+      "id": "today-1440",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#today",
+      "appRoute": "/",
+      "viewport": "1440x900"
+    },
+    {
+      "id": "channel-side-thread-1728",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#thread/stockists",
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1728x1117"
+    },
+    {
+      "id": "channel-side-thread-1440",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#thread/stockists",
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1440x900"
+    },
+    {
+      "id": "agents-directory-1728",
+      "referenceInventoryRoute": "agents/catalogue",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#agents/catalogue",
+      "appRoute": "/#/agents",
+      "viewport": "1728x1117"
+    },
+    {
+      "id": "agents-directory-1440",
+      "referenceInventoryRoute": "agents/catalogue",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#agents/catalogue",
+      "appRoute": "/#/agents",
+      "viewport": "1440x900"
+    },
+    {
+      "id": "factory-1728",
+      "referenceInventoryRoute": "factory",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#factory",
+      "appRoute": "/#/projects",
+      "viewport": "1728x1117"
+    },
+    {
+      "id": "factory-1440",
+      "referenceInventoryRoute": "factory",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#factory",
+      "appRoute": "/#/projects",
+      "viewport": "1440x900"
+    },
+    {
+      "id": "settings-appearance-1728",
+      "referenceInventoryRoute": "settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#settings/appearance",
+      "appRoute": "/#/settings?section=appearance",
+      "viewport": "1728x1117"
+    },
+    {
+      "id": "settings-appearance-1440",
+      "referenceInventoryRoute": "settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5194/workspace/?embedded=1&revision=20260924-parity-r6#settings/appearance",
+      "appRoute": "/#/settings?section=appearance",
+      "viewport": "1440x900"
+    },
+    {
+      "id": "onboarding-business-1728",
+      "referenceInventoryRoute": "onboarding/business",
+      "referenceUrl": "http://127.0.0.1:5194/onboarding/#business",
+      "referencePrefs": {},
+      "appRoute": "/#/settings?section=hosted-communities",
+      "appPrefs": {},
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".story, .workspace"
+      }
+    },
+    {
+      "id": "onboarding-business-1440",
+      "referenceInventoryRoute": "onboarding/business",
+      "referenceUrl": "http://127.0.0.1:5194/onboarding/#business",
+      "referencePrefs": {},
+      "appRoute": "/#/settings?section=hosted-communities",
+      "appPrefs": {},
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".story, .workspace"
+      }
+    },
+    {
+      "id": "onboarding-connect-1728",
+      "referenceInventoryRoute": "onboarding/connect",
+      "referenceUrl": "http://127.0.0.1:5194/onboarding/#connect",
+      "referencePrefs": {},
+      "appRoute": "/#/settings?section=agents",
+      "appPrefs": {},
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".story, .workspace"
+      }
+    },
+    {
+      "id": "onboarding-connect-1440",
+      "referenceInventoryRoute": "onboarding/connect",
+      "referenceUrl": "http://127.0.0.1:5194/onboarding/#connect",
+      "referencePrefs": {},
+      "appRoute": "/#/settings?section=agents",
+      "appPrefs": {},
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".story, .workspace"
+      }
+    }
+  ]
+}
