@@ -96,6 +96,18 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
+        // Owner decision 2026-09-24: the app ships Manrope instead of Satoshi
+        // (Satoshi's license bars its file from a public repo). Serve the
+        // reference's own Manrope file in place of Satoshi so diffs measure
+        // layout, not typeface.
+        await referencePage.route("**/satoshi-variable.woff2", async (route) => {
+          const manrope = new URL(
+            "manrope-latin.woff2",
+            new URL(route.request().url()),
+          ).toString();
+          const response = await route.fetch({ url: manrope });
+          await route.fulfill({ response });
+        });
         await seedStorage(
           referencePage,
           entry.referencePrefs,
@@ -120,7 +132,7 @@ test.describe("visual comparison captures", () => {
         );
         await waitForCaptureReady(
           appPage,
-          "Inter Variable",
+          "Manrope Variable",
           entry.appReadySelector,
         );
         await performActions(entry.actions, referencePage, appPage);
@@ -131,7 +143,7 @@ test.describe("visual comparison captures", () => {
         );
         await waitForCaptureReady(
           appPage,
-          "Inter Variable",
+          "Manrope Variable",
           entry.appReadySelector,
         );
         const referenceGeometry = await inspectPageGeometry(
@@ -243,12 +255,14 @@ async function waitForCaptureReady(
   if (readySelector) {
     await page.locator(readySelector).first().waitFor({ state: "visible" });
   }
-  await page.evaluate(async () => {
+  await page.evaluate(async (family) => {
+    // Faces load lazily on first use; request the expected face explicitly.
+    await document.fonts.load(`400 14px "${family}"`);
     await document.fonts.ready;
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
-  });
+  }, expectedFont);
   await waitForAnimations(page);
   const fontState = await page.evaluate((family) => {
     const computed = getComputedStyle(document.body).fontFamily;

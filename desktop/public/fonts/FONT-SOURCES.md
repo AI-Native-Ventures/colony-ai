@@ -1,7 +1,7 @@
 # Font source and distribution notes
 
-Satoshi Variable was downloaded from the official [Fontshare Satoshi family page](https://www.fontshare.com/fonts/satoshi) for the frozen Colony design reference. It is designed by Indian Type Foundry.
+The app UI font is **Manrope** (variable), shipped via the `@fontsource-variable/manrope` package. Manrope is licensed under the SIL Open Font License 1.1, which permits bundling and redistribution, including in this public repository.
 
-The current [ITF Free Font License](https://www.fontshare.com/licenses/itf-ffl) is version 2.0, dated 2026-08-17. It permits commercial use and embedding in desktop applications. It also prohibits distributing the raw font file through another repository or publicly accessible server. The Colony source repository is public, so this worktree does not include the font binary without separate written redistribution permission.
+The frozen Phase 2 design reference (`20260924-parity-r6`) uses Satoshi. On 2026-09-24 the owner chose Manrope instead because Satoshi's ITF Free Font License does not allow its font file in a public repository. The visual comparison harness renders the reference in Manrope so diffs measure layout, not typeface.
 
-Font embedding remains incomplete until the binary can be included under appropriate distribution rights. Do not substitute another family for the frozen design.
+Do not add Satoshi font files to this repository.
