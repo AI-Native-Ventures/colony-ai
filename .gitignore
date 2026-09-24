@@ -72,3 +72,6 @@ identity.key
 
 # Helm dependency tarballs — regenerable from Chart.lock via `helm dependency build`
 deploy/charts/*/charts/*.tgz
+
+# Satoshi font binary: licensed for app embedding, not repo redistribution. Supplied at build time.
+desktop/public/fonts/satoshi-variable.woff2
