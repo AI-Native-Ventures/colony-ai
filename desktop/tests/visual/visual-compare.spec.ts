@@ -37,6 +37,7 @@ type VisualCase = {
     | { selector: string }
     | { referenceSelector: string; appSelector?: string };
   referenceReadySelector?: string;
+  referenceCanvas?: boolean;
   appReadySelector?: string;
 };
 
@@ -96,34 +97,32 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
-        // Owner decision 2026-09-24: compare the app and frozen reference in
-        // Manrope while keeping the reference package read-only.
-        await referencePage.route("**/*.css*", async (route) => {
-          const response = await route.fetch();
-          const css = (await response.text()).replaceAll(
-            "Satoshi",
-            "Manrope Variable",
-          );
-          await route.fulfill({ response, body: css });
-        });
-        // Serve the local reference Manrope face for the frozen font request.
-        await referencePage.route("**/*.woff2", async (route) => {
-          const manrope = new URL(
-            "manrope-latin.woff2",
-            new URL(route.request().url()),
-          ).toString();
-          const response = await route.fetch({ url: manrope });
-          await route.fulfill({ response });
-        });
         await seedStorage(
           referencePage,
           entry.referencePrefs,
           new URL(entry.referenceUrl).origin,
         );
+        if (entry.referenceInventoryRoute === "onboarding/testing") {
+          await referencePage.addInitScript(() => {
+            const nativeSetTimeout = window.setTimeout.bind(window);
+            window.setTimeout = ((handler, timeout, ...args) => {
+              if (
+                window.location.hash === "#testing" &&
+                (timeout === 1050 || timeout === 2550)
+              ) {
+                return 0;
+              }
+              return nativeSetTimeout(handler, timeout, ...args);
+            }) as typeof window.setTimeout;
+          });
+        }
         await referencePage.goto(entry.referenceUrl, {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (entry.referenceCanvas) {
+          await fitReferenceCanvas(referencePage, width, height);
+        }
 
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
@@ -136,7 +135,7 @@ test.describe("visual comparison captures", () => {
 
         await waitForCaptureReady(
           referencePage,
-          "Manrope Variable",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -147,7 +146,7 @@ test.describe("visual comparison captures", () => {
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
-          "Manrope Variable",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -276,7 +275,7 @@ async function waitForCaptureReady(
   const fontState = await page.evaluate(
     ({ family, selector }) => {
       const fontTarget =
-        document.querySelector(selector ?? "") ?? document.body;
+        (selector ? document.querySelector(selector) : null) ?? document.body;
       const computed = getComputedStyle(fontTarget).fontFamily;
       const available = Array.from(document.fonts).some((face) => {
         const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
@@ -306,6 +305,47 @@ async function waitForCaptureReady(
       `Expected ${expectedFont} 400 to be loaded; computed=${fontState.computed}, faceLoaded=${fontState.available}, check=${fontState.check}.`,
     );
   }
+}
+
+async function fitReferenceCanvas(
+  page: import("@playwright/test").Page,
+  width: number,
+  height: number,
+) {
+  await page.evaluate(
+    ({ width, height }) => {
+      const setStyle = (selector: string, values: Record<string, string>) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        for (const [property, value] of Object.entries(values)) {
+          element.style.setProperty(property, value, "important");
+        }
+      };
+
+      setStyle(".reviewbar", { display: "none" });
+      setStyle(".reviewfoot", { display: "none" });
+      setStyle("body", { height: `${height}px` });
+      setStyle("#review-canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        padding: "0",
+        overflow: "hidden",
+      });
+      setStyle("#scale-space", {
+        width: `${width}px`,
+        height: `${height}px`,
+        margin: "0",
+      });
+      setStyle("#canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: "none",
+        borderRadius: "0",
+        boxShadow: "none",
+      });
+    },
+    { width, height },
+  );
 }
 
 async function inspectPageGeometry(

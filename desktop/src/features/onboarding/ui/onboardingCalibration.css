@@ -306,8 +306,8 @@
 .colony-onboarding-root .story h1 {
   font-size: clamp(2.7rem, 4.2vw, 4.5rem);
   font-weight: 500;
-  letter-spacing: -0.063em;
-  line-height: 1.05;
+  letter-spacing: var(--onboarding-tracking-display);
+  line-height: var(--onboarding-line-display);
   margin: 0 0 25px;
 }
 .colony-onboarding-root .story h1 em {
@@ -406,7 +406,7 @@
   padding: 0;
   background: transparent;
   color: var(--accent);
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   font-size: inherit;
   text-decoration: none;
 }
@@ -426,9 +426,9 @@
 .colony-onboarding-root .form-content h2,
 .colony-onboarding-root .modal h2 {
   font-size: 2.15rem;
-  line-height: 1.13;
-  font-weight: 600;
-  letter-spacing: -0.055em;
+  line-height: var(--onboarding-line-heading);
+  font-weight: var(--onboarding-font-weight-semibold);
+  letter-spacing: var(--onboarding-tracking-heading);
   margin: 0 0 11px;
   color: var(--ink);
 }
@@ -450,7 +450,7 @@
 .colony-onboarding-root .field-label {
   display: block;
   font-size: 0.79rem;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   margin-bottom: 9px;
 }
 .colony-onboarding-root .field label small {
@@ -536,7 +536,7 @@
   min-height: 49px;
   border-radius: 10px;
   font-size: 0.85rem;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   box-shadow: 0 5px 10px -5px #4b2b6340;
 }
 .colony-onboarding-root .primary .icon {
@@ -666,7 +666,7 @@
 }
 .colony-onboarding-root .mail-address {
   color: var(--ink);
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   word-break: break-word;
 }
 .colony-onboarding-root .row-between {
@@ -700,8 +700,8 @@
 }
 .colony-onboarding-root .business-preview .business-name {
   font-size: 1rem;
-  font-weight: 650;
-  letter-spacing: -0.025em;
+  font-weight: var(--onboarding-font-weight-semibold);
+  letter-spacing: var(--onboarding-tracking-subheading);
   margin: 0;
 }
 .colony-onboarding-root .business-preview p {
@@ -763,7 +763,7 @@
 .colony-onboarding-root .connection strong {
   font-size: 0.82rem;
   display: block;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .connection small {
   display: block;
@@ -1033,7 +1033,7 @@
   font-size: 1.5rem;
 }
 .colony-onboarding-root .invite-brand strong {
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   letter-spacing: -0.03em;
   font-size: 1.2rem;
 }
@@ -1088,7 +1088,7 @@
 }
 .colony-onboarding-root .business-switch strong {
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .business-switch .icon {
   margin-left: auto;
@@ -1177,7 +1177,7 @@
 }
 .colony-onboarding-root .workspace-top > span:first-child {
   color: var(--ink);
-  font-weight: 550;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .workspace-top > span:last-child {
   display: flex;
@@ -1200,9 +1200,9 @@
 }
 .colony-onboarding-root .arrival h1 {
   font-size: 2.75rem;
-  letter-spacing: -0.06em;
-  font-weight: 550;
-  line-height: 1.1;
+  letter-spacing: var(--onboarding-tracking-display);
+  font-weight: var(--onboarding-font-weight-semibold);
+  line-height: var(--onboarding-line-display);
   margin: 0 0 15px;
 }
 .colony-onboarding-root .arrival > .lede {
@@ -1331,7 +1331,7 @@
 }
 .colony-onboarding-root .first-result h3 {
   font-size: 1.1rem;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--onboarding-tracking-subheading);
 }
 .colony-onboarding-root .draft-status {
   display: inline-flex;
@@ -2221,7 +2221,7 @@
   font-size: 0.78rem;
 }
 .colony-onboarding-root .logo-buttons .link {
-  font-weight: 550;
+  font-weight: var(--onboarding-font-weight-semibold);
   padding: 0;
 }
 .colony-onboarding-root .logo-buttons .remove-logo {
@@ -2409,7 +2409,7 @@
 }
 .colony-onboarding-root .power-setup .story h1 {
   font-size: clamp(2.5rem, 3.8vw, 4rem);
-  line-height: 1.08;
+  line-height: var(--onboarding-line-display);
 }
 .colony-onboarding-root .power-setup .story p {
   font-size: 0.91rem;
@@ -2496,9 +2496,9 @@
 }
 .colony-onboarding-root .power-body h3 {
   font-size: 1rem;
-  letter-spacing: -0.025em;
+  letter-spacing: var(--onboarding-tracking-subheading);
   margin: 0;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .section-heading {
   display: flex;
@@ -2549,7 +2549,7 @@
 }
 .colony-onboarding-root .provider-top > strong {
   font-size: 0.91rem;
-  letter-spacing: -0.025em;
+  letter-spacing: var(--onboarding-tracking-subheading);
 }
 .colony-onboarding-root .provider-monogram {
   display: flex;
@@ -2558,7 +2558,7 @@
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   font-size: 1.3rem;
   flex: none;
 }
@@ -2603,7 +2603,7 @@
   line-height: 1.4;
 }
 .colony-onboarding-root .allowance strong {
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 .colony-onboarding-root .allowance small {
@@ -2812,7 +2812,7 @@
   display: block;
   font-size: 2.15rem;
   line-height: 1.15;
-  font-weight: 550;
+  font-weight: var(--onboarding-font-weight-semibold);
   letter-spacing: -0.05em;
   margin-top: 9px;
   font-variant-numeric: tabular-nums;
@@ -2983,7 +2983,7 @@
 }
 .colony-onboarding-root .purchase-summary dd {
   margin: 0;
-  font-weight: 550;
+  font-weight: var(--onboarding-font-weight-semibold);
   text-align: right;
   overflow-wrap: anywhere;
   min-width: 0;
@@ -3017,7 +3017,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 25px;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .handoff-brand > .icon {
   color: var(--accent);
@@ -3228,7 +3228,7 @@
   display: block;
   margin-top: 7px;
   color: var(--ink);
-  font-weight: 550;
+  font-weight: var(--onboarding-font-weight-semibold);
   letter-spacing: -0.04em;
 }
 .colony-onboarding-root .openrouter-balance .link {
@@ -4062,7 +4062,7 @@
   background: #f1ebf6;
   color: #584171;
   font-size: 0.7rem;
-  font-weight: 650;
+  font-weight: var(--onboarding-font-weight-semibold);
 }
 .colony-onboarding-root .account-form .fields {
   gap: 21px;

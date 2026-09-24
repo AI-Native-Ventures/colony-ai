@@ -25,6 +25,10 @@ import {
   OnboardingScenePresentation,
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
+import {
+  GoogleAccountPresentation,
+  type GoogleAccountScene,
+} from "./GoogleAccountPresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -185,6 +189,8 @@ export function AccountAuthFlow({
   const [newPassword, setNewPassword] = React.useState("");
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
+  const [googleScene, setGoogleScene] =
+    React.useState<GoogleAccountScene | null>(null);
   const [pending, setPending] = React.useState(false);
   const [cooldownRequest, setCooldownRequest] = React.useState({
     seconds: 0,
@@ -309,9 +315,32 @@ export function AccountAuthFlow({
   };
 
   const submitGoogle = () => {
-    void send(async () => {
-      await authenticate(await authClient.signInWithGoogle());
-    });
+    if (pending) return;
+    setPending(true);
+    setGoogleScene("loading");
+    dispatch({ type: "clear_feedback" });
+    void (async () => {
+      try {
+        const account = await authClient.signInWithGoogle();
+        setGoogleScene(null);
+        await authenticate(account);
+      } catch (error) {
+        const failure = normalizeAccountAuthFailure(error);
+        if (failure.code === "email_unverified") {
+          setGoogleScene("unverified");
+        } else if (
+          failure.code === "email_taken" ||
+          failure.code === "identity_taken"
+        ) {
+          setGoogleScene("password-account");
+        } else {
+          setGoogleScene(null);
+          dispatch({ type: "set_failure", failure });
+        }
+      } finally {
+        setPending(false);
+      }
+    })();
   };
 
   const resendCode = () => {
@@ -344,6 +373,46 @@ export function AccountAuthFlow({
   const rateLimitLocked =
     state.failure?.code === "rate_limited" && resendCooldown > 0;
   const waitLabel = rateLimitLocked ? `Try again in ${resendCooldown}s` : null;
+
+  if (
+    standalone &&
+    mode === "onboarding" &&
+    !(state.screen === "signup" && state.failure?.code === "email_taken") &&
+    (state.screen === "choice" ||
+      state.screen === "signup" ||
+      state.screen === "signin")
+  ) {
+    const scene =
+      googleScene ?? (state.screen === "signup" ? "sign-up" : "sign-in");
+    const submit = state.screen === "signup" ? submitSignup : submitSignin;
+
+    return (
+      <GoogleAccountPresentation
+        email={state.email}
+        error={googleScene ? null : failureText}
+        name={name}
+        onEmailChange={(email) =>
+          dispatchAndClear({ type: "set_email", email })
+        }
+        onGoogleSignIn={submitGoogle}
+        onNameChange={setName}
+        onNavigate={(destination) => {
+          setGoogleScene(null);
+          if (destination === "sign-up") {
+            dispatchAndClear({ type: "begin_signup" });
+          } else if (destination === "sign-in") {
+            dispatchAndClear({ type: "show_signin" });
+          } else {
+            dispatchAndClear({ type: "begin_reset" });
+          }
+        }}
+        onPasswordChange={setPassword}
+        onSubmit={submit}
+        password={password}
+        scene={scene}
+      />
+    );
+  }
 
   const legacyContent = (
     <section
@@ -755,8 +824,7 @@ export function AccountAuthFlow({
 
   const designedScene =
     state.screen === "signup"
-      ? state.failure?.code === "email_taken" ||
-        state.failure?.code === "identity_taken"
+      ? state.failure?.code === "email_taken"
         ? "account-error"
         : "account"
       : state.screen === "signin"

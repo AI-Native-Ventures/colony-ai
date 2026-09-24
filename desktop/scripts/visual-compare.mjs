@@ -35,7 +35,7 @@ const outputDir = path.resolve(
   outputPathArg ??
     `tests/visual/artifacts/${new Date().toISOString().replaceAll(":", "-")}`,
 );
-const referenceBaseUrl = "http://127.0.0.1:5194";
+const referenceBaseUrl = "http://127.0.0.1:5197";
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const entries = expandManifest(manifest);
 

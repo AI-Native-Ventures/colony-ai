@@ -79,7 +79,10 @@ async function startFirstRun(
     });
   });
   await page.goto("/");
-  await expect(page.getByTestId("account-auth-screen-choice")).toBeVisible();
+  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Welcome back" }),
+  ).toBeVisible();
 }
 
 async function queueAuthError(
@@ -163,10 +166,14 @@ test("keyboard signup verifies email and installs the account identity", async (
   await startFirstRun(page);
   await expectNoKeyCopy(page);
 
-  await page.keyboard.press("Tab");
-  await expect(page.getByTestId("account-auth-create")).toBeFocused();
+  const createAccount = page.getByRole("button", {
+    name: "Create an account",
+  });
+  await createAccount.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("account-auth-screen-signup")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Create your account" }),
+  ).toBeVisible();
   await expectNoKeyCopy(page);
 
   await page.getByLabel("Your name").fill("Lerato Molefe");
@@ -174,7 +181,9 @@ test("keyboard signup verifies email and installs the account identity", async (
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await page.getByTestId("account-auth-submit-signup").click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
@@ -213,15 +222,14 @@ test("keyboard signup verifies email and installs the account identity", async (
 test("sign in reaches the workspace setup path", async ({ page }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  await page.getByTestId("account-auth-signin").click();
-  await expect(page.getByTestId("account-auth-screen-signin")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   await expectNoKeyCopy(page);
 
   await page.getByLabel("Email address").fill("signin@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await page.getByTestId("account-auth-submit-signin").click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await finishMachineSetup(page);
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
@@ -238,12 +246,11 @@ test("returning account can open an owned business", async ({ page }) => {
     owner_pubkey: MOCK_ACCOUNT_PUBKEY,
   };
   await startFirstRun(page, [community]);
-  await page.getByTestId("account-auth-signin").click();
   await page.getByLabel("Email address").fill("returning@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await page.getByTestId("account-auth-submit-signin").click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
   await expect(page.getByTestId("onboarding-scene-businesses")).toBeVisible();
   await expect(page.getByTestId("onboarding-business-list")).toContainText(
@@ -258,8 +265,10 @@ test("Google sign in uses the same account installation path", async ({
 }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
+  const continueWithGoogle = page.getByRole("button", {
+    name: "Continue with Google",
+  });
+  await continueWithGoogle.focus();
   await page.keyboard.press("Enter");
   await finishMachineSetup(page);
   const calls = await accountAuthCalls(page);
@@ -273,7 +282,6 @@ test("forgot password requests a code and signs in after reset", async ({
 }) => {
   await page.clock.install();
   await startFirstRun(page);
-  await page.getByTestId("account-auth-signin").click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-request"),
@@ -314,14 +322,16 @@ test("forgot password requests a code and signs in after reset", async ({
 test("account auth screens never show key wording", async ({ page }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  await page.getByTestId("account-auth-create").click();
+  await page.getByRole("button", { name: "Create an account" }).click();
   await expectNoKeyCopy(page);
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("guard@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await page.getByTestId("account-auth-submit-signup").click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
   await page.getByRole("button", { name: "Back" }).click();
@@ -342,41 +352,47 @@ test("contract errors are announced and email_unverified moves to verification",
 }) => {
   await page.clock.install();
   await startFirstRun(page);
-  await page.getByTestId("account-auth-create").click();
+  await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Erin Example");
   await page.getByLabel("Email address").fill("errors@example.com");
   await page.getByRole("textbox", { name: "Password" }).fill("long-enough-12");
 
   await queueAuthError(page, "signUp", { error: "invalid_request" });
-  await page.getByTestId("account-auth-submit-signup").click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveText(
     "Please check the information and try again.",
   );
 
   await queueAuthError(page, "signUp", { error: "weak_password" });
-  await page.getByTestId("account-auth-submit-signup").click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveText(
     "Use a password with at least 10 characters.",
   );
 
   await queueAuthError(page, "signUp", { error: "email_taken" });
-  await page.getByTestId("account-auth-submit-signup").click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveText(
     "This email already has an account. Sign in instead.",
   );
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
 
   await queueAuthError(page, "signIn", { error: "invalid_credentials" });
-  await page.getByTestId("account-auth-submit-signin").click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText(
     "The email or password was not accepted.",
   );
 
   await queueAuthError(page, "signIn", { error: "email_unverified" });
-  await page.getByTestId("account-auth-submit-signin").click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expect(page.getByRole("status")).toContainText(
     "Your email still needs verification.",

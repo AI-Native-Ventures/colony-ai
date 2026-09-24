@@ -32,6 +32,7 @@ import codexLogoUrl from "../assets/harness-logos/codex.webp?url";
 import openRouterDarkLogoUrl from "../assets/harness-logos/openrouter-dark.svg?url";
 import openRouterLogoUrl from "../assets/harness-logos/openrouter.svg?url";
 import "./onboardingCalibration.css";
+import "./onboardingTypography.css";
 import {
   onboardingSceneStage,
   type OnboardingSceneId,
@@ -687,7 +688,13 @@ function BusinessForm({
         >
           {pending || data.pending ? "Creating…" : "Continue"}
         </PrimaryButton>
-        <BackButton onClick={() => onNavigate?.("account")}>Back</BackButton>
+        <BackButton
+          onClick={() =>
+            onNavigate?.(scene === "additional" ? "workspace" : "account")
+          }
+        >
+          {scene === "additional" ? "Cancel" : "Back"}
+        </BackButton>
       </form>
     </>
   );
@@ -1062,7 +1069,40 @@ function DiscoveryPreview() {
   );
 }
 
-function ReadySubscriptionPreview() {
+function ReadySubscriptionPreview({ scene }: { scene: OnboardingSceneId }) {
+  const missing = scene === "subscription-missing";
+  const apiAuth = scene === "subscription-api-auth";
+  const exhausted = scene === "subscription-exhausted";
+  const usageUnknown = scene === "subscription-usage-unknown";
+  const stale = scene === "subscription-stale";
+  const modelsError = scene === "subscription-models-error";
+  const providers = [
+    {
+      name: "Claude Code",
+      logo: claudeLogoUrl,
+      plan: "Pro",
+      left: [exhausted ? 0 : 72, 46],
+      resets: ["2h 18m", "4 days"],
+      installed: !missing,
+      auth: apiAuth
+        ? "api"
+        : exhausted || modelsError
+          ? "connected"
+          : "detected",
+    },
+    {
+      name: "Codex",
+      logo: codexLogoUrl,
+      plan: "ChatGPT Plus",
+      left: [38, 81],
+      resets: ["3h 40m", "4 days"],
+      installed: !missing,
+      auth: "detected",
+    },
+  ] as const;
+  const selected = providers[0];
+  const selectedConnected = selected.auth === "connected";
+
   return (
     <>
       <div className="section-heading">
@@ -1074,22 +1114,7 @@ function ReadySubscriptionPreview() {
       </div>
       <fieldset className="subscription-cards">
         <legend className="sr-only">Detected AI apps</legend>
-        {[
-          {
-            name: "Claude Code",
-            logo: claudeLogoUrl,
-            plan: "Pro",
-            left: [72, 46],
-            resets: ["2h 18m", "4 days"],
-          },
-          {
-            name: "Codex",
-            logo: codexLogoUrl,
-            plan: "ChatGPT Plus",
-            left: [38, 81],
-            resets: ["3h 40m", "4 days"],
-          },
-        ].map((provider, index) => (
+        {providers.map((provider, index) => (
           <button
             aria-pressed={index === 0}
             className={`subscription-card ${index === 0 ? "selected" : ""}`}
@@ -1110,42 +1135,128 @@ function ReadySubscriptionPreview() {
               <span className="selection-dot" />
             </span>
             <span className="provider-account">
-              Installed · {provider.plan}
+              {!provider.installed
+                ? "Not installed"
+                : provider.auth === "api"
+                  ? "Installed · API key detected"
+                  : `Installed · ${provider.plan}`}
             </span>
-            <div className="allowances">
-              {provider.left.map((remaining, allowanceIndex) => (
-                <div
-                  className="allowance"
-                  key={allowanceIndex === 0 ? "five-hour" : "weekly"}
-                >
-                  <div>
-                    <span>
-                      {allowanceIndex === 0
-                        ? "5-hour allowance"
-                        : "Weekly allowance"}
-                    </span>
-                    <strong>{remaining}% left</strong>
+            {provider.installed && usageUnknown ? (
+              <p className="usage-unavailable">
+                Usage unavailable
+                <span>Your allowance may still be available.</span>
+              </p>
+            ) : provider.installed && provider.auth !== "api" ? (
+              <div className="allowances">
+                {provider.left.map((remaining, allowanceIndex) => (
+                  <div
+                    className="allowance"
+                    key={allowanceIndex === 0 ? "five-hour" : "weekly"}
+                  >
+                    <div>
+                      <span>
+                        {allowanceIndex === 0
+                          ? "5-hour allowance"
+                          : "Weekly allowance"}
+                      </span>
+                      <strong>{remaining}% left</strong>
+                    </div>
+                    <progress
+                      aria-label={`${provider.name} ${allowanceIndex === 0 ? "5-hour" : "weekly"} allowance remaining`}
+                      max="100"
+                      value={remaining}
+                    />
+                    <small>Resets in {provider.resets[allowanceIndex]}</small>
                   </div>
-                  <progress
-                    aria-label={`${provider.name} ${allowanceIndex === 0 ? "5-hour" : "weekly"} allowance remaining`}
-                    max="100"
-                    value={remaining}
-                  />
-                  <small>Resets in {provider.resets[allowanceIndex]}</small>
-                </div>
-              ))}
-            </div>
-            <span className="provider-status">Subscription found</span>
+                ))}
+              </div>
+            ) : null}
+            <span
+              className={`provider-status ${provider.auth === "connected" ? "is-connected" : ""}`}
+            >
+              {provider.auth === "connected"
+                ? "Connected to Colony"
+                : provider.installed && provider.auth === "detected"
+                  ? "Subscription found"
+                  : provider.installed
+                    ? "Not connected"
+                    : "Installation needed"}
+            </span>
           </button>
         ))}
       </fieldset>
       <p className="power-caption">
-        Your AI teammates share these allowances with your other usage.
+        {stale
+          ? "Last reported usage · 1 hour ago. Check again for a fresh reading."
+          : "Your AI teammates share these allowances with your other usage."}
       </p>
+      {!selected.installed ? (
+        <div className="selected-connection">
+          <h4>Install {selected.name}</h4>
+          <p>
+            Install the provider’s app, then sign in with your subscription.
+          </p>
+        </div>
+      ) : null}
+      {apiAuth ? (
+        <div className="power-notice" role="status">
+          <Glyph name="check" />
+          <p>
+            An API key was found. Sign in with a subscription for this route, or
+            choose Bring your own key.
+          </p>
+        </div>
+      ) : null}
+      {exhausted ? (
+        <div className="power-notice is-error" role="alert">
+          <Glyph name="alert" />
+          <p>
+            This account’s allowance is used up. Wait for its reset or choose
+            another connection.
+          </p>
+        </div>
+      ) : null}
+      {modelsError ? (
+        <div className="power-notice is-error" role="alert">
+          <Glyph name="alert" />
+          <p>
+            Connected, but available models could not be loaded. Check again
+            before testing.
+          </p>
+        </div>
+      ) : null}
+      {selectedConnected && !modelsError ? (
+        <div className="power-model-controls">
+          <div className="model-grid">
+            <div className="field">
+              <label htmlFor="visual-subscription-model">
+                Model<span className="field-note">Claude models only</span>
+              </label>
+              <select id="visual-subscription-model">
+                <option>Claude Sonnet · recommended</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="power-cta">
-        <button className="primary full" type="button">
-          Connect Claude Code <Glyph name="arrow" />
+        <button
+          className="primary full"
+          disabled={selectedConnected && (exhausted || modelsError)}
+          type="button"
+        >
+          {!selected.installed
+            ? `Install ${selected.name}`
+            : selectedConnected
+              ? "Test connection"
+              : `Connect ${selected.name}`}{" "}
+          <Glyph name="arrow" />
         </button>
+        <p>
+          {selectedConnected
+            ? "A short reply confirms this connection works."
+            : "Sign-in stays with the provider."}
+        </p>
       </div>
     </>
   );
@@ -1158,9 +1269,6 @@ function SubscriptionState({
   scene: OnboardingSceneId;
   visualReady?: boolean;
 }) {
-  if (scene === "connect" && visualReady) return <ReadySubscriptionPreview />;
-  if (scene === "subscription-scan" || scene === "connect")
-    return <DiscoveryPreview />;
   if (scene === "subscription-error") {
     return (
       <div className="power-empty">
@@ -1173,6 +1281,14 @@ function SubscriptionState({
       </div>
     );
   }
+  if (
+    visualReady &&
+    (scene === "connect" || scene.startsWith("subscription-"))
+  ) {
+    return <ReadySubscriptionPreview scene={scene} />;
+  }
+  if (scene === "subscription-scan" || scene === "connect")
+    return <DiscoveryPreview />;
   const missing = scene === "subscription-missing";
   const exhausted = scene === "subscription-exhausted";
   const usageUnknown = scene === "subscription-usage-unknown";
@@ -1274,6 +1390,10 @@ function CreditState({
   onCreditsRetry?: () => void;
 }) {
   const canPreview = data.visualOnly === true;
+  const hasBalance = canPreview
+    ? scene === "credits-success"
+    : data.creditsSnapshot?.status === "available" &&
+      data.creditsSnapshot.balanceUsdCents > 0;
   const balance = canPreview
     ? scene === "credits-success"
       ? "$10.00"
@@ -1283,16 +1403,14 @@ function CreditState({
       : data.creditsSnapshot?.status === "loading"
         ? "Checking"
         : "Unavailable";
-  const failure = [
-    "credits-price-error",
-    "credits-failed",
-    "credits-cancelled",
-  ].includes(scene);
+  const priceUnavailable = scene === "credits-price-error";
   const pending = [
     "credits-pending",
     "credits-delayed",
     "credits-uncertain",
   ].includes(scene);
+  const canCheckPayment = canPreview || Boolean(onCreditsRetry);
+
   return (
     <>
       <div className="balance-header">
@@ -1307,17 +1425,11 @@ function CreditState({
           <AntMark />
         </span>
       </div>
-      {failure ? (
+      {priceUnavailable ? (
         <>
           <div className="power-notice is-error" role="alert">
             <Glyph name="alert" />
-            <p>
-              {scene === "credits-price-error"
-                ? "Current prices are unavailable. Your balance has not changed."
-                : scene === "credits-failed"
-                  ? "The payment was declined. No credits were added."
-                  : "Checkout was cancelled. No credits were added."}
-            </p>
+            <p>Current prices are unavailable. Your balance has not changed.</p>
           </div>
           <button
             className="secondary full"
@@ -1325,49 +1437,116 @@ function CreditState({
             onClick={onCreditsRetry}
             type="button"
           >
-            {scene === "credits-price-error"
-              ? "Reload prices"
-              : "Try another payment method"}
+            Reload prices
           </button>
         </>
       ) : pending ? (
-        <div className="payment-state">
-          <span className="payment-icon">
-            <Glyph name={scene === "credits-delayed" ? "check" : "history"} />
-          </span>
-          <h3>
-            {scene === "credits-delayed"
-              ? "Payment received. Credits are on their way."
-              : scene === "credits-uncertain"
-                ? "Let’s check that payment."
-                : "Finish your payment in checkout."}
-          </h3>
-          <p>
-            {scene === "credits-delayed"
-              ? "Your payment is confirmed. The spendable balance has not updated yet."
-              : "Your checkout is saved. You can reopen it or check after paying."}
+        <>
+          <div className="payment-state">
+            <span className="payment-icon">
+              <Glyph
+                name={
+                  scene === "credits-delayed"
+                    ? "check"
+                    : scene === "credits-uncertain"
+                      ? "alert"
+                      : "history"
+                }
+              />
+            </span>
+            <h3>
+              {scene === "credits-delayed"
+                ? "Payment received. Credits are on their way."
+                : scene === "credits-uncertain"
+                  ? "Let’s check that payment."
+                  : "Finish your payment in checkout."}
+            </h3>
+            <p>
+              {scene === "credits-delayed"
+                ? "Your payment is confirmed. The spendable balance has not updated yet."
+                : scene === "credits-uncertain"
+                  ? "We haven’t confirmed the outcome. Check this payment before starting another."
+                  : "Your checkout is saved. You can reopen it or check after paying."}
+            </p>
+            {canPreview ? (
+              <div className="payment-reference">
+                <span>R99 · $5 credits</span>
+                <span>CLY-DEMO-001</span>
+              </div>
+            ) : null}
+            <button
+              className="primary full"
+              disabled={!canCheckPayment}
+              onClick={onCreditsRetry}
+              type="button"
+            >
+              {scene === "credits-delayed" ? "Check balance" : "Check payment"}{" "}
+              <Glyph name="restart" />
+            </button>
+            {scene === "credits-pending" ? (
+              <button
+                className="secondary full"
+                disabled={!canCheckPayment}
+                onClick={onCreditsRetry}
+                type="button"
+              >
+                Open checkout again
+              </button>
+            ) : null}
+          </div>
+          <p className="power-caption">
+            Connection testing unlocks when credits are available.
           </p>
-          <div className="payment-reference">
-            <span>R99 · $5 credits</span>
-            <span>CLY-DEMO-001</span>
+        </>
+      ) : hasBalance ? (
+        <>
+          <div className="credit-success">
+            <Glyph name="check" />
+            <div>
+              <strong>Payment confirmed</strong>
+              <p>
+                {data.creditsSnapshot?.status === "available"
+                  ? `$${(data.creditsSnapshot.balanceUsdCents / 100).toFixed(2)} added to this business.`
+                  : "$10.00 added to this business."}
+              </p>
+            </div>
+            <button className="link" type="button">
+              Receipt
+            </button>
           </div>
-          <button className="primary full" disabled={!canPreview} type="button">
-            Check payment <Glyph name="restart" />
+          <button className="link add-another" type="button">
+            Add more credits
           </button>
-        </div>
-      ) : scene === "credits-success" ? (
-        <div className="credit-success">
-          <Glyph name="check" />
-          <div>
-            <strong>Payment confirmed</strong>
-            <p>$10.00 added to this business.</p>
+          <div className="credits-model">
+            <span>
+              <Glyph name="check" /> Colony recommended model
+            </span>
+            <button className="link" type="button">
+              Change
+            </button>
           </div>
-          <button className="link" type="button">
-            Receipt
-          </button>
-        </div>
+          <div className="power-cta">
+            <button className="primary full" type="button">
+              Test connection <Glyph name="arrow" />
+            </button>
+            <p>The test uses a small amount of your balance.</p>
+          </div>
+        </>
       ) : (
         <>
+          {scene === "credits-failed" || scene === "credits-cancelled" ? (
+            <div
+              className={`power-notice ${scene === "credits-failed" ? "is-error" : ""}`}
+              role={scene === "credits-failed" ? "alert" : "status"}
+            >
+              <Glyph name={scene === "credits-failed" ? "alert" : "check"} />
+              <p>
+                {scene === "credits-failed"
+                  ? "The payment was declined. No credits were added. You can try another payment method."
+                  : "Checkout was cancelled. No credits were added."}
+              </p>
+            </div>
+          ) : null}
           <div className="section-heading">
             <h3>Add credits to get started</h3>
             <span>One-off purchase</span>
@@ -1376,7 +1555,7 @@ function CreditState({
             <legend className="sr-only">Credit amount</legend>
             {["$5", "$10", "$25"].map((amount, index) => (
               <button
-                aria-pressed={index === 1}
+                aria-pressed={index === 0}
                 disabled={!canPreview}
                 key={amount}
                 type="button"
@@ -1399,9 +1578,15 @@ function CreditState({
           <p className="power-caption">
             You pay in rands. AI usage is counted in US dollars.
           </p>
-          <button className="primary full" disabled={!canPreview} type="button">
-            Review top-up <Glyph name="arrow" />
-          </button>
+          <div className="power-cta">
+            <button
+              className="primary full"
+              disabled={!canPreview}
+              type="button"
+            >
+              Review top-up <Glyph name="arrow" />
+            </button>
+          </div>
         </>
       )}
     </>
@@ -1415,7 +1600,8 @@ function OpenRouterState({
   scene: OnboardingSceneId;
   enabled: boolean;
 }) {
-  const connected = scene !== "openrouter-unlinked";
+  const connected =
+    scene === "openrouter-connected" || scene === "openrouter-limit";
   return (
     <>
       <div className="route-intro">
@@ -1473,12 +1659,28 @@ function OpenRouterState({
               Paid models
             </button>
           </fieldset>
-          <div className="field">
-            <label htmlFor="router-model">Model</label>
-            <select disabled={!enabled} id="router-model">
-              <option>Choose a free model automatically</option>
-              <option>Qwen3.8 27B (free)</option>
-            </select>
+          <div className="openrouter-model">
+            <div className="field">
+              <label htmlFor="router-model">Model</label>
+              <select disabled={!enabled} id="router-model">
+                <option>Choose a free model automatically</option>
+                <option>Qwen3.8 27B (free)</option>
+              </select>
+            </div>
+            <div className="quota-line">
+              <span>Daily free allowance</span>
+              <strong>
+                {scene === "openrouter-limit" ? "0" : "38"} / 50 requests left
+              </strong>
+            </div>
+            <progress
+              aria-label="OpenRouter daily free requests remaining"
+              max="50"
+              value={scene === "openrouter-limit" ? "0" : "38"}
+            />
+            <p className="power-caption">
+              Resets at midnight UTC. Limits are shared across OpenRouter usage.
+            </p>
           </div>
           {scene === "openrouter-limit" ? (
             <div className="power-notice is-error" role="alert">
@@ -1489,9 +1691,16 @@ function OpenRouterState({
               </p>
             </div>
           ) : null}
-          <button className="primary full" disabled={!enabled} type="button">
-            Test connection <Glyph name="arrow" />
-          </button>
+          <div className="power-cta">
+            <button
+              className="primary full"
+              disabled={!enabled || scene === "openrouter-limit"}
+              type="button"
+            >
+              Test connection <Glyph name="arrow" />
+            </button>
+            <p>Uses the selected OpenRouter model.</p>
+          </div>
         </>
       )}
     </>
@@ -1580,10 +1789,7 @@ function StaticConnectContent({
       <CreditState data={data} onCreditsRetry={onCreditsRetry} scene={scene} />
     );
   return (
-    <SubscriptionState
-      scene={scene}
-      visualReady={scene === "connect" && data.visualOnly === true}
-    />
+    <SubscriptionState scene={scene} visualReady={data.visualOnly === true} />
   );
 }
 
@@ -1843,6 +2049,58 @@ function WorkspacePreview({
   );
 }
 
+function ConnectedScene({
+  data,
+  onNavigate,
+  focusTitle = false,
+}: Pick<PresentationProps, "data" | "onNavigate"> & {
+  focusTitle?: boolean;
+}) {
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+
+  React.useEffect(() => {
+    if (focusTitle) headingRef.current?.focus({ preventScroll: true });
+  }, [focusTitle]);
+
+  return (
+    <>
+      <div className="agent-avatar large" />
+      <h2 ref={headingRef} tabIndex={-1}>
+        That’s a good start.
+      </h2>
+      <p className="lede">Your agent is connected and ready to work.</p>
+      <div className="reply">
+        <div className="reply-header">
+          <span className="agent-avatar" />
+          <strong>Scout</strong>
+          <span>
+            <Glyph name="check" />
+            Replied
+          </span>
+        </div>
+        <p>
+          Hello {data.name.trim().split(" ")[0] || "Lerato"}, I’m here.
+          <br />
+          What shall we work on first?
+        </p>
+      </div>
+      <div className="connection-meta">
+        <span>Claude Code subscription</span>
+        <span>
+          <i className="status-dot" />
+          Connection verified
+        </span>
+      </div>
+      <PrimaryButton onClick={() => onNavigate?.("workspace")}>
+        Open my Colony
+      </PrimaryButton>
+      <BackButton onClick={() => onNavigate?.("connect")}>
+        Change connection
+      </BackButton>
+    </>
+  );
+}
+
 function SceneBody(props: PresentationProps) {
   const {
     data,
@@ -1962,39 +2220,11 @@ function SceneBody(props: PresentationProps) {
   }
   if (scene === "connected") {
     return (
-      <>
-        <div className="agent-avatar large" />
-        <h2>That’s a good start.</h2>
-        <p className="lede">Your agent is connected and ready to work.</p>
-        <div className="reply">
-          <div className="reply-header">
-            <span className="agent-avatar" />
-            <strong>Scout</strong>
-            <span>
-              <Glyph name="check" />
-              Replied
-            </span>
-          </div>
-          <p>
-            Hello {data.name.trim().split(" ")[0] || "Lerato"}, I’m here.
-            <br />
-            What shall we work on first?
-          </p>
-        </div>
-        <div className="connection-meta">
-          <span>Claude Code subscription</span>
-          <span>
-            <i className="status-dot" />
-            Connection verified
-          </span>
-        </div>
-        <PrimaryButton onClick={() => onNavigate?.("workspace")}>
-          Open my Colony
-        </PrimaryButton>
-        <BackButton onClick={() => onNavigate?.("connect")}>
-          Change connection
-        </BackButton>
-      </>
+      <ConnectedScene
+        data={data}
+        focusTitle={data.visualOnly}
+        onNavigate={onNavigate}
+      />
     );
   }
   if (scene === "connection-error") {
@@ -2058,6 +2288,14 @@ export function OnboardingScenePresentation(props: PresentationProps) {
         Sign in
       </button>
     </span>
+  ) : props.scene === "additional" ? (
+    <button
+      className="link"
+      onClick={() => props.onNavigate?.("workspace")}
+      type="button"
+    >
+      Cancel setup
+    </button>
   ) : null;
   const power = onboardingSceneStage(props.scene) === 2;
   return (
