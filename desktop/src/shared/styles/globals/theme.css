@@ -1,19 +1,102 @@
 @layer base {
   :root {
-    /* Catppuccin Latte (mauve accent) */
-    --radius: 0.625rem;
-    --background: 220 23.08% 94.9%;
-    --foreground: 234 16.02% 35.49%;
-    --card: 220 23.08% 94.9%;
-    --card-foreground: 234 16.02% 35.49%;
-    --popover: 220 23.08% 94.9%;
-    --popover-foreground: 234 16.02% 35.49%;
-    --primary: 266 85.05% 58.04%;
-    --primary-foreground: 220 23.08% 94.9%;
-    --secondary: 223 15.91% 82.75%;
-    --secondary-foreground: 234 16.02% 35.49%;
-    --muted: 223 15.91% 82.75%;
-    --muted-foreground: 233 12.8% 41.37%;
+    /* Colony workspace palette, stored as HSL channels for Tailwind alpha utilities. */
+    --colony-fg: 253.85 14.94% 17.06%;
+    --colony-muted: 267.27 4.53% 47.65%;
+    --colony-faint: 266.67 4.97% 64.51%;
+    --colony-border: 285 9.09% 91.37%;
+    --colony-surface: 30 100% 99.61%;
+    --colony-surface-raised: 300 6.67% 97.06%;
+    --colony-hover: 274.29 30.43% 95.49%;
+    --colony-accent: 270 18.64% 46.27%;
+    --colony-accent-soft: 272.31 37.14% 93.14%;
+    --colony-info: 218.46 33.33% 54.12%;
+    --colony-success: 153.33 21.95% 40.2%;
+    --colony-danger: 344.44 33.89% 46.86%;
+    --colony-canvas: 270 16.67% 95.29%;
+    --colony-focus: 264 27.27% 56.86%;
+    --colony-field: var(--colony-surface);
+    --colony-sidebar-foreground: 276 14.12% 34.71%;
+    --colony-sidebar-selected-foreground: 272.14 29.79% 18.43%;
+    --colony-sidebar-active-indicator: #9c7cb5;
+    --colony-sidebar-active-surface: rgb(255 255 255 / 53.3%);
+    --colony-sidebar-hover-surface: rgb(255 255 255 / 53.3%);
+
+    /* Base field colors come from the frozen field artwork. The separate SVG
+       blooms, ribbon, and grain remain available as material tokens below. */
+    --buzz-gradient-light-top: #fae7ed;
+    --buzz-gradient-light-middle: #f3e8f7;
+    --buzz-gradient-light-bottom: #94b4fa;
+    --buzz-gradient-dark-top: #38273f;
+    --buzz-gradient-dark-middle: #29264a;
+    --buzz-gradient-dark-bottom: #223570;
+    --colony-field-base-light: linear-gradient(
+      139.4deg,
+      var(--buzz-gradient-light-top) 0%,
+      var(--buzz-gradient-light-middle) 44%,
+      var(--buzz-gradient-light-bottom) 100%
+    );
+    --colony-field-base-dark: linear-gradient(
+      141.3deg,
+      var(--buzz-gradient-dark-top) 0%,
+      var(--buzz-gradient-dark-middle) 50%,
+      var(--buzz-gradient-dark-bottom) 100%
+    );
+    --colony-field-light-rose-start: #f5a4d5;
+    --colony-field-light-rose-middle: rgb(247 180 224 / 90%);
+    --colony-field-light-blue-start: #5289f2;
+    --colony-field-light-blue-middle: rgb(130 166 255 / 85%);
+    --colony-field-light-ribbon: #ffffff;
+    --colony-field-light-ribbon-opacity: 0.88;
+    --colony-field-light-ribbon-blur: 4.875rem;
+    --colony-field-light-grain-opacity: 0.055;
+    --colony-field-light-grain-blend-mode: multiply;
+    --colony-field-dark-rose: rgb(158 77 131 / 82%);
+    --colony-field-dark-blue: rgb(68 108 220 / 90%);
+    --colony-field-dark-ribbon: #bc99d1;
+    --colony-field-dark-ribbon-opacity: 0.28;
+    --colony-field-dark-ribbon-blur: 6.25rem;
+    --colony-field-dark-grain-opacity: 0.07;
+    --colony-field-dark-grain-blend-mode: soft-light;
+
+    /* Onboarding keeps its distinct values from the workspace shell. */
+    --colony-onboarding-fg: 258.46 13.98% 18.24%;
+    --colony-onboarding-muted: 270 6.96% 45.1%;
+    --colony-onboarding-border: 280 16.98% 89.61%;
+    --colony-onboarding-surface: 30 100% 99.61%;
+    --colony-onboarding-field: 30 100% 99.61%;
+    --colony-onboarding-wash: 280 30% 96.08%;
+    --colony-onboarding-accent: 265.71 35.81% 42.16%;
+    --colony-onboarding-focus: 263.9 55.66% 58.43%;
+    --colony-onboarding-danger: 344 46.26% 44.51%;
+    --colony-onboarding-success: 163.28 35.67% 33.53%;
+    --colony-onboarding-shadow: 0 30px 80px -45px #58416b60;
+    --colony-onboarding-cta-gradient: linear-gradient(
+      112deg,
+      #775080 0%,
+      #614994 46%,
+      #4757a1 100%
+    );
+    --colony-appearance-frame-gradient: linear-gradient(
+      155deg,
+      var(--ap-t1) 8%,
+      var(--ap-t2) 95%
+    );
+
+    /* Preserve the semantic slots used throughout existing features. */
+    --radius: 0.875rem;
+    --background: var(--colony-canvas);
+    --foreground: var(--colony-fg);
+    --card: var(--colony-surface);
+    --card-foreground: var(--colony-fg);
+    --popover: var(--colony-surface);
+    --popover-foreground: var(--colony-fg);
+    --primary: var(--colony-accent);
+    --primary-foreground: var(--colony-surface);
+    --secondary: var(--colony-surface-raised);
+    --secondary-foreground: var(--colony-fg);
+    --muted: var(--colony-surface-raised);
+    --muted-foreground: var(--colony-muted);
     --huddle-drawer-surface: 0 0% 0%;
     --huddle-control-surface: 0 0% 20%;
     --huddle-control-hover-surface: 0 0% 24%;
@@ -24,35 +107,101 @@
     --huddle-popover-border: 0 0% 24%;
     --huddle-tooltip-surface: 0 0% 20%;
     --huddle-tooltip-foreground: 0 0% 98%;
-    --accent: 223 15.91% 82.75%;
-    --accent-foreground: 234 16.02% 35.49%;
-    --destructive: 347 86.67% 44.12%;
-    --destructive-foreground: 220 23.08% 94.9%;
-    --border: 225 13.56% 76.86%;
-    --input: 225 13.56% 76.86%;
-    --ring: 234 16.02% 35.49%;
+    --accent: var(--colony-hover);
+    --accent-foreground: var(--colony-fg);
+    --destructive: var(--colony-danger);
+    --destructive-foreground: var(--colony-surface);
+    --border: var(--colony-border);
+    --input: var(--colony-border);
+    --ring: var(--colony-focus);
     --chart-1: 345 57.65% 74.12%;
     --chart-2: 185 37.25% 70.59%;
     --chart-3: 219 81.96% 78.43%;
     --chart-4: 35 61.18% 76.86%;
     --chart-5: 113 32.94% 73.33%;
-    --sidebar: 218 25.1% 93.73%;
-    --sidebar-background: 218 25.1% 93.73%;
-    --sidebar-foreground: 234 16.02% 35.49%;
-    --sidebar-primary: 266 85.05% 58.04%;
-    --sidebar-primary-foreground: 220 23.08% 94.9%;
-    --sidebar-active: var(--sidebar-primary);
-    --sidebar-active-foreground: var(--sidebar-primary-foreground);
-    --sidebar-accent: 220 23.08% 94.9%;
-    --sidebar-accent-foreground: 234 16.02% 35.49%;
-    --sidebar-border: 225 13.56% 76.86%;
-    --sidebar-ring: 225 13.56% 76.86%;
-    /* Exact Buzz palette tokens; components consume these semantically. */
-    --buzz-gradient-light-top: #e6e6b6;
-    --buzz-gradient-light-bottom: #c4d0da;
-    --buzz-gradient-dark-top: #4a4616;
-    --buzz-gradient-dark-bottom: #0a1423;
-    --buzz-content-dark: 0 0% 10.1960784314%;
+    --sidebar: var(--colony-canvas);
+    --sidebar-background: var(--colony-canvas);
+    --sidebar-foreground: var(--colony-sidebar-foreground);
+    --sidebar-primary: var(--colony-accent);
+    --sidebar-primary-foreground: var(--colony-surface);
+    --sidebar-active: var(--colony-accent-soft);
+    --sidebar-active-foreground: var(--colony-accent);
+    --sidebar-accent: var(--colony-hover);
+    --sidebar-accent-foreground: var(--colony-sidebar-selected-foreground);
+    --sidebar-border: var(--colony-border);
+    --sidebar-ring: var(--colony-focus);
+    --colony-radius-control: 0.4375rem;
+    --colony-radius-control-medium: 0.625rem;
+    --colony-radius-toast: 0.5625rem;
+    --colony-radius-frame: 0.75rem;
+    --colony-radius-card: 0.875rem;
+    --colony-radius-dialog: 0.9375rem;
+    --colony-radius-onboarding-control: 0.625rem;
+    --colony-radius-onboarding-dialog: 1.125rem;
+    --colony-border-width: 1px;
+    --colony-focus-width: 2px;
+    --colony-focus-offset: 3px;
+    --colony-sidebar-width: 13.75rem;
+    --colony-sidebar-width-min: 13.75rem;
+    --colony-sidebar-width-max: 21.25rem;
+    --colony-sidebar-width-step: 1.25rem;
+    --colony-sidebar-width-collapsed: 3.625rem;
+    --colony-thread-width: 32.5rem;
+    --colony-thread-width-min: 20rem;
+    --colony-thread-width-max: 40.625rem;
+    --colony-detail-drawer-max-width: 28.125rem;
+    --colony-detail-drawer-width: min(28.125rem, 91%);
+    --colony-workspace-dialog-max-width: 33.75rem;
+    --colony-workspace-dialog-padding: 1.9375rem;
+    --colony-onboarding-dialog-max-width: 35rem;
+    --colony-workspace-button-min-height: 2.1875rem;
+    --colony-workspace-button-padding-block: 0.5rem;
+    --colony-workspace-button-padding-inline: 0.8125rem;
+    --colony-workspace-button-padding: var(
+        --colony-workspace-button-padding-block
+      )
+      var(--colony-workspace-button-padding-inline);
+    --colony-workspace-field-min-height: 2.5rem;
+    --colony-workspace-field-padding-block: 0.625rem;
+    --colony-workspace-field-padding-inline: 0.6875rem;
+    --colony-workspace-field-padding: var(
+        --colony-workspace-field-padding-block
+      )
+      var(--colony-workspace-field-padding-inline);
+    --colony-onboarding-control-min-height: 3.0625rem;
+    --colony-onboarding-control-padding-block: 0.875rem;
+    --colony-onboarding-control-padding-inline: 1.25rem;
+    --colony-onboarding-control-padding: var(
+        --colony-onboarding-control-padding-block
+      )
+      var(--colony-onboarding-control-padding-inline);
+    --colony-onboarding-field-padding-block: 0.8125rem;
+    --colony-onboarding-field-padding-inline: 0.9375rem;
+    --colony-onboarding-field-padding: var(
+        --colony-onboarding-field-padding-block
+      )
+      var(--colony-onboarding-field-padding-inline);
+    --colony-inbox-row-padding-block: 1rem;
+    --colony-inbox-row-padding-inline: 0.75rem;
+    --colony-workspace-tabs-height: 2.75rem;
+    --colony-workspace-tabs-gap: 1.375rem;
+    --colony-workspace-tabs-inset: 1.5625rem;
+    --colony-section-tabs-height: 3.1875rem;
+    --colony-section-tabs-gap: 1.625rem;
+    --colony-section-tabs-inset: 2.375rem;
+    --colony-work-row-padding-block: 0.9375rem;
+    --colony-work-row-gap: 0.8125rem;
+    --colony-inbox-row-padding: var(--colony-inbox-row-padding-block)
+      var(--colony-inbox-row-padding-inline);
+    --colony-line-height-body: 1.5;
+    --colony-shadow-menu: 0 16px 50px #30203815;
+    --colony-shadow-dialog: 0 25px 100px #25183535;
+    --colony-shadow-drawer: -15px 0 45px #3824420d;
+    --colony-shadow-frame: 0 5px 35px #7660890b;
+    --colony-shadow-onboarding-card: 0 15px 25px -20px #5d447c35;
+    --colony-shadow-cta: 0 5px 10px -5px #4b2b6340;
+    --colony-shadow-field: 0 1px 2px #30103d03;
+    --buzz-content-dark: var(--colony-surface);
     /* Hosted-community onboarding intentionally keeps this light palette in
        both app themes; semantic tokens keep component code color-agnostic. */
     --buzz-hosted-community-surface-fg: 23 23 23;
@@ -66,20 +215,62 @@
   }
 
   .dark {
-    /* Catppuccin Macchiato (mauve accent) */
-    --radius: 0.625rem;
-    --background: 232 23.4% 18.43%;
-    --foreground: 227 68.25% 87.65%;
-    --card: 232 23.4% 18.43%;
-    --card-foreground: 227 68.25% 87.65%;
-    --popover: 232 23.4% 18.43%;
-    --popover-foreground: 227 68.25% 87.65%;
-    --primary: 267 82.69% 79.61%;
-    --primary-foreground: 232 23.4% 18.43%;
-    --secondary: 230 18.8% 26.08%;
-    --secondary-foreground: 227 68.25% 87.65%;
-    --muted: 230 18.8% 26.08%;
-    --muted-foreground: 228 39.22% 80%;
+    --colony-fg: 280 21.95% 91.96%;
+    --colony-muted: 276 8.02% 63.33%;
+    --colony-faint: 271.58 8.02% 46.47%;
+    --colony-border: 272.31 11.5% 22.16%;
+    --colony-surface: 262.5 11.76% 13.33%;
+    --colony-surface-raised: 264 11.9% 16.47%;
+    --colony-hover: 268.24 16.5% 20.2%;
+    --colony-accent: 279.13 32.86% 72.55%;
+    --colony-accent-soft: 271.76 15.04% 22.16%;
+    --colony-info: 217.63 39.07% 70.39%;
+    --colony-success: 139.35 19.02% 68.04%;
+    --colony-danger: 343.64 58.93% 78.04%;
+    --colony-canvas: 260 11.54% 10.2%;
+    --colony-focus: 264 27.27% 56.86%;
+    --colony-field: 263.08 15.29% 16.67%;
+    --colony-sidebar-foreground: 275.17 25.22% 77.45%;
+    --colony-sidebar-selected-foreground: 273.75 61.54% 94.9%;
+    --colony-sidebar-active-indicator: #9c7cb5;
+    --colony-sidebar-active-surface: rgb(227 210 237 / 7.8%);
+    --colony-sidebar-hover-surface: rgb(227 210 237 / 7.8%);
+    --colony-onboarding-fg: 270 41.67% 95.29%;
+    --colony-onboarding-muted: 268.57 15.11% 72.75%;
+    --colony-onboarding-border: 270 14.29% 27.45%;
+    --colony-onboarding-surface: 256.36 15.49% 13.92%;
+    --colony-onboarding-field: 263.08 15.29% 16.67%;
+    --colony-onboarding-wash: 261.18 16.83% 19.8%;
+    --colony-onboarding-accent: 266.67 61.36% 82.75%;
+    --colony-onboarding-focus: 270.41 72.28% 80.2%;
+    --colony-onboarding-danger: 342.74 73.74% 80.59%;
+    --colony-onboarding-success: 150.67 31.03% 71.57%;
+    --colony-onboarding-shadow: 0 30px 80px -40px #09040d70;
+    --colony-onboarding-cta-gradient: linear-gradient(
+      112deg,
+      #e0b3d7 0%,
+      #c5b2eb 46%,
+      #a9bcf6 100%
+    );
+    --colony-appearance-frame-gradient: linear-gradient(
+      155deg,
+      var(--ap-t1) 8%,
+      var(--ap-t2) 95%
+    );
+
+    --radius: 0.875rem;
+    --background: var(--colony-canvas);
+    --foreground: var(--colony-fg);
+    --card: var(--colony-surface);
+    --card-foreground: var(--colony-fg);
+    --popover: var(--colony-surface);
+    --popover-foreground: var(--colony-fg);
+    --primary: var(--colony-accent);
+    --primary-foreground: var(--colony-surface);
+    --secondary: var(--colony-surface-raised);
+    --secondary-foreground: var(--colony-fg);
+    --muted: var(--colony-surface-raised);
+    --muted-foreground: var(--colony-muted);
     --huddle-drawer-surface: 230 18.8% 26.08%;
     --huddle-control-surface: 231 15.61% 33.92%;
     --huddle-control-hover-surface: 231 15.61% 38%;
@@ -90,29 +281,29 @@
     --huddle-popover-border: 231 15.61% 38%;
     --huddle-tooltip-surface: 231 15.61% 33.92%;
     --huddle-tooltip-foreground: 227 68.25% 87.65%;
-    --accent: 230 18.8% 26.08%;
-    --accent-foreground: 227 68.25% 87.65%;
-    --destructive: 351 73.91% 72.94%;
-    --destructive-foreground: 232 23.4% 18.43%;
-    --border: 231 15.61% 33.92%;
-    --input: 231 15.61% 33.92%;
-    --ring: 227 68.25% 87.65%;
+    --accent: var(--colony-hover);
+    --accent-foreground: var(--colony-fg);
+    --destructive: var(--colony-danger);
+    --destructive-foreground: var(--colony-surface);
+    --border: var(--colony-border);
+    --input: var(--colony-border);
+    --ring: var(--colony-focus);
     --chart-1: 333 20.78% 38.04%;
     --chart-2: 193 19.61% 38.04%;
     --chart-3: 224 26.67% 41.18%;
     --chart-4: 30 8.24% 42.35%;
     --chart-5: 139 10.98% 38.82%;
-    --sidebar: 234 22.75% 17.25%;
-    --sidebar-background: 234 22.75% 17.25%;
-    --sidebar-foreground: 227 68.25% 87.65%;
-    --sidebar-primary: 267 82.69% 79.61%;
-    --sidebar-primary-foreground: 232 23.4% 18.43%;
-    --sidebar-active: var(--sidebar-primary);
-    --sidebar-active-foreground: var(--sidebar-primary-foreground);
-    --sidebar-accent: 232 23.4% 18.43%;
-    --sidebar-accent-foreground: 227 68.25% 87.65%;
-    --sidebar-border: 231 15.61% 33.92%;
-    --sidebar-ring: 231 15.61% 33.92%;
+    --sidebar: var(--colony-canvas);
+    --sidebar-background: var(--colony-canvas);
+    --sidebar-foreground: var(--colony-sidebar-foreground);
+    --sidebar-primary: var(--colony-accent);
+    --sidebar-primary-foreground: var(--colony-surface);
+    --sidebar-active: var(--colony-accent-soft);
+    --sidebar-active-foreground: var(--colony-accent);
+    --sidebar-accent: var(--colony-hover);
+    --sidebar-accent-foreground: var(--colony-sidebar-selected-foreground);
+    --sidebar-border: var(--colony-border);
+    --sidebar-ring: var(--colony-focus);
   }
 
   * {
@@ -128,7 +319,7 @@
   }
 
   /*
-   * The app is a fixed-height shell — the document itself must never scroll
+   * The app is a fixed-height shell. The document itself must never scroll
    * or rubber-band. `overscroll-behavior: none` stops scroll chaining from
    * inner containers reaching the viewport on both axes (the Magic Mouse
    * horizontal pan escaped through here), and `overflow: hidden` removes any
@@ -152,7 +343,9 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--colony-font-sans);
+    font-size: var(--colony-text-body);
+    line-height: var(--colony-line-height-body);
   }
 
   /*
@@ -192,13 +385,15 @@
   --sidebar-row-subtle-active-surface: rgb(255 255 255 / 16%);
 }
 
-/* The prominent treatment is exclusive to Buzz's painted gradient. */
+/* The prominent treatment is exclusive to the branded field surface. */
 :root[data-buzz-sidebar] {
-  --sidebar-row-active-surface: rgb(255 255 255 / 82%);
+  --sidebar-row-subtle-active-surface: var(--colony-sidebar-active-surface);
+  --sidebar-row-active-surface: hsl(var(--colony-accent-soft));
 }
 
 :root[data-buzz-sidebar].dark {
-  --sidebar-row-active-surface: rgb(255 255 255 / 18%);
+  --sidebar-row-subtle-active-surface: var(--colony-sidebar-active-surface);
+  --sidebar-row-active-surface: hsl(var(--colony-accent-soft));
 }
 
 /*
@@ -230,17 +425,19 @@
  */
 :root[data-buzz-sidebar] {
   --buzz-gradient-top: var(--buzz-gradient-light-top);
+  --buzz-gradient-middle: var(--buzz-gradient-light-middle);
   --buzz-gradient-bottom: var(--buzz-gradient-light-bottom);
-  --buzz-muted-foreground: rgb(0 0 0 / 40%);
-  --buzz-search-surface: rgb(0 0 0 / 4%);
-  --buzz-chrome-foreground: rgb(0 0 0 / 50%);
-  --buzz-channel-fg: inherit;
-  --buzz-dm-fg: inherit;
-  --buzz-nav-fg: inherit;
-  --buzz-hover-surface: rgb(0 0 0 / 4%);
+  --colony-field-base-active: var(--colony-field-base-light);
+  --buzz-muted-foreground: hsl(var(--colony-muted));
+  --buzz-search-surface: var(--colony-sidebar-hover-surface);
+  --buzz-chrome-foreground: hsl(var(--colony-sidebar-foreground));
+  --buzz-channel-fg: hsl(var(--colony-fg));
+  --buzz-dm-fg: hsl(var(--colony-fg));
+  --buzz-nav-fg: hsl(var(--colony-sidebar-foreground));
+  --buzz-hover-surface: var(--colony-sidebar-hover-surface);
   --buzz-sidebar-scrollbar-thumb: var(--buzz-hover-surface);
-  --buzz-active-fill: 0 0% 0%;
-  --buzz-active-foreground: var(--foreground);
+  --buzz-active-fill: var(--colony-accent-soft);
+  --buzz-active-foreground: var(--colony-sidebar-selected-foreground);
 }
 
 /*
@@ -251,13 +448,18 @@
  */
 :root[data-buzz-sidebar].dark {
   --buzz-gradient-top: var(--buzz-gradient-dark-top);
+  --buzz-gradient-middle: var(--buzz-gradient-dark-middle);
   --buzz-gradient-bottom: var(--buzz-gradient-dark-bottom);
-  --buzz-muted-foreground: rgb(255 255 255 / 40%);
-  --buzz-search-surface: rgb(255 255 255 / 4%);
-  --buzz-chrome-foreground: rgb(255 255 255 / 50%);
-  --buzz-hover-surface: rgb(255 255 255 / 4%);
-  --buzz-active-fill: 0 0% 100%;
-  --buzz-active-foreground: 0 0% 100%;
+  --colony-field-base-active: var(--colony-field-base-dark);
+  --buzz-muted-foreground: hsl(var(--colony-muted));
+  --buzz-search-surface: var(--colony-sidebar-hover-surface);
+  --buzz-chrome-foreground: hsl(var(--colony-sidebar-foreground));
+  --buzz-channel-fg: hsl(var(--colony-fg));
+  --buzz-dm-fg: hsl(var(--colony-fg));
+  --buzz-nav-fg: hsl(var(--colony-sidebar-foreground));
+  --buzz-hover-surface: var(--colony-sidebar-hover-surface);
+  --buzz-active-fill: var(--colony-accent-soft);
+  --buzz-active-foreground: var(--colony-sidebar-selected-foreground);
 }
 
 /*
@@ -282,27 +484,18 @@
   color: hsl(var(--primary-foreground));
 }
 
-/* Keep the subtle content-card lift in Buzz Light only. */
-:root[data-buzz-sidebar]:not(.dark)
+:root[data-buzz-sidebar]
   [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
-  box-shadow:
-    -1px -1px 0 0 hsl(var(--sidebar-border) / 0.45),
-    0 0 4px 0 rgb(0 0 0 / 7%);
+  --background: var(--colony-surface);
+  background-color: hsl(var(--background));
+  border: var(--colony-border-width) solid hsl(var(--colony-border));
+  border-radius: var(--colony-radius-dialog);
+  box-shadow: var(--colony-shadow-frame);
 }
 
 /* Let the content card's shadow feather into the surrounding gradient. */
 :root[data-buzz-sidebar]:not(.dark) [data-buzz-shadow-viewport] {
   overflow: visible;
-}
-
-/*
- * Buzz Dark uses a warmer neutral for the inset main/settings content canvas.
- * Override `--background` locally as well as the surface fill so descendant
- * headers and panes using `bg-background` remain visually continuous.
- */
-:root[data-buzz-sidebar].dark [data-buzz-content-surface] {
-  --background: var(--buzz-content-dark);
-  background-color: hsl(var(--background));
 }
 
 :root[data-buzz-sidebar] .buzz-huddle-app-surface {
@@ -315,11 +508,7 @@
  * of the same gradient by default so its color remains stable over every app
  * surface, including a lifted huddle. */
 :root[data-buzz-sidebar] .buzz-theme-gradient-underlay {
-  background-image: linear-gradient(
-    to bottom,
-    var(--buzz-gradient-top),
-    var(--buzz-gradient-bottom)
-  );
+  background-image: var(--colony-field-base-active);
   background-repeat: no-repeat;
   background-size: 100vw 100vh;
 }
@@ -331,21 +520,13 @@
  * that same state for layer visibility keeps both surfaces in lockstep.
  */
 :root[data-buzz-sidebar] .buzz-theme-gradient-layer-light {
-  background-image: linear-gradient(
-    to bottom,
-    var(--buzz-gradient-light-top),
-    var(--buzz-gradient-light-bottom)
-  );
+  background-image: var(--colony-field-base-light);
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
 
 :root[data-buzz-sidebar] .buzz-theme-gradient-layer-dark {
-  background-image: linear-gradient(
-    to bottom,
-    var(--buzz-gradient-dark-top),
-    var(--buzz-gradient-dark-bottom)
-  );
+  background-image: var(--colony-field-base-dark);
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
@@ -359,11 +540,7 @@
 :root[data-buzz-sidebar]:not(.dark)
   [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
   background-color: transparent;
-  background-image: linear-gradient(
-    to bottom,
-    var(--buzz-gradient-light-top),
-    var(--buzz-gradient-light-bottom)
-  );
+  background-image: var(--colony-field-base-light);
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
@@ -371,11 +548,7 @@
 :root[data-buzz-sidebar].dark
   [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
   background-color: transparent;
-  background-image: linear-gradient(
-    to bottom,
-    var(--buzz-gradient-dark-top),
-    var(--buzz-gradient-dark-bottom)
-  );
+  background-image: var(--colony-field-base-dark);
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
@@ -440,9 +613,8 @@
 }
 
 /*
- * By default, selected navigation uses a darker version of the hover tint,
- * matching Buzz's established production treatment. The optional prominent
- * preference repaints that same row with the higher-contrast tab surface.
+ * Hover and selected navigation use the same translucent field tint from the
+ * reference. The prominent preference uses the accent-soft selected surface.
  */
 :root[data-buzz-sidebar] [data-testid="app-sidebar"] [data-active="true"],
 :root[data-buzz-sidebar] [data-testid="settings-sidebar"] [data-active="true"] {
@@ -456,14 +628,14 @@
 :root[data-buzz-sidebar][data-prominent-active-tab]
   [data-testid="settings-sidebar"]
   [data-active="true"] {
-  --sidebar-active-foreground: var(--sidebar-foreground);
+  --sidebar-active-foreground: var(--colony-sidebar-selected-foreground);
   background-color: var(--sidebar-row-active-surface);
   box-shadow: none;
 }
 
 /*
- * Hover on non-active Buzz nav items uses the established 4% theme-specific
- * tint. Active items are excluded so they retain the selected surface. Covers
+ * Hover on non-active Buzz nav items uses the reference field tint. Active
+ * items are excluded so they retain the selected surface. Covers
  * both top-level menu buttons and channel sub-buttons in app and Settings nav.
  */
 :root[data-buzz-sidebar]
