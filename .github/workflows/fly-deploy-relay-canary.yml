@@ -177,9 +177,26 @@ jobs:
           fi
 
           volume_id="$(jq -r '.[0]' <<< "$volume_ids_json")"
-          snapshot_json="$(flyctl volumes snapshots create "$volume_id" \
-            --app "$DATABASE_APP" --json)"
-          snapshot_id="$(jq -er '.id' <<< "$snapshot_json")"
+          # `flyctl volumes snapshots create` prints plain text even with
+          # --json and never returns the new snapshot id, so identify it as
+          # the snapshot that was not present before the create call.
+          before_ids="$(flyctl volumes snapshots list "$volume_id" \
+            --app "$DATABASE_APP" --json | jq -c '[.[].id]')"
+          flyctl volumes snapshots create "$volume_id" --app "$DATABASE_APP"
+          snapshot_id=""
+          for attempt in $(seq 1 30); do
+            snapshot_id="$(flyctl volumes snapshots list "$volume_id" \
+              --app "$DATABASE_APP" --json |
+              jq -r --argjson before "$before_ids" \
+                '[.[] | select(.id as $id | $before | index($id) | not)] | sort_by(.created_at) | last | .id // ""')"
+            [[ -n "$snapshot_id" ]] && break
+            echo "Waiting for the new snapshot to appear ($attempt/30)."
+            sleep 5
+          done
+          if [[ -z "$snapshot_id" ]]; then
+            echo "The new Postgres volume snapshot never appeared" >&2
+            exit 1
+          fi
           echo "Waiting for Postgres volume snapshot $snapshot_id to complete."
 
           ready=0
