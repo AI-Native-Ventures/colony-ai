@@ -158,7 +158,9 @@ jobs:
 
       - name: Snapshot the Postgres volume before schema apply
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # Deploy tokens are app-scoped: the relay token cannot touch the
+          # database app, so the backup uses its own token for that app only.
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_API_TOKEN }}
         run: |
           set -euo pipefail
           volume_list="$(flyctl volumes list --app "$DATABASE_APP" --json)"
