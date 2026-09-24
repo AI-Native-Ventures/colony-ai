@@ -74,6 +74,23 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/events", post(api::bridge::submit_event))
         .route("/query", post(api::bridge::query_events))
         .route("/count", post(api::bridge::count_events))
+        // Member self-serve community creation.
+        .route(
+            "/api/communities/config",
+            get(api::self_provisioning::provisioning_config),
+        )
+        .route(
+            "/api/communities/availability",
+            get(api::self_provisioning::community_availability),
+        )
+        .route(
+            "/api/communities",
+            post(api::self_provisioning::create_community),
+        )
+        .route(
+            "/api/communities/mine",
+            get(api::self_provisioning::list_my_communities),
+        )
         // Relay-owned third-party GIF metadata proxy (NIP-98 auth).
         .route(api::gifs::SEARCH_PATH, post(api::gifs::search))
         .route(api::gifs::SHARE_PATH, post(api::gifs::share))

@@ -2,6 +2,7 @@ import * as React from "react";
 import { Check, Copy } from "lucide-react";
 
 import { HostedCommunityOnboarding } from "@/features/communities/ui/HostedCommunityOnboarding";
+import { SelfServeCommunityCreateFlow } from "@/features/communities/ui/SelfServeCommunityCreateFlow";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
 import { OnboardingChrome } from "@/features/onboarding/ui/OnboardingChrome";
@@ -18,7 +19,13 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 
-type WelcomeSetupPage = "welcome" | "existing" | "join" | "member" | "owned";
+type WelcomeSetupPage =
+  | "welcome"
+  | "existing"
+  | "join"
+  | "member"
+  | "owned"
+  | "create";
 type WelcomeTransitionMode = "initial" | OnboardingTransitionDirection;
 
 type WelcomeSetupProps = {
@@ -109,12 +116,17 @@ export function WelcomeSetup({
               onClick: () => showPage("welcome"),
               testId: "welcome-join-back",
             }
-          : page === "member"
+          : page === "create"
             ? {
-                onClick: () => showPage("existing"),
-                testId: "welcome-member-back",
+                onClick: () => showPage("welcome"),
+                testId: "welcome-create-back",
               }
-            : undefined;
+            : page === "member"
+              ? {
+                  onClick: () => showPage("existing"),
+                  testId: "welcome-member-back",
+                }
+              : undefined;
 
   return (
     <div
@@ -163,7 +175,7 @@ export function WelcomeSetup({
                 >
                   <button
                     data-testid="community-choice-create"
-                    onClick={beginHostedCommunity}
+                    onClick={() => showPage("create")}
                     type="button"
                   >
                     Create a community
@@ -228,13 +240,26 @@ export function WelcomeSetup({
                 </Card>
               </div>
             </OnboardingSlideTransition>
+          ) : page === "create" ? (
+            <OnboardingSlideTransition
+              className="flex w-full flex-col items-center text-center"
+              direction={transitionDirection}
+              transitionKey={`create-${transitionDirection}`}
+            >
+              <SelfServeCommunityCreateFlow
+                onBack={() => showPage("welcome")}
+              />
+            </OnboardingSlideTransition>
           ) : page === "owned" ? (
             <OnboardingSlideTransition
               className="flex w-full flex-col items-center text-center"
               direction={transitionDirection}
               transitionKey={`owned-${transitionDirection}`}
             >
-              <HostedCommunityOnboarding onBack={() => showPage("welcome")} />
+              <HostedCommunityOnboarding
+                allowCreate={false}
+                onBack={() => showPage("welcome")}
+              />
             </OnboardingSlideTransition>
           ) : (
             <OnboardingSlideTransition
@@ -317,7 +342,11 @@ export function WelcomeSetup({
           )}
           {isHostedSignInOpen && page !== "owned" ? (
             <HostedCommunityOnboarding
-              onBack={() => setIsHostedSignInOpen(false)}
+              allowCreate={false}
+              onBack={() => {
+                setIsHostedSignInOpen(false);
+                showPage("welcome", "backward");
+              }}
               onReady={() => {
                 setIsHostedSignInOpen(false);
                 showPage("owned");

@@ -61,6 +61,21 @@ pub struct OwnedCommunityRecord {
     pub archived_at: Option<DateTime<Utc>>,
 }
 
+/// Community row returned by member-scoped community discovery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberCommunityRecord {
+    /// Stable server-resolved community id.
+    pub id: CommunityId,
+    /// Normalized host that maps to the community.
+    pub host: String,
+    /// When the community row was created.
+    pub created_at: DateTime<Utc>,
+    /// The requester's role in this community.
+    pub role: String,
+    /// The community's owner, if one is recorded.
+    pub owner_pubkey: Option<String>,
+}
+
 /// Community row returned by an owner-authorized archive operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivedCommunityRecord {
@@ -189,8 +204,9 @@ impl Db {
 
     /// Lists communities where `owner_pubkey` currently holds the `owner` role.
     ///
-    /// This is an operator-plane helper, not a tenant-scoped data-plane read:
-    /// callers must gate it on deployment-level operator auth before exposing it.
+    /// This query crosses community boundaries. Before exposing it, callers
+    /// must prove that `owner_pubkey` is the authenticated signer or authorize
+    /// the request through deployment-level operator auth.
     #[datastore_span(name = "list_communities_owned_by", system = "postgresql")]
     pub async fn list_communities_owned_by(
         &self,
@@ -227,6 +243,67 @@ impl Db {
                     host,
                     created_at,
                     archived_at,
+                })
+            })
+            .collect()
+    }
+
+    /// Lists non-archived communities where `member_pubkey` holds a membership row.
+    ///
+    /// The query is keyed by the authenticated member's own pubkey. Callers
+    /// must never substitute a different identity when exposing this result.
+    #[datastore_span(name = "list_communities_for_member", system = "postgresql")]
+    pub async fn list_communities_for_member(
+        &self,
+        member_pubkey: &str,
+    ) -> Result<Vec<MemberCommunityRecord>> {
+        let member_pubkey = member_pubkey.to_ascii_lowercase();
+        let mut connection = crate::observability::acquire_writer(
+            &self.pool,
+            crate::observability::WriterOperation::Authorization,
+        )
+        .await?;
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                c.id,
+                c.host,
+                c.created_at,
+                rm.role,
+                (
+                    SELECT owner.pubkey
+                    FROM relay_members owner
+                    WHERE owner.community_id = c.id
+                      AND owner.role = 'owner'
+                    ORDER BY owner.created_at ASC, owner.pubkey ASC
+                    LIMIT 1
+                ) AS owner_pubkey
+            FROM communities c
+            JOIN relay_members rm ON rm.community_id = c.id
+            WHERE rm.pubkey = $1
+              AND c.archived_at IS NULL
+              AND c.deleted_at IS NULL
+              AND c.deletion_state = 'active'
+            ORDER BY c.created_at ASC, c.host ASC
+            "#,
+        )
+        .bind(member_pubkey)
+        .fetch_all(&mut *connection)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let id: Uuid = row.try_get("id")?;
+                let host: String = row.try_get("host")?;
+                let created_at: DateTime<Utc> = row.try_get("created_at")?;
+                let role: String = row.try_get("role")?;
+                let owner_pubkey: Option<String> = row.try_get("owner_pubkey")?;
+                Ok(MemberCommunityRecord {
+                    id: CommunityId::from_uuid(id),
+                    host,
+                    created_at,
+                    role,
+                    owner_pubkey,
                 })
             })
             .collect()
