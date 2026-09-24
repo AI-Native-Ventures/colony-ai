@@ -1100,7 +1100,9 @@ impl DeletionStore {
             WHERE ($1::uuid IS NULL OR request.id = $1)
               AND request.stage IN ('approved', 'fenced', 'drained', 'bindings_removed',
                                     'postgres_purged', 'cache_purged', 'logically_verified')
-              AND request.blocked_at IS NULL AND request.next_attempt_at <= now()
+              AND request.blocked_at IS NULL
+              AND (request.next_attempt_at <= now()
+                   OR (request.stage = 'approved' AND request.lease_generation = 0))
               AND (request.lease_until IS NULL OR request.lease_until < now())
             ORDER BY request.created_at, request.id
             FOR UPDATE OF request SKIP LOCKED LIMIT 1"#,
@@ -3559,11 +3561,37 @@ mod postgres_tests {
             mismatched_request.is_err(),
             "the frozen request digest must remain bound to its approval"
         );
+
+        // A fresh approval is immediately runnable. Its first claim must not
+        // depend on comparing transaction-start timestamps across transactions.
+        sqlx::query(
+            "UPDATE community_deletion_requests \
+             SET next_attempt_at = now() + interval '1 hour' WHERE id = $1",
+        )
+        .bind(request.id)
+        .execute(&db.pool)
+        .await
+        .expect("simulate a future retry timestamp on a fresh approval");
+        let claimed = store
+            .claim_specific(request.id, "executor-a", DEFAULT_LEASE_DURATION)
+            .await
+            .expect("claim freshly approved request")
+            .expect("freshly approved request must be claimable");
+        store
+            .record_retry(
+                &claimed.lease,
+                DeletionStage::Approved,
+                "future_retry_timestamp",
+                "simulate a retryable failure",
+                Duration::from_secs(3600),
+            )
+            .await
+            .expect("record a scheduled retry");
         assert!(store
             .claim_specific(request.id, "executor-a", DEFAULT_LEASE_DURATION)
             .await
-            .expect("claim approved")
-            .is_some());
+            .expect("claim before retry time")
+            .is_none());
     }
 
     #[tokio::test]
