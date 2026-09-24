@@ -20,7 +20,6 @@ use uuid::Uuid;
 
 const MAIL_CODE_WAIT: Duration = Duration::from_secs(30);
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-static DATABASE_POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
 struct AccountSession {
     pubkey: String,
@@ -156,19 +155,15 @@ async fn parse_session(response: reqwest::Response) -> AccountSession {
     }
 }
 
-async fn database_pool() -> &'static sqlx::PgPool {
-    DATABASE_POOL
-        .get_or_init(|| async {
-            let database_url = std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string());
-            sqlx::postgres::PgPoolOptions::new()
-                .max_connections(1)
-                .acquire_timeout(Duration::from_secs(5))
-                .connect(&database_url)
-                .await
-                .expect("connect to disposable E2E Postgres")
-        })
+async fn database_pool() -> sqlx::PgPool {
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string());
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(&database_url)
         .await
+        .expect("connect to disposable E2E Postgres")
 }
 
 async fn mail_code(email: &str, purpose: &str) -> String {
@@ -178,6 +173,7 @@ async fn mail_code(email: &str, purpose: &str) -> String {
         _ => panic!("unsupported test mail purpose"),
     };
     let deadline = Instant::now() + MAIL_CODE_WAIT;
+    let pool = database_pool().await;
     loop {
         let code = sqlx::query_scalar::<_, String>(
             "SELECT test_mail.code FROM account_test_mail AS test_mail \
@@ -187,10 +183,11 @@ async fn mail_code(email: &str, purpose: &str) -> String {
         )
         .bind(email)
         .bind(purpose)
-        .fetch_optional(database_pool().await)
+        .fetch_optional(&pool)
         .await
         .expect("read code from test-only mail sink");
         if let Some(code) = code {
+            pool.close().await;
             return code;
         }
         assert!(
@@ -484,6 +481,7 @@ async fn expired_verification_code_is_rejected() {
     let email = unique_email("expired-code");
     sign_up(&email, "expired-code-password-123").await;
     let code = mail_code(&email, "verify").await;
+    let pool = database_pool().await;
     let update = sqlx::query(
         "UPDATE account_codes SET expires_at = now() - interval '1 second' \
          WHERE id = ( \
@@ -495,10 +493,11 @@ async fn expired_verification_code_is_rejected() {
          )",
     )
     .bind(&email)
-    .execute(database_pool().await)
+    .execute(&pool)
     .await
     .expect("expire signup code in disposable E2E database");
     assert_eq!(update.rows_affected(), 1, "signup code row was not found");
+    pool.close().await;
     let response = post_json(
         "/api/accounts/verify",
         &json!({ "email": email, "code": code }),
@@ -509,10 +508,10 @@ async fn expired_verification_code_is_rejected() {
 
 #[tokio::test]
 #[ignore]
-async fn password_lockout_and_route_rate_limit_are_enforced() {
+async fn password_signin_lockout_is_enforced() {
     let email = unique_email("lockout");
     let password = "correct-lockout-password-123";
-    let session = register_verified(&email, password).await;
+    let _session = register_verified(&email, password).await;
 
     for _ in 0..5 {
         let response = post_json(
@@ -527,26 +526,38 @@ async fn password_lockout_and_route_rate_limit_are_enforced() {
         )
         .await;
     }
+    let pool = database_pool().await;
+    let has_active_lock = sqlx::query_scalar::<_, bool>(
+        "SELECT COALESCE(locked_until > now() \
+             AND locked_until <= now() + interval '15 minutes', false) \
+         FROM accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("read persisted account lockout");
+    pool.close().await;
+    assert!(
+        has_active_lock,
+        "five failed sign-ins must persist an active 15-minute lock"
+    );
+
     let locked_response = post_json(
         "/api/accounts/signin",
         &json!({ "email": email, "password": password }),
     )
     .await;
-    let lockout_body = assert_error(
+    assert_error(
         locked_response,
-        reqwest::StatusCode::TOO_MANY_REQUESTS,
-        "rate_limited",
+        reqwest::StatusCode::UNAUTHORIZED,
+        "invalid_credentials",
     )
     .await;
-    let retry_after_secs = lockout_body
-        .get("retry_after_secs")
-        .and_then(Value::as_u64)
-        .expect("lockout response has retry_after_secs");
-    assert!(
-        (895..=900).contains(&retry_after_secs),
-        "five failed sign-ins must lock the account for about 15 minutes"
-    );
+}
 
+#[tokio::test]
+#[ignore]
+async fn resend_code_ip_rate_limit_is_enforced() {
     let mut rate_limited = false;
     for attempt in 0..100 {
         let response = post_json(
@@ -568,5 +579,4 @@ async fn password_lockout_and_route_rate_limit_are_enforced() {
         rate_limited,
         "resend-code did not enforce its IP rate limit"
     );
-    drop(session);
 }
