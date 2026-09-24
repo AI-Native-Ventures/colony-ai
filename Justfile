@@ -853,6 +853,10 @@ mobile-build-android:
     if [[ -n "${BUZZ_PUSH_GATEWAY_URL:-}" ]]; then
         set -- "$@" --dart-define="BUZZ_PUSH_GATEWAY_URL=${BUZZ_PUSH_GATEWAY_URL}"
     fi
+    server_client_id="${COLONY_GOOGLE_SERVER_CLIENT_ID:-${COLONY_GOOGLE_WEB_CLIENT_ID:-}}"
+    if [[ -n "$server_client_id" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=${server_client_id}"
+    fi
     unset GIT_DIR GIT_WORK_TREE
     cd {{mobile_dir}}
     flutter "$@"
@@ -866,6 +870,10 @@ mobile-dev:
         sleep 3
     fi
     ./scripts/mobile-worktree-overrides.sh
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME:-}" ]]; then
+        COLONY_GOOGLE_REVERSED_CLIENT_ID="$COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME" \
+            ./scripts/mobile-google-auth-xcconfig.sh dogfood
+    fi
     gateway_url="${BUZZ_PUSH_GATEWAY_URL:-}"
     overrides_file="{{mobile_dir}}/ios/Flutter/AppOverrides.xcconfig"
     if [[ -z "$gateway_url" && -f "$overrides_file" ]]; then
@@ -874,6 +882,13 @@ mobile-dev:
     set -- run
     if [[ -n "$gateway_url" ]]; then
         set -- "$@" --dart-define="BUZZ_PUSH_GATEWAY_URL=${gateway_url}"
+    fi
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID:-}" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID}"
+    fi
+    server_client_id="${COLONY_GOOGLE_SERVER_CLIENT_ID:-${COLONY_GOOGLE_WEB_CLIENT_ID:-}}"
+    if [[ -n "$server_client_id" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=${server_client_id}"
     fi
     cd {{mobile_dir}}
     unset GIT_DIR GIT_WORK_TREE

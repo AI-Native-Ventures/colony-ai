@@ -267,6 +267,7 @@ fn authorization_url(
 async fn exchange_code_for_id_token(
     endpoint: &str,
     client_id: &str,
+    client_secret: &str,
     redirect_uri: &str,
     code: &str,
     verifier: &str,
@@ -277,18 +278,19 @@ async fn exchange_code_for_id_token(
         id_token: Option<String>,
     }
 
-    let mut form = form_urlencoded::Serializer::new(String::new())
-        .append_pair("client_id", client_id)
-        .append_pair("code", code)
-        .append_pair("code_verifier", verifier)
-        .append_pair("redirect_uri", redirect_uri)
-        .append_pair("grant_type", "authorization_code")
-        .finish();
     let client = reqwest::Client::builder()
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| GoogleOAuthError::TokenExchangeFailed)?;
+    let mut form = form_urlencoded::Serializer::new(String::new())
+        .append_pair("client_id", client_id)
+        .append_pair("client_secret", client_secret)
+        .append_pair("code", code)
+        .append_pair("code_verifier", verifier)
+        .append_pair("redirect_uri", redirect_uri)
+        .append_pair("grant_type", "authorization_code")
+        .finish();
     let response = client
         .post(endpoint)
         .header(
@@ -327,11 +329,16 @@ async fn exchange_code_for_id_token(
 
 async fn run_google_oauth(
     client_id: &str,
+    client_secret: &str,
     endpoints: GoogleOAuthEndpoints<'_>,
     open_browser: impl FnOnce(&str) -> Result<(), GoogleOAuthError>,
 ) -> Result<String, GoogleOAuthError> {
     let client_id = client_id.trim();
-    if client_id.is_empty() || client_id.len() > 512 {
+    if client_id.is_empty()
+        || client_id.len() > 512
+        || client_secret.trim().is_empty()
+        || client_secret.len() > 512
+    {
         return Err(GoogleOAuthError::InvalidConfiguration);
     }
 
@@ -374,6 +381,7 @@ async fn run_google_oauth(
     let token = exchange_code_for_id_token(
         endpoints.token,
         client_id,
+        client_secret,
         &redirect_uri,
         &code,
         &verifier,
@@ -390,11 +398,21 @@ pub async fn google_desktop_sign_in(
     app: tauri::AppHandle,
     client_id: String,
 ) -> Result<String, String> {
-    run_google_oauth(&client_id, GoogleOAuthEndpoints::PRODUCTION, |url| {
-        app.opener()
-            .open_url(url, None::<&str>)
-            .map_err(|_| GoogleOAuthError::BrowserUnavailable)
-    })
+    let Some(client_secret) = option_env!("COLONY_GOOGLE_DESKTOP_CLIENT_SECRET") else {
+        return Err(GoogleOAuthError::InvalidConfiguration
+            .safe_message()
+            .to_owned());
+    };
+    run_google_oauth(
+        &client_id,
+        client_secret,
+        GoogleOAuthEndpoints::PRODUCTION,
+        |url| {
+            app.opener()
+                .open_url(url, None::<&str>)
+                .map_err(|_| GoogleOAuthError::BrowserUnavailable)
+        },
+    )
     .await
     .map_err(|error| error.safe_message().to_owned())
 }
@@ -466,6 +484,7 @@ mod tests {
 
         let token = run_google_oauth(
             "desktop-client-id",
+            "generated-test-google-client-secret",
             GoogleOAuthEndpoints {
                 authorization: "https://accounts.example.test/authorize",
                 token: &token_endpoint,
@@ -540,6 +559,7 @@ mod tests {
             Some("openid email")
         );
         assert!(!details.contains_key("code_verifier"));
+        assert!(!details.contains_key("client_secret"));
         let redirect = Url::parse(details.get("redirect_uri").expect("redirect URI set"))
             .expect("redirect URI valid");
         assert_eq!(redirect.scheme(), "http");
@@ -563,6 +583,14 @@ mod tests {
             .expect("verifier sent to token endpoint");
         assert_eq!(pkce_challenge(verifier), *challenge);
         assert_eq!(
+            form_fields.get("client_id").map(String::as_str),
+            Some("desktop-client-id")
+        );
+        assert_eq!(
+            form_fields.get("client_secret").map(String::as_str),
+            Some("generated-test-google-client-secret")
+        );
+        assert_eq!(
             form_fields.get("code").map(String::as_str),
             Some("authorization-code")
         );
@@ -580,6 +608,7 @@ mod tests {
     async fn callback_wait_has_a_bounded_timeout() {
         let result = run_google_oauth(
             "desktop-client-id",
+            "generated-test-google-client-secret",
             GoogleOAuthEndpoints {
                 authorization: "https://accounts.example.test/authorize",
                 token: "https://tokens.example.test/token",
