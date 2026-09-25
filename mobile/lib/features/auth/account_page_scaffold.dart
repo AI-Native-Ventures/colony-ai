@@ -13,6 +13,7 @@ class AccountPageScaffold extends StatelessWidget {
     this.titleTopSpacing = 12,
     this.titleDescriptionSpacing = Grid.xs,
     this.descriptionChildrenSpacing = 22,
+    this.footerBottomPadding = 8,
     this.showBackButton = true,
     this.showBrandBar = true,
     this.showHeroBackground = false,
@@ -34,6 +35,7 @@ class AccountPageScaffold extends StatelessWidget {
 
   /// Space after a title and description before the page contents.
   final double descriptionChildrenSpacing;
+  final double footerBottomPadding;
   final bool showBackButton;
   final bool showBrandBar;
   final bool showHeroBackground;
@@ -165,7 +167,12 @@ class AccountPageScaffold extends StatelessWidget {
                     top: false,
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        12,
+                        16,
+                        footerBottomPadding,
+                      ),
                       decoration: BoxDecoration(
                         color: paper,
                         border: Border(top: BorderSide(color: line)),

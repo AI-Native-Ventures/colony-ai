@@ -62,6 +62,20 @@ class AuthEntryPage extends HookConsumerWidget {
               child: const Text('I already have an account'),
             ),
           ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: auth.isLoading
+                ? null
+                : () {
+                    ref.read(accountAuthProvider.notifier).reset();
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: advancedIdentityPageBuilder,
+                      ),
+                    );
+                  },
+            child: const Text('Advanced: use an existing Nostr identity'),
+          ),
         ],
       ),
       children: [

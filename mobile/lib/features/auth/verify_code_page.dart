@@ -143,7 +143,7 @@ class VerifyCodePage extends HookConsumerWidget {
             ),
           ),
         ],
-        const SizedBox(height: Grid.xl + Grid.xxs),
+        const SizedBox(height: Grid.xl + Grid.half),
         AccountAuthErrorText(failure: auth.failure),
         Wrap(
           alignment: WrapAlignment.center,

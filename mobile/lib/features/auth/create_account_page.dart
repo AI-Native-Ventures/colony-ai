@@ -168,6 +168,10 @@ class CreateAccountPage extends HookConsumerWidget {
         AccountActionButton(
           label: 'Create account',
           isLoading: auth.isLoading,
+          disabledHint: termsAccepted.value
+              ? null
+              : 'Agree to the Terms and Privacy Policy to create your account.',
+          solidWhenDisabled: !termsAccepted.value,
           onPressed: auth.isLoading || !termsAccepted.value ? null : submit,
         ),
         const SizedBox(height: 4),

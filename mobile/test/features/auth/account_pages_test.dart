@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/misc.dart';
 import 'package:buzz/features/auth/account_action_button.dart';
 import 'package:buzz/features/auth/account_auth_provider.dart';
 import 'package:buzz/features/auth/account_auth_types.dart';
+import 'package:buzz/features/auth/account_flow_palette.dart';
 import 'package:buzz/features/auth/account_flow_result_page.dart';
 import 'package:buzz/features/auth/auth_entry_page.dart';
 import 'package:buzz/features/auth/claim_account_page.dart';
@@ -35,7 +36,7 @@ void main() {
     );
 
     expect(
-      tester.getSemantics(find.byType(FilledButton)).label,
+      tester.getSemantics(find.bySemanticsLabel('Continue in progress')).label,
       'Continue in progress',
     );
     semantics.dispose();
@@ -62,6 +63,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('I already have an account'), findsOneWidget);
+    expect(
+      find.text('Advanced: use an existing Nostr identity'),
+      findsOneWidget,
+    );
     expect(find.textContaining('private key'), findsNothing);
     expect(
       tester
@@ -71,7 +76,47 @@ void main() {
           .onPressed,
       isNotNull,
     );
+    await tester.tap(find.text('Advanced: use an existing Nostr identity'));
+    await tester.pumpAndSettle();
+    expect(find.text('Existing identity pairing'), findsOneWidget);
   });
+
+  testWidgets(
+    'signup CTA is solid and explains why it is disabled until consent',
+    (tester) async {
+      _prepareMobileViewport(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        WidgetHelpers.testable(child: const CreateAccountPage()),
+      );
+
+      final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Create account'),
+      );
+      expect(button.onPressed, isNull);
+      expect(
+        button.style?.backgroundColor?.resolve({WidgetState.disabled}),
+        AccountFlowPalette.action.withValues(alpha: 0.45),
+      );
+      expect(
+        button.style?.foregroundColor?.resolve({WidgetState.disabled}),
+        Colors.white,
+      );
+      final buttonSemantics = tester.getSemantics(
+        find.bySemanticsLabel('Create account'),
+      );
+      expect(buttonSemantics.flagsCollection.isButton, isTrue);
+      expect(
+        buttonSemantics.flagsCollection.isEnabled.toString(),
+        'Tristate.isFalse',
+      );
+      expect(
+        buttonSemantics.hint,
+        'Agree to the Terms and Privacy Policy to create your account.',
+      );
+      semantics.dispose();
+    },
+  );
 
   testWidgets('signup validates locally and opens code verification', (
     tester,

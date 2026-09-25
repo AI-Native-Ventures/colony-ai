@@ -43,6 +43,7 @@ class RequestPasswordResetPage extends HookConsumerWidget {
       description:
           'Enter your email and we’ll send a six-digit code to reset your password.',
       titleTopSpacing: 0,
+      footerBottomPadding: 12,
       footer: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
