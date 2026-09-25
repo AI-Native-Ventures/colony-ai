@@ -38,6 +38,7 @@ test("scales fixed line-height utilities with the typography rem", () => {
     7: "calc(var(--buzz-type-rem) * 1.75)",
     8: "calc(var(--buzz-type-rem) * 2)",
     "message-author": "var(--conversation-author-line-height)",
+    "colony-body": "var(--colony-line-height-body)",
   });
 });
 
