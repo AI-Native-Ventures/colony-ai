@@ -178,6 +178,7 @@ export function AppShell() {
     !isHuddleRoom &&
     location.pathname !== "/today" &&
     !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;
@@ -715,6 +716,7 @@ export function AppShell() {
       <ChannelNavigationProvider channels={channels}>
         <AppShellProvider
           value={{
+            navigationHistory: { canGoBack, canGoForward, goBack, goForward },
             markAllChannelsRead,
             markChannelRead,
             markChannelUnread,
@@ -781,6 +783,7 @@ export function AppShell() {
                 !isHuddleRoom &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
+                  location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel")
                   ? "true"
                   : undefined
@@ -839,7 +842,10 @@ export function AppShell() {
                       </React.Suspense>
                     </div>
                   ) : (
-                    <div className="relative flex min-h-0 flex-1 overflow-visible">
+                    <div
+                      className="relative flex min-h-0 flex-1 overflow-visible"
+                      data-colony-workspace-frame-content
+                    >
                       {!isHuddleRoom ? (
                         <AppSidebar
                           activeCommunity={communitiesHook.activeCommunity}

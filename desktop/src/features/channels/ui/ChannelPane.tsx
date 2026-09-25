@@ -375,14 +375,40 @@ export const ChannelPane = React.memo(function ChannelPane({
   const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
   const channelIntro =
     isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
-  const { mainTimelineEntries, recentMentions, visibleMessages } =
-    useChannelPaneMessages({
-      activeChannel,
-      isHuddleTranscript,
-      messages,
-      profiles,
-      threadSummaries,
-    });
+  const {
+    mainTimelineEntries: channelTimelineEntries,
+    recentMentions,
+    visibleMessages: channelVisibleMessages,
+  } = useChannelPaneMessages({
+    activeChannel,
+    isHuddleTranscript,
+    messages,
+    profiles,
+    threadSummaries,
+  });
+  const threadContextRootId = threadHeadMessage?.body
+    .trimStart()
+    .match(/^#{1,3}\s/u)
+    ? threadHeadMessage.id
+    : null;
+  const mainTimelineEntries = React.useMemo(
+    () =>
+      threadContextRootId
+        ? channelTimelineEntries.filter(
+            (entry) => entry.message.id !== threadContextRootId,
+          )
+        : channelTimelineEntries,
+    [channelTimelineEntries, threadContextRootId],
+  );
+  const visibleMessages = React.useMemo(
+    () =>
+      threadContextRootId
+        ? channelVisibleMessages.filter(
+            (message) => message.id !== threadContextRootId,
+          )
+        : channelVisibleMessages,
+    [channelVisibleMessages, threadContextRootId],
+  );
   useRenderScopedReactionHydration({
     activeChannel,
     mainTimelineEntries,

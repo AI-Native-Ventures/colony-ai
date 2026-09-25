@@ -13,6 +13,10 @@ import {
 } from "@/shared/ui/tooltip";
 
 const TIMESTAMP_TOOLTIP_DELAY_MS = 500;
+const WORKSPACE_CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 /**
  * The timestamp beside a message author, and the clock that fades in over the
@@ -45,9 +49,14 @@ export function MessageTimestamp({
   createdAt: number;
   hideDayPeriod?: boolean;
 }) {
-  const displayTime = hideDayPeriod
-    ? formatTimeWithoutDayPeriod(formatTime(createdAt))
-    : formatItemTimestamp(createdAt, { withTime: true });
+  const isWorkspaceChrome =
+    typeof document !== "undefined" &&
+    document.querySelector('[data-colony-workspace-route="true"]') !== null;
+  const displayTime = isWorkspaceChrome
+    ? WORKSPACE_CLOCK_FORMATTER.format(new Date(createdAt * 1_000))
+    : hideDayPeriod
+      ? formatTimeWithoutDayPeriod(formatTime(createdAt))
+      : formatItemTimestamp(createdAt, { withTime: true });
 
   return (
     <TooltipProvider

@@ -15,6 +15,8 @@ export default {
         compact: "var(--colony-text-compact)", // 13px at 16px type rem
         field: "var(--colony-text-field)", // 14.4px at 16px type rem
         label: "var(--colony-text-label)", // 12.64px at 16px type rem
+        "studio-title": "calc(var(--buzz-type-rem) * 1.7)",
+        "workspace-date": "calc(var(--buzz-type-rem) * 0.8)",
         "workspace-button": "var(--colony-text-workspace-button)", // 11.84px at 16px type rem
         "onboarding-button": "var(--colony-text-onboarding-button)", // 12.96px at 16px type rem
         "status-indicator": "0.9375rem", // 15px at the default root size

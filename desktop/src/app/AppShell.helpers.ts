@@ -241,7 +241,11 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
-  if (pathname === "/today" || pathname.startsWith("/today/")) {
+  if (
+    pathname === "/today" ||
+    pathname.startsWith("/today/") ||
+    pathname.startsWith("/navigation/")
+  ) {
     return {
       selectedChannelId: null,
       selectedView: "today",

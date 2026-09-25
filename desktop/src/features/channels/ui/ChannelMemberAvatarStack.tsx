@@ -17,17 +17,32 @@ export function ChannelMemberAvatarStack({
   members: ChannelMember[];
   size?: "compact" | "default";
 }) {
-  const visibleMembers = members.slice(0, MAX_VISIBLE_AVATARS);
+  const orderedMembers = React.useMemo(() => {
+    if (size !== "compact" || !currentPubkey) return members;
+    const normalizedCurrentPubkey = normalizePubkey(currentPubkey);
+    return [
+      ...members.filter(
+        (member) => normalizePubkey(member.pubkey) !== normalizedCurrentPubkey,
+      ),
+      ...members.filter(
+        (member) => normalizePubkey(member.pubkey) === normalizedCurrentPubkey,
+      ),
+    ];
+  }, [currentPubkey, members, size]);
+  const visibleMembers = orderedMembers.slice(0, MAX_VISIBLE_AVATARS);
   const visiblePubkeys = React.useMemo(
-    () => members.slice(0, MAX_VISIBLE_AVATARS).map((member) => member.pubkey),
-    [members],
+    () =>
+      orderedMembers
+        .slice(0, MAX_VISIBLE_AVATARS)
+        .map((member) => member.pubkey),
+    [orderedMembers],
   );
   const profilesQuery = useUsersBatchQuery(visiblePubkeys);
   const profiles = profilesQuery.data?.profiles;
   const avatarSizeClass = size === "compact" ? "!h-6 !w-6" : "!h-8 !w-8";
   const avatarOverlapClass = size === "compact" ? "-ml-1.5" : "-ml-2";
   const overflowSizeClass = size === "compact" ? "size-6" : "size-8";
-  const overflowCount = members.length - visibleMembers.length;
+  const overflowCount = orderedMembers.length - visibleMembers.length;
   const stackItemCount = visibleMembers.length + (overflowCount > 0 ? 1 : 0);
 
   if (members.length === 0) {
@@ -48,6 +63,12 @@ export function ChannelMemberAvatarStack({
           profiles,
           pubkey: member.pubkey,
         });
+        const avatarLabel =
+          size === "compact" &&
+          currentPubkey &&
+          normalizedPubkey === normalizePubkey(currentPubkey)
+            ? (member.displayName ?? label)
+            : label;
 
         return (
           <span
@@ -59,7 +80,7 @@ export function ChannelMemberAvatarStack({
             <UserAvatar
               avatarUrl={profile?.avatarUrl ?? null}
               className={`${avatarSizeClass} border-2 border-background text-2xs`}
-              displayName={label}
+              displayName={avatarLabel}
               fallbackDelayMs={0}
               shape={profile?.isAgent ? "squircle" : "circle"}
             />
