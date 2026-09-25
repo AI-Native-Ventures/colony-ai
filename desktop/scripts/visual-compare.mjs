@@ -119,10 +119,23 @@ function expandManifest(source) {
   return cases.map((entry) => ({
     ...defaults,
     ...entry,
-    referencePrefs: entry.referencePrefs ?? defaults.referencePrefs ?? {},
-    appPrefs: entry.appPrefs ?? defaults.appPrefs ?? {},
+    referencePrefs: mergeStorageSeed(
+      defaults.referencePrefs,
+      entry.referencePrefs,
+    ),
+    appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
     actions: entry.actions ?? defaults.actions ?? [],
   }));
+}
+
+function mergeStorageSeed(base = {}, override = {}) {
+  return {
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
 }
 
 function assertManifest(cases) {
