@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useHomeFeedQuery } from "@/features/home/hooks";
+import { TodayVisualFixtureContent } from "@/features/home/ui/TodayVisualFixtureContent";
 import { getThreadReference } from "@/features/messages/lib/threading";
 import type { FeedItem } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
@@ -126,6 +127,8 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
 export function TodayScreen() {
   const feedQuery = useHomeFeedQuery();
   const { goChannel, goHome, goPulse } = useAppNavigation();
+  const visualFixture =
+    import.meta.env.MODE === "e2e" ? feedQuery.data?.visualFixture : undefined;
   const items = React.useMemo(
     () => attentionItems(feedQuery.data?.feed),
     [feedQuery.data],
@@ -147,79 +150,86 @@ export function TodayScreen() {
   return (
     <div className="colony-today-screen">
       <TodayTopBar onOpenInbox={() => void goHome()} />
-      <div className="colony-today-scroll">
-        <div className="colony-today-heading">
-          <div>
-            <h1>Today</h1>
-            <p>{formatTodayDate(new Date())}</p>
-          </div>
-          <Button
-            className="colony-secondary-button"
-            onClick={() => void goPulse()}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Team updates
-          </Button>
-        </div>
-
-        <div className="colony-today-grid">
-          <section
-            aria-label="Needs your attention"
-            className="colony-today-primary"
-          >
-            {feedQuery.error ? (
-              <p className="colony-today-query-error" role="alert">
-                {feedQuery.error instanceof Error
-                  ? feedQuery.error.message
-                  : "Today activity could not be loaded."}
-              </p>
-            ) : null}
-            {items.length > 0 ? (
-              items.map((item) => (
-                <AttentionRow item={item} key={item.id} onOpen={openItem} />
-              ))
-            ) : (
-              <div className="colony-today-empty" role="status">
-                <Folder aria-hidden="true" />
-                <h3>You’re up to date</h3>
-                <p>New reviews and blockers appear as the team works.</p>
-              </div>
-            )}
-            <div className="colony-today-business-reviews">
-              <div className="colony-today-section-heading">
-                <h2>Business reviews</h2>
-                <span>0</span>
-              </div>
+      {visualFixture ? (
+        <TodayVisualFixtureContent
+          fixture={visualFixture}
+          onOpenUpdates={() => void goPulse()}
+        />
+      ) : (
+        <div className="colony-today-scroll">
+          <div className="colony-today-heading">
+            <div>
+              <h1>Today</h1>
+              <p>{formatTodayDate(new Date())}</p>
             </div>
-          </section>
+            <Button
+              className="colony-secondary-button"
+              onClick={() => void goPulse()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Team updates
+            </Button>
+          </div>
 
-          <aside
-            aria-label="Agency activity"
-            className="colony-today-secondary"
-          >
-            <section className="colony-today-card">
-              <div className="colony-today-card-heading">
-                <h2>With your clients</h2>
-                <span>All approvals</span>
+          <div className="colony-today-grid">
+            <section
+              aria-label="Needs your attention"
+              className="colony-today-primary"
+            >
+              {feedQuery.error ? (
+                <p className="colony-today-query-error" role="alert">
+                  {feedQuery.error instanceof Error
+                    ? feedQuery.error.message
+                    : "Today activity could not be loaded."}
+                </p>
+              ) : null}
+              {items.length > 0 ? (
+                items.map((item) => (
+                  <AttentionRow item={item} key={item.id} onOpen={openItem} />
+                ))
+              ) : (
+                <div className="colony-today-empty" role="status">
+                  <Folder aria-hidden="true" />
+                  <h3>You’re up to date</h3>
+                  <p>New reviews and blockers appear as the team works.</p>
+                </div>
+              )}
+              <div className="colony-today-business-reviews">
+                <div className="colony-today-section-heading">
+                  <h2>Business reviews</h2>
+                  <span>0</span>
+                </div>
               </div>
-              <p>No client reviews outstanding.</p>
             </section>
-            <section className="colony-today-card">
-              <div className="colony-today-card-heading">
-                <h2>Next delivery</h2>
-                <span>Queue</span>
-              </div>
-              <p>No scheduled content.</p>
-            </section>
-            <section className="colony-today-card">
-              <h2>Money to follow up</h2>
-              <p>No overdue invoices.</p>
-            </section>
-          </aside>
+
+            <aside
+              aria-label="Agency activity"
+              className="colony-today-secondary"
+            >
+              <section className="colony-today-card">
+                <div className="colony-today-card-heading">
+                  <h2>With your clients</h2>
+                  <span>All approvals</span>
+                </div>
+                <p>No client reviews outstanding.</p>
+              </section>
+              <section className="colony-today-card">
+                <div className="colony-today-card-heading">
+                  <h2>Next delivery</h2>
+                  <span>Queue</span>
+                </div>
+                <p>No scheduled content.</p>
+              </section>
+              <section className="colony-today-card">
+                <h2>Money to follow up</h2>
+                <p>No overdue invoices.</p>
+              </section>
+            </aside>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
