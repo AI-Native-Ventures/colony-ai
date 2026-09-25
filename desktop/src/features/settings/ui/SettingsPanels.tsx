@@ -79,7 +79,7 @@ import {
   SettingsOptionRow,
 } from "./SettingsOptionGroup";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
-import { ProfileSettingsCard } from "./ProfileSettingsCard";
+import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
@@ -332,6 +332,7 @@ export type SettingsPanelProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
   onClose?: () => void;
+  onSectionChange?: (section: SettingsSection) => void;
   isUpdatingDesktopNotifications: boolean;
   notificationErrorMessage: string | null;
   notificationPermission: DesktopNotificationPermissionState;
@@ -1002,9 +1003,11 @@ export function renderSettingsSection(
   switch (section) {
     case "profile":
       return (
-        <ProfileSettingsCard
+        <AccountProfileSettingsPanel
           currentPubkey={props.currentPubkey}
           fallbackDisplayName={props.fallbackDisplayName}
+          onClose={props.onClose}
+          onSectionChange={props.onSectionChange ?? (() => undefined)}
         />
       );
     case "security":

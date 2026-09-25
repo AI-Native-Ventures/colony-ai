@@ -15,6 +15,10 @@ import { Input } from "@/shared/ui/input";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import {
+  useProfileQuery,
+  useUpdateProfileMutation,
+} from "@/features/profile/hooks";
 import type { SyntaxThemeName } from "@/shared/theme/theme-loader";
 import { toast } from "sonner";
 import {
@@ -41,6 +45,7 @@ import {
   ThemeCatalogRoute,
   ThemePreviewRoute,
 } from "./ThemeCatalogRoute";
+import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import "./SettingsView.css";
 
 export {
@@ -161,6 +166,9 @@ export function SettingsView({
   const theme = useTheme();
   const { activeCommunity } = useCommunities();
   const identity = useIdentityQuery();
+  const profile = useProfileQuery();
+  const updateProfile = useUpdateProfileMutation();
+  const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
   const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
     theme.selectedThemeName as SyntaxThemeName,
   );
@@ -366,14 +374,23 @@ export function SettingsView({
 
         <SidebarFooter className="w20-nav-footer">
           <div className="w20-nav-person">
-            <span aria-hidden="true">
-              {(fallbackDisplayName ?? "LM")
-                .split(/\s+/)
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase()}
-            </span>
+            <button
+              aria-label="Edit profile photo"
+              className="w20-nav-person-avatar"
+              data-testid="profile-avatar-edit"
+              onClick={() => setIsAvatarDialogOpen(true)}
+              title="Edit profile photo"
+              type="button"
+            >
+              <span aria-hidden="true">
+                {(fallbackDisplayName ?? "LM")
+                  .split(/\s+/)
+                  .map((part) => part[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </span>
+            </button>
             <div>
               <strong>{fallbackDisplayName ?? "Signed-in identity"}</strong>
               <small>Workspace owner</small>
@@ -464,6 +481,8 @@ export function SettingsView({
             <div
               className={cn(
                 "w20-route-content",
+                ["profile", "security"].includes(activeSection) &&
+                  "w20-route-content-account",
                 activeSection === "appearance" &&
                   "w20-route-content-appearance",
               )}
@@ -506,12 +525,24 @@ export function SettingsView({
                   onOpenThemeCatalog: () => chooseSection("settings/themes"),
                   onOpenDraftRecovery: () => chooseSection("recovery"),
                   onClose,
+                  onSectionChange: chooseSection,
                 })
               )}
             </div>
           </section>
         </main>
       </SidebarInset>
+      <ProfileAvatarDialog
+        avatarUrl={profile.data?.avatarUrl ?? ""}
+        displayName={
+          profile.data?.displayName ?? fallbackDisplayName ?? "Your profile"
+        }
+        onOpenChange={setIsAvatarDialogOpen}
+        onSave={async (avatarUrl) => {
+          await updateProfile.mutateAsync({ avatarUrl });
+        }}
+        open={isAvatarDialogOpen}
+      />
     </>
   );
 }
