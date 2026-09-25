@@ -464,7 +464,7 @@ export function ProjectIssuesPanel({
           loadError
             ? "Refresh the project and try again."
             : issueItems
-              ? "Tasks created for this project's repositories will appear here."
+              ? "Issues created for this project's repositories will appear here."
               : "Issues created for this repository will appear here."
         }
         error={Boolean(loadError)}

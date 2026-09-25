@@ -997,7 +997,7 @@ test("project issue author rollover matches pull requests", async ({
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const row = page.locator('[data-testid^="projects-issue-row-"]').first();
@@ -1059,7 +1059,7 @@ test("project issues preserve partial results from aggregate queries", async ({
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
 
   await expect(
     page.getByRole("button", { name: /^View / }).first(),
@@ -1200,7 +1200,7 @@ test("project channels are grouped by project", async ({ page }) => {
     "Activity",
     "Projects",
     "Repositories",
-    "Tasks",
+    "Issues",
     "Reviews",
     "Channels",
   ]);
@@ -2064,7 +2064,7 @@ test("project overview presents collapsible context beside grouped activity", as
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-issues").click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(
     page.getByTestId("projects-overview-create-issue"),
@@ -2354,7 +2354,7 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const rows = page.locator('[data-testid^="projects-issue-row-"]');
@@ -2433,7 +2433,7 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   );
   await page.getByRole("button", { name: "Close agent chat" }).click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(page.getByTestId("projects-overview-context-rail")).toHaveCSS(
     "width",
@@ -2448,7 +2448,7 @@ test("selection restores a previously collapsed Projects context drawer", async 
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const toggle = page.getByTestId("projects-overview-context-toggle");
@@ -2939,7 +2939,7 @@ test("project subsections do not paint backgrounds behind list or grid items", a
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
 
-  for (const section of ["Repositories", "Reviews", "Tasks"] as const) {
+  for (const section of ["Repositories", "Reviews", "Issues"] as const) {
     await page.getByRole("button", { name: section, exact: true }).click();
     await page.getByRole("button", { name: "List layout" }).click();
 
@@ -3581,14 +3581,14 @@ test("narrow layouts keep section context reachable through a sheet", async ({
 
   // Keyboard journey into the Tasks section: open the sheet from the toggle.
   await page.getByTestId("projects-section-issues").click();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText("Issues");
   await contextToggle.focus();
   await page.keyboard.press("Enter");
   const contextSheet = page.getByTestId("projects-overview-context-sheet");
   await expect(contextSheet).toBeVisible();
   await expect(
     contextSheet.getByTestId("projects-overview-context-title"),
-  ).toHaveText("Tasks");
+  ).toHaveText("Issues");
   await expect(contextToggle).toHaveAttribute("aria-pressed", "true");
 
   // Escape dismisses the sheet and returns focus to the toggle.
@@ -3619,8 +3619,8 @@ test("narrow layouts keep section context reachable through a sheet", async ({
   await expect(contextSheet).toBeVisible();
   await contextSheet
     .getByTestId("projects-overview-stat")
-    .filter({ hasText: "Tasks" })
+    .filter({ hasText: "Issues" })
     .click();
   await expect(contextSheet).toBeHidden();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText("Issues");
 });

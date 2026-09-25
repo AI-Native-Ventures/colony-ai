@@ -189,7 +189,7 @@ test("top-level project lists show metadata and overflow actions", async ({
     page.getByTestId("create-pull-request-repository"),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByTestId("projects-overview-create-issue").click();
   await expect(page.getByTestId("create-issue-repository")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -208,7 +208,7 @@ test("top-level project lists show metadata and overflow actions", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await expect(page.getByRole("button", { name: "Filter tasks" })).toHaveCount(
     0,
   );
@@ -857,7 +857,7 @@ test("project workspace sheet stays independent from an open thread", async ({
   await expect(coveredThreadSurface).toHaveAttribute("aria-hidden", "true");
   const coveredSnapshot = await page.locator("body").ariaSnapshot();
   expect(coveredSnapshot).not.toContain(threadRootContent);
-  expect(coveredSnapshot).toContain("Tasks");
+  expect(coveredSnapshot).toContain("Issues");
   expect(coveredSnapshot).toContain("Close panel");
 
   const workspaceClose = workspaceDrawer.getByTestId("auxiliary-panel-close");
@@ -1040,7 +1040,7 @@ test("commit detail opens from the commits feed with a diff", async ({
   ).toBeVisible();
   await expect(page.getByTestId("idle-auxiliary-back")).toHaveAttribute(
     "aria-label",
-    "Back to Tasks",
+    "Back to Issues",
   );
   await expect(
     page.getByTestId("project-home-workspace-sheet-create"),
