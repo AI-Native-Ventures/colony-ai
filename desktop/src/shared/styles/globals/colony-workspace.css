@@ -113,37 +113,15 @@
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
-  background-color: var(--colony-sidebar-active-surface);
-  box-shadow: 0 1px 4px rgb(57 36 64 / 2.5%);
-  color: hsl(var(--colony-sidebar-selected-foreground));
+  background-color: #2655a0;
+  box-shadow: none;
+  color: #fff;
   font-weight: 600;
   position: relative;
 }
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
-  [data-sidebar="menu-button"][data-active="true"]::before {
-  background-color: var(--colony-sidebar-active-indicator);
-  border-radius: 0.3125rem;
-  content: "";
-  height: 0.875rem;
-  left: 0;
-  position: absolute;
-  top: 0.5625rem;
-  width: 0.1875rem;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="sidebar-primary-menu"]
-  [data-sidebar="menu-button"][data-active="true"] {
-  background: transparent;
-  box-shadow: none;
-  color: hsl(var(--colony-sidebar-foreground));
-  font-weight: 400;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="sidebar-primary-menu"]
   [data-sidebar="menu-button"][data-active="true"]::before {
   display: none;
 }
