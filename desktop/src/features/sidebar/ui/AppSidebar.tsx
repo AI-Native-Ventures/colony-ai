@@ -1,5 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
+import { Users } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -71,6 +72,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
@@ -590,43 +592,6 @@ export function AppSidebar({
 
               {!isLoading ? (
                 <>
-                  {starredChannels.length > 0 ? (
-                    <ChannelGroupSection
-                      hasUnread={starredChannels.some((c) =>
-                        unreadChannelIds.has(c.id),
-                      )}
-                      isCollapsed={collapsedGroups.starred}
-                      isActiveChannel={selectedView === "channel"}
-                      activeWorkingByChannelId={activeWorkingByChannelId}
-                      items={starredChannels}
-                      sortMode={sortModeFor("starred")}
-                      onSortModeChange={(mode) =>
-                        setSortModeFor("starred", mode)
-                      }
-                      actionsTestId="section-actions-starred"
-                      listTestId="starred-list"
-                      onMarkAllRead={() => {
-                        for (const channel of starredChannels) {
-                          onMarkChannelRead(channel.id, channel.lastMessageAt);
-                        }
-                      }}
-                      onMarkChannelRead={onMarkChannelRead}
-                      onMarkChannelUnread={onMarkChannelUnread}
-                      onSelectChannel={onSelectChannel}
-                      onToggleCollapsed={() => toggleCollapsedGroup("starred")}
-                      selectedChannelId={selectedChannelId}
-                      title="Starred"
-                      unreadChannelIds={unreadChannelIds}
-                      mutedChannelIds={mutedChannelIds}
-                      onMuteChannel={onMuteChannel}
-                      onUnmuteChannel={onUnmuteChannel}
-                      starredChannelIds={starredChannelIds}
-                      onStarChannel={onStarChannel}
-                      onUnstarChannel={onUnstarChannel}
-                      onDeleteChannel={requestDeleteChannel}
-                      onLeaveChannel={requestLeaveChannel}
-                    />
-                  ) : null}
                   <SidebarDndContext
                     channels={channels}
                     sections={channelSections}
@@ -735,6 +700,43 @@ export function AppSidebar({
                       onLeaveChannel={requestLeaveChannel}
                     />
                   </SidebarDndContext>
+                  {starredChannels.length > 0 ? (
+                    <ChannelGroupSection
+                      hasUnread={starredChannels.some((c) =>
+                        unreadChannelIds.has(c.id),
+                      )}
+                      isCollapsed={collapsedGroups.starred}
+                      isActiveChannel={selectedView === "channel"}
+                      activeWorkingByChannelId={activeWorkingByChannelId}
+                      items={starredChannels}
+                      sortMode={sortModeFor("starred")}
+                      onSortModeChange={(mode) =>
+                        setSortModeFor("starred", mode)
+                      }
+                      actionsTestId="section-actions-starred"
+                      listTestId="starred-list"
+                      onMarkAllRead={() => {
+                        for (const channel of starredChannels) {
+                          onMarkChannelRead(channel.id, channel.lastMessageAt);
+                        }
+                      }}
+                      onMarkChannelRead={onMarkChannelRead}
+                      onMarkChannelUnread={onMarkChannelUnread}
+                      onSelectChannel={onSelectChannel}
+                      onToggleCollapsed={() => toggleCollapsedGroup("starred")}
+                      selectedChannelId={selectedChannelId}
+                      title="Starred"
+                      unreadChannelIds={unreadChannelIds}
+                      mutedChannelIds={mutedChannelIds}
+                      onMuteChannel={onMuteChannel}
+                      onUnmuteChannel={onUnmuteChannel}
+                      starredChannelIds={starredChannelIds}
+                      onStarChannel={onStarChannel}
+                      onUnstarChannel={onUnstarChannel}
+                      onDeleteChannel={requestDeleteChannel}
+                      onLeaveChannel={requestLeaveChannel}
+                    />
+                  ) : null}
                   <FeatureGate feature="forum">
                     <ChannelGroupSection
                       createLabel="New forum"
@@ -764,6 +766,12 @@ export function AppSidebar({
                       onDeleteChannel={requestDeleteChannel}
                     />
                   </FeatureGate>
+                  <div
+                    className="colony-sidebar-business-section"
+                    data-testid="sidebar-business-section"
+                  >
+                    <span data-sidebar-section-title>Business</span>
+                  </div>
                   <SidebarSection
                     action={
                       <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
@@ -810,6 +818,28 @@ export function AppSidebar({
                   />
                 </>
               ) : null}
+
+              <div
+                className="colony-sidebar-team-section"
+                data-testid="sidebar-team-section"
+              >
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      aria-current={
+                        selectedView === "agents" ? "page" : undefined
+                      }
+                      data-testid="sidebar-your-team"
+                      className="colony-sidebar-workspace-team-link"
+                      onClick={onSelectAgents}
+                      type="button"
+                    >
+                      <Users aria-hidden="true" />
+                      <span>Your team</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
 
               {errorMessage && !relayConnectionCard.hasRelayUnreachableError ? (
                 <div className="px-3 py-2 text-sm text-destructive">

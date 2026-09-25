@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertCircle, Download, Loader2, X } from "lucide-react";
+import { AlertCircle, Download, Loader2, Mic, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 
@@ -54,7 +54,9 @@ export function renderAudioMessageAttachment(
   return attachment ? (
     <AudioMessageAttachment
       {...attachment}
+      displayLabel={label}
       downloadUrl={isVoiceNoteAttachment(entry) ? undefined : downloadUrl}
+      transcript={entry?.transcript}
     />
   ) : null;
 }
@@ -115,13 +117,17 @@ export function AudioMessageAttachment({
   filename,
   href,
   onRemove,
+  displayLabel,
+  transcript,
 }: {
   composer?: boolean;
   duration?: number;
+  displayLabel?: string;
   downloadUrl?: string;
   filename: string;
   href: string;
   onRemove?: () => void;
+  transcript?: string;
 }) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const playbackId = React.useId();
@@ -158,6 +164,8 @@ export function AudioMessageAttachment({
   >();
   const [peaks, setPeaks] = React.useState(() => dotPeaks(INITIAL_BAR_COUNT));
   const [waveformReady, setWaveformReady] = React.useState(false);
+  const [transcriptOpen, setTranscriptOpen] = React.useState(false);
+  const transcriptId = React.useId();
   useSmoothCorners(mediaRef);
   useSmoothCorners(playbackRateRef);
 
@@ -388,7 +396,13 @@ export function AudioMessageAttachment({
           aria-hidden="true"
           className={cn(
             "w-[3px] shrink-0",
-            active ? "bg-primary" : "bg-muted-foreground/35",
+            active
+              ? composer
+                ? "bg-primary"
+                : "bg-blue-500/70"
+              : composer
+                ? "bg-muted-foreground/35"
+                : "bg-blue-500/35",
           )}
           initial={false}
           key={BAR_KEYS[index]}
@@ -400,13 +414,16 @@ export function AudioMessageAttachment({
           }
         />
       )),
-    [peaks, shouldReduceMotion],
+    [peaks, shouldReduceMotion, composer],
   );
 
   return (
     <Attachment
       className={cn(
         "my-1 w-full max-w-[21rem] gap-2.5 px-2.5 py-2",
+        !composer &&
+          transcript &&
+          "colony-voice-note-card !max-w-[24.375rem] !grid !grid-cols-[2rem_minmax(0,1fr)_auto] !grid-rows-[2rem_auto] !items-center !gap-x-2.5 !gap-y-2 !px-3 !py-2.5",
         composer && "shadow-none",
       )}
       data-testid={
@@ -416,7 +433,12 @@ export function AudioMessageAttachment({
     >
       <AttachmentMedia
         ref={mediaRef}
-        className="rounded-lg bg-primary text-primary-foreground"
+        className={cn(
+          "rounded-lg bg-primary text-primary-foreground",
+          !composer &&
+            transcript &&
+            "!h-8 !w-8 !rounded-full !bg-blue-100 !text-blue-600",
+        )}
         data-testid="voice-note-playback-control"
       >
         <button
@@ -450,7 +472,10 @@ export function AudioMessageAttachment({
           </div>
         ) : (
           <div
-            className="relative h-6 overflow-hidden rounded-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1"
+            className={cn(
+              "relative h-6 overflow-hidden rounded-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
+              !composer && transcript && "!h-8",
+            )}
             data-testid="voice-note-playback-waveform"
             data-waveform-state={
               waveformError ? "error" : waveformReady ? "ready" : "loading"
@@ -494,13 +519,20 @@ export function AudioMessageAttachment({
           </div>
         )}
       </AttachmentContent>
-      <AttachmentActions className="grid min-w-9 place-items-center">
+      <AttachmentActions
+        className={cn(
+          "grid min-w-9 place-items-center",
+          !composer && transcript && "!flex !min-w-0 !gap-1.5",
+        )}
+      >
         <span
           aria-hidden={!composer}
           className={cn(
             "pointer-events-none col-start-1 row-start-1 text-xs tabular-nums text-muted-foreground transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
             !composer &&
               "group-hover/attachment:-translate-y-0.5 group-hover/attachment:opacity-0 group-focus-within/attachment:-translate-y-0.5 group-focus-within/attachment:opacity-0",
+            !composer && transcript && "!text-2xs !opacity-100",
+            !composer && transcript && "!static !transform-none",
           )}
         >
           {timeLabel}
@@ -509,7 +541,12 @@ export function AudioMessageAttachment({
           <button
             ref={playbackRateRef}
             aria-label={`Playback speed ${playbackRateLabel(playbackRate)}; next ${playbackRateLabel(nextPlaybackRate)}`}
-            className="col-start-1 row-start-1 grid rounded-full bg-primary px-2.5 py-0.5 text-2xs font-semibold tabular-nums text-primary-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out active:scale-95 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none motion-reduce:active:scale-100"
+            className={cn(
+              "col-start-1 row-start-1 grid rounded-full bg-primary px-2.5 py-0.5 text-2xs font-semibold tabular-nums text-primary-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out active:scale-95 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none motion-reduce:active:scale-100",
+              !composer &&
+                transcript &&
+                "!static !w-6 !px-0 !bg-transparent !text-muted-foreground !opacity-100",
+            )}
             data-testid="voice-note-playback-rate"
             onClick={() => {
               const next = nextVoiceNotePlaybackRate(playbackRate);
@@ -568,6 +605,27 @@ export function AudioMessageAttachment({
             <X />
           </AttachmentAction>
         </AttachmentActions>
+      ) : null}
+      {!composer && transcript ? (
+        <div className="colony-voice-note-meta">
+          <span>
+            <Mic aria-hidden="true" />
+            {displayLabel || "Voice note"}
+          </span>
+          <button
+            aria-controls={transcriptId}
+            aria-expanded={transcriptOpen}
+            onClick={() => setTranscriptOpen((open) => !open)}
+            type="button"
+          >
+            Transcript
+          </button>
+        </div>
+      ) : null}
+      {!composer && transcriptOpen ? (
+        <p className="colony-voice-note-transcript" id={transcriptId}>
+          {transcript}
+        </p>
       ) : null}
       {/* biome-ignore lint/a11y/useMediaCaption: voice notes are user-provided audio */}
       <audio

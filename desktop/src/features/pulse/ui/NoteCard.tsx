@@ -45,6 +45,7 @@ type NoteCardProps = {
   members?: ChannelMember[];
   isAgent?: boolean;
   isOwnNote: boolean;
+  timestampLabel?: string;
   actions?: NoteCardActions;
 };
 
@@ -148,6 +149,7 @@ export function NoteCard({
   isUpvoted = false,
   members = [],
   actions,
+  timestampLabel,
 }: NoteCardProps) {
   const displayName = profile?.displayName ?? truncateNpub(note.pubkey);
   const avatarUrl = profile?.avatarUrl ?? null;
@@ -209,7 +211,7 @@ export function NoteCard({
             </span>
           ) : null}
           <span className="shrink-0 text-xs text-muted-foreground/70">
-            {formatRelativeTime(note.createdAt)}
+            {timestampLabel ?? formatRelativeTime(note.createdAt)}
           </span>
         </div>
 

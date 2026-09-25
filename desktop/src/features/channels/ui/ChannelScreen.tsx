@@ -747,9 +747,9 @@ export function ChannelScreen({
         activeChannel={activeChannel}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
-        referenceThreadPresentation={Boolean(openThreadHeadId)}
+        referenceThreadPresentation={Boolean(effectiveOpenThreadHeadId)}
         actionsVariant={
-          openThreadHeadId
+          effectiveOpenThreadHeadId
             ? "reference"
             : shouldCompactHeaderActions
               ? "compact"
@@ -774,7 +774,7 @@ export function ChannelScreen({
       activeChannel,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
-      openThreadHeadId,
+      effectiveOpenThreadHeadId,
       shouldCompactHeaderActions,
       activeDmAvatarUrl,
       activeDmHeaderParticipants,

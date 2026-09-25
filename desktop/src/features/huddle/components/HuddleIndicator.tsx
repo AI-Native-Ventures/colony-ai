@@ -303,7 +303,7 @@ export function HuddleIndicator({
               type="button"
               variant="outline"
             >
-              <Headphones className={labeled ? "size-3.5" : undefined} />
+              {labeled ? null : <Headphones />}
               {labeled ? <span>Huddle</span> : null}
             </Button>
           </span>
@@ -371,9 +371,7 @@ export function HuddleIndicator({
           type="button"
           variant="outline"
         >
-          <Headphones
-            className={renderMode === "labeled-button" ? "size-3.5" : undefined}
-          />
+          {renderMode === "labeled-button" ? null : <Headphones />}
           {renderMode === "labeled-button" ? <span>Huddle</span> : null}
           <span className="absolute inset-0 animate-pulse rounded-lg ring-2 ring-border/70" />
           {/* Participant count badge */}

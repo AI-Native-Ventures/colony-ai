@@ -19,8 +19,12 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
+// The workspace timeline avatar is 28px, 8px narrower than the 36px thread row model.
+const THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_CONTENT_OFFSET_REM =
-  THREAD_REPLY_BODY_OFFSET_REM - THREAD_REPLY_ROW_MARGIN_INLINE_REM;
+  THREAD_REPLY_BODY_OFFSET_REM -
+  THREAD_REPLY_ROW_MARGIN_INLINE_REM -
+  THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM;
 const THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_AVATAR_SIZE = 24;
 const THREAD_SUMMARY_AVATAR_OVERLAP = 4;

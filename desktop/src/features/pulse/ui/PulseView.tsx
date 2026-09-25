@@ -74,6 +74,26 @@ function TimelineSkeleton() {
   );
 }
 
+function formatUpdateTimestamp(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1_000);
+  const today = new Date();
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  if (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  ) {
+    return `Today · ${time}`;
+  }
+  return `${new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+  }).format(date)} · ${time}`;
+}
+
 export function PulseView({
   currentPubkey,
   layout = "legacy",
@@ -198,6 +218,16 @@ export function PulseView({
     contactPubkeySet,
   ]);
 
+  const timelineNotes = React.useMemo(
+    () =>
+      layout === "today-updates"
+        ? [...visibleNotes].sort(
+            (left, right) => left.createdAt - right.createdAt,
+          )
+        : visibleNotes,
+    [layout, visibleNotes],
+  );
+
   const visibleNoteIds = React.useMemo(
     () => visibleNotes.map((note) => note.id),
     [visibleNotes],
@@ -304,13 +334,13 @@ export function PulseView({
       );
     }
 
-    return visibleNotes.length === 0 ? (
+    return timelineNotes.length === 0 ? (
       <EmptyState message={emptyMessages[activeTab]} />
     ) : (
       <VirtualizedList
         estimateSize={140}
         getItemKey={(note) => note.id}
-        items={visibleNotes}
+        items={timelineNotes}
         renderItem={(note) => (
           <div className="pb-4">
             <NoteCard
@@ -332,6 +362,11 @@ export function PulseView({
               members={pulseMentionMembers}
               note={note}
               profile={profiles[note.pubkey.toLowerCase()] ?? null}
+              timestampLabel={
+                layout === "today-updates"
+                  ? formatUpdateTimestamp(note.createdAt)
+                  : undefined
+              }
             />
           </div>
         )}
@@ -414,13 +449,19 @@ export function PulseView({
                   <div className="flex min-w-0 items-center gap-2">
                     <UserAvatar
                       avatarUrl={currentProfile?.avatarUrl ?? null}
-                      className="!h-7 !w-7 shrink-0"
+                      className="!h-7 !w-7 shrink-0 colony-today-updates-avatar"
                       displayName={currentDisplayName}
                       shape={
                         currentProfile?.isAgent === true ? "squircle" : "circle"
                       }
                     />
-                    <span className="max-w-32 truncate text-sm font-medium text-foreground">
+                    <span
+                      className={
+                        layout === "today-updates"
+                          ? "sr-only"
+                          : "max-w-32 truncate text-sm font-medium text-foreground"
+                      }
+                    >
                       {currentDisplayName}
                     </span>
                   </div>

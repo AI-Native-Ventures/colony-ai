@@ -1,6 +1,8 @@
-import { Bell, Hash, Search, Users } from "lucide-react";
+import { Bell, Hash, PanelLeft, Search, Users } from "lucide-react";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
+import { toggleTerminalPanel } from "@/features/terminal/terminalPanelStore";
 import type { ChannelMember } from "@/shared/api/types";
+import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 
 /** Reference workspace chrome for the active channel and optional thread. */
@@ -29,6 +31,17 @@ export function ChannelWorkspaceTopBar({
     <WorkspaceTopBar
       actions={
         <>
+          <Button
+            className="colony-work-area-button"
+            data-testid="channel-work-area-trigger"
+            onClick={toggleTerminalPanel}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <PanelLeft aria-hidden="true" />
+            Work area
+          </Button>
           <ChannelMemberAvatarStack
             currentPubkey={currentPubkey}
             members={members}
