@@ -575,10 +575,10 @@ export function HarnessRow({
         open={installError !== null}
       >
         <SettingsAlertDialogContent
-          className="max-w-[34rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
+          className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
           data-testid={`doctor-runtime-install-failure-${runtime.id}`}
         >
-          <div className="flex items-center justify-between border-b border-border/70 px-6 py-6">
+          <div className="flex items-center justify-between border-b border-border/70 px-6 pt-5 pb-[1.4375rem]">
             <AlertDialogHeader className="space-y-0">
               <AlertDialogTitle className="text-lg font-medium tracking-normal">
                 Failed
@@ -594,7 +594,7 @@ export function HarnessRow({
               <X aria-hidden="true" className="size-4" />
             </Button>
           </div>
-          <div className="space-y-6 px-6 py-6 pb-10">
+          <div className="space-y-4 px-6 pt-6 pb-12">
             <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-4 text-xs leading-5">
               <p className="font-semibold">
                 {runtime.label} could not be installed.
