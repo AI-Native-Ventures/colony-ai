@@ -187,7 +187,7 @@ test.describe("visual comparison captures", () => {
           entry.theme === "dark" &&
           new URL(entry.referenceUrl).pathname.includes("/desktop/")
         ) {
-          await referencePage.getByRole("button", { name: "Dark" }).click();
+          await referencePage.locator("#dark").click();
         }
         if (entry.referenceCanvas) {
           await fitReferenceCanvas(referencePage, width, height);
