@@ -1342,6 +1342,22 @@ async fn lockout_enumeration_code_expiry_attempts_and_ip_email_limits_are_enforc
         assert_eq!(body["error"], "wrong_code");
         assert_eq!(body["attempts_left"], attempts_left);
     }
+    let fifth_wrong_code = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/verify",
+        &host,
+        ip,
+        json!({ "email": attempted_email, "code": wrong_code }),
+        None,
+    )
+    .await;
+    let (fifth_status, fifth_body) = json_response(fifth_wrong_code).await;
+    assert_eq!(fifth_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(fifth_body["error"], "too_many_attempts");
+    assert!(fifth_body["retry_after_secs"]
+        .as_i64()
+        .is_some_and(|seconds| seconds > 0));
     let locked_code = call(
         state.clone(),
         "POST",
