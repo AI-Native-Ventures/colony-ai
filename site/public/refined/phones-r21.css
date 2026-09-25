@@ -1,0 +1,11 @@
+@media(max-width:700px){
+ [data-demo] .r12-device{width:calc(100% - 36px);max-width:390px;aspect-ratio:390/800;margin:22px auto 15px!important;border:7px solid #262826;border-radius:43px;background:#262826;box-shadow:0 2px 0 1px #777b76,0 18px 45px -18px #26332140;isolation:isolate;overflow:hidden}
+ [data-demo] .r12-laptop-photo{display:none}
+ [data-demo] .r12-display{inset:0;width:100%;height:100%;aspect-ratio:auto;border-radius:34px;background:var(--p-paper)}
+ [data-demo] .r12-display iframe{width:100%;height:100%;transform:none}
+ [data-demo] .demo-toolbar{position:relative;top:auto;margin-top:25px}
+ .demo-tabs{gap:5px}
+ .demo-tabs button{font-size:.875rem;padding:10px 12px}
+ .demo-play{font-size:.875rem}
+}
+@media(max-width:360px){[data-demo] .r12-device{width:calc(100% - 22px);border-width:6px;border-radius:36px}[data-demo] .r12-display{border-radius:29px}.demo-tabs button{padding-inline:9px}}

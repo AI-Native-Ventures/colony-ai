@@ -1,0 +1,11 @@
+{
+  "name": "colony-landing-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/build.mjs --check-only",
+    "serve": "node scripts/serve.mjs",
+    "serve:qa": "node scripts/qa-server.mjs"
+  }
+}

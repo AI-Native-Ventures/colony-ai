@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Colony r23 demo runtime smoke</title>
+  <style>
+    :root { color-scheme: light; font: 14px/1.45 system-ui, sans-serif; color: #243127; background: #f4f5f1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; }
+    h1 { margin: 0 0 6px; font-size: 20px; }
+    p { margin: 0 0 14px; color: #647065; }
+    .frames { display: grid; grid-template-columns: 680px 312px; gap: 14px; align-items: start; }
+    .frame-card { min-width: 0; }
+    .frame-card h2 { margin: 0 0 6px; font-size: 13px; }
+    .viewport { overflow: hidden; border: 1px solid #b6beb2; border-radius: 10px; background: #fff; box-shadow: 0 8px 22px #26352218; }
+    .viewport.desktop { width: 680px; height: 403px; }
+    .viewport.phone { width: 312px; height: 560px; }
+    iframe { display: block; border: 0; transform-origin: top left; }
+    .desktop iframe { width: 1360px; height: 806px; transform: scale(.5); }
+    .phone iframe { width: 390px; height: 700px; transform: scale(.8); }
+    .results { margin-top: 14px; width: 100%; border-collapse: collapse; background: #fff; }
+    .results th, .results td { padding: 7px 9px; border: 1px solid #d7ddd4; text-align: left; vertical-align: top; }
+    .results th { background: #e9ede6; }
+    .results tr[data-state="pass"] td:first-child { color: #246332; font-weight: 700; }
+    .results tr[data-state="error"] td:first-child { color: #a12626; font-weight: 700; }
+    .results tr[data-state="running"] td:first-child { color: #8a5e13; font-weight: 700; }
+    code { overflow-wrap: anywhere; }
+    @media (max-width: 1040px) { .frames { grid-template-columns: minmax(0, 680px); } }
+  </style>
+</head>
+<body>
+  <h1>R23 product demo smoke</h1>
+  <p>Runs customers, website, social, money and agents in both live frames. Each frame gets up to 90 seconds per workflow.</p>
+  <div class="frames">
+    <section class="frame-card" aria-labelledby="desktop-title">
+      <h2 id="desktop-title">Desktop · 1360 × 806 CSS pixels</h2>
+      <div class="viewport desktop"><iframe id="desktop" title="Desktop product demo workflow"></iframe></div>
+    </section>
+    <section class="frame-card" aria-labelledby="phone-title">
+      <h2 id="phone-title">Phone · 390 × 700 CSS pixels</h2>
+      <div class="viewport phone"><iframe id="phone" title="Mobile product demo workflow"></iframe></div>
+    </section>
+  </div>
+  <table class="results" aria-label="Workflow results">
+    <thead><tr><th>Result</th><th>Workflow</th><th>Last action from same-origin demo DOM</th><th>Final route / evidence</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <script>
+    (() => {
+      'use strict';
+      const origin = location.origin;
+      const flows = ['customers', 'website', 'social', 'money', 'agents'];
+      const timeoutMs = 90_000;
+      const frames = {
+        desktop: document.getElementById('desktop'),
+        phone: document.getElementById('phone'),
+      };
+      const states = new Map(Object.entries(frames).map(([name, frame]) => [name, {
+        name, frame, ready: false, key: null, state: 'loading', error: null, waiter: null,
+      }]));
+      const body = document.getElementById('results');
+      let failures = 0;
+
+      function addResult(name, key, state, action, evidence, row = null) {
+        row ||= document.createElement('tr');
+        row.replaceChildren();
+        row.dataset.state = state;
+        for (const value of [state.toUpperCase(), `${name} / ${key}`, action, evidence]) {
+          const cell = document.createElement('td');
+          cell.textContent = value || '—';
+          row.append(cell);
+        }
+        if (!row.isConnected) body.append(row);
+        return row;
+      }
+
+      function childEvidence(entry) {
+        try {
+          const doc = entry.frame.contentDocument;
+          const page = doc?.body;
+          if (!page) return { action: 'DOM unavailable', route: '' };
+          const visibleText = entry.name === 'phone'
+            ? doc.querySelector('#phone')?.innerText
+            : doc.querySelector('#surface')?.innerText;
+          return {
+            action: page.dataset.demoAction || `actions=${page.dataset.demoAction || 'none'}`,
+            route: [page.dataset.demoRoute, page.dataset.demoAgentCount && `agents=${page.dataset.demoAgentCount}`, page.dataset.proposalState]
+              .filter(Boolean).join(' · '),
+            text: (visibleText || '').replace(/\s+/g, ' ').trim().slice(0, 150),
+          };
+        } catch (error) {
+          return { action: 'same-origin DOM read failed', route: String(error) };
+        }
+      }
+
+      addEventListener('message', (event) => {
+        const entry = [...states.values()].find((candidate) => candidate.frame.contentWindow === event.source);
+        if (!entry || event.origin !== origin || !event.data || typeof event.data !== 'object') return;
+        const message = event.data;
+        if (message.type === 'demo-ready') entry.ready = true;
+        if (message.type === 'demo-status') {
+          entry.state = message.state;
+          if (entry.key && message.key === entry.key && entry.waiter && ['ended', 'error'].includes(message.state)) {
+            entry.waiter(message.state === 'ended' ? null : new Error('Demo reported error state'));
+          }
+        }
+        if (message.type === 'demo-error') {
+          entry.error = String(message.message || 'Unknown demo error');
+          entry.state = 'error';
+          if (entry.waiter) entry.waiter(new Error(entry.error));
+        }
+      });
+
+      function send(entry, type, extra = {}) {
+        entry.frame.contentWindow.postMessage({ type, ...extra }, origin);
+      }
+
+      async function waitReady(entry) {
+        const deadline = Date.now() + 20_000;
+        while (!entry.ready && Date.now() < deadline) {
+          if (entry.frame.contentWindow) send(entry, 'demo-ping');
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        if (!entry.ready) throw new Error(`${entry.name} demo did not send demo-ready within 20 seconds`);
+      }
+
+      async function runFlow(entry, key) {
+        await waitReady(entry);
+        entry.key = key;
+        entry.error = null;
+        send(entry, 'demo-select', { key });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const rowState = { name: entry.name, key, settled: false };
+        const row = addResult(entry.name, key, 'running', 'Starting…', 'Waiting for demo-ended status');
+        try {
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+            entry.waiter = (error) => {
+              if (rowState.settled) return;
+              rowState.settled = true;
+              clearTimeout(timer);
+              entry.waiter = null;
+              error ? reject(error) : resolve();
+            };
+            send(entry, 'demo-play');
+          });
+          const evidence = childEvidence(entry);
+          addResult(entry.name, key, 'pass', evidence.action, [evidence.route, evidence.text].filter(Boolean).join(' · '), row);
+          return true;
+        } catch (error) {
+          const evidence = childEvidence(entry);
+          addResult(entry.name, key, 'error', evidence.action, `${String(error)} · ${evidence.route} · ${evidence.text}`, row);
+          failures++;
+          return false;
+        }
+      }
+
+      async function start() {
+        frames.desktop.src = `${origin}/product-reference/workspace/demo-r23.html?demo=customers`;
+        frames.phone.src = `${origin}/product-reference/mobile-r21/demo-r23.html?demo=social`;
+        try {
+          await Promise.all([...states.values()].map(waitReady));
+          for (const key of flows) {
+            await Promise.all([...states.values()].map((entry) => runFlow(entry, key)));
+          }
+          addResult(
+            'runner', 'all workflows', failures ? 'error' : 'pass',
+            failures ? 'Finished with failures' : 'Finished',
+            failures ? `${failures} of ${flows.length * states.size} frame/workflows failed.` : 'Five workflows completed in both frames.',
+          );
+        } catch (error) {
+          addResult('runner', 'startup', 'error', 'Stopped', String(error));
+        }
+      }
+      start();
+    })();
+  </script>
+</body>
+</html>

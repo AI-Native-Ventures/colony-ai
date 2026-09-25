@@ -1,0 +1,15 @@
+/* One native, accessible input; the inert text layer supplies inline colour. */
+.mention-editor{position:relative;min-width:0;flex:1}
+.mention-editor textarea{position:relative;z-index:1;display:block;width:100%;margin:0!important;caret-color:var(--p-ink,var(--ink));background:transparent!important}
+.mention-editor.has-text textarea{color:transparent!important;-webkit-text-fill-color:transparent}
+.mention-editor textarea::placeholder{-webkit-text-fill-color:var(--p-muted,var(--muted));color:var(--p-muted,var(--muted))}
+.mention-mirror{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:var(--p-ink,var(--ink));text-align:left}
+.mention-mirror-text{white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;min-height:100%}
+.mention-mirror .colony-mention{font-weight:inherit!important;padding:0!important}
+.colony-mention,.product-showcase .showcase-mention,.product-showcase .mention,#phone .mention,.r16-together .r10-messages p b{
+ color:var(--p-accent)!important;background:var(--p-wash)!important;border-radius:4px;box-decoration-break:clone;-webkit-box-decoration-break:clone
+}
+.colony-mention{font-weight:600}
+#phone .composer .mention-editor{align-self:stretch}
+#phone .composer .mention-editor textarea{font-size:15px;line-height:1.45;min-height:44px;max-height:none;resize:none;overflow-y:hidden}
+#phone .composer:focus-within{border-color:var(--p-accent)}

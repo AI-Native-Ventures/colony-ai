@@ -1,0 +1,16 @@
+/* Production-only polish for the approved R23 landing page. */
+.world{height:100svh}
+.launch-motion-control{flex:none;min-height:36px;padding:7px 12px;border:1px solid #c8cec0;border-radius:999px;background:#f8faf380;color:var(--ink);font-size:.6875rem;white-space:nowrap;backdrop-filter:blur(14px)}
+.launch-motion-control:hover{background:#fff}
+.launch-motion-control:focus-visible{outline-color:#315f49}
+.launch-demo-note{max-width:560px;margin:12px 0 0;color:var(--p-muted);font-size:.8125rem;line-height:1.5}
+@media(max-width:720px){
+  .world{height:100svh}
+  .launch-motion-control{min-height:34px;padding:6px 9px;font-size:.625rem}
+  .launch-demo-note{margin-top:10px;font-size:.75rem}
+}
+@media(max-width:380px){
+  .launch-motion-control{width:34px;height:34px;padding:0;overflow:hidden;font-size:0}
+  .launch-motion-control::before{content:'Ⅱ';font-size:1rem;line-height:1}
+  .launch-motion-control[aria-pressed="true"]::before{content:'▶';font-size:.75rem}
+}
