@@ -21,6 +21,10 @@ import {
   Ticket,
   UserRound,
   Volume2,
+  BriefcaseBusiness,
+  HardDrive,
+  Layers3,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -69,7 +73,6 @@ import { MobilePairingCard } from "./MobilePairingCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
 import { AgentsSettingsPanel } from "./AgentsSettingsPanel";
-import { HostedCommunitiesSettingsCard } from "./HostedCommunitiesSettingsCard";
 import {
   SettingsOptionGroup,
   SettingsOptionGroupList,
@@ -80,44 +83,234 @@ import { ProfileSettingsCard } from "./ProfileSettingsCard";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
+import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
+import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
+import {
+  AccountSecuritySettingsPanel,
+  AccessibilitySettingsPanel,
+  AgentConnectionsSettingsPanel,
+  AppPreferencesSettingsPanel,
+  ArchivedRecordsSettingsPanel,
+  AuditSettingsPanel,
+  BlocksSettingsPanel,
+  BusinessConnectionsSettingsPanel,
+  BusinessProfileSettingsPanel,
+  DraftRecoverySettingsPanel,
+  FeedbackSettingsPanel,
+  HarnessLifecycleSettingsPanel,
+  WorkSettingsPanel,
+} from "./SettingsAdditionalSections";
 
 export type SettingsSection =
   | "profile"
+  | "security"
   | "notifications"
   | "voice"
   | "experimental"
   | "agents"
+  | "agent-defaults"
+  | "harnesses"
+  | "ai-connections"
   | "channel-templates"
   | "compute"
   | "appearance"
+  | "accessibility"
+  | "business-profile"
+  | "people"
+  | "work"
+  | "connections"
+  | "blocks"
   | "shortcuts"
   | "hosted-communities"
   | "community-members"
   | "moderation"
+  | "audit"
+  | "settings/admin"
   | "custom-emoji"
   | "local-archive"
+  | "archived-records"
+  | "recovery"
+  | "storage"
+  | "app"
   | "mobile"
-  | "updates";
+  | "updates"
+  | "settings/themes"
+  | "settings/theme-preview"
+  | "settings/theme-applied"
+  | "feedback";
 
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = "profile";
 
+export type SettingsGroupId =
+  | "account"
+  | "appearance-group"
+  | "preferences"
+  | "business"
+  | "agents-group"
+  | "blocks-templates"
+  | "administration"
+  | "app-devices"
+  | "storage-group";
+
+export type SettingsInnerSection = {
+  value: SettingsSection;
+  label: string;
+};
+
+export type SettingsGroupDescriptor = {
+  id: SettingsGroupId;
+  label: string;
+  icon: LucideIcon;
+  sections: SettingsInnerSection[];
+};
+
+/** The nine r17 categories and their one internal section bar. */
+export const settingsGroups: SettingsGroupDescriptor[] = [
+  {
+    id: "account",
+    label: "Account",
+    icon: UserRound,
+    sections: [
+      { value: "profile", label: "Profile" },
+      { value: "security", label: "Sign-in & devices" },
+    ],
+  },
+  {
+    id: "appearance-group",
+    label: "Appearance",
+    icon: MonitorCog,
+    sections: [
+      { value: "appearance", label: "Theme & layout" },
+      { value: "accessibility", label: "Accessibility" },
+    ],
+  },
+  {
+    id: "preferences",
+    label: "Preferences",
+    icon: SlidersHorizontal,
+    sections: [
+      { value: "notifications", label: "Notifications & sounds" },
+      { value: "voice", label: "Voice & audio" },
+      { value: "shortcuts", label: "Keyboard shortcuts" },
+    ],
+  },
+  {
+    id: "business",
+    label: "Business",
+    icon: BriefcaseBusiness,
+    sections: [
+      { value: "business-profile", label: "Profile" },
+      { value: "people", label: "People & access" },
+      { value: "work", label: "Work & approvals" },
+      { value: "connections", label: "Connections" },
+    ],
+  },
+  {
+    id: "agents-group",
+    label: "Agents",
+    icon: Bot,
+    sections: [
+      { value: "agent-defaults", label: "Defaults" },
+      { value: "harnesses", label: "Harnesses" },
+      { value: "ai-connections", label: "AI connections" },
+    ],
+  },
+  {
+    id: "blocks-templates",
+    label: "Blocks & templates",
+    icon: Layers3,
+    sections: [
+      { value: "blocks", label: "Blocks" },
+      { value: "channel-templates", label: "Channel templates" },
+      { value: "custom-emoji", label: "Custom emoji" },
+    ],
+  },
+  {
+    id: "administration",
+    label: "Administration",
+    icon: ShieldAlert,
+    sections: [
+      { value: "moderation", label: "Moderation" },
+      { value: "audit", label: "Audit trail" },
+    ],
+  },
+  {
+    id: "app-devices",
+    label: "App & devices",
+    icon: Smartphone,
+    sections: [
+      { value: "app", label: "App preferences" },
+      { value: "mobile", label: "Mobile" },
+      { value: "updates", label: "Updates" },
+      { value: "experimental", label: "Experiments" },
+      { value: "compute", label: "Compute & hosts" },
+    ],
+  },
+  {
+    id: "storage-group",
+    label: "Storage",
+    icon: HardDrive,
+    sections: [
+      { value: "storage", label: "Local storage" },
+      { value: "archived-records", label: "Archived records" },
+      { value: "recovery", label: "Draft recovery" },
+    ],
+  },
+];
+
+const SETTINGS_SECTION_ALIASES: Partial<Record<string, SettingsSection>> = {
+  agents: "agent-defaults",
+  "community-members": "people",
+  "custom-emoji": "custom-emoji",
+  "hosted-communities": "business-profile",
+  "local-archive": "storage",
+  "channel-templates": "channel-templates",
+  "settings/admin": "audit",
+};
+
+export function canonicalSettingsSection(
+  section: SettingsSection,
+): SettingsSection {
+  return SETTINGS_SECTION_ALIASES[section] ?? section;
+}
+
 const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "profile",
+  "security",
   "notifications",
   "voice",
   "experimental",
   "agents",
+  "agent-defaults",
+  "harnesses",
+  "ai-connections",
   "channel-templates",
   "compute",
   "appearance",
+  "accessibility",
+  "business-profile",
+  "people",
+  "work",
+  "connections",
+  "blocks",
   "shortcuts",
   "hosted-communities",
   "community-members",
   "moderation",
+  "audit",
+  "settings/admin",
   "custom-emoji",
   "local-archive",
+  "archived-records",
+  "recovery",
+  "storage",
+  "app",
   "mobile",
   "updates",
+  "settings/themes",
+  "settings/theme-preview",
+  "settings/theme-applied",
+  "feedback",
 ];
 
 export function isSettingsSection(value: unknown): value is SettingsSection {
@@ -138,6 +331,7 @@ export type SettingsSectionDescriptor = {
 export type SettingsPanelProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
+  onClose?: () => void;
   isUpdatingDesktopNotifications: boolean;
   notificationErrorMessage: string | null;
   notificationPermission: DesktopNotificationPermissionState;
@@ -148,6 +342,7 @@ export type SettingsPanelProps = {
   onSetNotifyWhileViewing: (enabled: boolean) => void;
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
+  onOpenThemeCatalog?: () => void;
 };
 
 export const settingsSections: SettingsSectionDescriptor[] = [
@@ -418,7 +613,7 @@ const ACCENT_PICKER_TRANSITION = {
   ease: [0.23, 1, 0.32, 1] as const,
 };
 
-function ThemeSettingsCard() {
+export function ThemeSettingsCard() {
   const {
     setTheme,
     selectedThemeName,
@@ -811,6 +1006,8 @@ export function renderSettingsSection(
           fallbackDisplayName={props.fallbackDisplayName}
         />
       );
+    case "security":
+      return <AccountSecuritySettingsPanel />;
     case "notifications":
       return (
         <NotificationSettingsCard
@@ -834,30 +1031,72 @@ export function renderSettingsSection(
       return <ExperimentalFeaturesCard />;
     case "agents":
       return <AgentsSettingsPanel />;
+    case "agent-defaults":
+      return <AgentDefaultsSettingsCard />;
+    case "harnesses":
+      return <HarnessLifecycleSettingsPanel />;
+    case "ai-connections":
+      return <AgentConnectionsSettingsPanel />;
     case "channel-templates":
       return <ChannelTemplatesSettingsCard />;
     case "compute":
       return <MeshComputeSettingsCard />;
     case "appearance":
-      return <ThemeSettingsCard />;
+      return (
+        <AppearanceSettingsPanel
+          onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
+          onBackToWorkspace={props.onClose}
+        />
+      );
+    case "accessibility":
+      return <AccessibilitySettingsPanel />;
+    case "business-profile":
+    case "hosted-communities":
+      return <BusinessProfileSettingsPanel />;
+    case "people":
+      return (
+        <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
+      );
+    case "work":
+      return <WorkSettingsPanel />;
+    case "connections":
+      return <BusinessConnectionsSettingsPanel />;
+    case "blocks":
+      return <BlocksSettingsPanel />;
     case "shortcuts":
       return <KeyboardShortcutsCard />;
-    case "hosted-communities":
-      return <HostedCommunitiesSettingsCard />;
     case "community-members":
       return (
         <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
       );
     case "moderation":
       return <ModerationQueueCard />;
+    case "audit":
+      return <AuditSettingsPanel />;
+    case "settings/admin":
+      return <AuditSettingsPanel />;
     case "custom-emoji":
       return <CustomEmojiSettingsCard />;
     case "local-archive":
       return <LocalArchiveSettingsCard />;
+    case "storage":
+      return <LocalArchiveSettingsCard />;
+    case "archived-records":
+      return <ArchivedRecordsSettingsPanel />;
+    case "recovery":
+      return <DraftRecoverySettingsPanel />;
+    case "app":
+      return <AppPreferencesSettingsPanel />;
     case "mobile":
       return <MobilePairingCard currentPubkey={props.currentPubkey} />;
     case "updates":
       return <UpdateChecker />;
+    case "feedback":
+      return <FeedbackSettingsPanel />;
+    case "settings/themes":
+    case "settings/theme-preview":
+    case "settings/theme-applied":
+      return null;
     default: {
       const exhaustiveCheck: never = section;
       return exhaustiveCheck;

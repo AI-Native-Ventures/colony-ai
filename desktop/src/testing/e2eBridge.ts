@@ -72,6 +72,7 @@ import {
   KIND_MEMBER_ADDED_NOTIFICATION,
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_PERSONA,
+  KIND_PRODUCT_FEEDBACK,
   KIND_PROJECT_ANNOUNCEMENT,
   KIND_REPO_ANNOUNCEMENT,
   KIND_REPO_STATE,
@@ -270,8 +271,12 @@ type E2eConfig = {
     /** Catalog responses for successive discovery calls. The final response repeats. */
     acpRuntimesCatalogSequence?: RawAcpRuntimeCatalogEntry[][];
     acpRuntimesDelayMs?: number;
-    /** When true, the catalog discovery call throws — simulates a failed query. */
+    /** When true, the catalog discovery call throws to simulate a failed query. */
     acpRuntimesError?: boolean;
+    /** Reject successive product feedback events, then accept when exhausted. */
+    feedbackPublishErrors?: Array<string | null>;
+    /** Delay product feedback acknowledgements so the pending UI can be captured. */
+    feedbackPublishDelayMs?: number;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
@@ -432,6 +437,7 @@ type E2eConfig = {
     profileHasEvent?: boolean;
     profileUpdateError?: string;
     profileUpdateErrors?: string[];
+    profileUpdateDelayMs?: number;
     linkPreviewMetadata?: {
       title: string;
       siteName: string | null;
@@ -6847,6 +6853,10 @@ async function handleUpdateProfile(
   },
   config: E2eConfig | undefined,
 ) {
+  const delayMs = config?.mock?.profileUpdateDelayMs ?? 0;
+  if (delayMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  }
   const identity = getIdentity(config);
   if (!identity) {
     const profileUpdateError = config?.mock?.profileUpdateError;
@@ -11108,6 +11118,25 @@ function sendToMockSocket(args: {
 
   if (type === "EVENT") {
     const event = rest[0] as RelayEvent;
+
+    if (event.kind === KIND_PRODUCT_FEEDBACK) {
+      const configuredErrors = getConfig()?.mock?.feedbackPublishErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      const acknowledge = () =>
+        sendWsText(socket.handler, [
+          "OK",
+          event.id,
+          error === null,
+          error ?? "",
+        ]);
+      const delayMs = getConfig()?.mock?.feedbackPublishDelayMs ?? 0;
+      if (delayMs > 0) {
+        window.setTimeout(acknowledge, delayMs);
+      } else {
+        acknowledge();
+      }
+      return;
+    }
 
     if (event.kind === KIND_AGENT_OBSERVER_FRAME) {
       const frame = event.tags.find((tag) => tag[0] === "frame")?.[1];

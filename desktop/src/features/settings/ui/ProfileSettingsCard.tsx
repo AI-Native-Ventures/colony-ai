@@ -22,13 +22,12 @@ import { cn } from "@/shared/lib/cn";
 import { Input } from "@/shared/ui/input";
 import { Spinner } from "@/shared/ui/spinner";
 import { Textarea } from "@/shared/ui/textarea";
-import { PrivateKeyBackupRow } from "./PrivateKeyBackupRow";
 import {
   SettingsOptionGroup,
   SettingsOptionGroupList,
 } from "./SettingsOptionGroup";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
-import { SignOutSection } from "./SignOutSection";
+import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { canonicalNpub, UNAVAILABLE_KEY_LABEL } from "@/shared/lib/pubkey";
 
@@ -151,6 +150,8 @@ export function ProfileSettingsCard({
     string | null
   >(null);
   const [isAvatarEditorOpen, setIsAvatarEditorOpen] = React.useState(false);
+  const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
+  const [didSaveAvatar, setDidSaveAvatar] = React.useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
   const [isAvatarEditorFinishing, setIsAvatarEditorFinishing] =
     React.useState(false);
@@ -336,12 +337,6 @@ export function ProfileSettingsCard({
     window.clearTimeout(avatarEditorFinishTimeoutRef.current);
     avatarEditorFinishTimeoutRef.current = null;
   }, []);
-  const saveScrollPosition = React.useCallback(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const scroller = el.closest<HTMLElement>("[class*='overflow-y']");
-    if (scroller) savedScrollTopRef.current = scroller.scrollTop;
-  }, []);
   const restoreScrollPosition = React.useCallback(() => {
     const saved = savedScrollTopRef.current;
     if (saved == null) return;
@@ -381,20 +376,20 @@ export function ProfileSettingsCard({
   }, [clearAvatarEditorFinishTimeout]);
 
   const openAvatarEditor = React.useCallback(() => {
-    saveScrollPosition();
-    setShouldRenderAvatarEditor(true);
-    setIsAvatarEditorFinishing(false);
-    clearAvatarEditorFinishTimeout();
+    setAvatarUrlDraft(currentAvatarUrl);
+    setDidSaveAvatar(false);
+    setIsAvatarDialogOpen(true);
+  }, [currentAvatarUrl]);
 
-    if (avatarEditorOpenFrameRef.current !== null) {
-      window.cancelAnimationFrame(avatarEditorOpenFrameRef.current);
-    }
-
-    avatarEditorOpenFrameRef.current = window.requestAnimationFrame(() => {
-      avatarEditorOpenFrameRef.current = null;
-      setIsAvatarEditorOpen(true);
-    });
-  }, [clearAvatarEditorFinishTimeout, saveScrollPosition]);
+  const saveAvatar = React.useCallback(
+    async (avatarUrl: string) => {
+      await updateProfileMutation.mutateAsync({ avatarUrl });
+      setAvatarUrlDraft(avatarUrl);
+      setDidSaveAvatar(true);
+      toast.success("Profile photo updated");
+    },
+    [updateProfileMutation],
+  );
 
   const saveProfile = React.useCallback(async () => {
     if (!canSave) {
@@ -493,6 +488,16 @@ export function ProfileSettingsCard({
           description="Update how your name, avatar, and bio appear across Buzz."
         />
 
+        {didSaveAvatar ? (
+          <p
+            className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-200"
+            data-testid="profile-avatar-saved"
+            role="status"
+          >
+            Profile photo updated
+          </p>
+        ) : null}
+
         <div className="space-y-3">
           {profileQuery.error instanceof Error ? (
             <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -562,7 +567,7 @@ export function ProfileSettingsCard({
                               data-testid="profile-avatar-edit-shell"
                             >
                               <button
-                                aria-expanded={isAvatarEditorOpen}
+                                aria-expanded={isAvatarDialogOpen}
                                 aria-label={
                                   isAvatarEditorSaving
                                     ? "Saving profile photo"
@@ -570,7 +575,10 @@ export function ProfileSettingsCard({
                                 }
                                 className={avatarEditButtonClassName}
                                 data-testid="profile-avatar-edit"
-                                disabled={isAvatarEditorSaving}
+                                disabled={
+                                  isAvatarEditorSaving ||
+                                  updateProfileMutation.isPending
+                                }
                                 onClick={openAvatarEditor}
                                 title={
                                   isAvatarEditorSaving
@@ -801,7 +809,6 @@ export function ProfileSettingsCard({
                                 testId="profile-nip05"
                                 value={nip05Handle}
                               />
-                              <PrivateKeyBackupRow />
                             </div>
                           </details>
                         </SettingsOptionGroup>
@@ -861,8 +868,13 @@ export function ProfileSettingsCard({
           </div>
         </div>
       </div>
-
-      <SignOutSection />
+      <ProfileAvatarDialog
+        avatarUrl={currentAvatarUrl}
+        displayName={resolvedName}
+        onOpenChange={setIsAvatarDialogOpen}
+        onSave={saveAvatar}
+        open={isAvatarDialogOpen}
+      />
     </section>
   );
 }

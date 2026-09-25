@@ -1,129 +1,96 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings } from "../helpers/settings";
+import { openSettings, selectSettingsSection } from "../helpers/settings";
 
-test("settings sections share the Appearance rhythm", async ({ page }) => {
-  await installMockBridge(page);
-  await page.goto("/");
-  await openSettings(page, "appearance");
-
-  const appearanceList = page
-    .getByTestId("settings-theme")
-    .locator('[data-slot="settings-section-list"]');
-  const [referenceGap] = await appearanceList
-    .locator(":scope > *")
-    .evaluateAll((elements) =>
-      elements.slice(1).map((element, index) => {
-        const previous = elements[index];
-        return (
-          element.getBoundingClientRect().top -
-          previous.getBoundingClientRect().bottom
-        );
-      }),
-    );
-
-  expect(referenceGap).toBeGreaterThan(0);
-
-  for (const section of [
-    "notifications",
-    "voice",
-    "agents",
-    "shortcuts",
-    "profile",
-  ] as const) {
-    await page.getByTestId(`settings-nav-${section}`).click();
-
-    const list = page
-      .getByTestId(`settings-${section}`)
-      .locator('[data-slot="settings-section-list"]');
-    await expect(list).toBeVisible();
-
-    const gaps = await list.locator(":scope > *").evaluateAll((elements) =>
-      elements.slice(1).map((element, index) => {
-        const previous = elements[index];
-        return (
-          element.getBoundingClientRect().top -
-          previous.getBoundingClientRect().bottom
-        );
-      }),
-    );
-    expect(gaps.length).toBeGreaterThan(0);
-    expect(gaps.every((gap) => Math.abs(gap - referenceGap) <= 1)).toBe(true);
-  }
-
-  await page.getByTestId("settings-nav-agents").click();
-  const headerToCardGap = async (testId: string) => {
-    const group = page.getByTestId(testId);
-    return group.evaluate((element) => {
-      const lastHeaderLine = element.querySelector(
-        '[data-slot="settings-section-header"] > div:first-child > :last-child',
-      );
-      const card = element.querySelector('[data-slot="settings-section-card"]');
-      if (
-        !(lastHeaderLine instanceof HTMLElement) ||
-        !(card instanceof HTMLElement)
-      ) {
-        throw new Error("Missing section header or card");
-      }
-      return (
-        card.getBoundingClientRect().top -
-        lastHeaderLine.getBoundingClientRect().bottom
-      );
-    });
-  };
-  const [titleOnlyGap, subtitleGap] = await Promise.all([
-    headerToCardGap("agents-preferences-card"),
-    headerToCardGap("settings-harnesses"),
-  ]);
-  expect(titleOnlyGap).toBeGreaterThan(0);
-  expect(Math.abs(titleOnlyGap - subtitleGap)).toBeLessThanOrEqual(1);
-});
-
-test("Profile sections keep visible cards and aligned actions", async ({
+test("settings use nine groups, inner search, remembered sections, and return navigation", async ({
   page,
 }) => {
   await installMockBridge(page);
   await page.goto("/");
-  await openSettings(page, "profile");
+  await openSettings(page);
 
-  const identity = page.getByTestId("profile-identity-card");
-  const identityCard = identity.locator(
-    'xpath=ancestor::*[@data-slot="settings-section-card"][1]',
+  for (const group of [
+    "account",
+    "appearance-group",
+    "preferences",
+    "business",
+    "agents-group",
+    "blocks-templates",
+    "administration",
+    "app-devices",
+    "storage-group",
+  ]) {
+    await expect(page.getByTestId(`settings-group-${group}`)).toBeVisible();
+  }
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(9);
+  await expect(page.getByRole("tablist")).toHaveCount(1);
+
+  await page.getByTestId("settings-search").fill("Channel templates");
+  const result = page.getByRole("option", {
+    name: "Channel templates, Blocks & templates",
+  });
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(page.getByTestId("settings-channel-templates")).toBeVisible();
+  await expect(
+    page.getByTestId("settings-group-blocks-templates"),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await selectSettingsSection(page, "harnesses");
+  await expect(page.getByTestId("settings-harnesses")).toBeVisible();
+  await page.getByTestId("settings-group-appearance-group").click();
+  await expect(page.getByTestId("settings-appearance")).toBeVisible();
+  await page.getByTestId("settings-group-agents-group").click();
+  await expect(page.getByTestId("settings-harnesses")).toBeVisible();
+
+  await page.getByTestId("settings-back-to-app").click();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
+
+test("appearance controls save a complete scoped snapshot and retain density", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "appearance");
+
+  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await page.getByTestId("appearance-mode-dark").click();
+  await expect(page.getByTestId("appearance-mode-dark")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
-  await expect(identityCard).toBeVisible();
-  await expect(
-    page.getByText("Identity details", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByTestId("profile-identity-details")).toBeHidden();
-
-  const signOut = page.getByTestId("settings-signout");
-  const signOutCard = signOut.locator('[data-slot="settings-section-card"]');
-  await expect(signOutCard).toBeVisible();
-  await expect(
-    signOutCard.getByRole("button", { name: "Delete my data" }),
-  ).toBeVisible();
-  await expect(signOut.getByText("Sign out", { exact: true })).toHaveCount(1);
-  await expect(
-    signOut.getByText("Sign out of Buzz", { exact: true }),
-  ).toHaveCount(0);
-
-  const profileInfo = page.getByTestId("profile-metadata-card");
-  await profileInfo.scrollIntoViewIfNeeded();
-  const [titleBottom, editBottom] = await Promise.all([
-    profileInfo
-      .getByRole("heading", { name: "Profile info" })
-      .evaluate((element) => element.getBoundingClientRect().bottom),
-    page
-      .getByTestId("profile-metadata-edit")
-      .evaluate((element) => element.getBoundingClientRect().bottom),
-  ]);
-  expect(Math.abs(titleBottom - editBottom)).toBeLessThanOrEqual(1);
-
-  await page.getByTestId("settings-nav-updates").click();
-  await expect(
-    page
-      .getByTestId("settings-updates")
-      .getByText("Update status", { exact: true }),
-  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          Object.keys(localStorage).filter(
+            (key) =>
+              key.startsWith("colony.appearance.v1:") &&
+              !key.endsWith(":last-business"),
+          ).length,
+      ),
+    )
+    .toBe(1);
+  const businessSnapshot = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(
+      (candidate) =>
+        candidate.startsWith("colony.appearance.v1:") &&
+        !candidate.endsWith(":last-business") &&
+        !candidate.endsWith(":global-conversations"),
+    );
+    return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+  });
+  expect(businessSnapshot).toMatchObject({
+    followSystem: false,
+    glassBackground: false,
+    prominentActiveTab: false,
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(true);
 });

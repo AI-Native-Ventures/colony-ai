@@ -39,8 +39,8 @@ async function openAppearance(
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-appearance").click();
-  await expect(page.getByTestId("settings-theme")).toBeVisible({
+  await page.getByTestId("settings-group-appearance-group").click();
+  await expect(page.getByTestId("settings-appearance")).toBeVisible({
     timeout: 10_000,
   });
   await waitForAnimations(page);
@@ -204,4 +204,79 @@ test("appearance previews render compact and split samples at wide width", async
   await page.getByTestId("thread-layout-group").screenshot({
     path: `${SHOTS}/04-thread-split-light-wide.png`,
   });
+  await page.getByTestId("appearance-density").selectOption("spacious");
+  await expect(page.getByTestId("appearance-density")).toHaveValue("spacious");
+});
+
+test("conversation controls update the preview and save one global snapshot", async ({
+  page,
+}) => {
+  await openAppearance(page);
+
+  const preview = page.getByTestId("appearance-live-preview");
+  await expect(preview.locator(".ap-demo-link")).toHaveClass(/compact/);
+  await expect(preview.locator(".ap-live-chat")).not.toHaveClass(/focused/);
+
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(preview.locator(".ap-demo-link")).toHaveClass(/rich/);
+  await page.getByTestId("appearance-threads-focus").click();
+  await expect(preview.locator(".ap-live-chat")).toHaveClass(/focused/);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const key = Object.keys(localStorage).find((candidate) =>
+          candidate.endsWith(":global-conversations"),
+        );
+        return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+      }),
+    )
+    .toMatchObject({ linkPreview: "rich", threadLayout: "focus" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => window.localStorage.getItem(key),
+        LINK_PREVIEW_STYLE_STORAGE_KEY,
+      ),
+    )
+    .toBe("rich");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => window.localStorage.getItem(key),
+        THREAD_VIEW_MODE_STORAGE_KEY,
+      ),
+    )
+    .toBe("focus");
+});
+
+test("custom palette validates, survives Default, and stays applied after closing settings", async ({
+  page,
+}) => {
+  await openAppearance(page);
+
+  await page.getByTestId("appearance-theme-custom").click();
+  const firstHex = page.getByTestId("appearance-color-hex-1");
+  await firstHex.fill("#12AB34");
+  await expect(firstHex).toHaveValue("#12AB34");
+  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
+
+  const secondHex = page.getByTestId("appearance-color-hex-2");
+  await secondHex.fill("#12x");
+  await expect(page.getByRole("alert")).toContainText(
+    "Use a six-digit hex colour",
+  );
+  await secondHex.blur();
+  await expect(secondHex).toHaveValue("#5A9CF6");
+
+  await page.getByTestId("appearance-theme-default").click();
+  await expect(page.getByTestId("appearance-color-hex-1")).toHaveCount(0);
+  await page.getByTestId("appearance-theme-custom").click();
+  await expect(page.getByTestId("appearance-color-hex-1")).toHaveValue(
+    "#12AB34",
+  );
+
+  await page.getByTestId("settings-close").click();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
+  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
 });

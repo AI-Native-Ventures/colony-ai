@@ -563,7 +563,13 @@ function AuditTab() {
   );
 }
 
-export function ModerationQueueCard() {
+export function ModerationQueueCard({
+  initialTab = "queue",
+  title = "Moderation",
+}: {
+  initialTab?: "queue" | "audit";
+  title?: string;
+} = {}) {
   const membershipQuery = useMyRelayMembershipQuery();
   const role = membershipQuery.data?.role;
   const isModerator = role === "owner" || role === "admin";
@@ -574,7 +580,7 @@ export function ModerationQueueCard() {
       data-testid="settings-moderation"
     >
       <SettingsSectionHeader
-        title="Moderation"
+        title={title}
         description="Review reported content and take action. Visible to community moderators only."
       />
 
@@ -587,7 +593,7 @@ export function ModerationQueueCard() {
           </p>
         )
       ) : (
-        <Tabs defaultValue="queue">
+        <Tabs defaultValue={initialTab}>
           <TabsList>
             <TabsTrigger data-testid="moderation-tab-queue" value="queue">
               Queue

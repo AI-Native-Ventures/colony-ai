@@ -1,9 +1,6 @@
-import { Bug, ImageIcon, ThumbsUp, Wrench, X } from "lucide-react";
+import { CheckCircle2, LoaderCircle, X } from "lucide-react";
 import * as React from "react";
 
-import { cn } from "@/shared/lib/cn";
-import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
-import { useMediaProxyPort } from "@/shared/lib/useMediaProxyPort";
 import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
 import {
@@ -13,355 +10,294 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { useEmojiBurst } from "@/shared/ui/EmojiBurstProvider";
 import { Textarea } from "@/shared/ui/textarea";
 
-/** A random heart emoji so repeated bursts vary a little. */
-const HEART_BURST_EMOJIS = ["❤️", "🩷", "🧡", "💛", "💚", "💙", "💜", "💖"];
+export type FeedbackCategoryId = "suggestion" | "bug" | "other";
 
-/**
- * Feedback categories. `id` is what we persist in the outbound message; `label`
- * is user-facing. `positive` categories fire the heart-burst emitter on select.
- */
-export type FeedbackCategoryId = "bug" | "praise" | "needs-work";
-
-type FeedbackCategory = {
-  id: FeedbackCategoryId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  positive?: boolean;
+export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategoryId, string> = {
+  suggestion: "Suggestion",
+  bug: "Something is broken",
+  other: "Other",
 };
 
-const FEEDBACK_CATEGORIES: readonly FeedbackCategory[] = [
-  { id: "bug", label: "Bug", icon: Bug },
-  { id: "praise", label: "Praise", icon: ThumbsUp, positive: true },
-  { id: "needs-work", label: "Needs work", icon: Wrench },
-];
-
-/** Single source of truth for category id → user-facing label. */
-export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategoryId, string> =
-  Object.fromEntries(
-    FEEDBACK_CATEGORIES.map((entry) => [entry.id, entry.label]),
-  ) as Record<FeedbackCategoryId, string>;
-
 export type SendFeedbackInput = {
-  category: FeedbackCategoryId | null;
+  category: FeedbackCategoryId;
   includeLogs: boolean;
   message: string;
 };
 
-/**
- * "Send feedback" modal.
- *
- * Layout mirrors {@link NewDirectMessageDialog}: a pill row (here, selectable
- * feedback categories in place of profile pills), a generic feedback box with an
- * optional image attachment shown horizontally beside it, and an "Attach
- * diagnostics" checkbox. Selecting a positive category fires the heart-burst
- * emitter.
- *
- * Delivery (upload and private feedback submission) is delegated to `onSubmit`, and
- * image attachment to `onAttachImage`, so this shell stays presentational.
- */
+const DIAGNOSTICS_DESCRIPTION =
+  "App version, OS version, recent error codes and device capabilities. Excludes messages, files, tokens and credentials. Preview and redact before sending.";
+
+/** Collects private product feedback and optional runtime diagnostics. */
 export function SendFeedbackDialog({
-  attachedImageUrl,
-  isAttaching,
   isPending,
-  onAttachImage,
   onOpenChange,
-  onRemoveImage,
   onSubmit,
   open,
 }: {
-  /** Preview URL of the currently-attached image, or null when none. */
-  attachedImageUrl: string | null;
-  isAttaching: boolean;
   isPending: boolean;
-  /** Opens a file picker and uploads; the parent owns the resulting URL. */
-  onAttachImage: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
-  onRemoveImage: () => void;
   onSubmit: (input: SendFeedbackInput) => Promise<void>;
   open: boolean;
 }) {
-  const { burstEmoji } = useEmojiBurst();
-  useMediaProxyPort();
-  const resolvedAttachedImageUrl = attachedImageUrl
-    ? rewriteRelayUrl(attachedImageUrl)
-    : null;
-  const [category, setCategory] = React.useState<FeedbackCategoryId | null>(
-    null,
-  );
+  const [category, setCategory] =
+    React.useState<FeedbackCategoryId>("suggestion");
   const [message, setMessage] = React.useState("");
   const [includeLogs, setIncludeLogs] = React.useState(false);
-  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const [showDiagnostics, setShowDiagnostics] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [sent, setSent] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) {
-      setCategory(null);
-      setMessage("");
-      setIncludeLogs(false);
-      setPreviewOpen(false);
-      setErrorMessage(null);
-    }
-  }, [open]);
-
-  function selectCategory(next: FeedbackCategory, event: React.MouseEvent) {
-    const alreadySelected = category === next.id;
-    setCategory(alreadySelected ? null : next.id);
-    if (!alreadySelected && next.positive) {
-      const emoji =
-        HEART_BURST_EMOJIS[
-          Math.floor(Math.random() * HEART_BURST_EMOJIS.length)
-        ] ?? "❤️";
-      burstEmoji(emoji, event.currentTarget);
-    }
-  }
-
-  async function attachImage() {
-    if (isAttaching) {
-      return;
-    }
+    if (open || !sent) return;
+    setCategory("suggestion");
+    setMessage("");
+    setIncludeLogs(false);
+    setShowDiagnostics(false);
     setErrorMessage(null);
-    try {
-      await onAttachImage();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to attach image.",
-      );
-    }
-  }
+    setSent(false);
+  }, [open, sent]);
 
   async function submitFeedback() {
-    if (isPending || isAttaching || message.trim().length === 0) {
-      return;
-    }
+    if (isPending || message.trim().length === 0) return;
+
     setErrorMessage(null);
     try {
       await onSubmit({ category, includeLogs, message: message.trim() });
-      onOpenChange(false);
-    } catch (error) {
+      setSent(true);
+    } catch {
       setErrorMessage(
-        error instanceof Error ? error.message : "Failed to send feedback.",
+        "Your feedback wasn’t sent. Your message is saved in this window. Try again.",
       );
     }
   }
+
+  const dialogHeight = sent
+    ? "h-[28.3125rem]"
+    : isPending
+      ? "h-[24.1875rem]"
+      : errorMessage
+        ? "h-[38.6875rem]"
+        : showDiagnostics
+          ? "h-[42.1875rem]"
+          : "h-[34.0625rem]";
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="max-w-xl gap-0 overflow-hidden border-0 px-6 pb-0 pt-6"
+        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden rounded-[11px] border-border/80 bg-card p-0 ${dialogHeight}`}
         data-testid="send-feedback-dialog"
         showCloseButton={false}
       >
-        <DialogHeader className="space-y-0 pb-5">
-          <div className="flex items-center justify-between gap-4">
-            <DialogTitle>Send feedback</DialogTitle>
-            <DialogClose className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring">
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </DialogClose>
-          </div>
-          <p
-            className="pt-2 text-sm text-muted-foreground"
-            data-testid="feedback-privacy-disclosure"
+        <DialogHeader className="h-20 shrink-0 flex-row items-center justify-between gap-4 border-b border-border/70 px-[25px] py-5">
+          <DialogTitle
+            className="text-base font-semibold tracking-tight"
+            data-testid="send-feedback-title"
           >
-            Feedback is sent privately to this Buzz deployment and is not posted
-            to a channel. Attachments are uploaded before you send.
-          </p>
+            {sent ? "Thank you for the feedback" : "Send feedback"}
+          </DialogTitle>
+          <DialogClose
+            aria-label="Close"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
+            disabled={isPending}
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+          </DialogClose>
         </DialogHeader>
 
-        <form
-          className="flex flex-col"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitFeedback();
-          }}
-        >
-          {/*
-            Category pills — mirror the New DM recipient chips: the same
-            rounded-full silhouette with a circular icon slot on the left. When
-            a pill is selected, hovering swaps its icon for an X (the same
-            avatar→X affordance DM chips use to remove a recipient), signalling
-            that clicking deselects it.
-          */}
-          <div className="flex flex-wrap items-center gap-2 pb-4">
-            {FEEDBACK_CATEGORIES.map((entry) => {
-              const Icon = entry.icon;
-              const selected = category === entry.id;
-              return (
-                <button
-                  aria-label={entry.label}
-                  aria-pressed={selected}
-                  className={cn(
-                    "group/feedback-pill inline-flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-xs transition-colors duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-                    selected
-                      ? "border-primary/60 bg-primary/10 text-foreground"
-                      : "border-border/80 bg-background/80 text-foreground hover:bg-muted/50",
-                  )}
-                  data-testid={`feedback-category-${entry.id}`}
-                  disabled={isPending}
-                  key={entry.id}
-                  onClick={(event) => selectCategory(entry, event)}
-                  type="button"
-                >
-                  <span className="relative flex h-8 w-8 shrink-0 items-center justify-center">
-                    <span
-                      className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-150 ease-out",
-                        selected
-                          ? "bg-primary/20 text-primary group-hover/feedback-pill:opacity-0 group-focus-visible/feedback-pill:opacity-0"
-                          : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    {selected ? (
-                      <span className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 transition-opacity duration-150 ease-out group-hover/feedback-pill:opacity-100 group-focus-visible/feedback-pill:opacity-100">
-                        <X aria-hidden="true" className="h-4 w-4" />
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="font-medium">{entry.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Feedback box + optional image attachment, laid out horizontally. */}
-          <div className="flex items-stretch gap-3">
-            <Textarea
-              className="min-h-32 flex-1 resize-none"
-              data-testid="feedback-message"
-              disabled={isPending}
-              onChange={(event) => {
-                setMessage(event.target.value);
-                setErrorMessage(null);
-              }}
-              placeholder="Tell us what went wrong, or share general feedback."
-              value={message}
-            />
-
-            {resolvedAttachedImageUrl ? (
-              <div className="group/attachment relative flex w-32 shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-muted/40">
-                <button
-                  aria-label="View attached image"
-                  className="flex flex-1 flex-col text-left focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                  data-testid="feedback-attachment-thumb"
-                  onClick={() => setPreviewOpen(true)}
-                  type="button"
-                >
-                  <img
-                    alt="Attached"
-                    className="h-20 w-full object-cover"
-                    src={resolvedAttachedImageUrl}
-                  />
-                  <span className="flex items-center gap-1 px-2 py-1.5 text-2xs font-medium text-muted-foreground">
-                    <ImageIcon
-                      aria-hidden="true"
-                      className="h-3 w-3 shrink-0"
-                    />
-                    <span className="truncate">Attached image</span>
-                  </span>
-                </button>
-                <button
-                  aria-label="Remove attachment"
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 text-muted-foreground opacity-0 shadow transition-opacity duration-150 ease-out hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring group-hover/attachment:opacity-100"
-                  data-testid="feedback-attachment-remove"
-                  disabled={isPending}
-                  onClick={onRemoveImage}
-                  type="button"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                aria-label="Attach image"
-                className="flex w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3 text-center text-2xs font-medium text-muted-foreground transition-colors duration-150 ease-out hover:border-muted-foreground/50 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                data-testid="feedback-attach-image"
-                disabled={isPending || isAttaching}
-                onClick={() => void attachImage()}
-                type="button"
-              >
-                <ImageIcon aria-hidden="true" className="h-5 w-5" />
-                {isAttaching ? "Attaching…" : "Attach image"}
-              </button>
-            )}
-          </div>
-
-          {/* Optional environment diagnostics attachment. */}
-          <div className="mt-4 space-y-1.5">
-            <label
-              className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground"
-              htmlFor="feedback-include-logs"
-            >
-              <Checkbox
-                checked={includeLogs}
-                data-testid="feedback-include-logs"
-                disabled={isPending}
-                id="feedback-include-logs"
-                onCheckedChange={(checked) => setIncludeLogs(checked === true)}
+        {sent ? (
+          <div
+            className="flex min-h-0 flex-1 flex-col justify-between px-6 py-5"
+            data-testid="feedback-sent"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle2
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-green-600 dark:text-green-400"
               />
-              Attach diagnostics
-            </label>
-            <p className="pl-6 text-xs text-muted-foreground">
-              Includes capture time, app version, platform, user agent, and
-              language. No application log lines are collected.
-            </p>
-          </div>
-
-          {errorMessage ? (
-            <p
-              className="mt-4 text-sm text-destructive"
-              data-testid="feedback-error"
-            >
-              {errorMessage}
-            </p>
-          ) : null}
-
-          <div className="flex items-center gap-3 py-4">
-            <div className="ml-auto flex items-center gap-2">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Your feedback was sent</p>
+                <p className="text-sm text-muted-foreground">
+                  You can keep working. We’ll reply to your account email if
+                  more detail is needed.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
               <Button
-                disabled={isPending}
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                data-testid="feedback-done"
                 onClick={() => onOpenChange(false)}
                 type="button"
-                variant="ghost"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : isPending ? (
+          <div className="flex min-h-0 flex-1 flex-col px-[25px] py-5">
+            <div
+              aria-live="polite"
+              className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
+              data-testid="feedback-sending"
+              role="status"
+            >
+              <LoaderCircle
+                aria-hidden="true"
+                className="size-6 animate-spin"
+              />
+              <div className="space-y-1">
+                <p className="text-base font-medium">Sending your feedback…</p>
+                <p className="text-xs text-muted-foreground">
+                  Your message is kept until delivery is confirmed.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-border/70 px-[25px] pt-[18px]">
+              <Button
+                className="rounded-md bg-card text-xs"
+                onClick={() => onOpenChange(false)}
+                type="button"
+                variant="outline"
               >
                 Cancel
               </Button>
               <Button
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] disabled:opacity-100"
+                disabled
                 data-testid="feedback-submit"
-                disabled={
-                  isPending || isAttaching || message.trim().length === 0
-                }
-                type="submit"
+                type="button"
               >
-                {isPending ? "Sending…" : "Send feedback"}
+                Send feedback
               </Button>
             </div>
           </div>
-        </form>
-      </DialogContent>
-
-      {/* Full-size attachment preview. */}
-      {resolvedAttachedImageUrl ? (
-        <Dialog onOpenChange={setPreviewOpen} open={previewOpen}>
-          <DialogContent
-            aria-describedby={undefined}
-            className="max-w-4xl border-0 p-2"
-            data-testid="feedback-attachment-preview"
+        ) : (
+          <form
+            className={`flex min-h-0 flex-1 flex-col gap-0 px-[25px] ${errorMessage ? "pt-6" : "pt-11"}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitFeedback();
+            }}
           >
-            <DialogTitle className="sr-only">Attached image</DialogTitle>
-            <img
-              alt="Attached"
-              className="max-h-[80vh] w-full rounded-lg bg-black/40 object-contain"
-              src={resolvedAttachedImageUrl}
-            />
-          </DialogContent>
-        </Dialog>
-      ) : null}
+            {errorMessage ? (
+              <div
+                className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive"
+                data-testid="feedback-error"
+                role="alert"
+              >
+                <p className="font-medium">Your feedback wasn’t sent</p>
+                <p>Your message is saved in this window. Try again.</p>
+              </div>
+            ) : null}
+
+            <label
+              className="flex flex-col gap-2 text-xs"
+              htmlFor="feedback-type"
+            >
+              <span>Type</span>
+              <select
+                className="h-[2.6875rem] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                data-testid="feedback-type"
+                disabled={isPending}
+                id="feedback-type"
+                onChange={(event) =>
+                  setCategory(event.target.value as FeedbackCategoryId)
+                }
+                value={category}
+              >
+                {Object.entries(FEEDBACK_CATEGORY_LABELS).map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <label
+              className="mt-[19px] flex flex-col gap-2 text-xs"
+              htmlFor="feedback-message"
+            >
+              <span>What would you like us to know?</span>
+              <Textarea
+                className="min-h-[7.3125rem] resize-y bg-card text-sm leading-6"
+                data-testid="feedback-message"
+                disabled={isPending}
+                onChange={(event) => {
+                  setMessage(event.target.value);
+                  setErrorMessage(null);
+                }}
+                value={message}
+              />
+            </label>
+
+            <div className="mt-[19px] space-y-[1.0625rem]">
+              <label
+                className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+                htmlFor="feedback-include-logs"
+              >
+                <Checkbox
+                  checked={includeLogs}
+                  className="border-input data-[state=checked]:bg-[#285fb5]"
+                  data-testid="feedback-include-logs"
+                  disabled={isPending}
+                  id="feedback-include-logs"
+                  onCheckedChange={(checked) =>
+                    setIncludeLogs(checked === true)
+                  }
+                />
+                <span>Include diagnostic information</span>
+              </label>
+              <Button
+                aria-expanded={showDiagnostics}
+                className="h-auto px-0 text-xs text-blue-700 hover:text-blue-800 dark:text-blue-300"
+                data-testid="feedback-diagnostics-toggle"
+                onClick={() => setShowDiagnostics((visible) => !visible)}
+                type="button"
+                variant="link"
+              >
+                What is included?
+              </Button>
+              {showDiagnostics ? (
+                <p
+                  className="rounded-md border border-blue-200 bg-blue-50 px-3 py-[10px] text-xs leading-6 text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100"
+                  data-testid="feedback-diagnostics-details"
+                >
+                  <span className="mb-2 block font-medium text-blue-950 dark:text-blue-50">
+                    Diagnostic information
+                  </span>
+                  {DIAGNOSTICS_DESCRIPTION}
+                </p>
+              ) : null}
+            </div>
+
+            <div
+              className={`${showDiagnostics ? "mt-[40px]" : "mt-[25px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px]`}
+            >
+              <Button
+                className="rounded-md border-input bg-card text-xs"
+                onClick={() => onOpenChange(false)}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                data-testid="feedback-submit"
+                disabled={message.trim().length === 0}
+                type="submit"
+              >
+                {isPending ? "Sending" : "Send feedback"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
     </Dialog>
   );
 }

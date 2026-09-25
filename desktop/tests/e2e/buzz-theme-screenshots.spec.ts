@@ -506,14 +506,17 @@ test("custom section icon and name align with channel columns", async ({
   );
 });
 
-async function openAppearance(page: Page, mode: "system" | "light" | "dark") {
+async function openAppearance(
+  page: Page,
+  mode: "system" | "light" | "dark" = "light",
+) {
   // Settings renders at the AppShell level; open it via the profile card
   // button, then select the Appearance section.
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-appearance").click();
-  const panel = page.getByTestId("settings-theme");
+  await page.getByTestId("settings-group-appearance-group").click();
+  const panel = page.getByTestId("settings-appearance");
   await expect(panel).toBeVisible({ timeout: 10_000 });
   await page.getByTestId(`appearance-mode-${mode}`).click();
   await waitForAnimations(page);
@@ -1243,7 +1246,7 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   const selectedLabelBox = await profileLabel.boundingBox();
   // Appearance is the active section here; its nav row uses the Buzz
   // selected surface (data-active=true), matching the Left Nav treatment.
-  await page.getByTestId("settings-nav-appearance").click();
+  await page.getByTestId("settings-group-appearance-group").click();
   await expect(profileRow).toHaveCSS("font-weight", "400");
   const unselectedLabelBox = await profileLabel.boundingBox();
   expect(selectedLabelBox).not.toBeNull();
@@ -1267,7 +1270,7 @@ test("settings nav uses Buzz active pill + hover (dark)", async ({ page }) => {
   await page.getByTestId("profile-popover-settings").click();
   const sidebar = page.getByTestId("settings-sidebar");
   await expect(sidebar).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId("settings-nav-appearance").click();
+  await page.getByTestId("settings-group-appearance-group").click();
   await expectBuzzSettingsPalette(page, "dark");
   await expect(page.getByTestId("settings-content-surface")).toHaveCSS(
     "background-color",
@@ -1908,4 +1911,153 @@ test("Buzz follows native system theme changes without a reload", async ({
   await emitNativeThemeChange(page, "light");
   await expectAppliedBuzzTheme(page, "buzz", "buzz");
   await expectBuzzGradientPaint(page, "light");
+});
+
+function businessSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const key = Object.keys(localStorage).find(
+      (candidate) =>
+        candidate.startsWith("colony.appearance.v1:") &&
+        !candidate.endsWith(":global-conversations") &&
+        !candidate.endsWith(":last-business"),
+    );
+    return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+  });
+}
+
+test("r17 settings have nine groups, section search, and return navigation", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("open-settings").click();
+  await page.getByTestId("profile-popover-settings").click();
+
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(9);
+  await expect(page.getByRole("tablist")).toHaveCount(1);
+  await page.getByTestId("settings-search").fill("Channel templates");
+  const result = page.getByRole("option", {
+    name: "Channel templates, Blocks & templates",
+  });
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(
+    page.getByTestId("settings-panel-channel-templates"),
+  ).toBeVisible();
+
+  await page.getByTestId("settings-back-to-app").click();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
+
+test("theme catalog applies a named theme through a scoped save", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await openAppearance(page);
+
+  await page.getByTestId("appearance-open-themes").click();
+  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
+  await page.getByTestId("theme-catalog-buzz-dark").click();
+  await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  await page.getByTestId("theme-use").click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expectAppliedBuzzTheme(page, "buzz-dark");
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({ theme: "buzz-dark", followSystem: false });
+
+  await waitForAnimations(page);
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/03-theme-applied.png`,
+  });
+});
+
+test("appearance controls save business and global preferences with a live preview", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  const panel = await openAppearance(page);
+  const preview = page.getByTestId("appearance-live-preview");
+
+  await expect(page.getByTestId("appearance-accent-violet")).toBeVisible();
+  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await page.getByTestId("appearance-mode-dark").click();
+  await page.getByTestId("appearance-accent-cyan").click();
+  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "default",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue(
+          "--conversation-message-font-size",
+        ),
+      ),
+    )
+    .toBe("calc(var(--buzz-type-rem) * 0.9375)");
+  await page.getByTestId("appearance-density").selectOption("spacious");
+  await page.getByTestId("appearance-links-rich").click();
+  await page.getByTestId("appearance-threads-focus").click();
+
+  await expect(preview.locator(".ap-demo-link")).toHaveClass(/rich/);
+  await expect(preview.locator(".ap-live-chat")).toHaveClass(/focused/);
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({ theme: "buzz-dark", accent: "#06B6D4" });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const key = Object.keys(localStorage).find((candidate) =>
+          candidate.endsWith(":global-conversations"),
+        );
+        return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+      }),
+    )
+    .toMatchObject({
+      messageSize: "larger",
+      density: "spacious",
+      linkPreview: "rich",
+      threadLayout: "focus",
+    });
+
+  await waitForAnimations(page);
+  await panel.screenshot({ path: `${SHOTS}/04-appearance.png` });
+});
+
+test("prominent selection uses the chosen accent on the active settings group", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await openAppearance(page);
+
+  const activeGroup = page.getByTestId("settings-group-appearance-group");
+  const toggle = page.getByTestId("appearance-prominent");
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("html")).not.toHaveAttribute(
+    "data-prominent-active-tab",
+    "",
+  );
+  await page.getByTestId("appearance-accent-cyan").click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-prominent-active-tab",
+    "",
+  );
+  const expectedAccent = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--w20-appearance-accent)";
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  await expect(activeGroup).toHaveCSS("background-color", expectedAccent);
 });

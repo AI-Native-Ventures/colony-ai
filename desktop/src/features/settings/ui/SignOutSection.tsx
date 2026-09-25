@@ -1,8 +1,9 @@
 import * as React from "react";
-import { toast } from "sonner";
 
-import { NsecMaskedDisplay } from "@/features/onboarding/ui/NsecMaskedDisplay";
-import { getNsec, signOut } from "@/shared/api/tauriIdentity";
+import { signOut } from "@/shared/api/tauriIdentity";
+import { AlertCircle, LoaderCircle } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { Checkbox } from "@/shared/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -12,243 +13,131 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { Button } from "@/shared/ui/button";
-import { Checkbox } from "@/shared/ui/checkbox";
-import { Input } from "@/shared/ui/input";
-import { Spinner } from "@/shared/ui/spinner";
 import { SettingsOptionGroup, SettingsOptionRow } from "./SettingsOptionGroup";
 
-/**
- * The exact phrase the user must type before the destructive sign-out button
- * unlocks. Kept lowercase; the comparison trims and lowercases input so a
- * stray capital or trailing space does not trip people up — the friction is
- * deliberate typing, not case sensitivity.
- */
-export const SIGNOUT_CONFIRM_PHRASE = "wipe all my data";
-
-/**
- * Sign-out card + destructive confirmation flow.
- *
- * Signing out wipes the identity key and all local data, so the confirm
- * dialog gates the delete button behind two explicit steps:
- *
- * 1. Confirm recovery — Settings offers a tested password-protected backup;
- *    the dialog also shows the raw nsec as a last-chance fallback, and the
- *    user checks a box confirming they can restore their identity.
- * 2. Typed confirmation — the user must type the exact phrase
- *    "wipe all my data".
- *
- * Only when both gates pass does "Delete my data" become clickable.
- */
 export function SignOutSection() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isPending, setIsPending] = React.useState(false);
+  const [confirmed, setConfirmed] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // Backup gate.
-  const [nsec, setNsec] = React.useState<string | null>(null);
-  const [nsecError, setNsecError] = React.useState<string | null>(null);
-  const [isNsecLoading, setIsNsecLoading] = React.useState(false);
-  const [hasConfirmedBackup, setHasConfirmedBackup] = React.useState(false);
-  // Guards against a late-resolving getNsec() repopulating state after the
-  // dialog closes.
-  const fetchCancelledRef = React.useRef(false);
-
-  // Typed-confirmation gate.
-  const [confirmText, setConfirmText] = React.useState("");
-  const isPhraseConfirmed =
-    confirmText.trim().toLowerCase() === SIGNOUT_CONFIRM_PHRASE;
-
-  const canDelete = hasConfirmedBackup && isPhraseConfirmed && !isPending;
-
-  function resetDialogState() {
-    fetchCancelledRef.current = true;
-    setNsec(null);
-    setNsecError(null);
-    setIsNsecLoading(false);
-    setHasConfirmedBackup(false);
-    setConfirmText("");
-  }
-
-  React.useEffect(() => {
-    return () => {
-      fetchCancelledRef.current = true;
-      setNsec(null);
-    };
-  }, []);
-
-  async function openDialog() {
-    setIsOpen(true);
-    fetchCancelledRef.current = false;
-    setIsNsecLoading(true);
-    setNsecError(null);
+  async function handleSignOut() {
+    setIsPending(true);
+    setError(null);
     try {
-      const value = await getNsec();
-      if (!fetchCancelledRef.current) setNsec(value);
-    } catch (err) {
-      if (!fetchCancelledRef.current)
-        setNsecError(
-          err instanceof Error
-            ? err.message
-            : "Failed to retrieve private key.",
-        );
-    } finally {
-      if (!fetchCancelledRef.current) setIsNsecLoading(false);
+      await signOut();
+    } catch (signOutError) {
+      setError(
+        signOutError instanceof Error
+          ? signOutError.message
+          : "Sign-out could not be completed.",
+      );
+      setIsPending(false);
     }
   }
 
-  function handleSignOut() {
-    setIsPending(true);
-    // Keep the pending state if signOut() resolves before restart.
-    signOut()
-      .then(() => {
-        // Clear web storage for this origin on the success path only. This
-        // covers dev builds where the Rust webview wipe targets the
-        // .app-bundle WebKit dir (missing in `tauri dev`), preventing stale
-        // community config from vouching for the fresh key on next boot. In
-        // production the Rust wipe already handles this; the clear here is
-        // redundant but harmless. The restart may race this clear — that is
-        // acceptable; Fix A (pubkey-scoped heuristic) is the correctness
-        // gate.
-        window.localStorage.clear();
-        window.sessionStorage.clear();
-      })
-      .catch((err: unknown) => {
-        setIsPending(false);
-        setIsOpen(false);
-        resetDialogState();
-        toast.error(err instanceof Error ? err.message : "Sign out failed.");
-      });
-  }
-
   return (
-    <div className="mt-12 pb-6" data-testid="settings-signout">
+    <>
       <SettingsOptionGroup title="Sign out">
         <SettingsOptionRow>
           <div className="min-w-0">
-            <p
-              className="text-sm font-normal text-muted-foreground/70"
-              data-settings-subcopy
-            >
-              Removes your identity key and all local app data from this device.
-              Before signing out, create and test a password-protected key
-              backup above — this cannot be undone.
+            <p className="text-sm font-medium">Sign out of this device</p>
+            <p className="text-xs text-muted-foreground">
+              This device can only sign out while removing its local Colony
+              data.
+            </p>
+          </div>
+          <Button disabled size="sm" variant="outline">
+            Unavailable
+          </Button>
+        </SettingsOptionRow>
+        <SettingsOptionRow>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Sign out & remove local data</p>
+            <p className="text-xs text-muted-foreground">
+              Clear local identity and app data on this device. Your business
+              content stays on its relay.
             </p>
           </div>
           <Button
             data-testid="signout-open-dialog"
-            disabled={isPending}
-            onClick={() => void openDialog()}
-            type="button"
+            onClick={() => setIsOpen(true)}
+            size="sm"
             variant="destructive"
           >
-            {isPending ? (
-              <Spinner aria-label="Signing out" className="h-4 w-4 border-2" />
-            ) : null}
-            {isPending ? "Signing out…" : "Delete my data"}
+            Continue
           </Button>
         </SettingsOptionRow>
       </SettingsOptionGroup>
+
       <AlertDialog
         onOpenChange={(open) => {
           if (!open && !isPending) {
             setIsOpen(false);
-            resetDialogState();
+            setConfirmed(false);
+            setError(null);
           }
         }}
         open={isOpen}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Sign out and wipe all data?</AlertDialogTitle>
+            <AlertDialogTitle>Sign out & remove local data?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete your identity key, all agent settings, and cached
-              data from this device, then relaunch Buzz into first-run setup.
-              This cannot be undone.
+              Colony clears this device and restarts into setup. Your business
+              and conversations stored on the relay remain available.
             </AlertDialogDescription>
           </AlertDialogHeader>
-
-          <div className="space-y-3">
-            <p className="text-sm font-medium">
-              1. Confirm you can restore your identity
-            </p>
-            {isNsecLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : nsecError ? (
-              <p
-                className="text-sm text-destructive"
-                data-testid="signout-nsec-error"
-              >
-                {nsecError}
-              </p>
-            ) : nsec ? (
-              <NsecMaskedDisplay nsec={nsec} />
-            ) : null}
-            <label
-              className="flex cursor-pointer items-start gap-2.5 text-sm has-[button:disabled]:cursor-not-allowed has-[button:disabled]:opacity-60"
-              data-testid="signout-backup-confirm-label"
-              htmlFor="signout-backup-confirm"
-            >
-              <Checkbox
-                checked={hasConfirmedBackup}
-                className="mt-0.5"
-                data-testid="signout-backup-confirm"
-                disabled={isPending}
-                id="signout-backup-confirm"
-                onCheckedChange={(checked) =>
-                  setHasConfirmedBackup(checked === true)
-                }
-              />
-              <span>
-                I have tested a key backup or saved this private key somewhere
-                safe.
-              </span>
-            </label>
-          </div>
-
-          <div className="space-y-2">
-            <label
-              className="text-sm font-medium"
-              htmlFor="signout-confirm-phrase"
-            >
-              2. Type{" "}
-              <span className="font-semibold">"{SIGNOUT_CONFIRM_PHRASE}"</span>{" "}
-              to confirm
-            </label>
-            <Input
-              autoComplete="off"
-              data-testid="signout-confirm-phrase"
+          <p className="text-sm text-muted-foreground">
+            Local drafts, cached conversations, downloaded files and device
+            settings will be removed.
+          </p>
+          <label
+            className="flex items-start gap-2.5 text-sm"
+            htmlFor="signout-local-data-confirm"
+          >
+            <Checkbox
+              checked={confirmed}
               disabled={isPending}
-              id="signout-confirm-phrase"
-              onChange={(event) => setConfirmText(event.target.value)}
-              placeholder={SIGNOUT_CONFIRM_PHRASE}
-              spellCheck={false}
-              value={confirmText}
+              id="signout-local-data-confirm"
+              onCheckedChange={(value) => setConfirmed(value === true)}
             />
-          </div>
-
+            <span>I have saved anything I need from this device.</span>
+          </label>
+          {error ? (
+            <div
+              className="flex items-start gap-2 rounded-lg border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              <AlertCircle
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0"
+              />
+              <span>{error}</span>
+            </div>
+          ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-            {/* A plain Button, not AlertDialogAction: Radix's Action closes
-                the dialog on click, which would drop the pending state while
-                the wipe + restart is still in flight. */}
+            <AlertDialogCancel disabled={isPending}>
+              Stay signed in
+            </AlertDialogCancel>
             <Button
               data-testid="signout-confirm"
-              disabled={!canDelete}
-              onClick={handleSignOut}
+              disabled={!confirmed || isPending}
+              onClick={() => void handleSignOut()}
               type="button"
               variant="destructive"
             >
               {isPending ? (
-                <Spinner
-                  aria-label="Signing out"
-                  className="h-4 w-4 border-2"
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="mr-2 size-4 animate-spin"
                 />
               ) : null}
-              {isPending ? "Signing out…" : "Delete my data"}
+              {isPending ? "Signing out" : "Sign out & remove data"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

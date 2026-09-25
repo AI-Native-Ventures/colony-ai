@@ -192,6 +192,10 @@ type MockBridgeOptions = {
   acpRuntimesDelayMs?: number;
   /** When true, the mock catalog discovery command throws an error. */
   acpRuntimesError?: boolean;
+  /** Reject successive product feedback events, then accept when exhausted. */
+  feedbackPublishErrors?: Array<string | null>;
+  /** Delay product feedback acknowledgements so the pending UI can be captured. */
+  feedbackPublishDelayMs?: number;
   acpAuthMethods?: Record<string, { methods: Record<string, unknown>[] }>;
   acpAuthMethodsError?: string;
   /** When set, the `delete_custom_harness` mock command throws with this message. */
