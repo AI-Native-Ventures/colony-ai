@@ -45,17 +45,26 @@ class AccountApi {
   final int _maximumResponseBytes;
 
   /// Starts account creation and sends the verification code.
-  Future<void> signup({required String email, required String password}) async {
+  Future<AccountCodeDelivery> signup({
+    required String email,
+    required String password,
+    String? displayName,
+  }) async {
     final response = await _send(
       'POST',
       'signup',
-      body: {'email': email, 'password': password},
+      body: {
+        'email': email,
+        'password': password,
+        if (displayName != null) 'display_name': displayName,
+      },
     );
     _expectStatus(response, const {202});
+    return _codeDelivery(response);
   }
 
   /// Requests another verification or password reset code.
-  Future<void> resendCode({
+  Future<AccountCodeDelivery> resendCode({
     required String email,
     required AccountCodePurpose purpose,
   }) async {
@@ -65,6 +74,7 @@ class AccountApi {
       body: {'email': email, 'purpose': purpose.name},
     );
     _expectStatus(response, const {202});
+    return _codeDelivery(response);
   }
 
   /// Verifies an email code and returns the resulting authenticated session.
@@ -96,13 +106,32 @@ class AccountApi {
   }
 
   /// Requests a password reset code without revealing account existence.
-  Future<void> requestPasswordReset({required String email}) async {
+  Future<AccountCodeDelivery> requestPasswordReset({
+    required String email,
+  }) async {
     final response = await _send(
       'POST',
       'reset/request',
       body: {'email': email},
     );
     _expectStatus(response, const {202});
+    return _codeDelivery(response);
+  }
+
+  /// Checks a reset code without consuming the code needed to set a password.
+  Future<void> checkPasswordResetCode({
+    required String email,
+    required String code,
+  }) async {
+    final response = await _send(
+      'POST',
+      'reset/check',
+      body: {'email': email, 'code': code},
+    );
+    _expectStatus(response, const {200});
+    if (_decodeObject(response)['status'] != 'code_valid') {
+      throw const AccountAuthFailure(AccountAuthFailureKind.invalidResponse);
+    }
   }
 
   /// Confirms a reset code and returns the restored account session.
@@ -222,8 +251,21 @@ class AccountApi {
     if (accepted.contains(response.statusCode)) return;
     final body = _decodeObject(response, allowEmpty: true);
     final retry = body['retry_after_secs'];
+    final attempts = body['attempts_left'];
     throw AccountAuthFailure(
       _failureKind(body['error'], response.statusCode),
+      retryAfterSecs: retry is num ? retry.toInt().clamp(0, 86400) : null,
+      attemptsLeft: attempts is num ? attempts.toInt().clamp(0, 5) : null,
+    );
+  }
+
+  AccountCodeDelivery _codeDelivery(http.Response response) {
+    final body = _decodeObject(response);
+    if (body['status'] != 'verification_sent') {
+      throw const AccountAuthFailure(AccountAuthFailureKind.invalidResponse);
+    }
+    final retry = body['retry_after_secs'];
+    return AccountCodeDelivery(
       retryAfterSecs: retry is num ? retry.toInt().clamp(0, 86400) : null,
     );
   }
@@ -250,6 +292,9 @@ class AccountApi {
         'email_taken' => AccountAuthFailureKind.emailTaken,
         'identity_taken' => AccountAuthFailureKind.identityTaken,
         'code_expired' => AccountAuthFailureKind.codeExpired,
+        'wrong_code' => AccountAuthFailureKind.wrongCode,
+        'too_many_attempts' => AccountAuthFailureKind.tooManyAttempts,
+        'resend_cooldown' => AccountAuthFailureKind.resendCooldown,
         'weak_password' => AccountAuthFailureKind.weakPassword,
         'rate_limited' => AccountAuthFailureKind.rateLimited,
         'account_not_found' when status == 404 =>

@@ -147,13 +147,20 @@ function codeScene(
   if (state.screen !== "verify" && !reset) return null;
   const prefix = reset ? "reset" : "verify";
   if (pending) return reset ? "reset-verifying" : "verify-verifying";
-  if (state.failure?.code === "invalid_credentials") {
+  if (
+    state.failure?.code === "invalid_credentials" ||
+    state.failure?.code === "wrong_code"
+  ) {
     return reset ? "reset-error" : "verify-error";
   }
   if (state.failure?.code === "code_expired") {
     return reset ? "reset-expired" : "verify-expired";
   }
-  if (state.failure?.code === "rate_limited") {
+  if (
+    state.failure?.code === "rate_limited" ||
+    state.failure?.code === "too_many_attempts" ||
+    state.failure?.code === "resend_cooldown"
+  ) {
     return reset ? "reset-locked" : "verify-locked";
   }
   if (state.failure?.code === "unreachable") {
@@ -284,13 +291,20 @@ export function AccountAuthFlow({
         await action();
       } catch (error) {
         const failure = normalizeAccountAuthFailure(error);
-        if (failure.code === "rate_limited") {
+        if (
+          failure.code === "rate_limited" ||
+          failure.code === "too_many_attempts" ||
+          failure.code === "resend_cooldown"
+        ) {
           requestCooldown(clampCooldown(failure.retryAfterSecs));
         }
         if (state.screen === "reset-password") {
           if (
             failure.code === "invalid_credentials" ||
             failure.code === "code_expired" ||
+            failure.code === "wrong_code" ||
+            failure.code === "too_many_attempts" ||
+            failure.code === "resend_cooldown" ||
             failure.code === "rate_limited" ||
             failure.code === "unreachable"
           ) {
@@ -348,7 +362,11 @@ export function AccountAuthFlow({
     event.preventDefault();
     const email = normalizedEmail(state.email);
     void send(async () => {
-      const sent = await authClient.signUp(email, password);
+      const sent = await authClient.signUp(
+        email,
+        password,
+        name.trim() || undefined,
+      );
       setPassword("");
       requestCooldown(clampCooldown(sent.retryAfterSecs));
       dispatch({ type: "signup_sent", email });
@@ -408,7 +426,12 @@ export function AccountAuthFlow({
 
   const submitResetCode = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (code.length === 6) dispatch({ type: "begin_reset_password" });
+    if (code.length !== 6) return;
+    const email = normalizedEmail(state.email);
+    void send(async () => {
+      await authClient.checkResetCode(email, code);
+      dispatch({ type: "begin_reset_password" });
+    });
   };
 
   const submitResetConfirm = (event: React.FormEvent<HTMLFormElement>) => {
@@ -501,7 +524,10 @@ export function AccountAuthFlow({
     state.failure?.code === "email_taken" ||
     state.failure?.code === "identity_taken";
   const rateLimitLocked =
-    state.failure?.code === "rate_limited" && resendCooldown > 0;
+    (state.failure?.code === "rate_limited" ||
+      state.failure?.code === "too_many_attempts" ||
+      state.failure?.code === "resend_cooldown") &&
+    resendCooldown > 0;
   const waitLabel = rateLimitLocked ? `Try again in ${resendCooldown}s` : null;
   const emailCodeScene = codeScene(state, pending);
 

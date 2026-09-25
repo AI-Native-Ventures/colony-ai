@@ -129,13 +129,16 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
       codePurpose: AccountCodePurpose.reset,
     );
     try {
-      final session = await ref
-          .read(accountApiProvider)
-          .confirmPasswordReset(
-            email: normalizedEmail,
-            code: code.trim(),
-            newPassword: newPassword,
-          );
+      final api = ref.read(accountApiProvider);
+      await api.checkPasswordResetCode(
+        email: normalizedEmail,
+        code: code.trim(),
+      );
+      final session = await api.confirmPasswordReset(
+        email: normalizedEmail,
+        code: code.trim(),
+        newPassword: newPassword,
+      );
       await _persistSession(session);
       state = const AccountAuthState(status: AccountAuthStatus.complete);
     } on AccountAuthFailure catch (failure) {

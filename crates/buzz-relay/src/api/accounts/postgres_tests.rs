@@ -10,7 +10,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use buzz_db::Db;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use nostr::{EventBuilder, Keys, Kind, Tag};
+use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -213,6 +213,14 @@ async fn test_mail_code(pool: &PgPool, email: &str, purpose: &str) -> String {
     .expect("read code from the test-only mail sink")
 }
 
+fn wrong_test_code(actual: &str) -> String {
+    if actual == "000000" {
+        "000001".to_owned()
+    } else {
+        "000000".to_owned()
+    }
+}
+
 fn google_token(email: &str, sub: &str) -> String {
     google_token_with_claims(
         email,
@@ -319,19 +327,13 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
         None,
     )
     .await;
-    assert_eq!(signup.status(), StatusCode::ACCEPTED);
-
-    let resend = call(
-        state.clone(),
-        "POST",
-        "/api/accounts/resend-code",
-        &host,
-        ip,
-        json!({ "email": email, "purpose": "verify" }),
-        None,
-    )
-    .await;
-    assert_eq!(resend.status(), StatusCode::ACCEPTED);
+    let (signup_status, signup_body) = json_response(signup).await;
+    assert_eq!(signup_status, StatusCode::ACCEPTED);
+    assert_eq!(signup_body["status"], "verification_sent");
+    assert_eq!(
+        signup_body["retry_after_secs"],
+        ACCOUNT_CODE_RESEND_COOLDOWN_SECS
+    );
     deliver_pending_mail(&state).await;
     let verification_code = test_mail_code(&pool, &email, "verify_email").await;
     let (verify_status, verify_body) = json_response(
@@ -341,7 +343,7 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
             "/api/accounts/verify",
             &host,
             ip,
-            json!({ "email": email, "code": verification_code }),
+            json!({ "email": email, "code": verification_code.clone() }),
             None,
         )
         .await,
@@ -395,20 +397,30 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
     )
     .await;
     assert_eq!(reset_request.status(), StatusCode::ACCEPTED);
-    let resend_reset = call(
-        state.clone(),
-        "POST",
-        "/api/accounts/resend-code",
-        &host,
-        ip,
-        json!({ "email": email, "purpose": "reset" }),
-        None,
-    )
-    .await;
-    assert_eq!(resend_reset.status(), StatusCode::ACCEPTED);
+    let (reset_request_status, reset_request_body) = json_response(reset_request).await;
+    assert_eq!(reset_request_status, StatusCode::ACCEPTED);
+    assert_eq!(
+        reset_request_body["retry_after_secs"],
+        ACCOUNT_CODE_RESEND_COOLDOWN_SECS
+    );
     deliver_pending_mail(&state).await;
     let reset_code = test_mail_code(&pool, &email, "reset_password").await;
     let reset_password = "recovered-passphrase";
+    let (check_status, check_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/check",
+            &host,
+            ip,
+            json!({ "email": email, "code": reset_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(check_status, StatusCode::OK);
+    assert_eq!(check_body["status"], "code_valid");
     let (reset_status, reset_body) = json_response(
         call(
             state.clone(),
@@ -416,7 +428,7 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
             "/api/accounts/reset/confirm",
             &host,
             ip,
-            json!({ "email": email, "code": reset_code, "new_password": reset_password }),
+            json!({ "email": email, "code": reset_code.clone(), "new_password": reset_password }),
             None,
         )
         .await,
@@ -430,6 +442,22 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
     assert!(reset_body["nsec"]
         .as_str()
         .is_some_and(|nsec| nsec == original_nsec.as_str()));
+
+    let (replay_status, replay_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/confirm",
+            &host,
+            ip,
+            json!({ "email": email, "code": reset_code, "new_password": reset_password }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(replay_status, StatusCode::GONE);
+    assert_eq!(replay_body["error"], "code_expired");
 
     let (login_status, login_body) = json_response(
         call(
@@ -516,6 +544,459 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
         .await
         .expect("check deleted account");
     assert_eq!(deleted_count, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn signup_stores_server_signed_profile_and_reset_check_keeps_code_for_confirmation() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("profile-{}@example.test", Uuid::new_v4().simple());
+    let signup = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/signup",
+        &host,
+        ip,
+        json!({
+            "email": email,
+            "password": "profile-test-password",
+            "display_name": "Ada Lovelace",
+        }),
+        None,
+    )
+    .await;
+    let (signup_status, signup_body) = json_response(signup).await;
+    assert_eq!(signup_status, StatusCode::ACCEPTED);
+    assert_eq!(
+        signup_body["retry_after_secs"],
+        ACCOUNT_CODE_RESEND_COOLDOWN_SECS
+    );
+
+    let (resend_status, resend_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/resend-code",
+            &host,
+            ip,
+            json!({ "email": email, "purpose": "verify" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(resend_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(resend_body["error"], "resend_cooldown");
+    assert!(resend_body["retry_after_secs"].as_i64().unwrap_or_default() > 0);
+
+    let pubkey: String = sqlx::query_scalar("SELECT pubkey FROM accounts WHERE email = $1")
+        .bind(&email)
+        .fetch_one(&pool)
+        .await
+        .expect("signup account pubkey");
+    let community_id: Uuid = sqlx::query_scalar("SELECT id FROM communities WHERE host = $1")
+        .bind(&host)
+        .fetch_one(&pool)
+        .await
+        .expect("signup community id");
+    let event_json: Value = sqlx::query_scalar(
+        "SELECT jsonb_build_object( \
+             'id', encode(id, 'hex'), \
+             'pubkey', encode(pubkey, 'hex'), \
+             'created_at', FLOOR(EXTRACT(EPOCH FROM created_at))::BIGINT, \
+             'kind', kind, 'tags', tags, 'content', content, \
+             'sig', encode(sig, 'hex')) \
+         FROM events WHERE community_id = $1 AND pubkey = $2 AND kind = 0 \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(community_id)
+    .bind(hex::decode(&pubkey).expect("decode profile pubkey"))
+    .fetch_one(&pool)
+    .await
+    .expect("signup kind-zero profile event");
+    let profile_event =
+        nostr::Event::from_json(event_json.to_string()).expect("parse stored profile event");
+    assert_eq!(profile_event.kind, Kind::Metadata);
+    assert_eq!(
+        serde_json::from_str::<Value>(&profile_event.content).expect("profile content"),
+        json!({ "display_name": "Ada Lovelace" })
+    );
+    assert!(profile_event.verify_id());
+    assert!(profile_event.verify_signature());
+
+    deliver_pending_mail(&state).await;
+    let verification_code = test_mail_code(&pool, &email, "verify_email").await;
+    let (verify_status, verify_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/verify",
+            &host,
+            ip,
+            json!({ "email": email, "code": verification_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(verify_status, StatusCode::OK);
+    assert_eq!(verify_body["account"]["pubkey"], pubkey);
+    let (verify_replay_status, verify_replay_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/verify",
+            &host,
+            ip,
+            json!({ "email": email, "code": verification_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(verify_replay_status, StatusCode::GONE);
+    assert_eq!(verify_replay_body["error"], "code_expired");
+
+    let reset_request = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/reset/request",
+        &host,
+        ip,
+        json!({ "email": email }),
+        None,
+    )
+    .await;
+    assert_eq!(reset_request.status(), StatusCode::ACCEPTED);
+    let (reset_resend_status, reset_resend_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/resend-code",
+            &host,
+            ip,
+            json!({ "email": email, "purpose": "reset" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(reset_resend_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(reset_resend_body["error"], "resend_cooldown");
+    assert!(
+        reset_resend_body["retry_after_secs"]
+            .as_i64()
+            .unwrap_or_default()
+            > 0
+    );
+    deliver_pending_mail(&state).await;
+    let reset_code = test_mail_code(&pool, &email, "reset_password").await;
+    let wrong_code = wrong_test_code(&reset_code);
+    let (wrong_status, wrong_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/check",
+            &host,
+            ip,
+            json!({ "email": email, "code": wrong_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(wrong_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(wrong_body["error"], "wrong_code");
+    assert_eq!(wrong_body["attempts_left"], 4);
+
+    let (check_status, check_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/check",
+            &host,
+            ip,
+            json!({ "email": email, "code": reset_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(check_status, StatusCode::OK);
+    assert_eq!(check_body["status"], "code_valid");
+
+    let confirm = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/reset/confirm",
+        &host,
+        ip,
+        json!({
+            "email": email,
+            "code": reset_code,
+            "new_password": "profile-reset-password",
+        }),
+        None,
+    )
+    .await;
+    assert_eq!(confirm.status(), StatusCode::OK);
+    let replay = call(
+        state,
+        "POST",
+        "/api/accounts/reset/confirm",
+        &host,
+        ip,
+        json!({
+            "email": email,
+            "code": reset_code,
+            "new_password": "profile-reset-password-2",
+        }),
+        None,
+    )
+    .await;
+    let (replay_status, replay_body) = json_response(replay).await;
+    assert_eq!(replay_status, StatusCode::GONE);
+    assert_eq!(replay_body["error"], "code_expired");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn verification_code_reports_remaining_attempts_and_resend_lockout() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("verify-lock-{}@example.test", Uuid::new_v4().simple());
+    let signup = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/signup",
+        &host,
+        ip,
+        json!({ "email": email, "password": "verify-lock-password" }),
+        None,
+    )
+    .await;
+    assert_eq!(signup.status(), StatusCode::ACCEPTED);
+    deliver_pending_mail(&state).await;
+    let actual_code = test_mail_code(&pool, &email, "verify_email").await;
+    let wrong_code = wrong_test_code(&actual_code);
+
+    for attempts_left in (1..=4).rev() {
+        let (status, body) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/verify",
+                &host,
+                ip,
+                json!({ "email": email, "code": wrong_code }),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body["error"], "wrong_code");
+        assert_eq!(body["attempts_left"], attempts_left);
+    }
+
+    let (locked_status, locked_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/verify",
+            &host,
+            ip,
+            json!({ "email": email, "code": wrong_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(locked_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(locked_body["error"], "too_many_attempts");
+    assert!(locked_body["retry_after_secs"].as_i64().unwrap_or_default() > 0);
+
+    let account = state
+        .db
+        .account_by_email(&email)
+        .await
+        .expect("read locked verification account")
+        .expect("locked verification account exists");
+    let (_, replacement) = new_code(&TEST_KEK, AccountCodePurpose::VerifyEmail)
+        .expect("generate replacement verification code");
+    let issue = state
+        .db
+        .issue_account_code(account.id, &account.email, &replacement)
+        .await
+        .expect("attempt direct replacement of locked verification code");
+    assert!(matches!(
+        issue,
+        IssueAccountCodeOutcome::Locked { retry_after_secs } if retry_after_secs > 0
+    ));
+
+    let (resend_status, resend_body) = json_response(
+        call(
+            state,
+            "POST",
+            "/api/accounts/resend-code",
+            &host,
+            ip,
+            json!({ "email": email, "purpose": "verify" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(resend_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(resend_body["error"], "too_many_attempts");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn reset_code_reports_attempt_limit_without_consuming_on_check() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("reset-lock-{}@example.test", Uuid::new_v4().simple());
+    let signup = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/signup",
+        &host,
+        ip,
+        json!({ "email": email, "password": "reset-lock-password" }),
+        None,
+    )
+    .await;
+    assert_eq!(signup.status(), StatusCode::ACCEPTED);
+    deliver_pending_mail(&state).await;
+    let verification_code = test_mail_code(&pool, &email, "verify_email").await;
+    let verified = call(
+        state.clone(),
+        "POST",
+        "/api/accounts/verify",
+        &host,
+        ip,
+        json!({ "email": email, "code": verification_code }),
+        None,
+    )
+    .await;
+    assert_eq!(verified.status(), StatusCode::OK);
+    assert_eq!(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/request",
+            &host,
+            ip,
+            json!({ "email": email }),
+            None,
+        )
+        .await
+        .status(),
+        StatusCode::ACCEPTED
+    );
+    deliver_pending_mail(&state).await;
+    let reset_code = test_mail_code(&pool, &email, "reset_password").await;
+    let wrong_code = wrong_test_code(&reset_code);
+
+    let (confirm_wrong_status, confirm_wrong_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/confirm",
+            &host,
+            ip,
+            json!({
+                "email": email,
+                "code": wrong_code,
+                "new_password": "reset-confirm-password",
+            }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(confirm_wrong_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(confirm_wrong_body["error"], "wrong_code");
+    assert_eq!(confirm_wrong_body["attempts_left"], 4);
+
+    for attempts_left in (1..=3).rev() {
+        let (status, body) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/reset/check",
+                &host,
+                ip,
+                json!({ "email": email, "code": wrong_code }),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body["error"], "wrong_code");
+        assert_eq!(body["attempts_left"], attempts_left);
+    }
+    let (locked_status, locked_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/check",
+            &host,
+            ip,
+            json!({ "email": email, "code": wrong_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(locked_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(locked_body["error"], "too_many_attempts");
+    assert!(locked_body["retry_after_secs"].as_i64().unwrap_or_default() > 0);
+
+    let (confirm_locked_status, confirm_locked_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/reset/confirm",
+            &host,
+            ip,
+            json!({
+                "email": email,
+                "code": reset_code,
+                "new_password": "reset-confirm-password-2",
+            }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(confirm_locked_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(confirm_locked_body["error"], "too_many_attempts");
+    assert!(
+        confirm_locked_body["retry_after_secs"]
+            .as_i64()
+            .unwrap_or_default()
+            > 0
+    );
+
+    let (resend_status, resend_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/resend-code",
+            &host,
+            ip,
+            json!({ "email": email, "purpose": "reset" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(resend_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(resend_body["error"], "too_many_attempts");
 }
 
 #[tokio::test]

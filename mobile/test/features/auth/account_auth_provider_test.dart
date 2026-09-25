@@ -131,12 +131,17 @@ void main() {
     () async {
       final keys = nostr.Keys.generate();
       final bodies = <Map<String, dynamic>>[];
+      final paths = <String>[];
       final container = _container((request) async {
+        paths.add(request.url.path);
         if (request.url.path.endsWith('/reset/request')) {
           bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
           return http.Response('{"status":"verification_sent"}', 202);
         }
         bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (request.url.path.endsWith('/reset/check')) {
+          return http.Response('{"status":"code_valid"}', 200);
+        }
         return http.Response(_sessionBody(keys), 200);
       });
       addTearDown(container.dispose);
@@ -156,11 +161,17 @@ void main() {
 
       expect(bodies, [
         {'email': 'person@example.com'},
+        {'email': 'person@example.com', 'code': '123456'},
         {
           'email': 'person@example.com',
           'code': '123456',
           'new_password': 'new-password-10',
         },
+      ]);
+      expect(paths, [
+        '/api/accounts/reset/request',
+        '/api/accounts/reset/check',
+        '/api/accounts/reset/confirm',
       ]);
       expect(
         container.read(accountAuthProvider).status,

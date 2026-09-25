@@ -9,6 +9,7 @@ type AccountAuthMethod =
   | "signIn"
   | "signInWithGoogle"
   | "requestReset"
+  | "checkResetCode"
   | "confirmReset"
   | "claimAccount"
   | "changePassword"
@@ -234,6 +235,9 @@ test("keyboard signup verifies email and installs the account identity", async (
   expect(calls.find(({ method }) => method === "signUp")?.email).toBe(
     "signup@example.com",
   );
+  expect(calls.find(({ method }) => method === "signUp")?.displayName).toBe(
+    "Lerato Molefe",
+  );
   await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("nsec1");
 });
@@ -404,6 +408,9 @@ test("forgot password requests a code and signs in after reset", async ({
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
     "POST /api/accounts/reset/request",
+  );
+  expect(calls.map(({ route }) => route)).toContain(
+    "POST /api/accounts/reset/check",
   );
   expect(calls.map(({ route }) => route)).toContain(
     "POST /api/accounts/reset/confirm",

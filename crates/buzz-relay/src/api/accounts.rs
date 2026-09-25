@@ -25,9 +25,10 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::config::{AccountConfig, AccountMailMode, Config};
 use crate::state::AppState;
 use buzz_db::accounts::{
-    AccountCodePurpose, AccountRecord, ConsumeAccountCodeOutcome, CreateAccountOutcome, NewAccount,
-    NewAccountCode,
+    AccountCodePurpose, AccountRecord, CheckAccountCodeOutcome, ConsumeAccountCodeOutcome,
+    CreateAccountOutcome, IssueAccountCodeOutcome, NewAccount, NewAccountCode,
 };
+use buzz_pubsub::EventTopic;
 
 use super::{api_error, bridge};
 
@@ -35,6 +36,7 @@ const ACCOUNT_BODY_LIMIT: usize = 16 * 1024;
 const IP_RATE_LIMIT: i64 = 60;
 const EMAIL_RATE_LIMIT: i64 = 10;
 const RATE_LIMIT_WINDOW_SECS: i64 = 60;
+const ACCOUNT_CODE_RESEND_COOLDOWN_SECS: i64 = 30;
 const MAIL_BATCH_SIZE: i64 = 16;
 
 /// Shared account clients. The verifier owns an in-memory cache of Google keys.
@@ -81,6 +83,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/signin", post(signin))
         .route("/google", post(google_signin))
         .route("/reset/request", post(reset_request))
+        .route("/reset/check", post(reset_check))
         .route("/reset/confirm", post(reset_confirm))
         .route("/claim", post(claim))
         .route("/password", post(set_password))
@@ -100,6 +103,8 @@ pub fn router(state: Arc<AppState>) -> Router {
 struct SignupRequest {
     email: String,
     password: SecretString,
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -141,6 +146,13 @@ struct ResetConfirmRequest {
     email: String,
     code: SecretString,
     new_password: SecretString,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResetCheckRequest {
+    email: String,
+    code: SecretString,
 }
 
 #[derive(Deserialize)]
@@ -252,6 +264,35 @@ fn normalize_email(email: &str) -> Option<String> {
         return None;
     }
     Some(email)
+}
+
+fn normalize_display_name(
+    display_name: Option<String>,
+) -> Result<Option<String>, (StatusCode, Json<Value>)> {
+    let Some(display_name) = display_name else {
+        return Ok(None);
+    };
+    let display_name = display_name.trim().to_owned();
+    if display_name.is_empty() {
+        return Ok(None);
+    }
+    if display_name.chars().count() > 80 || display_name.chars().any(char::is_control) {
+        return Err(invalid_request());
+    }
+    Ok(Some(display_name))
+}
+
+async fn tenant_from_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<buzz_core::TenantContext, (StatusCode, Json<Value>)> {
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    crate::tenant::bind_community(&state.db, host)
+        .await
+        .map_err(|_| api_error(StatusCode::NOT_FOUND, "not_found"))
 }
 
 fn decode_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, (StatusCode, Json<Value>)> {
@@ -408,12 +449,14 @@ async fn check_rate_limit(
 /// `POST /api/accounts/signup` creates an unverified account and queues mail.
 async fn signup(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     let request: SignupRequest = decode_body(&body)?;
     let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
     email_rate_limit(&state, "/api/accounts/signup", &email).await?;
     ensure_mail_enabled(&state)?;
+    let display_name = normalize_display_name(request.display_name)?;
     let password = request.password.into_inner();
     crypto::validate_password(&password).map_err(|error| match error {
         crypto::PasswordValidationError::Weak => {
@@ -437,22 +480,68 @@ async fn signup(
     if new_account.pubkey != nsec_pubkey {
         return Err(account_unavailable());
     }
+    let tenant = tenant_from_headers(&state, &headers).await?;
+    let profile_content = match display_name {
+        Some(display_name) => serde_json::json!({ "display_name": display_name }).to_string(),
+        None => "{}".to_owned(),
+    };
+    let identity_keys = nostr::Keys::parse(nsec.as_str()).map_err(|_| account_unavailable())?;
+    let profile_event = nostr::EventBuilder::new(nostr::Kind::Metadata, profile_content)
+        .sign_with_keys(&identity_keys)
+        .map_err(|_| account_unavailable())?;
     let (clear_code, code) = new_code(kek, AccountCodePurpose::VerifyEmail)?;
-    match state.db.create_account(&new_account, Some(&code)).await {
+    if state
+        .db
+        .account_by_email(&email)
+        .await
+        .map_err(|error| map_db_error("signup", error))?
+        .is_some()
+    {
+        return Err(json_error(StatusCode::CONFLICT, "email_taken"));
+    }
+    let cooldown =
+        match reserve_code_cooldown(&state, &email, AccountCodePurpose::VerifyEmail).await? {
+            CodeCooldownReservation::Acquired(lease) => lease,
+            CodeCooldownReservation::Active { retry_after_secs } => {
+                return Err(resend_cooldown(retry_after_secs));
+            }
+        };
+    match state
+        .db
+        .create_account_with_profile(
+            &new_account,
+            Some(&code),
+            Some((&profile_event, tenant.community())),
+        )
+        .await
+    {
         Ok(CreateAccountOutcome::Created(_)) => {}
         Ok(CreateAccountOutcome::EmailTaken) => {
+            release_code_cooldown(&state, &cooldown).await?;
             return Err(json_error(StatusCode::CONFLICT, "email_taken"));
         }
         Ok(CreateAccountOutcome::IdentityTaken) => {
+            release_code_cooldown(&state, &cooldown).await?;
             return Err(json_error(StatusCode::CONFLICT, "identity_taken"));
         }
-        Err(error) => return Err(map_db_error("signup", error)),
+        Err(error) => {
+            release_code_cooldown(&state, &cooldown).await?;
+            return Err(map_db_error("signup", error));
+        }
+    }
+    if let Err(error) = state
+        .pubsub
+        .publish_event(&tenant, EventTopic::Global, &profile_event)
+        .await
+    {
+        tracing::warn!(
+            event_id = %profile_event.id,
+            error = %error,
+            "account profile is stored and will be available to event queries"
+        );
     }
     drop(clear_code);
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({ "status": "verification_sent" })),
-    ))
+    Ok(verification_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS))
 }
 
 /// `POST /api/accounts/verify` consumes a code and returns the account session.
@@ -476,9 +565,11 @@ async fn verify_email(
         .map_err(|error| map_db_error("verify", error))?;
     match outcome {
         ConsumeAccountCodeOutcome::Accepted(account) => session(&state.config, &account),
-        ConsumeAccountCodeOutcome::Invalid
-        | ConsumeAccountCodeOutcome::Expired
-        | ConsumeAccountCodeOutcome::AttemptsExceeded => Err(code_expired()),
+        ConsumeAccountCodeOutcome::Invalid { attempts_left } => Err(wrong_code(attempts_left)),
+        ConsumeAccountCodeOutcome::Expired => Err(code_expired()),
+        ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs } => {
+            Err(too_many_attempts(retry_after_secs))
+        }
     }
 }
 
@@ -496,24 +587,47 @@ async fn resend_code(
         "reset" => AccountCodePurpose::ResetPassword,
         _ => return Err(invalid_request()),
     };
-    if let Some(account) = state
+    if let Some(retry_after_secs) = state
         .db
-        .account_by_email(&email)
+        .account_code_lockout_remaining(&email, purpose)
         .await
         .map_err(|error| map_db_error("resend", error))?
     {
+        return Err(too_many_attempts(retry_after_secs));
+    }
+    let cooldown = match reserve_code_cooldown(&state, &email, purpose).await? {
+        CodeCooldownReservation::Acquired(lease) => lease,
+        CodeCooldownReservation::Active { retry_after_secs } => {
+            return Err(resend_cooldown(retry_after_secs));
+        }
+    };
+    let account = match state.db.account_by_email(&email).await {
+        Ok(account) => account,
+        Err(error) => {
+            release_code_cooldown(&state, &cooldown).await?;
+            return Err(map_db_error("resend", error));
+        }
+    };
+    if let Some(account) = account {
         let eligible = match purpose {
             AccountCodePurpose::VerifyEmail => account.email_verified_at.is_none(),
             AccountCodePurpose::ResetPassword => true,
         };
         if eligible {
-            issue_code(&state, &account, purpose).await?;
+            match queue_code(&state, &account, purpose).await {
+                Ok(None) => {}
+                Ok(Some(retry_after_secs)) => {
+                    release_code_cooldown(&state, &cooldown).await?;
+                    return Err(too_many_attempts(retry_after_secs));
+                }
+                Err(error) => {
+                    release_code_cooldown(&state, &cooldown).await?;
+                    return Err(error);
+                }
+            }
         }
     }
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({ "status": "verification_sent" })),
-    ))
+    Ok(verification_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS))
 }
 
 /// `POST /api/accounts/signin` verifies an email and password.
@@ -607,18 +721,64 @@ async fn reset_request(
     let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
     email_rate_limit(&state, "/api/accounts/reset/request", &email).await?;
     ensure_mail_enabled(&state)?;
-    if let Some(account) = state
+    let purpose = AccountCodePurpose::ResetPassword;
+    if state
         .db
-        .account_by_email(&email)
+        .account_code_lockout_remaining(&email, purpose)
         .await
         .map_err(|error| map_db_error("reset_request", error))?
+        .is_some()
     {
-        issue_code(&state, &account, AccountCodePurpose::ResetPassword).await?;
+        return Ok(verification_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS));
     }
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({ "status": "verification_sent" })),
-    ))
+    match reserve_code_cooldown(&state, &email, purpose).await? {
+        CodeCooldownReservation::Active { .. } => {}
+        CodeCooldownReservation::Acquired(lease) => {
+            let account = match state.db.account_by_email(&email).await {
+                Ok(account) => account,
+                Err(error) => {
+                    release_code_cooldown(&state, &lease).await?;
+                    return Err(map_db_error("reset_request", error));
+                }
+            };
+            if let Some(account) = account {
+                if let Err(error) = queue_code(&state, &account, purpose).await {
+                    release_code_cooldown(&state, &lease).await?;
+                    return Err(error);
+                }
+            }
+        }
+    }
+    Ok(verification_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS))
+}
+
+/// `POST /api/accounts/reset/check` validates a code without consuming it.
+async fn reset_check(
+    State(state): State<Arc<AppState>>,
+    body: Bytes,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let request: ResetCheckRequest = decode_body(&body)?;
+    let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
+    email_rate_limit(&state, "/api/accounts/reset/check", &email).await?;
+    let code = request.code.into_inner();
+    if !valid_code(&code) {
+        return Err(code_expired());
+    }
+    let code_hash =
+        crypto::hash_code(account_kek(&state.config)?, &code).map_err(|_| account_unavailable())?;
+    let outcome = state
+        .db
+        .check_account_code(&email, AccountCodePurpose::ResetPassword, &code_hash)
+        .await
+        .map_err(|error| map_db_error("reset_check", error))?;
+    match outcome {
+        CheckAccountCodeOutcome::Valid => Ok(Json(serde_json::json!({ "status": "code_valid" }))),
+        CheckAccountCodeOutcome::Invalid { attempts_left } => Err(wrong_code(attempts_left)),
+        CheckAccountCodeOutcome::Expired => Err(code_expired()),
+        CheckAccountCodeOutcome::AttemptsExceeded { retry_after_secs } => {
+            Err(too_many_attempts(retry_after_secs))
+        }
+    }
 }
 
 /// `POST /api/accounts/reset/confirm` changes the password while preserving the key.
@@ -657,9 +817,11 @@ async fn reset_confirm(
         .map_err(|error| map_db_error("reset_confirm", error))?;
     match outcome {
         ConsumeAccountCodeOutcome::Accepted(account) => session(&state.config, &account),
-        ConsumeAccountCodeOutcome::Invalid
-        | ConsumeAccountCodeOutcome::Expired
-        | ConsumeAccountCodeOutcome::AttemptsExceeded => Err(code_expired()),
+        ConsumeAccountCodeOutcome::Invalid { attempts_left } => Err(wrong_code(attempts_left)),
+        ConsumeAccountCodeOutcome::Expired => Err(code_expired()),
+        ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs } => {
+            Err(too_many_attempts(retry_after_secs))
+        }
     }
 }
 
@@ -843,6 +1005,128 @@ fn code_expired() -> (StatusCode, Json<Value>) {
     json_error(StatusCode::GONE, "code_expired")
 }
 
+fn wrong_code(attempts_left: i32) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(serde_json::json!({
+            "error": "wrong_code",
+            "attempts_left": attempts_left,
+        })),
+    )
+}
+
+fn too_many_attempts(retry_after_secs: i64) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({
+            "error": "too_many_attempts",
+            "retry_after_secs": retry_after_secs.max(1),
+        })),
+    )
+}
+
+fn resend_cooldown(retry_after_secs: i64) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({
+            "error": "resend_cooldown",
+            "retry_after_secs": retry_after_secs.max(1),
+        })),
+    )
+}
+
+struct CodeCooldownLease {
+    key: String,
+    token: String,
+}
+
+enum CodeCooldownReservation {
+    Acquired(CodeCooldownLease),
+    Active { retry_after_secs: i64 },
+}
+
+fn code_purpose_key(purpose: AccountCodePurpose) -> &'static str {
+    match purpose {
+        AccountCodePurpose::VerifyEmail => "verify",
+        AccountCodePurpose::ResetPassword => "reset",
+    }
+}
+
+async fn reserve_code_cooldown(
+    state: &AppState,
+    email: &str,
+    purpose: AccountCodePurpose,
+) -> Result<CodeCooldownReservation, (StatusCode, Json<Value>)> {
+    let mut hasher = Sha256::new();
+    hasher.update(email.as_bytes());
+    let digest = hex::encode(hasher.finalize());
+    let key = format!(
+        "colony:account-code-cooldown:{}:{digest}",
+        code_purpose_key(purpose)
+    );
+    let token = Uuid::new_v4().to_string();
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .map_err(|_| account_unavailable())?;
+    let acquired: Option<String> = redis::cmd("SET")
+        .arg(&key)
+        .arg(&token)
+        .arg("NX")
+        .arg("EX")
+        .arg(ACCOUNT_CODE_RESEND_COOLDOWN_SECS)
+        .query_async(&mut *connection)
+        .await
+        .map_err(|_| account_unavailable())?;
+    if acquired.is_some() {
+        return Ok(CodeCooldownReservation::Acquired(CodeCooldownLease {
+            key,
+            token,
+        }));
+    }
+    let retry_after_secs: i64 = redis::cmd("TTL")
+        .arg(&key)
+        .query_async(&mut *connection)
+        .await
+        .map_err(|_| account_unavailable())?;
+    Ok(CodeCooldownReservation::Active {
+        retry_after_secs: retry_after_secs.max(1),
+    })
+}
+
+async fn release_code_cooldown(
+    state: &AppState,
+    lease: &CodeCooldownLease,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    const RELEASE_SCRIPT: &str =
+        "if redis.call('GET',KEYS[1]) == ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end";
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .map_err(|_| account_unavailable())?;
+    let _: i64 = redis::cmd("EVAL")
+        .arg(RELEASE_SCRIPT)
+        .arg(1)
+        .arg(&lease.key)
+        .arg(&lease.token)
+        .query_async(&mut *connection)
+        .await
+        .map_err(|_| account_unavailable())?;
+    Ok(())
+}
+
+fn verification_sent(retry_after_secs: i64) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "status": "verification_sent",
+            "retry_after_secs": retry_after_secs.max(1),
+        })),
+    )
+}
+
 fn ensure_mail_enabled(state: &AppState) -> Result<(), (StatusCode, Json<Value>)> {
     if state.config.accounts.mail_mode().is_some() {
         account_kek(&state.config).map(|_| ())
@@ -856,15 +1140,47 @@ async fn issue_code(
     account: &AccountRecord,
     purpose: AccountCodePurpose,
 ) -> Result<(), (StatusCode, Json<Value>)> {
+    if state
+        .db
+        .account_code_lockout_remaining(&account.email, purpose)
+        .await
+        .map_err(|error| map_db_error("issue_code", error))?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let lease = match reserve_code_cooldown(state, &account.email, purpose).await? {
+        CodeCooldownReservation::Acquired(lease) => lease,
+        CodeCooldownReservation::Active { .. } => return Ok(()),
+    };
+    match queue_code(state, account, purpose).await {
+        Ok(None) => {}
+        Ok(Some(_)) => {}
+        Err(error) => {
+            release_code_cooldown(state, &lease).await?;
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+async fn queue_code(
+    state: &AppState,
+    account: &AccountRecord,
+    purpose: AccountCodePurpose,
+) -> Result<Option<i64>, (StatusCode, Json<Value>)> {
     let (clear_code, code) = new_code(account_kek(&state.config)?, purpose)?;
-    state
+    let outcome = state
         .db
         .issue_account_code(account.id, &account.email, &code)
         .await
         .map_err(|error| map_db_error("issue_code", error))?;
     let mut clear_code = clear_code;
     clear_code.zeroize();
-    Ok(())
+    Ok(match outcome {
+        IssueAccountCodeOutcome::Issued => None,
+        IssueAccountCodeOutcome::Locked { retry_after_secs } => Some(retry_after_secs),
+    })
 }
 
 fn map_db_error(operation: &'static str, error: buzz_db::DbError) -> (StatusCode, Json<Value>) {
