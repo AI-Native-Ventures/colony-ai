@@ -3581,7 +3581,9 @@ test("narrow layouts keep section context reachable through a sheet", async ({
 
   // Keyboard journey into the Tasks section: open the sheet from the toggle.
   await page.getByTestId("projects-section-issues").click();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Issues");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
   await contextToggle.focus();
   await page.keyboard.press("Enter");
   const contextSheet = page.getByTestId("projects-overview-context-sheet");
@@ -3622,5 +3624,7 @@ test("narrow layouts keep section context reachable through a sheet", async ({
     .filter({ hasText: "Issues" })
     .click();
   await expect(contextSheet).toBeHidden();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Issues");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
 });
