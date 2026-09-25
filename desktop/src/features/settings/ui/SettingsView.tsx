@@ -504,6 +504,7 @@ export function SettingsView({
                   onSetAllSlotAlertsEnabled,
                   onSetSoundForSlot,
                   onOpenThemeCatalog: () => chooseSection("settings/themes"),
+                  onOpenDraftRecovery: () => chooseSection("recovery"),
                   onClose,
                 })
               )}

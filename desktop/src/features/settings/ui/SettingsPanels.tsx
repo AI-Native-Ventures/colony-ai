@@ -343,6 +343,7 @@ export type SettingsPanelProps = {
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
   onOpenThemeCatalog?: () => void;
+  onOpenDraftRecovery?: () => void;
 };
 
 export const settingsSections: SettingsSectionDescriptor[] = [
@@ -1007,7 +1008,11 @@ export function renderSettingsSection(
         />
       );
     case "security":
-      return <AccountSecuritySettingsPanel />;
+      return (
+        <AccountSecuritySettingsPanel
+          onOpenDraftRecovery={props.onOpenDraftRecovery}
+        />
+      );
     case "notifications":
       return (
         <NotificationSettingsCard

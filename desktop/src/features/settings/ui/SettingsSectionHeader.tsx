@@ -12,7 +12,7 @@ export function SettingsSectionHeader({
   title,
 }: {
   action?: ReactNode;
-  description: ReactNode;
+  description?: ReactNode;
   title: ReactNode;
 }) {
   return (
@@ -20,9 +20,11 @@ export function SettingsSectionHeader({
       action={action}
       className="mb-12"
       description={
-        <span data-settings-subcopy className="text-muted-foreground/70">
-          {description}
-        </span>
+        description ? (
+          <span data-settings-subcopy className="text-muted-foreground/70">
+            {description}
+          </span>
+        ) : undefined
       }
       title={title}
     />

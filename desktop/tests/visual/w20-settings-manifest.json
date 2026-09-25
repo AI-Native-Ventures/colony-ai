@@ -599,6 +599,45 @@
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#07/confirm",
       "appRoute": "/#/settings?section=security",
       "routeLabel": "Sign out confirmation",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-drafts.v2:ws://localhost:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+            "channel:engineering": {
+              "content": "A draft to review before leaving",
+              "selectionStart": 0,
+              "selectionEnd": 0,
+              "channelId": "engineering",
+              "createdAt": "2026-09-25T09:00:00.000Z",
+              "updatedAt": "2026-09-25T09:01:00.000Z",
+              "pendingImeta": [
+                {
+                  "url": "https://example.test/pending-attachment.png",
+                  "mimeType": "image/png",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "size": 1024
+                }
+              ],
+              "mentionRefs": [],
+              "spoileredAttachmentUrls": [],
+              "status": "active"
+            }
+          }
+        }
+      },
+      "appMockData": {
+        "managedAgents": [
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "Ava",
+            "status": "running"
+          },
+          {
+            "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "Noah",
+            "status": "running"
+          }
+        ]
+      },
       "actions": [
         {
           "type": "click",

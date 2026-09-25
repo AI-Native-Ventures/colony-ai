@@ -9,10 +9,10 @@ import {
   useArchivedIdentitiesQuery,
   useUnarchiveIdentityMutation,
 } from "@/features/identity-archive/hooks";
-import { useDraftsSnapshot } from "@/features/messages/lib/useDrafts";
 import {
   deleteDraftEntry,
   getActiveDraftEntries,
+  useDraftsSnapshot,
 } from "@/features/messages/lib/useDrafts";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useFontSize, setFontSize } from "@/shared/lib/fontSizePreference";
@@ -60,52 +60,50 @@ function UnavailableSettings({
   );
 }
 
-export function AccountSecuritySettingsPanel() {
+export function AccountSecuritySettingsPanel({
+  onOpenDraftRecovery,
+}: {
+  onOpenDraftRecovery?: () => void;
+}) {
+  const { activeCommunity } = useCommunities();
   const identityQuery = useIdentityQuery();
-  const identity = identityQuery.data;
+  const displayName = identityQuery.data?.displayName ?? "This device";
   return (
     <section className="min-w-0" data-testid="settings-account-security">
       <SettingsSectionHeader
         title="Sign-in & devices"
-        description="Manage the identity connected to this device."
+        action={
+          <span className="pt-1 text-sm text-muted-foreground">
+            {activeCommunity?.name ?? ""}
+          </span>
+        }
       />
-      <SettingsOptionGroup title="Signed-in identity">
-        {identityQuery.isLoading ? (
-          <SettingsOptionRow>
-            <p className="text-sm text-muted-foreground">Loading identity…</p>
-          </SettingsOptionRow>
-        ) : identityQuery.isError ? (
-          <SettingsOptionRow>
-            <p className="text-sm text-destructive">
-              Identity could not be loaded.
-            </p>
-          </SettingsOptionRow>
-        ) : (
-          <SettingsOptionRow>
+      <div className="space-y-7">
+        <section aria-labelledby="settings-this-device-heading">
+          <h2
+            className="mb-4 text-sm font-medium"
+            id="settings-this-device-heading"
+          >
+            This device
+          </h2>
+          <div className="flex min-h-16 items-center justify-between gap-4 border-b border-border/70 py-3">
             <div className="min-w-0">
-              <p className="text-sm font-medium">
-                {identity?.displayName || "Current identity"}
-              </p>
-              <p className="break-all text-xs text-muted-foreground">
-                {identity?.pubkey ?? "Identity unavailable"}
+              <p className="text-sm font-medium">{displayName}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Signed in · This device
               </p>
             </div>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              This device
-            </span>
-          </SettingsOptionRow>
-        )}
-        <SettingsOptionRow>
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Email & password</p>
-            <p className="text-xs text-muted-foreground">
-              Email sign-in and device-session controls are not available for
-              this identity yet.
-            </p>
+            <SignOutSection
+              onOpenDraftRecovery={onOpenDraftRecovery}
+              variant="device"
+            />
           </div>
-        </SettingsOptionRow>
-      </SettingsOptionGroup>
-      <SignOutSection />
+        </section>
+        <SignOutSection
+          onOpenDraftRecovery={onOpenDraftRecovery}
+          variant="local-data"
+        />
+      </div>
     </section>
   );
 }
