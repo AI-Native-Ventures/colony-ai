@@ -35,3 +35,5 @@ CREATE TABLE business_proposal_conversion_claims (
 
 CREATE INDEX business_proposal_conversion_claims_client_idx
     ON business_proposal_conversion_claims (community_id, client_id, created_at DESC);
+
+SELECT attach_community_write_fence('business_proposal_conversion_claims');
