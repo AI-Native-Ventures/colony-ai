@@ -601,7 +601,7 @@
       "routeLabel": "Sign out confirmation",
       "appPrefs": {
         "localStorage": {
-          "buzz-drafts.v2:ws://localhost:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+          "buzz-drafts.v2:ws://127.0.0.1:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
             "channel:engineering": {
               "content": "A draft to review before leaving",
               "selectionStart": 0,
