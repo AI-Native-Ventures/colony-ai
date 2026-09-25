@@ -111,7 +111,7 @@ test.describe("visual comparison captures", () => {
           const stylesheet = await response.text();
           await route.fulfill({
             response,
-            body: stylesheet.replace(/\bSatoshi\b/g, '"Manrope Variable"'),
+            body: stylesheet.replace(/\bSatoshi\b/g, "Manrope"),
           });
         });
         await referencePage.route(
@@ -143,7 +143,7 @@ test.describe("visual comparison captures", () => {
 
         await waitForCaptureReady(
           referencePage,
-          "Manrope Variable",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -154,7 +154,7 @@ test.describe("visual comparison captures", () => {
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
-          "Manrope Variable",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(

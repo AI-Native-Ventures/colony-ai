@@ -125,7 +125,7 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
 
 export function TodayScreen() {
   const feedQuery = useHomeFeedQuery();
-  const { goChannel, goHome, goPulse, goWorkflows } = useAppNavigation();
+  const { goChannel, goHome, goPulse } = useAppNavigation();
   const items = React.useMemo(
     () => attentionItems(feedQuery.data?.feed),
     [feedQuery.data],
@@ -217,13 +217,6 @@ export function TodayScreen() {
               <h2>Money to follow up</h2>
               <p>No overdue invoices.</p>
             </section>
-            <button
-              className="colony-today-workflow-link"
-              onClick={() => void goWorkflows()}
-              type="button"
-            >
-              Open design review map <span aria-hidden="true">→</span>
-            </button>
           </aside>
         </div>
       </div>
