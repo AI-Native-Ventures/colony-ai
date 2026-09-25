@@ -12,12 +12,12 @@ import { Button } from "@/shared/ui/button";
 import {
   AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
+import { SettingsAlertDialogContent } from "@/shared/ui/settings-alert-dialog-content";
 
 type SignOutSectionProps = {
   onOpenDraftRecovery?: () => void;
@@ -166,7 +166,7 @@ function SignOutDialog({
       }}
       open={isOpen}
     >
-      <AlertDialogContent
+      <SettingsAlertDialogContent
         className="max-w-[34rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
         data-testid="signout-dialog"
       >
@@ -260,7 +260,7 @@ function SignOutDialog({
             {isPending ? "Signing out" : `Stop local agents & sign out`}
           </Button>
         </AlertDialogFooter>
-      </AlertDialogContent>
+      </SettingsAlertDialogContent>
     </AlertDialog>
   );
 }
