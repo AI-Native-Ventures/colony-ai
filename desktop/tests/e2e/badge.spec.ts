@@ -134,7 +134,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
   const inactiveRows = [
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
     primaryMenu.getByRole("button", { name: "Inbox", exact: true }),
-    page.getByTestId("open-work-view"),
+    page.getByTestId("open-workflows-view"),
     page.getByTestId("open-projects-view"),
     page.getByTestId("open-agents-view"),
   ];
@@ -148,7 +148,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     await expect(row.locator("svg")).toHaveCSS("opacity", "0.8");
   }
 
-  const work = page.getByTestId("open-work-view");
+  const work = page.getByTestId("open-workflows-view");
   await work.click();
   await expect(work).toHaveAttribute("data-active", "true");
   await expect(work.locator("[data-sidebar=menu-label]")).toHaveCSS(
