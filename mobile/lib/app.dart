@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import 'features/age_gate/age_restriction_page.dart';
 import 'features/age_gate/age_signal_provider.dart';
+import 'features/activity/activity_page.dart';
 import 'features/activity/activity_provider.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
@@ -16,6 +17,7 @@ import 'features/auth/account_claim_prompt.dart';
 import 'features/auth/auth_entry_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
+import 'features/channels/channels_page.dart';
 import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
@@ -23,6 +25,8 @@ import 'features/invites/invite_create_page.dart';
 import 'features/invites/invite_join_provider.dart';
 import 'features/pairing/pairing_page.dart';
 import 'features/pairing/pairing_provider.dart';
+import 'features/pulse/pulse_page.dart';
+import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
 import 'features/channels/deep_link_dispatcher.dart';
@@ -35,11 +39,14 @@ import 'features/settings/settings_page.dart';
 import 'shared/auth/auth.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
+import 'shared/navigation/mobile_route.dart';
+import 'shared/navigation/mobile_routes.dart';
 import 'shared/push/push_subscription_provider.dart';
 import 'shared/push/push_relay_capability_provider.dart';
 import 'shared/relay/relay.dart';
 import 'shared/read_state/read_state_provider.dart';
 import 'shared/theme/theme.dart';
+import 'shared/shell/mobile_shell.dart';
 import 'shared/widgets/buzz_loading_indicator.dart';
 
 const _starterChannelNamespace = '3ce33bea-8f09-5f1b-9c85-8a7d2659e6b0';
@@ -51,6 +58,25 @@ const _starterChannels = [
     description: 'Say hi, ask a question, or share what brought you here.',
   ),
 ];
+
+/// App composition is the only layer that knows concrete feature pages.
+/// Today and Business builders are registered by their feature slices when
+/// their W00 data contracts are integrated.
+final _mobileRouteRegistry = MobileRouteRegistry.empty()
+    .register(MobileRoutes.chats, (context, routeContext) {
+      return ChannelsPage(
+        settingsPageBuilder: routeContext.settingsPageBuilder,
+        tabReselection: routeContext.tabReselection,
+        onSettingsTransitionProgress: routeContext.onSettingsTransitionProgress,
+      );
+    })
+    .register(
+      MobileRoutes.activity,
+      (context, routeContext) =>
+          ActivityPage(tabReselection: routeContext.tabReselection),
+    )
+    .register(MobileRoutes.updates, (context, _) => const PulsePage())
+    .register(MobileRoutes.search, (context, _) => const SearchPage());
 
 final _inviteRelayConnectedProvider = FutureProvider.family<void, String>((
   ref,
@@ -392,10 +418,16 @@ class App extends HookConsumerWidget {
       theme: AppTheme.light(
         colorScheme: lightScheme,
         topSectionGradient: buzzLightGradient,
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.light
+            : MobileDesignTokens.fromColorScheme(lightScheme),
       ),
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.dark
+            : MobileDesignTokens.fromColorScheme(darkScheme),
       ),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
@@ -417,9 +449,22 @@ class App extends HookConsumerWidget {
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => DeepLinkDispatcher(
             child: HomePage(
+              routeRegistry: _mobileRouteRegistry,
               settingsPageBuilder: _buildSettingsPage,
               hasUnreadInbox: hasUnreadInbox,
               accountClaimPrompt: const AccountClaimPrompt(),
+              overlayBuilder: (context, shellContext) =>
+                  ChannelQuickActionsLauncher(
+                    visible:
+                        shellContext.destination ==
+                        MobileShellDestination.chats,
+                    navigationBarHeight: shellContext.navigationBarHeight,
+                    navigationBarBottomGap:
+                        shellContext.navigationBarHeight + Grid.half,
+                    navigationBarWidth: shellContext.navigationBarWidth,
+                    systemBottomInset: shellContext.bottomInset,
+                    rightInset: Grid.xs,
+                  ),
             ),
           ),
           _ => DeepLinkDispatcher(

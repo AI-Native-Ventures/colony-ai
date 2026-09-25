@@ -1640,7 +1640,7 @@ void main() {
       );
       expect(
         tester.widget<Text>(find.text('general')).style?.fontFamily,
-        'Inter',
+        'Manrope',
       );
     });
 
@@ -2742,7 +2742,7 @@ void main() {
       ]) {
         final text = tester.widget<Text>(find.text(label));
         expect(text.style?.fontSize, 20);
-        expect(text.style?.fontFamily, 'Inter');
+        expect(text.style?.fontFamily, 'Manrope');
       }
       final icons = [
         for (final label in [

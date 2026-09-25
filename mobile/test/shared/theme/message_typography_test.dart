@@ -10,7 +10,7 @@ void main() {
     required double lineHeight,
     required double letterSpacing,
   }) {
-    expect(style.fontFamily, 'Inter');
+    expect(style.fontFamily, 'Manrope');
     expect(style.fontSize, fontSize);
     expect(style.fontWeight, fontWeight);
     expect(style.height, closeTo(lineHeight / fontSize, 0.0001));
