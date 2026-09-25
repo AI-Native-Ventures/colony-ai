@@ -108,22 +108,24 @@
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
-  background-color: #2457a8;
-  color: #fff;
-}
-
-:root.dark:has([data-colony-workspace-route="true"])
-  [data-testid="app-sidebar"]
-  [data-sidebar="menu-button"][data-active="true"] {
-  background-color: #376bb5;
-  color: #fff;
+  background-color: var(--colony-sidebar-active-surface);
+  box-shadow: 0 1px 4px rgb(57 36 64 / 2.5%);
+  color: hsl(var(--colony-sidebar-selected-foreground));
+  font-weight: 600;
+  position: relative;
 }
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
-  [data-active="true"]
-  :is(svg, [data-sidebar="menu-label"]) {
-  color: #fff;
+  [data-sidebar="menu-button"][data-active="true"]::before {
+  background-color: var(--colony-sidebar-active-indicator);
+  border-radius: 0.3125rem;
+  content: "";
+  height: 0.875rem;
+  left: 0;
+  position: absolute;
+  top: 0.5625rem;
+  width: 0.1875rem;
 }
 
 :root:has([data-colony-workspace-route="true"]) [data-testid="open-search"] {
