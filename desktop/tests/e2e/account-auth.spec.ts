@@ -117,6 +117,7 @@ async function accountAuthCalls(page: Page) {
             method: AccountAuthMethod;
             route: string;
             email?: string;
+            displayName?: string;
             purpose?: "verify" | "reset";
           }>;
         }
