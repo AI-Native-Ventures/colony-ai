@@ -31,6 +31,7 @@ import { MorphingPlayPauseIcon } from "./MorphingPlayPauseIcon";
 
 const PLAY_EVENT = "buzz-voice-note-play";
 const INITIAL_BAR_COUNT = 38;
+const WORKSPACE_VOICE_NOTE_BAR_COUNT = 48;
 const BAR_KEYS = Array.from(
   { length: 256 },
   (_, index) => `voice-note-bar-${index}`,
@@ -137,6 +138,7 @@ export function AudioMessageAttachment({
   const progressWaveformRef = React.useRef<HTMLDivElement | null>(null);
   const progressFrameRef = React.useRef<number | null>(null);
   const shouldReduceMotion = useReducedMotion();
+  const hasWorkspaceVoiceNoteLayout = !composer && Boolean(transcript);
   const [playbackHref, setPlaybackHref] = React.useState<string | undefined>(
     composer || href.startsWith("blob:") || href.startsWith("data:")
       ? href
@@ -149,7 +151,11 @@ export function AudioMessageAttachment({
       ? { attempt: 0, href }
       : undefined,
   );
-  const [barCount, setBarCount] = React.useState(INITIAL_BAR_COUNT);
+  const [barCount, setBarCount] = React.useState(
+    hasWorkspaceVoiceNoteLayout
+      ? WORKSPACE_VOICE_NOTE_BAR_COUNT
+      : INITIAL_BAR_COUNT,
+  );
   const [duration, setDuration] = React.useState(taggedDuration ?? 0);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -237,14 +243,19 @@ export function AudioMessageAttachment({
     if (!waveform) return;
     const updateCount = () => {
       setBarCount(
-        Math.min(256, Math.max(1, Math.floor((waveform.clientWidth + 2) / 5))),
+        hasWorkspaceVoiceNoteLayout
+          ? WORKSPACE_VOICE_NOTE_BAR_COUNT
+          : Math.min(
+              256,
+              Math.max(1, Math.floor((waveform.clientWidth + 2) / 5)),
+            ),
       );
     };
     updateCount();
     const observer = new ResizeObserver(updateCount);
     observer.observe(waveform);
     return () => observer.disconnect();
-  }, []);
+  }, [hasWorkspaceVoiceNoteLayout]);
 
   React.useEffect(() => {
     if (!playbackHref) return;
@@ -396,7 +407,7 @@ export function AudioMessageAttachment({
           aria-hidden="true"
           className={cn(
             "w-[3px] shrink-0",
-            !composer && transcript
+            hasWorkspaceVoiceNoteLayout
               ? active
                 ? "colony-voice-note-waveform-active"
                 : "colony-voice-note-waveform-bar"
@@ -418,7 +429,12 @@ export function AudioMessageAttachment({
           }
         />
       )),
-    [peaks, shouldReduceMotion, composer, transcript],
+    [peaks, shouldReduceMotion, composer, hasWorkspaceVoiceNoteLayout],
+  );
+
+  const waveformBarsClassName = cn(
+    "flex h-full items-center",
+    hasWorkspaceVoiceNoteLayout ? "justify-between" : "gap-0.5",
   );
 
   return (
@@ -489,12 +505,13 @@ export function AudioMessageAttachment({
                 Waveform preview unavailable. Playback may still work.
               </span>
             ) : null}
-            <div className="flex h-full items-center gap-0.5">
-              {waveformBars(false)}
-            </div>
+            <div className={waveformBarsClassName}>{waveformBars(false)}</div>
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 flex items-center gap-0.5 will-change-[clip-path]"
+              className={cn(
+                "pointer-events-none absolute inset-0 will-change-[clip-path]",
+                waveformBarsClassName,
+              )}
               data-testid="voice-note-progress-waveform"
               ref={progressWaveformRef}
               style={{ clipPath: "inset(0 100% 0 0)" }}
