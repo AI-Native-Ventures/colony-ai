@@ -3,8 +3,19 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Menu, app, ipcMain, net, protocol, screen, shell } from "electron";
+import {
+  Menu,
+  WebContentsView,
+  app,
+  ipcMain,
+  net,
+  protocol,
+  screen,
+  session,
+  shell,
+} from "electron";
 import { installAppMenu } from "./app-menu.mjs";
+import { createBrowserHost } from "./browser-host.mjs";
 import {
   applyWindowAction,
   createAppWindow,
@@ -46,6 +57,11 @@ app.setPath(
       app.isPackaged ? "Colony Electron" : "Colony Electron Dev",
     ),
 );
+const browserHost = createBrowserHost({
+  WebContentsView,
+  session,
+  userDataPath: app.getPath("userData"),
+});
 const primaryInstance = smoke || app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
 
@@ -219,7 +235,10 @@ async function boot() {
     });
     const id = entry.window.webContents.id;
     windows.set(id, entry);
-    entry.window.on("closed", () => windows.delete(id));
+    entry.window.on("closed", () => {
+      browserHost.disposeWindow(entry.window);
+      windows.delete(id);
+    });
     return entry;
   };
 
@@ -266,6 +285,36 @@ async function boot() {
     }
   });
 
+  ipcMain.handle("colony:browser", async (event, action, payload = {}) => {
+    try {
+      const entry = windows.get(event.sender.id);
+      if (
+        entry?.label !== "main" ||
+        event.senderFrame !== entry.window.webContents.mainFrame ||
+        !trusted(event.senderFrame.url)
+      ) {
+        throw new Error("Untrusted browser host caller");
+      }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload))
+        throw new Error("Invalid browser request");
+      return {
+        ok: true,
+        result: await browserHost.handleRequest(
+          entry.window,
+          event.sender,
+          action,
+          payload,
+        ),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error ? error.message : "Browser operation failed",
+      };
+    }
+  });
+
   window.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -280,6 +329,7 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
+    browserHost.disposeAll();
     await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
     await shutdown();
     for (const entry of windows.values())
