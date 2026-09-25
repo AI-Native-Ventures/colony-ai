@@ -193,7 +193,7 @@ Future<void> _seedReferenceFields(
     await tester.enterText(find.byType(TextFormField), 'lerato@example.com');
   }
   FocusManager.instance.primaryFocus?.unfocus();
-  await tester.pump(const Duration(milliseconds: 100));
+  await tester.pumpAndSettle();
 }
 
 class _ScreenCase {
