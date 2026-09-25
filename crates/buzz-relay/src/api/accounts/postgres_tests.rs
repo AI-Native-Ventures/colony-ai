@@ -1326,7 +1326,7 @@ async fn lockout_enumeration_code_expiry_attempts_and_ip_email_limits_are_enforc
     } else {
         "000000"
     };
-    for _ in 0..5 {
+    for attempts_left in (1..=4).rev() {
         let response = call(
             state.clone(),
             "POST",
@@ -1337,7 +1337,10 @@ async fn lockout_enumeration_code_expiry_attempts_and_ip_email_limits_are_enforc
             None,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::GONE);
+        let (status, body) = json_response(response).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body["error"], "wrong_code");
+        assert_eq!(body["attempts_left"], attempts_left);
     }
     let locked_code = call(
         state.clone(),
@@ -1349,7 +1352,12 @@ async fn lockout_enumeration_code_expiry_attempts_and_ip_email_limits_are_enforc
         None,
     )
     .await;
-    assert_eq!(locked_code.status(), StatusCode::GONE);
+    let (locked_status, locked_body) = json_response(locked_code).await;
+    assert_eq!(locked_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(locked_body["error"], "too_many_attempts");
+    assert!(locked_body["retry_after_secs"]
+        .as_i64()
+        .is_some_and(|seconds| seconds > 0));
 
     let expired_email = format!("expired-{}@example.test", Uuid::new_v4().simple());
     let expired_signup = call(
