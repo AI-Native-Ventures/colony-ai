@@ -1,0 +1,944 @@
+{
+  "appMockData": {
+    "visualChannels": [
+      {
+        "id": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+        "name": "Marketing"
+      },
+      {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "The Olive House"
+      },
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "name": "Cedar Cafe"
+      },
+      {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "name": "Northline Interiors"
+      }
+    ],
+    "acpRuntimesCatalog": [
+      {
+        "id": "claude",
+        "label": "Claude Code",
+        "avatar_url": "",
+        "availability": "available",
+        "command": "claude",
+        "binary_path": "/usr/local/bin/claude",
+        "default_args": [],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": true,
+        "underlying_cli_path": "/usr/local/bin/claude",
+        "node_required": false,
+        "auth_status": {
+          "status": "logged_in"
+        },
+        "source": "builtin",
+        "effort_canonical_values": null
+      },
+      {
+        "id": "codex",
+        "label": "Codex",
+        "avatar_url": "",
+        "availability": "available",
+        "command": "codex",
+        "binary_path": "/usr/local/bin/codex",
+        "default_args": [],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": true,
+        "underlying_cli_path": "/usr/local/bin/codex",
+        "node_required": false,
+        "auth_status": {
+          "status": "logged_in"
+        },
+        "source": "builtin",
+        "effort_canonical_values": null
+      },
+      {
+        "id": "buzz-agent",
+        "label": "Colony Agent",
+        "avatar_url": "",
+        "availability": "available",
+        "command": "buzz-agent",
+        "binary_path": "/usr/local/bin/buzz-agent",
+        "default_args": [],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": false,
+        "underlying_cli_path": null,
+        "node_required": false,
+        "auth_status": {
+          "status": "logged_in"
+        },
+        "source": "builtin",
+        "effort_canonical_values": null
+      },
+      {
+        "id": "opencode",
+        "label": "OpenCode",
+        "avatar_url": "",
+        "availability": "available",
+        "command": "opencode",
+        "binary_path": "/usr/local/bin/opencode",
+        "default_args": ["acp"],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": true,
+        "underlying_cli_path": "/usr/local/bin/opencode",
+        "node_required": false,
+        "auth_status": {
+          "status": "logged_in"
+        },
+        "source": "custom",
+        "effort_canonical_values": null
+      },
+      {
+        "id": "omp",
+        "label": "Oh My Pi",
+        "avatar_url": "",
+        "availability": "available",
+        "command": "omp",
+        "binary_path": "/usr/local/bin/omp",
+        "default_args": ["acp"],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": true,
+        "underlying_cli_path": "/usr/local/bin/omp",
+        "node_required": false,
+        "auth_status": {
+          "status": "logged_in"
+        },
+        "source": "custom",
+        "effort_canonical_values": null
+      },
+      {
+        "id": "colony-unavailable",
+        "label": "Colony Agent",
+        "avatar_url": "",
+        "availability": "adapter_missing",
+        "command": "colony-agent",
+        "binary_path": null,
+        "default_args": ["acp"],
+        "mcp_command": null,
+        "install_hint": "",
+        "install_instructions_url": "",
+        "can_auto_install": false,
+        "requires_external_cli": false,
+        "underlying_cli_path": null,
+        "node_required": false,
+        "auth_status": {
+          "status": "unknown"
+        },
+        "source": "custom",
+        "effort_canonical_values": null
+      }
+    ],
+    "managedAgents": [
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000001",
+        "name": "Ari",
+        "personaId": "ari",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Ari, responsible for website development at Lerato Social.\n\nOwns website development for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["engineering"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000002",
+        "name": "Ash",
+        "personaId": "ash",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Ash, responsible for customer onboarding at Lerato Social.\n\nOwns customer onboarding for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "stopped",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000003",
+        "name": "Aster",
+        "personaId": "aster",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Aster, responsible for product descriptions at Lerato Social.\n\nOwns product descriptions for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000004",
+        "name": "Atlas",
+        "personaId": "atlas",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Atlas, responsible for market research at Lerato Social.\n\nOwns market research for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+        "name": "Aya",
+        "personaId": "aya",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Aya, responsible for sales & discovery at Lerato Social.\n\nKeeps sales & discovery moving for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000006",
+        "name": "Cleo",
+        "personaId": "cleo",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Cleo, responsible for campaign reporting at Lerato Social.\n\nOwns campaign reporting for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000007",
+        "name": "Echo",
+        "personaId": "echo",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Echo, responsible for customer feedback at Lerato Social.\n\nOwns customer feedback for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000008",
+        "name": "Faye",
+        "personaId": "faye",
+        "runtime": "colony-unavailable",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Faye, responsible for social content at Lerato Social.\n\nOwns social content for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000009",
+        "name": "Indigo",
+        "personaId": "indigo",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Indigo, responsible for product photography at Lerato Social.\n\nOwns product photography for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000a",
+        "name": "Iris",
+        "personaId": "iris",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Iris, responsible for retail partnerships at Lerato Social.\n\nOwns retail partnerships for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000b",
+        "name": "Juno",
+        "personaId": "juno",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Juno, responsible for quality assurance at Lerato Social.\n\nOwns quality assurance for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["engineering"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000c",
+        "name": "Kai",
+        "personaId": "kai",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Kai, responsible for purchase orders at Lerato Social.\n\nOwns purchase orders for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["general"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000d",
+        "name": "Kira",
+        "personaId": "kira",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Kira, responsible for email campaigns at Lerato Social.\n\nOwns email campaigns for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000e",
+        "name": "Luca",
+        "personaId": "luca",
+        "runtime": null,
+        "provider": null,
+        "model": null,
+        "modelSource": null,
+        "systemPrompt": "You are Luca, responsible for inventory planning at Lerato Social.\n\nOwns inventory planning for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "not_deployed",
+        "channelNames": ["general"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000000f",
+        "name": "Lyra",
+        "personaId": "lyra",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Lyra, responsible for search visibility at Lerato Social.\n\nOwns search visibility for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000010",
+        "name": "Milo",
+        "personaId": "milo",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Milo, responsible for sales reporting at Lerato Social.\n\nOwns sales reporting for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000011",
+        "name": "Mina",
+        "personaId": null,
+        "about": "Social media manager",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Mina, responsible for brand & content at Lerato Social.\n\nKeeps your voice consistent across campaigns, content and customer material.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato\u2019s approval. Bring decisions back into the source conversation with the relevant record attached.",
+        "status": "running",
+        "channelNames": [
+          "Marketing",
+          "The Olive House",
+          "Cedar Cafe",
+          "Northline Interiors"
+        ],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000012",
+        "name": "Nia",
+        "personaId": "nia",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Nia, responsible for customer care at Lerato Social.\n\nOwns customer care for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000013",
+        "name": "Noor",
+        "personaId": "noor",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Noor, responsible for copywriting at Lerato Social.\n\nOwns copywriting for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000014",
+        "name": "Orion",
+        "personaId": "orion",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Orion, responsible for data analysis at Lerato Social.\n\nOwns data analysis for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["engineering"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000015",
+        "name": "Piper",
+        "personaId": "piper",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Piper, responsible for community at Lerato Social.\n\nOwns community for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000016",
+        "name": "Remy",
+        "personaId": "remy",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Remy, responsible for bookkeeping at Lerato Social.\n\nOwns bookkeeping for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["engineering"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000017",
+        "name": "Rumi",
+        "personaId": "rumi",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Rumi, responsible for competitor research at Lerato Social.\n\nOwns competitor research for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000018",
+        "name": "Sage",
+        "personaId": "sage",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Sage, responsible for supplier research at Lerato Social.\n\nOwns supplier research for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "0000000000000000000000000000000000000000000000000000000000000019",
+        "name": "Scout",
+        "personaId": "scout",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Scout, responsible for business partner at Lerato Social.\n\nKeeps business partner moving for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000001a",
+        "name": "Sol",
+        "personaId": "sol",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Sol, responsible for pricing research at Lerato Social.\n\nOwns pricing research for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["sales"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000001b",
+        "name": "Theo",
+        "personaId": "theo",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Theo, responsible for operations at Lerato Social.\n\nKeeps operations moving for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["engineering"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000001c",
+        "name": "Uma",
+        "personaId": "uma",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "modelSource": "definition",
+        "systemPrompt": "You are Uma, responsible for returns & support at Lerato Social.\n\nOwns returns & support for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "stopped",
+        "channelNames": ["general"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000001d",
+        "name": "Vale",
+        "personaId": "vale",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "modelSource": "definition",
+        "systemPrompt": "You are Vale, responsible for delivery planning at Lerato Social.\n\nOwns delivery planning for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["general"],
+        "backend": {
+          "type": "local"
+        }
+      },
+      {
+        "pubkey": "000000000000000000000000000000000000000000000000000000000000001e",
+        "name": "Wren",
+        "personaId": "wren",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "modelSource": "definition",
+        "systemPrompt": "You are Wren, responsible for content editing at Lerato Social.\n\nOwns content editing for Lerato Social.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato's approval.",
+        "status": "running",
+        "channelNames": ["design"],
+        "backend": {
+          "type": "local"
+        }
+      }
+    ],
+    "personas": [
+      {
+        "id": "ari",
+        "displayName": "Ari",
+        "systemPrompt": "You are Ari, responsible for website development at Lerato Social.",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true
+      },
+      {
+        "id": "ash",
+        "displayName": "Ash",
+        "systemPrompt": "You are Ash, responsible for customer onboarding at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "aster",
+        "displayName": "Aster",
+        "systemPrompt": "You are Aster, responsible for product descriptions at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "atlas",
+        "displayName": "Atlas",
+        "systemPrompt": "You are Atlas, responsible for market research at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true
+      },
+      {
+        "id": "aya",
+        "displayName": "Aya",
+        "systemPrompt": "You are Aya, responsible for sales & discovery at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true
+      },
+      {
+        "id": "cleo",
+        "displayName": "Cleo",
+        "systemPrompt": "You are Cleo, responsible for campaign reporting at Lerato Social.",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true
+      },
+      {
+        "id": "echo",
+        "displayName": "Echo",
+        "systemPrompt": "You are Echo, responsible for customer feedback at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "faye",
+        "displayName": "Faye",
+        "systemPrompt": "You are Faye, responsible for social content at Lerato Social.",
+        "runtime": "colony-unavailable",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true,
+        "description": "Social content creator"
+      },
+      {
+        "id": "indigo",
+        "displayName": "Indigo",
+        "systemPrompt": "You are Indigo, responsible for product photography at Lerato Social.",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "iris",
+        "displayName": "Iris",
+        "systemPrompt": "You are Iris, responsible for retail partnerships at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "juno",
+        "displayName": "Juno",
+        "systemPrompt": "You are Juno, responsible for quality assurance at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "kai",
+        "displayName": "Kai",
+        "systemPrompt": "You are Kai, responsible for purchase orders at Lerato Social.",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "kira",
+        "displayName": "Kira",
+        "systemPrompt": "You are Kira, responsible for email campaigns at Lerato Social.",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true
+      },
+      {
+        "id": "luca",
+        "displayName": "Luca",
+        "systemPrompt": "You are Luca, responsible for inventory planning at Lerato Social.",
+        "runtime": null,
+        "provider": null,
+        "model": null,
+        "isActive": true
+      },
+      {
+        "id": "lyra",
+        "displayName": "Lyra",
+        "systemPrompt": "You are Lyra, responsible for search visibility at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "milo",
+        "displayName": "Milo",
+        "systemPrompt": "You are Milo, responsible for sales reporting at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "mina",
+        "displayName": "Mina",
+        "systemPrompt": "You are Mina, responsible for brand & content at Lerato Social.\n\nKeeps your voice consistent across campaigns, content and customer material.\n\nUse the business knowledge and the conversation you were asked to work in. State what you found, keep source references, and flag missing information rather than guessing.\n\nDo not contact customers, spend money, publish material or change an agreement without Lerato\u2019s approval. Bring decisions back into the source conversation with the relevant record attached.",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true,
+        "description": "Social media manager"
+      },
+      {
+        "id": "nia",
+        "displayName": "Nia",
+        "systemPrompt": "You are Nia, responsible for customer care at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "noor",
+        "displayName": "Noor",
+        "systemPrompt": "You are Noor, responsible for copywriting at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true,
+        "description": "Copywriter"
+      },
+      {
+        "id": "orion",
+        "displayName": "Orion",
+        "systemPrompt": "You are Orion, responsible for data analysis at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true
+      },
+      {
+        "id": "piper",
+        "displayName": "Piper",
+        "systemPrompt": "You are Piper, responsible for community at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "remy",
+        "displayName": "Remy",
+        "systemPrompt": "You are Remy, responsible for bookkeeping at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "rumi",
+        "displayName": "Rumi",
+        "systemPrompt": "You are Rumi, responsible for competitor research at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true
+      },
+      {
+        "id": "sage",
+        "displayName": "Sage",
+        "systemPrompt": "You are Sage, responsible for supplier research at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "scout",
+        "displayName": "Scout",
+        "systemPrompt": "You are Scout, responsible for business partner at Lerato Social.",
+        "runtime": "claude",
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 4.6",
+        "isActive": true
+      },
+      {
+        "id": "sol",
+        "displayName": "Sol",
+        "systemPrompt": "You are Sol, responsible for pricing research at Lerato Social.",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "theo",
+        "displayName": "Theo",
+        "systemPrompt": "You are Theo, responsible for operations at Lerato Social.",
+        "runtime": "opencode",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "uma",
+        "displayName": "Uma",
+        "systemPrompt": "You are Uma, responsible for returns & support at Lerato Social.",
+        "runtime": "omp",
+        "provider": "OpenRouter",
+        "model": "anthropic/claude-sonnet-4.6",
+        "isActive": true
+      },
+      {
+        "id": "vale",
+        "displayName": "Vale",
+        "systemPrompt": "You are Vale, responsible for delivery planning at Lerato Social.",
+        "runtime": "codex",
+        "provider": "OpenAI",
+        "model": "GPT-5.4",
+        "isActive": true
+      },
+      {
+        "id": "wren",
+        "displayName": "Wren",
+        "systemPrompt": "You are Wren, responsible for content editing at Lerato Social.",
+        "runtime": "buzz-agent",
+        "provider": "Colony credits",
+        "model": "Colony default",
+        "isActive": true
+      }
+    ],
+    "teams": [
+      {
+        "id": "creative",
+        "name": "Client creative team",
+        "description": "Content and review support for client campaigns.",
+        "personaIds": ["mina", "noor", "faye"]
+      }
+    ],
+    "agentMemory": {
+      "0000000000000000000000000000000000000000000000000000000000000011": {
+        "core": null,
+        "memories": [
+          {
+            "slug": "principles",
+            "body": "Keep internal review and client approval separate. Approval belongs to the exact version and destination the client saw.",
+            "eventId": "ab00000000000000000000000000000000000000000000000000000000000010",
+            "createdAt": 1780012800,
+            "outgoingRefs": ["olive"]
+          },
+          {
+            "slug": "olive",
+            "body": "Use warm, straightforward copy. Nandi reviews the exact design and caption. New artwork invalidates the previous approval.",
+            "eventId": "ab00000000000000000000000000000000000000000000000000000000000005",
+            "createdAt": 1780012800,
+            "outgoingRefs": ["principles"]
+          },
+          {
+            "slug": "rhythm",
+            "body": "Internal review on Tuesday, client review by Thursday. Ask Zinhle about capacity before promising a new delivery date.",
+            "eventId": "ab00000000000000000000000000000000000000000000000000000000000006",
+            "createdAt": 1780012800,
+            "outgoingRefs": []
+          }
+        ],
+        "truncated": false,
+        "fetchedAt": 1780012800
+      }
+    },
+    "replaceDefaultTeams": true
+  },
+  "activeTurns": [
+    {
+      "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2g3c5d6f",
+      "turnId": "reference-run-aya"
+    },
+    {
+      "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000011",
+      "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+      "turnId": "reference-run-mina"
+    },
+    {
+      "agentPubkey": "000000000000000000000000000000000000000000000000000000000000001b",
+      "channelId": "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9",
+      "turnId": "reference-run-theo"
+    },
+    {
+      "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000013",
+      "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+      "turnId": "reference-run-noor"
+    }
+  ]
+}

@@ -179,6 +179,7 @@ export default defineConfig({
         "**/agent-numeric-tuning.spec.ts",
         "**/needs-restart-screenshots.spec.ts",
         "**/team-catalog-screenshots.spec.ts",
+        "**/w07-agents-smoke.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
