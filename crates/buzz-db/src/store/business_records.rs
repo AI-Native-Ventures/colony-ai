@@ -33,6 +33,7 @@ impl crate::Db {
     /// This lets an already-committed acceptance retry return its original
     /// receipt even if the proposal or resulting heads have since advanced.
     /// The transaction-bound claim remains authoritative for concurrent writes.
+    #[allow(clippy::too_many_arguments)]
     pub async fn find_proposal_conversion_claim(
         &self,
         community_id: CommunityId,
@@ -135,6 +136,7 @@ impl crate::Db {
 /// conversion id and linked record ids returns the original receipt. Reusing
 /// any claimed proposal version, work item, or invoice for a different request
 /// fails closed with `DbError::InvalidData`.
+#[allow(clippy::too_many_arguments)]
 pub async fn claim_proposal_conversion(
     tx: &mut Transaction<'_, Postgres>,
     community_id: CommunityId,
