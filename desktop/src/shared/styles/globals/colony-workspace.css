@@ -43,11 +43,6 @@
   margin-bottom: 1rem;
 }
 
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="sidebar-projects-section"] {
-  display: none;
-}
-
 :root:has([data-colony-workspace-route="true"]) [data-testid="app-sidebar"] {
   color: hsl(var(--colony-sidebar-foreground));
 }

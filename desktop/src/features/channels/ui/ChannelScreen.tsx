@@ -94,7 +94,7 @@ export function ChannelScreen({
   autoSendDraftKey,
   currentIdentity,
   currentProfile,
-  headerEndActions, idleAuxiliaryPanel,
+  headerEndActions, hideWorkspaceTopBar = false, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
   onAddFiles, onCloseIdleAuxiliaryPanel,
@@ -817,7 +817,7 @@ export function ChannelScreen({
           open={emptyDeleteId !== null}
         />
         <div className="colony-channel-route">
-          {activeChannel ? (
+          {activeChannel && !hideWorkspaceTopBar ? (
             <ChannelWorkspaceTopBar
               channelTitle={activeChannelTitle}
               currentPubkey={currentPubkey}

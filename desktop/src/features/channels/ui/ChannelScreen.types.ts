@@ -19,6 +19,11 @@ export type ChannelScreenProps = {
   autoSendDraftKey: string | null;
   currentIdentity?: Identity;
   currentProfile?: Profile;
+  /**
+   * Hides the Colony workspace top bar. Project-hosted channels keep their
+   * project chrome until the Software Factory redesign replaces it.
+   */
+  hideWorkspaceTopBar?: boolean;
   idleAuxiliaryPanel?: ReactNode;
   idleAuxiliaryHeaderActions?: IdleAuxiliaryHeaderControls;
   idleAuxiliaryOverridesThread?: boolean;
