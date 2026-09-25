@@ -158,12 +158,14 @@ function issueSelectionItem(project: Project, issue: ProjectIssue) {
 
 function IssueRow({
   issue,
+  itemLabel,
   onOpen,
   profiles,
   project,
   rangeItems,
 }: {
   issue: ProjectIssue;
+  itemLabel: "issue" | "task";
   onOpen: () => void;
   profiles?: UserProfileLookup;
   project: Project;
@@ -177,7 +179,7 @@ function IssueRow({
     <ProjectWorkItemRow
       eventId={issue.id}
       identifier={`#${issue.id.slice(0, 8)}`}
-      identifierTitle="View task"
+      identifierTitle={`View ${itemLabel}`}
       onOpen={onOpen}
       selection={{
         item: issueSelectionItem(project, issue),
@@ -273,10 +275,12 @@ function IssueRow({
 /** Full issue conversation and comment composer. */
 export function ProjectIssueDetail({
   issue,
+  itemLabel = "task",
   profiles,
   project,
 }: {
   issue: ProjectIssue;
+  itemLabel?: "issue" | "task";
   profiles?: UserProfileLookup;
   project: Project;
 }) {
@@ -333,13 +337,15 @@ export function ProjectIssueDetail({
           </span>
           <ShareLinkButton
             className="ml-1 inline-flex h-7 w-7 align-text-bottom"
-            label="Copy task link"
+            label={`Copy ${itemLabel} link`}
             link={issueShareLink(issue)}
             testId="project-issue-copy-link"
           />
         </h3>
         <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
-          <span>Task created</span>
+          <span>
+            {itemLabel === "issue" ? "Issue created" : "Task created"}
+          </span>
           <span
             className="shrink-0 whitespace-nowrap"
             title={new Date(issue.createdAt * 1_000).toLocaleString()}
@@ -387,7 +393,7 @@ export function ProjectIssueDetail({
       <ProjectDetailSection defaultOpen title="Activity">
         <div className="space-y-3">
           <DiscussedInChannels
-            entityLabel="this task"
+            entityLabel={`this ${itemLabel}`}
             originChannelId={issue.channelId}
             originCreatedAt={issue.createdAt}
             originPubkey={issue.author}
@@ -445,9 +451,10 @@ export function ProjectIssuesPanel({
     resolvedItems.find(({ issue }) => issue.id === selectedIssueId) ?? null;
   const loading = isLoading ?? issuesQuery.isLoading;
   const loadError = error ?? issuesQuery.error;
+  const itemLabel = issueItems === undefined ? "issue" : "task";
 
   if (loading) {
-    return <BuzzLoadingState label="Loading tasks" />;
+    return <BuzzLoadingState label={`Loading ${itemLabel}s`} />;
   }
 
   if (resolvedItems.length === 0) {
@@ -458,10 +465,12 @@ export function ProjectIssuesPanel({
             ? "Refresh the project and try again."
             : issueItems
               ? "Tasks created for this project's repositories will appear here."
-              : "Tasks created for this repository will appear here."
+              : "Issues created for this repository will appear here."
         }
         error={Boolean(loadError)}
-        title={loadError ? "Could not load tasks" : "No tasks yet"}
+        title={
+          loadError ? `Could not load ${itemLabel}s` : `No ${itemLabel}s yet`
+        }
       />
     );
   }
@@ -470,6 +479,7 @@ export function ProjectIssuesPanel({
     return (
       <ProjectIssueDetail
         issue={selectedItem.issue}
+        itemLabel={itemLabel}
         profiles={profiles}
         project={selectedItem.project}
       />
@@ -506,6 +516,7 @@ export function ProjectIssuesPanel({
             {items.map(({ issue, project: itemProject }) => (
               <IssueRow
                 issue={issue}
+                itemLabel={itemLabel}
                 key={issue.id}
                 onOpen={() => onSelectedIssueIdChange(issue.id)}
                 profiles={profiles}

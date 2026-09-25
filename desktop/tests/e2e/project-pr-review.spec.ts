@@ -1385,7 +1385,7 @@ test("project section icons lead their titles", async ({ page }) => {
   await expectIconBeforeTitle("projects-page-header");
 
   await openBuzzProject(page);
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expectIconBeforeTitle("project-section-header");
 });
 
@@ -1397,7 +1397,7 @@ test("project detail lists follow overview header geometry", async ({
   await openBuzzProject(page);
 
   for (const [tab, title] of [
-    ["Tasks", "Tasks"],
+    ["Issues", "Issues"],
     ["Review", "Reviews"],
   ] as const) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -1405,7 +1405,7 @@ test("project detail lists follow overview header geometry", async ({
     const group = page.getByTestId("project-work-item-group-header").first();
     const firstRow = page
       .getByTestId(
-        tab === "Tasks" ? "project-issue-row" : "project-pull-request-row",
+        tab === "Issues" ? "project-issue-row" : "project-pull-request-row",
       )
       .first();
     const [headerBox, titleBox, groupBox, groupLabelBox, rowTitleBox] =
@@ -2470,7 +2470,7 @@ test("repository changes discard captured selection context before agent sends",
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await addProjectToSidebar(page, "buzz");
   await page.getByTestId("project-home-context-repo-buzz").click();
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
 
   const selectedRow = page.getByTestId("project-issue-row").first();
   const selectedTitle = (
@@ -2763,7 +2763,7 @@ test("selecting repository workspace rows switches the context pod to the cluste
     0,
   );
 
-  await page.getByRole("tab", { name: "Tasks" }).click();
+  await page.getByRole("tab", { name: "Issues" }).click();
   const issueRows = page.getByTestId("project-issue-row");
   await expect(issueRows.first()).toBeVisible();
   await expectSinglePrimaryTextColumn(issueRows.first());
@@ -3065,7 +3065,7 @@ test("project detail content areas do not paint background fills", async ({
     "Overview",
     "Files",
     "Commits",
-    "Tasks",
+    "Issues",
     "Review",
     "Contributors",
   ]) {
@@ -3517,17 +3517,17 @@ test("pushed local branch can open a pull request", async ({ page }) => {
   ]);
 });
 
-test("project task can be created with a category from the tasks header", async ({
+test("project issue can be created with a category from the Issues header", async ({
   page,
 }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await page
     .getByTestId("project-section-header")
-    .getByRole("button", { name: "Create task" })
+    .getByRole("button", { name: "New issue" })
     .click();
   await page
     .getByTestId("create-issue-category")
@@ -3539,7 +3539,7 @@ test("project task can be created with a category from the tasks header", async 
     .getByTestId("create-issue-body")
     .fill("The project workflow needs a clear repair path.");
   await page.getByTestId("create-issue-submit").click();
-  await expect(page.getByText("Task created.")).toBeVisible();
+  await expect(page.getByText("Issue created.")).toBeVisible();
 
   const createdEvent = await page.evaluate(() =>
     window.__BUZZ_E2E_SIGNED_EVENTS__?.find((event) => event.kind === 1621),

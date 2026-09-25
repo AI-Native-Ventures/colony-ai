@@ -469,10 +469,7 @@ test("creating a project opens its channel conversation", async ({ page }) => {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
 
-  await page
-    .getByTestId("project-detail-chrome")
-    .getByRole("button", { name: "Projects" })
-    .click();
+  await page.getByTestId("open-projects-view").click();
   await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("multi-repo-demo");
   await page.getByTestId("create-project-submit").click();
@@ -1346,8 +1343,8 @@ test("pull request and issue feeds use compact work item rows", async ({
     .click();
   await expect(prRows.first()).toBeVisible();
 
-  // Tasks share the same compact structure.
-  await page.getByRole("tab", { name: "Tasks" }).click();
+  // Issues share the same compact structure.
+  await page.getByRole("tab", { name: "Issues" }).click();
   const issueRows = page.getByTestId("project-issue-row");
   await expect(issueRows.first()).toBeVisible({ timeout: 10_000 });
   await expect(

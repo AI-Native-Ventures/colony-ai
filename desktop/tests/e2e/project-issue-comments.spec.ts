@@ -206,7 +206,7 @@ test("issue assignees can be assigned and unassigned", async ({ page }) => {
     .getByTestId("project-issue-detail")
     .locator("header")
     .first();
-  await expect(issueHeader).toContainText("Task created");
+  await expect(issueHeader).toContainText("Issue created");
   await expect(issueHeader).not.toContainText("alice");
   await expect(issueHeader.locator("img")).toHaveCount(0);
   const contextAssignment = page.getByTestId("project-context-task-assignment");
@@ -217,7 +217,7 @@ test("issue assignees can be assigned and unassigned", async ({ page }) => {
   await expect(page.getByTestId("project-context-issue-assign")).toBeVisible();
   const createTask = page
     .getByTestId("project-repository-actions-panel")
-    .getByRole("button", { name: "Create task", exact: true });
+    .getByRole("button", { name: "New issue", exact: true });
   await expect(createTask).toBeVisible();
   await expect(selfAssign.locator("svg")).toHaveCount(1);
   const actionGeometry = await Promise.all(

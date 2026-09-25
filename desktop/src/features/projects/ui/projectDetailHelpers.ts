@@ -16,7 +16,7 @@ export const PROJECT_REPOSITORY_SEARCH_KEYS = [
 export const PROJECT_TAB_CRUMB_LABELS: Record<string, string> = {
   files: "Files",
   activity: "Commits",
-  issues: "Tasks",
+  issues: "Issues",
   prs: "Review",
   contributors: "Contributors",
   channels: "Channels",

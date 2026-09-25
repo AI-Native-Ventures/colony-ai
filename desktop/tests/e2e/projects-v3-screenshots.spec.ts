@@ -229,7 +229,10 @@ test("restricted repositories keep event work visible and offer access help", as
     "—",
   );
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Project breadcrumb" })
+    .getByRole("button", { name: "Issues", exact: true })
+    .click();
   await expect(page.getByTestId("project-issue-row").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
@@ -967,7 +970,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expectInsetSection();
 
   // Issues tab: the create action lives in the section header.
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expect(repositoryActionsPanel).toBeVisible();
   await expectProjectContextGroups(repositoryActionsPanel, {
     hasActions: true,
@@ -993,22 +996,22 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   );
   await expectInsetSection();
   const newIssueButton = workspacePanel.getByRole("button", {
-    name: "Create task",
+    name: "New issue",
   });
   await expect(newIssueButton).toBeVisible();
   const contextCreateTaskButton = repositoryActionsPanel.getByRole("button", {
-    name: "Create task",
+    name: "New issue",
     exact: true,
   });
   await expect(contextCreateTaskButton).toBeVisible();
   await contextCreateTaskButton.click();
   await expect(page.getByTestId("create-issue-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(
-    tabMenu.getByRole("button", { name: "Create task" }),
-  ).toHaveCount(0);
+  await expect(tabMenu.getByRole("button", { name: "New issue" })).toHaveCount(
+    0,
+  );
   const issuesHeading = workspacePanel.getByRole("heading", {
-    name: "Tasks",
+    name: "Issues",
     exact: true,
   });
   const issuesHeadingBounds = await issuesHeading.boundingBox();
@@ -1042,7 +1045,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
       ((firstIssueBounds?.y ?? 0) + (firstIssueBounds?.height ?? 0)),
   ).toBe(2);
   const issueDate = issueRow.getByTestId("project-issue-row-date");
-  const issueId = issueRow.getByTitle("View task");
+  const issueId = issueRow.getByTitle("View issue");
   await expect(issueDate).toBeVisible();
   const issueDateBounds = await issueDate.boundingBox();
   const issueIdBounds = await issueId.boundingBox();
@@ -1103,7 +1106,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   // PR list: the create action lives in both the section header and context.
   await page
     .getByRole("navigation", { name: "Project breadcrumb" })
-    .getByRole("button", { name: "Tasks", exact: true })
+    .getByRole("button", { name: "Issues", exact: true })
     .click();
   await expect(tabMenu).toBeVisible();
   await page.getByRole("tab", { name: "Review", exact: true }).click();
