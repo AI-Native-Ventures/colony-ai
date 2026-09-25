@@ -1060,23 +1060,35 @@ impl Db {
         if let (Some(provider_payment_id), Some(payment_status)) =
             (provider_payment_id, payment_status)
         {
-            let payment_row = sqlx::query(
+            let persisted_payment_status = sqlx::query_scalar::<_, String>(
                 "INSERT INTO account_site_subscription_payments \
                  (provider_payment_id, subscription_id, provider_status, status, amount_zar_cents) \
                  VALUES ($1, $2, $3, $4, $5) \
                  ON CONFLICT (provider_payment_id) DO UPDATE SET \
-                   provider_status = EXCLUDED.provider_status, status = EXCLUDED.status, \
-                   amount_zar_cents = EXCLUDED.amount_zar_cents, updated_at = now() \
-                 WHERE account_site_subscription_payments.subscription_id = EXCLUDED.subscription_id",
+                   provider_status = CASE \
+                       WHEN account_site_subscription_payments.status = 'paid' \
+                            AND EXCLUDED.status <> 'paid' \
+                       THEN account_site_subscription_payments.provider_status \
+                       ELSE EXCLUDED.provider_status END, \
+                   status = CASE \
+                       WHEN account_site_subscription_payments.status = 'paid' \
+                       THEN 'paid' ELSE EXCLUDED.status END, \
+                   amount_zar_cents = CASE \
+                       WHEN account_site_subscription_payments.status = 'paid' \
+                       THEN account_site_subscription_payments.amount_zar_cents \
+                       ELSE EXCLUDED.amount_zar_cents END, \
+                   updated_at = now() \
+                 WHERE account_site_subscription_payments.subscription_id = EXCLUDED.subscription_id \
+                 RETURNING status",
             )
             .bind(provider_payment_id)
             .bind(subscription.id)
             .bind(provider_status)
             .bind(payment_status)
             .bind(amount_zar_cents)
-            .execute(&mut *tx)
+            .fetch_optional(&mut *tx)
             .await?;
-            if payment_row.rows_affected() == 0 {
+            let Some(persisted_payment_status) = persisted_payment_status else {
                 update_subscription_status(
                     &mut tx,
                     subscription.id,
@@ -1088,6 +1100,12 @@ impl Db {
                 finish_notification(&mut tx, event_id, "duplicate_payment").await?;
                 tx.commit().await?;
                 return Ok(PaymentNotificationOutcome::DuplicatePayment);
+            };
+            if persisted_payment_status == "paid" && matches!(payment_status, "delayed" | "failed")
+            {
+                finish_notification(&mut tx, event_id, "already_applied").await?;
+                tx.commit().await?;
+                return Ok(PaymentNotificationOutcome::Applied);
             }
         }
         update_subscription_status(
@@ -1143,7 +1161,10 @@ async fn update_subscription_status(
     provider_token: Option<&str>,
 ) -> Result<()> {
     sqlx::query(
-        "UPDATE account_site_subscriptions SET status = $2, provider_status = $3, \
+        "UPDATE account_site_subscriptions SET status = CASE \
+             WHEN status = 'cancelled' OR $2 = 'cancelled' THEN 'cancelled' \
+             WHEN cancel_requested_at IS NOT NULL AND $2 = 'active' THEN status \
+             ELSE $2 END, provider_status = $3, \
          provider_token = COALESCE(provider_token, $4), \
          cancel_requested_at = CASE WHEN $2 = 'cancelled' THEN COALESCE(cancel_requested_at, now()) \
                                     ELSE cancel_requested_at END, \
@@ -1274,4 +1295,611 @@ fn site_subscription_from_row(row: sqlx::postgres::PgRow) -> Result<SiteSubscrip
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
+}
+
+#[cfg(test)]
+mod postgres_tests {
+    use super::*;
+    use sqlx::{postgres::PgPoolOptions, PgPool};
+
+    const CREDIT_GRANT_NANOUSD: i64 = 5_000_000_000;
+    const CREDIT_CHARGE_ZAR_CENTS: i64 = 11_900;
+    const HOSTING_MONTHLY_ZAR_CENTS: i64 = 18_500;
+
+    fn new_event_id() -> String {
+        format!("{:064x}", Uuid::new_v4().as_u128())
+    }
+
+    fn new_provider_payment_id() -> String {
+        format!("{:032}", Uuid::new_v4().as_u128() % 10_u128.pow(32))
+    }
+
+    fn unique_reference(prefix: &str) -> String {
+        format!("{prefix}-{}", Uuid::new_v4().simple())
+    }
+
+    fn unique_provider_token() -> String {
+        format!("pf-{}", Uuid::new_v4().simple())
+    }
+
+    async fn setup_db() -> (Db, PgPool) {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&crate::test_support::database_url())
+            .await
+            .expect("connect to isolated payment test database");
+        (Db::from_pool(pool.clone()), pool)
+    }
+
+    async fn make_account(pool: &PgPool) -> Uuid {
+        let id = Uuid::new_v4();
+        let pubkey = format!("{:064x}", id.as_u128());
+        sqlx::query(
+            "INSERT INTO accounts \
+             (id, email, pubkey, wrapped_dek, kek_id, sealed_nsec, nonce) \
+             VALUES ($1, $2, $3, $4, 'test-kek', $5, $6)",
+        )
+        .bind(id)
+        .bind(format!("payment-test-{}@example.invalid", id.simple()))
+        .bind(pubkey)
+        .bind(vec![1_u8; 28])
+        .bind(vec![2_u8; 16])
+        .bind(vec![3_u8; 12])
+        .execute(pool)
+        .await
+        .expect("insert payment test account");
+        id
+    }
+
+    async fn make_credit_intent(db: &Db, account_id: Uuid) -> PaymentIntentRecord {
+        let reference = format!("credit-test-{}", Uuid::new_v4().simple());
+        match db
+            .create_account_payment_intent(
+                account_id,
+                &reference,
+                Uuid::new_v4(),
+                "starter",
+                CREDIT_CHARGE_ZAR_CENTS,
+                CREDIT_GRANT_NANOUSD,
+            )
+            .await
+            .expect("create payment intent")
+        {
+            CreatePaymentIntentOutcome::Created(intent) => intent,
+            CreatePaymentIntentOutcome::Existing(_) | CreatePaymentIntentOutcome::OpenIntent(_) => {
+                panic!("new test account unexpectedly has an existing intent")
+            }
+        }
+    }
+
+    async fn make_site_subscription(
+        db: &Db,
+        account_id: Uuid,
+        site_id: &str,
+        reference: &str,
+        idempotency_key: Uuid,
+    ) -> SiteSubscriptionRecord {
+        match db
+            .create_account_site_subscription(
+                account_id,
+                site_id,
+                reference,
+                idempotency_key,
+                HOSTING_MONTHLY_ZAR_CENTS,
+            )
+            .await
+            .expect("create site subscription")
+        {
+            CreateSiteSubscriptionOutcome::Created(subscription) => subscription,
+            CreateSiteSubscriptionOutcome::Existing(_)
+            | CreateSiteSubscriptionOutcome::Current(_) => {
+                panic!("new test site unexpectedly has a current subscription")
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn desired_state_payment_tables_are_present_and_operator_global() {
+        let (_db, pool) = setup_db().await;
+        let names = [
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
+        ];
+        for name in names {
+            let table_exists = sqlx::query_scalar::<_, bool>(
+                "SELECT to_regclass(format('%I.%I', current_schema(), $1)) IS NOT NULL",
+            )
+            .bind(name)
+            .fetch_one(&pool)
+            .await
+            .expect("check payment table in live catalog");
+            let registered = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM _operator_global_tables WHERE table_name = $1)",
+            )
+            .bind(name)
+            .fetch_one(&pool)
+            .await
+            .expect("check payment table global registration");
+            assert!(table_exists, "desired-state table {name} is missing");
+            assert!(
+                registered,
+                "desired-state table {name} is not operator-global"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn same_itn_event_replay_is_rejected_before_reapplying_payment_state() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let intent = make_credit_intent(&db, account_id).await;
+        let event_id = new_event_id();
+        let provider_payment_id = new_provider_payment_id();
+
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "PENDING",
+                Some(CREDIT_CHARGE_ZAR_CENTS),
+            )
+            .await
+            .expect("apply first notification"),
+            PaymentNotificationOutcome::Applied
+        );
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "PENDING",
+                Some(CREDIT_CHARGE_ZAR_CENTS),
+            )
+            .await
+            .expect("replay notification"),
+            PaymentNotificationOutcome::Duplicate
+        );
+        assert_eq!(
+            db.account_payment_intent(account_id, &intent.reference)
+                .await
+                .expect("read intent")
+                .expect("intent remains present")
+                .status,
+            "delayed"
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM account_payment_notifications WHERE event_id = $1",
+            )
+            .bind(event_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count replay journal rows"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn distinct_callbacks_for_one_provider_payment_credit_once() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let intent = make_credit_intent(&db, account_id).await;
+        let provider_payment_id = new_provider_payment_id();
+        let pending_event_id = new_event_id();
+        let complete_event_id = new_event_id();
+        let duplicate_event_id = new_event_id();
+
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &pending_event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "PENDING",
+                Some(CREDIT_CHARGE_ZAR_CENTS),
+            )
+            .await
+            .expect("apply pending callback"),
+            PaymentNotificationOutcome::Applied
+        );
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &complete_event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "COMPLETE",
+                Some(CREDIT_CHARGE_ZAR_CENTS),
+            )
+            .await
+            .expect("apply completed callback"),
+            PaymentNotificationOutcome::Applied
+        );
+        assert_eq!(
+            db.account_credit_balance(account_id)
+                .await
+                .expect("read account balance"),
+            CREDIT_GRANT_NANOUSD
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM account_credit_ledger WHERE account_id = $1 AND source_id = $2",
+            )
+            .bind(account_id)
+            .bind(format!("payfast:{provider_payment_id}"))
+            .fetch_one(&pool)
+            .await
+            .expect("count ledger entries for provider payment"),
+            1
+        );
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &duplicate_event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "COMPLETE",
+                Some(CREDIT_CHARGE_ZAR_CENTS),
+            )
+            .await
+            .expect("apply repeated complete callback"),
+            PaymentNotificationOutcome::Duplicate
+        );
+        assert_eq!(
+            db.account_credit_balance(account_id)
+                .await
+                .expect("read final account balance"),
+            CREDIT_GRANT_NANOUSD
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn credit_balance_history_and_intents_are_account_scoped() {
+        let (db, pool) = setup_db().await;
+        let owner = make_account(&pool).await;
+        let other = make_account(&pool).await;
+        let intent = make_credit_intent(&db, owner).await;
+        let event_id = new_event_id();
+        let provider_payment_id = new_provider_payment_id();
+        db.apply_account_payment_notification(
+            &event_id,
+            Some(&intent.reference),
+            Some(&provider_payment_id),
+            "COMPLETE",
+            Some(CREDIT_CHARGE_ZAR_CENTS),
+        )
+        .await
+        .expect("settle owner's payment");
+
+        assert_eq!(
+            db.account_credit_balance(owner)
+                .await
+                .expect("read owner balance"),
+            CREDIT_GRANT_NANOUSD
+        );
+        assert_eq!(
+            db.account_credit_balance(other)
+                .await
+                .expect("read other account balance"),
+            0
+        );
+        assert_eq!(
+            db.account_credit_history(other, 20)
+                .await
+                .expect("read other account history")
+                .len(),
+            0
+        );
+        assert!(db
+            .account_payment_intent(other, &intent.reference)
+            .await
+            .expect("read other account intent")
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn amount_mismatch_never_adds_a_credit_ledger_entry() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let intent = make_credit_intent(&db, account_id).await;
+        let event_id = new_event_id();
+        let provider_payment_id = new_provider_payment_id();
+
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &event_id,
+                Some(&intent.reference),
+                Some(&provider_payment_id),
+                "COMPLETE",
+                Some(CREDIT_CHARGE_ZAR_CENTS - 1),
+            )
+            .await
+            .expect("journal mismatched amount"),
+            PaymentNotificationOutcome::Uncertain
+        );
+        assert_eq!(
+            db.account_credit_balance(account_id)
+                .await
+                .expect("read account balance"),
+            0
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM account_credit_ledger WHERE account_id = $1",
+            )
+            .bind(account_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count account credit ledger entries"),
+            0
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn idempotent_subscription_retry_returns_the_original_reference() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let idempotency_key = Uuid::new_v4();
+        let original_reference = unique_reference("site-sub-original");
+        let retry_reference = unique_reference("site-sub-retry");
+        let original = make_site_subscription(
+            &db,
+            account_id,
+            "site-retry",
+            &original_reference,
+            idempotency_key,
+        )
+        .await;
+
+        let retry = db
+            .create_account_site_subscription(
+                account_id,
+                "site-retry",
+                &retry_reference,
+                idempotency_key,
+                HOSTING_MONTHLY_ZAR_CENTS,
+            )
+            .await
+            .expect("retry with original idempotency key");
+        let CreateSiteSubscriptionOutcome::Existing(recovered) = retry else {
+            panic!("same idempotency key must recover its existing subscription")
+        };
+
+        assert_eq!(recovered.id, original.id);
+        assert_eq!(recovered.reference, original_reference);
+        assert_eq!(recovered.status, "pending");
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM account_site_subscriptions WHERE account_id = $1 AND site_id = $2",
+            )
+            .bind(account_id)
+            .bind("site-retry")
+            .fetch_one(&pool)
+            .await
+            .expect("count site subscription rows"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stale_pending_and_failed_callbacks_cannot_regress_a_paid_subscription() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let reference = unique_reference("site-sub-stale-paid-ordering");
+        let provider_token = unique_provider_token();
+        let provider_payment_id = new_provider_payment_id();
+        let active =
+            make_site_subscription(&db, account_id, "site-active", &reference, Uuid::new_v4())
+                .await;
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&active.reference),
+            &provider_token,
+            Some(&provider_payment_id),
+            "PENDING",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("apply delayed pending callback for an already paid payment");
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&active.reference),
+            &provider_token,
+            Some(&provider_payment_id),
+            "COMPLETE",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("activate subscription");
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&active.reference),
+            &provider_token,
+            Some(&provider_payment_id),
+            "FAILED",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("apply delayed failure callback for an already paid payment");
+        let active_after_stale = db
+            .account_site_subscription(account_id, active.id)
+            .await
+            .expect("read active subscription")
+            .expect("active subscription remains present");
+        assert_eq!(active_after_stale.status, "active");
+        let payment_status = sqlx::query_scalar::<_, String>(
+            "SELECT status FROM account_site_subscription_payments WHERE provider_payment_id = $1",
+        )
+        .bind(provider_payment_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read provider payment status");
+        assert_eq!(payment_status, "paid");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn failed_recurring_payment_marks_active_subscription_failed() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let reference = unique_reference("site-sub-renewal-failed");
+        let provider_token = unique_provider_token();
+        let initial_payment_id = new_provider_payment_id();
+        let renewal_payment_id = new_provider_payment_id();
+        let subscription = make_site_subscription(
+            &db,
+            account_id,
+            "site-renewal-failed",
+            &reference,
+            Uuid::new_v4(),
+        )
+        .await;
+
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&initial_payment_id),
+            "COMPLETE",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("activate subscription with first payment");
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&renewal_payment_id),
+            "FAILED",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("apply failed renewal payment");
+
+        let failed = db
+            .account_site_subscription(account_id, subscription.id)
+            .await
+            .expect("read subscription after renewal failure")
+            .expect("subscription remains present");
+        assert_eq!(failed.status, "failed");
+        let payment_status = sqlx::query_scalar::<_, String>(
+            "SELECT status FROM account_site_subscription_payments WHERE provider_payment_id = $1",
+        )
+        .bind(renewal_payment_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read renewal payment status");
+        assert_eq!(payment_status, "failed");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn cancellation_request_fences_late_subscription_activation() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let reference = unique_reference("site-sub-cancellation-race");
+        let provider_token = unique_provider_token();
+        let failed_payment_id = new_provider_payment_id();
+        let completion_payment_id = new_provider_payment_id();
+        let cancellation_race = make_site_subscription(
+            &db,
+            account_id,
+            "site-cancellation-race",
+            &reference,
+            Uuid::new_v4(),
+        )
+        .await;
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&cancellation_race.reference),
+            &provider_token,
+            Some(&failed_payment_id),
+            "FAILED",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("record a subscription with a recoverable failed payment");
+        db.request_account_site_subscription_cancel(account_id, cancellation_race.id)
+            .await
+            .expect("persist cancellation request")
+            .expect("failed subscription accepts cancellation request");
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&cancellation_race.reference),
+            &provider_token,
+            Some(&completion_payment_id),
+            "COMPLETE",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("apply completion racing with cancellation");
+        let requested = db
+            .account_site_subscription(account_id, cancellation_race.id)
+            .await
+            .expect("read cancellation-racing subscription")
+            .expect("subscription remains present");
+        assert_eq!(requested.status, "failed");
+        assert!(requested.cancel_requested_at.is_some());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn cancelled_subscription_cannot_be_reactivated_by_a_late_complete_callback() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let reference = unique_reference("site-sub-cancelled-terminal");
+        let provider_token = unique_provider_token();
+        let initial_payment_id = new_provider_payment_id();
+        let late_payment_id = new_provider_payment_id();
+        let subscription = make_site_subscription(
+            &db,
+            account_id,
+            "site-cancelled-terminal",
+            &reference,
+            Uuid::new_v4(),
+        )
+        .await;
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&initial_payment_id),
+            "COMPLETE",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("activate subscription before cancellation");
+        db.request_account_site_subscription_cancel(account_id, subscription.id)
+            .await
+            .expect("persist cancellation request")
+            .expect("active subscription accepts cancellation request");
+        assert!(db
+            .complete_account_site_subscription_cancel(account_id, subscription.id, "CANCELLED",)
+            .await
+            .expect("complete provider cancellation"));
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&late_payment_id),
+            "COMPLETE",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+        )
+        .await
+        .expect("apply completion after cancellation");
+        let cancelled = db
+            .account_site_subscription(account_id, subscription.id)
+            .await
+            .expect("read cancelled subscription")
+            .expect("cancelled subscription remains present");
+        assert_eq!(cancelled.status, "cancelled");
+    }
 }

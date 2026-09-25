@@ -715,13 +715,18 @@ async fn create_site_subscription(
         )
         .await
         .map_err(|error| map_payment_create_error(error))?;
+    let subscription = subscription_for_checkout(outcome)?;
+    subscription_response(&state, &provider, &account, subscription).await
+}
+
+fn subscription_for_checkout(
+    outcome: CreateSiteSubscriptionOutcome,
+) -> Result<SiteSubscriptionRecord, (StatusCode, Json<Value>)> {
     match outcome {
-        CreateSiteSubscriptionOutcome::Created(subscription) => {
-            subscription_response(&state, &provider, &account, subscription).await
-        }
-        CreateSiteSubscriptionOutcome::Existing(existing)
-        | CreateSiteSubscriptionOutcome::Current(existing) => {
-            Err(site_subscription_conflict(&existing))
+        CreateSiteSubscriptionOutcome::Created(subscription)
+        | CreateSiteSubscriptionOutcome::Existing(subscription) => Ok(subscription),
+        CreateSiteSubscriptionOutcome::Current(subscription) => {
+            Err(site_subscription_conflict(&subscription))
         }
     }
 }
@@ -922,6 +927,23 @@ fn site_subscription_json(subscription: &SiteSubscriptionRecord) -> Value {
 mod tests {
     use super::*;
 
+    fn site_subscription(status: &str, reference: &str) -> SiteSubscriptionRecord {
+        SiteSubscriptionRecord {
+            id: Uuid::new_v4(),
+            account_id: Uuid::new_v4(),
+            site_id: "site-1".to_owned(),
+            reference: reference.to_owned(),
+            provider_token: None,
+            status: status.to_owned(),
+            monthly_usd_cents: 1000,
+            monthly_zar_cents: 18_500,
+            provider_status: None,
+            cancel_requested_at: None,
+            created_at: chrono::DateTime::UNIX_EPOCH,
+            updated_at: chrono::DateTime::UNIX_EPOCH,
+        }
+    }
+
     #[test]
     fn paid_credit_amount_conversion_uses_server_integer_units() {
         let amount = 500 * NANO_USD_PER_CENT;
@@ -977,5 +999,28 @@ mod tests {
         let response = site_subscription_json(&subscription);
         assert!(response.get("providerToken").is_none());
         assert!(!format!("{subscription:?}").contains("secret-provider-token"));
+    }
+
+    #[test]
+    fn repeated_subscription_checkout_recovers_the_persisted_reference() {
+        let existing = site_subscription("pending", "site-sub-persisted-reference");
+        let resolved =
+            subscription_for_checkout(CreateSiteSubscriptionOutcome::Existing(existing.clone()))
+                .expect("same idempotency key recovers its existing checkout");
+
+        assert_eq!(resolved.id, existing.id);
+        assert_eq!(resolved.reference, "site-sub-persisted-reference");
+        assert_eq!(resolved.status, "pending");
+    }
+
+    #[test]
+    fn another_subscription_checkout_still_reports_the_current_site_subscription() {
+        let current = site_subscription("pending", "site-sub-other-idempotency-key");
+        let (status, body) =
+            subscription_for_checkout(CreateSiteSubscriptionOutcome::Current(current))
+                .expect_err("different idempotency key must not create a second subscription");
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0["error"], "subscription_pending");
     }
 }
