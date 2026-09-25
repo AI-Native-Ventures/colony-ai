@@ -167,10 +167,10 @@ function SignOutDialog({
       open={isOpen}
     >
       <SettingsAlertDialogContent
-        className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
+        className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-xl dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
         data-testid="signout-dialog"
       >
-        <div className="flex items-center justify-between border-b border-border/70 px-6 pt-5 pb-6">
+        <div className="flex items-center justify-between border-b border-[#eae7eb] px-6 pt-5 pb-6 dark:border-[#3c3544]">
           <AlertDialogHeader className="space-y-0">
             <AlertDialogTitle className="text-lg font-medium tracking-normal">
               Sign out of this device?
@@ -188,11 +188,11 @@ function SignOutDialog({
           </Button>
         </div>
         <div className="space-y-8 px-6 pt-6 pb-[2.5625rem]">
-          <AlertDialogDescription className="text-sm leading-5">
+          <AlertDialogDescription className="text-sm leading-5 text-[#79747f] dark:text-[#a9a1b4]">
             Your remote business and conversations stay available.
           </AlertDialogDescription>
           {localAgents > 0 ? (
-            <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-3.5 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
+            <div className="space-y-1 rounded-md border border-[#eee2c9] bg-[#fcf8ee] px-4 py-3.5 text-xs leading-5 text-[#92713e] dark:border-[#594831] dark:bg-[#3c3428] dark:text-[#d3b879]">
               <p className="font-medium">
                 {localAgents} local{" "}
                 {localAgents === 1 ? "agent is" : "agents are"} running
@@ -207,12 +207,12 @@ function SignOutDialog({
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium">Unsynced work</p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-[#79747f] dark:text-[#a9a1b4]">
                   {details.join(" · ")}
                 </p>
               </div>
               <Button
-                className="shrink-0 text-primary"
+                className="shrink-0 text-[#2655a0] dark:text-[#a9bee8]"
                 data-testid="signout-review-work"
                 disabled={!onOpenDraftRecovery || isPending}
                 onClick={() => {
@@ -239,8 +239,12 @@ function SignOutDialog({
             </div>
           ) : null}
         </div>
-        <AlertDialogFooter className="flex-row border-t border-border/70 px-6 py-5">
-          <AlertDialogCancel disabled={isPending} onClick={onCancel}>
+        <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-6 py-5 dark:border-[#3c3544]">
+          <AlertDialogCancel
+            className="border-[#eae7eb] bg-transparent text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
+            disabled={isPending}
+            onClick={onCancel}
+          >
             Stay signed in
           </AlertDialogCancel>
           <Button
@@ -249,7 +253,7 @@ function SignOutDialog({
             onClick={onSignOut}
             type="button"
             variant="outline"
-            className="border-destructive/25 text-destructive hover:bg-destructive/5"
+            className="border-[#a04f6440] bg-[#a04f6408] text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
           >
             {isPending ? (
               <LoaderCircle

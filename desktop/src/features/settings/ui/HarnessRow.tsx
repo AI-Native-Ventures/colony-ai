@@ -575,10 +575,10 @@ export function HarnessRow({
         open={installError !== null}
       >
         <SettingsAlertDialogContent
-          className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
+          className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-xl dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
           data-testid={`doctor-runtime-install-failure-${runtime.id}`}
         >
-          <div className="flex items-center justify-between border-b border-border/70 px-6 pt-5 pb-[1.4375rem]">
+          <div className="flex items-center justify-between border-b border-[#eae7eb] px-6 pt-5 pb-[1.4375rem] dark:border-[#3c3544]">
             <AlertDialogHeader className="space-y-0">
               <AlertDialogTitle className="text-lg font-medium tracking-normal">
                 Failed
@@ -595,11 +595,11 @@ export function HarnessRow({
             </Button>
           </div>
           <div className="space-y-4 px-6 pt-6 pb-12">
-            <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-4 text-xs leading-5">
+            <div className="space-y-1 rounded-md border border-[#edd8dd] bg-[#fcf2f4] px-4 py-4 text-xs leading-5 text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]">
               <p className="font-semibold">
                 {runtime.label} could not be installed.
               </p>
-              <AlertDialogDescription className="whitespace-pre-line text-2xs text-destructive">
+              <AlertDialogDescription className="whitespace-pre-line text-xs text-[#925369] dark:text-[#dcacb8]">
                 {installError
                   ?.split("\n\nFull log:")[0]
                   .replace(/^Step "[^"]+" failed:\s*/, "")}{" "}
@@ -607,16 +607,20 @@ export function HarnessRow({
               </AlertDialogDescription>
             </div>
             <details className="text-xs">
-              <summary className="cursor-pointer">Show details</summary>
-              <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-muted-foreground">
+              <summary className="cursor-pointer text-[#282532] dark:text-[#e6e1ec]">
+                Show details
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-[#79747f] dark:text-[#a9a1b4]">
                 {installError}
               </pre>
             </details>
           </div>
-          <AlertDialogFooter className="flex-row border-t border-border/70 px-6 py-5">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-6 py-5 dark:border-[#3c3544]">
+            <AlertDialogCancel className="border-[#eae7eb] bg-transparent text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-[#2b59a2] px-3 text-white hover:bg-[#234c8b] dark:bg-[#a6bbe5] dark:text-[#1a2539] dark:hover:bg-[#b5c7eb]"
+              className="bg-[#2655a0] px-3 text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
               data-testid={`doctor-runtime-install-retry-${runtime.id}`}
               onClick={handleInstall}
             >
