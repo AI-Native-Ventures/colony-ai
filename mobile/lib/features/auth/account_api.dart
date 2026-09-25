@@ -56,7 +56,7 @@ class AccountApi {
       body: {
         'email': email,
         'password': password,
-        if (displayName != null) 'display_name': displayName,
+        'display_name': ?displayName,
       },
     );
     _expectStatus(response, const {202});
