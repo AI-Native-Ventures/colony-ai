@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'grid.dart';
 
-const _fontFamily = 'Inter';
+const _fontFamily = 'Manrope';
 
 /// Avatar size for full channel and thread messages.
 const messageAvatarSize = 42.0;
@@ -94,7 +94,7 @@ const contentListBodyTextStyle = TextStyle(
 /// Timestamps in compact content lists.
 const contentListTimestampTextStyle = messageMetadataTextStyle;
 
-/// Filter chip labels use a tighter 15sp Inter treatment.
+/// Filter chip labels use a tighter 15sp Manrope treatment.
 const filterChipTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 15,
