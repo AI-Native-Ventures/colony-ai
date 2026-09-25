@@ -229,10 +229,7 @@ test("restricted repositories keep event work visible and offer access help", as
     "—",
   );
 
-  await page
-    .getByRole("navigation", { name: "Project breadcrumb" })
-    .getByRole("button", { name: "Issues", exact: true })
-    .click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expect(page.getByTestId("project-issue-row").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
