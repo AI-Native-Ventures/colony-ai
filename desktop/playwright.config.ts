@@ -45,6 +45,7 @@ export default defineConfig({
         "**/messaging.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
+        "**/send-feedback-settings.spec.ts",
         "**/message-copy-link.spec.ts",
         "**/custom-emoji.spec.ts",
         "**/profile-custom-emoji-status.spec.ts",

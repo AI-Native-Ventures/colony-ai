@@ -14,9 +14,17 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type: "click" | "hover";
+  type:
+    | "click"
+    | "hover"
+    | "fill"
+    | "selectOption"
+    | "setInputFiles"
+    | "waitFor";
   target?: "reference" | "app" | "both";
   selector: string;
+  value?: string;
+  state?: "attached" | "detached" | "visible" | "hidden";
   timeoutMs?: number;
   options?: Record<string, unknown>;
 };
@@ -43,7 +51,14 @@ type VisualCase = {
 };
 
 type VisualManifest = {
+  matrix?: {
+    viewports: VisualCase["viewport"][];
+    themes: VisualCase["theme"][];
+  };
   defaults?: Partial<VisualCase>;
+  routes?: Array<
+    Partial<VisualCase> & Pick<VisualCase, "id" | "referenceUrl" | "appRoute">
+  >;
   cases?: Array<
     Partial<VisualCase> &
       Pick<
@@ -79,13 +94,33 @@ const manropeFont = await readFile(
   ),
 );
 const defaults = manifest.defaults ?? {};
-const cases = (manifest.cases ?? manifest.entries ?? []).map((entry) => ({
-  ...defaults,
-  ...entry,
-  referencePrefs: entry.referencePrefs ?? defaults.referencePrefs ?? {},
-  appPrefs: entry.appPrefs ?? defaults.appPrefs ?? {},
-  actions: entry.actions ?? defaults.actions ?? [],
-})) as VisualCase[];
+const templates = manifest.routes ?? manifest.cases ?? manifest.entries ?? [];
+const matrix = manifest.matrix;
+const variants = matrix
+  ? matrix.themes.flatMap((theme) =>
+      matrix.viewports.map((viewport) => ({ theme, viewport })),
+    )
+  : [null];
+const cases = templates.flatMap((entry) =>
+  variants.map((variant) => ({
+    ...defaults,
+    ...entry,
+    ...(variant ?? {}),
+    ...(variant
+      ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
+      : {}),
+    referencePrefs: mergeStorageSeeds(
+      defaults.referencePrefs,
+      entry.referencePrefs,
+    ),
+    appPrefs: mergeStorageSeeds(defaults.appPrefs, entry.appPrefs),
+    appMockData: {
+      ...(defaults.appMockData ?? {}),
+      ...(entry.appMockData ?? {}),
+    },
+    actions: entry.actions ?? defaults.actions ?? [],
+  })),
+) as VisualCase[];
 
 test.describe("visual comparison captures", () => {
   test.describe.configure({ mode: "serial" });
@@ -148,6 +183,12 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (
+          entry.theme === "dark" &&
+          new URL(entry.referenceUrl).pathname.includes("/desktop/")
+        ) {
+          await referencePage.getByRole("button", { name: "Dark" }).click();
+        }
         if (entry.referenceCanvas) {
           await fitReferenceCanvas(referencePage, width, height);
         }
@@ -155,7 +196,12 @@ test.describe("visual comparison captures", () => {
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        await installMockBridge(appPage, entry.appMockData);
+        await installMockBridge(appPage, entry.appMockData, {
+          skipCommunitySeed: Object.hasOwn(
+            entry.appPrefs.localStorage ?? {},
+            "buzz-communities",
+          ),
+        });
         await appPage.goto(appUrl, {
           waitUntil: "domcontentloaded",
         });
@@ -281,6 +327,14 @@ async function seedStorage(
     setValues(window.localStorage, storage.localStorage);
     setValues(window.sessionStorage, storage.sessionStorage);
   }, seed);
+}
+
+function mergeStorageSeeds(base: StorageSeed = {}, override: StorageSeed = {}) {
+  return {
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
 }
 
 async function waitForCaptureReady(
@@ -490,6 +544,22 @@ async function performActions(
         await locator.click(options);
       } else if (action.type === "hover") {
         await locator.hover(options);
+      } else if (action.type === "fill") {
+        if (action.value === undefined)
+          throw new Error("A fill visual action needs a value.");
+        await locator.fill(action.value, options);
+      } else if (action.type === "selectOption") {
+        if (action.value === undefined)
+          throw new Error("A selectOption visual action needs a value.");
+        await locator.selectOption(action.value, options);
+      } else if (action.type === "setInputFiles") {
+        const file = createAvatarFixture(action.value ?? "avatar.png");
+        await locator.setInputFiles(file, options);
+      } else if (action.type === "waitFor") {
+        await locator.waitFor({
+          state: action.state ?? "visible",
+          timeout: action.timeoutMs ?? 10_000,
+        });
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }
@@ -498,6 +568,51 @@ async function performActions(
       await runOnPage(referencePage);
     if (target === "app" || target === "both") await runOnPage(appPage);
   }
+}
+
+function createAvatarFixture(name: string) {
+  if (name.endsWith(".txt")) {
+    return {
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from("unsupported avatar file"),
+    };
+  }
+  const width = 128;
+  const height = 128;
+  const pixels = new Uint8Array(width * height * 4);
+  for (let index = 0; index < pixels.length; index += 4) {
+    pixels[index] = 236;
+    pixels[index + 1] = 229;
+    pixels[index + 2] = 237;
+    pixels[index + 3] = 255;
+  }
+  const glyphs = [
+    [0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11110],
+    [0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001],
+  ];
+  glyphs.forEach((glyph, glyphIndex) => {
+    glyph.forEach((row, y) => {
+      for (let x = 0; x < 5; x += 1) {
+        if ((row & (1 << (4 - x))) === 0) continue;
+        for (let py = 0; py < 4; py += 1) {
+          for (let px = 0; px < 4; px += 1) {
+            const pixelX = 26 + glyphIndex * 24 + x * 4 + px;
+            const pixelY = 50 + y * 4 + py;
+            const offset = (pixelY * width + pixelX) * 4;
+            pixels[offset] = 121;
+            pixels[offset + 1] = 102;
+            pixels[offset + 2] = 130;
+          }
+        }
+      }
+    });
+  });
+  return {
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from(UPNG.encode([pixels.buffer], width, height, 0)),
+  };
 }
 
 async function resolveClip(

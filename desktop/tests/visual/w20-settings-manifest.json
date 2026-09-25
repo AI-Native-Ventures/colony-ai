@@ -1,0 +1,981 @@
+{
+  "version": 1,
+  "matrix": {
+    "viewports": ["1728x1117", "1440x900"],
+    "themes": ["light", "dark"]
+  },
+  "defaults": {
+    "referencePrefs": {
+      "localStorage": {
+        "colony-settings-review-v1": {
+          "version": 1,
+          "businesses": {
+            "Lerato Social": {
+              "mode": "system",
+              "style": "default",
+              "color1": "#895AF6",
+              "color2": "#5A9CF6",
+              "accent": "Blue",
+              "glass": false,
+              "opacity": 65,
+              "prominent": true,
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          },
+          "conversations": {
+            "links": "compact",
+            "threads": "split",
+            "size": "large"
+          }
+        }
+      },
+      "sessionStorage": {}
+    },
+    "appPrefs": {
+      "localStorage": {
+        "buzz-communities": [
+          {
+            "id": "lerato-social-business",
+            "name": "Lerato Social",
+            "relayUrl": "ws://127.0.0.1:3000",
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "addedAt": "2026-09-25T00:00:00.000Z"
+          }
+        ],
+        "buzz-active-community-id": "lerato-social-business",
+        "buzz-community-theme.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:ws%3A%2F%2F127.0.0.1%3A3000": {
+          "version": 1,
+          "theme": "buzz",
+          "accent": "#3b82f6",
+          "followSystem": true
+        },
+        "buzz-theme": "buzz",
+        "buzz-follow-system": "true",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "true",
+        "buzz.appearance.fontSize": "default",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz.appearance.linkPreviewStyle": "compact",
+        "buzz.thread-view-mode": "split",
+        "buzz-sidebar-width": "238",
+        "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+          "version": 1,
+          "theme": "buzz",
+          "accent": "#3b82f6",
+          "followSystem": true,
+          "custom": false,
+          "customLight": ["#895AF6", "#5A9CF6"],
+          "customDark": ["#895AF6", "#5A9CF6"],
+          "glassBackground": false,
+          "glassOpacity": 65,
+          "prominentActiveTab": true,
+          "messageSize": "larger",
+          "density": "comfortable",
+          "linkPreview": "compact",
+          "threadLayout": "split"
+        }
+      },
+      "sessionStorage": {
+        "colony.settings.last-inner-section.v1": {
+          "account": "profile",
+          "appearance-group": "appearance",
+          "preferences": "notifications",
+          "business": "business-profile",
+          "agents-group": "agent-defaults",
+          "blocks-templates": "channel-templates",
+          "administration": "moderation",
+          "app-devices": "app",
+          "storage-group": "storage"
+        }
+      },
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "appMockData": {
+      "searchProfiles": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "avatarUrl": null,
+          "nip05Handle": "lerato@example.test",
+          "about": "Workspace owner at Lerato Social"
+        }
+      ]
+    },
+    "appReadySelector": "[data-testid=settings-view]"
+  },
+  "routes": [
+    {
+      "id": "workspace-settings",
+      "referenceInventoryRoute": "settings",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings",
+      "appRoute": "/#/settings?section=business-profile",
+      "routeLabel": "Settings overview"
+    },
+    {
+      "id": "workspace-account",
+      "referenceInventoryRoute": "account",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Account profile settings"
+    },
+    {
+      "id": "workspace-account-accessibility",
+      "referenceInventoryRoute": "account/accessibility",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/accessibility",
+      "appRoute": "/#/settings?section=accessibility",
+      "routeLabel": "Accessibility settings"
+    },
+    {
+      "id": "workspace-account-notifications",
+      "referenceInventoryRoute": "account/notifications",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/notifications",
+      "appRoute": "/#/settings?section=notifications",
+      "routeLabel": "Notifications and sounds"
+    },
+    {
+      "id": "workspace-settings-admin",
+      "referenceInventoryRoute": "settings/admin",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/admin",
+      "appRoute": "/#/settings?section=audit",
+      "routeLabel": "Administration settings"
+    },
+    {
+      "id": "workspace-account-security",
+      "referenceInventoryRoute": "account/security",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/security",
+      "appRoute": "/#/settings?section=security",
+      "routeLabel": "account/security"
+    },
+    {
+      "id": "workspace-account-archive",
+      "referenceInventoryRoute": "account/archive",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/archive",
+      "appRoute": "/#/settings?section=archived-records",
+      "routeLabel": "account/archive"
+    },
+    {
+      "id": "workspace-account-audit",
+      "referenceInventoryRoute": "account/audit",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/audit",
+      "appRoute": "/#/settings?section=audit",
+      "routeLabel": "account/audit"
+    },
+    {
+      "id": "workspace-account-moderation",
+      "referenceInventoryRoute": "account/moderation",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/moderation",
+      "appRoute": "/#/settings?section=moderation",
+      "routeLabel": "account/moderation"
+    },
+    {
+      "id": "workspace-account-recovery",
+      "referenceInventoryRoute": "account/recovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account/recovery",
+      "appRoute": "/#/settings?section=recovery",
+      "routeLabel": "account/recovery"
+    },
+    {
+      "id": "workspace-agent-settings-defaults",
+      "referenceInventoryRoute": "agent-settings/defaults",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent-settings/defaults",
+      "appRoute": "/#/settings?section=agent-defaults",
+      "routeLabel": "agent-settings/defaults"
+    },
+    {
+      "id": "workspace-agent-settings-harnesses",
+      "referenceInventoryRoute": "agent-settings/harnesses",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent-settings/harnesses",
+      "appRoute": "/#/settings?section=harnesses",
+      "routeLabel": "agent-settings/harnesses"
+    },
+    {
+      "id": "workspace-agent-settings-connections",
+      "referenceInventoryRoute": "agent-settings/connections",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent-settings/connections",
+      "appRoute": "/#/settings?section=ai-connections",
+      "routeLabel": "agent-settings/connections"
+    },
+    {
+      "id": "workspace-compute",
+      "referenceInventoryRoute": "compute",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#compute",
+      "appRoute": "/#/settings?section=compute",
+      "routeLabel": "compute"
+    },
+    {
+      "id": "workspace-settings-appearance",
+      "referenceInventoryRoute": "settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/appearance",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "settings/appearance"
+    },
+    {
+      "id": "workspace-settings-connections",
+      "referenceInventoryRoute": "settings/connections",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/connections",
+      "appRoute": "/#/settings?section=connections",
+      "routeLabel": "settings/connections"
+    },
+    {
+      "id": "workspace-settings-defaults",
+      "referenceInventoryRoute": "settings/defaults",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/defaults",
+      "appRoute": "/#/settings?section=work",
+      "routeLabel": "settings/defaults"
+    },
+    {
+      "id": "workspace-settings-device",
+      "referenceInventoryRoute": "settings/device",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/device",
+      "appRoute": "/#/settings?section=app",
+      "routeLabel": "settings/device"
+    },
+    {
+      "id": "workspace-settings-emoji",
+      "referenceInventoryRoute": "settings/emoji",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/emoji",
+      "appRoute": "/#/settings?section=custom-emoji",
+      "routeLabel": "settings/emoji"
+    },
+    {
+      "id": "workspace-settings-experiments",
+      "referenceInventoryRoute": "settings/experiments",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/experiments",
+      "appRoute": "/#/settings?section=experimental",
+      "routeLabel": "settings/experiments"
+    },
+    {
+      "id": "workspace-settings-extensions",
+      "referenceInventoryRoute": "settings/extensions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/extensions",
+      "appRoute": "/#/settings?section=blocks",
+      "routeLabel": "settings/extensions"
+    },
+    {
+      "id": "workspace-settings-mobile",
+      "referenceInventoryRoute": "settings/mobile",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/mobile",
+      "appRoute": "/#/settings?section=mobile",
+      "routeLabel": "settings/mobile"
+    },
+    {
+      "id": "workspace-settings-people",
+      "referenceInventoryRoute": "settings/people",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/people",
+      "appRoute": "/#/settings?section=people",
+      "routeLabel": "settings/people"
+    },
+    {
+      "id": "workspace-settings-shortcuts",
+      "referenceInventoryRoute": "settings/shortcuts",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/shortcuts",
+      "appRoute": "/#/settings?section=shortcuts",
+      "routeLabel": "settings/shortcuts"
+    },
+    {
+      "id": "workspace-settings-storage",
+      "referenceInventoryRoute": "settings/storage",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/storage",
+      "appRoute": "/#/settings?section=storage",
+      "routeLabel": "settings/storage"
+    },
+    {
+      "id": "workspace-settings-templates",
+      "referenceInventoryRoute": "settings/templates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/templates",
+      "appRoute": "/#/settings?section=channel-templates",
+      "routeLabel": "settings/templates"
+    },
+    {
+      "id": "workspace-settings-updates",
+      "referenceInventoryRoute": "settings/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/updates",
+      "appRoute": "/#/settings?section=updates",
+      "routeLabel": "settings/updates"
+    },
+    {
+      "id": "workspace-settings-voice",
+      "referenceInventoryRoute": "settings/voice",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/voice",
+      "appRoute": "/#/settings?section=voice",
+      "routeLabel": "settings/voice"
+    },
+    {
+      "id": "workspace-settings-themes",
+      "referenceInventoryRoute": "settings/themes",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/themes",
+      "appRoute": "/#/settings?section=settings/themes",
+      "routeLabel": "settings/themes"
+    },
+    {
+      "id": "workspace-settings-theme-preview",
+      "referenceInventoryRoute": "settings/theme-preview",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/theme-preview",
+      "appRoute": "/#/settings?section=settings/theme-preview",
+      "routeLabel": "settings/theme-preview"
+    },
+    {
+      "id": "workspace-settings-theme-applied",
+      "referenceInventoryRoute": "settings/theme-applied",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/theme-applied",
+      "appRoute": "/#/settings?section=settings/theme-applied",
+      "routeLabel": "settings/theme-applied"
+    },
+    {
+      "id": "desktop-06-profile",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/profile",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar editor profile",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-06-choose",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/choose",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar editor choice",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        }
+      ],
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      }
+    },
+    {
+      "id": "desktop-06-upload",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/upload",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar image selection",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-camera",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/camera",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar camera preview",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-camera-open]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-crop",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/crop",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar crop preview",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-invalid",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/invalid",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar file rejected",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "unsupported.txt"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-saving",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/saving",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update pending",
+      "referenceCanvas": true,
+      "appMockData": {
+        "profileUpdateDelayMs": 30000
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=avatar-saving]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/failed",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update failed",
+      "referenceCanvas": true,
+      "appMockData": {
+        "profileUpdateErrors": ["Profile update failed."]
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=avatar-save-error]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-saved",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/saved",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update accepted",
+      "referenceCanvas": true,
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-saved]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#06/cancelled",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar edit cancelled",
+      "referenceCanvas": true,
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-cancel]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-07-confirm",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#07/confirm",
+      "appRoute": "/#/settings?section=security",
+      "routeLabel": "Sign out confirmation",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=signout-open-dialog]"
+        }
+      ],
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-catalog",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/catalog",
+      "appRoute": "/#/settings?section=settings/themes",
+      "routeLabel": "Theme catalog",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-custom",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/custom",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Custom appearance",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=appearance-theme-custom]"
+        }
+      ],
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-compact",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/compact",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Compact conversation density",
+      "appPrefs": {
+        "localStorage": {
+          "buzz.appearance.conversationDensity": "compact"
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-spacious",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/spacious",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Spacious conversation density",
+      "appPrefs": {
+        "localStorage": {
+          "buzz.appearance.conversationDensity": "spacious"
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-saved",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/saved",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Appearance saved",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=appearance-mode-system]"
+        }
+      ],
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-09-discovered",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#09/discovered",
+      "appRoute": "/#/settings?section=harnesses",
+      "routeLabel": "Harness lifecycle discovered",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-09-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#09/failed",
+      "appRoute": "/#/settings?section=harnesses",
+      "routeLabel": "Harness lifecycle failed",
+      "appMockData": {
+        "acpRuntimesError": true
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-10-hosts",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#10/hosts",
+      "appRoute": "/#/settings?section=compute",
+      "routeLabel": "Compute hosts",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-10-unavailable",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#10/unavailable",
+      "appRoute": "/#/settings?section=compute",
+      "routeLabel": "Compute host unavailable",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-11-library",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#11/library",
+      "appRoute": "/#/settings?section=voice",
+      "routeLabel": "Voice library",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-12-pick",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#12/pick",
+      "appRoute": "/#/settings?section=channel-templates",
+      "routeLabel": "Channel template picker",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-12-unavailable",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#12/unavailable",
+      "appRoute": "/#/settings?section=channel-templates",
+      "routeLabel": "Channel templates unavailable",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-13-catalog",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#13/catalog",
+      "appRoute": "/#/settings?section=blocks",
+      "routeLabel": "Blocks catalog",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-13-permissions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#13/permissions",
+      "appRoute": "/#/settings?section=blocks",
+      "routeLabel": "Block permissions",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-14-moderation-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#14/moderation-failed",
+      "appRoute": "/#/settings?section=moderation",
+      "routeLabel": "Moderation save failed",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-14-emoji-invalid",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#14/emoji-invalid",
+      "appRoute": "/#/settings?section=custom-emoji",
+      "routeLabel": "Invalid custom emoji",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-14-archive-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#14/archive-failed",
+      "appRoute": "/#/settings?section=archived-records",
+      "routeLabel": "Archive action failed",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-14-draft-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#14/draft-failed",
+      "appRoute": "/#/settings?section=recovery",
+      "routeLabel": "Draft recovery failed",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-15-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#15/form",
+      "appRoute": "/",
+      "routeLabel": "Send feedback form",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ],
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      }
+    },
+    {
+      "id": "desktop-15-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#15/failed",
+      "appRoute": "/",
+      "routeLabel": "Send feedback failed",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-error]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ],
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "appMockData": {
+        "feedbackPublishErrors": ["Relay connection unavailable."]
+      }
+    },
+    {
+      "id": "desktop-15-diagnostics",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#15/diagnostics",
+      "appRoute": "/",
+      "routeLabel": "Send feedback diagnostics disclosure",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-diagnostics-toggle]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-15-sending",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#15/sending",
+      "appRoute": "/",
+      "routeLabel": "Send feedback pending",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "appMockData": {
+        "feedbackPublishDelayMs": 4000
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-sending]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-15-sent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#15/sent",
+      "appRoute": "/",
+      "routeLabel": "Send feedback accepted",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-sent]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    }
+  ]
+}

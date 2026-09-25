@@ -115,14 +115,47 @@ try {
 
 function expandManifest(source) {
   const defaults = source.defaults ?? {};
-  const cases = source.cases ?? source.entries ?? [];
-  return cases.map((entry) => ({
-    ...defaults,
-    ...entry,
-    referencePrefs: entry.referencePrefs ?? defaults.referencePrefs ?? {},
-    appPrefs: entry.appPrefs ?? defaults.appPrefs ?? {},
-    actions: entry.actions ?? defaults.actions ?? [],
-  }));
+  const cases = source.routes ?? source.cases ?? source.entries ?? [];
+  const matrix = source.matrix;
+  const variants = matrix
+    ? matrix.themes.flatMap((theme) =>
+        matrix.viewports.map((viewport) => ({ theme, viewport })),
+      )
+    : [null];
+  return cases.flatMap((entry) =>
+    variants.map((variant) => ({
+      ...defaults,
+      ...entry,
+      ...(variant ?? {}),
+      ...(variant
+        ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
+        : {}),
+      referencePrefs: mergeStorageSeeds(
+        defaults.referencePrefs,
+        entry.referencePrefs,
+      ),
+      appPrefs: mergeStorageSeeds(defaults.appPrefs, entry.appPrefs),
+      appMockData: {
+        ...(defaults.appMockData ?? {}),
+        ...(entry.appMockData ?? {}),
+      },
+      actions: entry.actions ?? defaults.actions ?? [],
+    })),
+  );
+}
+
+function mergeStorageSeeds(base = {}, override = {}) {
+  return {
+    localStorage: {
+      ...(base.localStorage ?? {}),
+      ...(override.localStorage ?? {}),
+    },
+    sessionStorage: {
+      ...(base.sessionStorage ?? {}),
+      ...(override.sessionStorage ?? {}),
+    },
+    cookies: { ...(base.cookies ?? {}), ...(override.cookies ?? {}) },
+  };
 }
 
 function assertManifest(cases) {
