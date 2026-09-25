@@ -54,14 +54,21 @@ const MAX_TRANSCRIPT_BYTES: i64 = 8 * 1024 * 1024;
 const MAX_FACTORY_STORAGE_BYTES: i64 = 128 * 1024 * 1024;
 const MAX_FACTORY_PAYLOAD_BYTES: i64 = 120 * 1024 * 1024;
 const MAX_RETAINED_TERMINAL_RUNS: i64 = 100;
-const MAX_STORED_RUNS: i64 = 200;
+const MAX_STORED_RUNS_PER_SCOPE: i64 = 200;
 const EVENT_STORAGE_OVERHEAD_BYTES: i64 = 160;
 const RUN_STORAGE_OVERHEAD_BYTES: i64 = 512;
+const FINALIZATION_STORAGE_OVERHEAD_BYTES: i64 = 256;
 const MAX_EVENTS_PER_SNAPSHOT: i64 = 1000;
 const EVENT_BUFFER: usize = 256;
 const MAX_ATTACHMENTS: usize = 256;
+const MAX_BUSINESS_MEMBERSHIP_RESPONSE_BYTES: usize = 256 * 1024;
+const MAX_BUSINESS_MEMBERSHIP_COMMUNITIES: usize = 4096;
+// Cached membership is usable for at most 30 seconds. Protected Factory
+// operations refresh expired entries and fail closed if membership is unknown.
 const FACTORY_MEMBERSHIP_TTL: Duration = Duration::from_secs(30);
 const MAX_MEMBERSHIP_CACHE_ENTRIES: usize = 512;
+const MAX_QUEUED_START_ATTEMPTS: u32 = 5;
+const MAX_FINAL_STATUS_ATTEMPTS: u32 = 3;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -449,6 +456,34 @@ impl FactoryRuntime {
         Ok(())
     }
 
+    fn invalidate_scope(&self, scope: &FactoryScope) -> Result<(), String> {
+        let mut active = self
+            .active_scope
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if active.as_ref() == Some(scope) {
+            *active = None;
+        }
+        let controls = self.controls.lock().map_err(|error| error.to_string())?;
+        for control in controls.values().filter(|control| control.scope == *scope) {
+            control.cancel.cancel();
+        }
+        let mut attachments = self.attachments.lock().map_err(|error| error.to_string())?;
+        attachments.retain(|_, attachment| {
+            if attachment.scope == *scope {
+                attachment.cancel.cancel();
+                false
+            } else {
+                true
+            }
+        });
+        drop(attachments);
+        drop(controls);
+        drop(active);
+        self.memberships.invalidate_scope(scope);
+        Ok(())
+    }
+
     fn active_scope(&self) -> Result<FactoryScope, String> {
         self.active_scope
             .lock()
@@ -786,6 +821,58 @@ where
 
 type RunFinish = (FactoryRunStatus, Option<&'static str>);
 
+enum FinalizationResult {
+    Applied(FactoryRun, FactoryRunEvent),
+    Deferred(String),
+    Noop,
+}
+
+enum QueuedStartOutcome<T> {
+    Started(T, tokio::sync::OwnedSemaphorePermit),
+    Cancelled,
+    Blocked(FinalizationResult),
+}
+
+async fn persist_run_finalization(
+    path: &Path,
+    run_id: &str,
+    status: FactoryRunStatus,
+    error: Option<&str>,
+) -> Result<FinalizationResult, String> {
+    if !store_record_finalization(path, run_id, status, error)? {
+        return Ok(FinalizationResult::Noop);
+    }
+    let mut last_error = None;
+    for attempt in 0..MAX_FINAL_STATUS_ATTEMPTS {
+        match store_apply_pending_finalization(path, run_id) {
+            Ok(Some((run, event))) => return Ok(FinalizationResult::Applied(run, event)),
+            Ok(None) => return Ok(FinalizationResult::Noop),
+            Err(failure) => {
+                last_error = Some(failure);
+                if attempt + 1 < MAX_FINAL_STATUS_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(40 * (attempt + 1) as u64)).await;
+                }
+            }
+        }
+    }
+    Ok(FinalizationResult::Deferred(last_error.unwrap_or_else(
+        || "Factory final status remains pending".to_string(),
+    )))
+}
+
+async fn persist_queued_start_failure(
+    path: &Path,
+    run_id: &str,
+) -> Result<FinalizationResult, String> {
+    persist_run_finalization(
+        path,
+        run_id,
+        FactoryRunStatus::Blocked,
+        Some("Factory run could not start because local storage remained unavailable"),
+    )
+    .await
+}
+
 fn finish_status_after_capture(prompt_status: RunFinish, capture: Result<(), String>) -> RunFinish {
     match capture {
         Ok(()) => prompt_status,
@@ -796,30 +883,66 @@ fn finish_status_after_capture(prompt_status: RunFinish, capture: Result<(), Str
     }
 }
 
-async fn retry_queued_start<F, T>(mut persist: F, cancel: CancellationToken) -> Option<T>
+async fn retry_queued_start<F, T>(
+    permits: Arc<Semaphore>,
+    mut persist: F,
+    cancel: CancellationToken,
+) -> Result<Option<(T, tokio::sync::OwnedSemaphorePermit)>, String>
 where
     F: FnMut() -> Result<Option<T>, String>,
 {
-    let mut attempt = 0_u32;
-    loop {
+    for attempt in 0..MAX_QUEUED_START_ATTEMPTS {
         if cancel.is_cancelled() {
-            return None;
+            return Ok(None);
         }
+        let permit = tokio::select! {
+            _ = cancel.cancelled() => return Ok(None),
+            result = Arc::clone(&permits).acquire_owned() => {
+                result.map_err(|error| format!("Factory session permit was closed: {error}"))?
+            },
+        };
         match persist() {
-            Ok(value) => return value,
+            Ok(Some(value)) => return Ok(Some((value, permit))),
+            Ok(None) => return Ok(None),
             Err(error) => {
-                if attempt < 3 || attempt.is_power_of_two() {
+                drop(permit);
+                if attempt == MAX_QUEUED_START_ATTEMPTS - 1 {
+                    return Err(error);
+                }
+                if attempt < 3 {
                     eprintln!("colony-desktop: retrying Factory run start persistence: {error}");
                 }
                 let delay_ms = 40_u64
                     .saturating_mul(2_u64.saturating_pow(attempt.min(7)))
-                    .min(5_000);
-                attempt = attempt.saturating_add(1);
+                    .min(800);
                 tokio::select! {
-                    _ = cancel.cancelled() => return None,
+                    _ = cancel.cancelled() => return Ok(None),
                     _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
                 }
             }
+        }
+    }
+    Err("Factory run could not start after bounded persistence retries".to_string())
+}
+
+async fn retry_queued_start_or_recover<F, T>(
+    permits: Arc<Semaphore>,
+    persist: F,
+    cancel: CancellationToken,
+    path: &Path,
+    run_id: &str,
+) -> Result<QueuedStartOutcome<T>, String>
+where
+    F: FnMut() -> Result<Option<T>, String>,
+{
+    match retry_queued_start(permits, persist, cancel).await {
+        Ok(Some((value, permit))) => Ok(QueuedStartOutcome::Started(value, permit)),
+        Ok(None) => Ok(QueuedStartOutcome::Cancelled),
+        Err(error) => {
+            eprintln!("colony-desktop: Factory run start persistence exhausted retries: {error}");
+            persist_queued_start_failure(path, run_id)
+                .await
+                .map(QueuedStartOutcome::Blocked)
         }
     }
 }
@@ -835,15 +958,8 @@ async fn run_worker(
     controls: Arc<Mutex<HashMap<String, RunControl>>>,
     event_authority: FactoryEventAuthority,
 ) {
-    let permit = tokio::select! {
-        _ = control.cancel.cancelled() => None,
-        result = permits.acquire_owned() => result.ok(),
-    };
-    let Some(_permit) = permit else {
-        FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        return;
-    };
-    let transition = retry_queued_start(
+    let transition = retry_queued_start_or_recover(
+        Arc::clone(&permits),
         || {
             store_transition(
                 &path,
@@ -854,11 +970,30 @@ async fn run_worker(
             )
         },
         control.cancel.clone(),
+        &path,
+        &run.id,
     )
     .await;
-    let Some((_running, event)) = transition else {
-        FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        return;
+    let (_running, event, _permit) = match transition {
+        Ok(QueuedStartOutcome::Started((running, event), permit)) => (running, event, permit),
+        Ok(QueuedStartOutcome::Cancelled) => {
+            FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            return;
+        }
+        Ok(QueuedStartOutcome::Blocked(finalization)) => {
+            let persisted =
+                finish_run_result(&app, &event_authority, Some(&control), Ok(finalization));
+            if persisted {
+                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            }
+            return;
+        }
+        Err(failure) => {
+            eprintln!(
+                "colony-desktop: Factory run start failure could not be journaled: {failure}"
+            );
+            return;
+        }
     };
     publish(&app, &event_authority, Some(&control), &event);
 
@@ -870,7 +1005,7 @@ async fn run_worker(
         match buzz_acp::AcpClient::spawn(&launch.command, &launch.args, &launch.env, false).await {
             Ok(client) => client,
             Err(_) => {
-                finish_run(
+                let persisted = finish_run(
                     &app,
                     &path,
                     &run.id,
@@ -878,8 +1013,11 @@ async fn run_worker(
                     Some(&control),
                     FactoryRunStatus::Error,
                     Some("ACP process could not start"),
-                );
-                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+                )
+                .await;
+                if persisted {
+                    FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+                }
                 return;
             }
         };
@@ -922,7 +1060,7 @@ async fn run_worker(
             drop(observer);
             let _ = event_task.await;
             client.shutdown().await;
-            finish_run(
+            let persisted = finish_run(
                 &app,
                 &path,
                 &run.id,
@@ -930,8 +1068,11 @@ async fn run_worker(
                 Some(&control),
                 FactoryRunStatus::Error,
                 Some("ACP initialization failed"),
-            );
-            FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            )
+            .await;
+            if persisted {
+                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            }
             return;
         }
     };
@@ -982,7 +1123,7 @@ async fn run_worker(
             drop(observer);
             let _ = event_task.await;
             client.shutdown().await;
-            finish_run(
+            let persisted = finish_run(
                 &app,
                 &path,
                 &run.id,
@@ -990,8 +1131,11 @@ async fn run_worker(
                 Some(&control),
                 FactoryRunStatus::Error,
                 Some("ACP session could not be created"),
-            );
-            FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            )
+            .await;
+            if persisted {
+                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+            }
             return;
         }
     };
@@ -1001,7 +1145,7 @@ async fn run_worker(
         drop(observer);
         let _ = event_task.await;
         client.shutdown().await;
-        finish_run(
+        let persisted = finish_run(
             &app,
             &path,
             &run.id,
@@ -1009,8 +1153,11 @@ async fn run_worker(
             Some(&control),
             FactoryRunStatus::Error,
             Some("Factory session checkpoint could not be saved"),
-        );
-        FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+        )
+        .await;
+        if persisted {
+            FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+        }
         return;
     }
     client.set_observer_context(buzz_acp::ObserverContext {
@@ -1082,7 +1229,7 @@ async fn run_worker(
     let capture_result =
         drained.unwrap_or_else(|_| Err("Factory capture task panicked".to_string()));
     let final_status = finish_status_after_capture(status, capture_result);
-    finish_run(
+    let persisted = finish_run(
         &app,
         &path,
         &run.id,
@@ -1090,11 +1237,14 @@ async fn run_worker(
         Some(&control),
         final_status.0,
         final_status.1,
-    );
-    FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+    )
+    .await;
+    if persisted {
+        FactoryRuntime::remove_control_from_handle(&controls, &run.id);
+    }
 }
 
-fn finish_run(
+async fn finish_run(
     app: &AppHandle,
     path: &Path,
     run_id: &str,
@@ -1102,25 +1252,34 @@ fn finish_run(
     control: Option<&RunControl>,
     status: FactoryRunStatus,
     error: Option<&str>,
-) {
-    for attempt in 0..3 {
-        match store_transition(path, run_id, None, status, error) {
-            Ok(Some((_run, event))) => {
-                publish(app, event_authority, control, &event);
-                return;
-            }
-            Ok(None) => return,
-            Err(failure) if attempt < 2 => {
-                eprintln!(
-                    "colony-desktop: retrying Factory run final status persistence: {failure}"
-                );
-                std::thread::sleep(Duration::from_millis(40 * (attempt + 1)));
-            }
-            Err(failure) => {
-                eprintln!(
-                    "colony-desktop: Factory run final status remains recoverable: {failure}"
-                );
-            }
+) -> bool {
+    let finalization = persist_run_finalization(path, run_id, status, error).await;
+    finish_run_result(app, event_authority, control, finalization)
+}
+
+fn finish_run_result(
+    app: &AppHandle,
+    event_authority: &FactoryEventAuthority,
+    control: Option<&RunControl>,
+    finalization: Result<FinalizationResult, String>,
+) -> bool {
+    match finalization {
+        Ok(FinalizationResult::Applied(_run, event)) => {
+            publish(app, event_authority, control, &event);
+            true
+        }
+        Ok(FinalizationResult::Deferred(failure)) => {
+            eprintln!(
+                "colony-desktop: Factory finalization is journaled for same-host recovery: {failure}"
+            );
+            true
+        }
+        Ok(FinalizationResult::Noop) => true,
+        Err(failure) => {
+            eprintln!(
+                "colony-desktop: Factory finalization journal could not be written: {failure}"
+            );
+            false
         }
     }
 }
@@ -1194,15 +1353,15 @@ pub(crate) async fn factory_run_create(
         let control = match runtime.register(&run.id, scope.clone()) {
             Ok(control) => control,
             Err(error) => {
-                finish_run(
-                    &app,
+                store_record_finalization(
                     &path,
                     &run.id,
-                    &event_authority,
-                    None,
                     FactoryRunStatus::Error,
                     Some("Factory run could not be scheduled"),
-                );
+                )
+                .map_err(|failure| {
+                    format!("{error}; final status could not be queued: {failure}")
+                })?;
                 return Err(error);
             }
         };
@@ -1419,6 +1578,26 @@ pub(crate) async fn factory_run_get_draft(
         .to_string();
     let path = app_db_path(&app)?;
     runtime.while_scope_active(&app, &scope, || store_get_draft(&path, &run_id, &scope))
+}
+
+#[tauri::command]
+pub(crate) async fn factory_run_delete(
+    run_id: String,
+    app: AppHandle,
+    state: State<'_, crate::app_state::AppState>,
+    runtime: State<'_, FactoryRuntime>,
+) -> Result<(), String> {
+    let scope = require_factory_scope(&state, &app, &runtime, false).await?;
+    let run_id = Uuid::parse_str(&run_id)
+        .map_err(|_| "invalid Factory run id".to_string())?
+        .to_string();
+    let path = app_db_path(&app)?;
+    ensure_recovered(&path)?;
+    runtime.while_scope_active(&app, &scope, || {
+        store_delete_run_scoped(&path, &run_id, &scope)
+    })?;
+    FactoryRuntime::remove_control_from_handle(&runtime.controls, &run_id);
+    Ok(())
 }
 
 fn now_iso() -> String {

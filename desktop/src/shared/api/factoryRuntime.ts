@@ -188,3 +188,7 @@ export function getFactoryRunDraft(
     runId,
   });
 }
+
+export function deleteFactoryRun(runId: string): Promise<void> {
+  return invokeTauri<void>("factory_run_delete", { runId });
+}

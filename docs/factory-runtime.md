@@ -24,14 +24,18 @@ from transcript events.
 The active scope is installed only by `apply_workspace`, after the native host
 has applied and re-read its own relay URL and signing identity. The host checks
 the selected business community against the active identity's NIP-98
-authenticated `/api/communities/mine?scope=member` response. A requested client
-channel is accepted only after the native host verifies the relay-signed
-kind:39002 membership event using its NIP-42 authenticated relay session. A
-positive or negative client membership result is cached for 30 seconds.
-Workspace binding and every event-stream reattach force a fresh client
-membership query. If client membership is revoked, the current Factory scope is
-cleared and its renderer attachments stop receiving events. Scope changes
-detach renderer subscriptions without cancelling their durable runs.
+authenticated `/api/communities/mine?scope=member` response. Responses are
+limited to 256 KiB and 4096 communities. A requested client channel is accepted
+only after the native host verifies the relay-signed kind:39002 membership
+event using its NIP-42 authenticated relay session. Positive business and
+client membership results are cached for 30 seconds. Each protected Factory
+operation uses a cache entry only inside that freshness window; an expired
+entry is rechecked with the relay, and inability to recheck fails closed.
+Workspace binding and event-stream reattach force fresh membership queries. If
+business or client membership is revoked, the active scope is invalidated, all
+workers and renderer attachments in that exact scope are cancelled, and
+membership cache entries are cleared. Scope changes detach renderer
+subscriptions without cancelling their durable runs.
 
 Every Factory list, snapshot, draft, cancel, create, and reattach operation is
 filtered by the active scope. A run from a different business or client is
@@ -53,9 +57,10 @@ Each create request supplies a stable `operationKey`. The native store binds it
 to a hash of the normalized request in the same transaction as the queued run.
 An identical retry returns the original run without scheduling another ACP
 worker. Reusing a key with different request data is rejected. If the queued to
-running checkpoint temporarily fails, that worker remains attached to the
-queued run and retries with a capped backoff until the checkpoint succeeds or
-the run is cancelled.
+running checkpoint fails, the worker makes at most five attempts with bounded
+backoff and releases its session permit between attempts. Cancellation stops
+the retry. Persistent failure moves the run to a recoverable `blocked` state,
+and does not hold a session permit.
 At most 256 renderer event subscriptions are held at once.
 
 The run statuses are `queued`, `running`, `waiting`, `blocked`, `error`,
@@ -72,7 +77,11 @@ The ACP client does not expose a generic session restore operation. After the
 native host starts with a different host id, queued, running, and waiting runs
 are marked `blocked`, with their saved transcript and drafts preserved. The
 runtime does not claim that the provider process resumed. The user can inspect
-the saved run and start another run to continue.
+the saved run and start another run to continue. Final status changes first
+write a durable local finalization record. If applying a final status fails,
+the run remains visibly blocked with a recovery message; same-scope list and
+snapshot reads retry the recorded transition in the same host, without
+requiring restart.
 
 Transcript capture treats observer lag and database write errors as run errors.
 It attempts to persist a `transcript_capture_error` marker. A failed capture
@@ -84,7 +93,7 @@ be reported as a completed run.
 The typed API is in `desktop/src/shared/api/factoryRuntime.ts`:
 
 - `createFactoryRun` creates a durable run.
-- `listFactoryRuns` returns up to 200 recently updated runs.
+- `listFactoryRuns` returns up to 200 recently updated runs in the active scope.
 - `getFactoryRunSnapshot` reads an event page and indicates whether more pages
   remain through `hasMore`. Pass the last event sequence as `afterSequence` to
   read the next page.
@@ -93,6 +102,8 @@ The typed API is in `desktop/src/shared/api/factoryRuntime.ts`:
   the run. Detach also waits for an in-flight attachment command before
   releasing the native subscription.
 - `cancelFactoryRun` explicitly cancels the run.
+- `deleteFactoryRun` removes a blocked or terminal leaf run in the current
+  scope, including its transcript, draft, and pending finalization record.
 - `setFactoryRunDraft` and `getFactoryRunDraft` store and retrieve the unsent
   draft.
 
@@ -111,12 +122,15 @@ The aggregate Factory store limits run, transcript, and draft payload to
 120 MiB. The SQLite database file is capped at 128 MiB using a page ceiling
 calculated from its page size, leaving room for status and capture-error events
 plus SQLite bookkeeping. WAL checkpointing and a 4 MiB journal size limit keep
-the transient journal bounded. The store
-targets 100 retained terminal runs. When a new terminal run crosses that limit,
+the transient journal bounded. The store targets 100 retained terminal runs per
+scope. When a new terminal run crosses that limit,
 the oldest terminal leaf run and its transcript and draft are removed in the
 same transaction. Active and blocked runs are protected, as are terminal
-parents that still have children. Creation is rejected at 200 total stored runs
-when the retained graph cannot be pruned safely.
+parents that still have children. Creation is rejected at 200 stored runs
+within the same scope when the retained graph cannot be pruned safely. Other
+scopes have independent 200-run capacity. A capped scope can recover by
+deleting its own blocked or terminal leaf runs. Deletion from another scope,
+active runs, and runs with children is rejected.
 These limits are local retention behavior; users who need long-term run history
 must preserve it outside this runtime before retention removes it.
 

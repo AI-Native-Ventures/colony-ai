@@ -20,22 +20,38 @@ impl FactoryScope {
         )
     }
 
+    pub(super) fn business_membership_key(&self) -> FactoryMembershipKey {
+        FactoryMembershipKey {
+            relay_url: self.relay_url.clone(),
+            identity_pubkey: self.identity_pubkey.clone(),
+            subject: FactoryMembershipSubject::BusinessCommunity(
+                self.business_community_id.clone(),
+            ),
+        }
+    }
+
     pub(super) fn membership_key(&self) -> Option<FactoryMembershipKey> {
         self.client_channel_id
             .as_ref()
             .map(|channel_id| FactoryMembershipKey {
                 relay_url: self.relay_url.clone(),
                 identity_pubkey: self.identity_pubkey.clone(),
-                channel_id: channel_id.clone(),
+                subject: FactoryMembershipSubject::ClientChannel(channel_id.clone()),
             })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum FactoryMembershipSubject {
+    BusinessCommunity(String),
+    ClientChannel(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct FactoryMembershipKey {
     relay_url: String,
     identity_pubkey: String,
-    channel_id: String,
+    subject: FactoryMembershipSubject,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,12 +69,15 @@ pub(super) fn response_contains_business_membership(
     response: &FactoryBusinessMembershipResponse,
     identity_pubkey: &str,
     business_community_id: &str,
-) -> bool {
-    response.owner_pubkey.eq_ignore_ascii_case(identity_pubkey)
+) -> Result<bool, String> {
+    if response.communities.len() > MAX_BUSINESS_MEMBERSHIP_COMMUNITIES {
+        return Err("business membership response contains too many communities".to_string());
+    }
+    Ok(response.owner_pubkey.eq_ignore_ascii_case(identity_pubkey)
         && response
             .communities
             .iter()
-            .any(|community| community.id == business_community_id)
+            .any(|community| community.id == business_community_id))
 }
 
 #[derive(Clone)]
@@ -144,14 +163,31 @@ impl MembershipCache {
     }
 
     pub(super) fn has_fresh_membership(&self, scope: &FactoryScope, now: Instant) -> bool {
-        let Some(key) = scope.membership_key() else {
-            return true;
+        let Ok(entries) = self.entries.lock() else {
+            return false;
         };
-        self.entries
-            .lock()
-            .ok()
-            .and_then(|entries| entries.get(&key).copied())
-            .is_some_and(|(expires_at, is_member)| expires_at > now && is_member)
+        let is_fresh_member = |key: &FactoryMembershipKey| {
+            entries
+                .get(key)
+                .is_some_and(|(expires_at, is_member)| *expires_at > now && *is_member)
+        };
+        is_fresh_member(&scope.business_membership_key())
+            && scope.membership_key().as_ref().is_none_or(is_fresh_member)
+    }
+
+    pub(super) fn invalidate_scope(&self, scope: &FactoryScope) {
+        let Ok(mut generations) = self.generations.lock() else {
+            return;
+        };
+        let Ok(mut entries) = self.entries.lock() else {
+            return;
+        };
+        entries.remove(&scope.business_membership_key());
+        generations.remove(&scope.business_membership_key());
+        if let Some(key) = scope.membership_key() {
+            entries.remove(&key);
+            generations.remove(&key);
+        }
     }
 }
 
@@ -246,11 +282,9 @@ pub(super) async fn bind_scope_for_workspace(
         business_community_id,
         client_channel_id,
     };
-    verify_business_community_membership(
-        &state,
-        &scope.identity_pubkey,
-        &scope.business_community_id,
-    )
+    verify_cached_business_membership(&runtime, &scope, true, || async {
+        verify_business_community_membership(&state, &scope).await
+    })
     .await?;
     verify_client_channel_membership(&state, app, &runtime, &scope, keys, true).await?;
     if !native_scope_is_current(app, &scope) {
@@ -264,15 +298,19 @@ pub(super) async fn bind_scope_for_workspace(
 
 async fn verify_business_community_membership(
     state: &crate::app_state::AppState,
-    identity_pubkey: &str,
-    business_community_id: &str,
-) -> Result<(), String> {
-    let response: FactoryBusinessMembershipResponse =
-        crate::relay::get_relay_json(state, "/api/communities/mine?scope=member").await?;
-    if !response_contains_business_membership(&response, identity_pubkey, business_community_id) {
-        return Err("current identity is not a member of the business community".to_string());
-    }
-    Ok(())
+    scope: &FactoryScope,
+) -> Result<bool, String> {
+    let response: FactoryBusinessMembershipResponse = crate::relay::get_relay_json_bounded(
+        state,
+        "/api/communities/mine?scope=member",
+        MAX_BUSINESS_MEMBERSHIP_RESPONSE_BYTES,
+    )
+    .await?;
+    response_contains_business_membership(
+        &response,
+        &scope.identity_pubkey,
+        &scope.business_community_id,
+    )
 }
 
 async fn verify_client_channel_membership(
@@ -352,27 +390,110 @@ where
     };
     let now = Instant::now();
     let is_member = if force_refresh {
-        runtime
-            .memberships
-            .verify_for_bind(key, now, verify)
-            .await?
+        runtime.memberships.verify_for_bind(key, now, verify).await
     } else {
         runtime
             .memberships
             .verify_with(key, false, now, verify)
-            .await?
+            .await
     };
-    if !is_member {
-        let active = runtime
-            .active_scope
-            .lock()
-            .map_err(|error| error.to_string())?;
-        let scope_is_active = active.as_ref() == Some(scope);
-        drop(active);
-        if scope_is_active {
-            runtime.activate_scope(None)?;
+    match is_member {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            runtime.invalidate_scope(scope)?;
+            Err("current identity is not a member of the client channel".to_string())
         }
-        return Err("current identity is not a member of the client channel".to_string());
+        Err(error) => {
+            runtime.invalidate_scope(scope)?;
+            Err(format!(
+                "Factory client membership could not be revalidated: {error}"
+            ))
+        }
+    }
+}
+
+pub(super) async fn verify_cached_business_membership<F, Fut>(
+    runtime: &FactoryRuntime,
+    scope: &FactoryScope,
+    force_refresh: bool,
+    verify: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<bool, String>>,
+{
+    let key = scope.business_membership_key();
+    let now = Instant::now();
+    let membership = if force_refresh {
+        runtime.memberships.verify_for_bind(key, now, verify).await
+    } else {
+        runtime
+            .memberships
+            .verify_with(key, false, now, verify)
+            .await
+    };
+    match membership {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            runtime.invalidate_scope(scope)?;
+            Err("current identity is not a member of the business community".to_string())
+        }
+        Err(error) => {
+            runtime.invalidate_scope(scope)?;
+            Err(format!(
+                "Factory business membership could not be revalidated: {error}"
+            ))
+        }
+    }
+}
+
+pub(super) async fn revalidate_factory_scope_memberships<BF, BFut, CF, CFut>(
+    runtime: &FactoryRuntime,
+    scope: &FactoryScope,
+    force_refresh: bool,
+    verify_business: BF,
+    verify_client: CF,
+) -> Result<(), String>
+where
+    BF: FnOnce() -> BFut,
+    BFut: Future<Output = Result<bool, String>>,
+    CF: FnOnce() -> CFut,
+    CFut: Future<Output = Result<(), String>>,
+{
+    verify_cached_business_membership(runtime, scope, force_refresh, verify_business).await?;
+    if scope.client_channel_id.is_some() {
+        verify_client().await?;
+    }
+    Ok(())
+}
+
+pub(super) async fn authorize_active_factory_scope<BF, BFut, CF, CFut>(
+    runtime: &FactoryRuntime,
+    scope: &FactoryScope,
+    force_refresh: bool,
+    verify_business: BF,
+    verify_client: CF,
+) -> Result<(), String>
+where
+    BF: FnOnce() -> BFut,
+    BFut: Future<Output = Result<bool, String>>,
+    CF: FnOnce() -> CFut,
+    CFut: Future<Output = Result<(), String>>,
+{
+    let active = runtime.active_scope()?;
+    if &active != scope {
+        return Err("Factory workspace scope changed before membership verification".to_string());
+    }
+    revalidate_factory_scope_memberships(
+        runtime,
+        scope,
+        force_refresh,
+        verify_business,
+        verify_client,
+    )
+    .await?;
+    if !runtime.event_authority().is_active(scope) {
+        return Err("Factory workspace scope changed during authorization".to_string());
     }
     Ok(())
 }
@@ -388,25 +509,26 @@ pub(super) async fn require_factory_scope(
         runtime.activate_scope(None)?;
         return Err("Factory workspace scope no longer matches the native identity".to_string());
     }
-    if scope.client_channel_id.is_some() {
-        let keys = state.signing_keys()?;
-        if let Err(error) = verify_client_channel_membership(
-            state,
-            app,
-            runtime,
-            &scope,
-            keys,
-            force_membership_refresh,
-        )
-        .await
-        {
-            if error.contains("not a member") {
-                runtime.activate_scope(None)?;
-            }
-            return Err(error);
-        }
-    }
-    if !runtime.event_authority().is_active(&scope) || !native_scope_is_current(app, &scope) {
+    let keys = state.signing_keys()?;
+    authorize_active_factory_scope(
+        runtime,
+        &scope,
+        force_membership_refresh,
+        || async { verify_business_community_membership(state, &scope).await },
+        || async {
+            verify_client_channel_membership(
+                state,
+                app,
+                runtime,
+                &scope,
+                keys,
+                force_membership_refresh,
+            )
+            .await
+        },
+    )
+    .await?;
+    if !native_scope_is_current(app, &scope) {
         return Err("Factory workspace scope changed during authorization".to_string());
     }
     Ok(scope)

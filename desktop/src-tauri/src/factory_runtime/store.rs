@@ -84,6 +84,12 @@ pub(super) fn open_store(path: &Path) -> Result<Connection, String> {
                 draft TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS factory_run_finalizations (
+                run_id TEXT PRIMARY KEY REFERENCES factory_runs(id) ON DELETE CASCADE,
+                status TEXT NOT NULL CHECK (status IN ('blocked','error','done','cancelled')),
+                error TEXT,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS factory_runtime_meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -166,8 +172,13 @@ pub(super) fn stored_payload_bytes(tx: &Transaction<'_>) -> Result<i64, String> 
             (SELECT COALESCE(SUM(length(CAST(kind AS BLOB)) + length(CAST(payload_json AS BLOB)) + ?1), 0)
              FROM factory_run_events)
             + (SELECT COALESCE(SUM(length(CAST(draft AS BLOB))), 0) FROM factory_run_drafts)
-            + (SELECT COUNT(*) * ?2 FROM factory_runs)",
-        params![EVENT_STORAGE_OVERHEAD_BYTES, RUN_STORAGE_OVERHEAD_BYTES],
+            + (SELECT COUNT(*) * ?2 FROM factory_runs)
+            + (SELECT COUNT(*) * ?3 FROM factory_run_finalizations)",
+        params![
+            EVENT_STORAGE_OVERHEAD_BYTES,
+            RUN_STORAGE_OVERHEAD_BYTES,
+            FINALIZATION_STORAGE_OVERHEAD_BYTES
+        ],
         |row| row.get(0),
     )
     .map_err(|error| error.to_string())
@@ -277,7 +288,9 @@ pub(super) fn read_run(connection: &Connection, run_id: &str) -> Result<FactoryR
     let raw = connection
         .query_row(&sql, [run_id], raw_run_from_row)
         .map_err(|error| error.to_string())?;
-    FactoryRun::try_from(raw)
+    let mut run = FactoryRun::try_from(raw)?;
+    overlay_pending_finalization(connection, &mut run)?;
+    Ok(run)
 }
 
 fn read_run_scoped(
@@ -298,7 +311,9 @@ fn read_run_scoped(
             raw_run_from_row,
         )
         .map_err(|_| "Factory run was not found".to_string())?;
-    FactoryRun::try_from(raw)
+    let mut run = FactoryRun::try_from(raw)?;
+    overlay_pending_finalization(connection, &mut run)?;
+    Ok(run)
 }
 
 pub(super) fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<FactoryRunEvent> {
@@ -564,13 +579,19 @@ pub(super) fn store_create(
         });
     }
     prune_terminal_history(&tx, scope, parent_run_id, MAX_RETAINED_TERMINAL_RUNS)?;
+    let values = scope.db_values();
     let stored_runs: i64 = tx
-        .query_row("SELECT COUNT(*) FROM factory_runs", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM factory_runs
+             WHERE relay_url = ?1 AND identity_pubkey = ?2
+               AND business_community_id = ?3 AND client_channel_id = ?4",
+            params![values.0, values.1, values.2, values.3],
+            |row| row.get(0),
+        )
         .map_err(|error| error.to_string())?;
-    if stored_runs >= MAX_STORED_RUNS {
+    if stored_runs >= MAX_STORED_RUNS_PER_SCOPE {
         return Err(
-            "Factory run history is full; remove archived work before creating another run"
-                .to_string(),
+            "Factory run history is full for this workspace; delete completed or blocked runs before creating another run".to_string(),
         );
     }
     let pending: i64 = tx
@@ -653,7 +674,240 @@ pub(super) fn store_create(
     })
 }
 
+pub(super) fn store_delete_run_scoped(
+    path: &Path,
+    run_id: &str,
+    scope: &FactoryScope,
+) -> Result<(), String> {
+    let mut connection = open_store(path)?;
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let values = scope.db_values();
+    let status: Option<String> = tx
+        .query_row(
+            "SELECT status FROM factory_runs WHERE id = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5",
+            params![run_id, values.0, values.1, values.2, values.3],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(status) = status else {
+        return Err("Factory run was not found".to_string());
+    };
+    let status = FactoryRunStatus::parse(&status)?;
+    if matches!(
+        status,
+        FactoryRunStatus::Queued | FactoryRunStatus::Running | FactoryRunStatus::Waiting
+    ) {
+        return Err("active Factory runs cannot be deleted".to_string());
+    }
+    let has_children: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE parent_run_id = ?1)",
+            [run_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if has_children {
+        return Err("Factory child runs must be deleted before their parent".to_string());
+    }
+    let deleted = tx
+        .execute(
+            "DELETE FROM factory_runs WHERE id = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5",
+            params![run_id, values.0, values.1, values.2, values.3],
+        )
+        .map_err(|error| error.to_string())?;
+    if deleted != 1 {
+        return Err("Factory run was not found".to_string());
+    }
+    tx.commit().map_err(|error| error.to_string())
+}
+
+pub(super) fn store_record_finalization(
+    path: &Path,
+    run_id: &str,
+    status: FactoryRunStatus,
+    error: Option<&str>,
+) -> Result<bool, String> {
+    if !status.is_terminal() && status != FactoryRunStatus::Blocked {
+        return Err("Factory finalization status must be terminal or blocked".to_string());
+    }
+    let mut connection = open_store(path)?;
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|failure| failure.to_string())?;
+    let current: Option<String> = tx
+        .query_row(
+            "SELECT status FROM factory_runs WHERE id = ?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|failure| failure.to_string())?;
+    let Some(current) = current else {
+        return Err("Factory run was not found".to_string());
+    };
+    if FactoryRunStatus::parse(&current)?.is_terminal() {
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(false);
+    }
+    let existing: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_run_finalizations WHERE run_id = ?1)",
+            [run_id],
+            |row| row.get(0),
+        )
+        .map_err(|failure| failure.to_string())?;
+    let added_bytes = if existing {
+        0
+    } else {
+        FINALIZATION_STORAGE_OVERHEAD_BYTES
+    };
+    ensure_storage_capacity(
+        stored_payload_bytes(&tx)?,
+        added_bytes,
+        MAX_FACTORY_STORAGE_BYTES,
+    )?;
+    tx.execute(
+        "INSERT INTO factory_run_finalizations (run_id, status, error, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(run_id) DO UPDATE SET status = excluded.status,
+           error = excluded.error, updated_at = excluded.updated_at",
+        params![run_id, status.as_str(), error, now_iso()],
+    )
+    .map_err(|failure| failure.to_string())?;
+    tx.commit().map_err(|failure| failure.to_string())?;
+    Ok(true)
+}
+
+pub(super) fn store_apply_pending_finalization(
+    path: &Path,
+    run_id: &str,
+) -> Result<Option<(FactoryRun, FactoryRunEvent)>, String> {
+    let mut connection = open_store(path)?;
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|failure| failure.to_string())?;
+    let pending: Option<(String, Option<String>)> = tx
+        .query_row(
+            "SELECT status, error FROM factory_run_finalizations WHERE run_id = ?1",
+            [run_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|failure| failure.to_string())?;
+    let Some((status, error)) = pending else {
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(None);
+    };
+    let next = FactoryRunStatus::parse(&status)?;
+    let current: String = tx
+        .query_row(
+            "SELECT status FROM factory_runs WHERE id = ?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .map_err(|failure| failure.to_string())?;
+    if FactoryRunStatus::parse(&current)?.is_terminal() {
+        tx.execute(
+            "DELETE FROM factory_run_finalizations WHERE run_id = ?1",
+            [run_id],
+        )
+        .map_err(|failure| failure.to_string())?;
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(None);
+    }
+    let updated_at = now_iso();
+    tx.execute(
+        "UPDATE factory_runs SET status = ?2, updated_at = ?3, error = ?4 WHERE id = ?1",
+        params![run_id, next.as_str(), updated_at, error],
+    )
+    .map_err(|failure| failure.to_string())?;
+    let event = insert_event(
+        &tx,
+        run_id,
+        "status",
+        &serde_json::json!({ "status": next, "error": error }),
+        false,
+    )?
+    .ok_or_else(|| "failed to persist Factory final status event".to_string())?;
+    if next.is_terminal() {
+        let scope = transaction_scope(&tx, run_id)?;
+        prune_terminal_history(&tx, &scope, Some(run_id), MAX_RETAINED_TERMINAL_RUNS)?;
+    }
+    tx.execute(
+        "DELETE FROM factory_run_finalizations WHERE run_id = ?1",
+        [run_id],
+    )
+    .map_err(|failure| failure.to_string())?;
+    let run = read_run(&tx, run_id)?;
+    tx.commit().map_err(|failure| failure.to_string())?;
+    Ok(Some((run, event)))
+}
+
+pub(super) fn store_replay_pending_finalizations(
+    path: &Path,
+    scope: &FactoryScope,
+) -> Result<(), String> {
+    let connection = open_store(path)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT f.run_id FROM factory_run_finalizations f
+             JOIN factory_runs r ON r.id = f.run_id
+             WHERE r.relay_url = ?1 AND r.identity_pubkey = ?2
+               AND r.business_community_id = ?3 AND r.client_channel_id = ?4
+             ORDER BY f.updated_at ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let values = scope.db_values();
+    let run_ids = statement
+        .query_map(params![values.0, values.1, values.2, values.3], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+    drop(connection);
+    let mut first_error = None;
+    for run_id in run_ids {
+        if let Err(error) = store_apply_pending_finalization(path, &run_id) {
+            first_error.get_or_insert(error);
+        }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+fn overlay_pending_finalization(
+    connection: &Connection,
+    run: &mut FactoryRun,
+) -> Result<(), String> {
+    let pending: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_run_finalizations WHERE run_id = ?1)",
+            [&run.id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if pending {
+        run.status = FactoryRunStatus::Blocked;
+        run.error = Some("Factory final status is waiting for local storage recovery".to_string());
+    }
+    Ok(())
+}
+
 pub(super) fn store_list(path: &Path, scope: &FactoryScope) -> Result<Vec<FactoryRun>, String> {
+    if let Err(error) = store_replay_pending_finalizations(path, scope) {
+        eprintln!("colony-desktop: Factory finalization retry remains queued: {error}");
+    }
     let connection = open_store(path)?;
     let values = scope.db_values();
     let sql = format!("SELECT {RUN_COLUMNS} FROM factory_runs
@@ -668,11 +922,16 @@ pub(super) fn store_list(path: &Path, scope: &FactoryScope) -> Result<Vec<Factor
             raw_run_from_row,
         )
         .map_err(|error| error.to_string())?;
-    rows.map(|row| {
-        let raw = row.map_err(|error| error.to_string())?;
-        FactoryRun::try_from(raw)
-    })
-    .collect()
+    let mut runs = rows
+        .map(|row| {
+            let raw = row.map_err(|error| error.to_string())?;
+            FactoryRun::try_from(raw)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for run in &mut runs {
+        overlay_pending_finalization(&connection, run)?;
+    }
+    Ok(runs)
 }
 
 pub(super) fn store_snapshot(
@@ -681,6 +940,9 @@ pub(super) fn store_snapshot(
     scope: &FactoryScope,
     after_sequence: i64,
 ) -> Result<FactoryRunSnapshot, String> {
+    if let Err(error) = store_replay_pending_finalizations(path, scope) {
+        eprintln!("colony-desktop: Factory finalization retry remains queued: {error}");
+    }
     let connection = open_store(path)?;
     let run = read_run_scoped(&connection, run_id, scope)?;
     let values = scope.db_values();

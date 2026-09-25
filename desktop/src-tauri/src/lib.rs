@@ -554,6 +554,7 @@ pub fn run() {
             factory_runtime::factory_run_cancel,
             factory_runtime::factory_run_set_draft,
             factory_runtime::factory_run_get_draft,
+            factory_runtime::factory_run_delete,
             take_pending_community_deep_link,
             acknowledge_pending_community_deep_link,
             take_pending_navigation_deep_link,
