@@ -50,7 +50,7 @@ type AuxiliaryPanelHeaderTitleBlockProps = {
   subtitleTitle?: string;
   title: React.ReactNode;
 };
-type AuxiliaryPanelTitleProps = Omit<React.ComponentProps<"h2">, "className">;
+type AuxiliaryPanelTitleProps = React.ComponentProps<"h2">;
 type AuxiliaryPanelTitleContentProps = React.ComponentProps<"h2">;
 type AuxiliaryPanelSurface = "default" | "soft" | "transparent";
 

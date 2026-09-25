@@ -771,11 +771,11 @@ test("latest files commit opens its detail without a divider", async ({
   await repositoryEntryRow.hover();
   await expect(repositoryEntryCells.first()).toHaveCSS(
     "border-top-left-radius",
-    "8px",
+    "10px",
   );
   await expect(repositoryEntryCells.last()).toHaveCSS(
     "border-top-right-radius",
-    "8px",
+    "10px",
   );
   await latestCommit.click();
   await expect(page.getByTestId("project-commit-detail")).toBeVisible();

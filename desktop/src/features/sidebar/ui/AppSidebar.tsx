@@ -93,6 +93,7 @@ export function AppSidebar({
   projectsOverviewActive,
   relayConnectionCard,
   selfPresenceStatus,
+  showSidebarCollapseButton,
   errorMessage,
   selectedChannelId,
   selectedView,
@@ -117,8 +118,8 @@ export function AppSidebar({
   onRemoveCommunity,
   onCreateAgent,
   onSelectAgents,
+  onSelectToday,
   onSelectProjects,
-  onSelectPulse,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -505,7 +506,12 @@ export function AppSidebar({
   return (
     <Sidebar
       className="!z-[100] !border-r-0"
-      collapsible="offcanvas"
+      collapsible="icon"
+      data-colony-workspace-route={
+        selectedView === "today" || selectedView === "channel"
+          ? "true"
+          : undefined
+      }
       data-testid="app-sidebar"
       onClick={(event) => {
         if (isSidebarBackgroundTarget(event.target)) {
@@ -522,6 +528,7 @@ export function AppSidebar({
         data-testid="app-sidebar-scroll-anchor"
       >
         <AppSidebarPinnedHeader
+          activeCommunityName={activeCommunity?.name ?? ""}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
@@ -535,6 +542,7 @@ export function AppSidebar({
           onSelectChannel={onSelectChannel}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
+          showSidebarCollapseButton={showSidebarCollapseButton}
           scopeSearchFocusRequest={searchFocusRequests[1]}
           suggestionChannels={channels}
         />
@@ -567,10 +575,10 @@ export function AppSidebar({
             >
               <AppSidebarPrimaryMenu
                 homeBadgeCount={homeBadgeCount}
+                onSelectToday={onSelectToday}
                 onSelectAgents={onSelectAgents}
                 onSelectHome={onSelectHome}
                 onSelectProjects={onSelectProjects}
-                onSelectPulse={onSelectPulse}
                 onSelectWorkflows={onSelectWorkflows}
                 projectsOverviewActive={projectsOverviewActive}
                 selectedView={selectedView}

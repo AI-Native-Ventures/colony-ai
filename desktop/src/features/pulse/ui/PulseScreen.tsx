@@ -23,7 +23,11 @@ const PULSE_PANEL_SEARCH_KEYS = [
   "profileView",
 ] as const;
 
-export function PulseScreen() {
+type PulseScreenProps = {
+  layout?: "legacy" | "today-updates";
+};
+
+export function PulseScreen({ layout = "legacy" }: PulseScreenProps) {
   const identityQuery = useIdentityQuery();
   const { applyPatch, values } = useHistorySearchState(PULSE_PANEL_SEARCH_KEYS);
   const profilePanelPubkey = values.profile;
@@ -64,7 +68,10 @@ export function PulseScreen() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <PulseView currentPubkey={identityQuery.data?.pubkey} />
+            <PulseView
+              currentPubkey={identityQuery.data?.pubkey}
+              layout={layout}
+            />
           </div>
           {profilePanelPubkey ? (
             <UserProfilePanel

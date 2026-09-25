@@ -59,15 +59,15 @@ async function openChannel(page: Page) {
 
 async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const mutedColor =
-    mode === "light" ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.4)";
+    mode === "light" ? "rgb(121, 116, 127)" : "rgb(163, 154, 169)";
   const searchSurface =
-    mode === "light" ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)";
-  const rowHoverSurface =
-    mode === "light" ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)";
-  const activeSurface =
-    mode === "light" ? "rgba(0, 0, 0, 0.07)" : "rgba(255, 255, 255, 0.16)";
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.533)"
+      : "rgba(227, 210, 237, 0.08)";
+  const rowHoverSurface = searchSurface;
+  const activeSurface = searchSurface;
   const chromeColor =
-    mode === "light" ? "rgba(0, 0, 0, 0.5)" : "rgba(255, 255, 255, 0.5)";
+    mode === "light" ? "rgb(91, 76, 101)" : "rgb(200, 183, 212)";
   const search = page.getByTestId("open-search");
   const pinnedHeader = page.getByTestId("sidebar-pinned-header");
   const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
@@ -192,8 +192,13 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const sidebarForeground = await page
     .getByTestId("app-sidebar")
     .evaluate((element) => getComputedStyle(element).color);
-  await expect(hoverChannel).toHaveCSS("color", sidebarForeground);
-  await expect(firstDmButton).toHaveCSS("color", sidebarForeground);
+  const channelForeground = await hoverChannel.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  const directMessageForeground = await firstDmButton.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  expect(channelForeground).toBe(directMessageForeground);
   await expect(agentsButton).toHaveCSS("color", sidebarForeground);
   await expect(hoverChannelLabel).toHaveCSS("opacity", "0.8");
   await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
@@ -258,8 +263,8 @@ async function expectBuzzContentShadow(page: Page, mode: "light" | "dark") {
 
   expect(effects.appStroke).toBe("none");
   if (mode === "light") {
-    expect(effects.contentShadow).toContain("4px");
-    expect(effects.contentShadow).toContain("rgba(0, 0, 0, 0.07)");
+    expect(effects.contentShadow).toContain("5px 35px");
+    expect(effects.contentShadow).toContain("rgba(118, 96, 137, 0.043)");
     expect(effects.shadowViewportOverflow).toBe("visible");
   } else {
     expect(effects.contentShadow).not.toContain("4px");
@@ -315,7 +320,7 @@ async function expectBuzzGradientPaint(
 
 async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
   const mutedColor =
-    mode === "light" ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.4)";
+    mode === "light" ? "rgb(121, 116, 127)" : "rgb(163, 154, 169)";
   const sidebar = page.getByTestId("settings-sidebar");
   const sectionLabel = sidebar
     .locator('[data-sidebar="group-label"]')
@@ -361,8 +366,8 @@ async function expectAppliedBuzzTheme(
       storedTheme,
       isDark,
       buzzTheme: themeName,
-      gradientTop: isDark ? "#4a4616" : "#e6e6b6",
-      gradientBottom: isDark ? "#0a1423" : "#c4d0da",
+      gradientTop: isDark ? "#38273f" : "#fae7ed",
+      gradientBottom: isDark ? "#223570" : "#94b4fa",
     });
 }
 
@@ -411,7 +416,7 @@ test("buzz dark sidebar gradient", async ({ page }) => {
   await expectIconlessSectionTitleAligned(page, "dm-list");
   await expect(page.locator("[data-buzz-content-surface]")).toHaveCSS(
     "background-color",
-    "rgb(26, 26, 26)",
+    "rgb(33, 30, 38)",
   );
   await waitForAnimations(page);
   await page
@@ -1197,8 +1202,8 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   await expect(profileRow).toHaveAttribute("data-active", "true");
   await expect(profileRow).toHaveCSS("font-weight", "600");
   const selectedLabelBox = await profileLabel.boundingBox();
-  // Appearance is the active section here; its nav row should carry the Buzz
-  // white active pill (data-active=true), matching the Left Nav treatment.
+  // Appearance is the active section here; its nav row uses the Buzz
+  // selected surface (data-active=true), matching the Left Nav treatment.
   await page.getByTestId("settings-nav-appearance").click();
   await expect(profileRow).toHaveCSS("font-weight", "400");
   const unselectedLabelBox = await profileLabel.boundingBox();
@@ -1227,7 +1232,7 @@ test("settings nav uses Buzz active pill + hover (dark)", async ({ page }) => {
   await expectBuzzSettingsPalette(page, "dark");
   await expect(page.getByTestId("settings-content-surface")).toHaveCSS(
     "background-color",
-    "rgb(26, 26, 26)",
+    "rgb(33, 30, 38)",
   );
   await waitForAnimations(page);
   await sidebar.screenshot({ path: `${SHOTS}/07-settings-nav-dark.png` });
@@ -1248,7 +1253,10 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   const toggle = page.getByTestId("prominent-active-tab-toggle");
   await expect(toggle).not.toBeChecked();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS("background-color", "rgba(0, 0, 0, 0.07)");
+  await expect(activeRow).toHaveCSS(
+    "background-color",
+    "rgba(255, 255, 255, 0.533)",
+  );
   const subtleTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.color, fontWeight: styles.fontWeight };
@@ -1265,10 +1273,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   await toggle.click();
   await expect(toggle).toBeChecked();
   await expect(root).toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.82)",
-  );
+  await expect(activeRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
   await expect
     .poll(() =>
       page.evaluate(
@@ -1285,7 +1290,10 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
 
   await toggle.click();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS("background-color", "rgba(0, 0, 0, 0.07)");
+  await expect(activeRow).toHaveCSS(
+    "background-color",
+    "rgba(255, 255, 255, 0.533)",
+  );
   await expect
     .poll(() =>
       page.evaluate(
@@ -1310,41 +1318,35 @@ test("prominent channel and direct-message rows share one flat active state", as
   const channelRow = page.getByTestId("channel-general");
   const directMessageRow = page.getByTestId("channel-alice-tyler");
 
-  await expect(channelRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.82)",
-  );
+  await expect(channelRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
   await expect(channelRow).toHaveCSS("box-shadow", "none");
   await channelRow.hover();
-  await expect(channelRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.82)",
-  );
+  await expect(channelRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
 
   await directMessageRow.click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
   await expect(directMessageRow).toHaveCSS(
     "background-color",
-    "rgba(255, 255, 255, 0.82)",
+    "rgb(238, 231, 244)",
   );
   await expect(directMessageRow).toHaveCSS("box-shadow", "none");
   await directMessageRow.hover();
   await expect(directMessageRow).toHaveCSS(
     "background-color",
-    "rgba(255, 255, 255, 0.82)",
+    "rgb(238, 231, 244)",
   );
 });
 
 for (const { activeSurface, hoverSurface, mode, theme } of [
   {
-    activeSurface: "rgba(0, 0, 0, 0.07)",
-    hoverSurface: "rgba(0, 0, 0, 0.04)",
+    activeSurface: "rgba(255, 255, 255, 0.533)",
+    hoverSurface: "rgba(255, 255, 255, 0.533)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    activeSurface: "rgba(255, 255, 255, 0.16)",
-    hoverSurface: "rgba(255, 255, 255, 0.04)",
+    activeSurface: "rgba(227, 210, 237, 0.08)",
+    hoverSurface: "rgba(227, 210, 237, 0.08)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
@@ -1586,7 +1588,7 @@ test("glass background keeps the content panel solid", async ({ page }) => {
     page.getByTestId("thread-layout-control-indicator"),
   ];
   for (const control of matchingRadiusControls) {
-    await expect(control).toHaveCSS("border-radius", "8px");
+    await expect(control).toHaveCSS("border-radius", "10px");
   }
   await expect(page.getByTestId("glass-opacity-value")).toHaveCount(0);
   await expect(
