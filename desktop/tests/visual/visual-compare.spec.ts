@@ -237,6 +237,28 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        if (entry.referenceInventoryRoute === "today/updates") {
+          const contactList = await appPage.evaluate(async () => {
+            const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+            if (!invoke) throw new Error("The visual mock bridge is missing.");
+            const identity = (await invoke("get_identity")) as {
+              pubkey: string;
+            };
+            const result = (await invoke("get_contact_list", {
+              pubkey: identity.pubkey,
+            })) as { tags: string[][] };
+            return { pubkey: identity.pubkey, tags: result.tags };
+          });
+          expect(contactList).toEqual({
+            pubkey: r17Fixture.identity.pubkey,
+            tags: r17Fixture.followedPubkeys?.map((pubkey) => ["p", pubkey]),
+          });
+          const followButtons = appPage.locator(".colony-update-follow");
+          await expect(followButtons).toHaveCount(2);
+          await expect
+            .poll(() => followButtons.allTextContents())
+            .toEqual(["Following", "Following"]);
+        }
         if (entry.referenceInventoryRoute === "channel/sales") {
           const previewMessage = appPage.locator(
             '[data-message-id="r17-sales-aya"]',
