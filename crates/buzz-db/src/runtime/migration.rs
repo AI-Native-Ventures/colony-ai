@@ -1691,8 +1691,8 @@ mod postgres_tests {
     /// schema.sql with an identical normalized definition; every operator-
     /// global registry row 0029 inserts must be inserted by schema.sql;
     /// write-fence attachment targets from migration 0029 onward must exist
-    /// in the desired-state schema; and every column 0029 adds to `communities`
-    /// must exist in the desired-state
+    /// across the desired-state schema and its reconciliation; and every
+    /// column 0029 adds to `communities` must exist in the desired-state
     /// `communities` table. A desired-state bootstrap that passes this test
     /// cannot silently omit part of the deletion surface the way the
     /// pre-parity schema.sql omitted `community_deletion_manifest_keys` (and
@@ -1868,16 +1868,18 @@ mod postgres_tests {
         }
         expected_fences.remove("product_feedback");
         expected_fences.remove("rate_limit_violations");
-        assert_eq!(
-            expected_fences, schema.fence_attachments,
-            "write-fence attachment targets across migrations differ from the desired-state schema after recovery policy"
-        );
-
         let reconciliation_sql = std::fs::read_to_string(
             workspace_root.join("scripts/reconcile-schema-after-pgschema.sql"),
         )
         .expect("read schema reconciliation script");
         let reconciliation = surface(&reconciliation_sql);
+        let mut configured_fences = schema.fence_attachments.clone();
+        configured_fences.extend(reconciliation.fence_attachments.iter().cloned());
+        assert_eq!(
+            expected_fences, configured_fences,
+            "write-fence attachment targets across migrations differ from the desired-state schema and its reconciliation after recovery policy"
+        );
+
         assert!(reconciliation
             .fence_attachments
             .contains("business_proposal_conversion_claims"));
@@ -2808,6 +2810,15 @@ mod postgres_tests {
             present.is_empty(),
             "all NIP-FI tables must be absent after migration 0044: {present:?}"
         );
+
+        let latest_migration = MIGRATOR
+            .iter()
+            .last()
+            .map(|migration| migration.version)
+            .expect("embedded migrations are present");
+        run_migrations_through(&pool, latest_migration)
+            .await
+            .expect("remaining migrations must apply after migration 0044");
 
         // The deletion catalog must validate with ledger relations gone.
         crate::deletion::DeletionStore::new(pool.clone())

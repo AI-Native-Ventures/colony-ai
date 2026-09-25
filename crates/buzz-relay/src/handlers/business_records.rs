@@ -32,8 +32,30 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 type PartyValidationTestHook = ([u8; 32], Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
 
 #[cfg(test)]
+type ExpectedHeadLockTestHook = (
+    [u8; 32],
+    Arc<tokio::sync::Notify>,
+    Arc<tokio::sync::Notify>,
+    Arc<tokio::sync::Notify>,
+    Arc<tokio::sync::Notify>,
+);
+
+#[cfg(test)]
+type SecondaryChannelReadTestHook = (Uuid, Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(test)]
 static PARTY_VALIDATION_TEST_HOOK: std::sync::OnceLock<
     std::sync::Mutex<Option<PartyValidationTestHook>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+static EXPECTED_HEAD_LOCK_TEST_HOOK: std::sync::OnceLock<
+    std::sync::Mutex<Option<ExpectedHeadLockTestHook>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+static SECONDARY_CHANNEL_READ_TEST_HOOK: std::sync::OnceLock<
+    std::sync::Mutex<Option<SecondaryChannelReadTestHook>>,
 > = std::sync::OnceLock::new();
 
 struct HeadWrite {
@@ -95,14 +117,7 @@ pub async fn handle(
     validate_business_command_scope(*tenant.community().as_uuid(), channel_id, &d_tag, &command)
         .map_err(|error| invalid(format!("business command scope: {error}")))?;
 
-    if auth
-        .channel_ids()
-        .is_some_and(|channel_ids| !channel_ids.contains(&channel_id))
-    {
-        return Err(IngestError::AuthFailed(
-            "restricted: token is not scoped to this channel".into(),
-        ));
-    }
+    require_token_channel_scope(&auth, channel_id)?;
 
     let _channel = get_private_stream_channel(state, tenant.community(), channel_id).await?;
     let actor = auth.pubkey().to_bytes().to_vec();
@@ -249,6 +264,7 @@ pub async fn handle(
             validate_client_action(channel_id, &action)?;
             let business_channel_id = community_business_channel
                 .ok_or_else(|| forbidden("party link is not authorized"))?;
+            require_token_channel_scope(&auth, business_channel_id)?;
             if state
                 .db
                 .get_member_role(tenant.community(), business_channel_id, &actor)
@@ -260,6 +276,8 @@ pub async fn handle(
             }
             let party_d =
                 business_d_tag(*tenant.community().as_uuid(), "party", action.head.party_id);
+            #[cfg(test)]
+            before_secondary_channel_read_for_test(business_channel_id);
             let party_event = current_head_in_channel::<PartyHead>(
                 state,
                 tenant.community(),
@@ -521,6 +539,7 @@ pub async fn handle(
         }
         BusinessCommand::ProposalAcceptance(acceptance) => {
             require_acceptor_channel_role(&role)?;
+            require_token_channel_scope(&auth, acceptance.client_id)?;
             if let Some(replay) = existing_proposal_conversion_replay(
                 tenant,
                 state,
@@ -618,6 +637,10 @@ pub async fn handle(
             {
                 return Err(forbidden("actor is not an approver for this work item"));
             }
+            if let Some(replay) = replay_existing_command(state, tenant, &event, channel_id).await?
+            {
+                return Ok(replay);
+            }
             let current = head
                 .deliverables
                 .iter()
@@ -652,6 +675,19 @@ pub async fn handle(
                 event_id: head_event.event.id.to_bytes().to_vec(),
             });
         }
+    }
+
+    for head in &heads {
+        require_token_channel_scope(&auth, head.channel_id)?;
+    }
+    for (_, emitted_channel_id) in &appended {
+        require_token_channel_scope(&auth, *emitted_channel_id)?;
+    }
+    if let Some(client_channel) = client_channel_to_create.as_ref() {
+        require_token_channel_scope(&auth, client_channel.channel_id)?;
+    }
+    if let Some(client_channel_id) = client_channel_to_sync {
+        require_token_channel_scope(&auth, client_channel_id)?;
     }
 
     let result = persist(
@@ -701,6 +737,18 @@ async fn replay_existing_command(
     }))
 }
 
+fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<(), IngestError> {
+    if auth
+        .channel_ids()
+        .is_some_and(|channel_ids| !channel_ids.contains(&channel_id))
+    {
+        return Err(IngestError::AuthFailed(
+            "restricted: token is not scoped to this channel".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 fn install_party_validation_test_hook(
     event_id: [u8; 32],
@@ -728,8 +776,130 @@ async fn after_party_validation_for_test(event_id: [u8; 32]) {
     }
 }
 
+#[cfg(test)]
+fn install_expected_head_lock_test_hook(
+    paused_event_id: [u8; 32],
+    paused: Arc<tokio::sync::Notify>,
+    resume: Arc<tokio::sync::Notify>,
+    other_lock_attempt: Arc<tokio::sync::Notify>,
+    other_first_lock: Arc<tokio::sync::Notify>,
+) {
+    let slot = EXPECTED_HEAD_LOCK_TEST_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some((
+            paused_event_id,
+            paused,
+            resume,
+            other_lock_attempt,
+            other_first_lock,
+        ));
+    }
+}
+
+#[cfg(test)]
+async fn before_expected_head_lock_for_test(event_id: [u8; 32]) {
+    let hook = EXPECTED_HEAD_LOCK_TEST_HOOK.get().and_then(|slot| {
+        let slot = slot.lock().ok()?;
+        slot.as_ref()
+            .map(|(paused_id, _, _, attempt, _)| (*paused_id, attempt.clone()))
+    });
+    if let Some((paused_id, other_lock_attempt)) = hook {
+        if event_id != paused_id {
+            other_lock_attempt.notify_one();
+        }
+    }
+}
+
+#[cfg(test)]
+async fn after_first_expected_head_lock_for_test(event_id: [u8; 32]) {
+    let hook = EXPECTED_HEAD_LOCK_TEST_HOOK.get().and_then(|slot| {
+        let slot = slot.lock().ok()?;
+        slot.as_ref().map(|(paused_id, paused, resume, _, other)| {
+            (*paused_id, paused.clone(), resume.clone(), other.clone())
+        })
+    });
+    if let Some((paused_id, paused, resume, other_first_lock)) = hook {
+        if event_id == paused_id {
+            paused.notify_one();
+            resume.notified().await;
+        } else {
+            other_first_lock.notify_one();
+        }
+    }
+}
+
 #[cfg(not(test))]
 async fn after_party_validation_for_test(_: [u8; 32]) {}
+
+#[cfg(not(test))]
+async fn after_first_expected_head_lock_for_test(_: [u8; 32]) {}
+
+#[cfg(not(test))]
+async fn before_expected_head_lock_for_test(_: [u8; 32]) {}
+
+#[cfg(test)]
+struct ExpectedHeadLockTestHookGuard {
+    resume: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl Drop for ExpectedHeadLockTestHookGuard {
+    fn drop(&mut self) {
+        self.resume.notify_one();
+        if let Some(slot) = EXPECTED_HEAD_LOCK_TEST_HOOK.get() {
+            if let Ok(mut slot) = slot.lock() {
+                *slot = None;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+struct SecondaryChannelReadTestHookGuard {
+    observed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[cfg(test)]
+impl SecondaryChannelReadTestHookGuard {
+    fn was_observed(&self) -> bool {
+        self.observed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+impl Drop for SecondaryChannelReadTestHookGuard {
+    fn drop(&mut self) {
+        if let Some(slot) = SECONDARY_CHANNEL_READ_TEST_HOOK.get() {
+            if let Ok(mut slot) = slot.lock() {
+                *slot = None;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+fn install_secondary_channel_read_test_hook(channel_id: Uuid) -> SecondaryChannelReadTestHookGuard {
+    let observed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let slot = SECONDARY_CHANNEL_READ_TEST_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some((channel_id, Arc::clone(&observed)));
+    }
+    SecondaryChannelReadTestHookGuard { observed }
+}
+
+#[cfg(test)]
+fn before_secondary_channel_read_for_test(channel_id: Uuid) {
+    let hook = SECONDARY_CHANNEL_READ_TEST_HOOK.get().and_then(|slot| {
+        let slot = slot.lock().ok()?;
+        slot.as_ref()
+            .map(|(target, observed)| (*target, Arc::clone(observed)))
+    });
+    if let Some((target, observed)) = hook {
+        if target == channel_id {
+            observed.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
 
 struct AcceptancePlan {
     heads: Vec<HeadWrite>,
@@ -887,6 +1057,8 @@ async fn prepare_proposal_acceptance(
         event_id: party_stored.event.id.to_bytes().to_vec(),
     };
 
+    #[cfg(test)]
+    before_secondary_channel_read_for_test(acceptance.client_id);
     let client_channel_to_create = match state
         .db
         .get_channel_for_event_write(tenant.community(), acceptance.client_id)
@@ -1081,7 +1253,7 @@ async fn persist(
         channel_id,
         heads,
         appended,
-        expected_heads,
+        mut expected_heads,
         conversion_claim,
         client_channel_to_create,
         business_channel_to_register,
@@ -1114,7 +1286,13 @@ async fn persist(
         }
     }
 
-    for expected in expected_heads {
+    expected_heads.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then_with(|| left.d_tag.cmp(&right.d_tag))
+    });
+    for (index, expected) in expected_heads.into_iter().enumerate() {
+        before_expected_head_lock_for_test(command.id.to_bytes()).await;
         let actual = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
             &mut tx,
             tenant.community(),
@@ -1129,6 +1307,9 @@ async fn persist(
             return Err(conflict(
                 "referenced business record changed before the command committed",
             ));
+        }
+        if index == 0 {
+            after_first_expected_head_lock_for_test(command.id.to_bytes()).await;
         }
     }
 
@@ -1288,6 +1469,7 @@ async fn ensure_client_group_discovery(
     auth: &IngestAuth,
     client_channel_id: Uuid,
 ) -> Result<(), IngestError> {
+    require_token_channel_scope(auth, client_channel_id)?;
     let channel = get_private_stream_channel(state, tenant.community(), client_channel_id).await?;
     let actor = auth.pubkey().to_bytes();
     let role = state
@@ -2000,6 +2182,15 @@ mod postgres_tests {
         }
     }
 
+    fn scoped_nip42_auth(keys: &Keys, channel_ids: Vec<Uuid>) -> IngestAuth {
+        IngestAuth::Nip42 {
+            pubkey: keys.public_key(),
+            scopes: vec![buzz_auth::Scope::MessagesWrite],
+            channel_ids: Some(channel_ids),
+            conn_id: Uuid::new_v4(),
+        }
+    }
+
     fn signed_command<T: Serialize>(
         keys: &Keys,
         kind: u32,
@@ -2402,6 +2593,211 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires disposable Postgres and Redis"]
+    async fn nip42_scoped_client_link_rejects_out_of_scope_party_read_without_writes() {
+        let fixture = fixture().await;
+        let actor = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &actor).await;
+        let party_id = Uuid::new_v4();
+        create_party(&fixture, &actor, business_channel_id, party_id).await;
+        let client_channel_id = private_stream(&fixture, "scoped-client-link", &actor).await;
+        let actor_bytes = actor.public_key().to_bytes().to_vec();
+
+        for channel_id in [business_channel_id, client_channel_id] {
+            assert!(fixture
+                .state
+                .db
+                .get_member_role(fixture.tenant.community(), channel_id, &actor_bytes)
+                .await
+                .expect("load actor membership")
+                .is_some());
+        }
+        let secondary_business_read = install_secondary_channel_read_test_hook(business_channel_id);
+
+        let client_d = client_d_tag(client_channel_id, "client", client_channel_id);
+        let link_event = signed_command(
+            &actor,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &client_d,
+            &client_action(
+                client_channel_id,
+                party_id,
+                RecordAction::Create,
+                None,
+                "Scoped client",
+                &actor,
+            ),
+        );
+        let result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            link_event.clone(),
+            scoped_nip42_auth(&actor, vec![client_channel_id]),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(IngestError::AuthFailed(message)) if message.contains("not scoped to this channel")
+        ));
+        assert!(
+            !secondary_business_read.was_observed(),
+            "out-of-scope client link read the business channel"
+        );
+        expect_event_missing(&fixture, &link_event).await;
+        assert!(current_head::<ClientHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_CLIENT_HEAD,
+            &client_d,
+        )
+        .await
+        .expect("load client head")
+        .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn nip42_scoped_proposal_acceptance_rejects_out_of_scope_client_effects() {
+        let fixture = fixture().await;
+        let acceptor = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &acceptor).await;
+        let party_id = Uuid::new_v4();
+        create_party(&fixture, &acceptor, business_channel_id, party_id).await;
+        let proposal_id = Uuid::new_v4();
+        let proposal_event = signed_command(
+            &acceptor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1),
+            &proposal_version(proposal_id, party_id, &acceptor, 1, None),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_event.clone(),
+            auth(&acceptor),
+        )
+        .await
+        .expect("create proposal version");
+
+        let client_channel_id =
+            private_stream(&fixture, "scoped-proposal-acceptance", &acceptor).await;
+        let actor_bytes = acceptor.public_key().to_bytes().to_vec();
+        for channel_id in [business_channel_id, client_channel_id] {
+            assert!(fixture
+                .state
+                .db
+                .get_member_role(fixture.tenant.community(), channel_id, &actor_bytes)
+                .await
+                .expect("load acceptor membership")
+                .is_some());
+        }
+
+        let conversion_id = Uuid::new_v4();
+        let work_item_id = Uuid::new_v4();
+        let draft_invoice_id = Uuid::new_v4();
+        let acceptance = ProposalAcceptance {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id,
+            proposal_version_event_id: proposal_event.id.to_hex(),
+            proposal_version_digest: digest_hex(proposal_event.content.as_bytes()),
+            conversion_id,
+            client_id: client_channel_id,
+            work_item_id,
+            draft_invoice_id,
+        };
+        let acceptance_d = business_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            "conversion",
+            conversion_id,
+        );
+        let acceptance_event = signed_command(
+            &acceptor,
+            KIND_PROPOSAL_ACCEPTANCE,
+            business_channel_id,
+            &acceptance_d,
+            &acceptance,
+        );
+        let secondary_client_read = install_secondary_channel_read_test_hook(client_channel_id);
+        let result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            acceptance_event.clone(),
+            scoped_nip42_auth(&acceptor, vec![business_channel_id]),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(IngestError::AuthFailed(message)) if message.contains("not scoped to this channel")
+        ));
+        assert!(
+            !secondary_client_read.was_observed(),
+            "out-of-scope proposal acceptance read the client channel"
+        );
+        expect_event_missing(&fixture, &acceptance_event).await;
+        for (kind, d_tag) in [
+            (
+                KIND_CLIENT_HEAD,
+                client_d_tag(client_channel_id, "client", client_channel_id),
+            ),
+            (
+                KIND_WORK_ITEM_HEAD,
+                client_d_tag(client_channel_id, "work", work_item_id),
+            ),
+            (
+                KIND_INVOICE_HEAD,
+                client_d_tag(client_channel_id, "invoice", draft_invoice_id),
+            ),
+            (KIND_PROPOSAL_CONVERSION_RECEIPT, acceptance_d),
+        ] {
+            let event = current_head::<serde_json::Value>(
+                &fixture.state,
+                fixture.tenant.community(),
+                kind,
+                &d_tag,
+            )
+            .await
+            .expect("query side-effect event");
+            assert!(
+                event.is_none(),
+                "out-of-scope head {kind}/{d_tag} was stored"
+            );
+        }
+        let claim_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM business_proposal_conversion_claims \
+             WHERE community_id = $1 AND conversion_id = $2",
+        )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(conversion_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count conversion claims");
+        assert_eq!(claim_count, 0, "out-of-scope conversion claim was stored");
+        let client_group_d = client_channel_id.to_string();
+        for kind in [
+            KIND_NIP29_GROUP_METADATA,
+            KIND_NIP29_GROUP_ADMINS,
+            KIND_NIP29_GROUP_MEMBERS,
+        ] {
+            let event = current_head::<serde_json::Value>(
+                &fixture.state,
+                fixture.tenant.community(),
+                kind,
+                &client_group_d,
+            )
+            .await
+            .expect("query client channel discovery event");
+            assert!(
+                event.is_none(),
+                "out-of-scope acceptance emitted client channel discovery kind {kind}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
     async fn proposal_and_client_creation_require_an_active_internal_party() {
         let fixture = fixture().await;
         let business_owner = Keys::generate();
@@ -2701,7 +3097,7 @@ mod postgres_tests {
         handle(
             &fixture.tenant,
             &fixture.state,
-            approval_event,
+            approval_event.clone(),
             auth(&actor),
         )
         .await
@@ -2731,6 +3127,7 @@ mod postgres_tests {
         .await
         .expect("create second deliverable version");
         expect_duplicate(&fixture, &actor, client_channel_id, &version1_event).await;
+        expect_duplicate(&fixture, &actor, client_channel_id, &approval_event).await;
 
         let stale_approval = DeliverableApproval {
             note: Some("stale approval attempt".into()),
@@ -2870,6 +3267,188 @@ mod postgres_tests {
         .await
         .expect("count conversion claims");
         assert_eq!(claim_count, 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn concurrent_proposal_update_and_acceptance_use_canonical_lock_order() {
+        let fixture = fixture().await;
+        let actor = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &actor).await;
+        let party_id = Uuid::new_v4();
+        create_party(&fixture, &actor, business_channel_id, party_id).await;
+        let client_channel_id = private_stream(&fixture, "lock-order-client", &actor).await;
+
+        let proposal_id = Uuid::new_v4();
+        let proposal_v1 = signed_command(
+            &actor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1),
+            &proposal_version(proposal_id, party_id, &actor, 1, None),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_v1.clone(),
+            auth(&actor),
+        )
+        .await
+        .expect("create proposal v1");
+
+        let proposal_v2 = signed_command(
+            &actor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 2),
+            &proposal_version(
+                proposal_id,
+                party_id,
+                &actor,
+                2,
+                Some(proposal_v1.id.to_hex()),
+            ),
+        );
+        let acceptance = ProposalAcceptance {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id,
+            proposal_version_event_id: proposal_v1.id.to_hex(),
+            proposal_version_digest: digest_hex(proposal_v1.content.as_bytes()),
+            conversion_id: Uuid::new_v4(),
+            client_id: client_channel_id,
+            work_item_id: Uuid::new_v4(),
+            draft_invoice_id: Uuid::new_v4(),
+        };
+        let acceptance_event = signed_command(
+            &actor,
+            KIND_PROPOSAL_ACCEPTANCE,
+            business_channel_id,
+            &business_d_tag(
+                *fixture.tenant.community().as_uuid(),
+                "conversion",
+                acceptance.conversion_id,
+            ),
+            &acceptance,
+        );
+
+        let paused = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        let other_lock_attempt = Arc::new(Notify::new());
+        let other_first_lock = Arc::new(Notify::new());
+        install_expected_head_lock_test_hook(
+            proposal_v2.id.to_bytes(),
+            Arc::clone(&paused),
+            Arc::clone(&resume),
+            Arc::clone(&other_lock_attempt),
+            Arc::clone(&other_first_lock),
+        );
+        let hook_guard = ExpectedHeadLockTestHookGuard {
+            resume: Arc::clone(&resume),
+        };
+
+        let version_tenant = fixture.tenant.clone();
+        let version_state = Arc::clone(&fixture.state);
+        let version_actor = actor.clone();
+        let mut version_task = tokio::spawn(async move {
+            handle(
+                &version_tenant,
+                &version_state,
+                proposal_v2,
+                auth(&version_actor),
+            )
+            .await
+        });
+        if tokio::time::timeout(Duration::from_secs(5), paused.notified())
+            .await
+            .is_err()
+        {
+            resume.notify_one();
+            version_task.abort();
+            let _ = version_task.await;
+            drop(hook_guard);
+            panic!("proposal update did not acquire its first expected-head lock");
+        }
+
+        let acceptance_tenant = fixture.tenant.clone();
+        let acceptance_state = Arc::clone(&fixture.state);
+        let acceptance_actor = actor.clone();
+        let acceptance_for_task = acceptance_event.clone();
+        let mut acceptance_task = tokio::spawn(async move {
+            handle(
+                &acceptance_tenant,
+                &acceptance_state,
+                acceptance_for_task,
+                auth(&acceptance_actor),
+            )
+            .await
+        });
+        if tokio::time::timeout(Duration::from_secs(5), other_lock_attempt.notified())
+            .await
+            .is_err()
+        {
+            resume.notify_one();
+            version_task.abort();
+            acceptance_task.abort();
+            let _ = version_task.await;
+            let _ = acceptance_task.await;
+            drop(hook_guard);
+            panic!("acceptance did not reach its first expected-head lock");
+        }
+
+        let inverted_lock_order =
+            tokio::time::timeout(Duration::from_millis(150), other_first_lock.notified())
+                .await
+                .is_ok();
+        resume.notify_one();
+        if inverted_lock_order {
+            version_task.abort();
+            acceptance_task.abort();
+        }
+
+        let version_output = tokio::time::timeout(Duration::from_secs(5), &mut version_task)
+            .await
+            .ok();
+        let acceptance_output = tokio::time::timeout(Duration::from_secs(5), &mut acceptance_task)
+            .await
+            .ok();
+        let handlers_completed = version_output.is_some() && acceptance_output.is_some();
+        if !handlers_completed {
+            version_task.abort();
+            acceptance_task.abort();
+            let _ = version_task.await;
+            let _ = acceptance_task.await;
+        }
+        drop(hook_guard);
+
+        assert!(
+            !inverted_lock_order,
+            "acceptance acquired a different first lock while proposal update held its first lock"
+        );
+        assert!(handlers_completed, "concurrent handlers deadlocked");
+        let version_result = version_output
+            .expect("version handler completed")
+            .expect("version handler task succeeded")
+            .expect("proposal v2 should commit");
+        assert!(version_result.accepted);
+        let acceptance_result = acceptance_output
+            .expect("acceptance handler completed")
+            .expect("acceptance handler task succeeded");
+        assert!(matches!(
+            acceptance_result,
+            Err(IngestError::Rejected(message))
+                if message.contains("referenced business record changed before the command committed")
+        ));
+        expect_event_missing(&fixture, &acceptance_event).await;
+        let claim_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM business_proposal_conversion_claims \
+             WHERE community_id = $1 AND conversion_id = $2",
+        )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(acceptance.conversion_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count conversion claims");
+        assert_eq!(claim_count, 0, "conflicted acceptance has no claim");
     }
 
     fn start_party_race(
