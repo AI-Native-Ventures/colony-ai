@@ -19,7 +19,6 @@ type SettingsSection =
   | "connections"
   | "blocks"
   | "shortcuts"
-  | "hosted-communities"
   | "community-members"
   | "moderation"
   | "audit"
@@ -58,7 +57,6 @@ const sectionRoute: Record<
   connections: { group: "business", section: "connections" },
   blocks: { group: "blocks-templates", section: "blocks" },
   shortcuts: { group: "preferences", section: "shortcuts" },
-  "hosted-communities": { group: "business", section: "business-profile" },
   "community-members": { group: "business", section: "people" },
   moderation: { group: "administration", section: "moderation" },
   audit: { group: "administration", section: "audit" },

@@ -10,7 +10,6 @@ import {
   FlaskConical,
   Keyboard,
   LayoutTemplate,
-  MessagesSquare,
   MonitorCog,
   Moon,
   ShieldAlert,
@@ -121,7 +120,6 @@ export type SettingsSection =
   | "connections"
   | "blocks"
   | "shortcuts"
-  | "hosted-communities"
   | "community-members"
   | "moderation"
   | "audit"
@@ -262,7 +260,6 @@ const SETTINGS_SECTION_ALIASES: Partial<Record<string, SettingsSection>> = {
   agents: "agent-defaults",
   "community-members": "people",
   "custom-emoji": "custom-emoji",
-  "hosted-communities": "business-profile",
   "local-archive": "storage",
   "channel-templates": "channel-templates",
   "settings/admin": "audit",
@@ -294,7 +291,6 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "connections",
   "blocks",
   "shortcuts",
-  "hosted-communities",
   "community-members",
   "moderation",
   "audit",
@@ -394,11 +390,6 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     value: "shortcuts",
     label: "Shortcuts",
     icon: Keyboard,
-  },
-  {
-    value: "hosted-communities",
-    label: "Hosted communities",
-    icon: MessagesSquare,
   },
   {
     value: "community-members",
@@ -1060,7 +1051,6 @@ export function renderSettingsSection(
     case "accessibility":
       return <AccessibilitySettingsPanel />;
     case "business-profile":
-    case "hosted-communities":
       return <BusinessProfileSettingsPanel />;
     case "people":
       return (
