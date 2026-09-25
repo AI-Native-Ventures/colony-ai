@@ -124,9 +124,10 @@ test("workspace apply forwards the selected business and client scope to native"
     businessCommunityId: "business-42",
     clientChannelId: "client-channel-9",
   };
-  const { result } = renderHook((communities) =>
-    useCommunityInit(business, "b", false, false, communities),
-  { initialProps: [a, business] });
+  const { result } = renderHook(
+    (communities) => useCommunityInit(business, "b", false, false, communities),
+    { initialProps: [a, business] },
+  );
 
   await waitFor(() => assert.equal(result.current.isReady, true));
   const apply = calls.find(([command]) => command === "apply_workspace");
