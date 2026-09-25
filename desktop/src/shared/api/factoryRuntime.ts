@@ -62,7 +62,9 @@ export type FactoryRunAttachment = {
   detach: () => Promise<void>;
 };
 
-export function createFactoryRun(input: CreateFactoryRunInput): Promise<FactoryRun> {
+export function createFactoryRun(
+  input: CreateFactoryRunInput,
+): Promise<FactoryRun> {
   return invokeTauri<FactoryRun>("factory_run_create", { input });
 }
 
@@ -110,7 +112,8 @@ export function reattachFactoryRun(
   channel.onmessage = (event) => {
     if (closed) return;
     if (ready) deliver(event);
-    else if (buffered.length < MAX_BUFFERED_FACTORY_EVENTS) buffered.push(event);
+    else if (buffered.length < MAX_BUFFERED_FACTORY_EVENTS)
+      buffered.push(event);
     else bufferedOverflowed = true;
   };
 
@@ -137,7 +140,9 @@ export function reattachFactoryRun(
       closed = true;
       if (!detachPromise) {
         detachPromise = snapshot
-          .then(() => invokeTauri<boolean>("factory_run_detach", { subscriptionId }))
+          .then(() =>
+            invokeTauri<boolean>("factory_run_detach", { subscriptionId }),
+          )
           .then(() => {
             detached = true;
             channel.onmessage = () => undefined;
@@ -169,5 +174,7 @@ export function setFactoryRunDraft(
 export function getFactoryRunDraft(
   runId: string,
 ): Promise<FactoryRunDraft | null> {
-  return invokeTauri<FactoryRunDraft | null>("factory_run_get_draft", { runId });
+  return invokeTauri<FactoryRunDraft | null>("factory_run_get_draft", {
+    runId,
+  });
 }
