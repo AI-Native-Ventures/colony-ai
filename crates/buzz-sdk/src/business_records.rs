@@ -147,12 +147,9 @@ mod tests {
         let tags = event.tags.iter().collect::<Vec<_>>();
         assert_eq!(tags[0].kind().to_string(), "h");
         let expected_channel = id.to_string();
-        assert_eq!(
-            tags[0].content().as_deref(),
-            Some(expected_channel.as_str())
-        );
+        assert_eq!(tags[0].content(), Some(expected_channel.as_str()));
         assert_eq!(tags[1].kind().to_string(), "d");
         let expected_d_tag = client_d_tag(id, "client", id);
-        assert_eq!(tags[1].content().as_deref(), Some(expected_d_tag.as_str()));
+        assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
     }
 }
