@@ -5,6 +5,7 @@ import UPNG from "upng-js";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { compareImages } from "../../scripts/visualComparison.mjs";
 
 type StorageSeed = {
   localStorage?: Record<string, unknown>;
@@ -70,6 +71,12 @@ if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
 const manifest = JSON.parse(
   await readFile(manifestPath, "utf8"),
 ) as VisualManifest;
+const manropeFont = await readFile(
+  new URL(
+    "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
+    import.meta.url,
+  ),
+);
 const defaults = manifest.defaults ?? {};
 const cases = (manifest.cases ?? manifest.entries ?? []).map((entry) => ({
   ...defaults,
@@ -96,19 +103,25 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
-        // Owner decision 2026-09-24: the app ships Manrope instead of Satoshi
-        // (Satoshi's license bars its file from a public repo). Serve the
-        // reference's own Manrope file in place of Satoshi so diffs measure
-        // layout, not typeface.
+        // Keep the frozen reference files untouched while applying the owner
+        // typeface decision in memory. The reference font request is served
+        // with its Manrope file and its family alias is normalized here.
+        await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
+          const response = await route.fetch();
+          const stylesheet = await response.text();
+          await route.fulfill({
+            response,
+            body: stylesheet.replace(/\bSatoshi\b/g, "Manrope"),
+          });
+        });
         await referencePage.route(
-          "**/satoshi-variable.woff2",
+          /satoshi-variable\.woff2(?:\?.*)?$/,
           async (route) => {
-            const manrope = new URL(
-              "manrope-latin.woff2",
-              new URL(route.request().url()),
-            ).toString();
-            const response = await route.fetch({ url: manrope });
-            await route.fulfill({ response });
+            await route.fulfill({
+              status: 200,
+              contentType: "font/woff2",
+              body: manropeFont,
+            });
           },
         );
         await seedStorage(
@@ -130,7 +143,7 @@ test.describe("visual comparison captures", () => {
 
         await waitForCaptureReady(
           referencePage,
-          "Satoshi",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -141,7 +154,7 @@ test.describe("visual comparison captures", () => {
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
-          "Satoshi",
+          "Manrope",
           entry.referenceReadySelector,
         );
         await waitForCaptureReady(
@@ -325,6 +338,59 @@ async function inspectPageGeometry(
         scrollWidth: document.body.scrollWidth,
         scrollHeight: document.body.scrollHeight,
       },
+      visualElements: [
+        "#topbar",
+        "#sidebar",
+        "#surface",
+        ".colony-workspace-topbar",
+        ".colony-channel-route-content",
+        ".channel-pane",
+        ".thread-pane",
+        ".channel-header",
+        ".tabs",
+        ".message-list",
+        ".channel-composer",
+        ".channel-composer .composer",
+        ".channel-composer .composer textarea",
+        ".channel-composer .composer-footer",
+        "[data-testid=app-sidebar]",
+        "[data-testid=app-top-chrome]",
+        "[data-buzz-content-surface]",
+        "[data-testid=chat-header]",
+        "[data-testid=chat-title]",
+        "[data-testid=channel-drop-zone]",
+        "[data-testid=channel-composer-overlay]",
+        "[data-testid=message-composer]",
+        "[data-testid=message-input-scroll]",
+        "[data-testid=message-composer-toolbar]",
+        "[data-testid=channel-view-tabs]",
+        "[data-testid=message-timeline]",
+        "[data-testid=message-thread-panel]",
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return { selector, count: 0 };
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          selector,
+          count: document.querySelectorAll(selector).length,
+          bounds: {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          },
+          display: style.display,
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          opacity: style.opacity,
+          overflowY: style.overflowY,
+          scrollHeight: element.scrollHeight,
+          scrollWidth: element.scrollWidth,
+        };
+      }),
     };
   });
   if (
@@ -448,132 +514,6 @@ function decodePng(buffer: Buffer) {
     height: decoded.height,
     pixels: new Uint8Array(frame),
   };
-}
-
-function compareImages(
-  reference: { width: number; height: number; pixels: Uint8Array },
-  app: { width: number; height: number; pixels: Uint8Array },
-) {
-  const { width, height } = reference;
-  const totalPixels = width * height;
-  const rgbaLength = totalPixels * 4;
-  const heatmap = new Uint8Array(rgbaLength);
-  const overlay = new Uint8Array(rgbaLength);
-  const sideBySide = new Uint8Array(rgbaLength * 2);
-  const changedMask = new Uint8Array(totalPixels);
-  let changedPixels = 0;
-  let absoluteDelta = 0;
-
-  for (let pixel = 0; pixel < totalPixels; pixel += 1) {
-    const offset = pixel * 4;
-    let maxDelta = 0;
-    for (let channel = 0; channel < 3; channel += 1) {
-      const referenceValue = reference.pixels[offset + channel];
-      const appValue = app.pixels[offset + channel];
-      const delta = Math.abs(referenceValue - appValue);
-      absoluteDelta += delta;
-      maxDelta = Math.max(maxDelta, delta);
-      overlay[offset + channel] = Math.round((referenceValue + appValue) / 2);
-      heatmap[offset + channel] = Math.min(255, delta * 5);
-    }
-    overlay[offset + 3] = 255;
-    heatmap[offset + 3] = 255;
-    if (maxDelta > 0) {
-      changedMask[pixel] = 1;
-      changedPixels += 1;
-    }
-  }
-
-  for (let y = 0; y < height; y += 1) {
-    const rowOffset = y * width * 4;
-    sideBySide.set(
-      reference.pixels.subarray(rowOffset, rowOffset + width * 4),
-      y * width * 8,
-    );
-    sideBySide.set(
-      app.pixels.subarray(rowOffset, rowOffset + width * 4),
-      y * width * 8 + width * 4,
-    );
-  }
-  for (let y = 0; y < height; y += 1) {
-    const rowOffset = y * width * 4;
-    for (let x = 0; x < width; x += 1) {
-      const sourceOffset = rowOffset + x * 4;
-      const rightOffset = rowOffset + (width + x) * 4;
-      sideBySide.set(
-        app.pixels.subarray(sourceOffset, sourceOffset + 4),
-        rightOffset,
-      );
-    }
-  }
-
-  const largestDiffRegions = findDiffRegions(changedMask, width, height);
-  return {
-    changedPixels,
-    totalPixels,
-    changedPixelRatio: totalPixels === 0 ? 0 : changedPixels / totalPixels,
-    meanAbsoluteChannelDelta: absoluteDelta / (totalPixels * 3),
-    diffComponentCount: largestDiffRegions.count,
-    largestDiffRegions: largestDiffRegions.top,
-    sideBySide: { width: width * 2, height, pixels: sideBySide },
-    overlay: { width, height, pixels: overlay },
-    heatmap: { width, height, pixels: heatmap },
-  };
-}
-
-function findDiffRegions(mask: Uint8Array, width: number, height: number) {
-  const visited = new Uint8Array(mask.length);
-  const queue = new Int32Array(mask.length);
-  const top = [];
-  let count = 0;
-
-  for (let start = 0; start < mask.length; start += 1) {
-    if (mask[start] === 0 || visited[start] !== 0) continue;
-    count += 1;
-    let head = 0;
-    let tail = 0;
-    let minX = width;
-    let minY = height;
-    let maxX = 0;
-    let maxY = 0;
-    visited[start] = 1;
-    queue[tail++] = start;
-
-    while (head < tail) {
-      const current = queue[head++];
-      const x = current % width;
-      const y = Math.floor(current / width);
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-      for (let dy = -1; dy <= 1; dy += 1) {
-        const nextY = y + dy;
-        if (nextY < 0 || nextY >= height) continue;
-        for (let dx = -1; dx <= 1; dx += 1) {
-          if (dx === 0 && dy === 0) continue;
-          const nextX = x + dx;
-          if (nextX < 0 || nextX >= width) continue;
-          const next = nextY * width + nextX;
-          if (mask[next] === 1 && visited[next] === 0) {
-            visited[next] = 1;
-            queue[tail++] = next;
-          }
-        }
-      }
-    }
-    top.push({
-      x: minX,
-      y: minY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
-      pixels: tail,
-    });
-  }
-  top.sort(
-    (a, b) => b.pixels - a.pixels || b.width * b.height - a.width * a.height,
-  );
-  return { count, top: top.slice(0, 10) };
 }
 
 async function writePng(
