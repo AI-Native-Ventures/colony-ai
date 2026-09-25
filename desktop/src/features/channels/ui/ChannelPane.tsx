@@ -373,6 +373,7 @@ export const ChannelPane = React.memo(function ChannelPane({
     onWelcomeAddAgent: onAddAgent ? handleWelcomeAddAgent : undefined,
   });
   const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
+  const workspaceChrome = !isHuddleTranscript && window.innerWidth >= 1440;
   const channelIntro =
     isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
   const {
@@ -669,7 +670,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               historyExhausted={historyExhausted}
               hideDayDividers={isHuddleTranscript}
               alwaysShowMessageIdentity={
-                isHuddleTranscript || hasOpenMessageThread
+                isHuddleTranscript || (workspaceChrome && hasOpenMessageThread)
               }
               hideAgentAccessBadges={isHuddleTranscript}
               pinnedIntro={
@@ -794,7 +795,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                     channelType={activeChannel?.channelType ?? null}
                     containerClassName="px-5 pb-0"
                     layoutMode="dock"
-                    workspaceChrome={!isHuddleTranscript}
+                    workspaceChrome={workspaceChrome}
                     disabled={isComposerDisabled}
                     editTarget={mainEditTarget}
                     autoSubmitDraftKey={autoSendDraftKey}
@@ -886,7 +887,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                 huddleMemberPubkeys={huddleMemberPubkeys}
                 huddleMemberPubkeysPending={huddleMemberPubkeysPending}
                 isHuddleTranscript={isHuddleTranscript}
-                workspaceChrome={!isHuddleTranscript}
+                workspaceChrome={workspaceChrome}
                 isFollowingThread={isFollowingThread}
                 isMessageUnreadById={isMessageUnreadById}
                 isSending={isSending}

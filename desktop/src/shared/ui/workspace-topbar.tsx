@@ -10,6 +10,7 @@ function NavigationHistoryControls() {
     <nav aria-label="Navigation history" className="colony-workspace-history">
       <button
         aria-label="Go back"
+        data-testid="global-back"
         disabled={!navigationHistory.canGoBack}
         onClick={navigationHistory.goBack}
         title="Back"
@@ -19,6 +20,7 @@ function NavigationHistoryControls() {
       </button>
       <button
         aria-label="Go forward"
+        data-testid="global-forward"
         disabled={!navigationHistory.canGoForward}
         onClick={navigationHistory.goForward}
         title="Forward"
