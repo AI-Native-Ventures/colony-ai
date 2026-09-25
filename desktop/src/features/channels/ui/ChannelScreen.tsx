@@ -88,7 +88,6 @@ import { useChannelUnreadState } from "./useChannelUnreadState";
 import type { ChannelScreenProps } from "./ChannelScreen.types";
 import { GuardedChannelPane } from "./GuardedChannelPane"; import { useNavigationGuard } from "./useNavigationGuard"; import * as searchForwarding from "./searchTargetForwarding";
 const EMPTY_RELAY_EVENTS: RelayEvent[] = [];
-const CHANNEL_SINGLE_PANEL_VIEWPORT_BREAKPOINT_PX = 900;
 export function ChannelScreen({
   activeChannel,
   autoSendDraftKey,
@@ -694,8 +693,7 @@ export function ChannelScreen({
   );
   const isNarrowPanelViewport =
     channelContentWidthPx > 0 &&
-    (channelContentWidthPx < AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX ||
-      window.innerWidth <= CHANNEL_SINGLE_PANEL_VIEWPORT_BREAKPOINT_PX);
+    channelContentWidthPx < AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX;
   const isSinglePanelView =
     isNarrowPanelViewport &&
     activeChannel?.channelType !== "forum" &&
@@ -817,7 +815,7 @@ export function ChannelScreen({
           open={emptyDeleteId !== null}
         />
         <div className="colony-channel-route">
-          {activeChannel && !hideWorkspaceTopBar ? (
+          {activeChannel && !hideWorkspaceTopBar && !isHuddleTranscript ? (
             <ChannelWorkspaceTopBar
               channelTitle={activeChannelTitle}
               currentPubkey={currentPubkey}
