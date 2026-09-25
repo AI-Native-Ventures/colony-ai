@@ -601,7 +601,13 @@ test("the mention button opens settings and can undo an address", async ({
   await expect(
     composer.getByRole("button", { name: "Mention someone" }),
   ).toBeVisible();
-  await input.fill("");
+  // Clear through the keyboard: a programmatic fill can race ProseMirror's
+  // DOM observer around the mention node and leave the draft in place.
+  // Focus without clicking so the open mention menu stays open.
+  await input.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await expect(input).toHaveText("");
 
   const manualMention = menu.getByRole("button", {
     name: "Mention Morgarita",
