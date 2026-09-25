@@ -33,6 +33,24 @@ async function hoverUntilMetadataTooltip(
     .toBeGreaterThan(0);
 }
 
+async function pressHistoryChord(
+  page: import("@playwright/test").Page,
+  direction: "back" | "forward",
+) {
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  const key = isMac
+    ? direction === "back"
+      ? "Meta+["
+      : "Meta+]"
+    : direction === "back"
+      ? "Alt+ArrowLeft"
+      : "Alt+ArrowRight";
+
+  await page.keyboard.press(key);
+}
+
 async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByTestId("open-workflows-view").click();
@@ -77,7 +95,7 @@ async function createWorkflow(
   await expect(dialog).not.toBeVisible();
 }
 
-test("global back and forward move across channel routes", async ({ page }) => {
+test("back and forward move across channel routes", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("channel-general").click();
@@ -86,10 +104,10 @@ test("global back and forward move across channel routes", async ({ page }) => {
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 });
 
@@ -222,11 +240,11 @@ test("back and forward restore open thread panels", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(threadPanel).toBeVisible();
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 });
@@ -250,7 +268,7 @@ test("back undoes closing a thread panel", async ({ page }) => {
   await threadPanel.getByRole("button", { name: "Close panel" }).click();
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(threadPanel).toBeVisible();
 });
 

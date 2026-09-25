@@ -18,6 +18,10 @@ export default {
         "workspace-button": "var(--colony-text-workspace-button)", // 11.84px at 16px type rem
         "onboarding-button": "var(--colony-text-onboarding-button)", // 12.96px at 16px type rem
         "status-indicator": "0.9375rem", // 15px at the default root size
+        "channel-title": [
+          "calc(var(--buzz-type-rem) * 1.45)",
+          { lineHeight: "1.3", letterSpacing: "-0.035em" },
+        ],
         // Shared channel, DM, thread, and composer type. Variables keep app-wide
         // font size and keyboard zoom consistent without branching components.
         message: [

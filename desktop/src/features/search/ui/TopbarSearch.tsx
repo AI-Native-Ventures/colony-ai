@@ -925,7 +925,7 @@ export function TopbarSearch({
     <div className={cn("relative", className)}>
       <Dialog open={isOpen} onOpenChange={handleSearchOpenChange}>
         <button
-          aria-label="Search everything"
+          aria-label="Find anything"
           className={
             isIconVariant
               ? "group/search flex size-6 items-center justify-center rounded p-1 text-sidebar-foreground/50 transition-colors hover:bg-sidebar-border/35 hover:text-sidebar-foreground focus-visible:bg-sidebar-border/35 focus-visible:text-sidebar-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring"
@@ -934,7 +934,7 @@ export function TopbarSearch({
           data-testid="open-search"
           onClick={() => openSearchDialog(null)}
           ref={triggerRef}
-          title="Search everything"
+          title="Find anything"
           type="button"
         >
           <Search
@@ -954,7 +954,7 @@ export function TopbarSearch({
                     : "text-sidebar-foreground/55",
                 )}
               >
-                {query || "Search everything"}
+                {query || "Find anything"}
               </span>
               <kbd className="shrink-0 text-2xs text-sidebar-foreground/45">
                 &#x2318;K

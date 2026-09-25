@@ -18,12 +18,13 @@
 @import "./globals/image-lightbox.css";
 @import "./globals/video-review.css";
 @import "./globals/progress.css";
+@import "./globals/colony-workspace.css";
 
 @config "../../../tailwind.config.js";
 
 /* Tailwind v4 gates `hover:` behind `@media (hover: hover)`. Some Windows
-   hosts answer that query `false` even with a mouse attached — WebView2 here
-   reports `hover: none`, `any-pointer: fine: false`, `maxTouchPoints: 10` —
+   hosts answer that query `false` even with a mouse attached. WebView2 here
+   reports `hover: none`, `any-pointer: fine: false`, and `maxTouchPoints: 10`.
    which leaves every hover-revealed control permanently `visibility: hidden`:
    member row action menus, sidebar row actions, attachment controls. A bare
    `&:hover` trusts the actual hover event instead of the capability query;

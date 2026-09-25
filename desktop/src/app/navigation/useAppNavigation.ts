@@ -82,6 +82,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goToday = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/today",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goAgents = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -97,7 +108,7 @@ export function useAppNavigation() {
     (behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/pulse",
+          to: "/today/updates",
         },
         behavior,
       ),
@@ -464,6 +475,7 @@ export function useAppNavigation() {
     goEditWorkflow,
     goForumPost,
     goHome,
+    goToday,
     goNewMessage,
     goNewWorkflow,
     goNewWorkflowForChannel,

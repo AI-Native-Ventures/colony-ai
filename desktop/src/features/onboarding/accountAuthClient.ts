@@ -6,7 +6,10 @@ export type AccountAuthRecord = {
   googleLinked: boolean;
 };
 
-export type AccountAuthVerificationSent = { status: "verification_sent" };
+export type AccountAuthVerificationSent = {
+  status: "verification_sent";
+  retryAfterSecs?: number;
+};
 
 /**
  * Desktop account API consumed by onboarding and the persistent claim prompt.
