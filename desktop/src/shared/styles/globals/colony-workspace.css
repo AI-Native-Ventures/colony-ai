@@ -1831,8 +1831,13 @@ button.colony-today-attention-row:hover {
 }
 
 .colony-update-avatar [data-slot="avatar-fallback"] {
-  background: #ece5ed;
-  color: #796782;
+  background: #eee8f1;
+  color: #766681;
+}
+
+:root.dark .colony-update-avatar [data-slot="avatar-fallback"] {
+  background: #453a4a;
+  color: #d1bfd8;
 }
 
 .colony-update-row > .colony-update-card {
@@ -1910,7 +1915,9 @@ button.colony-today-attention-row:hover {
   opacity: 0.55;
 }
 
-.colony-sidebar-browse-channels {
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="sidebar-scroll-content"]
+  > .colony-sidebar-browse-channels {
   order: 4;
 }
 
@@ -2166,7 +2173,7 @@ button.colony-today-attention-row:hover {
 }
 
 :root:has([data-colony-workspace-route="true"])
-  [data-avatar-shape="squircle"]
+  [data-avatar-shape="squircle"]:not(.colony-update-avatar)
   [data-slot="avatar-fallback"] {
   background-color: #e6edf7 !important;
   color: #5e7794 !important;
@@ -2174,7 +2181,7 @@ button.colony-today-attention-row:hover {
 }
 
 :root:has([data-colony-workspace-route="true"])
-  [data-avatar-shape="circle"]
+  [data-avatar-shape="circle"]:not(.colony-update-avatar)
   [data-slot="avatar-fallback"] {
   background-color: #eee8f1 !important;
   color: #766681 !important;
