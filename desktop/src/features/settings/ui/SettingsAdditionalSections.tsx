@@ -30,6 +30,7 @@ import { SettingsOptionGroup, SettingsOptionRow } from "./SettingsOptionGroup";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { HarnessesSettingsPanel } from "./HarnessesSettingsPanel";
 import { PreventSleepSettingsCard } from "./PreventSleepSettingsCard";
+import { KeepAddressedAgentsSettingsCard } from "./KeepAddressedAgentsSettingsCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
@@ -137,6 +138,7 @@ export function AppPreferencesSettingsPanel() {
         title="App preferences"
         description="Control how the desktop app behaves on this device."
       />
+      <KeepAddressedAgentsSettingsCard />
       <PreventSleepSettingsCard />
     </section>
   );

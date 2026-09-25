@@ -71,7 +71,6 @@ import { MeshComputeSettingsCard } from "@/features/mesh-compute/ui/MeshComputeS
 import { MobilePairingCard } from "./MobilePairingCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
-import { AgentsSettingsPanel } from "./AgentsSettingsPanel";
 import {
   SettingsOptionGroup,
   SettingsOptionGroupList,
@@ -1030,7 +1029,6 @@ export function renderSettingsSection(
     case "experimental":
       return <ExperimentalFeaturesCard />;
     case "agents":
-      return <AgentsSettingsPanel />;
     case "agent-defaults":
       return <AgentDefaultsSettingsCard />;
     case "harnesses":

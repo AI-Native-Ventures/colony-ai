@@ -361,10 +361,10 @@ test("keeps the composer and global automatic mention settings synchronized", as
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await selectSettingsSection(page, "agent-defaults");
+  await selectSettingsSection(page, "app");
   const settingsToggle = page
-    .getByTestId("settings-automatic-agent-mentions")
-    .getByRole("switch", { name: "Automatically mention agents" });
+    .getByTestId("settings-keep-addressed-agents")
+    .getByRole("switch", { name: "Keep addressed agents selected" });
   await expect(settingsToggle).toHaveAttribute("data-state", "unchecked");
 
   await page.getByTestId("settings-back-to-app").click();

@@ -2684,56 +2684,42 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await peerPage.close();
 });
 
-test("shows agent runtimes in agent settings", async ({ page }) => {
+test("maps agent defaults, harnesses and local behavior to their sections", async ({
+  page,
+}) => {
   await page.goto("/");
 
-  await openSettings(page, "agents");
+  await openSettings(page, "agent-defaults");
 
-  const agentsPage = page.getByTestId("settings-agents");
+  const defaults = page.getByTestId("settings-global-agent-config");
+  await expect(defaults).toBeVisible();
   await expect(
-    agentsPage.getByRole("heading", { name: "Agents", exact: true }),
+    defaults.getByRole("heading", { name: "Agent defaults" }),
+  ).toBeVisible();
+  await expect(
+    defaults.locator('[data-slot="settings-section-card"]'),
+  ).toHaveCSS("border-radius", "12px");
+
+  await page.getByTestId("settings-inner-harnesses").click();
+  const harnesses = page.getByTestId("settings-harnesses");
+  await expect(harnesses).toBeVisible();
+  await expect(
+    harnesses.getByRole("heading", { name: "Agent runtimes" }),
   ).toBeVisible();
 
-  for (const testId of [
-    "agents-preferences-card",
-    "settings-harnesses",
-    "settings-global-agent-config",
-  ]) {
-    const section = agentsPage
-      .getByTestId(testId)
-      .locator('[data-slot="settings-section-card"]');
-    await expect(section).toBeVisible();
-    await expect(section).toHaveCSS("border-radius", "12px");
-    await expect(section).toHaveCSS("border-top-width", "1px");
-  }
-
+  await page.getByTestId("settings-inner-app").click();
+  const appPreferences = page.getByTestId("settings-app-preferences");
+  const addressedAgents = appPreferences.getByTestId(
+    "settings-keep-addressed-agents",
+  );
   await expect(
-    agentsPage.getByRole("heading", {
-      name: "Agent runtimes",
-      exact: true,
+    addressedAgents.getByRole("switch", {
+      name: "Keep addressed agents selected",
     }),
   ).toBeVisible();
   await expect(
-    agentsPage.getByRole("heading", {
-      name: "Agent defaults",
-      exact: true,
-    }),
+    appPreferences.getByTestId("agents-preferences-card"),
   ).toBeVisible();
-  const runtimeRow = page.getByTestId("doctor-runtime-goose");
-  await expect(runtimeRow).toContainText("Goose");
-  await expect(runtimeRow).toHaveCSS("border-radius", "0px");
-  await expect(runtimeRow).toHaveCSS("border-top-width", "0px");
-
-  const agentsSecondaryColor = await agentsPage
-    .getByTestId("settings-automatic-agent-mentions")
-    .locator("[data-settings-subcopy]")
-    .evaluate((element) => getComputedStyle(element).color);
-  await page.getByTestId("settings-nav-appearance").click();
-  const appearanceSecondaryColor = await page
-    .getByTestId("link-preview-style-group")
-    .locator("[data-settings-subcopy]")
-    .evaluate((element) => getComputedStyle(element).color);
-  expect(agentsSecondaryColor).toBe(appearanceSecondaryColor);
 });
 
 test("settings subtitles share the Appearance secondary color", async ({
