@@ -891,6 +891,7 @@ impl Db {
 
     /// Apply a verified initial or recurring PayFast subscription notification.
     #[datastore_span(name = "account_site_subscription_notification", system = "postgresql")]
+    #[allow(clippy::too_many_arguments)] // ITN fields and the reconciled provider snapshot are independent inputs.
     pub async fn apply_account_site_subscription_notification(
         &self,
         event_id: &str,

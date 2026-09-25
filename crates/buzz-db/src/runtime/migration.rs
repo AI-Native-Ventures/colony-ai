@@ -495,6 +495,11 @@ mod postgres_tests {
             "account_codes",
             "account_mail_outbox",
             "account_test_mail",
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -708,7 +713,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 47);
+        assert_eq!(migrations.len(), 49);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
@@ -1315,6 +1320,30 @@ mod postgres_tests {
         assert!(accounts.contains("ON DELETE CASCADE"));
         assert!(accounts.contains("code_hash BYTEA NOT NULL CHECK (octet_length(code_hash) = 32)"));
         assert!(accounts.contains("claim_token UUID"));
+
+        assert_eq!(migrations[47].version, 48);
+        let payments = migrations[47].sql.as_str();
+        for table in [
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
+        ] {
+            assert!(
+                payments.contains(&format!("CREATE TABLE {table}")),
+                "migration 48 must create {table}"
+            );
+            assert!(
+                payments.contains(&format!("('{table}',")),
+                "migration 48 must register {table} as operator-global"
+            );
+        }
+
+        assert_eq!(migrations[48].version, 49);
+        let subscription_cycle_fence = migrations[48].sql.as_str();
+        assert!(subscription_cycle_fence.contains("provider_cycles_complete"));
+        assert!(subscription_cycle_fence.contains("last_provider_payment_cycle"));
         // schema.sql exclusion list must match the restored (pre-0041) body.
         assert!(
             desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
