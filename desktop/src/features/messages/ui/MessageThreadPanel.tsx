@@ -455,6 +455,7 @@ export function MessageThreadPanel({
         index > 0 && entry.message.id === firstUnreadReplyId;
       const isContinuation =
         !isHuddleTranscript &&
+        !workspaceChrome &&
         !startsUnreadSection &&
         entry.summary === null &&
         hasSameMessageAuthor(previousGroupMessage, entry.message) &&

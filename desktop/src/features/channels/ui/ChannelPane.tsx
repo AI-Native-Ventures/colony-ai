@@ -668,7 +668,9 @@ export const ChannelPane = React.memo(function ChannelPane({
               hasOlderMessages={hasOlderMessages}
               historyExhausted={historyExhausted}
               hideDayDividers={isHuddleTranscript}
-              alwaysShowMessageIdentity={isHuddleTranscript}
+              alwaysShowMessageIdentity={
+                isHuddleTranscript || hasOpenMessageThread
+              }
               hideAgentAccessBadges={isHuddleTranscript}
               pinnedIntro={
                 isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined

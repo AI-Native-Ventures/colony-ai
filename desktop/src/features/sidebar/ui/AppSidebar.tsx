@@ -766,12 +766,6 @@ export function AppSidebar({
                       onDeleteChannel={requestDeleteChannel}
                     />
                   </FeatureGate>
-                  <div
-                    className="colony-sidebar-business-section"
-                    data-testid="sidebar-business-section"
-                  >
-                    <span data-sidebar-section-title>Business</span>
-                  </div>
                   <SidebarSection
                     action={
                       <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
