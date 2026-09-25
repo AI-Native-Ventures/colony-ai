@@ -2378,6 +2378,7 @@ mod tests {
             "agents",
             "canvas",
             "channels",
+            "credits",
             "dms",
             "emoji",
             "feed",
@@ -2484,6 +2485,10 @@ mod tests {
             ]
         );
         assert_eq!(names(&cmd, "canvas"), vec!["get", "set"]);
+        assert_eq!(
+            names(&cmd, "credits"),
+            vec!["balance", "history", "packs", "pay", "usage", "verify"]
+        );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
         assert_eq!(
             names(&cmd, "emoji"),

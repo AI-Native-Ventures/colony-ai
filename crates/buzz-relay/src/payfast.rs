@@ -32,7 +32,7 @@ use serde_json::Value;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
-use crate::payments_provider::{ProviderError, ProviderEvent};
+use crate::payments_provider::{ProviderError, ProviderEvent, ReconciledSubscription};
 
 /// Hosted checkout for live charges.
 const PROCESS_URL_LIVE: &str = "https://www.payfast.co.za/eng/process";
@@ -471,24 +471,23 @@ impl PayFast {
         ))
     }
 
-    /// Query a PayFast subscription and return its provider status text.
-    pub async fn subscription_status(&self, token: &str) -> Result<String, ProviderError> {
+    /// Query the current PayFast subscription status and completed-cycle count.
+    pub async fn subscription_status(
+        &self,
+        token: &str,
+    ) -> Result<ReconciledSubscription, ProviderError> {
         if !valid_provider_token(token) {
             return Err(ProviderError::Configuration);
         }
         let path = format!("/subscriptions/{token}/fetch");
         let response = self.api_request(reqwest::Method::GET, &path, None).await?;
-        let status = response
-            .pointer("/data/response/status_text")
-            .and_then(Value::as_str)
-            .ok_or(ProviderError::MalformedResponse)?;
-        Ok(status.to_owned())
+        parse_subscription_status(&response)
     }
 
     /// Cancel one PayFast recurring subscription after reading its current status.
     pub async fn cancel_subscription(&self, token: &str) -> Result<bool, ProviderError> {
         let status = self.subscription_status(token).await?;
-        if status.eq_ignore_ascii_case("cancelled") {
+        if status.status_text.eq_ignore_ascii_case("cancelled") {
             return Ok(true);
         }
         let path = format!("/subscriptions/{token}/cancel");
@@ -736,6 +735,28 @@ fn valid_provider_token(token: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
+fn parse_subscription_status(value: &Value) -> Result<ReconciledSubscription, ProviderError> {
+    let response = value
+        .pointer("/data/response")
+        .ok_or(ProviderError::MalformedResponse)?;
+    let status_text = response
+        .get("status_text")
+        .and_then(Value::as_str)
+        .filter(|status| !status.is_empty() && status.len() <= 64)
+        .ok_or(ProviderError::MalformedResponse)?
+        .to_owned();
+    let cycles_complete = response
+        .get("cycles_complete")
+        .and_then(Value::as_i64)
+        .and_then(|cycles| i32::try_from(cycles).ok())
+        .filter(|cycles| *cycles >= 0)
+        .ok_or(ProviderError::MalformedResponse)?;
+    Ok(ReconciledSubscription {
+        status_text,
+        cycles_complete,
+    })
+}
+
 fn valid_provider_payment_id(payment_id: &str) -> bool {
     !payment_id.is_empty()
         && payment_id.len() <= 32
@@ -951,6 +972,33 @@ mod tests {
 
     fn empty_headers() -> HeaderMap {
         HeaderMap::new()
+    }
+
+    #[test]
+    fn subscription_reconciliation_requires_current_status_and_cycle_count() {
+        let state = parse_subscription_status(&serde_json::json!({
+            "data": {
+                "response": {
+                    "status_text": "ACTIVE",
+                    "cycles_complete": 4,
+                    "run_date": "2026-10-01T00:00:00+02:00"
+                }
+            }
+        }))
+        .expect("parse PayFast subscription state fixture");
+        assert_eq!(state.status_text, "ACTIVE");
+        assert_eq!(state.cycles_complete, 4);
+
+        for malformed in [
+            serde_json::json!({"data":{"response":{"status_text":"ACTIVE"}}}),
+            serde_json::json!({"data":{"response":{"status_text":"","cycles_complete":4}}}),
+            serde_json::json!({"data":{"response":{"status_text":"ACTIVE","cycles_complete":-1}}}),
+        ] {
+            assert!(matches!(
+                parse_subscription_status(&malformed),
+                Err(ProviderError::MalformedResponse)
+            ));
+        }
     }
 
     #[tokio::test]

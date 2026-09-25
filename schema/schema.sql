@@ -2056,6 +2056,8 @@ CREATE TABLE account_site_subscriptions (
     last_provider_payment_id TEXT CHECK (
         last_provider_payment_id IS NULL OR last_provider_payment_id ~ '^[0-9]{1,32}$'
     ),
+    provider_cycles_complete INTEGER NOT NULL DEFAULT 0 CHECK (provider_cycles_complete >= 0),
+    last_provider_payment_cycle INTEGER NOT NULL DEFAULT 0 CHECK (last_provider_payment_cycle >= 0),
     cancel_requested_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

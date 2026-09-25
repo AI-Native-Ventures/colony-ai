@@ -2147,7 +2147,7 @@ mod postgres_tests {
     /// are independent sources of the same schema. This test bootstraps one
     /// probe database through the real `bin/pgschema apply` binary, runs the
     /// required reconciliation script, migrates another probe database through
-    /// version 48, and compares admin and account payment table columns and
+    /// version 49, and compares admin and account payment table columns and
     /// indexes. Columns are keyed by name because migrations may append them
     /// with `ALTER TABLE` while desired state declares them inline.
     ///
@@ -2281,9 +2281,9 @@ mod postgres_tests {
         .await
         .expect("run post-pgschema desired-state reconciliation");
         MIGRATOR
-            .run_to(48, &migrated)
+            .run_to(49, &migrated)
             .await
-            .expect("apply migrations 1-48");
+            .expect("apply migrations 1-49");
 
         for table in [
             "relay_admin_actions",

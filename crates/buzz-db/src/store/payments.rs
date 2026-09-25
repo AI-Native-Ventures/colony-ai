@@ -127,6 +127,10 @@ pub struct SiteSubscriptionRecord {
     pub monthly_zar_cents: i64,
     /// Last provider status received.
     pub provider_status: Option<String>,
+    /// Highest PayFast recurring cycle count observed from its API.
+    pub provider_cycles_complete: i32,
+    /// Cycle represented by `last_provider_payment_id`.
+    pub last_provider_payment_cycle: i32,
     /// Latest durable PayFast cancellation request marker.
     pub cancel_requested_at: Option<DateTime<Utc>>,
     /// Creation time.
@@ -147,6 +151,11 @@ impl std::fmt::Debug for SiteSubscriptionRecord {
             .field("monthly_usd_cents", &self.monthly_usd_cents)
             .field("monthly_zar_cents", &self.monthly_zar_cents)
             .field("provider_status", &self.provider_status)
+            .field("provider_cycles_complete", &self.provider_cycles_complete)
+            .field(
+                "last_provider_payment_cycle",
+                &self.last_provider_payment_cycle,
+            )
             .field("cancel_requested_at", &self.cancel_requested_at)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
@@ -747,7 +756,7 @@ impl Db {
         if let Some(row) = sqlx::query(
             "SELECT id, account_id, site_id, reference, provider_token, status, \
                     monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                    created_at, updated_at \
+                    provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at \
              FROM account_site_subscriptions WHERE account_id = $1 AND site_id = $2 \
                AND status IN ('pending', 'active', 'delayed', 'failed', 'uncertain') \
              ORDER BY created_at DESC LIMIT 1",
@@ -767,7 +776,7 @@ impl Db {
              VALUES ($1, $2, $3, $4, 'payfast', $5) \
              RETURNING id, account_id, site_id, reference, provider_token, status, \
                        monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                       created_at, updated_at",
+                       provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at",
         )
         .bind(account_id)
         .bind(site_id)
@@ -791,7 +800,7 @@ impl Db {
         let row = sqlx::query(
             "SELECT id, account_id, site_id, reference, provider_token, status, \
                     monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                    created_at, updated_at \
+                    provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at \
              FROM account_site_subscriptions WHERE account_id = $1 AND id = $2",
         )
         .bind(account_id)
@@ -811,7 +820,8 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, account_id, site_id, reference, provider_token, status, \
                     monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                    created_at, updated_at FROM account_site_subscriptions \
+                    provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at \
+             FROM account_site_subscriptions \
              WHERE account_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2",
         )
         .bind(account_id)
@@ -843,7 +853,7 @@ impl Db {
                AND status IN ('active', 'delayed', 'failed', 'uncertain') \
              RETURNING id, account_id, site_id, reference, provider_token, status, \
                        monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                       created_at, updated_at",
+                       provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at",
         )
         .bind(account_id)
         .bind(subscription_id)
@@ -889,6 +899,8 @@ impl Db {
         provider_payment_id: Option<&str>,
         provider_status: &str,
         amount_zar_cents: Option<i64>,
+        reconciled_status: &str,
+        provider_cycles_complete: i32,
     ) -> Result<PaymentNotificationOutcome> {
         validate_notification(
             event_id,
@@ -897,6 +909,14 @@ impl Db {
             amount_zar_cents,
         )?;
         validate_payment_reference(reference)?;
+        if reconciled_status.is_empty()
+            || reconciled_status.len() > 64
+            || provider_cycles_complete < 0
+        {
+            return Err(DbError::InvalidData(
+                "invalid PayFast subscription reconciliation".to_owned(),
+            ));
+        }
         if provider_token.is_empty()
             || provider_token.len() > 36
             || !provider_token
@@ -934,7 +954,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, account_id, site_id, reference, provider_token, status, \
                     monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                    created_at, updated_at \
+                    provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at \
              FROM account_site_subscriptions \
              WHERE provider_token = $1 OR reference = $2 \
              ORDER BY id FOR UPDATE",
@@ -1047,15 +1067,15 @@ impl Db {
 
         let callback_status = provider_status.to_ascii_uppercase();
         let amount_matches = amount_zar_cents == Some(subscription.monthly_zar_cents);
-        let (next_status, payment_status, result) = match callback_status.as_str() {
+        let (payment_status, callback_result) = match callback_status.as_str() {
             "COMPLETE" if amount_matches && provider_payment_id.is_some() => {
-                ("active", Some("paid"), "applied")
+                (Some("paid"), "applied")
             }
-            "COMPLETE" => ("uncertain", Some("uncertain"), "uncertain"),
-            "PENDING" | "DELAYED" => ("delayed", Some("delayed"), "applied"),
-            "FAILED" => ("failed", Some("failed"), "applied"),
-            "CANCELLED" | "CANCELED" => ("cancelled", Some("cancelled"), "applied"),
-            _ => ("uncertain", Some("uncertain"), "uncertain"),
+            "COMPLETE" => (Some("uncertain"), "uncertain"),
+            "PENDING" | "DELAYED" => (Some("delayed"), "applied"),
+            "FAILED" => (Some("failed"), "applied"),
+            "CANCELLED" | "CANCELED" => (Some("cancelled"), "applied"),
+            _ => (Some("uncertain"), "uncertain"),
         };
         if let (Some(provider_payment_id), Some(payment_status)) =
             (provider_payment_id, payment_status)
@@ -1108,27 +1128,67 @@ impl Db {
                 return Ok(PaymentNotificationOutcome::Applied);
             }
         }
-        update_subscription_status(
+        if provider_cycles_complete < subscription.provider_cycles_complete {
+            let notification_result = if callback_result == "uncertain" {
+                "uncertain"
+            } else {
+                "already_applied"
+            };
+            finish_notification(&mut tx, event_id, notification_result).await?;
+            tx.commit().await?;
+            return Ok(if notification_result == "uncertain" {
+                PaymentNotificationOutcome::Uncertain
+            } else {
+                PaymentNotificationOutcome::Applied
+            });
+        }
+
+        let reconciled_status_upper = reconciled_status.to_ascii_uppercase();
+        let (next_status, reconciliation_uncertain) = match reconciled_status_upper.as_str() {
+            "ACTIVE" => ("active", false),
+            "CANCELLED" | "CANCELED" => ("cancelled", false),
+            "LOCKED" | "FAILED" => ("failed", false),
+            "PAUSED" | "DELAYED" => ("delayed", false),
+            "PENDING" => ("pending", false),
+            _ => ("uncertain", true),
+        };
+        update_subscription_snapshot(
             &mut tx,
             subscription.id,
             next_status,
-            provider_status,
+            reconciled_status,
             Some(provider_token),
+            provider_cycles_complete,
         )
         .await?;
-        if let Some(provider_payment_id) = provider_payment_id {
-            sqlx::query(
-                "UPDATE account_site_subscriptions SET last_provider_payment_id = $2 \
-                 WHERE id = $1",
-            )
-            .bind(subscription.id)
-            .bind(provider_payment_id)
-            .execute(&mut *tx)
-            .await?;
+        if !reconciliation_uncertain
+            && payment_status == Some("paid")
+            && reconciled_status_upper == "ACTIVE"
+            && subscription.cancel_requested_at.is_none()
+            && subscription.status != "cancelled"
+        {
+            if let Some(provider_payment_id) = provider_payment_id {
+                sqlx::query(
+                    "UPDATE account_site_subscriptions SET last_provider_payment_id = $2, \
+                       last_provider_payment_cycle = $3 \
+                     WHERE id = $1 AND (last_provider_payment_id IS NULL \
+                       OR $3 > last_provider_payment_cycle)",
+                )
+                .bind(subscription.id)
+                .bind(provider_payment_id)
+                .bind(provider_cycles_complete)
+                .execute(&mut *tx)
+                .await?;
+            }
         }
+        let result = if callback_result == "uncertain" || reconciliation_uncertain {
+            "uncertain"
+        } else {
+            "applied"
+        };
         finish_notification(&mut tx, event_id, result).await?;
         tx.commit().await?;
-        Ok(if next_status == "uncertain" {
+        Ok(if result == "uncertain" {
             PaymentNotificationOutcome::Uncertain
         } else {
             PaymentNotificationOutcome::Applied
@@ -1144,7 +1204,8 @@ async fn subscription_by_idempotency(
     Ok(sqlx::query(
         "SELECT id, account_id, site_id, reference, provider_token, status, \
                 monthly_usd_cents, monthly_zar_cents, provider_status, cancel_requested_at, \
-                created_at, updated_at FROM account_site_subscriptions \
+                provider_cycles_complete, last_provider_payment_cycle, created_at, updated_at \
+         FROM account_site_subscriptions \
          WHERE account_id = $1 AND idempotency_key = $2",
     )
     .bind(account_id)
@@ -1174,6 +1235,33 @@ async fn update_subscription_status(
     .bind(status)
     .bind(provider_status)
     .bind(provider_token)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn update_subscription_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    subscription_id: Uuid,
+    status: &str,
+    provider_status: &str,
+    provider_token: Option<&str>,
+    cycles_complete: i32,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE account_site_subscriptions SET status = CASE \
+             WHEN status = 'cancelled' OR $2 = 'cancelled' THEN 'cancelled' \
+             WHEN cancel_requested_at IS NOT NULL AND $2 = 'active' THEN status \
+             ELSE $2 END, provider_status = $3, \
+         provider_token = COALESCE(provider_token, $4), \
+         provider_cycles_complete = GREATEST(provider_cycles_complete, $5), \
+         updated_at = now() WHERE id = $1",
+    )
+    .bind(subscription_id)
+    .bind(status)
+    .bind(provider_status)
+    .bind(provider_token)
+    .bind(cycles_complete)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -1291,6 +1379,8 @@ fn site_subscription_from_row(row: sqlx::postgres::PgRow) -> Result<SiteSubscrip
         monthly_usd_cents: row.try_get("monthly_usd_cents")?,
         monthly_zar_cents: row.try_get("monthly_zar_cents")?,
         provider_status: row.try_get("provider_status")?,
+        provider_cycles_complete: row.try_get("provider_cycles_complete")?,
+        last_provider_payment_cycle: row.try_get("last_provider_payment_cycle")?,
         cancel_requested_at: row.try_get("cancel_requested_at")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
@@ -1706,6 +1796,8 @@ mod postgres_tests {
             Some(&provider_payment_id),
             "PENDING",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "PENDING",
+            0,
         )
         .await
         .expect("apply delayed pending callback for an already paid payment");
@@ -1716,6 +1808,8 @@ mod postgres_tests {
             Some(&provider_payment_id),
             "COMPLETE",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("activate subscription");
@@ -1726,6 +1820,8 @@ mod postgres_tests {
             Some(&provider_payment_id),
             "FAILED",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("apply delayed failure callback for an already paid payment");
@@ -1743,6 +1839,130 @@ mod postgres_tests {
         .await
         .expect("read provider payment status");
         assert_eq!(payment_status, "paid");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stale_callbacks_from_older_cycles_preserve_current_status_and_payment_reference() {
+        let (db, pool) = setup_db().await;
+        let account_id = make_account(&pool).await;
+        let reference = unique_reference("site-sub-stale-cycle-ordering");
+        let provider_token = unique_provider_token();
+        let first_cycle_payment_id = new_provider_payment_id();
+        let current_cycle_payment_id = new_provider_payment_id();
+        let old_pending_payment_id = new_provider_payment_id();
+        let old_failed_payment_id = new_provider_payment_id();
+        let subscription = make_site_subscription(
+            &db,
+            account_id,
+            "site-stale-cycle-ordering",
+            &reference,
+            Uuid::new_v4(),
+        )
+        .await;
+
+        for (payment_id, cycles_complete) in
+            [(&first_cycle_payment_id, 1), (&current_cycle_payment_id, 2)]
+        {
+            db.apply_account_site_subscription_notification(
+                &new_event_id(),
+                Some(&subscription.reference),
+                &provider_token,
+                Some(payment_id),
+                "COMPLETE",
+                Some(HOSTING_MONTHLY_ZAR_CENTS),
+                "ACTIVE",
+                cycles_complete,
+            )
+            .await
+            .expect("apply completed recurring payment");
+        }
+
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&old_pending_payment_id),
+            "PENDING",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "DELAYED",
+            1,
+        )
+        .await
+        .expect("apply pending callback for older recurring payment");
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&old_failed_payment_id),
+            "FAILED",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "FAILED",
+            1,
+        )
+        .await
+        .expect("apply failed callback for older recurring payment");
+
+        let state: (String, i32, i32, Option<String>) = sqlx::query_as(
+            "SELECT status, provider_cycles_complete, last_provider_payment_cycle, \
+                    last_provider_payment_id FROM account_site_subscriptions WHERE id = $1",
+        )
+        .bind(subscription.id)
+        .fetch_one(&pool)
+        .await
+        .expect("read current subscription cycle state");
+        assert_eq!(state.0, "active");
+        assert_eq!(state.1, 2);
+        assert_eq!(state.2, 2);
+        assert_eq!(state.3.as_deref(), Some(current_cycle_payment_id.as_str()));
+
+        let older_payment_statuses: Vec<(String, String)> = sqlx::query_as(
+            "SELECT provider_payment_id, status FROM account_site_subscription_payments \
+             WHERE provider_payment_id = ANY($1) ORDER BY provider_payment_id",
+        )
+        .bind(vec![old_pending_payment_id, old_failed_payment_id])
+        .fetch_all(&pool)
+        .await
+        .expect("read older recurring payment history");
+        assert_eq!(older_payment_statuses.len(), 2);
+        assert!(older_payment_statuses
+            .iter()
+            .any(|(_, status)| status == "delayed"));
+        assert!(older_payment_statuses
+            .iter()
+            .any(|(_, status)| status == "failed"));
+
+        db.apply_account_site_subscription_notification(
+            &new_event_id(),
+            Some(&subscription.reference),
+            &provider_token,
+            Some(&new_provider_payment_id()),
+            "FAILED",
+            Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "LOCKED",
+            1,
+        )
+        .await
+        .expect("apply an older provider snapshot after the current cycle");
+        let fenced = db
+            .account_site_subscription(account_id, subscription.id)
+            .await
+            .expect("read fenced subscription")
+            .expect("subscription remains present");
+        assert_eq!(fenced.status, "active");
+        assert_eq!(fenced.provider_cycles_complete, 2);
+        assert_eq!(fenced.last_provider_payment_cycle, 2);
+        let latest_payment_id: Option<String> = sqlx::query_scalar(
+            "SELECT last_provider_payment_id FROM account_site_subscriptions WHERE id = $1",
+        )
+        .bind(subscription.id)
+        .fetch_one(&pool)
+        .await
+        .expect("read last successful recurring payment id");
+        assert_eq!(
+            latest_payment_id.as_deref(),
+            Some(current_cycle_payment_id.as_str())
+        );
     }
 
     #[tokio::test]
@@ -1770,6 +1990,8 @@ mod postgres_tests {
             Some(&initial_payment_id),
             "COMPLETE",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("activate subscription with first payment");
@@ -1780,6 +2002,8 @@ mod postgres_tests {
             Some(&renewal_payment_id),
             "FAILED",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "LOCKED",
+            1,
         )
         .await
         .expect("apply failed renewal payment");
@@ -1824,6 +2048,8 @@ mod postgres_tests {
             Some(&failed_payment_id),
             "FAILED",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "LOCKED",
+            0,
         )
         .await
         .expect("record a subscription with a recoverable failed payment");
@@ -1838,6 +2064,8 @@ mod postgres_tests {
             Some(&completion_payment_id),
             "COMPLETE",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("apply completion racing with cancellation");
@@ -1874,6 +2102,8 @@ mod postgres_tests {
             Some(&initial_payment_id),
             "COMPLETE",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("activate subscription before cancellation");
@@ -1892,6 +2122,8 @@ mod postgres_tests {
             Some(&late_payment_id),
             "COMPLETE",
             Some(HOSTING_MONTHLY_ZAR_CENTS),
+            "ACTIVE",
+            1,
         )
         .await
         .expect("apply completion after cancellation");

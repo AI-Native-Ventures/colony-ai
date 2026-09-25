@@ -305,7 +305,7 @@ async fn checkout(
             grant_nanousd,
         )
         .await
-        .map_err(|error| map_payment_create_error(error))?;
+        .map_err(map_payment_create_error)?;
 
     match intent_outcome {
         CreatePaymentIntentOutcome::Created(intent) => {
@@ -615,6 +615,12 @@ async fn payfast_webhook(
             provider_status,
             amount_minor_units,
         } => {
+            let reconciled = match provider.subscription_status(&token).await {
+                Ok(state) => state,
+                Err(error) => {
+                    return provider_error(error, "subscription reconciliation").into_response();
+                }
+            };
             state
                 .db
                 .apply_account_site_subscription_notification(
@@ -624,6 +630,8 @@ async fn payfast_webhook(
                     provider_payment_id.as_deref(),
                     &provider_status,
                     amount_minor_units,
+                    &reconciled.status_text,
+                    reconciled.cycles_complete,
                 )
                 .await
         }
@@ -714,7 +722,7 @@ async fn create_site_subscription(
             monthly_zar_cents,
         )
         .await
-        .map_err(|error| map_payment_create_error(error))?;
+        .map_err(map_payment_create_error)?;
     let subscription = subscription_for_checkout(outcome)?;
     subscription_response(&state, &provider, &account, subscription).await
 }
@@ -938,6 +946,8 @@ mod tests {
             monthly_usd_cents: 1000,
             monthly_zar_cents: 18_500,
             provider_status: None,
+            provider_cycles_complete: 0,
+            last_provider_payment_cycle: 0,
             cancel_requested_at: None,
             created_at: chrono::DateTime::UNIX_EPOCH,
             updated_at: chrono::DateTime::UNIX_EPOCH,
@@ -992,6 +1002,8 @@ mod tests {
             monthly_usd_cents: 1000,
             monthly_zar_cents: 18_500,
             provider_status: Some("ACTIVE".to_owned()),
+            provider_cycles_complete: 0,
+            last_provider_payment_cycle: 0,
             cancel_requested_at: None,
             created_at: chrono::DateTime::UNIX_EPOCH,
             updated_at: chrono::DateTime::UNIX_EPOCH,

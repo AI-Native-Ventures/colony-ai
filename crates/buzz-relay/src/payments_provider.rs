@@ -112,6 +112,15 @@ pub struct ReconciledPayment {
     pub amount_minor_units: Option<i64>,
 }
 
+/// Current PayFast subscription state fetched server-to-server after an ITN.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReconciledSubscription {
+    /// Current provider lifecycle text, such as `ACTIVE` or `CANCELLED`.
+    pub status_text: String,
+    /// Number of recurring payment cycles PayFast has completed.
+    pub cycles_complete: i32,
+}
+
 /// One hosted-checkout provider.
 #[async_trait::async_trait]
 pub trait PaymentProvider: Send + Sync {
