@@ -5,7 +5,7 @@ Use this checklist for each site release. A successful local build is not proof 
 ## Proven for the current Pages preview
 
 - [x] Separate `colony-global` Pages deployment is live at [https://d0be35e5.colony-global.pages.dev](https://d0be35e5.colony-global.pages.dev), with 208 runtime files (26.80 MiB).
-- [x] Ten local desktop/phone workflows passed, including the agents31 approved state; the animated hero remains present.
+- [x] Ten local desktop/phone workflows passed, including a single approved teammate added to the roster (30 to 31 agents) state; the animated hero remains present.
 - [x] At 390px, the phone previews are centered and auto-play.
 - [x] The early-access draft validates and makes no network transmission.
 - [x] Hosted Pages root returns 200 with CSP headers; the mobile browser review had no errors.
@@ -31,7 +31,7 @@ Use this checklist for each site release. A successful local build is not proof 
 
 ## After deployment
 
-- [ ] Record the source commit and Cloudflare Pages deployment identity/status for the next release.
+- [x] Release source is commit `f35c614e` on `codex/colony-global-landing`; deployment `d0be35e5` serves its runtime files. The initial upload preceded the source commit, so the Cloudflare upload metadata records the checkout base; the live SHA-256 comparison establishes the deployed content match.
 - [x] Verify `https://colony.global` and `https://www.colony.global` load over HTTPS and return 200 with the intended page. These domains currently serve identical content without a `www` to apex redirect.
 - [ ] Repeat desktop/mobile visual review and all five scenario checks on the deployed page.
 - [ ] Prepare an early-access draft with synthetic data. Confirm it remains on page until explicit email or copy action; do not send the synthetic application.
@@ -40,3 +40,7 @@ Use this checklist for each site release. A successful local build is not proof 
 ## Rollback
 
 If the page is broken or materially differs from the approved version, use Cloudflare Pages to restore the last known-good deployment for `colony-global`. If the platform cannot restore it directly, rebuild and deploy the recorded known-good commit to that project. If domain rollback is required, restore the prior apex A `192.64.119.134` (proxied, Auto TTL) and `www` CNAME `parkingpage.namecheap.com` (proxied, Auto TTL). The current records are proxied CNAMEs to `colony-global.pages.dev` with Auto TTL. Leave all five MX records and the SPF TXT record untouched. Recheck both hosts over HTTPS and record the restored deployment identity. Do not route the domain to the older Pages project as a shortcut.
+
+## Live browser proof
+
+At `https://colony.global` on 2026-09-25, the desktop Grow your team demo completed with Nori marked Approved and added with the human-edited Friday summary instructions. The browser reported no console errors. The site is a public marketing page with illustrative demos, not a deployment of the application.
