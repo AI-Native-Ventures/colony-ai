@@ -156,6 +156,9 @@ test("issue comments remain in the project issue detail", async ({ page }) => {
     }
     await composer.locator('[contenteditable="true"]').fill(comment);
     await composer.getByRole("button", { name: "Send message" }).click();
+    // The confirmation toast can open under the pointer, and Sonner pauses
+    // dismissal while hovered; move away as a person would.
+    await page.mouse.move(0, 0);
     await expect(page.getByText(comment, { exact: true })).toBeVisible({
       timeout: 10_000,
     });
