@@ -1,14 +1,8 @@
 {
   "version": 1,
   "matrix": {
-    "viewports": [
-      "1728x1117",
-      "1440x900"
-    ],
-    "themes": [
-      "light",
-      "dark"
-    ]
+    "viewports": ["1728x1117", "1440x900"],
+    "themes": ["light", "dark"]
   },
   "defaults": {
     "referencePrefs": {
@@ -74,14 +68,8 @@
           "accent": "#3b82f6",
           "followSystem": true,
           "custom": false,
-          "customLight": [
-            "#895AF6",
-            "#5A9CF6"
-          ],
-          "customDark": [
-            "#895AF6",
-            "#5A9CF6"
-          ],
+          "customLight": ["#895AF6", "#5A9CF6"],
+          "customDark": ["#895AF6", "#5A9CF6"],
           "glassBackground": false,
           "glassOpacity": 65,
           "prominentActiveTab": true,
@@ -519,9 +507,7 @@
       "routeLabel": "Avatar update failed",
       "referenceCanvas": true,
       "appMockData": {
-        "profileUpdateErrors": [
-          "Profile update failed."
-        ]
+        "profileUpdateErrors": ["Profile update failed."]
       },
       "clip": {
         "referenceSelector": ".modal",
@@ -777,9 +763,7 @@
             "availability": "available",
             "command": "opencode",
             "binary_path": "/usr/local/bin/opencode",
-            "default_args": [
-              "acp"
-            ],
+            "default_args": ["acp"],
             "mcp_command": null,
             "install_hint": "",
             "install_instructions_url": "https://opencode.ai/docs",
@@ -963,9 +947,7 @@
         "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "appMockData": {
-        "feedbackPublishErrors": [
-          "Relay connection unavailable."
-        ]
+        "feedbackPublishErrors": ["Relay connection unavailable."]
       }
     },
     {
