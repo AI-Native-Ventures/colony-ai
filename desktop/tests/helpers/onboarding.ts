@@ -12,6 +12,7 @@ const MOCK_ACCOUNT_PUBKEY = "deadbeef".repeat(8);
 
 export type R17RuntimeId = "claude" | "codex" | "goose" | "buzz-agent";
 export type R17ConnectionSetupOptions = {
+  mock?: Partial<NonNullable<Parameters<typeof installMockBridge>[1]>>;
   runtimes?: Array<Record<string, unknown>>;
   discoveryDelayMs?: number;
   discoveryError?: boolean;
@@ -56,11 +57,15 @@ export async function startR17AccountAuth(
   await installMockBridge(
     page,
     {
+      ...options.mock,
       accountLinked: true,
-      identityLost: options.identityLost,
-      acpRuntimesCatalog: options.runtimes ?? [],
-      acpRuntimesDelayMs: options.discoveryDelayMs,
-      acpRuntimesError: options.discoveryError,
+      identityLost: options.identityLost ?? options.mock?.identityLost,
+      acpRuntimesCatalog:
+        options.runtimes ?? options.mock?.acpRuntimesCatalog ?? [],
+      acpRuntimesDelayMs:
+        options.discoveryDelayMs ?? options.mock?.acpRuntimesDelayMs,
+      acpRuntimesError:
+        options.discoveryError ?? options.mock?.acpRuntimesError,
     },
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );

@@ -99,6 +99,19 @@ const FIRST_RUN_ALICE = {
   username: "",
 };
 
+async function commandCount(page: Page, command: string) {
+  return page.evaluate((commandName) => {
+    const bridgeWindow = window as Window & {
+      __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{ command: string }>;
+    };
+    return (
+      bridgeWindow.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+        (entry) => entry.command === commandName,
+      ).length ?? 0
+    );
+  }, command);
+}
+
 async function seedOnboardingCompletion(page: Page, pubkey: string) {
   await page.addInitScript(
     ({ storageKey }) => {
@@ -772,13 +785,22 @@ test("R17 signup blocks passwords shorter than the designed minimum", async ({
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("short-password@example.com");
-  await page.getByRole("textbox", { name: "Password" }).fill("shortpass");
+  const password = page.getByRole("textbox", { name: "Password" });
+  await password.fill("shortpass");
 
-  await expect(page.getByTestId("account-auth-password-issue")).toHaveText(
-    "Use at least 10 characters.",
-  );
-  await expect(page.getByTestId("account-auth-submit-signup")).toBeDisabled();
-  await expect(page.getByTestId("account-auth-screen-signup")).toBeVisible();
+  await expect(password).toHaveAttribute("minlength", "10");
+  expect(
+    await password.evaluate(
+      (input) => (input as HTMLInputElement).validity.tooShort,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Create your account" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Digit 1 of 6")).toHaveCount(0);
 });
 test("R17 password recovery uses the six-digit email code", async ({
   page,
@@ -848,7 +870,9 @@ test("R17 password recovery returns to sign in without backup import", async ({
   await expect(
     page.getByTestId("account-auth-screen-reset-request"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Back to sign in", exact: true })
+    .click();
 
   await expect(
     page.getByRole("heading", { name: "Welcome back" }),
