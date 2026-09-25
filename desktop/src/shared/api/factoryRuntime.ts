@@ -12,8 +12,16 @@ export type FactoryRunStatus =
   | "done"
   | "cancelled";
 
+export type FactoryScope = {
+  relayUrl: string;
+  identityPubkey: string;
+  businessCommunityId: string;
+  clientChannelId: string | null;
+};
+
 export type FactoryRun = {
   id: string;
+  scope: FactoryScope;
   projectId: string | null;
   repositoryId: string | null;
   checkoutPath: string;
@@ -33,6 +41,7 @@ export type FactoryRunEvent = {
   createdAt: string;
   kind: string;
   payload: unknown;
+  scope: FactoryScope;
 };
 
 export type FactoryRunSnapshot = {

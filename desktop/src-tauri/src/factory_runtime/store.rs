@@ -63,7 +63,11 @@ pub(super) fn open_store(path: &Path) -> Result<Connection, String> {
                 acp_session_id TEXT,
                 error TEXT,
                 operation_key TEXT,
-                request_hash TEXT
+                request_hash TEXT,
+                relay_url TEXT NOT NULL DEFAULT '',
+                identity_pubkey TEXT NOT NULL DEFAULT '',
+                business_community_id TEXT NOT NULL DEFAULT '',
+                client_channel_id TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS factory_runs_updated ON factory_runs(updated_at DESC);
             CREATE INDEX IF NOT EXISTS factory_runs_parent ON factory_runs(parent_run_id);
@@ -105,6 +109,20 @@ pub(super) fn open_store(path: &Path) -> Result<Connection, String> {
             .execute_batch("ALTER TABLE factory_runs ADD COLUMN request_hash TEXT")
             .map_err(|error| error.to_string())?;
     }
+    for (name, declaration) in [
+        ("relay_url", "TEXT NOT NULL DEFAULT ''"),
+        ("identity_pubkey", "TEXT NOT NULL DEFAULT ''"),
+        ("business_community_id", "TEXT NOT NULL DEFAULT ''"),
+        ("client_channel_id", "TEXT NOT NULL DEFAULT ''"),
+    ] {
+        if !column_names.iter().any(|column| column == name) {
+            connection
+                .execute_batch(&format!(
+                    "ALTER TABLE factory_runs ADD COLUMN {name} {declaration}"
+                ))
+                .map_err(|error| error.to_string())?;
+        }
+    }
     connection
         .execute_batch(
             "CREATE UNIQUE INDEX IF NOT EXISTS factory_runs_operation_key
@@ -115,6 +133,7 @@ pub(super) fn open_store(path: &Path) -> Result<Connection, String> {
 }
 
 fn raw_run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRun> {
+    let client_channel_id: String = row.get(15)?;
     Ok(RawRun {
         id: row.get(0)?,
         project_id: row.get(1)?,
@@ -128,10 +147,18 @@ fn raw_run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRun> {
         updated_at: row.get(9)?,
         acp_session_id: row.get(10)?,
         error: row.get(11)?,
+        relay_url: row.get(12)?,
+        identity_pubkey: row.get(13)?,
+        business_community_id: row.get(14)?,
+        client_channel_id: blank_to_none(client_channel_id),
     })
 }
 
-const RUN_COLUMNS: &str = "id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, status, created_at, updated_at, acp_session_id, error";
+fn blank_to_none(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
+}
+
+const RUN_COLUMNS: &str = "id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, status, created_at, updated_at, acp_session_id, error, relay_url, identity_pubkey, business_community_id, client_channel_id";
 
 pub(super) fn stored_payload_bytes(tx: &Transaction<'_>) -> Result<i64, String> {
     tx.query_row(
@@ -159,6 +186,7 @@ pub(super) fn ensure_storage_capacity(
 }
 
 pub(super) fn create_request_hash(
+    scope: &FactoryScope,
     project_id: Option<&str>,
     repository_id: Option<&str>,
     checkout_path: &str,
@@ -169,6 +197,7 @@ pub(super) fn create_request_hash(
     let canonical = serde_json::to_vec(&(
         project_id,
         repository_id,
+        scope,
         checkout_path,
         agent_id,
         parent_run_id,
@@ -178,16 +207,34 @@ pub(super) fn create_request_hash(
     Ok(hex::encode(Sha256::digest(canonical)))
 }
 
+pub(super) fn scoped_operation_key(
+    scope: &FactoryScope,
+    operation_key: &str,
+) -> Result<String, String> {
+    let canonical =
+        serde_json::to_vec(&(scope, operation_key)).map_err(|error| error.to_string())?;
+    Ok(hex::encode(Sha256::digest(canonical)))
+}
+
 pub(super) fn prune_terminal_history(
     tx: &Transaction<'_>,
+    scope: &FactoryScope,
     protected_run_id: Option<&str>,
     retained_terminal_runs: i64,
 ) -> Result<(), String> {
     loop {
         let terminal_count: i64 = tx
             .query_row(
-                "SELECT COUNT(*) FROM factory_runs WHERE status IN ('error','done','cancelled')",
-                [],
+                "SELECT COUNT(*) FROM factory_runs
+                 WHERE status IN ('error','done','cancelled')
+                   AND relay_url = ?1 AND identity_pubkey = ?2
+                   AND business_community_id = ?3 AND client_channel_id = ?4",
+                params![
+                    scope.db_values().0,
+                    scope.db_values().1,
+                    scope.db_values().2,
+                    scope.db_values().3
+                ],
                 |row| row.get(0),
             )
             .map_err(|error| error.to_string())?;
@@ -198,13 +245,21 @@ pub(super) fn prune_terminal_history(
             .query_row(
                 "SELECT run.id FROM factory_runs AS run
                  WHERE run.status IN ('error','done','cancelled')
-                   AND (?1 IS NULL OR run.id <> ?1)
+                   AND run.relay_url = ?1 AND run.identity_pubkey = ?2
+                   AND run.business_community_id = ?3 AND run.client_channel_id = ?4
+                   AND (?5 IS NULL OR run.id <> ?5)
                    AND NOT EXISTS (
                        SELECT 1 FROM factory_runs AS child WHERE child.parent_run_id = run.id
                    )
                  ORDER BY run.updated_at ASC, run.created_at ASC
                  LIMIT 1",
-                [protected_run_id],
+                params![
+                    scope.db_values().0,
+                    scope.db_values().1,
+                    scope.db_values().2,
+                    scope.db_values().3,
+                    protected_run_id
+                ],
                 |row| row.get(0),
             )
             .optional()
@@ -225,6 +280,27 @@ pub(super) fn read_run(connection: &Connection, run_id: &str) -> Result<FactoryR
     FactoryRun::try_from(raw)
 }
 
+fn read_run_scoped(
+    connection: &Connection,
+    run_id: &str,
+    scope: &FactoryScope,
+) -> Result<FactoryRun, String> {
+    let sql = format!(
+        "SELECT {RUN_COLUMNS} FROM factory_runs WHERE id = ?1
+         AND relay_url = ?2 AND identity_pubkey = ?3
+         AND business_community_id = ?4 AND client_channel_id = ?5"
+    );
+    let values = scope.db_values();
+    let raw = connection
+        .query_row(
+            &sql,
+            params![run_id, values.0, values.1, values.2, values.3],
+            raw_run_from_row,
+        )
+        .map_err(|_| "Factory run was not found".to_string())?;
+    FactoryRun::try_from(raw)
+}
+
 pub(super) fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<FactoryRunEvent> {
     let payload: String = row.get(4)?;
     let payload = serde_json::from_str(&payload).map_err(|error| {
@@ -236,6 +312,12 @@ pub(super) fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<FactoryRun
         created_at: row.get(2)?,
         kind: row.get(3)?,
         payload,
+        scope: FactoryScope {
+            relay_url: row.get(5)?,
+            identity_pubkey: row.get(6)?,
+            business_community_id: row.get(7)?,
+            client_channel_id: blank_to_none(row.get(8)?),
+        },
     })
 }
 
@@ -299,13 +381,37 @@ pub(super) fn insert_event_with_storage_limit(
         params![run_id, created_at, kind, payload_json],
     )
     .map_err(|error| error.to_string())?;
+    let scope = transaction_scope(tx, run_id)?;
     Ok(Some(FactoryRunEvent {
         sequence: tx.last_insert_rowid(),
         run_id: run_id.to_string(),
         created_at,
         kind: kind.to_string(),
         payload: payload.clone(),
+        scope,
     }))
+}
+
+fn transaction_scope(tx: &Transaction<'_>, run_id: &str) -> Result<FactoryScope, String> {
+    let (relay_url, identity_pubkey, business_community_id, client_channel_id): (
+        String,
+        String,
+        String,
+        String,
+    ) = tx
+        .query_row(
+            "SELECT relay_url, identity_pubkey, business_community_id, client_channel_id
+             FROM factory_runs WHERE id = ?1",
+            [run_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(FactoryScope {
+        relay_url,
+        identity_pubkey,
+        business_community_id,
+        client_channel_id: (!client_channel_id.is_empty()).then_some(client_channel_id),
+    })
 }
 
 pub(super) fn current_host_id() -> &'static str {
@@ -391,14 +497,18 @@ where
 
 pub(super) fn store_find_operation(
     path: &Path,
+    scope: &FactoryScope,
     operation_key: &str,
     request_hash: &str,
 ) -> Result<Option<FactoryRun>, String> {
     let connection = open_store(path)?;
+    let values = scope.db_values();
     let existing: Option<(String, Option<String>)> = connection
         .query_row(
-            "SELECT id, request_hash FROM factory_runs WHERE operation_key = ?1",
-            [operation_key],
+            "SELECT id, request_hash FROM factory_runs WHERE operation_key = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5",
+            params![operation_key, values.0, values.1, values.2, values.3],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -409,11 +519,12 @@ pub(super) fn store_find_operation(
     if existing_hash.as_deref() != Some(request_hash) {
         return Err("Factory operation key was reused with a different request".to_string());
     }
-    read_run(&connection, &run_id).map(Some)
+    read_run_scoped(&connection, &run_id, scope).map(Some)
 }
 
 pub(super) fn store_create(
     path: &Path,
+    scope: &FactoryScope,
     run_id: &str,
     operation_key: &str,
     request_hash: &str,
@@ -429,10 +540,13 @@ pub(super) fn store_create(
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
+    let values = scope.db_values();
     let existing: Option<(String, Option<String>)> = tx
         .query_row(
-            "SELECT id, request_hash FROM factory_runs WHERE operation_key = ?1",
-            [operation_key],
+            "SELECT id, request_hash FROM factory_runs WHERE operation_key = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5",
+            params![operation_key, values.0, values.1, values.2, values.3],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -441,7 +555,7 @@ pub(super) fn store_create(
         if existing_hash.as_deref() != Some(request_hash) {
             return Err("Factory operation key was reused with a different request".to_string());
         }
-        let run = read_run(&tx, &existing_run_id)?;
+        let run = read_run_scoped(&tx, &existing_run_id, scope)?;
         tx.commit().map_err(|error| error.to_string())?;
         return Ok(StoreCreateResult {
             run,
@@ -449,7 +563,7 @@ pub(super) fn store_create(
             is_new: false,
         });
     }
-    prune_terminal_history(&tx, parent_run_id, MAX_RETAINED_TERMINAL_RUNS)?;
+    prune_terminal_history(&tx, scope, parent_run_id, MAX_RETAINED_TERMINAL_RUNS)?;
     let stored_runs: i64 = tx
         .query_row("SELECT COUNT(*) FROM factory_runs", [], |row| row.get(0))
         .map_err(|error| error.to_string())?;
@@ -472,8 +586,10 @@ pub(super) fn store_create(
     if let Some(parent) = parent_run_id {
         let exists: bool = tx
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1)",
-                [parent],
+                "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1
+                 AND relay_url = ?2 AND identity_pubkey = ?3
+                 AND business_community_id = ?4 AND client_channel_id = ?5)",
+                params![parent, values.0, values.1, values.2, values.3],
                 |row| row.get(0),
             )
             .map_err(|error| error.to_string())?;
@@ -483,8 +599,27 @@ pub(super) fn store_create(
     }
     let now = now_iso();
     tx.execute(
-        "INSERT INTO factory_runs (id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, status, created_at, updated_at, operation_key, request_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?8, ?9, ?10)",
-        params![run_id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, now, operation_key, request_hash],
+        "INSERT INTO factory_runs (
+             id, project_id, repository_id, checkout_path, agent_id, harness_id,
+             parent_run_id, status, created_at, updated_at, operation_key, request_hash,
+             relay_url, identity_pubkey, business_community_id, client_channel_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            run_id,
+            project_id,
+            repository_id,
+            checkout_path,
+            agent_id,
+            harness_id,
+            parent_run_id,
+            now,
+            operation_key,
+            request_hash,
+            values.0,
+            values.1,
+            values.2,
+            values.3
+        ],
     )
     .map_err(|error| error.to_string())?;
     let prompt_event = insert_event(
@@ -497,6 +632,7 @@ pub(super) fn store_create(
     .ok_or_else(|| "Factory prompt exceeded the transcript limit".to_string())?;
     let run = FactoryRun {
         id: run_id.to_string(),
+        scope: scope.clone(),
         project_id: project_id.map(str::to_string),
         repository_id: repository_id.map(str::to_string),
         checkout_path: checkout_path.to_string(),
@@ -517,14 +653,20 @@ pub(super) fn store_create(
     })
 }
 
-pub(super) fn store_list(path: &Path) -> Result<Vec<FactoryRun>, String> {
+pub(super) fn store_list(path: &Path, scope: &FactoryScope) -> Result<Vec<FactoryRun>, String> {
     let connection = open_store(path)?;
-    let sql = format!("SELECT {RUN_COLUMNS} FROM factory_runs ORDER BY updated_at DESC LIMIT 200");
+    let values = scope.db_values();
+    let sql = format!("SELECT {RUN_COLUMNS} FROM factory_runs
+        WHERE relay_url = ?1 AND identity_pubkey = ?2 AND business_community_id = ?3 AND client_channel_id = ?4
+        ORDER BY updated_at DESC LIMIT 200");
     let mut statement = connection
         .prepare(&sql)
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], raw_run_from_row)
+        .query_map(
+            params![values.0, values.1, values.2, values.3],
+            raw_run_from_row,
+        )
         .map_err(|error| error.to_string())?;
     rows.map(|row| {
         let raw = row.map_err(|error| error.to_string())?;
@@ -536,16 +678,32 @@ pub(super) fn store_list(path: &Path) -> Result<Vec<FactoryRun>, String> {
 pub(super) fn store_snapshot(
     path: &Path,
     run_id: &str,
+    scope: &FactoryScope,
     after_sequence: i64,
 ) -> Result<FactoryRunSnapshot, String> {
     let connection = open_store(path)?;
-    let run = read_run(&connection, run_id)?;
+    let run = read_run_scoped(&connection, run_id, scope)?;
+    let values = scope.db_values();
     let mut statement = connection
-        .prepare("SELECT sequence, run_id, created_at, kind, payload_json FROM factory_run_events WHERE run_id = ?1 AND sequence > ?2 ORDER BY sequence ASC LIMIT ?3")
+        .prepare("SELECT event.sequence, event.run_id, event.created_at, event.kind, event.payload_json,
+                         run.relay_url, run.identity_pubkey, run.business_community_id, run.client_channel_id
+                  FROM factory_run_events AS event JOIN factory_runs AS run ON run.id = event.run_id
+                  WHERE event.run_id = ?1 AND event.sequence > ?2
+                    AND run.relay_url = ?4 AND run.identity_pubkey = ?5
+                    AND run.business_community_id = ?6 AND run.client_channel_id = ?7
+                  ORDER BY event.sequence ASC LIMIT ?3")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
-            params![run_id, after_sequence.max(0), MAX_EVENTS_PER_SNAPSHOT],
+            params![
+                run_id,
+                after_sequence.max(0),
+                MAX_EVENTS_PER_SNAPSHOT,
+                values.0,
+                values.1,
+                values.2,
+                values.3
+            ],
             read_event,
         )
         .map_err(|error| error.to_string())?;
@@ -558,15 +716,29 @@ pub(super) fn store_snapshot(
         .unwrap_or(after_sequence.max(0));
     let has_more = connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM factory_run_events WHERE run_id = ?1 AND sequence > ?2)",
-            params![run_id, last_sequence],
+            "SELECT EXISTS(SELECT 1 FROM factory_run_events AS event
+             JOIN factory_runs AS run ON run.id = event.run_id
+             WHERE event.run_id = ?1 AND event.sequence > ?2
+               AND run.relay_url = ?3 AND run.identity_pubkey = ?4
+               AND run.business_community_id = ?5 AND run.client_channel_id = ?6)",
+            params![
+                run_id,
+                last_sequence,
+                values.0,
+                values.1,
+                values.2,
+                values.3
+            ],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
     let draft = connection
         .query_row(
-            "SELECT draft FROM factory_run_drafts WHERE run_id = ?1",
-            [run_id],
+            "SELECT draft FROM factory_run_drafts WHERE run_id = ?1
+             AND EXISTS (SELECT 1 FROM factory_runs AS run WHERE run.id = factory_run_drafts.run_id
+               AND run.relay_url = ?2 AND run.identity_pubkey = ?3
+               AND run.business_community_id = ?4 AND run.client_channel_id = ?5)",
+            params![run_id, values.0, values.1, values.2, values.3],
             |row| row.get(0),
         )
         .optional()
@@ -723,24 +895,52 @@ pub(super) fn store_transition(
     )?
     .ok_or_else(|| "failed to persist Factory status event".to_string())?;
     if next.is_terminal() {
-        prune_terminal_history(&tx, Some(run_id), MAX_RETAINED_TERMINAL_RUNS)?;
+        let scope = transaction_scope(&tx, run_id)?;
+        prune_terminal_history(&tx, &scope, Some(run_id), MAX_RETAINED_TERMINAL_RUNS)?;
     }
     let run = read_run(&tx, run_id)?;
     tx.commit().map_err(|error| error.to_string())?;
     Ok(Some((run, event)))
 }
 
+pub(super) fn store_transition_scoped(
+    path: &Path,
+    run_id: &str,
+    scope: &FactoryScope,
+    expected: Option<FactoryRunStatus>,
+    next: FactoryRunStatus,
+    error: Option<&str>,
+) -> Result<Option<(FactoryRun, FactoryRunEvent)>, String> {
+    let connection = open_store(path)?;
+    let values = scope.db_values();
+    let exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5)",
+            params![run_id, values.0, values.1, values.2, values.3],
+            |row| row.get(0),
+        )
+        .map_err(|failure| failure.to_string())?;
+    if !exists {
+        return Err("Factory run was not found".to_string());
+    }
+    store_transition(path, run_id, expected, next, error)
+}
+
 pub(super) fn store_set_draft(
     path: &Path,
     run_id: &str,
+    scope: &FactoryScope,
     draft: &str,
 ) -> Result<FactoryRunDraft, String> {
-    store_set_draft_with_storage_limit(path, run_id, draft, MAX_FACTORY_PAYLOAD_BYTES)
+    store_set_draft_with_storage_limit(path, run_id, scope, draft, MAX_FACTORY_PAYLOAD_BYTES)
 }
 
 pub(super) fn store_set_draft_with_storage_limit(
     path: &Path,
     run_id: &str,
+    scope: &FactoryScope,
     draft: &str,
     storage_limit_bytes: i64,
 ) -> Result<FactoryRunDraft, String> {
@@ -751,10 +951,13 @@ pub(super) fn store_set_draft_with_storage_limit(
     let tx = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    let values = scope.db_values();
     let exists: bool = tx
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1)",
-            [run_id],
+            "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1
+             AND relay_url = ?2 AND identity_pubkey = ?3
+             AND business_community_id = ?4 AND client_channel_id = ?5)",
+            params![run_id, values.0, values.1, values.2, values.3],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
@@ -790,12 +993,17 @@ pub(super) fn store_set_draft_with_storage_limit(
 pub(super) fn store_get_draft(
     path: &Path,
     run_id: &str,
+    scope: &FactoryScope,
 ) -> Result<Option<FactoryRunDraft>, String> {
     let connection = open_store(path)?;
+    let values = scope.db_values();
     connection
         .query_row(
-            "SELECT run_id, draft, updated_at FROM factory_run_drafts WHERE run_id = ?1",
-            [run_id],
+            "SELECT draft.run_id, draft.draft, draft.updated_at FROM factory_run_drafts AS draft
+             JOIN factory_runs AS run ON run.id = draft.run_id
+             WHERE draft.run_id = ?1 AND run.relay_url = ?2 AND run.identity_pubkey = ?3
+               AND run.business_community_id = ?4 AND run.client_channel_id = ?5",
+            params![run_id, values.0, values.1, values.2, values.3],
             |row| {
                 Ok(FactoryRunDraft {
                     run_id: row.get(0)?,

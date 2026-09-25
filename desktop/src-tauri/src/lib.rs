@@ -11,7 +11,7 @@ mod egress_guard;
 mod electron_host;
 mod event_sync;
 mod events;
-mod factory_runtime;
+pub(crate) mod factory_runtime;
 mod huddle;
 mod identity_storage;
 mod initial_window;

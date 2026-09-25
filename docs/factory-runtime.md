@@ -15,9 +15,32 @@ graph.
 
 Each run records its project id, repository id, canonical checkout path, agent
 id, selected harness, ACP session id, lifecycle status, timestamps, and latest
-error. The initial prompt is stored as the first transcript event in the same
-transaction that creates the run. Drafts are one record per run and persist
-independently from transcript events.
+error. It also stores its immutable native authorization scope: relay URL,
+identity pubkey, business community id, and optional client channel id. The
+initial prompt is stored as the first transcript event in the same transaction
+that creates the run. Drafts are one record per run and persist independently
+from transcript events.
+
+The active scope is installed only by `apply_workspace`, after the native host
+has applied and re-read its own relay URL and signing identity. The host checks
+the selected business community against the active identity's NIP-98
+authenticated `/api/communities/mine?scope=member` response. A requested client
+channel is accepted only after the native host verifies the relay-signed
+kind:39002 membership event using its NIP-42 authenticated relay session. A
+positive or negative client membership result is cached for 30 seconds.
+Workspace binding and every event-stream reattach force a fresh client
+membership query. If client membership is revoked, the current Factory scope is
+cleared and its renderer attachments stop receiving events. Scope changes
+detach renderer subscriptions without cancelling their durable runs.
+
+Every Factory list, snapshot, draft, cancel, create, and reattach operation is
+filtered by the active scope. A run from a different business or client is
+reported as not found for single-run operations. Parent runs must have the exact
+same scope. When project or repository ids are supplied, the native host checks
+their signed announcements on the active relay, verifies that a selected
+repository is listed by its project, and requires any client-scoped project or
+repository to carry the active client channel tag. Rows created by earlier
+versions have empty scope columns after migration and remain inaccessible.
 
 ## Lifecycle
 
@@ -80,6 +103,9 @@ transcript is capped at 8 MiB. A `transcript_truncated` event marks when the
 per-run limit is reached. Snapshot pages contain at most 1000 events. The
 renderer buffers at most 512 live events while the initial snapshot is loading;
 it is notified when it must resynchronize after buffer overflow or stream lag.
+Run and event API objects include the stored scope, and the native event
+publisher checks both that scope and the current host relay and identity before
+forwarding an event.
 
 The aggregate Factory store limits run, transcript, and draft payload to
 120 MiB. The SQLite database file is capped at 128 MiB using a page ceiling
