@@ -279,6 +279,11 @@ body:has(.w20-settings-shell) {
   background: rgb(255 255 255 / 64%);
 }
 
+.dark .w20-nav-person-avatar > span {
+  background: rgb(255 255 255 / 8%);
+  color: #c8b7d4;
+}
+
 .w20-nav-person-avatar:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -514,6 +519,7 @@ body:has(.w20-settings-shell) {
 
 .w20-route-content-account {
   max-width: 1320px;
+  padding-top: 34px;
 }
 
 .w20-route-scroll-appearance {

@@ -11,7 +11,6 @@ import { usePresenceQuery } from "@/features/presence/hooks";
 import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { SettingsOptionGroup } from "./SettingsOptionGroup";
 import type { SettingsSection } from "./SettingsPanels";
 
 type AccountProfileSettingsPanelProps = {
@@ -84,7 +83,7 @@ export function AccountProfileSettingsPanel({
   function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const displayName = nameDraft.trim();
-    if (!displayName || displayName === profileName) return;
+    if (!displayName) return;
 
     updateProfileMutation.mutate(
       { displayName },
@@ -115,7 +114,7 @@ export function AccountProfileSettingsPanel({
           : "false"
       }
     >
-      <header className="mb-12 flex min-h-8 items-center justify-between gap-4">
+      <header className="mb-8 flex min-h-8 items-center justify-between gap-4">
         <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
         <Button
           className="h-8 px-3 text-xs"
@@ -129,13 +128,15 @@ export function AccountProfileSettingsPanel({
       </header>
 
       <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[1.65fr_1fr]">
-        <SettingsOptionGroup
-          className="min-w-0"
+        <section
+          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-background/70"
           data-testid="settings-account-profile-card"
-          title="Your profile"
         >
+          <h2 className="px-4 pt-4 text-sm font-semibold text-muted-foreground/70">
+            Your profile
+          </h2>
           <form onSubmit={saveProfile}>
-            <div className="space-y-3 px-4 py-4">
+            <div className="space-y-4 px-4 pb-4 pt-3">
               <div className="space-y-1.5">
                 <label
                   className="block text-xs font-semibold"
@@ -205,13 +206,15 @@ export function AccountProfileSettingsPanel({
                 >
                   Timezone
                 </label>
-                <Input
-                  className="h-10 text-sm"
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-default disabled:opacity-100"
                   data-testid="account-profile-timezone"
+                  disabled
                   id="account-profile-timezone"
-                  readOnly
                   value={timezone}
-                />
+                >
+                  <option value={timezone}>{timezone}</option>
+                </select>
               </div>
 
               {profileQuery.error instanceof Error ||
@@ -235,9 +238,7 @@ export function AccountProfileSettingsPanel({
                   className="h-8 bg-[#705486] px-4 text-xs text-white hover:bg-[#604776]"
                   data-testid="account-profile-save"
                   disabled={
-                    updateProfileMutation.isPending ||
-                    !nameDraft.trim() ||
-                    nameDraft.trim() === profileName
+                    updateProfileMutation.isPending || !nameDraft.trim()
                   }
                   type="submit"
                 >
@@ -246,14 +247,16 @@ export function AccountProfileSettingsPanel({
               </div>
             </div>
           </form>
-        </SettingsOptionGroup>
+        </section>
 
-        <SettingsOptionGroup
-          className="min-w-0"
+        <section
+          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-background/70"
           data-testid="settings-account-business-card"
-          title="This business"
         >
-          <div className="space-y-4 px-4 py-4">
+          <h2 className="px-4 pt-4 text-sm font-semibold text-muted-foreground/70">
+            This business
+          </h2>
+          <div className="space-y-4 px-4 pb-4 pt-3">
             <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 text-xs">
               <span className="text-muted-foreground">Business</span>
               <span
@@ -286,7 +289,7 @@ export function AccountProfileSettingsPanel({
               </Button>
             </div>
           </div>
-        </SettingsOptionGroup>
+        </section>
       </div>
     </section>
   );
