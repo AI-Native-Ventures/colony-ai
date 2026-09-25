@@ -114,7 +114,7 @@ export function AccountProfileSettingsPanel({
           : "false"
       }
     >
-      <header className="mb-8 flex min-h-8 items-center justify-between gap-4">
+      <header className="mb-16 flex min-h-8 items-center justify-between gap-4">
         <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
         <Button
           className="h-8 px-3 text-xs"
@@ -136,7 +136,7 @@ export function AccountProfileSettingsPanel({
             Your profile
           </h2>
           <form onSubmit={saveProfile}>
-            <div className="space-y-4 px-4 pb-4 pt-3">
+            <div className="space-y-7 px-4 pb-4 pt-3">
               <div className="space-y-1.5">
                 <label
                   className="block text-xs font-semibold"
@@ -256,8 +256,8 @@ export function AccountProfileSettingsPanel({
           <h2 className="px-4 pt-4 text-sm font-semibold text-muted-foreground/70">
             This business
           </h2>
-          <div className="space-y-4 px-4 pb-4 pt-3">
-            <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 text-xs">
+          <div className="space-y-6 px-4 pb-6 pt-3">
+            <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-5 text-xs">
               <span className="text-muted-foreground">Business</span>
               <span
                 className="min-w-0 truncate"
