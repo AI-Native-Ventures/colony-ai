@@ -1,4 +1,4 @@
-import { Columns2, PanelRightOpen } from "lucide-react";
+import { Columns2, Maximize2 } from "lucide-react";
 
 import {
   type ThreadViewMode,
@@ -19,8 +19,8 @@ export function shouldRestoreThreadToggleFocus(clickDetail: number): boolean {
  * — because the user watches these two alternate in the same 28px slot. A diagram
  * flipping to an action icon reads as two different controls sharing a position.
  *
- * `columns-2` depicts the split destination, while `panel-right-open` depicts
- * the thread expanding from its right-hand pane into the larger focus surface.
+ * `columns-2` depicts the split destination, while `maximize-2` depicts the
+ * thread expanding from its right-hand pane into the larger focus surface.
  * The latter preserves the thread's spatial origin without implying browser
  * fullscreen or a separate app window.
  */
@@ -33,7 +33,7 @@ const THREAD_VIEW_MODE_TOGGLE = {
   },
   split: {
     // Viewing the pane → offer the drawer.
-    icon: PanelRightOpen,
+    icon: Maximize2,
     label: "Expand thread",
     target: "focus",
   },

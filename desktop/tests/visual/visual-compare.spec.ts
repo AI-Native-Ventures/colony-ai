@@ -251,6 +251,12 @@ test.describe("visual comparison captures", () => {
               ".message-markdown [data-link-preview-list]",
             ),
           ).toHaveCount(1);
+          const threadPanel = appPage.locator(
+            '[data-testid="message-thread-panel"]',
+          );
+          await expect(
+            threadPanel.locator('[data-testid="message-author"]'),
+          ).toHaveCount(2);
         }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
