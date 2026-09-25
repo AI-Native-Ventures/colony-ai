@@ -101,14 +101,16 @@ export function AccountProfileSettingsPanel({
       aria-busy={
         profileQuery.isLoading ||
         accountQuery.isLoading ||
-        membershipQuery.isLoading
+        membershipQuery.isLoading ||
+        presenceQuery.isLoading
       }
       className="w20-account-profile min-w-0"
       data-testid="settings-profile"
       data-ready={
         !profileQuery.isLoading &&
         !accountQuery.isLoading &&
-        !membershipQuery.isLoading
+        !membershipQuery.isLoading &&
+        !presenceQuery.isLoading
           ? "true"
           : "false"
       }

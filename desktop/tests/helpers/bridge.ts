@@ -150,6 +150,8 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Linked account address returned by the mocked account API. */
+  accountEmail?: string;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;

@@ -234,6 +234,8 @@ type E2eConfig = {
     } | null;
     /** Account state returned by the mocked account API. Defaults to linked. */
     accountLinked?: boolean;
+    /** Linked account address returned by the mocked account API. */
+    accountEmail?: string;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -11398,7 +11400,7 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
 
   let mockAccountLinked = config.mock?.accountLinked ?? true;
-  let mockAccountEmail = "person@example.com";
+  let mockAccountEmail = config.mock?.accountEmail ?? "person@example.com";
   const accountAuthCalls: AccountAuthTestCall[] = [];
   const queuedAccountAuthErrors: Array<{
     method: keyof AccountAuthClient;

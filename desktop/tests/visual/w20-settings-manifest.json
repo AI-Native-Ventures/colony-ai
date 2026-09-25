@@ -97,6 +97,7 @@
       }
     },
     "appMockData": {
+      "accountEmail": "lerato@leratosocial.example",
       "searchProfiles": [
         {
           "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -122,7 +123,8 @@
       "referenceInventoryRoute": "account",
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#account",
       "appRoute": "/#/settings?section=profile",
-      "routeLabel": "Account profile settings"
+      "routeLabel": "Account profile settings",
+      "appReadySelector": "[data-testid=settings-profile][data-ready=true]"
     },
     {
       "id": "workspace-account-accessibility",
