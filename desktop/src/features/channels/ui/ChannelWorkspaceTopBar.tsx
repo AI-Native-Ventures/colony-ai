@@ -46,7 +46,7 @@ export function ChannelWorkspaceTopBar({
             currentPubkey={currentPubkey}
             members={members}
             size="compact"
-            testId="channel-topbar-member-avatar-stack"
+            testIdPrefix="channel-topbar-member"
           />
           <button
             aria-label="View members"
