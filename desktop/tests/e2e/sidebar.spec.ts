@@ -103,10 +103,10 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   });
   expect(rowGap).toBe(4);
 
-  const establishedHoverBackground = await page.evaluate(() => {
+  const establishedHoverBackground = await hoverRow.evaluate((row) => {
     const probe = document.createElement("span");
-    probe.style.backgroundColor = "hsl(var(--sidebar-accent))";
-    document.body.append(probe);
+    probe.style.backgroundColor = "var(--buzz-hover-surface)";
+    row.parentElement?.append(probe);
     const background = getComputedStyle(probe).backgroundColor;
     probe.remove();
     return background;
