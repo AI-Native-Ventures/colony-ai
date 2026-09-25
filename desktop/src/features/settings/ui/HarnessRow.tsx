@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
+import { SettingsAlertDialogContent } from "@/shared/ui/settings-alert-dialog-content";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -476,14 +477,6 @@ export function HarnessRow({
             {installOutputLine}
           </p>
         ) : null}
-        {installError ? (
-          <p
-            className="mt-2 whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
-            data-testid={`doctor-runtime-install-error-${runtime.id}`}
-          >
-            {installError}
-          </p>
-        ) : null}
         {connectionError ? (
           <p
             className="mt-2 whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
@@ -574,6 +567,53 @@ export function HarnessRow({
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setInstallResult(null);
+        }}
+        open={installError !== null}
+      >
+        <SettingsAlertDialogContent
+          className="max-w-lg gap-0 rounded-xl border border-border bg-background p-0"
+          data-testid={`doctor-runtime-install-failure-${runtime.id}`}
+        >
+          <AlertDialogHeader className="border-b border-border px-4 py-3">
+            <AlertDialogTitle className="text-sm font-semibold tracking-normal">
+              Failed
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="space-y-3 px-4 py-4">
+            <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+              <p className="text-sm font-semibold">
+                {runtime.label} could not be installed.
+              </p>
+              <AlertDialogDescription className="whitespace-pre-line text-xs">
+                {installError?.split("\n\nFull log:")[0]}
+              </AlertDialogDescription>
+              <p className="text-xs text-muted-foreground">
+                Other harnesses are unaffected.
+              </p>
+            </div>
+            {installError?.includes("Full log:") ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer">Show details</summary>
+                <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-muted-foreground">
+                  {installError}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+          <AlertDialogFooter className="border-t border-border px-4 py-3">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid={`doctor-runtime-install-retry-${runtime.id}`}
+              onClick={handleInstall}
+            >
+              Retry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </SettingsAlertDialogContent>
       </AlertDialog>
     </div>
   );
