@@ -240,6 +240,7 @@ export type VisualFixtureSeed = {
     /** Keep a context-only thread root queryable without adding it to channel history. */
     timelineVisibility?: "channel" | "thread-only";
   }>;
+  followedPubkeys?: string[];
   todayUpdates?: Array<{
     id: string;
     pubkey: string;
@@ -3383,9 +3384,15 @@ const mockChannels: MockChannel[] = [
 
 const mockMessages = new Map<string, RelayEvent[]>();
 const mockVisualThreadOnlyMessageIds = new Set<string>();
+const mockVisualContactLists = new Map<string, string[]>();
 
 function seedVisualFixture(fixture: VisualFixtureSeed) {
   mockVisualThreadOnlyMessageIds.clear();
+  mockVisualContactLists.clear();
+  mockVisualContactLists.set(
+    fixture.identity.pubkey.toLowerCase(),
+    (fixture.followedPubkeys ?? []).map((pubkey) => pubkey.toLowerCase()),
+  );
   DEFAULT_MOCK_IDENTITY.display_name = fixture.identity.displayName;
   mockDisplayNames.set(fixture.identity.pubkey, fixture.identity.displayName);
   mockProfiles.set(fixture.identity.pubkey, {
@@ -13243,6 +13250,33 @@ export function maybeInstallE2eTauriMocks() {
           payload as Parameters<typeof handleGetUserNotes>[0],
           activeConfig,
         );
+      case "get_contact_list": {
+        const { pubkey } = payload as { pubkey: string };
+        const normalizedPubkey = pubkey.toLowerCase();
+        const contacts = mockVisualContactLists.get(normalizedPubkey) ?? [];
+        return {
+          id: `mock-contact-list-${normalizedPubkey}`,
+          pubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: contacts.map((contactPubkey) => ["p", contactPubkey]),
+          content: "{}",
+        };
+      }
+      case "set_contact_list": {
+        const { contacts } = payload as {
+          contacts: Array<{ pubkey: string }>;
+        };
+        const pubkey = getMockMemberPubkey(activeConfig).toLowerCase();
+        mockVisualContactLists.set(
+          pubkey,
+          contacts.map((contact) => contact.pubkey.toLowerCase()),
+        );
+        return {
+          event_id: `mock-contact-list-${Math.floor(Date.now() / 1000)}`,
+          accepted: true,
+          message: "Contact list updated",
+        };
+      }
       case "get_global_notes":
         return handleGetGlobalNotes(
           payload as Parameters<typeof handleGetGlobalNotes>[0],

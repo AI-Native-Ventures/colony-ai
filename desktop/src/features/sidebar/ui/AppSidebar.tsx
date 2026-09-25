@@ -1,6 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -736,6 +736,24 @@ export function AppSidebar({
                       onDeleteChannel={requestDeleteChannel}
                       onLeaveChannel={requestLeaveChannel}
                     />
+                  ) : null}
+                  {onBrowseChannels ? (
+                    <div
+                      className="colony-sidebar-browse-channels"
+                      data-testid="sidebar-browse-channels"
+                    >
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            onClick={() => onBrowseChannels()}
+                            type="button"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span className="truncate">Browse channels</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                    </div>
                   ) : null}
                   <FeatureGate feature="forum">
                     <ChannelGroupSection
