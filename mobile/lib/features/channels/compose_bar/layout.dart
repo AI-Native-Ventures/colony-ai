@@ -10,6 +10,7 @@ class _ComposeBarLayout extends HookWidget {
   final FocusNode focusNode;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<KeyboardInsertedContent> onContentInserted;
+  final VoidCallback onVoiceNote;
   final VoidCallback onSend;
   final String resolvedHint;
   final _AttachmentSurface attachmentSurface;
@@ -39,6 +40,7 @@ class _ComposeBarLayout extends HookWidget {
     required this.focusNode,
     required this.contextMenuBuilder,
     required this.onContentInserted,
+    required this.onVoiceNote,
     required this.onSend,
     required this.resolvedHint,
     required this.attachmentSurface,
@@ -170,11 +172,7 @@ class _ComposeBarLayout extends HookWidget {
                 ),
               ),
               const SizedBox(width: Grid.xxs),
-              _SendButton(
-                isDisabled: !canSend || hasPendingUploads,
-                isSending: isSending,
-                onTap: onSend,
-              ),
+              _trailingAction(context),
             ],
           ),
         _ExpandedComposerActionsMotion(
@@ -228,11 +226,7 @@ class _ComposeBarLayout extends HookWidget {
                                   onTap: onOpenFormatting,
                                 ),
                                 const Spacer(),
-                                _SendButton(
-                                  isDisabled: !canSend || hasPendingUploads,
-                                  isSending: isSending,
-                                  onTap: onSend,
-                                ),
+                                _trailingAction(context),
                               ],
                             ),
                     ),
@@ -319,6 +313,20 @@ class _ComposeBarLayout extends HookWidget {
           child: composer,
         );
       },
+    );
+  }
+
+  Widget _trailingAction(BuildContext context) {
+    if (controller.text.trim().isEmpty && attachments.isEmpty && !isSending) {
+      return _VoiceNoteButton(
+        isDisabled: hasPendingUploads,
+        onTap: onVoiceNote,
+      );
+    }
+    return _SendButton(
+      isDisabled: !canSend || hasPendingUploads,
+      isSending: isSending,
+      onTap: onSend,
     );
   }
 

@@ -994,6 +994,7 @@ class ComposeBar extends HookConsumerWidget {
               focusNode: focusNode,
               contextMenuBuilder: buildContextMenu,
               onContentInserted: uploadPastedImage,
+              onVoiceNote: voiceNote.start,
               onSend: () => unawaited(send()),
               resolvedHint: resolvedHint,
               attachmentSurface: attachmentSurface.value,

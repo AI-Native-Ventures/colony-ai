@@ -161,7 +161,6 @@ class _ThreadMessage extends HookConsumerWidget {
                             child: _Avatar(
                               profile: profile,
                               pubkey: message.pubkey,
-                              isAgent: isAgent,
                             ),
                           )
                         else
@@ -185,9 +184,9 @@ class _ThreadMessage extends HookConsumerWidget {
                                         Expanded(
                                           child: MessageAuthorMeta(
                                             displayName: displayName,
-                                            username: messageUsernameLabel(
-                                              profile,
-                                            ),
+                                            username: isAgent
+                                                ? 'AGENT'
+                                                : messageUsernameLabel(profile),
                                             timestamp: formatMessageTime(
                                               message.createdAt,
                                             ),

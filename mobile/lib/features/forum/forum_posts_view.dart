@@ -9,11 +9,10 @@ import '../../shared/theme/theme.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/bee_refresh_indicator.dart';
-import '../channels/channel.dart';
-import '../channels/compose_bar.dart';
 import 'forum_models.dart';
 import 'forum_post_card.dart';
 import 'forum_provider.dart';
+import 'forum_presentation.dart';
 import 'forum_thread_page.dart';
 
 /// Main forum view — replaces the old _ForumPlaceholder.
@@ -21,18 +20,26 @@ import 'forum_thread_page.dart';
 /// Shows a list of forum posts for the channel with a FAB to open the compose
 /// bar, and navigates to [ForumThreadPage] when a post is tapped.
 class ForumPostsView extends HookConsumerWidget {
-  final Channel channel;
+  final String channelId;
+  final String channelName;
   final String? currentPubkey;
+  final bool isMember;
+  final bool isArchived;
+  final ForumPresentationFactories? presentation;
 
   const ForumPostsView({
     super.key,
-    required this.channel,
+    required this.channelId,
+    required this.channelName,
     required this.currentPubkey,
+    required this.isMember,
+    required this.isArchived,
+    this.presentation,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsync = ref.watch(forumPostsProvider(channel.id));
+    final postsAsync = ref.watch(forumPostsProvider(channelId));
     final isComposing = useState(false);
     // A queued attachment can finish after this view is popped. Capture the
     // app-level provider container instead of retaining the route's WidgetRef.
@@ -42,12 +49,12 @@ class ForumPostsView extends HookConsumerWidget {
     // Periodic refresh (every 15s, matching desktop).
     useEffect(() {
       final timer = Stream.periodic(const Duration(seconds: 15)).listen((_) {
-        ref.invalidate(forumPostsProvider(channel.id));
+        ref.invalidate(forumPostsProvider(channelId));
       });
       return timer.cancel;
-    }, [channel.id]);
+    }, [channelId]);
 
-    final canPost = channel.isMember && !channel.isArchived;
+    final canPost = isMember && !isArchived;
 
     return Column(
       children: [
@@ -89,35 +96,36 @@ class ForumPostsView extends HookConsumerWidget {
                 final posts = response.posts;
                 if (posts.isEmpty) {
                   return _EmptyState(
-                    isMember: channel.isMember,
-                    isArchived: channel.isArchived,
+                    isMember: isMember,
+                    isArchived: isArchived,
                   );
                 }
                 return BeeRefreshIndicator(
                   onRefresh: () async {
-                    ref.invalidate(forumPostsProvider(channel.id));
-                    await ref.read(forumPostsProvider(channel.id).future);
+                    ref.invalidate(forumPostsProvider(channelId));
+                    await ref.read(forumPostsProvider(channelId).future);
                   },
                   child: ListView.separated(
                     padding: EdgeInsets.only(
-                      top: frostedAppBarHeight(context),
-                      left: Grid.gutter,
-                      right: Grid.gutter,
+                      top: frostedAppBarHeight(context) + 10,
+                      left: 10,
+                      right: 10,
                       bottom: Grid.xs,
                     ),
-                    itemCount: posts.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: Grid.xxs),
+                    itemCount: posts.length + 1,
+                    separatorBuilder: (_, index) =>
+                        SizedBox(height: index == 0 ? 14 : 12),
                     itemBuilder: (context, index) {
-                      final post = posts[index];
+                      if (index == 0) return const _RecentSortIndicator();
+                      final post = posts[index - 1];
                       return ForumPostCard(
                         post: post,
                         currentPubkey: currentPubkey,
+                        presentation: presentation,
                         onTap: () => _openThread(context, post),
                         onDelete: (eventId) async {
-                          await deleteForumEvent(
-                            ref,
-                            channelId: channel.id,
+                          await forumDelivery.deleteEvent(
+                            channelId: channelId,
                             eventId: eventId,
                           );
                         },
@@ -142,24 +150,25 @@ class ForumPostsView extends HookConsumerWidget {
               ),
             ),
           ),
-          ComposeBar(
-            channelId: channel.id,
-            hintText: 'Write your post\u2026',
-            onSend:
-                (
-                  content,
-                  mentionPubkeys, {
-                  mediaTags = const <List<String>>[],
-                }) async {
-                  await forumDelivery.createPost(
-                    channelId: channel.id,
-                    content: content,
-                    mentionPubkeys: mentionPubkeys,
-                    mediaTags: mediaTags,
-                  );
-                  if (context.mounted) isComposing.value = false;
-                },
-          ),
+          if (presentation case final factories?)
+            factories.composeBarBuilder(
+              channelId: channelId,
+              hintText: 'Write your post…',
+              onSend:
+                  (
+                    content,
+                    mentionPubkeys, {
+                    mediaTags = const <List<String>>[],
+                  }) async {
+                    await forumDelivery.createPost(
+                      channelId: channelId,
+                      content: content,
+                      mentionPubkeys: mentionPubkeys,
+                      mediaTags: mediaTags,
+                    );
+                    if (context.mounted) isComposing.value = false;
+                  },
+            ),
         ],
       ],
     );
@@ -169,11 +178,44 @@ class ForumPostsView extends HookConsumerWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ForumThreadPage(
-          channelId: channel.id,
+          channelId: channelId,
+          channelName: channelName,
           postEventId: post.eventId,
           currentPubkey: currentPubkey,
-          isMember: channel.isMember,
-          isArchived: channel.isArchived,
+          isMember: isMember,
+          isArchived: isArchived,
+          presentation: presentation,
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentSortIndicator extends StatelessWidget {
+  const _RecentSortIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        label: 'Forum posts sorted by recent activity',
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: context.colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            'Recent',
+            style: context.textTheme.labelMedium?.copyWith(
+              color: context.colors.onSurface,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
       ),
     );

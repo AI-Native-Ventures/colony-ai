@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/animated_avatar.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
@@ -818,11 +819,33 @@ class ThreadDetailPage extends HookConsumerWidget {
         channelNamesMap[ch.name.toLowerCase()] = ch.id;
       }
     });
+    final mobileTokens = context.mobileTokens;
+    final titleStyle = context.mobileTypography.body.copyWith(
+      color: mobileTokens.ink,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      height: 1.25,
+    );
+    final subtitleStyle = context.mobileTypography.metadata.copyWith(
+      color: mobileTokens.muted,
+      fontSize: 10,
+      height: 1.25,
+    );
+    final textScaler = MediaQuery.textScalerOf(context);
+    final titleContentHeight =
+        textScaler.scale(titleStyle.fontSize ?? 16) * (titleStyle.height ?? 1) +
+        (hasFetchedReplies
+            ? textScaler.scale(subtitleStyle.fontSize ?? 10) *
+                  (subtitleStyle.height ?? 1)
+            : 0);
+    final replyCount = replies.length;
+    final replyLabel = '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}';
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
 
     return FrostedScaffold(
+      backgroundColor: mobileTokens.paper,
       resizeToAvoidBottomInset: !usesFixedAndroidImeViewport,
       appBar: FrostedAppBar(
         leading: usesNativeIosGlassBackButton
@@ -836,16 +859,36 @@ class ThreadDetailPage extends HookConsumerWidget {
                 nativeViewSuppressed: messageActionBackdropActive,
               )
             : null,
-        iconColor: context.colors.primary,
+        iconColor: mobileTokens.ink,
+        titleContentHeight: titleContentHeight,
         title: Padding(
           padding: EdgeInsets.only(
             left: usesNativeIosGlassBackButton
                 ? iosGlassChannelHeaderTitleSpacing
                 : 0,
           ),
-          child: const Text('Thread', key: ValueKey('thread-app-bar-title')),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Thread',
+                key: const ValueKey('thread-app-bar-title'),
+                style: titleStyle,
+              ),
+              if (hasFetchedReplies)
+                Text(
+                  replyLabel,
+                  key: const ValueKey('thread-app-bar-summary'),
+                  style: subtitleStyle,
+                ),
+            ],
+          ),
         ),
-        titleStyle: channelTitleTextStyle,
+        titleStyle: titleStyle,
+        frostedSurfaceOpacity: 1,
+        frostedBlurSigma: 0,
+        bottomDividerOpacity: 1,
       ),
       body: Stack(
         fit: StackFit.expand,

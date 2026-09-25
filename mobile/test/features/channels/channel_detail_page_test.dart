@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
+import 'package:buzz/features/profile/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/features/profile/user_profile_sheet.dart';
@@ -60,7 +62,6 @@ import 'package:buzz/shared/widgets/flapping_bee.dart';
 import 'package:buzz/shared/widgets/keyboard_dismiss_on_drag.dart';
 import 'package:buzz/shared/widgets/ios_glass_navigation_button.dart';
 import 'package:buzz/shared/widgets/lucide_star_icon.dart';
-import 'package:buzz/shared/widgets/masked_avatar_badge.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -203,6 +204,7 @@ Widget _buildTestable({
   required List<NostrEvent> messages,
   List<TypingEntry> typing = const [],
   Map<String, UserProfile> users = const {},
+  Map<String, String> presence = const {},
   Set<String>? knownAgentPubkeys,
   Future<Set<String>> Function()? loadChannelBotPubkeys,
   bool watchChannelMembershipUpdates = false,
@@ -246,9 +248,21 @@ Widget _buildTestable({
   String? huddleCurrentPubkey,
   http.Client? mediaClient,
   Widget? home,
+  Brightness? brightness,
+  Key? captureKey,
+  bool routeInNavigationStack = false,
+  String profileDisplayName = 'Self',
 }) {
   final resolvedChannel = channel ?? _testChannel;
   final navigatorKey = GlobalKey<NavigatorState>();
+  final detailPage =
+      home ??
+      ChannelDetailPage(
+        channel: resolvedChannel,
+        initialMessageId: initialMessageId,
+        initialThreadRootId: initialThreadRootId,
+        initialThreadRouteBehavior: initialThreadRouteBehavior,
+      );
   final fakeChannelsNotifier =
       channelsNotifier ?? _FakeChannelsNotifier(channels ?? [resolvedChannel]);
   final fakeMessagesNotifier =
@@ -270,7 +284,12 @@ Widget _buildTestable({
       userCacheProvider.overrideWith(
         () => userCacheNotifier ?? _FakeUserCacheNotifier(users),
       ),
-      profileProvider.overrideWith(() => _FakeProfileNotifier()),
+      profileProvider.overrideWith(
+        () => _FakeProfileNotifier(displayName: profileDisplayName),
+      ),
+      presenceCacheProvider.overrideWith(
+        () => _FakePresenceCacheNotifier(presence),
+      ),
       channelsProvider.overrideWith(() => fakeChannelsNotifier),
       channelStarsProvider.overrideWith(_FakeChannelStarsNotifier.new),
       channelMutesProvider.overrideWith(_FakeChannelMutesNotifier.new),
@@ -376,23 +395,33 @@ Widget _buildTestable({
     ],
     child: MaterialApp(
       navigatorKey: navigatorKey,
-      theme: AppTheme.light(),
+      initialRoute: routeInNavigationStack ? '/capture/detail' : null,
+      routes: routeInNavigationStack
+          ? {
+              '/': (_) => const SizedBox.shrink(),
+              '/capture': (_) => const SizedBox.shrink(),
+              '/capture/detail': (_) => detailPage,
+            }
+          : const {},
+      theme: switch (brightness) {
+        Brightness.light => AppTheme.light(
+          mobileTokens: MobileDesignTokens.light,
+        ),
+        Brightness.dark => AppTheme.dark(mobileTokens: MobileDesignTokens.dark),
+        null => AppTheme.light(),
+      },
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: textScaler,
           disableAnimations: disableAnimations,
         ),
-        child: MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+        child: RepaintBoundary(
+          key: captureKey,
+          child: MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+        ),
       ),
       navigatorObservers: navigatorObservers,
-      home:
-          home ??
-          ChannelDetailPage(
-            channel: resolvedChannel,
-            initialMessageId: initialMessageId,
-            initialThreadRootId: initialThreadRootId,
-            initialThreadRouteBehavior: initialThreadRouteBehavior,
-          ),
+      home: routeInNavigationStack ? null : detailPage,
     ),
   );
 }
@@ -550,48 +579,252 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
-    testWidgets(
-      'bot-role author avatars stay squircles in channel and thread',
-      (tester) async {
-        final message = _textMsg(
-          id: 'bot-message',
-          pubkey: 'bot',
-          content: 'Bot message',
+    testWidgets('captures R17 channel, DM and thread routes', (tester) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_DETAILS');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
         );
-        await tester.pumpWidget(
-          _buildTestable(
-            messages: [message],
-            users: const {
-              'bot': UserProfile(pubkey: 'bot', displayName: 'Bot'),
-            },
-            loadChannelBotPubkeys: () async => const {'bot'},
-            threadReplies: const {'bot-message': []},
+      await iconFontLoader.load();
+
+      final now = DateTime.now();
+      int timestamp(int hour, int minute) =>
+          DateTime(
+            now.year,
+            now.month,
+            now.day,
+            hour,
+            minute,
+          ).millisecondsSinceEpoch ~/
+          1000;
+      final morning = _textMsg(
+        id: 'fixture-morning',
+        pubkey: 'self',
+        content:
+            'Morning team. Let’s get the Olive Studio carousel ready for Friday.',
+        createdAt: timestamp(9, 14),
+      );
+      final root = _textMsg(
+        id: 'fixture-journal-review',
+        pubkey: 'maya',
+        content:
+            'Ready for your review, @Lerato. Softer colours, shorter copy, and the new end card.',
+        createdAt: timestamp(10, 38),
+        extraTags: const [
+          ['p', 'self'],
+        ],
+      );
+      final channelRoot = _textMsg(
+        id: 'fixture-journal-review',
+        pubkey: 'maya',
+        content:
+            'Ready for your review, @Lerato. What do you think of this direction?',
+        createdAt: timestamp(10, 38),
+        extraTags: const [
+          ['p', 'self'],
+        ],
+      );
+      final replyOne = _textMsg(
+        id: 'fixture-journal-reply-one',
+        pubkey: 'self',
+        content:
+            'Love the direction. Can we make slide 2’s headline a little shorter?',
+        createdAt: timestamp(10, 41),
+        extraTags: const [
+          ['e', 'fixture-journal-review', '', 'reply'],
+          ['p', 'maya'],
+        ],
+      );
+      final replyTwo = _textMsg(
+        id: 'fixture-journal-reply-two',
+        pubkey: 'maya',
+        content:
+            'Of course. “A moment for you” could work. I’ll keep the layout and update the copy.',
+        createdAt: timestamp(10, 42),
+        extraTags: const [
+          ['e', 'fixture-journal-review', '', 'reply'],
+          ['p', 'self'],
+        ],
+      );
+      final agent = _textMsg(
+        id: 'fixture-agent-review',
+        pubkey: 'scout',
+        content:
+            'Captions checked against the brief. No unsupported claims in this version.',
+        createdAt: timestamp(10, 40),
+      );
+      final campaign = Channel(
+        id: _channelId,
+        name: 'Campaign studio',
+        channelType: 'stream',
+        visibility: 'open',
+        description: 'Campaign studio',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      final dm = Channel(
+        id: _channelId,
+        name: 'DM',
+        channelType: 'dm',
+        visibility: 'private',
+        description: 'Direct message',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 2,
+        participants: const ['Lerato Molefe', 'Maya Ndlovu'],
+        participantPubkeys: const ['self', 'maya'],
+        isMember: true,
+      );
+      final campaignMembers = [
+        for (final member in [
+          ('self', 'owner', 'Lerato Molefe'),
+          ('maya', 'member', 'Maya Ndlovu'),
+          ('scout', 'bot', 'Scout'),
+          ('sage', 'bot', 'Sage'),
+          ('cedar', 'bot', 'Cedar'),
+          ('nandi', 'member', 'Nandi'),
+          ('thabo', 'member', 'Thabo'),
+          ('lebo', 'member', 'Lebo'),
+        ])
+          ChannelMember(
+            pubkey: member.$1,
+            role: member.$2,
+            joinedAt: DateTime(2026),
+            displayName: member.$3,
           ),
-        );
-        await tester.pumpAndSettle();
+      ];
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+      for (final size in captureSizes.entries) {
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          for (final route in ['channel', 'dm', 'thread']) {
+            final output = Directory('/tmp/w23-mobile-chats/${size.key}/$mode');
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = LocalFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+            );
+            tester.view.physicalSize = size.value;
+            tester.view.devicePixelRatio = 1;
+            final isDm = route == 'dm';
+            final isThread = route == 'thread';
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: isDm
+                    ? [
+                        _textMsg(
+                          id: 'fixture-dm-morning',
+                          pubkey: 'maya',
+                          content:
+                              'Morning! I’ve put the latest carousel in Campaign studio.',
+                          createdAt: timestamp(10, 36),
+                        ),
+                        _textMsg(
+                          id: 'fixture-dm-reply',
+                          pubkey: 'self',
+                          content: 'Thanks Maya. I’m looking now.',
+                          createdAt: timestamp(10, 37),
+                        ),
+                        _textMsg(
+                          id: 'fixture-dm-journal',
+                          pubkey: 'maya',
+                          content:
+                              'Here’s the latest version. The headline on slide 2 is the one I’d love your eye on.',
+                          createdAt: timestamp(10, 38),
+                        ),
+                      ]
+                    : isThread
+                    ? [root, replyOne, replyTwo]
+                    : [morning, channelRoot, agent],
+                channel: isDm ? dm : campaign,
+                users: const {
+                  'self': UserProfile(
+                    pubkey: 'self',
+                    displayName: 'Lerato Molefe',
+                  ),
+                  'maya': UserProfile(
+                    pubkey: 'maya',
+                    displayName: 'Maya Ndlovu',
+                  ),
+                  'scout': UserProfile(pubkey: 'scout', displayName: 'Scout'),
+                },
+                presence: const {'maya': 'online'},
+                knownAgentPubkeys: const {'scout'},
+                members: isDm ? const [] : campaignMembers,
+                threadReplies: {
+                  'fixture-journal-review': [replyOne, replyTwo],
+                },
+                initialThreadRootId: isThread ? 'fixture-journal-review' : null,
+                brightness: brightness,
+                captureKey: const ValueKey('w23-detail-fullscreen-capture'),
+                routeInNavigationStack: true,
+                profileDisplayName: 'Lerato Molefe',
+                disableAnimations: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+            await expectLater(
+              find.byKey(const ValueKey('w23-detail-fullscreen-capture')),
+              matchesGoldenFile('$route.png'),
+            );
+            goldenFileComparator = previousComparator;
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          }
+        }
+      }
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-        AvatarImage avatarIn(Finder row) => tester.widget<AvatarImage>(
-          find.descendant(of: row, matching: find.byType(AvatarImage)),
-        );
-        expect(
-          avatarIn(
-            find.byKey(const ValueKey('message-row-bot-message')),
-          ).isAgent,
-          isTrue,
-        );
+    testWidgets('message avatars are circular in channel and thread', (
+      tester,
+    ) async {
+      final message = _textMsg(
+        id: 'bot-message',
+        pubkey: 'bot',
+        content: 'Bot message',
+      );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: [message],
+          users: const {'bot': UserProfile(pubkey: 'bot', displayName: 'Bot')},
+          loadChannelBotPubkeys: () async => const {'bot'},
+          threadReplies: const {'bot-message': []},
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const ValueKey('message-row-bot-message')));
-        await tester.pumpAndSettle();
-        expect(
-          avatarIn(
-            find.byKey(const ValueKey('thread-message-row-bot-message')),
-          ).isAgent,
-          isTrue,
-        );
-      },
-    );
+      ClipOval avatarIn(Finder row) => tester.widget<ClipOval>(
+        find.descendant(
+          of: row,
+          matching: find.byKey(const ValueKey('message-avatar-circle')),
+        ),
+      );
+      expect(
+        avatarIn(find.byKey(const ValueKey('message-row-bot-message'))),
+        isNotNull,
+      );
 
-    testWidgets('uses the shared 32px masked presence avatar in DM headers', (
+      await tester.tap(find.byKey(const ValueKey('message-row-bot-message')));
+      await tester.pumpAndSettle();
+      expect(
+        avatarIn(find.byKey(const ValueKey('thread-message-row-bot-message'))),
+        isNotNull,
+      );
+    });
+
+    testWidgets('shows the R17 DM name and presence in its header', (
       tester,
     ) async {
       final dmChannel = Channel(
@@ -615,47 +848,28 @@ void main() {
           users: const {
             'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
           },
+          presence: const {'alice': 'online'},
         ),
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      final avatar = tester.widget<MaskedAvatarBadge>(avatarFinder);
-      expect(tester.getSize(avatarFinder), const Size.square(32));
-      expect(avatar.geometry, AvatarBadgeMaskGeometry.presenceDot);
-      expect(avatar.badge, isNotNull);
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(16),
-      );
-      expect(
-        find.descendant(of: avatarFinder, matching: find.byType(ClipPath)),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
       final name = tester.widget<Text>(
         find.byKey(const ValueKey('dm-header-name')),
       );
       final presence = tester.widget<Text>(
         find.byKey(const ValueKey('dm-header-presence')),
       );
-      expect(name.style?.fontSize, 16);
-      expect(name.style?.fontWeight, FontWeight.w500);
-      expect(presence.style?.fontSize, 14);
+      expect(name.style?.fontSize, 14);
+      expect(name.style?.fontWeight, FontWeight.w700);
+      expect(presence.style?.fontSize, 10);
       expect(presence.style?.fontWeight, FontWeight.w400);
-      // Named counterpart: the avatar initial comes from the authored name.
-      expect(_dmHeaderAvatarInitial(tester), 'A');
+      expect(presence.data, 'Available');
       expect(find.byTooltip('View members'), findsNothing);
       expect(find.byTooltip('Start Huddle'), findsOneWidget);
     });
 
-    testWidgets('keys unnamed DM header avatars to the hex participant key', (
+    testWidgets('shows the counterpart key when an unnamed DM has no avatar', (
       tester,
     ) async {
       // A valid unnamed counterpart: the compact-npub label would render `N`
@@ -686,13 +900,10 @@ void main() {
         tester.widget<Text>(find.byKey(const ValueKey('dm-header-name'))).data,
         shortPubkey(a11ce),
       );
-      // The named counterpart in the test above keeps its authored initial
-      // ('A' from 'Alice'); this unnamed one gets the hex-key-derived 'A',
-      // not the `N` its npub label starts with.
-      expect(_dmHeaderAvatarInitial(tester), 'A');
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
-    testWidgets('keys DM header fallback avatars to the non-self counterpart', (
+    testWidgets('names the non-self counterpart in a DM header', (
       tester,
     ) async {
       // Member order does not guarantee the counterpart is listed first:
@@ -727,10 +938,10 @@ void main() {
         tester.widget<Text>(find.byKey(const ValueKey('dm-header-name'))).data,
         shortPubkey(b0b),
       );
-      expect(_dmHeaderAvatarInitial(tester), 'B');
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
-    testWidgets('uses a fallback squircle for bot-role DM participants', (
+    testWidgets('keeps bot DM identity in the title without a header avatar', (
       tester,
     ) async {
       final dmChannel = Channel(
@@ -756,33 +967,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(9.6),
-      );
-      expect(
-        tester
-            .widget<AvatarImageContent>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(AvatarImageContent),
-              ),
-            )
-            .imageUrl,
-        isNull,
-      );
-      expect(
-        find.descendant(of: avatarFinder, matching: find.byType(ClipPath)),
-        findsOneWidget,
-      );
+      expect(find.text('Bot DM'), findsOneWidget);
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
     testWidgets('hides the Huddle action in a one-to-one agent DM', (
@@ -817,18 +1003,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(9.6),
-      );
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
       expect(find.byKey(const ValueKey('channel-huddle-button')), findsNothing);
       expect(find.byTooltip('Start Huddle'), findsNothing);
     });
@@ -3093,7 +3268,7 @@ void main() {
       expect(find.text('Alice'), findsOneWidget);
       expect(find.text('alice@example.com'), findsOneWidget);
       expect(find.text('Bob'), findsOneWidget);
-      final messageAvatars = find.byType(CircleAvatar);
+      final messageAvatars = find.byType(AvatarImageContent);
       expect(messageAvatars, findsNWidgets(2));
       for (final avatar in messageAvatars.evaluate()) {
         expect(
@@ -3198,7 +3373,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        tester.widget<CircleAvatar>(find.byType(CircleAvatar)).backgroundColor,
+        tester
+            .widget<ColoredBox>(
+              find.byKey(const ValueKey('message-avatar-surface')),
+            )
+            .color,
         Colors.transparent,
       );
       expect(tester.widget<MediaImage>(find.byType(MediaImage)).url, posterUrl);
@@ -5525,7 +5704,7 @@ void main() {
       final createdAction = findRichText('created this channel');
       expect(createdAction, findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       final nameRect = tester.getRect(find.text('Alice'));
@@ -5566,7 +5745,7 @@ void main() {
       expect(find.text('Alice'), findsOneWidget);
       expect(findRichText('started a huddle'), findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       expect(
@@ -8425,12 +8604,18 @@ void main() {
           );
           final regularAvatar = tester.getRect(
             find
-                .descendant(of: regularRow, matching: find.byType(CircleAvatar))
+                .descendant(
+                  of: regularRow,
+                  matching: find.byType(AvatarImageContent),
+                )
                 .first,
           );
           final huddleAvatar = tester.getRect(
             find
-                .descendant(of: huddleRow, matching: find.byType(CircleAvatar))
+                .descendant(
+                  of: huddleRow,
+                  matching: find.byType(AvatarImageContent),
+                )
                 .first,
           );
           final regularAuthor = tester.getRect(
@@ -8506,7 +8691,7 @@ void main() {
           find
               .descendant(
                 of: find.byKey(ValueKey(rowKey)),
-                matching: find.byType(CircleAvatar),
+                matching: find.byType(AvatarImageContent),
               )
               .first,
         );
@@ -8551,7 +8736,7 @@ void main() {
       expect(find.text('Bob'), findsOneWidget);
       expect(findRichText('joined the channel'), findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
     });
@@ -8618,7 +8803,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8663,7 +8848,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8753,7 +8938,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.byType(CircleAvatar));
+          await tester.tap(find.byType(AvatarImageContent));
           await tester.pumpAndSettle();
 
           expect(find.byType(UserProfileSheet), findsOneWidget);
@@ -8801,7 +8986,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8844,7 +9029,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byType(CircleAvatar));
+        await tester.tap(find.byType(AvatarImageContent));
         await tester.pumpAndSettle();
 
         expect(find.byType(UserProfileSheet), findsOneWidget);
@@ -8932,7 +9117,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar).first);
+      await tester.tap(find.byType(AvatarImageContent).first);
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8965,7 +9150,7 @@ void main() {
       expect(addedAction, findsOneWidget);
       expect(find.text('Alice added Bob to the channel'), findsNothing);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       final nameRect = tester.getRect(find.text('Bob'));
@@ -9089,7 +9274,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarRect = tester.getRect(find.byType(CircleAvatar));
+      final avatarRect = tester.getRect(find.byType(AvatarImageContent));
       final reactionRect = tester.getRect(find.byType(ReactionRow));
       expect(
         reactionRect.left,
@@ -9852,16 +10037,16 @@ void main() {
           find.byKey(const ValueKey('channel-ios-glass-back')),
         );
         expect(backButtonRect.width, 58);
-        final channelIconRect = tester.getRect(
-          find.byKey(const ValueKey('channel-header-avatar')),
+        final channelTitleStackRect = tester.getRect(
+          find.byKey(const ValueKey('channel-header-text-stack')),
         );
         expect(
-          channelIconRect.left - backButtonRect.right,
-          moreOrLessEquals(Grid.xs),
+          channelTitleStackRect.left,
+          greaterThanOrEqualTo(backButtonRect.right),
         );
         expect(
           backButtonRect.center.dy,
-          moreOrLessEquals(channelIconRect.center.dy),
+          moreOrLessEquals(channelTitleStackRect.center.dy),
         );
         expect(tester.takeException(), isNull);
         debugDefaultTargetPlatformOverride = null;
@@ -9912,23 +10097,22 @@ void main() {
                   find.byKey(const ValueKey('channel-ios-glass-back')),
                 )
               : tester.getRect(find.byTooltip('Back'));
-          final avatarRect = tester.getRect(
-            find.byKey(const ValueKey('channel-header-avatar')),
+          final titleRect = tester.getRect(
+            find.byKey(const ValueKey('channel-header-text-stack')),
           );
-          final titleSpacing = avatarRect.left - backRect.right;
+          final titleNameRect = tester.getRect(
+            find.byKey(const ValueKey('channel-header-name')),
+          );
           final title = tester.renderObject<RenderParagraph>(
             find.byKey(const ValueKey('channel-header-name')),
           );
           final titleDidExceedMaxLines = title.didExceedMaxLines;
           debugDefaultTargetPlatformOverride = previousPlatform;
 
+          expect(titleNameRect.left, greaterThanOrEqualTo(backRect.right));
           expect(
-            titleSpacing,
-            moreOrLessEquals(
-              platform == TargetPlatform.iOS
-                  ? iosGlassChannelHeaderTitleSpacing
-                  : 0,
-            ),
+            titleRect.center.dy,
+            moreOrLessEquals(backRect.center.dy, epsilon: 1),
           );
           expect(titleDidExceedMaxLines, isTrue);
           expect(tester.takeException(), isNull);
@@ -9956,72 +10140,20 @@ void main() {
 
       expect(find.text('general'), findsOneWidget);
       expect(find.text('5 members'), findsOneWidget);
-      // The hash icon appears in the app bar and in the compose bar toolbar.
-      expect(find.byIcon(LucideIcons.hash), findsAtLeastNWidgets(1));
-      expect(
-        tester.getSize(find.byKey(const ValueKey('channel-header-avatar'))),
-        const Size.square(40),
-      );
-      final channelHeaderAvatarRect = tester.getRect(
-        find.byKey(const ValueKey('channel-header-avatar')),
-      );
-      final channelHeaderTextStackRect = tester.getRect(
-        find.byKey(const ValueKey('channel-header-text-stack')),
-      );
-      expect(channelHeaderTextStackRect.height, 40);
-      expect(
-        channelHeaderTextStackRect.center.dy,
-        moreOrLessEquals(channelHeaderAvatarRect.center.dy),
-      );
+      expect(find.byKey(const ValueKey('channel-header-avatar')), findsNothing);
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('channel-header-name')))
             .style
             ?.fontSize,
-        AppTheme.light().textTheme.titleSmall?.fontSize,
+        14,
       );
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('channel-header-name')))
             .style
             ?.fontWeight,
-        FontWeight.w600,
-      );
-      final channelHeaderAvatar = tester.widget<Container>(
-        find.byKey(const ValueKey('channel-header-avatar')),
-      );
-      expect(
-        (channelHeaderAvatar.decoration as BoxDecoration).color,
-        AppTheme.light().colorScheme.surface,
-      );
-      final channelHeaderAvatarBorder =
-          (channelHeaderAvatar.decoration as BoxDecoration).border! as Border;
-      expect(
-        channelHeaderAvatarBorder.top.color,
-        AppTheme.light().colorScheme.inverseSurface.withValues(alpha: 0.07),
-      );
-      expect(channelHeaderAvatarBorder.top.width, 1);
-      expect(
-        channelHeaderAvatarBorder.top.strokeAlign,
-        BorderSide.strokeAlignOutside,
-      );
-      expect(
-        tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(const ValueKey('channel-header-avatar')),
-                matching: find.byIcon(LucideIcons.hash),
-              ),
-            )
-            .color,
-        AppTheme.light().colorScheme.primary,
-      );
-      expect(
-        tester.getRect(find.byKey(const ValueKey('channel-header-name'))).left -
-            tester
-                .getRect(find.byKey(const ValueKey('channel-header-avatar')))
-                .right,
-        moreOrLessEquals(Grid.twelve),
+        FontWeight.w700,
       );
       expect(
         tester
@@ -10030,7 +10162,7 @@ void main() {
             )
             .style
             ?.fontSize,
-        AppTheme.light().textTheme.bodySmall?.fontSize,
+        10,
       );
       expect(
         tester
@@ -10039,7 +10171,7 @@ void main() {
             )
             .style
             ?.color,
-        AppTheme.light().colorScheme.onSurface.withValues(alpha: 0.65),
+        MobileDesignTokens.light.muted,
       );
       expect(find.byTooltip('View members'), findsNothing);
       expect(find.byTooltip('Channel actions'), findsNothing);
@@ -14727,9 +14859,22 @@ class _SynchronousReadStateNotifier extends ReadStateNotifier {
 }
 
 class _FakeProfileNotifier extends ProfileNotifier {
+  _FakeProfileNotifier({this.displayName = 'Self'});
+
+  final String displayName;
+
   @override
   Future<UserProfile?> build() async =>
-      const UserProfile(pubkey: 'self', displayName: 'Self');
+      UserProfile(pubkey: 'self', displayName: displayName);
+}
+
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this._initial);
+
+  final Map<String, String> _initial;
+
+  @override
+  Map<String, String> build() => _initial;
 }
 
 class _FakeChannelStarsNotifier extends ChannelStarsNotifier {
@@ -15260,16 +15405,6 @@ class _TestNavigatorObserver extends NavigatorObserver {
     pushCount += 1;
     super.didPush(route, previousRoute);
   }
-}
-
-/// Avatar fallback initial in the DM header — asserts at the production
-/// seam (the masked `dm-header-avatar` badge), not the label helper.
-String _dmHeaderAvatarInitial(WidgetTester tester) {
-  final avatar = find.byKey(const ValueKey('dm-header-avatar'));
-  final initial = tester.widget<Text>(
-    find.descendant(of: avatar, matching: find.byType(Text)),
-  );
-  return initial.data!;
 }
 
 /// Avatar fallback initial in the channel-details member preview row keyed

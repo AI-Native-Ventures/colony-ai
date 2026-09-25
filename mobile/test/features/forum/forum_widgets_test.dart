@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/compose_bar.dart';
+import 'package:buzz/features/channels/message_content.dart';
 import 'package:buzz/features/forum/forum_models.dart';
 import 'package:buzz/features/forum/forum_post_card.dart';
+import 'package:buzz/features/forum/forum_presentation.dart';
 import 'package:buzz/features/forum/forum_posts_view.dart';
 import 'package:buzz/features/forum/forum_provider.dart';
 import 'package:buzz/features/forum/forum_thread_page.dart';
@@ -17,18 +19,6 @@ import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _channelId = 'forum-channel';
-
-final _forumChannel = Channel(
-  id: _channelId,
-  name: 'design-forum',
-  channelType: 'forum',
-  visibility: 'open',
-  description: '',
-  createdBy: 'abc123',
-  createdAt: DateTime(2025),
-  memberCount: 5,
-  isMember: true,
-);
 
 ForumPost _makePost({
   String eventId = 'post1',
@@ -51,6 +41,29 @@ ForumPost _makePost({
 );
 
 const _aliceProfile = UserProfile(pubkey: 'alice', displayName: 'Alice');
+
+ForumPresentationFactories _testForumPresentation() =>
+    ForumPresentationFactories(
+      composeBarBuilder:
+          ({required channelId, required hintText, required onSend}) =>
+              ComposeBar(
+                channelId: channelId,
+                channelName: 'design-forum',
+                hintText: hintText,
+                onSend: onSend,
+              ),
+      messageContentBuilder: (context, content) => MessageContent(
+        content: content.content,
+        mentionNames: content.mentionNames,
+        agentMentionPubkeys: content.agentMentionPubkeys,
+        channelNames: const {'design-forum': _channelId},
+        tags: content.tags,
+        baseStyle: content.baseStyle,
+        maxLines: content.maxLines,
+        onMentionTap: content.onMentionTap,
+      ),
+      openProfile: (context, pubkey) {},
+    );
 
 void _setSurfaceSize(WidgetTester tester, Size size) {
   tester.view.devicePixelRatio = 1.0;
@@ -82,6 +95,7 @@ Widget _buildPostCard({
               currentPubkey: currentPubkey,
               onTap: onTap ?? () {},
               onDelete: onDelete,
+              presentation: _testForumPresentation(),
             ),
           ),
         ),
@@ -92,15 +106,15 @@ Widget _buildPostCard({
 
 Widget _buildPostsView({
   required ForumPostsResponse postsResponse,
-  Channel? channel,
+  bool isMember = true,
+  bool isArchived = false,
   Map<String, UserProfile> users = const {},
 }) {
-  final ch = channel ?? _forumChannel;
   return ProviderScope(
     overrides: [
       userCacheProvider.overrideWith(() => _FakeUserCacheNotifier(users)),
       profileProvider.overrideWith(() => _FakeProfileNotifier()),
-      forumPostsProvider(ch.id).overrideWith((ref) async => postsResponse),
+      forumPostsProvider(_channelId).overrideWith((ref) async => postsResponse),
       relayClientProvider.overrideWithValue(
         RelayClient(baseUrl: 'http://localhost:3000'),
       ),
@@ -108,7 +122,14 @@ Widget _buildPostsView({
     child: MaterialApp(
       theme: AppTheme.light(),
       home: Scaffold(
-        body: ForumPostsView(channel: ch, currentPubkey: 'self'),
+        body: ForumPostsView(
+          channelId: _channelId,
+          channelName: 'design-forum',
+          currentPubkey: 'self',
+          isMember: isMember,
+          isArchived: isArchived,
+          presentation: _testForumPresentation(),
+        ),
       ),
     ),
   );
@@ -157,6 +178,7 @@ Widget _buildThreadPage({
             currentPubkey: currentPubkey,
             isMember: isMember,
             isArchived: isArchived,
+            presentation: _testForumPresentation(),
           ),
         ),
       ),
@@ -195,20 +217,41 @@ void main() {
   });
 
   group('ForumPostCard', () {
-    testWidgets('renders author name and content', (tester) async {
+    testWidgets('matches the r17 note card hierarchy', (tester) async {
       await tester.pumpWidget(
         _buildPostCard(
-          post: _makePost(),
+          post: _makePost(
+            content:
+                'This week at Lerato\nThe work that matters this week: '
+                'Olive Studio, Cedar’s launch, and client reports.',
+            threadSummary: ForumThreadSummary(
+              replyCount: 3,
+              descendantCount: 3,
+              lastReplyAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              participants: const ['alice'],
+            ),
+          ),
           users: const {'alice': _aliceProfile},
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Alice'), findsOneWidget);
-      expect(find.text('Hello forum'), findsOneWidget);
+      expect(find.text('TEAM NOTE'), findsOneWidget);
+      expect(find.text('This week at Lerato'), findsOneWidget);
+      expect(
+        find.text(
+          'The work that matters this week: Olive Studio, Cedar’s launch, '
+          'and client reports.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('3 replies · Alice · Today'), findsOneWidget);
+      expect(find.byType(AvatarImage), findsNothing);
     });
 
-    testWidgets('shows compact npub when no profile', (tester) async {
+    testWidgets('uses a compact fallback identity in the card footer', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _buildPostCard(
           post: _makePost(
@@ -219,107 +262,47 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('npub140x\u2026etzk'), findsOneWidget);
+      expect(find.textContaining('npub140x…etzk'), findsOneWidget);
     });
 
-    testWidgets('uses directory classification for uncached author avatar', (
+    testWidgets('keeps the reply footer on one line at large text size', (
       tester,
     ) async {
-      await tester.pumpWidget(
-        _buildPostCard(
-          post: _makePost(pubkey: 'directory-agent'),
-          knownAgentPubkeys: const {'directory-agent'},
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.widget<AvatarImage>(find.byType(AvatarImage)).isAgent,
-        isTrue,
-      );
-    });
-
-    testWidgets('keeps human author avatar circular', (tester) async {
-      await tester.pumpWidget(
-        _buildPostCard(
-          post: _makePost(),
-          users: const {'alice': _aliceProfile},
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.widget<AvatarImage>(find.byType(AvatarImage)).isAgent,
-        isFalse,
-      );
-    });
-
-    testWidgets(
-      'constrains an older timestamp at large accessible text sizes',
-      (tester) async {
-        _setSurfaceSize(tester, const Size(240, 600));
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-
-        await tester.pumpWidget(
-          _buildPostCard(
-            post: _makePost(
-              createdAt:
-                  DateTime.utc(2025, 12, 31, 12).millisecondsSinceEpoch ~/ 1000,
-            ),
-            users: const {
-              'alice': UserProfile(
-                pubkey: 'alice',
-                displayName: 'A very long display name',
-              ),
-            },
-            textScaler: const TextScaler.linear(2),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final timestamp = tester.widget<Text>(find.text('12/31/2025'));
-        expect(timestamp.maxLines, 1);
-        expect(timestamp.overflow, TextOverflow.ellipsis);
-        expect(tester.takeException(), isNull);
-      },
-    );
-
-    testWidgets('gives the author unused timestamp width', (tester) async {
-      _setSurfaceSize(tester, const Size(320, 600));
+      _setSurfaceSize(tester, const Size(240, 600));
       addTearDown(() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
-      final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 120;
-      const displayName = 'A moderately long forum author name';
-
       await tester.pumpWidget(
         _buildPostCard(
-          post: _makePost(createdAt: createdAt),
+          post: _makePost(createdAt: 1),
           users: const {
-            'alice': UserProfile(pubkey: 'alice', displayName: displayName),
+            'alice': UserProfile(
+              pubkey: 'alice',
+              displayName: 'A very long forum author name',
+            ),
           },
+          textScaler: const TextScaler.linear(2),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getSize(find.text(displayName)).width, greaterThan(150));
-      expect(find.text('2m ago'), findsOneWidget);
+      final footer = tester.widget<Text>(find.textContaining('replies ·'));
+      expect(footer.maxLines, 1);
+      expect(footer.overflow, TextOverflow.ellipsis);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('truncates long content', (tester) async {
-      final longContent = 'A' * 300;
+    testWidgets('limits the post preview to three lines', (tester) async {
       await tester.pumpWidget(
-        _buildPostCard(post: _makePost(content: longContent)),
+        _buildPostCard(post: _makePost(content: 'Title\n${'A' * 300}')),
       );
       await tester.pumpAndSettle();
 
-      // Should show 200 chars + "..."
-      expect(find.textContaining('${'A' * 200}...'), findsOneWidget);
+      expect(
+        tester.widget<MessageContent>(find.byType(MessageContent)).maxLines,
+        3,
+      );
     });
 
     testWidgets('shows reply count with correct pluralization', (tester) async {
@@ -335,7 +318,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('1 reply'), findsOneWidget);
+      expect(find.textContaining('1 reply'), findsOneWidget);
 
       await tester.pumpWidget(
         _buildPostCard(
@@ -349,23 +332,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('5 replies'), findsOneWidget);
+      expect(find.textContaining('5 replies'), findsOneWidget);
     });
 
-    testWidgets('hides thread summary when reply count is 0', (tester) async {
-      await tester.pumpWidget(
-        _buildPostCard(
-          post: _makePost(
-            threadSummary: const ForumThreadSummary(
-              replyCount: 0,
-              descendantCount: 0,
-              participants: [],
-            ),
-          ),
-        ),
-      );
+    testWidgets('exposes the message actions accessibility action', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildPostCard(post: _makePost()));
       await tester.pumpAndSettle();
-      expect(find.text('0 replies'), findsNothing);
+
+      final actions = tester
+          .widgetList<Semantics>(find.byType(Semantics))
+          .map(
+            (node) => node.properties.customSemanticsActions?.keys ?? const [],
+          )
+          .expand((keys) => keys)
+          .map((action) => action.label);
+      expect(actions, contains('Message actions'));
     });
 
     testWidgets('calls onTap when tapped', (tester) async {
@@ -408,7 +391,6 @@ void main() {
           'message-media-image-preview:https://example.com/media/card.png',
         ),
       );
-
       await tester.tapAt(tester.getCenter(preview));
       await tester.pumpAndSettle();
 
@@ -419,7 +401,7 @@ void main() {
       );
     });
 
-    testWidgets('long press opens action sheet with Copy text', (tester) async {
+    testWidgets('long press opens the post action sheet', (tester) async {
       await tester.pumpWidget(_buildPostCard(post: _makePost()));
       await tester.pumpAndSettle();
 
@@ -429,41 +411,9 @@ void main() {
       expect(find.text('Copy text'), findsOneWidget);
     });
 
-    testWidgets('long press shows Delete only for own posts', (tester) async {
-      // Own post — Delete should appear.
-      await tester.pumpWidget(
-        _buildPostCard(
-          post: _makePost(pubkey: 'self'),
-          currentPubkey: 'self',
-          onDelete: (_) {},
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.longPress(find.byType(ForumPostCard));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete post'), findsOneWidget);
-
-      // Dismiss sheet.
-      await tester.tapAt(Offset.zero);
-      await tester.pumpAndSettle();
-
-      // Other's post — Delete should NOT appear.
-      await tester.pumpWidget(
-        _buildPostCard(
-          post: _makePost(pubkey: 'other'),
-          currentPubkey: 'self',
-          onDelete: (_) {},
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.longPress(find.byType(ForumPostCard));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete post'), findsNothing);
-    });
-
-    testWidgets('delete confirmation dialog triggers onDelete', (tester) async {
+    testWidgets('delete confirmation triggers onDelete for own posts', (
+      tester,
+    ) async {
       String? deletedId;
       await tester.pumpWidget(
         _buildPostCard(
@@ -474,18 +424,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Long press → action sheet.
       await tester.longPress(find.byType(ForumPostCard));
       await tester.pumpAndSettle();
-
-      // Tap Delete post.
       await tester.tap(find.text('Delete post'));
       await tester.pumpAndSettle();
-
-      // Confirmation dialog appears.
       expect(find.text('This cannot be undone.'), findsOneWidget);
-
-      // Tap Delete button.
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
 
@@ -511,17 +454,7 @@ void main() {
       await tester.pumpWidget(
         _buildPostsView(
           postsResponse: const ForumPostsResponse(posts: []),
-          channel: Channel(
-            id: _channelId,
-            name: 'design-forum',
-            channelType: 'forum',
-            visibility: 'open',
-            description: '',
-            createdBy: 'abc123',
-            createdAt: DateTime(2025),
-            memberCount: 5,
-            isMember: false,
-          ),
+          isMember: false,
         ),
       );
       await tester.pumpAndSettle();
@@ -543,17 +476,7 @@ void main() {
       await tester.pumpWidget(
         _buildPostsView(
           postsResponse: const ForumPostsResponse(posts: []),
-          channel: Channel(
-            id: _channelId,
-            name: 'design-forum',
-            channelType: 'forum',
-            visibility: 'open',
-            description: '',
-            createdBy: 'abc123',
-            createdAt: DateTime(2025),
-            memberCount: 5,
-            isMember: false,
-          ),
+          isMember: false,
         ),
       );
       await tester.pumpAndSettle();

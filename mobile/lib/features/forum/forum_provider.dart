@@ -1,7 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../shared/relay/relay.dart';
-import '../channels/channel_management_provider.dart';
 import '../../shared/custom_emoji/custom_emoji.dart';
 import '../../shared/custom_emoji/custom_emoji_provider.dart';
 import 'forum_models.dart';
@@ -15,10 +14,22 @@ final forumPostsProvider = FutureProvider.family<ForumPostsResponse, String>((
   channelId,
 ) async {
   final session = ref.watch(relaySessionProvider.notifier);
-  final events = await session.fetchHistory(
+  final events = await session.queryRelay([
     NostrFilters.forumPosts(channelId, limit: 50),
+    NostrFilter(
+      kinds: const [EventKind.channelThreadSummary],
+      tags: {
+        '#h': [channelId],
+      },
+      limit: 50,
+    ),
+  ]);
+  return ForumPostsResponse.fromEvents(
+    events.where((event) => event.kind == EventKind.forumPost).toList(),
+    summaryEvents: events
+        .where((event) => event.kind == EventKind.channelThreadSummary)
+        .toList(),
   );
-  return ForumPostsResponse.fromEvents(events);
 });
 
 /// Fetches a forum thread (root post + replies) from the relay.
@@ -135,6 +146,43 @@ class ForumEventDelivery {
     );
   }
 
+  /// Deletes a forum post or reply and refreshes its cached thread view.
+  Future<void> deleteEvent({
+    required String channelId,
+    required String eventId,
+    String? rootEventId,
+  }) async {
+    final currentConfig = _container.read(relayConfigProvider);
+    if (currentConfig.baseUrl != _relayUrl || currentConfig.nsec != _nsec) {
+      throw StateError(
+        'Forum deletion cancelled because the active community changed',
+      );
+    }
+
+    await _relay.submit(
+      kind: EventKind.deletion,
+      content: '',
+      tags: [
+        ['h', channelId],
+        ['e', eventId],
+      ],
+    );
+
+    final finalConfig = _container.read(relayConfigProvider);
+    if (finalConfig.baseUrl != _relayUrl || finalConfig.nsec != _nsec) {
+      throw StateError(
+        'Forum deletion completed after the active community changed',
+      );
+    }
+    _container.invalidate(forumPostsProvider(channelId));
+    _container.invalidate(
+      forumThreadProvider((
+        channelId: channelId,
+        eventId: rootEventId ?? eventId,
+      )),
+    );
+  }
+
   Future<void> _submit({
     required int kind,
     required String channelId,
@@ -178,12 +226,10 @@ Future<void> deleteForumEvent(
   required String eventId,
   String? rootEventId,
 }) async {
-  final actions = ref.read(channelActionsProvider);
-  await actions.deleteMessage(channelId: channelId, eventId: eventId);
-  ref.invalidate(forumPostsProvider(channelId));
-  if (rootEventId != null) {
-    ref.invalidate(
-      forumThreadProvider((channelId: channelId, eventId: rootEventId)),
-    );
-  }
+  final container = ProviderScope.containerOf(ref.context, listen: false);
+  await ForumEventDelivery.capture(container).deleteEvent(
+    channelId: channelId,
+    eventId: eventId,
+    rootEventId: rootEventId,
+  );
 }

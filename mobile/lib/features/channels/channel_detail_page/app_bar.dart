@@ -1,9 +1,5 @@
 part of '../channel_detail_page.dart';
 
-const _dmHeaderAvatarSize = 32.0;
-const _channelHeaderAvatarSize = 40.0;
-const _dmPresenceDotRatio = 8 / 14;
-
 bool _showsMembersAction(Channel channel) {
   if (!channel.isDm) return true;
   final participants = channel.participantPubkeys
@@ -19,22 +15,12 @@ double _scaledTextHeight(BuildContext context, TextStyle style) {
   return scaledFontSize * (style.height ?? 1);
 }
 
-double _twoLineAppBarTitleContentHeight(
-  BuildContext context, {
-  required bool isDm,
-}) {
-  final titleStyle = context.textTheme.titleSmall;
-  final subtitleStyle = isDm
-      ? context.textTheme.bodyMedium
-      : context.textTheme.bodySmall;
-  final avatarSize = isDm ? _dmHeaderAvatarSize : _channelHeaderAvatarSize;
-  if (titleStyle == null || subtitleStyle == null) {
-    return avatarSize;
-  }
-  final textHeight =
-      _scaledTextHeight(context, titleStyle) +
+double _twoLineAppBarTitleContentHeight(BuildContext context) {
+  final typography = context.mobileTypography;
+  final titleStyle = typography.body.copyWith(fontSize: 14, height: 1.25);
+  final subtitleStyle = typography.metadata.copyWith(fontSize: 10, height: 1.3);
+  return _scaledTextHeight(context, titleStyle) +
       _scaledTextHeight(context, subtitleStyle);
-  return textHeight > avatarSize ? textHeight : avatarSize;
 }
 
 class _ChannelAppBarTitle extends ConsumerWidget {
@@ -46,9 +32,14 @@ class _ChannelAppBarTitle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final membersAsync = ref.watch(channelMembersProvider(channel.id));
-    final memberCount = membersAsync.value?.length ?? channel.memberCount;
+    final members = membersAsync.asData?.value;
+    final memberCount = members?.length ?? channel.memberCount;
+    final agentCount = members?.where((member) => member.isBot).length;
     final memberLabel =
-        '$memberCount ${memberCount == 1 ? 'member' : 'members'}';
+        '$memberCount ${memberCount == 1 ? 'member' : 'members'}'
+        '${agentCount == null || agentCount == 0 ? '' : ' · $agentCount agents'}';
+    final tokens = context.mobileTokens;
+    final typography = context.mobileTypography;
 
     return Semantics(
       button: true,
@@ -61,35 +52,10 @@ class _ChannelAppBarTitle extends ConsumerWidget {
           onTap: onTap,
           child: Row(
             children: [
-              Container(
-                key: const ValueKey('channel-header-avatar'),
-                width: _channelHeaderAvatarSize,
-                height: _channelHeaderAvatarSize,
-                decoration: BoxDecoration(
-                  color: context.colors.surface,
-                  shape: BoxShape.circle,
-                  border: Border.fromBorderSide(
-                    BorderSide(
-                      color: context.colors.inverseSurface.withValues(
-                        alpha: 0.07,
-                      ),
-                      strokeAlign: BorderSide.strokeAlignOutside,
-                    ),
-                  ),
-                ),
-                child: Icon(
-                  channelIcon(channel),
-                  size: 20,
-                  color: context.colors.primary,
-                ),
-              ),
-              const SizedBox(width: Grid.twelve),
               Expanded(
                 child: ConstrainedBox(
                   key: const ValueKey('channel-header-text-stack'),
-                  constraints: const BoxConstraints(
-                    minHeight: _channelHeaderAvatarSize,
-                  ),
+                  constraints: const BoxConstraints(minHeight: 40),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,14 +70,28 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                               key: const ValueKey('channel-header-name'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: context.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+                              style: typography.body.copyWith(
+                                color: tokens.ink,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                height: 1.25,
                               ),
                             ),
                           ),
                           if (channel.isEphemeral) ...[
                             const SizedBox(width: Grid.quarter),
                             _HeaderEphemeralBadge(channel: channel),
+                          ],
+                          if (channel.visibility == 'private') ...[
+                            const SizedBox(width: Grid.quarter),
+                            ExcludeSemantics(
+                              child: Icon(
+                                LucideIcons.lock,
+                                key: const ValueKey('channel-header-private'),
+                                size: 12,
+                                color: tokens.muted,
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -120,10 +100,10 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                         key: const ValueKey('channel-header-member-count'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodySmall?.copyWith(
-                          color: context.colors.onSurface.withValues(
-                            alpha: 0.65,
-                          ),
+                        style: typography.metadata.copyWith(
+                          color: tokens.muted,
+                          fontSize: 10,
+                          height: 1.3,
                         ),
                       ),
                     ],
@@ -230,106 +210,56 @@ class _DmAppBarTitle extends ConsumerWidget {
       ref.read(presenceCacheProvider.notifier).track([otherPubkey]);
     }
 
-    final avatarUrl = profile?.avatarUrl;
     final isAgent =
         (otherPubkey != null &&
             ref
                 .watch(agentMentionPubkeysProvider(channel.id))
                 .contains(otherPubkey)) ||
         profile?.ownerPubkey != null;
-    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
-    // Keyed to the hex public key when the participant is unnamed and the
-    // profile isn't cached — the compact-npub participant label would
-    // otherwise render `N` for every unnamed DM counterpart. Selection skips
-    // the current user like the header label does, so the initial always
-    // identifies the same counterpart the label names.
-    final initial =
-        profile?.initial ??
-        dmAvatarInitial(channel, currentPubkey: currentPubkey);
     final presenceLabel = switch (presence) {
-      'online' => 'Online',
-      'away' => 'Away',
-      _ => 'Offline',
+      'online' => isAgent ? 'Agent · Ready' : 'Available',
+      'away' => isAgent ? 'Agent · Away' : 'Away',
+      _ => isAgent ? 'Agent · Offline' : 'Offline',
     };
+    final tokens = context.mobileTokens;
+    final typography = context.mobileTypography;
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        MaskedAvatarBadge(
-          key: const ValueKey('dm-header-avatar'),
-          size: _dmHeaderAvatarSize,
-          geometry: AvatarBadgeMaskGeometry.presenceDot,
-          avatar: ClipRRect(
-            borderRadius: BorderRadius.circular(
-              isAgent ? _dmHeaderAvatarSize * 0.3 : _dmHeaderAvatarSize / 2,
-            ),
-            child: ColoredBox(
-              color: animatedAvatar == null
-                  ? context.colors.primaryContainer
-                  : Colors.transparent,
-              child: AvatarImageContent(
-                imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
-                fallback: Text(
-                  initial,
-                  style: context.textTheme.labelSmall?.copyWith(
-                    color: context.colors.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                resolveDmChannelDisplayLabel(
+                  channel,
+                  currentPubkey: currentPubkey,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                key: const ValueKey('dm-header-name'),
+                style: typography.body.copyWith(
+                  color: tokens.ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
                 ),
               ),
             ),
-          ),
-          badge: Center(
-            child: FractionallySizedBox(
-              widthFactor: _dmPresenceDotRatio,
-              heightFactor: _dmPresenceDotRatio,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: switch (presence) {
-                    'online' => context.appColors.success,
-                    'away' => context.appColors.warning,
-                    _ => context.colors.outline,
-                  },
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: Grid.xxs),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      resolveDmChannelDisplayLabel(
-                        channel,
-                        currentPubkey: currentPubkey,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      key: const ValueKey('dm-header-name'),
-                      style: context.textTheme.titleSmall,
-                    ),
-                  ),
-                  if (channel.isEphemeral) ...[
-                    const SizedBox(width: Grid.quarter),
-                    _HeaderEphemeralBadge(channel: channel),
-                  ],
-                ],
-              ),
-              Text(
-                presenceLabel,
-                key: const ValueKey('dm-header-presence'),
-                style: context.textTheme.bodyMedium?.copyWith(
-                  color: context.colors.onSurfaceVariant,
-                ),
-              ),
+            if (channel.isEphemeral) ...[
+              const SizedBox(width: Grid.quarter),
+              _HeaderEphemeralBadge(channel: channel),
             ],
+          ],
+        ),
+        Text(
+          presenceLabel,
+          key: const ValueKey('dm-header-presence'),
+          style: typography.metadata.copyWith(
+            color: tokens.muted,
+            fontSize: 10,
           ),
         ),
       ],

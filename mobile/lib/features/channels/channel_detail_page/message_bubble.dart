@@ -151,7 +151,6 @@ class _MessageBubble extends HookConsumerWidget {
                           child: _UserAvatar(
                             profile: profile,
                             pubkey: message.pubkey,
-                            isAgent: isAgent,
                           ),
                         )
                       else
@@ -175,9 +174,9 @@ class _MessageBubble extends HookConsumerWidget {
                                       Expanded(
                                         child: MessageAuthorMeta(
                                           displayName: displayName,
-                                          username: messageUsernameLabel(
-                                            profile,
-                                          ),
+                                          username: isAgent
+                                              ? 'AGENT'
+                                              : messageUsernameLabel(profile),
                                           timestamp: formatMessageTime(
                                             message.createdAt,
                                           ),
@@ -322,13 +321,11 @@ Widget _messageTimestamp(BuildContext context, int createdAt, {Key? key}) {
 class _UserAvatar extends StatelessWidget {
   final UserProfile? profile;
   final String pubkey;
-  final bool isAgent;
   final double size;
 
   const _UserAvatar({
     required this.profile,
     required this.pubkey,
-    required this.isAgent,
     this.size = messageAvatarSize,
   });
 
@@ -337,23 +334,29 @@ class _UserAvatar extends StatelessWidget {
     final initial =
         profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
     final avatarUrl = profile?.avatarUrl;
+    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
+    final tokens = context.mobileTokens;
 
-    return AvatarImage(
-      imageUrl: avatarUrl,
-      radius: size / 2,
-      backgroundColor: context.colors.primaryContainer,
-      fallback: Text(
-        initial,
-        style:
-            (size > 28
-                    ? context.textTheme.labelMedium
-                    : context.textTheme.labelSmall)
-                ?.copyWith(
-                  color: context.colors.onPrimaryContainer,
-                  fontWeight: FontWeight.w600,
-                ),
+    return ClipOval(
+      key: const ValueKey('message-avatar-circle'),
+      child: ColoredBox(
+        key: const ValueKey('message-avatar-surface'),
+        color: animatedAvatar == null ? tokens.soft : Colors.transparent,
+        child: SizedBox.square(
+          dimension: size,
+          child: AvatarImageContent(
+            imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
+            fallback: Text(
+              initial,
+              style: context.mobileTypography.metadata.copyWith(
+                color: tokens.ink,
+                fontSize: size > 28 ? 11 : 8,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
       ),
-      isAgent: isAgent,
     );
   }
 }

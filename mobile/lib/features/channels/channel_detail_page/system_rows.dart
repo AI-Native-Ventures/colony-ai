@@ -382,8 +382,6 @@ class _MessageStyleSystemMessageContent extends StatelessWidget {
           child: _UserAvatar(
             profile: userCache[displayPubkey.toLowerCase()],
             pubkey: displayPubkey,
-            isAgent:
-                userCache[displayPubkey.toLowerCase()]?.ownerPubkey != null,
             size: messageAvatarSize,
           ),
         ),

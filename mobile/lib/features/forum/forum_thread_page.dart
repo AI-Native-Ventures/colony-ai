@@ -13,30 +13,32 @@ import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
 import '../../shared/widgets/modal_presentation.dart';
-import '../channels/compose_bar.dart';
-import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/utils/string_utils.dart';
 import '../../shared/profile/user_profile.dart';
-import '../profile/user_profile_sheet.dart';
 import 'forum_models.dart';
+import 'forum_presentation.dart';
 import 'forum_provider.dart';
 
 /// Full-screen page showing a forum post and its replies.
 class ForumThreadPage extends HookConsumerWidget {
   final String channelId;
+  final String channelName;
   final String postEventId;
   final String? currentPubkey;
   final bool isMember;
   final bool isArchived;
+  final ForumPresentationFactories? presentation;
 
   const ForumThreadPage({
     super.key,
     required this.channelId,
+    this.channelName = '',
     required this.postEventId,
     required this.currentPubkey,
     required this.isMember,
     required this.isArchived,
+    this.presentation,
   });
 
   @override
@@ -102,9 +104,11 @@ class ForumThreadPage extends HookConsumerWidget {
         data: (thread) => _ThreadContent(
           thread: thread,
           channelId: channelId,
+          channelName: channelName,
           currentPubkey: currentPubkey,
           isMember: isMember,
           isArchived: isArchived,
+          presentation: presentation,
         ),
       ),
     );
@@ -198,16 +202,20 @@ class ForumThreadPage extends HookConsumerWidget {
 class _ThreadContent extends HookConsumerWidget {
   final ForumThreadResponse thread;
   final String channelId;
+  final String channelName;
   final String? currentPubkey;
   final bool isMember;
   final bool isArchived;
+  final ForumPresentationFactories? presentation;
 
   const _ThreadContent({
     required this.thread,
     required this.channelId,
+    required this.channelName,
     required this.currentPubkey,
     required this.isMember,
     required this.isArchived,
+    required this.presentation,
   });
 
   @override
@@ -215,6 +223,7 @@ class _ThreadContent extends HookConsumerWidget {
     // Background media delivery may outlive this route's WidgetRef.
     final providerContainer = ProviderScope.containerOf(context, listen: false);
     final forumDelivery = ForumEventDelivery.capture(providerContainer);
+    final presentationFactories = presentation;
     final post = thread.post;
     final replies = thread.replies;
 
@@ -249,7 +258,11 @@ class _ThreadContent extends HookConsumerWidget {
               bottom: Grid.xs,
             ),
             children: [
-              _OriginalPost(post: post),
+              _OriginalPost(
+                post: post,
+                channelId: channelId,
+                presentation: presentation,
+              ),
 
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -294,14 +307,15 @@ class _ThreadContent extends HookConsumerWidget {
                     currentPubkey: currentPubkey,
                     channelId: channelId,
                     rootEventId: post.eventId,
+                    presentation: presentation,
                   ),
             ],
           ),
         ),
 
         // Reply composer
-        if (isMember && !isArchived)
-          ComposeBar(
+        if (isMember && !isArchived && presentationFactories != null)
+          presentationFactories.composeBarBuilder(
             channelId: channelId,
             hintText: 'Reply to this post\u2026',
             onSend:
@@ -324,8 +338,14 @@ class _ThreadContent extends HookConsumerWidget {
 
 class _OriginalPost extends ConsumerWidget {
   final ForumPost post;
+  final String channelId;
+  final ForumPresentationFactories? presentation;
 
-  const _OriginalPost({required this.post});
+  const _OriginalPost({
+    required this.post,
+    required this.channelId,
+    required this.presentation,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -337,7 +357,7 @@ class _OriginalPost extends ConsumerWidget {
 
     final userCache = ref.watch(userCacheProvider);
     final agentMentionPubkeys = agentPubkeysWithProfileOwners(
-      knownAgentPubkeys: ref.watch(agentMentionPubkeysProvider(post.channelId)),
+      knownAgentPubkeys: ref.watch(agentMentionPubkeysProvider(channelId)),
       profileOwnedAgentPubkeys: [
         for (final profile in userCache.values)
           if (profile.ownerPubkey != null) profile.pubkey,
@@ -349,6 +369,16 @@ class _OriginalPost extends ConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final contentSpec = ForumMessageContentSpec(
+      content: post.content,
+      mentionNames: mentionNames,
+      agentMentionPubkeys: agentMentionPubkeys,
+      tags: post.tags,
+      baseStyle: messageBodyTextStyle.copyWith(color: context.colors.onSurface),
+      onMentionTap: presentation == null
+          ? null
+          : (pubkey) => presentation!.openProfile(context, pubkey),
+    );
 
     return Padding(
       padding: const EdgeInsets.all(Grid.xs),
@@ -358,7 +388,9 @@ class _OriginalPost extends ConsumerWidget {
           Row(
             children: [
               GestureDetector(
-                onTap: () => showUserProfileSheet(context, post.pubkey),
+                onTap: presentation == null
+                    ? null
+                    : () => presentation!.openProfile(context, post.pubkey),
                 child: _Avatar(
                   key: ValueKey('forum-original-avatar-${post.eventId}'),
                   profile: profile,
@@ -373,7 +405,12 @@ class _OriginalPost extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => showUserProfileSheet(context, post.pubkey),
+                        onTap: presentation == null
+                            ? null
+                            : () => presentation!.openProfile(
+                                context,
+                                post.pubkey,
+                              ),
                         child: Text(
                           displayName,
                           maxLines: 1,
@@ -400,16 +437,8 @@ class _OriginalPost extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: Grid.xxs),
-          MessageContent(
-            content: post.content,
-            mentionNames: mentionNames,
-            agentMentionPubkeys: agentMentionPubkeys,
-            tags: post.tags,
-            baseStyle: messageBodyTextStyle.copyWith(
-              color: context.colors.onSurface,
-            ),
-            onMentionTap: (pubkey) => showUserProfileSheet(context, pubkey),
-          ),
+          presentation?.messageContentBuilder(context, contentSpec) ??
+              Text(post.content, style: contentSpec.baseStyle),
         ],
       ),
     );
@@ -421,12 +450,14 @@ class _ReplyRow extends ConsumerWidget {
   final String? currentPubkey;
   final String channelId;
   final String rootEventId;
+  final ForumPresentationFactories? presentation;
 
   const _ReplyRow({
     required this.reply,
     required this.currentPubkey,
     required this.channelId,
     required this.rootEventId,
+    required this.presentation,
   });
 
   @override
@@ -451,6 +482,16 @@ class _ReplyRow extends ConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final contentSpec = ForumMessageContentSpec(
+      content: reply.content,
+      mentionNames: mentionNames,
+      agentMentionPubkeys: agentMentionPubkeys,
+      tags: reply.tags,
+      baseStyle: messageBodyTextStyle.copyWith(color: context.colors.onSurface),
+      onMentionTap: presentation == null
+          ? null
+          : (pubkey) => presentation!.openProfile(context, pubkey),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -463,7 +504,9 @@ class _ReplyRow extends ConsumerWidget {
           Row(
             children: [
               GestureDetector(
-                onTap: () => showUserProfileSheet(context, reply.pubkey),
+                onTap: presentation == null
+                    ? null
+                    : () => presentation!.openProfile(context, reply.pubkey),
                 child: _Avatar(
                   key: ValueKey('forum-reply-avatar-${reply.eventId}'),
                   profile: profile,
@@ -478,8 +521,12 @@ class _ReplyRow extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            showUserProfileSheet(context, reply.pubkey),
+                        onTap: presentation == null
+                            ? null
+                            : () => presentation!.openProfile(
+                                context,
+                                reply.pubkey,
+                              ),
                         child: Text(
                           displayName,
                           maxLines: 1,
@@ -521,16 +568,9 @@ class _ReplyRow extends ConsumerWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 32, top: Grid.half),
-            child: MessageContent(
-              content: reply.content,
-              mentionNames: mentionNames,
-              agentMentionPubkeys: agentMentionPubkeys,
-              tags: reply.tags,
-              baseStyle: messageBodyTextStyle.copyWith(
-                color: context.colors.onSurface,
-              ),
-              onMentionTap: (pubkey) => showUserProfileSheet(context, pubkey),
-            ),
+            child:
+                presentation?.messageContentBuilder(context, contentSpec) ??
+                Text(reply.content, style: contentSpec.baseStyle),
           ),
         ],
       ),
