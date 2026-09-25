@@ -297,6 +297,9 @@ test.describe("visual comparison captures", () => {
           await expect(
             threadPanel.locator('[data-testid="message-author"]'),
           ).toHaveCount(2);
+          await expect(
+            appPage.locator('[data-testid="voice-note-playback-waveform"]'),
+          ).toHaveAttribute("data-waveform-state", "ready");
         }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
