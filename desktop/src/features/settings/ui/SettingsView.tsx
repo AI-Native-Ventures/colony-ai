@@ -15,6 +15,7 @@ import { Input } from "@/shared/ui/input";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   useProfileQuery,
   useUpdateProfileMutation,
@@ -382,14 +383,17 @@ export function SettingsView({
               title="Edit profile photo"
               type="button"
             >
-              <span aria-hidden="true">
-                {(fallbackDisplayName ?? "LM")
-                  .split(/\s+/)
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </span>
+              <ProfileAvatar
+                avatarUrl={profile.data?.avatarUrl ?? null}
+                className="size-8 rounded-squircle"
+                label={
+                  profile.data?.displayName ??
+                  fallbackDisplayName ??
+                  "Signed-in identity"
+                }
+                shape="squircle"
+                testId="settings-profile-avatar"
+              />
             </button>
             <div>
               <strong>{fallbackDisplayName ?? "Signed-in identity"}</strong>

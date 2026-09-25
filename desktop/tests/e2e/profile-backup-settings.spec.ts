@@ -11,7 +11,7 @@ test("settings keep key export and import out of the account panels", async ({
   await page.goto("/");
   await openSettings(page, "profile");
 
-  await expect(page.getByTestId("profile-identity-card")).toBeVisible();
+  await expect(page.getByTestId("settings-account-profile-card")).toBeVisible();
   await expect(page.getByTestId("profile-private-key-row")).toHaveCount(0);
   await expect(page.getByTestId("profile-encrypted-backup-row")).toHaveCount(0);
   await expect(page.getByTestId("profile-backup-test-row")).toHaveCount(0);
@@ -50,5 +50,5 @@ test("avatar crop retries a failed profile update without losing the image", asy
 
   await page.getByTestId("avatar-retry").click();
   await expect(page.getByTestId("profile-avatar-dialog")).toBeHidden();
-  await expect(page.getByTestId("profile-avatar-saved")).toBeVisible();
+  await expect(page.getByTestId("settings-profile-avatar-image")).toBeVisible();
 });
