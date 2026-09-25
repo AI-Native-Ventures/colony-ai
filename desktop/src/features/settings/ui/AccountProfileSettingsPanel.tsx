@@ -14,6 +14,7 @@ import { Input } from "@/shared/ui/input";
 import type { SettingsSection } from "./SettingsPanels";
 
 type AccountProfileSettingsPanelProps = {
+  avatarSaved?: boolean;
   currentPubkey?: string;
   fallbackDisplayName?: string;
   onClose?: () => void;
@@ -36,6 +37,7 @@ function accountStatusLabel(status: string | undefined) {
 }
 
 export function AccountProfileSettingsPanel({
+  avatarSaved = false,
   currentPubkey,
   fallbackDisplayName,
   onClose,
@@ -291,6 +293,15 @@ export function AccountProfileSettingsPanel({
           </div>
         </section>
       </div>
+      {avatarSaved ? (
+        <div
+          className="my-[18px] rounded-[7px] border border-[#dceadd] bg-[#f0f7f1] px-[18px] py-[15px] text-sm text-[#54785c] dark:border-[#425845] dark:bg-[#293b31] dark:text-[#b0c9b6]"
+          data-testid="profile-avatar-saved"
+          role="status"
+        >
+          <strong className="font-semibold">Profile photo updated</strong>
+        </div>
+      ) : null}
     </section>
   );
 }

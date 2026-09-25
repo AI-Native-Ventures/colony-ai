@@ -326,6 +326,7 @@ export type SettingsSectionDescriptor = {
 export type SettingsPanelProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
+  avatarSaved?: boolean;
   onClose?: () => void;
   onSectionChange?: (section: SettingsSection) => void;
   isUpdatingDesktopNotifications: boolean;
@@ -994,6 +995,7 @@ export function renderSettingsSection(
     case "profile":
       return (
         <AccountProfileSettingsPanel
+          avatarSaved={props.avatarSaved}
           currentPubkey={props.currentPubkey}
           fallbackDisplayName={props.fallbackDisplayName}
           onClose={props.onClose}

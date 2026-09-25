@@ -170,6 +170,7 @@ export function SettingsView({
   const profile = useProfileQuery();
   const updateProfile = useUpdateProfileMutation();
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
+  const [avatarSaved, setAvatarSaved] = React.useState(false);
   const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
     theme.selectedThemeName as SyntaxThemeName,
   );
@@ -379,7 +380,10 @@ export function SettingsView({
               aria-label="Edit profile photo"
               className="w20-nav-person-avatar"
               data-testid="profile-avatar-edit"
-              onClick={() => setIsAvatarDialogOpen(true)}
+              onClick={() => {
+                setAvatarSaved(false);
+                setIsAvatarDialogOpen(true);
+              }}
               title="Edit profile photo"
               type="button"
             >
@@ -515,6 +519,7 @@ export function SettingsView({
               ) : (
                 renderSettingsSection(activeSection, {
                   currentPubkey,
+                  avatarSaved,
                   fallbackDisplayName,
                   isUpdatingDesktopNotifications,
                   notificationErrorMessage,
@@ -544,6 +549,7 @@ export function SettingsView({
         onOpenChange={setIsAvatarDialogOpen}
         onSave={async (avatarUrl) => {
           await updateProfile.mutateAsync({ avatarUrl });
+          setAvatarSaved(true);
         }}
         open={isAvatarDialogOpen}
       />
