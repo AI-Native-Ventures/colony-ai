@@ -1,4 +1,4 @@
-import { ImageOff } from "lucide-react";
+import { ChevronRight, Compass, FileText, ImageOff } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type { ResolvedLinkPreview } from "@/shared/lib/useResolvedLinkPreviews";
@@ -80,6 +80,14 @@ export function CompactLinkPreviewAttachment({
     preview.kind === "buzz-pull-request" ||
     preview.kind === "buzz-issue" ||
     preview.kind === "buzz-repository";
+  const PreviewIcon =
+    preview.typeLabel === "file" ||
+    preview.typeLabel === "folder" ||
+    preview.typeLabel === "document" ||
+    preview.typeLabel === "spreadsheet" ||
+    preview.typeLabel === "presentation"
+      ? FileText
+      : Compass;
 
   return (
     <div className={cn("relative w-96 max-w-full shrink-0", className)}>
@@ -118,6 +126,11 @@ export function CompactLinkPreviewAttachment({
               />
             )}
           </AttachmentMedia>
+        ) : null}
+        {!reserveImage ? (
+          <span aria-hidden="true" data-link-preview-row-symbol="">
+            <PreviewIcon size={16} strokeWidth={1.65} />
+          </span>
         ) : null}
         <AttachmentContent className={reserveImage ? "px-2 py-1.5" : undefined}>
           <a
@@ -172,6 +185,12 @@ export function CompactLinkPreviewAttachment({
             <span className="sr-only">
               Open {preview.provider} {preview.typeLabel}: {preview.title}
             </span>
+            <ChevronRight
+              aria-hidden="true"
+              data-link-preview-row-chevron=""
+              size={16}
+              strokeWidth={1.65}
+            />
           </AttachmentTrigger>
         ) : (
           <AttachmentTrigger
@@ -187,6 +206,12 @@ export function CompactLinkPreviewAttachment({
               <span className="sr-only">
                 Open {preview.provider} {preview.typeLabel}: {preview.title}
               </span>
+              <ChevronRight
+                aria-hidden="true"
+                data-link-preview-row-chevron=""
+                size={16}
+                strokeWidth={1.65}
+              />
             </a>
           </AttachmentTrigger>
         )}

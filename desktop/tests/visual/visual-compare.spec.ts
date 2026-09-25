@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import UPNG from "upng-js";
 
 import { waitForAnimations } from "../helpers/animations";
@@ -237,6 +237,21 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        if (entry.referenceInventoryRoute === "channel/sales") {
+          const previewMessage = appPage.locator(
+            '[data-message-id="r17-sales-aya"]',
+          );
+          await expect(
+            previewMessage.locator(
+              '.message-markdown > p > a[href="https://example.com/independent-brands"]',
+            ),
+          ).toHaveCount(0);
+          await expect(
+            previewMessage.locator(
+              ".message-markdown [data-link-preview-list]",
+            ),
+          ).toHaveCount(1);
+        }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
