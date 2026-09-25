@@ -18,6 +18,12 @@ class AccountActionButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: FilledButton(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
         onPressed: isLoading ? null : onPressed,
         child: Semantics(
           label: isLoading ? '$label in progress' : label,

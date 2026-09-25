@@ -11,4 +11,6 @@ abstract final class MobileRoutes {
   static const search = MobileRoute<NoMobileRouteArguments>(
     'navigation/search',
   );
+  static const accountAge = MobileRoute<NoMobileRouteArguments>('account/age');
+  static const deviceLink = MobileRoute<NoMobileRouteArguments>('link/start');
 }
