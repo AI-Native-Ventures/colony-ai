@@ -175,7 +175,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -229,7 +229,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -283,7 +283,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -337,7 +337,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -391,7 +391,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -446,7 +446,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -551,7 +551,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -606,7 +606,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -660,7 +660,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -714,7 +714,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -769,7 +769,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
@@ -823,7 +823,7 @@
           "buzz-glass-background": "false",
           "buzz-glass-opacity": "65",
           "buzz-prominent-active-tab": "true",
-          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.fontSize": "default",
           "buzz.appearance.conversationDensity": "comfortable",
           "buzz-sidebar-width": "220",
           "buzz.channels.threadViewMode": "split"
