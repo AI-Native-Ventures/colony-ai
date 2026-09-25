@@ -80,13 +80,13 @@ import {
 } from "./SettingsOptionGroup";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
+import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import {
-  AccountSecuritySettingsPanel,
   AccessibilitySettingsPanel,
   AgentConnectionsSettingsPanel,
   AppPreferencesSettingsPanel,
@@ -1013,6 +1013,7 @@ export function renderSettingsSection(
     case "security":
       return (
         <AccountSecuritySettingsPanel
+          onClose={props.onClose}
           onOpenDraftRecovery={props.onOpenDraftRecovery}
         />
       );

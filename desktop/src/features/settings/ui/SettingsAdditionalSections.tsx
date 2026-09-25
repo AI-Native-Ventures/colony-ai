@@ -14,7 +14,6 @@ import {
   getActiveDraftEntries,
   useDraftsSnapshot,
 } from "@/features/messages/lib/useDrafts";
-import { useIdentityQuery } from "@/shared/api/hooks";
 import { useFontSize, setFontSize } from "@/shared/lib/fontSizePreference";
 import { Button } from "@/shared/ui/button";
 import {
@@ -34,7 +33,6 @@ import { PreventSleepSettingsCard } from "./PreventSleepSettingsCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
-import { SignOutSection } from "./SignOutSection";
 import { cn } from "@/shared/lib/cn";
 
 function UnavailableSettings({
@@ -55,54 +53,6 @@ function UnavailableSettings({
         <p className="text-sm text-muted-foreground">
           This setting is not available in this desktop build.
         </p>
-      </div>
-    </section>
-  );
-}
-
-export function AccountSecuritySettingsPanel({
-  onOpenDraftRecovery,
-}: {
-  onOpenDraftRecovery?: () => void;
-}) {
-  const { activeCommunity } = useCommunities();
-  const identityQuery = useIdentityQuery();
-  const displayName = identityQuery.data?.displayName ?? "This device";
-  return (
-    <section className="min-w-0" data-testid="settings-account-security">
-      <SettingsSectionHeader
-        title="Sign-in & devices"
-        action={
-          <span className="pt-1 text-sm text-muted-foreground">
-            {activeCommunity?.name ?? ""}
-          </span>
-        }
-      />
-      <div className="space-y-7">
-        <section aria-labelledby="settings-this-device-heading">
-          <h2
-            className="mb-4 text-sm font-medium"
-            id="settings-this-device-heading"
-          >
-            This device
-          </h2>
-          <div className="flex min-h-16 items-center justify-between gap-4 border-b border-border/70 py-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{displayName}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Signed in · This device
-              </p>
-            </div>
-            <SignOutSection
-              onOpenDraftRecovery={onOpenDraftRecovery}
-              variant="device"
-            />
-          </div>
-        </section>
-        <SignOutSection
-          onOpenDraftRecovery={onOpenDraftRecovery}
-          variant="local-data"
-        />
       </div>
     </section>
   );
