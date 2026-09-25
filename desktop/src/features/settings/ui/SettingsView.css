@@ -517,6 +517,29 @@ body:has(.w20-settings-shell) {
   margin: 0 auto;
 }
 
+.w20-route-scroll:has([data-testid="settings-harnesses"]) {
+  padding-right: 44px;
+  padding-left: 44px;
+}
+
+.w20-route-content:has([data-testid="settings-harnesses"]) {
+  max-width: 880px;
+  margin-right: auto;
+  margin-left: 0;
+}
+
+[data-testid="settings-harnesses"] [data-slot="settings-section-header"] {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+[data-testid="settings-harnesses"] [data-slot="settings-section-card"] {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .w20-route-content-account {
   max-width: 1320px;
   padding-top: 34px;
