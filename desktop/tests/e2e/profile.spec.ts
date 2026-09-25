@@ -2707,6 +2707,7 @@ test("maps agent defaults, harnesses and local behavior to their sections", asyn
     harnesses.getByRole("heading", { name: "Agent runtimes" }),
   ).toBeVisible();
 
+  await page.getByTestId("settings-group-app-devices").click();
   await page.getByTestId("settings-inner-app").click();
   const appPreferences = page.getByTestId("settings-app-preferences");
   const addressedAgents = appPreferences.getByTestId(
