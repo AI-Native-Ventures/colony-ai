@@ -12,12 +12,12 @@ export function ChannelMemberAvatarStack({
   currentPubkey,
   members,
   size = "default",
-  testId = "channel-management-member-avatar-stack",
+  testIdPrefix = "channel-management-member",
 }: {
   currentPubkey?: string;
   members: ChannelMember[];
   size?: "compact" | "default";
-  testId?: string;
+  testIdPrefix?: string;
 }) {
   const orderedMembers = React.useMemo(() => {
     if (size !== "compact" || !currentPubkey) return members;
@@ -52,7 +52,10 @@ export function ChannelMemberAvatarStack({
   }
 
   return (
-    <div className="flex shrink-0 items-center pl-3" data-testid={testId}>
+    <div
+      className="flex shrink-0 items-center pl-3"
+      data-testid={`${testIdPrefix}-avatar-stack`}
+    >
       {visibleMembers.map((member, index) => {
         const normalizedPubkey = normalizePubkey(member.pubkey);
         const profile = profiles?.[normalizedPubkey];
@@ -72,7 +75,7 @@ export function ChannelMemberAvatarStack({
         return (
           <span
             className={index > 0 ? avatarOverlapClass : ""}
-            data-testid="channel-management-member-avatar"
+            data-testid={`${testIdPrefix}-avatar`}
             key={normalizedPubkey}
             style={{ zIndex: index + 1 }}
           >
@@ -89,7 +92,7 @@ export function ChannelMemberAvatarStack({
       {overflowCount > 0 ? (
         <span
           className={`${avatarOverlapClass} ${overflowSizeClass} flex items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground`}
-          data-testid="channel-management-member-avatar-overflow"
+          data-testid={`${testIdPrefix}-avatar-overflow`}
           style={{ zIndex: stackItemCount }}
           title={`${overflowCount} more members`}
         >
