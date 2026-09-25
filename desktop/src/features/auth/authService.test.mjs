@@ -388,7 +388,7 @@ test("contract errors map to typed failures and preserve the retry hint without 
               ? { retry_after_secs: 37, remaining_attempts: 2 }
               : error === "wrong_code"
                 ? { attempts_left: 3 }
-              : {}),
+                : {}),
           },
         };
         await assert.rejects(
