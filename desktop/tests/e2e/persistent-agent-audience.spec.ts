@@ -603,9 +603,20 @@ test("the mention button opens settings and can undo an address", async ({
   ).toBeVisible();
   await input.fill("");
 
-  await menu
-    .getByRole("button", { name: "Mention Morgarita", exact: true })
-    .click();
+  const manualMention = menu.getByRole("button", {
+    name: "Mention Morgarita",
+    exact: true,
+  });
+  await expect(manualMention).toBeVisible();
+  const manualMentionBox = await manualMention.boundingBox();
+  expect(manualMentionBox).not.toBeNull();
+  if (!manualMentionBox) {
+    throw new Error("Manual mention suggestion is not laid out");
+  }
+  await page.mouse.click(
+    manualMentionBox.x + manualMentionBox.width / 2,
+    manualMentionBox.y + manualMentionBox.height / 2,
+  );
   await expect(input).toHaveText("@Morgarita ");
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),
