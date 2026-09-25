@@ -90,10 +90,23 @@ const defaults = manifest.defaults ?? {};
 const cases = (manifest.cases ?? manifest.entries ?? []).map((entry) => ({
   ...defaults,
   ...entry,
-  referencePrefs: entry.referencePrefs ?? defaults.referencePrefs ?? {},
-  appPrefs: entry.appPrefs ?? defaults.appPrefs ?? {},
+  referencePrefs: mergeStorageSeed(
+    defaults.referencePrefs,
+    entry.referencePrefs,
+  ),
+  appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
   actions: entry.actions ?? defaults.actions ?? [],
 })) as VisualCase[];
+
+function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
+  return {
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
+}
 
 test.describe("visual comparison captures", () => {
   test.describe.configure({ mode: "serial" });
