@@ -113,6 +113,8 @@ export type MessageComposerProps = {
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;
   toolbarExtraActions?: ReactNode;
+  /** Optional accessible content rendered between the editor and toolbar. */
+  footerContent?: ReactNode;
   typingParentEventId?: string | null;
   typingRootEventId?: string | null;
 };

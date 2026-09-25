@@ -8,6 +8,7 @@ import {
   hasNestedThreadBranches,
   type MainTimelineEntry,
 } from "@/features/messages/lib/threadPanel";
+import { createThreadReplySender } from "@/features/messages/lib/threadReplyBroadcast";
 import {
   hasSameMessageAuthor,
   isWithinGroupingWindow,
@@ -236,6 +237,25 @@ export function MessageThreadPanel({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
+  const [broadcastControl, setBroadcastControl] = React.useState({
+    channelId,
+    threadHeadId,
+    enabled: false,
+  });
+  const alsoSendToChannel =
+    broadcastControl.channelId === channelId &&
+    broadcastControl.threadHeadId === threadHeadId &&
+    broadcastControl.enabled;
+  const handleBroadcastControlChange = React.useCallback(
+    (enabled: boolean) => {
+      setBroadcastControl({ channelId, threadHeadId, enabled });
+    },
+    [channelId, threadHeadId],
+  );
+  const handleThreadReplySend = React.useMemo(
+    () => createThreadReplySender(onSend, alsoSendToChannel),
+    [alsoSendToChannel, onSend],
+  );
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
@@ -891,9 +911,24 @@ export function MessageThreadPanel({
               onCaptureSendContext={onCaptureSendContext}
               onEditLastOwnMessage={onEditLastOwnMessage}
               onEditSave={onEditSave}
-              onSend={onSend}
+              onSend={handleThreadReplySend}
               placeholder={
                 isHuddleTranscript ? "Message the huddle" : "Reply in thread…"
+              }
+              footerContent={
+                workspaceChrome && !isHuddleTranscript ? (
+                  <label className="colony-thread-crosspost">
+                    <input
+                      checked={alsoSendToChannel}
+                      data-testid="thread-broadcast-reply"
+                      onChange={(event) =>
+                        handleBroadcastControlChange(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>Also send to #{channelName}</span>
+                  </label>
+                ) : undefined
               }
               profiles={profiles}
               recentMentionPubkeys={recentMentionPubkeys}
