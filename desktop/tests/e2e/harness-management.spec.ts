@@ -348,6 +348,10 @@ test.describe("your harnesses split", () => {
     await expect(dialog).toContainText("Codex could not be installed.");
     await expect(dialog).toContainText("The package download was interrupted.");
     await expect(dialog).toContainText("Other harnesses are unaffected.");
+    const details = dialog.getByText("Show details");
+    await expect(details).toBeVisible();
+    await details.click();
+    await expect(dialog).toContainText('Step "download" failed');
     expect(await installCalls()).toBe(1);
 
     await dialog.getByRole("button", { name: "Retry" }).click();

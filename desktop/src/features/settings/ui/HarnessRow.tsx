@@ -1,5 +1,5 @@
 import * as React from "react";
-import { EllipsisVertical, ExternalLink } from "lucide-react";
+import { EllipsisVertical, ExternalLink, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -575,38 +575,48 @@ export function HarnessRow({
         open={installError !== null}
       >
         <SettingsAlertDialogContent
-          className="max-w-lg gap-0 rounded-xl border border-border bg-background p-0"
+          className="max-w-[34rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
           data-testid={`doctor-runtime-install-failure-${runtime.id}`}
         >
-          <AlertDialogHeader className="border-b border-border px-4 py-3">
-            <AlertDialogTitle className="text-sm font-semibold tracking-normal">
-              Failed
-            </AlertDialogTitle>
-          </AlertDialogHeader>
-          <div className="space-y-3 px-4 py-4">
-            <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-              <p className="text-sm font-semibold">
+          <div className="flex items-center justify-between border-b border-border/70 px-6 py-6">
+            <AlertDialogHeader className="space-y-0">
+              <AlertDialogTitle className="text-lg font-medium tracking-normal">
+                Failed
+              </AlertDialogTitle>
+            </AlertDialogHeader>
+            <Button
+              aria-label="Close"
+              data-testid={`doctor-runtime-install-close-${runtime.id}`}
+              onClick={() => setInstallResult(null)}
+              size="icon"
+              variant="ghost"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </Button>
+          </div>
+          <div className="space-y-6 px-6 py-6 pb-10">
+            <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-4 text-xs leading-5">
+              <p className="font-semibold">
                 {runtime.label} could not be installed.
               </p>
-              <AlertDialogDescription className="whitespace-pre-line text-xs">
-                {installError?.split("\n\nFull log:")[0]}
-              </AlertDialogDescription>
-              <p className="text-xs text-muted-foreground">
+              <AlertDialogDescription className="whitespace-pre-line text-2xs text-destructive">
+                {installError
+                  ?.split("\n\nFull log:")[0]
+                  .replace(/^Step "[^"]+" failed:\s*/, "")}{" "}
                 Other harnesses are unaffected.
-              </p>
+              </AlertDialogDescription>
             </div>
-            {installError?.includes("Full log:") ? (
-              <details className="text-xs">
-                <summary className="cursor-pointer">Show details</summary>
-                <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-muted-foreground">
-                  {installError}
-                </pre>
-              </details>
-            ) : null}
+            <details className="text-xs">
+              <summary className="cursor-pointer">Show details</summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-muted-foreground">
+                {installError}
+              </pre>
+            </details>
           </div>
-          <AlertDialogFooter className="border-t border-border px-4 py-3">
+          <AlertDialogFooter className="flex-row border-t border-border/70 px-6 py-5">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-[#2b59a2] px-3 text-white hover:bg-[#234c8b] dark:bg-[#a6bbe5] dark:text-[#1a2539] dark:hover:bg-[#b5c7eb]"
               data-testid={`doctor-runtime-install-retry-${runtime.id}`}
               onClick={handleInstall}
             >
