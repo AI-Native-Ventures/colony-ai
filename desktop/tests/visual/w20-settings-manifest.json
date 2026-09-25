@@ -656,10 +656,9 @@
     {
       "id": "desktop-08-catalog",
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/catalog",
-      "appRoute": "/#/settings?section=settings/themes",
+      "appRoute": "/#/settings?section=appearance",
       "routeLabel": "Theme catalog",
-      "referenceCanvas": true,
-      "appReadySelector": "[data-testid=settings-theme-catalog]"
+      "referenceCanvas": true
     },
     {
       "id": "desktop-08-custom",
