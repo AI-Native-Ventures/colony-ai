@@ -1,8 +1,14 @@
 {
   "version": 1,
   "matrix": {
-    "viewports": ["1728x1117", "1440x900"],
-    "themes": ["light", "dark"]
+    "viewports": [
+      "1728x1117",
+      "1440x900"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ]
   },
   "defaults": {
     "referencePrefs": {
@@ -68,8 +74,14 @@
           "accent": "#3b82f6",
           "followSystem": true,
           "custom": false,
-          "customLight": ["#895AF6", "#5A9CF6"],
-          "customDark": ["#895AF6", "#5A9CF6"],
+          "customLight": [
+            "#895AF6",
+            "#5A9CF6"
+          ],
+          "customDark": [
+            "#895AF6",
+            "#5A9CF6"
+          ],
           "glassBackground": false,
           "glassOpacity": 65,
           "prominentActiveTab": true,
@@ -507,7 +519,9 @@
       "routeLabel": "Avatar update failed",
       "referenceCanvas": true,
       "appMockData": {
-        "profileUpdateErrors": ["Profile update failed."]
+        "profileUpdateErrors": [
+          "Profile update failed."
+        ]
       },
       "clip": {
         "referenceSelector": ".modal",
@@ -713,7 +727,74 @@
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#09/discovered",
       "appRoute": "/#/settings?section=harnesses",
       "routeLabel": "Harness lifecycle discovered",
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "appMockData": {
+        "acpRuntimesCatalog": [
+          {
+            "id": "claude",
+            "label": "Claude Code",
+            "avatar_url": "",
+            "availability": "available",
+            "command": "claude-agent-acp",
+            "binary_path": "/usr/local/bin/claude-agent-acp",
+            "default_args": [],
+            "mcp_command": null,
+            "install_hint": "",
+            "install_instructions_url": "https://code.claude.com/docs/en/getting-started",
+            "can_auto_install": true,
+            "requires_external_cli": true,
+            "underlying_cli_path": "/usr/local/bin/claude",
+            "node_required": false,
+            "auth_status": {
+              "status": "logged_in"
+            },
+            "source": "builtin"
+          },
+          {
+            "id": "codex",
+            "label": "Codex",
+            "avatar_url": "",
+            "availability": "not_installed",
+            "command": null,
+            "binary_path": null,
+            "default_args": [],
+            "mcp_command": null,
+            "install_hint": "",
+            "install_instructions_url": "https://developers.openai.com/codex/cli/",
+            "can_auto_install": true,
+            "requires_external_cli": true,
+            "underlying_cli_path": null,
+            "node_required": false,
+            "auth_status": {
+              "status": "unknown"
+            },
+            "source": "builtin"
+          },
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "avatar_url": "",
+            "availability": "available",
+            "command": "opencode",
+            "binary_path": "/usr/local/bin/opencode",
+            "default_args": [
+              "acp"
+            ],
+            "mcp_command": null,
+            "install_hint": "",
+            "install_instructions_url": "https://opencode.ai/docs",
+            "can_auto_install": false,
+            "requires_external_cli": true,
+            "underlying_cli_path": "/usr/local/bin/opencode",
+            "node_required": false,
+            "auth_status": {
+              "status": "logged_out"
+            },
+            "login_hint": "Sign in to OpenCode.",
+            "source": "preset"
+          }
+        ]
+      }
     },
     {
       "id": "desktop-09-failed",
@@ -882,7 +963,9 @@
         "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "appMockData": {
-        "feedbackPublishErrors": ["Relay connection unavailable."]
+        "feedbackPublishErrors": [
+          "Relay connection unavailable."
+        ]
       }
     },
     {
