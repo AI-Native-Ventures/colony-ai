@@ -1,6 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { Plus, Users } from "lucide-react";
+import { ChevronDown, Plus, Users } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -830,6 +830,14 @@ export function AppSidebar({
                   />
                 </>
               ) : null}
+
+              <h2
+                className="colony-sidebar-business-heading"
+                data-testid="sidebar-business-section"
+              >
+                <ChevronDown aria-hidden="true" />
+                <span data-sidebar-section-title>Business</span>
+              </h2>
 
               <div
                 className="colony-sidebar-team-section"
