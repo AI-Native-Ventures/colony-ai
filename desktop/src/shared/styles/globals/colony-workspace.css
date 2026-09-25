@@ -83,11 +83,11 @@
   --colony-sidebar-status-font-size: calc(var(--buzz-type-rem) * 0.5625);
   --colony-composer-hint-font-size: calc(var(--buzz-type-rem) * 0.63);
   --colony-day-divider-font-size: calc(var(--buzz-type-rem) * 0.64);
-  --colony-workspace-link-color: #637fb1;
+  --colony-workspace-link-color: #2655a0;
 }
 
 :root.dark:has([data-colony-workspace-route="true"]) {
-  --colony-workspace-link-color: #96acd1;
+  --colony-workspace-link-color: #9dc1fb;
 }
 
 :root:has([data-colony-workspace-route="true"])
