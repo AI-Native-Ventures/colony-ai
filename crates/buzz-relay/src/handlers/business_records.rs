@@ -61,6 +61,16 @@ struct ClientChannelProvision {
     name: String,
 }
 
+struct PersistBatch {
+    command: Event,
+    channel_id: Uuid,
+    heads: Vec<HeadWrite>,
+    appended: Vec<(Event, Uuid)>,
+    expected_heads: Vec<ExpectedHead>,
+    conversion_claim: Option<ConversionClaim>,
+    client_channel_to_create: Option<ClientChannelProvision>,
+}
+
 #[datastore_span(name = "business_record_command", system = "postgresql")]
 /// Validate and persist one member-signed business-record command.
 pub async fn handle(
@@ -483,13 +493,15 @@ pub async fn handle(
     let result = persist(
         tenant,
         state,
-        event,
-        channel_id,
-        heads,
-        appended,
-        expected_heads,
-        conversion_claim,
-        client_channel_to_create,
+        PersistBatch {
+            command: event,
+            channel_id,
+            heads,
+            appended,
+            expected_heads,
+            conversion_claim,
+            client_channel_to_create,
+        },
     )
     .await?;
     if let Some(client_channel_id) = client_channel_to_sync {
@@ -826,14 +838,17 @@ fn validate_acceptance_ids(acceptance: &ProposalAcceptance) -> Result<(), Ingest
 async fn persist(
     tenant: &TenantContext,
     state: &Arc<AppState>,
-    command: Event,
-    channel_id: Uuid,
-    heads: Vec<HeadWrite>,
-    appended: Vec<(Event, Uuid)>,
-    expected_heads: Vec<ExpectedHead>,
-    conversion_claim: Option<ConversionClaim>,
-    client_channel_to_create: Option<ClientChannelProvision>,
+    batch: PersistBatch,
 ) -> Result<IngestResult, IngestError> {
+    let PersistBatch {
+        command,
+        channel_id,
+        heads,
+        appended,
+        expected_heads,
+        conversion_claim,
+        client_channel_to_create,
+    } = batch;
     let mut tx = state
         .db
         .begin_event_write_transaction()
