@@ -362,7 +362,7 @@ body:has(.w20-settings-shell) {
 .dark .w20-settings-topbar {
   border-color: rgb(60 53 68 / 75%);
   border-bottom-color: #3c3544;
-  background: #26232d;
+  background: #211e26;
 }
 
 .w20-topbar-history {
@@ -427,7 +427,7 @@ body:has(.w20-settings-shell) {
   border-color: rgb(60 53 68 / 75%);
   border-top: 0;
   border-radius: 0 0 11px 11px;
-  background: #26232d;
+  background: #211e26;
   box-shadow: 0 5px 20px rgb(0 0 0 / 15%);
 }
 
@@ -483,7 +483,7 @@ body:has(.w20-settings-shell) {
 
 .dark .w20-settings-surface .w20-inner-tabs {
   border-color: #3c3544;
-  background: #26232d;
+  background: #211e26;
 }
 
 .dark .w20-inner-tab {
