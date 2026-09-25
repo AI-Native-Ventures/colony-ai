@@ -12,10 +12,12 @@ export function ChannelMemberAvatarStack({
   currentPubkey,
   members,
   size = "default",
+  testId = "channel-management-member-avatar-stack",
 }: {
   currentPubkey?: string;
   members: ChannelMember[];
   size?: "compact" | "default";
+  testId?: string;
 }) {
   const orderedMembers = React.useMemo(() => {
     if (size !== "compact" || !currentPubkey) return members;
@@ -50,10 +52,7 @@ export function ChannelMemberAvatarStack({
   }
 
   return (
-    <div
-      className="flex shrink-0 items-center pl-3"
-      data-testid="channel-management-member-avatar-stack"
-    >
+    <div className="flex shrink-0 items-center pl-3" data-testid={testId}>
       {visibleMembers.map((member, index) => {
         const normalizedPubkey = normalizePubkey(member.pubkey);
         const profile = profiles?.[normalizedPubkey];
