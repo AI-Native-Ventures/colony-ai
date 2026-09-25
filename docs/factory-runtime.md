@@ -26,6 +26,13 @@ local agent configuration without loading managed-agent private keys from the
 OS keyring, then starts an ACP client in the selected checkout. Up to 30 ACP
 sessions can run at once. Up to 30 additional runs can wait in the native
 queue. Creation is rejected when that queue is full.
+Each create request supplies a stable `operationKey`. The native store binds it
+to a hash of the normalized request in the same transaction as the queued run.
+An identical retry returns the original run without scheduling another ACP
+worker. Reusing a key with different request data is rejected. If the queued to
+running checkpoint temporarily fails, that worker remains attached to the
+queued run and retries with a capped backoff until the checkpoint succeeds or
+the run is cancelled.
 At most 256 renderer event subscriptions are held at once.
 
 The run statuses are `queued`, `running`, `waiting`, `blocked`, `error`,
@@ -43,6 +50,11 @@ native host starts with a different host id, queued, running, and waiting runs
 are marked `blocked`, with their saved transcript and drafts preserved. The
 runtime does not claim that the provider process resumed. The user can inspect
 the saved run and start another run to continue.
+
+Transcript capture treats observer lag and database write errors as run errors.
+It attempts to persist a `transcript_capture_error` marker. A failed capture
+task overrides a successful ACP prompt result, so a partial transcript cannot
+be reported as a completed run.
 
 ## Renderer API
 
@@ -68,6 +80,19 @@ transcript is capped at 8 MiB. A `transcript_truncated` event marks when the
 per-run limit is reached. Snapshot pages contain at most 1000 events. The
 renderer buffers at most 512 live events while the initial snapshot is loading;
 it is notified when it must resynchronize after buffer overflow or stream lag.
+
+The aggregate Factory store limits run, transcript, and draft payload to
+120 MiB. The SQLite database file is capped at 128 MiB using a page ceiling
+calculated from its page size, leaving room for status and capture-error events
+plus SQLite bookkeeping. WAL checkpointing and a 4 MiB journal size limit keep
+the transient journal bounded. The store
+targets 100 retained terminal runs. When a new terminal run crosses that limit,
+the oldest terminal leaf run and its transcript and draft are removed in the
+same transaction. Active and blocked runs are protected, as are terminal
+parents that still have children. Creation is rejected at 200 total stored runs
+when the retained graph cannot be pruned safely.
+These limits are local retention behavior; users who need long-term run history
+must preserve it outside this runtime before retention removes it.
 
 ## Operational boundaries
 

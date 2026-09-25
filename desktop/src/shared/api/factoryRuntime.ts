@@ -43,6 +43,7 @@ export type FactoryRunSnapshot = {
 };
 
 export type CreateFactoryRunInput = {
+  operationKey: string;
   projectId?: string | null;
   repositoryId?: string | null;
   checkoutPath: string;

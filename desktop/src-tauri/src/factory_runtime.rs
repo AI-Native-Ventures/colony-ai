@@ -4,19 +4,18 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State};
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+mod store;
+use store::*;
 
 const EVENT_NAME: &str = "factory-run-event";
 const MAX_CONCURRENT_SESSIONS: usize = 30;
@@ -25,7 +24,12 @@ const MAX_PROMPT_BYTES: usize = 64 * 1024;
 const MAX_DRAFT_BYTES: usize = 1024 * 1024;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
 const MAX_TRANSCRIPT_BYTES: i64 = 8 * 1024 * 1024;
+const MAX_FACTORY_STORAGE_BYTES: i64 = 128 * 1024 * 1024;
+const MAX_FACTORY_PAYLOAD_BYTES: i64 = 120 * 1024 * 1024;
+const MAX_RETAINED_TERMINAL_RUNS: i64 = 100;
+const MAX_STORED_RUNS: i64 = 200;
 const EVENT_STORAGE_OVERHEAD_BYTES: i64 = 160;
+const RUN_STORAGE_OVERHEAD_BYTES: i64 = 512;
 const MAX_EVENTS_PER_SNAPSHOT: i64 = 1000;
 const EVENT_BUFFER: usize = 256;
 const MAX_ATTACHMENTS: usize = 256;
@@ -112,6 +116,7 @@ pub(crate) struct FactoryRunSnapshot {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FactoryRunCreateInput {
+    pub operation_key: String,
     pub project_id: Option<String>,
     pub repository_id: Option<String>,
     pub checkout_path: String,
@@ -169,12 +174,6 @@ impl FactoryRuntime {
             .map_err(|error| error.to_string())?
             .get(run_id)
             .cloned())
-    }
-
-    fn remove_control(&self, run_id: &str) {
-        if let Ok(mut controls) = self.controls.lock() {
-            controls.remove(run_id);
-        }
     }
 
     fn attach_if_live(
@@ -279,496 +278,12 @@ fn app_db_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(directory.join("runs.sqlite3"))
 }
 
-fn open_store(path: &Path) -> Result<Connection, String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create Factory data directory: {error}"))?;
-        #[cfg(unix)]
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-            .map_err(|error| format!("failed to protect Factory data directory: {error}"))?;
-    }
-    let connection = Connection::open(path).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-        .map_err(|error| format!("failed to protect Factory database: {error}"))?;
-    connection
-        .busy_timeout(Duration::from_secs(2))
-        .map_err(|error| error.to_string())?;
-    connection
-        .pragma_update(None, "journal_mode", "WAL")
-        .map_err(|error| error.to_string())?;
-    connection
-        .pragma_update(None, "foreign_keys", "ON")
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS factory_runs (
-                id TEXT PRIMARY KEY,
-                project_id TEXT,
-                repository_id TEXT,
-                checkout_path TEXT NOT NULL,
-                agent_id TEXT NOT NULL,
-                harness_id TEXT NOT NULL,
-                parent_run_id TEXT REFERENCES factory_runs(id),
-                status TEXT NOT NULL CHECK (status IN ('queued','running','waiting','blocked','error','done','cancelled')),
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                acp_session_id TEXT,
-                error TEXT
-            );
-            CREATE INDEX IF NOT EXISTS factory_runs_updated ON factory_runs(updated_at DESC);
-            CREATE INDEX IF NOT EXISTS factory_runs_parent ON factory_runs(parent_run_id);
-            CREATE TABLE IF NOT EXISTS factory_run_events (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL REFERENCES factory_runs(id) ON DELETE CASCADE,
-                created_at TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                payload_json TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS factory_run_events_cursor ON factory_run_events(run_id, sequence);
-            CREATE TABLE IF NOT EXISTS factory_run_drafts (
-                run_id TEXT PRIMARY KEY REFERENCES factory_runs(id) ON DELETE CASCADE,
-                draft TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS factory_runtime_meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );",
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(connection)
-}
-
-fn raw_run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRun> {
-    Ok(RawRun {
-        id: row.get(0)?,
-        project_id: row.get(1)?,
-        repository_id: row.get(2)?,
-        checkout_path: row.get(3)?,
-        agent_id: row.get(4)?,
-        harness_id: row.get(5)?,
-        parent_run_id: row.get(6)?,
-        status: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
-        acp_session_id: row.get(10)?,
-        error: row.get(11)?,
-    })
-}
-
-const RUN_COLUMNS: &str = "id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, status, created_at, updated_at, acp_session_id, error";
-
-fn read_run(connection: &Connection, run_id: &str) -> Result<FactoryRun, String> {
-    let sql = format!("SELECT {RUN_COLUMNS} FROM factory_runs WHERE id = ?1");
-    let raw = connection
-        .query_row(&sql, [run_id], raw_run_from_row)
-        .map_err(|error| error.to_string())?;
-    FactoryRun::try_from(raw)
-}
-
-fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<FactoryRunEvent> {
-    let payload: String = row.get(4)?;
-    let payload = serde_json::from_str(&payload).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(error))
-    })?;
-    Ok(FactoryRunEvent {
-        sequence: row.get(0)?,
-        run_id: row.get(1)?,
-        created_at: row.get(2)?,
-        kind: row.get(3)?,
-        payload,
-    })
-}
-
-fn insert_event(
-    tx: &Transaction<'_>,
-    run_id: &str,
-    kind: &str,
-    payload: &serde_json::Value,
-    bounded: bool,
-) -> Result<Option<FactoryRunEvent>, String> {
-    let mut payload_json = serde_json::to_string(payload).map_err(|error| error.to_string())?;
-    let total: i64 = tx
-        .query_row(
-            "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB)) + length(CAST(kind AS BLOB)) + ?2), 0) FROM factory_run_events WHERE run_id = ?1",
-            params![run_id, EVENT_STORAGE_OVERHEAD_BYTES],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let event_size = payload_json.len() as i64 + kind.len() as i64 + EVENT_STORAGE_OVERHEAD_BYTES;
-    if bounded && total + event_size > MAX_TRANSCRIPT_BYTES {
-        let already_truncated: bool = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM factory_run_events WHERE run_id = ?1 AND kind = 'transcript_truncated')",
-                [run_id],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if already_truncated {
-            return Ok(None);
-        }
-        payload_json = "{\"reason\":\"per-run transcript limit reached\"}".to_string();
-        return insert_event(
-            tx,
-            run_id,
-            "transcript_truncated",
-            &serde_json::from_str(&payload_json).map_err(|error| error.to_string())?,
-            false,
-        );
-    }
-    let created_at = now_iso();
-    tx.execute(
-        "INSERT INTO factory_run_events (run_id, created_at, kind, payload_json) VALUES (?1, ?2, ?3, ?4)",
-        params![run_id, created_at, kind, payload_json],
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(Some(FactoryRunEvent {
-        sequence: tx.last_insert_rowid(),
-        run_id: run_id.to_string(),
-        created_at,
-        kind: kind.to_string(),
-        payload: payload.clone(),
-    }))
-}
-
 fn publish(app: &AppHandle, control: Option<&RunControl>, event: &FactoryRunEvent) {
     if let Some(control) = control {
         let _ = control.events.send(event.clone());
     }
     // The persisted cursor is authoritative; an unavailable renderer can reattach later.
     let _ = app.emit(EVENT_NAME, event);
-}
-
-fn current_host_id() -> &'static str {
-    static HOST_ID: OnceLock<String> = OnceLock::new();
-    HOST_ID.get_or_init(|| Uuid::new_v4().to_string())
-}
-
-fn recover_store(path: &Path, host_id: &str) -> Result<(), String> {
-    let mut connection = open_store(path)?;
-    let tx = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let previous_host: Option<String> = tx
-        .query_row(
-            "SELECT value FROM factory_runtime_meta WHERE key = 'host_id'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    if previous_host
-        .as_deref()
-        .is_some_and(|value| value != host_id)
-    {
-        let mut statement = tx
-            .prepare(&format!("SELECT {RUN_COLUMNS} FROM factory_runs WHERE status IN ('queued','running','waiting')"))
-            .map_err(|error| error.to_string())?;
-        let raws = statement
-            .query_map([], raw_run_from_row)
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        drop(statement);
-        for raw in raws {
-            let run_id = raw.id.clone();
-            let run_status = FactoryRunStatus::Blocked;
-            let explanation = "Native host restarted before this run settled. Its saved transcript is available; start a new run to continue.";
-            tx.execute(
-                "UPDATE factory_runs SET status = ?2, updated_at = ?3, error = ?4 WHERE id = ?1",
-                params![run_id, run_status.as_str(), now_iso(), explanation],
-            )
-            .map_err(|error| error.to_string())?;
-            let event = insert_event(
-                &tx,
-                &run_id,
-                "status",
-                &serde_json::json!({ "status": run_status, "reason": explanation }),
-                false,
-            )?;
-            let _ = event;
-        }
-    }
-    tx.execute(
-        "INSERT INTO factory_runtime_meta (key, value) VALUES ('host_id', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        [host_id],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.commit().map_err(|error| error.to_string())
-}
-
-fn ensure_recovered(path: &Path) -> Result<(), String> {
-    recover_store(path, current_host_id())
-}
-
-fn store_create(
-    path: &Path,
-    run_id: &str,
-    project_id: Option<&str>,
-    repository_id: Option<&str>,
-    checkout_path: &str,
-    agent_id: &str,
-    harness_id: &str,
-    parent_run_id: Option<&str>,
-    prompt: &str,
-) -> Result<(FactoryRun, Vec<FactoryRunEvent>), String> {
-    let mut connection = open_store(path)?;
-    let tx = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let pending: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM factory_runs WHERE status IN ('queued','running','waiting')",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if pending >= (MAX_CONCURRENT_SESSIONS as i64 + MAX_QUEUED_RUNS) {
-        return Err("Factory run queue is full".to_string());
-    }
-    if let Some(parent) = parent_run_id {
-        let exists: bool = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1)",
-                [parent],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if !exists {
-            return Err("parent Factory run was not found".to_string());
-        }
-    }
-    let now = now_iso();
-    tx.execute(
-        "INSERT INTO factory_runs (id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?8)",
-        params![run_id, project_id, repository_id, checkout_path, agent_id, harness_id, parent_run_id, now],
-    )
-    .map_err(|error| error.to_string())?;
-    let prompt_event = insert_event(
-        &tx,
-        run_id,
-        "user_prompt",
-        &serde_json::json!({ "text": prompt }),
-        true,
-    )?
-    .ok_or_else(|| "Factory prompt exceeded the transcript limit".to_string())?;
-    let run = FactoryRun {
-        id: run_id.to_string(),
-        project_id: project_id.map(str::to_string),
-        repository_id: repository_id.map(str::to_string),
-        checkout_path: checkout_path.to_string(),
-        agent_id: agent_id.to_string(),
-        harness_id: harness_id.to_string(),
-        parent_run_id: parent_run_id.map(str::to_string),
-        status: FactoryRunStatus::Queued,
-        created_at: now.clone(),
-        updated_at: now,
-        acp_session_id: None,
-        error: None,
-    };
-    tx.commit().map_err(|error| error.to_string())?;
-    Ok((run, vec![prompt_event]))
-}
-
-fn store_list(path: &Path) -> Result<Vec<FactoryRun>, String> {
-    let connection = open_store(path)?;
-    let sql = format!("SELECT {RUN_COLUMNS} FROM factory_runs ORDER BY updated_at DESC LIMIT 200");
-    let mut statement = connection
-        .prepare(&sql)
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], raw_run_from_row)
-        .map_err(|error| error.to_string())?;
-    rows.map(|row| {
-        let raw = row.map_err(|error| error.to_string())?;
-        FactoryRun::try_from(raw)
-    })
-    .collect()
-}
-
-fn store_snapshot(
-    path: &Path,
-    run_id: &str,
-    after_sequence: i64,
-) -> Result<FactoryRunSnapshot, String> {
-    let connection = open_store(path)?;
-    let run = read_run(&connection, run_id)?;
-    let mut statement = connection
-        .prepare("SELECT sequence, run_id, created_at, kind, payload_json FROM factory_run_events WHERE run_id = ?1 AND sequence > ?2 ORDER BY sequence ASC LIMIT ?3")
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(
-            params![run_id, after_sequence.max(0), MAX_EVENTS_PER_SNAPSHOT],
-            read_event,
-        )
-        .map_err(|error| error.to_string())?;
-    let events = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    let last_sequence = events
-        .last()
-        .map(|event| event.sequence)
-        .unwrap_or(after_sequence.max(0));
-    let has_more = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM factory_run_events WHERE run_id = ?1 AND sequence > ?2)",
-            params![run_id, last_sequence],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let draft = connection
-        .query_row(
-            "SELECT draft FROM factory_run_drafts WHERE run_id = ?1",
-            [run_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    Ok(FactoryRunSnapshot {
-        run,
-        events,
-        draft,
-        has_more,
-    })
-}
-
-fn store_append_event(
-    path: &Path,
-    run_id: &str,
-    kind: &str,
-    payload: &serde_json::Value,
-) -> Result<Option<FactoryRunEvent>, String> {
-    let mut connection = open_store(path)?;
-    let tx = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let status: String = tx
-        .query_row(
-            "SELECT status FROM factory_runs WHERE id = ?1",
-            [run_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let status = FactoryRunStatus::parse(&status)?;
-    if status.is_terminal() || status == FactoryRunStatus::Blocked {
-        tx.commit().map_err(|error| error.to_string())?;
-        return Ok(None);
-    }
-    let event = insert_event(&tx, run_id, kind, payload, true)?;
-    if event.is_some() {
-        tx.execute(
-            "UPDATE factory_runs SET updated_at = ?2 WHERE id = ?1",
-            params![run_id, now_iso()],
-        )
-        .map_err(|error| error.to_string())?;
-    }
-    tx.commit().map_err(|error| error.to_string())?;
-    Ok(event)
-}
-
-fn store_set_acp_session(path: &Path, run_id: &str, session_id: &str) -> Result<(), String> {
-    let connection = open_store(path)?;
-    connection
-        .execute(
-            "UPDATE factory_runs SET acp_session_id = ?2, updated_at = ?3 WHERE id = ?1 AND status IN ('running','waiting')",
-            params![run_id, session_id, now_iso()],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn store_transition(
-    path: &Path,
-    run_id: &str,
-    expected: Option<FactoryRunStatus>,
-    next: FactoryRunStatus,
-    error: Option<&str>,
-) -> Result<Option<(FactoryRun, FactoryRunEvent)>, String> {
-    let mut connection = open_store(path)?;
-    let tx = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let current: String = tx
-        .query_row(
-            "SELECT status FROM factory_runs WHERE id = ?1",
-            [run_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let current = FactoryRunStatus::parse(&current)?;
-    if current.is_terminal() || current == FactoryRunStatus::Blocked {
-        tx.commit().map_err(|error| error.to_string())?;
-        return Ok(None);
-    }
-    if expected.is_some_and(|value| current != value) {
-        tx.commit().map_err(|error| error.to_string())?;
-        return Ok(None);
-    }
-    let updated_at = now_iso();
-    tx.execute(
-        "UPDATE factory_runs SET status = ?2, updated_at = ?3, error = ?4 WHERE id = ?1",
-        params![run_id, next.as_str(), updated_at, error],
-    )
-    .map_err(|error| error.to_string())?;
-    let event = insert_event(
-        &tx,
-        run_id,
-        "status",
-        &serde_json::json!({ "status": next, "error": error }),
-        false,
-    )?
-    .ok_or_else(|| "failed to persist Factory status event".to_string())?;
-    let run = read_run(&tx, run_id)?;
-    tx.commit().map_err(|error| error.to_string())?;
-    Ok(Some((run, event)))
-}
-
-fn store_set_draft(path: &Path, run_id: &str, draft: &str) -> Result<FactoryRunDraft, String> {
-    if draft.len() > MAX_DRAFT_BYTES {
-        return Err("Factory run draft exceeds 1 MiB".to_string());
-    }
-    let connection = open_store(path)?;
-    let exists: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM factory_runs WHERE id = ?1)",
-            [run_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if !exists {
-        return Err("Factory run was not found".to_string());
-    }
-    let updated_at = now_iso();
-    connection
-        .execute(
-            "INSERT INTO factory_run_drafts (run_id, draft, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(run_id) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at",
-            params![run_id, draft, updated_at],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(FactoryRunDraft {
-        run_id: run_id.to_string(),
-        draft: draft.to_string(),
-        updated_at,
-    })
-}
-
-fn store_get_draft(path: &Path, run_id: &str) -> Result<Option<FactoryRunDraft>, String> {
-    let connection = open_store(path)?;
-    connection
-        .query_row(
-            "SELECT run_id, draft, updated_at FROM factory_run_drafts WHERE run_id = ?1",
-            [run_id],
-            |row| {
-                Ok(FactoryRunDraft {
-                    run_id: row.get(0)?,
-                    draft: row.get(1)?,
-                    updated_at: row.get(2)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())
 }
 
 fn validate_optional_id(name: &str, value: Option<&str>) -> Result<(), String> {
@@ -881,24 +396,22 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
 }
 
 async fn capture_event(
-    app: &AppHandle,
     path: &Path,
-    control: &RunControl,
     run_id: &str,
     observer_event: buzz_acp::ObserverEvent,
-) -> Result<(), String> {
+) -> Result<Option<FactoryRunEvent>, String> {
     if observer_event.kind != "acp_read" {
-        return Ok(());
+        return Ok(None);
     }
     let message = observer_event.payload;
     if message.get("method").and_then(serde_json::Value::as_str) != Some("session/update") {
-        return Ok(());
+        return Ok(None);
     }
     let Some(update) = message
         .get("params")
         .and_then(|params| params.get("update"))
     else {
-        return Ok(());
+        return Ok(None);
     };
     let kind = update
         .get("sessionUpdate")
@@ -914,16 +427,12 @@ async fn capture_event(
             | "current_mode_update"
             | "config_option_update"
     ) {
-        return Ok(());
+        return Ok(None);
     }
     let payload = compact_update(update);
     for attempt in 0..3 {
         match store_append_event(path, run_id, kind, &payload) {
-            Ok(Some(event)) => {
-                publish(app, Some(control), &event);
-                return Ok(());
-            }
-            Ok(None) => return Ok(()),
+            Ok(event) => return Ok(event),
             Err(error) if attempt < 2 => {
                 tokio::time::sleep(Duration::from_millis(40 * (attempt + 1))).await;
                 eprintln!("colony-desktop: retrying Factory transcript persistence: {error}");
@@ -931,7 +440,81 @@ async fn capture_event(
             Err(error) => return Err(error),
         }
     }
-    Ok(())
+    Ok(None)
+}
+
+async fn capture_observer_stream<F>(
+    mut observer_rx: broadcast::Receiver<buzz_acp::ObserverEvent>,
+    path: PathBuf,
+    run_id: String,
+    mut publish_event: F,
+) -> Result<(), String>
+where
+    F: FnMut(FactoryRunEvent),
+{
+    loop {
+        let event = match observer_rx.recv().await {
+            Ok(event) => event,
+            Err(broadcast::error::RecvError::Closed) => return Ok(()),
+            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                let error = format!("Factory transcript observer lagged by {skipped} events");
+                if let Ok(Some(marker)) = store_append_capture_marker(&path, &run_id, &error) {
+                    publish_event(marker);
+                }
+                return Err(error);
+            }
+        };
+        match capture_event(&path, &run_id, event).await {
+            Ok(Some(event)) => publish_event(event),
+            Ok(None) => {}
+            Err(error) => {
+                if let Ok(Some(marker)) = store_append_capture_marker(&path, &run_id, &error) {
+                    publish_event(marker);
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+
+type RunFinish = (FactoryRunStatus, Option<&'static str>);
+
+fn finish_status_after_capture(prompt_status: RunFinish, capture: Result<(), String>) -> RunFinish {
+    match capture {
+        Ok(()) => prompt_status,
+        Err(_) => (
+            FactoryRunStatus::Error,
+            Some("Factory output capture stopped unexpectedly"),
+        ),
+    }
+}
+
+async fn retry_queued_start<F, T>(mut persist: F, cancel: CancellationToken) -> Option<T>
+where
+    F: FnMut() -> Result<Option<T>, String>,
+{
+    let mut attempt = 0_u32;
+    loop {
+        if cancel.is_cancelled() {
+            return None;
+        }
+        match persist() {
+            Ok(value) => return value,
+            Err(error) => {
+                if attempt < 3 || attempt.is_power_of_two() {
+                    eprintln!("colony-desktop: retrying Factory run start persistence: {error}");
+                }
+                let delay_ms = 40_u64
+                    .saturating_mul(2_u64.saturating_pow(attempt.min(7)))
+                    .min(5_000);
+                attempt = attempt.saturating_add(1);
+                tokio::select! {
+                    _ = cancel.cancelled() => return None,
+                    _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
+                }
+            }
+        }
+    }
 }
 
 async fn run_worker(
@@ -952,31 +535,19 @@ async fn run_worker(
         FactoryRuntime::remove_control_from_handle(&controls, &run.id);
         return;
     };
-    let mut transition = None;
-    for attempt in 0..3 {
-        match store_transition(
-            &path,
-            &run.id,
-            Some(FactoryRunStatus::Queued),
-            FactoryRunStatus::Running,
-            None,
-        ) {
-            Ok(Some(value)) => {
-                transition = Some(value);
-                break;
-            }
-            Ok(None) => break,
-            Err(error) if attempt < 2 => {
-                tokio::time::sleep(Duration::from_millis(40 * (attempt + 1))).await;
-                eprintln!("colony-desktop: retrying Factory run start persistence: {error}");
-            }
-            Err(error) => {
-                eprintln!(
-                    "colony-desktop: Factory run remains queued after persistence failure: {error}"
-                );
-            }
-        }
-    }
+    let transition = retry_queued_start(
+        || {
+            store_transition(
+                &path,
+                &run.id,
+                Some(FactoryRunStatus::Queued),
+                FactoryRunStatus::Running,
+                None,
+            )
+        },
+        control.cancel.clone(),
+    )
+    .await;
     let Some((_running, event)) = transition else {
         FactoryRuntime::remove_control_from_handle(&controls, &run.id);
         return;
@@ -1004,7 +575,7 @@ async fn run_worker(
             }
         };
     let observer = buzz_acp::ObserverHandle::in_process();
-    let mut observer_rx = observer.subscribe();
+    let observer_rx = observer.subscribe();
     client.set_observer(Some(observer.clone()), 0);
     let event_path = path.clone();
     let event_app = app.clone();
@@ -1012,20 +583,14 @@ async fn run_worker(
     let event_run_id = run.id.clone();
     let (storage_error_tx, mut storage_error_rx) = tokio::sync::oneshot::channel();
     let event_task = tokio::spawn(async move {
-        while let Ok(event) = observer_rx.recv().await {
-            if let Err(error) = capture_event(
-                &event_app,
-                &event_path,
-                &event_control,
-                &event_run_id,
-                event,
-            )
-            .await
-            {
-                let _ = storage_error_tx.send(error);
-                return;
-            }
+        let result = capture_observer_stream(observer_rx, event_path, event_run_id, |event| {
+            publish(&event_app, Some(&event_control), &event);
+        })
+        .await;
+        if let Err(error) = &result {
+            let _ = storage_error_tx.send(error.clone());
         }
+        result
     });
 
     let initialized = tokio::select! {
@@ -1201,13 +766,9 @@ async fn run_worker(
     drop(observer);
     let drained = event_task.await;
     client.shutdown().await;
-    let final_status = match drained {
-        Ok(()) => status,
-        Err(_) => (
-            FactoryRunStatus::Error,
-            Some("Factory output capture stopped unexpectedly"),
-        ),
-    };
+    let capture_result =
+        drained.unwrap_or_else(|_| Err("Factory capture task panicked".to_string()));
+    let final_status = finish_status_after_capture(status, capture_result);
     finish_run(
         &app,
         &path,
@@ -1258,6 +819,11 @@ pub(crate) async fn factory_run_create(
     if input.prompt.trim().is_empty() || input.prompt.len() > MAX_PROMPT_BYTES {
         return Err("Factory prompt must be non-empty and no longer than 64 KiB".to_string());
     }
+    if input.operation_key.trim().is_empty() || input.operation_key.len() > 128 {
+        return Err(
+            "Factory operation key must be non-empty and no longer than 128 bytes".to_string(),
+        );
+    }
     validate_optional_id("project id", input.project_id.as_deref())?;
     validate_optional_id("repository id", input.repository_id.as_deref())?;
     let checkout = canonical_checkout(&input.checkout_path)?;
@@ -1267,14 +833,27 @@ pub(crate) async fn factory_run_create(
         .map(|value| Uuid::parse_str(value).map(|id| id.to_string()))
         .transpose()
         .map_err(|_| "invalid parent Factory run id".to_string())?;
-    let (agent_id, harness_id, launch) = resolve_launch(&app, input.agent_id.trim(), &checkout)?;
-    let id = Uuid::new_v4().to_string();
+    let requested_agent_id = input.agent_id.trim().to_string();
+    let request_hash = create_request_hash(
+        input.project_id.as_deref(),
+        input.repository_id.as_deref(),
+        &checkout.to_string_lossy(),
+        &requested_agent_id,
+        parent_run_id.as_deref(),
+        &input.prompt,
+    )?;
     let path = app_db_path(&app)?;
     ensure_recovered(&path)?;
-    let control = runtime.register(&id)?;
+    if let Some(existing) = store_find_operation(&path, &input.operation_key, &request_hash)? {
+        return Ok(existing);
+    }
+    let (agent_id, harness_id, launch) = resolve_launch(&app, &requested_agent_id, &checkout)?;
+    let id = Uuid::new_v4().to_string();
     let created = store_create(
         &path,
         &id,
+        &input.operation_key,
+        &request_hash,
         input.project_id.as_deref(),
         input.repository_id.as_deref(),
         &checkout.to_string_lossy(),
@@ -1283,33 +862,38 @@ pub(crate) async fn factory_run_create(
         parent_run_id.as_deref(),
         &input.prompt,
     );
-    let (run, events) = match created {
-        Ok(created) => created,
-        Err(error) => {
-            runtime.remove_control(&id);
-            return Err(error);
-        }
-    };
-    for event in events {
-        publish(&app, Some(&control), &event);
-    }
-    let app_clone = app.clone();
-    let path_clone = path.clone();
-    let runtime_controls = Arc::clone(&runtime.controls);
-    let permits = Arc::clone(&runtime.permits);
-    let run_clone = run.clone();
+    let created = created?;
     let prompt = input.prompt;
-    tauri::async_runtime::spawn(run_worker(
-        app_clone,
-        path_clone,
-        run_clone,
-        prompt,
-        launch,
-        control,
-        permits,
-        runtime_controls,
-    ));
-    Ok(run)
+    schedule_new_store_create(created, |run, events| {
+        let control = match runtime.register(&run.id) {
+            Ok(control) => control,
+            Err(error) => {
+                finish_run(
+                    &app,
+                    &path,
+                    &run.id,
+                    None,
+                    FactoryRunStatus::Error,
+                    Some("Factory run could not be scheduled"),
+                );
+                return Err(error);
+            }
+        };
+        for event in events {
+            publish(&app, Some(&control), &event);
+        }
+        tauri::async_runtime::spawn(run_worker(
+            app.clone(),
+            path.clone(),
+            run.clone(),
+            prompt,
+            launch,
+            control,
+            Arc::clone(&runtime.permits),
+            Arc::clone(&runtime.controls),
+        ));
+        Ok(())
+    })
 }
 
 #[tauri::command]
