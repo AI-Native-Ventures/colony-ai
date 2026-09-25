@@ -1,5 +1,13 @@
 -- One accepted proposal version may reserve only one conversion result.
 -- The claim is written in the same event transaction as the acceptance event.
+ALTER TABLE communities
+    ADD COLUMN business_channel_id UUID;
+
+ALTER TABLE communities
+    ADD CONSTRAINT communities_business_channel_fk
+    FOREIGN KEY (id, business_channel_id)
+    REFERENCES channels (community_id, id);
+
 CREATE TABLE business_proposal_conversion_claims (
     community_id UUID NOT NULL REFERENCES communities(id),
     business_channel_id UUID NOT NULL,

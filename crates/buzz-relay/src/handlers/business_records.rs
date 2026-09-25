@@ -28,6 +28,14 @@ use crate::state::AppState;
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 
+#[cfg(test)]
+type PartyValidationTestHook = ([u8; 32], Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
+
+#[cfg(test)]
+static PARTY_VALIDATION_TEST_HOOK: std::sync::OnceLock<
+    std::sync::Mutex<Option<PartyValidationTestHook>>,
+> = std::sync::OnceLock::new();
+
 struct HeadWrite {
     event: Event,
     channel_id: Uuid,
@@ -69,6 +77,7 @@ struct PersistBatch {
     expected_heads: Vec<ExpectedHead>,
     conversion_claim: Option<ConversionClaim>,
     client_channel_to_create: Option<ClientChannelProvision>,
+    business_channel_to_register: Option<Uuid>,
 }
 
 #[datastore_span(name = "business_record_command", system = "postgresql")]
@@ -103,6 +112,77 @@ pub async fn handle(
         .await
         .map_err(internal)?
         .ok_or_else(|| forbidden("actor is not a member of the private business channel"))?;
+
+    let community_business_channel =
+        buzz_db::business_records::get_business_channel_id(&state.db, tenant.community())
+            .await
+            .map_err(internal)?;
+    let mut business_channel_to_register = None;
+    if matches!(
+        &command,
+        BusinessCommand::PartyAction(_)
+            | BusinessCommand::ProposalVersion(_)
+            | BusinessCommand::ProposalAcceptance(_)
+    ) {
+        match community_business_channel {
+            Some(expected_channel_id) if expected_channel_id == channel_id => {}
+            Some(_) => {
+                return Err(forbidden(
+                    "community business commands require the registered business channel",
+                ));
+            }
+            None if matches!(
+                &command,
+                BusinessCommand::PartyAction(action)
+                    if action.action == RecordAction::Create
+            ) =>
+            {
+                let actor_hex = auth.pubkey().to_hex();
+                let community_member = state
+                    .db
+                    .get_relay_member(tenant.community(), &actor_hex)
+                    .await
+                    .map_err(internal)?;
+                if !community_member
+                    .as_ref()
+                    .is_some_and(|member| matches!(member.role.as_str(), "owner" | "admin"))
+                {
+                    return Err(forbidden(
+                        "only a community owner or admin can initialize the business channel",
+                    ));
+                }
+                business_channel_to_register = Some(channel_id);
+            }
+            None => {
+                return Err(forbidden(
+                    "community business channel has not been initialized",
+                ));
+            }
+        }
+    }
+
+    if matches!(
+        &command,
+        BusinessCommand::PartyAction(_)
+            | BusinessCommand::ClientAction(_)
+            | BusinessCommand::WorkItemAction(_)
+            | BusinessCommand::ProposalVersion(_)
+            | BusinessCommand::DeliverableVersion(_)
+    ) {
+        match &command {
+            BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
+                require_member_or_admin(&role)?;
+            }
+            BusinessCommand::ClientAction(_) => require_admin(&role)?,
+            BusinessCommand::WorkItemAction(action) => {
+                validate_work_item_action(&role, action)?;
+            }
+            _ => {}
+        }
+        if let Some(replay) = replay_existing_command(state, tenant, &event, channel_id).await? {
+            return Ok(replay);
+        }
+    }
 
     let mut heads = Vec::new();
     let mut appended = Vec::new();
@@ -151,7 +231,14 @@ pub async fn handle(
                 source_action_event_id: event.id.to_hex(),
             };
             heads.push(HeadWrite {
-                event: relay_event(KIND_PARTY_HEAD, channel_id, &d_tag, &head, state)?,
+                event: relay_head_event(
+                    KIND_PARTY_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    current.as_ref(),
+                    state,
+                )?,
                 channel_id,
                 d_tag,
                 expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
@@ -160,18 +247,41 @@ pub async fn handle(
         BusinessCommand::ClientAction(action) => {
             require_admin(&role)?;
             validate_client_action(channel_id, &action)?;
+            let business_channel_id = community_business_channel
+                .ok_or_else(|| forbidden("party link is not authorized"))?;
+            if state
+                .db
+                .get_member_role(tenant.community(), business_channel_id, &actor)
+                .await
+                .map_err(internal)?
+                .is_none()
+            {
+                return Err(forbidden("party link is not authorized"));
+            }
             let party_d =
                 business_d_tag(*tenant.community().as_uuid(), "party", action.head.party_id);
-            let party_event =
-                current_head::<PartyHead>(state, tenant.community(), KIND_PARTY_HEAD, &party_d)
-                    .await?
-                    .ok_or_else(|| conflict("client party does not exist"))?;
+            let party_event = current_head_in_channel::<PartyHead>(
+                state,
+                tenant.community(),
+                business_channel_id,
+                KIND_PARTY_HEAD,
+                &party_d,
+            )
+            .await?
+            .ok_or_else(|| forbidden("party link is not authorized"))?;
             let party: PartyHead = parse_content(&party_event.event)?;
-            if party.party_id != action.head.party_id || party.status == "archived" {
-                return Err(conflict(
-                    "client party is archived or its coordinate does not match its content",
-                ));
+            if party_event.channel_id != Some(business_channel_id)
+                || party.party_id != action.head.party_id
+                || party.status != "active"
+            {
+                return Err(forbidden("party link is not authorized"));
             }
+            after_party_validation_for_test(event.id.to_bytes()).await;
+            expected_heads.push(ExpectedHead {
+                kind: KIND_PARTY_HEAD,
+                d_tag: party_d,
+                event_id: party_event.event.id.to_bytes().to_vec(),
+            });
             let d_tag = client_d_tag(action.client_id, "client", action.client_id);
             let current =
                 current_head::<ClientHead>(state, tenant.community(), KIND_CLIENT_HEAD, &d_tag)
@@ -207,7 +317,14 @@ pub async fn handle(
                 source_action_event_id: event.id.to_hex(),
             };
             heads.push(HeadWrite {
-                event: relay_event(KIND_CLIENT_HEAD, channel_id, &d_tag, &head, state)?,
+                event: relay_head_event(
+                    KIND_CLIENT_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    current.as_ref(),
+                    state,
+                )?,
                 channel_id,
                 d_tag,
                 expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
@@ -289,7 +406,14 @@ pub async fn handle(
                 source_event_id: event.id.to_hex(),
             };
             heads.push(HeadWrite {
-                event: relay_event(KIND_WORK_ITEM_HEAD, channel_id, &d_tag, &head, state)?,
+                event: relay_head_event(
+                    KIND_WORK_ITEM_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    current.as_ref(),
+                    state,
+                )?,
                 channel_id,
                 d_tag,
                 expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
@@ -298,6 +422,35 @@ pub async fn handle(
         BusinessCommand::ProposalVersion(version) => {
             require_member_or_admin(&role)?;
             validate_proposal_version(&version)?;
+            let business_channel_id = community_business_channel
+                .ok_or_else(|| forbidden("community business channel has not been initialized"))?;
+            let party_d = business_d_tag(
+                *tenant.community().as_uuid(),
+                "party",
+                version.prospect_party_id,
+            );
+            let party_event = current_head_in_channel::<PartyHead>(
+                state,
+                tenant.community(),
+                business_channel_id,
+                KIND_PARTY_HEAD,
+                &party_d,
+            )
+            .await?
+            .ok_or_else(|| conflict("proposal prospect party is not available"))?;
+            let party: PartyHead = parse_content(&party_event.event)?;
+            if party_event.channel_id != Some(business_channel_id)
+                || party.party_id != version.prospect_party_id
+                || party.status != "active"
+            {
+                return Err(conflict("proposal prospect party is not available"));
+            }
+            after_party_validation_for_test(event.id.to_bytes()).await;
+            expected_heads.push(ExpectedHead {
+                kind: KIND_PARTY_HEAD,
+                d_tag: party_d,
+                event_id: party_event.event.id.to_bytes().to_vec(),
+            });
             let proposal_head_d = business_d_tag(
                 *tenant.community().as_uuid(),
                 "proposal",
@@ -327,7 +480,7 @@ pub async fn handle(
                 let prior: ProposalHead = parse_content(&current.event)?;
                 if prior.revision.checked_add(1) != Some(version.revision)
                     || version.previous_version_event_id.as_deref()
-                        != Some(current.event.id.to_hex().as_str())
+                        != Some(prior.current_version_event_id.as_str())
                 {
                     return Err(conflict("proposal version changed since it was loaded"));
                 }
@@ -342,7 +495,9 @@ pub async fn handle(
                 revision: version.revision,
                 source_event_id: version_event.id.to_hex(),
             };
-            let expected_event_id = current.map(|stored| stored.event.id.to_bytes().to_vec());
+            let expected_event_id = current
+                .as_ref()
+                .map(|stored| stored.event.id.to_bytes().to_vec());
             if let Some(event_id) = expected_event_id.as_ref() {
                 expected_heads.push(ExpectedHead {
                     kind: KIND_PROPOSAL_HEAD,
@@ -351,11 +506,12 @@ pub async fn handle(
                 });
             }
             heads.push(HeadWrite {
-                event: relay_event(
+                event: relay_head_event(
                     KIND_PROPOSAL_HEAD,
                     channel_id,
                     &proposal_head_d,
                     &head,
+                    current.as_ref(),
                     state,
                 )?,
                 channel_id,
@@ -384,6 +540,7 @@ pub async fn handle(
             heads.extend(result.heads);
             appended.extend(result.appended);
             expected_heads.push(result.current_proposal_head);
+            expected_heads.push(result.current_party_head);
             conversion_claim = Some(result.claim);
             client_channel_to_create = result.client_channel_to_create;
             client_channel_to_sync = Some(result.client_channel_id);
@@ -432,7 +589,14 @@ pub async fn handle(
             let d_tag = client_d_tag(version.client_id, "work", version.work_item_id);
             let expected_id = head_event.event.id.to_bytes().to_vec();
             heads.push(HeadWrite {
-                event: relay_event(KIND_WORK_ITEM_HEAD, channel_id, &d_tag, &head, state)?,
+                event: relay_head_event(
+                    KIND_WORK_ITEM_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    Some(&head_event),
+                    state,
+                )?,
                 channel_id,
                 d_tag,
                 expected_event_id: Some(expected_id),
@@ -501,6 +665,7 @@ pub async fn handle(
             expected_heads,
             conversion_claim,
             client_channel_to_create,
+            business_channel_to_register,
         },
     )
     .await?;
@@ -510,10 +675,67 @@ pub async fn handle(
     Ok(result)
 }
 
+async fn replay_existing_command(
+    state: &AppState,
+    tenant: &TenantContext,
+    event: &Event,
+    channel_id: Uuid,
+) -> Result<Option<IngestResult>, IngestError> {
+    let existing = state
+        .db
+        .get_event_by_id_for_event_write(tenant.community(), &event.id.to_bytes())
+        .await
+        .map_err(internal)?;
+    let Some(existing) = existing else {
+        return Ok(None);
+    };
+    if existing.event.pubkey != event.pubkey || existing.channel_id != Some(channel_id) {
+        return Err(forbidden(
+            "command replay must match its original author and channel",
+        ));
+    }
+    Ok(Some(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: "duplicate: already processed".into(),
+    }))
+}
+
+#[cfg(test)]
+fn install_party_validation_test_hook(
+    event_id: [u8; 32],
+    ready: Arc<tokio::sync::Notify>,
+    resume: Arc<tokio::sync::Notify>,
+) {
+    let slot = PARTY_VALIDATION_TEST_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some((event_id, ready, resume));
+    }
+}
+
+#[cfg(test)]
+async fn after_party_validation_for_test(event_id: [u8; 32]) {
+    let hook = PARTY_VALIDATION_TEST_HOOK.get().and_then(|slot| {
+        let mut slot = slot.lock().ok()?;
+        slot.as_ref()
+            .is_some_and(|(target, _, _)| *target == event_id)
+            .then(|| slot.take())
+            .flatten()
+    });
+    if let Some((_, ready, resume)) = hook {
+        ready.notify_one();
+        resume.notified().await;
+    }
+}
+
+#[cfg(not(test))]
+async fn after_party_validation_for_test(_: [u8; 32]) {}
+
 struct AcceptancePlan {
     heads: Vec<HeadWrite>,
     appended: Vec<(Event, Uuid)>,
     current_proposal_head: ExpectedHead,
+    current_party_head: ExpectedHead,
     claim: ConversionClaim,
     client_channel_id: Uuid,
     client_channel_to_create: Option<ClientChannelProvision>,
@@ -535,15 +757,17 @@ async fn existing_proposal_conversion_replay(
         .db
         .find_proposal_conversion_claim(
             tenant.community(),
-            business_channel_id,
-            acceptance.conversion_id,
-            acceptance.proposal_id,
-            &version_event_id,
-            &version_digest,
-            &accepted_by_pubkey,
-            acceptance.client_id,
-            acceptance.work_item_id,
-            acceptance.draft_invoice_id,
+            &buzz_db::business_records::ProposalConversionKey {
+                business_channel_id,
+                conversion_id: acceptance.conversion_id,
+                proposal_id: acceptance.proposal_id,
+                proposal_version_event_id: version_event_id,
+                proposal_version_digest: version_digest,
+                accepted_by_pubkey: accepted_by_pubkey.to_vec(),
+                client_id: acceptance.client_id,
+                work_item_id: acceptance.work_item_id,
+                draft_invoice_id: acceptance.draft_invoice_id,
+            },
         )
         .await
         .map_err(|error| match error {
@@ -625,7 +849,9 @@ async fn prepare_proposal_acceptance(
         acceptance.proposal_id,
         version.revision,
     );
-    if buzz_db::event::extract_d_tag(&stored_version.event).as_deref() != Some(version_d.as_str())
+    let (version_event_channel, version_event_d_tag) = command_coordinates(&stored_version.event)?;
+    if version_event_d_tag != version_d
+        || version_event_channel != business_channel_id
         || stored_version.channel_id != Some(business_channel_id)
     {
         return Err(conflict(
@@ -638,19 +864,28 @@ async fn prepare_proposal_acceptance(
         "party",
         version.prospect_party_id,
     );
-    let party_stored =
-        current_head::<PartyHead>(state, tenant.community(), KIND_PARTY_HEAD, &party_d)
-            .await?
-            .ok_or_else(|| conflict("proposal prospect party does not exist"))?;
+    let party_stored = current_head_in_channel::<PartyHead>(
+        state,
+        tenant.community(),
+        business_channel_id,
+        KIND_PARTY_HEAD,
+        &party_d,
+    )
+    .await?
+    .ok_or_else(|| conflict("proposal prospect party is not available"))?;
     let party: PartyHead = parse_content(&party_stored.event)?;
     if party.party_id != version.prospect_party_id
-        || party.status == "archived"
+        || party.status != "active"
         || party_stored.channel_id != Some(business_channel_id)
     {
-        return Err(conflict(
-            "proposal prospect party is archived or outside the business channel",
-        ));
+        return Err(conflict("proposal prospect party is not available"));
     }
+    after_party_validation_for_test(acceptance_event.id.to_bytes()).await;
+    let current_party_head = ExpectedHead {
+        kind: KIND_PARTY_HEAD,
+        d_tag: party_d,
+        event_id: party_stored.event.id.to_bytes().to_vec(),
+    };
 
     let client_channel_to_create = match state
         .db
@@ -813,6 +1048,7 @@ async fn prepare_proposal_acceptance(
         ],
         appended: vec![(receipt, business_channel_id)],
         current_proposal_head: expected_proposal_head,
+        current_party_head,
         claim,
         client_channel_id: acceptance.client_id,
         client_channel_to_create,
@@ -848,6 +1084,7 @@ async fn persist(
         expected_heads,
         conversion_claim,
         client_channel_to_create,
+        business_channel_to_register,
     } = batch;
     let mut tx = state
         .db
@@ -860,6 +1097,22 @@ async fn persist(
         .map_err(|error| {
             IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
         })?;
+
+    if let Some(channel_id) = business_channel_to_register {
+        let registered = buzz_db::business_records::register_business_channel_in_transaction(
+            &mut tx,
+            tenant.community(),
+            channel_id,
+        )
+        .await
+        .map_err(internal)?;
+        if !registered {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "another business channel was registered before this Party command committed",
+            ));
+        }
+    }
 
     for expected in expected_heads {
         let actual = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
@@ -874,26 +1127,32 @@ async fn persist(
         if actual.as_deref() != Some(expected.event_id.as_slice()) {
             tx.rollback().await.map_err(internal)?;
             return Err(conflict(
-                "business record changed before the command committed",
+                "referenced business record changed before the command committed",
             ));
         }
     }
 
+    let mut conversion_receipt_event_id = None;
     if let Some(claim) = conversion_claim {
+        let db_claim = buzz_db::business_records::ProposalConversionClaim {
+            key: buzz_db::business_records::ProposalConversionKey {
+                business_channel_id: claim.business_channel_id,
+                conversion_id: claim.conversion_id,
+                proposal_id: claim.proposal_id,
+                proposal_version_event_id: claim.version_event_id,
+                proposal_version_digest: claim.version_digest,
+                accepted_by_pubkey: claim.accepted_by_pubkey,
+                client_id: claim.client_id,
+                work_item_id: claim.work_item_id,
+                draft_invoice_id: claim.draft_invoice_id,
+            },
+            acceptance_event_id: claim.acceptance_event_id,
+            receipt_event_id: claim.receipt_event_id,
+        };
         let result = buzz_db::business_records::claim_proposal_conversion(
             &mut tx,
             tenant.community(),
-            claim.business_channel_id,
-            claim.conversion_id,
-            claim.proposal_id,
-            &claim.version_event_id,
-            &claim.version_digest,
-            &claim.acceptance_event_id,
-            &claim.receipt_event_id,
-            &claim.accepted_by_pubkey,
-            claim.client_id,
-            claim.work_item_id,
-            claim.draft_invoice_id,
+            &db_claim,
         )
         .await
         .map_err(|error| match error {
@@ -913,6 +1172,7 @@ async fn persist(
                 ),
             });
         }
+        conversion_receipt_event_id = Some(result.receipt_event_id);
     }
 
     if let Some(client_channel) = client_channel_to_create {
@@ -994,7 +1254,7 @@ async fn persist(
             | ParameterizedReplaceStatus::ReplayOnlyMiss => {
                 tx.rollback().await.map_err(internal)?;
                 return Err(conflict(
-                    "business record changed before the command committed",
+                    "target business record changed before the command committed",
                 ));
             }
         }
@@ -1016,7 +1276,9 @@ async fn persist(
     Ok(IngestResult {
         event_id: command.id.to_hex(),
         accepted: true,
-        message: String::new(),
+        message: conversion_receipt_event_id.map_or_else(String::new, |receipt_event_id| {
+            format!("receipt={}", hex::encode(receipt_event_id))
+        }),
     })
 }
 
@@ -1122,6 +1384,36 @@ async fn current_head<T: DeserializeOwned>(
     Ok(event)
 }
 
+async fn current_head_in_channel<T: DeserializeOwned>(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    kind: u32,
+    d_tag: &str,
+) -> Result<Option<StoredEvent>, IngestError> {
+    let mut query = EventQuery::for_community(community_id);
+    query.channel_id = Some(channel_id);
+    query.kinds = Some(vec![kind as i32]);
+    query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
+    query.d_tag = Some(d_tag.to_string());
+    query.limit = Some(2);
+    let mut rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(internal)?;
+    if rows.len() > 1 {
+        return Err(IngestError::Internal(
+            "error: duplicate business head coordinate".into(),
+        ));
+    }
+    let event = rows.pop();
+    if let Some(event) = event.as_ref() {
+        let _: T = parse_content(&event.event)?;
+    }
+    Ok(event)
+}
+
 async fn current_work_item(
     state: &AppState,
     community_id: CommunityId,
@@ -1172,6 +1464,46 @@ fn relay_event<T: Serialize>(
     content: &T,
     state: &AppState,
 ) -> Result<Event, IngestError> {
+    relay_event_at(
+        kind,
+        channel_id,
+        d_tag,
+        content,
+        nostr::Timestamp::now(),
+        state,
+    )
+}
+
+fn relay_head_event<T: Serialize>(
+    kind: u32,
+    channel_id: Uuid,
+    d_tag: &str,
+    content: &T,
+    previous: Option<&StoredEvent>,
+    state: &AppState,
+) -> Result<Event, IngestError> {
+    let now = nostr::Timestamp::now().as_secs();
+    let created_at = previous.map_or(now, |stored| {
+        now.max(stored.event.created_at.as_secs().saturating_add(1))
+    });
+    relay_event_at(
+        kind,
+        channel_id,
+        d_tag,
+        content,
+        nostr::Timestamp::from_secs(created_at),
+        state,
+    )
+}
+
+fn relay_event_at<T: Serialize>(
+    kind: u32,
+    channel_id: Uuid,
+    d_tag: &str,
+    content: &T,
+    created_at: nostr::Timestamp,
+    state: &AppState,
+) -> Result<Event, IngestError> {
     let content = serde_json::to_string(content).map_err(internal)?;
     let h_tag = Tag::parse(["h", channel_id.to_string().as_str()])
         .map_err(|error| internal(format!("business h tag: {error}")))?;
@@ -1179,6 +1511,7 @@ fn relay_event<T: Serialize>(
         Tag::parse(["d", d_tag]).map_err(|error| internal(format!("business d tag: {error}")))?;
     EventBuilder::new(Kind::Custom(kind as u16), content)
         .tags([h_tag, d_tag])
+        .custom_created_at(created_at)
         .sign_with_keys(&state.relay_keypair)
         .map_err(internal)
 }
@@ -1567,5 +1900,1192 @@ mod tests {
             resolve_lifecycle_status(RecordAction::Restore, Some("active"), None, "active")
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod postgres_tests {
+    use super::*;
+    use buzz_core::business_records::{
+        deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval, ProposalLine,
+        WorkItemHeadInput,
+    };
+    use buzz_db::channel::{ChannelType, ChannelVisibility};
+    use nostr::{Keys, Tag};
+    use serde::Serialize;
+    use std::time::Duration;
+    use tokio::sync::Notify;
+
+    static BUSINESS_RECORDS_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
+        std::sync::OnceLock::new();
+
+    struct Fixture {
+        pool: sqlx::PgPool,
+        state: Arc<AppState>,
+        tenant: TenantContext,
+        _serial_guard: tokio::sync::MutexGuard<'static, ()>,
+    }
+
+    async fn fixture() -> Fixture {
+        let serial_guard = BUSINESS_RECORDS_DB_TEST_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
+            .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
+        let pool = sqlx::PgPool::connect(&database_url)
+            .await
+            .expect("connect to the disposable test database");
+        let state = crate::state::tests::test_state_with_database_url_and_acquire_timeout(
+            &database_url,
+            Duration::from_secs(10),
+        )
+        .await;
+        let community_id = Uuid::new_v4();
+        let host = format!("business-records-{}.test", community_id.simple());
+        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+            .bind(community_id)
+            .bind(&host)
+            .execute(&pool)
+            .await
+            .expect("insert test community");
+        Fixture {
+            pool,
+            state,
+            tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
+            _serial_guard: serial_guard,
+        }
+    }
+
+    async fn private_stream(fixture: &Fixture, name: &str, owner: &Keys) -> Uuid {
+        let pubkey = owner.public_key().to_bytes();
+        let channel = fixture
+            .state
+            .db
+            .create_channel(
+                fixture.tenant.community(),
+                &format!("{name}-{}", Uuid::new_v4().simple()),
+                ChannelType::Stream,
+                ChannelVisibility::Private,
+                None,
+                &pubkey,
+                None,
+            )
+            .await
+            .expect("create private stream channel");
+        channel.id
+    }
+
+    async fn business_stream(fixture: &Fixture, owner: &Keys) -> Uuid {
+        let channel_id = private_stream(fixture, "business", owner).await;
+        fixture
+            .state
+            .db
+            .add_relay_member(
+                fixture.tenant.community(),
+                &owner.public_key().to_hex(),
+                "owner",
+                None,
+            )
+            .await
+            .expect("add community owner");
+        channel_id
+    }
+
+    fn auth(keys: &Keys) -> IngestAuth {
+        IngestAuth::Http {
+            pubkey: keys.public_key(),
+            scopes: vec![buzz_auth::Scope::MessagesWrite],
+            auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+        }
+    }
+
+    fn signed_command<T: Serialize>(
+        keys: &Keys,
+        kind: u32,
+        channel_id: Uuid,
+        d_tag: &str,
+        content: &T,
+    ) -> Event {
+        let h_tag = Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag");
+        let d_tag = Tag::parse(["d", d_tag]).expect("d tag");
+        let content = serde_json::to_string(content).expect("serialize command");
+        EventBuilder::new(Kind::Custom(kind as u16), content)
+            .tags([h_tag, d_tag])
+            .sign_with_keys(keys)
+            .expect("sign command")
+    }
+
+    fn party_action(
+        party_id: Uuid,
+        action: RecordAction,
+        expected_head_event_id: Option<String>,
+        display_name: &str,
+    ) -> PartyAction {
+        PartyAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            party_id,
+            action,
+            expected_head_event_id,
+            party: buzz_core::business_records::PartyRecord {
+                party_id,
+                party_type: "organization".into(),
+                display_name: display_name.into(),
+                external_ids: Vec::new(),
+            },
+        }
+    }
+
+    async fn create_party(
+        fixture: &Fixture,
+        keys: &Keys,
+        business_channel_id: Uuid,
+        party_id: Uuid,
+    ) -> (Event, StoredEvent) {
+        let d_tag = business_d_tag(*fixture.tenant.community().as_uuid(), "party", party_id);
+        let event = signed_command(
+            keys,
+            KIND_PARTY_ACTION,
+            business_channel_id,
+            &d_tag,
+            &party_action(party_id, RecordAction::Create, None, "Prospect"),
+        );
+        let result = handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys))
+            .await
+            .expect("create party through production handler");
+        assert!(result.accepted);
+        let head = current_head::<PartyHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_PARTY_HEAD,
+            &d_tag,
+        )
+        .await
+        .expect("load party head")
+        .expect("party head exists");
+        (event, head)
+    }
+
+    fn proposal_version(
+        proposal_id: Uuid,
+        party_id: Uuid,
+        acceptor: &Keys,
+        revision: u32,
+        previous_version_event_id: Option<String>,
+    ) -> ProposalVersion {
+        ProposalVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id,
+            prospect_party_id: party_id,
+            named_acceptor_pubkey: acceptor.public_key().to_hex(),
+            revision,
+            previous_version_event_id,
+            expires_at: None,
+            currency: "USD".into(),
+            lines: vec![ProposalLine {
+                service_id: None,
+                description: "Initial scope".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1000,
+            }],
+            terms: "Payment due on completion".into(),
+        }
+    }
+
+    fn client_action(
+        client_id: Uuid,
+        party_id: Uuid,
+        action: RecordAction,
+        expected_head_event_id: Option<String>,
+        display_name: &str,
+        approver: &Keys,
+    ) -> ClientAction {
+        ClientAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            action,
+            expected_head_event_id,
+            head: buzz_core::business_records::ClientHeadInput {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                client_id,
+                party_id,
+                display_name: display_name.into(),
+                approver_pubkeys: vec![approver.public_key().to_hex()],
+                status: "active".into(),
+            },
+        }
+    }
+
+    fn work_item_action(
+        client_id: Uuid,
+        work_item_id: Uuid,
+        action: RecordAction,
+        expected_head_event_id: Option<String>,
+        title: &str,
+        actor: &Keys,
+    ) -> WorkItemAction {
+        let pubkey = actor.public_key().to_hex();
+        WorkItemAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            work_item_id,
+            action,
+            expected_head_event_id,
+            head: WorkItemHeadInput {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                client_id,
+                work_item_id,
+                title: title.into(),
+                status: "open".into(),
+                assigned_pubkeys: vec![pubkey.clone()],
+                approver_pubkeys: vec![pubkey],
+                deliverables: Vec::new(),
+            },
+        }
+    }
+
+    fn deliverable_version(
+        client_id: Uuid,
+        work_item_id: Uuid,
+        deliverable_id: Uuid,
+        version: u32,
+        previous_version_event_id: Option<String>,
+        body_text: &str,
+    ) -> DeliverableVersion {
+        let body = serde_json::json!({"text": body_text});
+        let content_digest = digest_hex(&serde_json::to_vec(&body).expect("serialize body"));
+        DeliverableVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            work_item_id,
+            deliverable_id,
+            version,
+            previous_version_event_id,
+            content_digest,
+            media_digests: Vec::new(),
+            body,
+        }
+    }
+
+    async fn expect_duplicate(fixture: &Fixture, keys: &Keys, channel_id: Uuid, event: &Event) {
+        let replay = handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys))
+            .await
+            .expect("committed command retry must be accepted");
+        assert!(replay.accepted);
+        assert!(replay.message.contains("duplicate"));
+        assert_eq!(replay.event_id, event.id.to_hex());
+        assert_eq!(
+            channel_id,
+            command_coordinates(event).expect("coordinates").0
+        );
+    }
+
+    async fn expect_event_missing(fixture: &Fixture, event: &Event) {
+        let stored = fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(fixture.tenant.community(), &event.id.to_bytes())
+            .await
+            .expect("query command event");
+        assert!(stored.is_none(), "rejected command must not be stored");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn production_handler_rejects_party_and_proposal_commands_from_client_channel() {
+        let fixture = fixture().await;
+        let business_owner = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &business_owner).await;
+        let existing_party_id = Uuid::new_v4();
+        create_party(
+            &fixture,
+            &business_owner,
+            business_channel_id,
+            existing_party_id,
+        )
+        .await;
+
+        let client_member = Keys::generate();
+        let client_channel_id = private_stream(&fixture, "client", &client_member).await;
+        let poisoned_party_id = Uuid::new_v4();
+        let party_d_tag = business_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            "party",
+            poisoned_party_id,
+        );
+        let party_event = signed_command(
+            &client_member,
+            KIND_PARTY_ACTION,
+            client_channel_id,
+            &party_d_tag,
+            &party_action(
+                poisoned_party_id,
+                RecordAction::Create,
+                None,
+                "Untrusted client party",
+            ),
+        );
+        let party_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            party_event.clone(),
+            auth(&client_member),
+        )
+        .await;
+        assert!(
+            matches!(party_result, Err(IngestError::AuthFailed(message)) if message.contains("registered business channel"))
+        );
+        expect_event_missing(&fixture, &party_event).await;
+
+        let proposal_id = Uuid::new_v4();
+        let proposal = proposal_version(proposal_id, existing_party_id, &client_member, 1, None);
+        let proposal_d_tag =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1);
+        let proposal_event = signed_command(
+            &client_member,
+            KIND_PROPOSAL_VERSION,
+            client_channel_id,
+            &proposal_d_tag,
+            &proposal,
+        );
+        let proposal_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_event.clone(),
+            auth(&client_member),
+        )
+        .await;
+        assert!(
+            matches!(proposal_result, Err(IngestError::AuthFailed(message)) if message.contains("registered business channel"))
+        );
+        expect_event_missing(&fixture, &proposal_event).await;
+        assert!(current_head::<PartyHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_PARTY_HEAD,
+            &party_d_tag,
+        )
+        .await
+        .expect("check poisoned party head")
+        .is_none());
+        assert!(current_head::<ProposalHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_PROPOSAL_HEAD,
+            &business_d_tag(
+                *fixture.tenant.community().as_uuid(),
+                "proposal",
+                proposal_id
+            ),
+        )
+        .await
+        .expect("check proposal head")
+        .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn client_link_requires_business_membership_and_an_internal_party_head() {
+        let fixture = fixture().await;
+        let business_owner = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &business_owner).await;
+        let party_id = Uuid::new_v4();
+        create_party(&fixture, &business_owner, business_channel_id, party_id).await;
+
+        let unrelated_client_admin = Keys::generate();
+        let client_channel_id =
+            private_stream(&fixture, "unrelated-client", &unrelated_client_admin).await;
+        let client_id = client_channel_id;
+        let action = client_action(
+            client_id,
+            party_id,
+            RecordAction::Create,
+            None,
+            "Attempted link",
+            &unrelated_client_admin,
+        );
+        let d_tag = client_d_tag(client_id, "client", client_id);
+        let event = signed_command(
+            &unrelated_client_admin,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &d_tag,
+            &action,
+        );
+        let denied = handle(
+            &fixture.tenant,
+            &fixture.state,
+            event.clone(),
+            auth(&unrelated_client_admin),
+        )
+        .await;
+        assert!(
+            matches!(denied, Err(IngestError::AuthFailed(message)) if message.contains("party link is not authorized"))
+        );
+        expect_event_missing(&fixture, &event).await;
+
+        let foreign_party_id = Uuid::new_v4();
+        let foreign_channel_owner = Keys::generate();
+        let foreign_channel_id =
+            private_stream(&fixture, "foreign-client", &foreign_channel_owner).await;
+        let foreign_d_tag = business_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            "party",
+            foreign_party_id,
+        );
+        let foreign_head = PartyHead {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            party_id: foreign_party_id,
+            status: "active".into(),
+            party: buzz_core::business_records::PartyRecord {
+                party_id: foreign_party_id,
+                party_type: "organization".into(),
+                display_name: "Foreign channel record".into(),
+                external_ids: Vec::new(),
+            },
+            source_action_event_id: "0".repeat(64),
+        };
+        let foreign_head_event = relay_event(
+            KIND_PARTY_HEAD,
+            foreign_channel_id,
+            &foreign_d_tag,
+            &foreign_head,
+            &fixture.state,
+        )
+        .expect("sign foreign fixture head");
+        fixture
+            .state
+            .db
+            .replace_parameterized_event(
+                fixture.tenant.community(),
+                &foreign_head_event,
+                &foreign_d_tag,
+                Some(foreign_channel_id),
+            )
+            .await
+            .expect("insert foreign-channel fixture head");
+
+        let internal_member_client_channel =
+            private_stream(&fixture, "business-member-client", &business_owner).await;
+        let foreign_link = client_action(
+            internal_member_client_channel,
+            foreign_party_id,
+            RecordAction::Create,
+            None,
+            "Must not copy foreign party",
+            &business_owner,
+        );
+        let foreign_client_d = client_d_tag(
+            internal_member_client_channel,
+            "client",
+            internal_member_client_channel,
+        );
+        let foreign_link_event = signed_command(
+            &business_owner,
+            KIND_CLIENT_ACTION,
+            internal_member_client_channel,
+            &foreign_client_d,
+            &foreign_link,
+        );
+        let foreign_denied = handle(
+            &fixture.tenant,
+            &fixture.state,
+            foreign_link_event.clone(),
+            auth(&business_owner),
+        )
+        .await;
+        assert!(
+            matches!(foreign_denied, Err(IngestError::AuthFailed(message)) if message.contains("party link is not authorized"))
+        );
+        expect_event_missing(&fixture, &foreign_link_event).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn proposal_and_client_creation_require_an_active_internal_party() {
+        let fixture = fixture().await;
+        let business_owner = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &business_owner).await;
+        let party_id = Uuid::new_v4();
+        let (_, initial_party_head) =
+            create_party(&fixture, &business_owner, business_channel_id, party_id).await;
+        let initial_party: PartyHead = parse_content(&initial_party_head.event).expect("party");
+        let archived_party_event = signed_command(
+            &business_owner,
+            KIND_PARTY_ACTION,
+            business_channel_id,
+            &business_d_tag(*fixture.tenant.community().as_uuid(), "party", party_id),
+            &party_action(
+                party_id,
+                RecordAction::Archive,
+                Some(initial_party_head.event.id.to_hex()),
+                &initial_party.party.display_name,
+            ),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            archived_party_event,
+            auth(&business_owner),
+        )
+        .await
+        .expect("archive party");
+
+        let proposal_id = Uuid::new_v4();
+        let proposal = proposal_version(proposal_id, party_id, &business_owner, 1, None);
+        let proposal_d =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1);
+        let proposal_event = signed_command(
+            &business_owner,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_d,
+            &proposal,
+        );
+        let proposal_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_event.clone(),
+            auth(&business_owner),
+        )
+        .await;
+        assert!(
+            matches!(proposal_result, Err(IngestError::Rejected(message)) if message.contains("prospect party is not available"))
+        );
+        expect_event_missing(&fixture, &proposal_event).await;
+
+        let client_channel_id =
+            private_stream(&fixture, "archived-party-client", &business_owner).await;
+        let client = client_action(
+            client_channel_id,
+            party_id,
+            RecordAction::Create,
+            None,
+            "Archived party client",
+            &business_owner,
+        );
+        let client_d = client_d_tag(client_channel_id, "client", client_channel_id);
+        let client_event = signed_command(
+            &business_owner,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &client_d,
+            &client,
+        );
+        let client_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            client_event.clone(),
+            auth(&business_owner),
+        )
+        .await;
+        assert!(
+            matches!(client_result, Err(IngestError::AuthFailed(message)) if message.contains("party link is not authorized"))
+        );
+        expect_event_missing(&fixture, &client_event).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn committed_mutable_commands_replay_after_their_heads_advance_and_old_approval_is_stale()
+    {
+        let fixture = fixture().await;
+        let actor = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &actor).await;
+        let party_id = Uuid::new_v4();
+        let (party_create_event, party_head) =
+            create_party(&fixture, &actor, business_channel_id, party_id).await;
+        let party_update = signed_command(
+            &actor,
+            KIND_PARTY_ACTION,
+            business_channel_id,
+            &business_d_tag(*fixture.tenant.community().as_uuid(), "party", party_id),
+            &party_action(
+                party_id,
+                RecordAction::Update,
+                Some(party_head.event.id.to_hex()),
+                "Updated prospect",
+            ),
+        );
+        handle(&fixture.tenant, &fixture.state, party_update, auth(&actor))
+            .await
+            .expect("update party");
+        expect_duplicate(&fixture, &actor, business_channel_id, &party_create_event).await;
+
+        let client_channel_id = private_stream(&fixture, "retry-client", &actor).await;
+        let client_d = client_d_tag(client_channel_id, "client", client_channel_id);
+        let client_create = signed_command(
+            &actor,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &client_d,
+            &client_action(
+                client_channel_id,
+                party_id,
+                RecordAction::Create,
+                None,
+                "Retry client",
+                &actor,
+            ),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            client_create.clone(),
+            auth(&actor),
+        )
+        .await
+        .expect("create client");
+        let client_head = current_head::<ClientHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_CLIENT_HEAD,
+            &client_d,
+        )
+        .await
+        .expect("load client head")
+        .expect("client head exists");
+        let client_update = signed_command(
+            &actor,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &client_d,
+            &client_action(
+                client_channel_id,
+                party_id,
+                RecordAction::Update,
+                Some(client_head.event.id.to_hex()),
+                "Updated retry client",
+                &actor,
+            ),
+        );
+        handle(&fixture.tenant, &fixture.state, client_update, auth(&actor))
+            .await
+            .expect("update client");
+        expect_duplicate(&fixture, &actor, client_channel_id, &client_create).await;
+
+        let work_item_id = Uuid::new_v4();
+        let work_d = client_d_tag(client_channel_id, "work", work_item_id);
+        let work_create = signed_command(
+            &actor,
+            KIND_WORK_ITEM_ACTION,
+            client_channel_id,
+            &work_d,
+            &work_item_action(
+                client_channel_id,
+                work_item_id,
+                RecordAction::Create,
+                None,
+                "Retry work",
+                &actor,
+            ),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            work_create.clone(),
+            auth(&actor),
+        )
+        .await
+        .expect("create work item");
+        let work_head = current_head::<WorkItemHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_WORK_ITEM_HEAD,
+            &work_d,
+        )
+        .await
+        .expect("load work item")
+        .expect("work item exists");
+        let work_update = signed_command(
+            &actor,
+            KIND_WORK_ITEM_ACTION,
+            client_channel_id,
+            &work_d,
+            &work_item_action(
+                client_channel_id,
+                work_item_id,
+                RecordAction::Update,
+                Some(work_head.event.id.to_hex()),
+                "Updated retry work",
+                &actor,
+            ),
+        );
+        handle(&fixture.tenant, &fixture.state, work_update, auth(&actor))
+            .await
+            .expect("update work item");
+        expect_duplicate(&fixture, &actor, client_channel_id, &work_create).await;
+
+        let proposal_id = Uuid::new_v4();
+        let proposal_d1 =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1);
+        let proposal_v1 = signed_command(
+            &actor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_d1,
+            &proposal_version(proposal_id, party_id, &actor, 1, None),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_v1.clone(),
+            auth(&actor),
+        )
+        .await
+        .expect("create proposal version");
+        let proposal_d2 =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 2);
+        let proposal_v2 = signed_command(
+            &actor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_d2,
+            &proposal_version(
+                proposal_id,
+                party_id,
+                &actor,
+                2,
+                Some(proposal_v1.id.to_hex()),
+            ),
+        );
+        handle(&fixture.tenant, &fixture.state, proposal_v2, auth(&actor))
+            .await
+            .expect("create second proposal version");
+        expect_duplicate(&fixture, &actor, business_channel_id, &proposal_v1).await;
+
+        let deliverable_id = Uuid::new_v4();
+        let version1 = deliverable_version(
+            client_channel_id,
+            work_item_id,
+            deliverable_id,
+            1,
+            None,
+            "first deliverable version",
+        );
+        let version1_event = signed_command(
+            &actor,
+            KIND_DELIVERABLE_VERSION,
+            client_channel_id,
+            &deliverable_version_d_tag(client_channel_id, deliverable_id, 1),
+            &version1,
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            version1_event.clone(),
+            auth(&actor),
+        )
+        .await
+        .expect("create first deliverable version");
+        let media_digest = digest_hex(&serde_json::to_vec(&Vec::<String>::new()).expect("media"));
+        let approval = DeliverableApproval {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id: client_channel_id,
+            work_item_id,
+            deliverable_id,
+            version_event_id: version1_event.id.to_hex(),
+            content_digest: version1.content_digest.clone(),
+            media_digest,
+            decision: buzz_core::business_records::ApprovalDecision::Approved,
+            note: Some("accepted exact version".into()),
+        };
+        let approval_d = deliverable_approval_d_tag(client_channel_id, &version1_event.id.to_hex());
+        let approval_event = signed_command(
+            &actor,
+            KIND_DELIVERABLE_APPROVAL,
+            client_channel_id,
+            &approval_d,
+            &approval,
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            approval_event,
+            auth(&actor),
+        )
+        .await
+        .expect("approve exact current deliverable version");
+
+        let version2 = deliverable_version(
+            client_channel_id,
+            work_item_id,
+            deliverable_id,
+            2,
+            Some(version1_event.id.to_hex()),
+            "second deliverable version",
+        );
+        let version2_event = signed_command(
+            &actor,
+            KIND_DELIVERABLE_VERSION,
+            client_channel_id,
+            &deliverable_version_d_tag(client_channel_id, deliverable_id, 2),
+            &version2,
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            version2_event,
+            auth(&actor),
+        )
+        .await
+        .expect("create second deliverable version");
+        expect_duplicate(&fixture, &actor, client_channel_id, &version1_event).await;
+
+        let stale_approval = DeliverableApproval {
+            note: Some("stale approval attempt".into()),
+            ..approval
+        };
+        let stale_approval_event = signed_command(
+            &actor,
+            KIND_DELIVERABLE_APPROVAL,
+            client_channel_id,
+            &approval_d,
+            &stale_approval,
+        );
+        let stale_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            stale_approval_event.clone(),
+            auth(&actor),
+        )
+        .await;
+        assert!(
+            matches!(stale_result, Err(IngestError::Rejected(message)) if message.contains("approval must target the current deliverable version"))
+        );
+        expect_event_missing(&fixture, &stale_approval_event).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn proposal_acceptance_replays_its_original_receipt_and_rejects_conflicting_claims() {
+        let fixture = fixture().await;
+        let acceptor = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &acceptor).await;
+        let party_id = Uuid::new_v4();
+        create_party(&fixture, &acceptor, business_channel_id, party_id).await;
+
+        let proposal_id = Uuid::new_v4();
+        let proposal_d =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1);
+        let proposal_event = signed_command(
+            &acceptor,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_d,
+            &proposal_version(proposal_id, party_id, &acceptor, 1, None),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            proposal_event.clone(),
+            auth(&acceptor),
+        )
+        .await
+        .expect("create proposal version");
+        let proposal_digest = digest_hex(proposal_event.content.as_bytes());
+        let conversion_id = Uuid::new_v4();
+        let client_id = Uuid::new_v4();
+        let work_item_id = Uuid::new_v4();
+        let draft_invoice_id = Uuid::new_v4();
+        let acceptance = ProposalAcceptance {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id,
+            proposal_version_event_id: proposal_event.id.to_hex(),
+            proposal_version_digest: proposal_digest,
+            conversion_id,
+            client_id,
+            work_item_id,
+            draft_invoice_id,
+        };
+        let acceptance_d = business_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            "conversion",
+            conversion_id,
+        );
+        let acceptance_event = signed_command(
+            &acceptor,
+            KIND_PROPOSAL_ACCEPTANCE,
+            business_channel_id,
+            &acceptance_d,
+            &acceptance,
+        );
+        let first = handle(
+            &fixture.tenant,
+            &fixture.state,
+            acceptance_event.clone(),
+            auth(&acceptor),
+        )
+        .await
+        .expect("convert proposal");
+        assert!(first.accepted);
+        let receipt_id = first
+            .message
+            .split("receipt=")
+            .nth(1)
+            .expect("first result names receipt")
+            .to_owned();
+
+        let replay = handle(
+            &fixture.tenant,
+            &fixture.state,
+            acceptance_event.clone(),
+            auth(&acceptor),
+        )
+        .await
+        .expect("exact acceptance replay");
+        assert!(replay.accepted);
+        assert!(replay.message.contains(&format!("receipt={receipt_id}")));
+
+        let conflicting = ProposalAcceptance {
+            work_item_id: Uuid::new_v4(),
+            draft_invoice_id: Uuid::new_v4(),
+            ..acceptance
+        };
+        let conflicting_event = signed_command(
+            &acceptor,
+            KIND_PROPOSAL_ACCEPTANCE,
+            business_channel_id,
+            &acceptance_d,
+            &conflicting,
+        );
+        let denied = handle(
+            &fixture.tenant,
+            &fixture.state,
+            conflicting_event.clone(),
+            auth(&acceptor),
+        )
+        .await;
+        assert!(
+            matches!(denied, Err(IngestError::Rejected(message)) if message.contains("conversion id was already claimed"))
+        );
+        expect_event_missing(&fixture, &conflicting_event).await;
+        let claim_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM business_proposal_conversion_claims \
+             WHERE community_id = $1 AND conversion_id = $2",
+        )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(conversion_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count conversion claims");
+        assert_eq!(claim_count, 1);
+    }
+
+    fn start_party_race(
+        fixture: &Fixture,
+        keys: &Keys,
+        event: Event,
+    ) -> (
+        tokio::task::JoinHandle<Result<IngestResult, IngestError>>,
+        Arc<Notify>,
+        Arc<Notify>,
+    ) {
+        let ready = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        install_party_validation_test_hook(
+            event.id.to_bytes(),
+            Arc::clone(&ready),
+            Arc::clone(&resume),
+        );
+        let state = Arc::clone(&fixture.state);
+        let tenant = fixture.tenant.clone();
+        let auth = auth(keys);
+        let task = tokio::spawn(async move { handle(&tenant, &state, event, auth).await });
+        (task, ready, resume)
+    }
+
+    async fn archive_party(
+        fixture: &Fixture,
+        keys: &Keys,
+        business_channel_id: Uuid,
+        party_id: Uuid,
+    ) -> StoredEvent {
+        let d_tag = business_d_tag(*fixture.tenant.community().as_uuid(), "party", party_id);
+        let head = current_head::<PartyHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_PARTY_HEAD,
+            &d_tag,
+        )
+        .await
+        .expect("load party before archive")
+        .expect("party exists before archive");
+        let content: PartyHead = parse_content(&head.event).expect("party content");
+        let event = signed_command(
+            keys,
+            KIND_PARTY_ACTION,
+            business_channel_id,
+            &d_tag,
+            &party_action(
+                party_id,
+                RecordAction::Archive,
+                Some(head.event.id.to_hex()),
+                &content.party.display_name,
+            ),
+        );
+        handle(&fixture.tenant, &fixture.state, event, auth(keys))
+            .await
+            .expect("archive Party during link race");
+        current_head::<PartyHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_PARTY_HEAD,
+            &d_tag,
+        )
+        .await
+        .expect("load archived party")
+        .expect("archived party head exists")
+    }
+
+    async fn wait_for_party_read(
+        ready: &Notify,
+        handler: &mut tokio::task::JoinHandle<Result<IngestResult, IngestError>>,
+    ) {
+        tokio::select! {
+            result = tokio::time::timeout(Duration::from_secs(10), ready.notified()) => {
+                result.expect("handler reached the active Party read before persistence");
+            }
+            result = handler => {
+                match result {
+                    Ok(Ok(_)) => panic!("handler accepted before the active Party read"),
+                    Ok(Err(IngestError::Rejected(error))) => {
+                        panic!("handler rejected before the active Party read: {error}");
+                    }
+                    Ok(Err(IngestError::AuthFailed(error))) => {
+                        panic!("handler denied before the active Party read: {error}");
+                    }
+                    Ok(Err(IngestError::Internal(error))) => {
+                        panic!("handler failed before the active Party read: {error}");
+                    }
+                    Err(error) => panic!("handler task failed before the active Party read: {error}"),
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn party_archive_between_validation_and_commit_conflicts_for_link_proposal_and_conversion(
+    ) {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        let business_channel_id = business_stream(&fixture, &owner).await;
+        let client_channel_id = private_stream(&fixture, "race-client", &owner).await;
+
+        let client_party_id = Uuid::new_v4();
+        create_party(&fixture, &owner, business_channel_id, client_party_id).await;
+        let client_d = client_d_tag(client_channel_id, "client", client_channel_id);
+        let client_event = signed_command(
+            &owner,
+            KIND_CLIENT_ACTION,
+            client_channel_id,
+            &client_d,
+            &client_action(
+                client_channel_id,
+                client_party_id,
+                RecordAction::Create,
+                None,
+                "Race client",
+                &owner,
+            ),
+        );
+        let (mut task, ready, resume) = start_party_race(&fixture, &owner, client_event.clone());
+        wait_for_party_read(&ready, &mut task).await;
+        archive_party(&fixture, &owner, business_channel_id, client_party_id).await;
+        resume.notify_one();
+        let link_result = task.await.expect("join client link");
+        assert!(
+            matches!(link_result, Err(IngestError::Rejected(message)) if message.contains("referenced business record changed before the command committed"))
+        );
+        expect_event_missing(&fixture, &client_event).await;
+
+        let proposal_party_id = Uuid::new_v4();
+        create_party(&fixture, &owner, business_channel_id, proposal_party_id).await;
+        let proposal_id = Uuid::new_v4();
+        let proposal_d =
+            proposal_version_d_tag(*fixture.tenant.community().as_uuid(), proposal_id, 1);
+        let proposal_event = signed_command(
+            &owner,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &proposal_d,
+            &proposal_version(proposal_id, proposal_party_id, &owner, 1, None),
+        );
+        let (mut task, ready, resume) = start_party_race(&fixture, &owner, proposal_event.clone());
+        wait_for_party_read(&ready, &mut task).await;
+        archive_party(&fixture, &owner, business_channel_id, proposal_party_id).await;
+        resume.notify_one();
+        let proposal_result = task.await.expect("join proposal create");
+        assert!(
+            matches!(proposal_result, Err(IngestError::Rejected(message)) if message.contains("referenced business record changed before the command committed"))
+        );
+        expect_event_missing(&fixture, &proposal_event).await;
+
+        let conversion_party_id = Uuid::new_v4();
+        create_party(&fixture, &owner, business_channel_id, conversion_party_id).await;
+        let conversion_proposal_id = Uuid::new_v4();
+        let conversion_proposal_d = proposal_version_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            conversion_proposal_id,
+            1,
+        );
+        let conversion_proposal = signed_command(
+            &owner,
+            KIND_PROPOSAL_VERSION,
+            business_channel_id,
+            &conversion_proposal_d,
+            &proposal_version(conversion_proposal_id, conversion_party_id, &owner, 1, None),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            conversion_proposal.clone(),
+            auth(&owner),
+        )
+        .await
+        .expect("create proposal for conversion race");
+        let conversion = ProposalAcceptance {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id: conversion_proposal_id,
+            proposal_version_event_id: conversion_proposal.id.to_hex(),
+            proposal_version_digest: digest_hex(conversion_proposal.content.as_bytes()),
+            conversion_id: Uuid::new_v4(),
+            client_id: Uuid::new_v4(),
+            work_item_id: Uuid::new_v4(),
+            draft_invoice_id: Uuid::new_v4(),
+        };
+        let acceptance_d = business_d_tag(
+            *fixture.tenant.community().as_uuid(),
+            "conversion",
+            conversion.conversion_id,
+        );
+        let acceptance_event = signed_command(
+            &owner,
+            KIND_PROPOSAL_ACCEPTANCE,
+            business_channel_id,
+            &acceptance_d,
+            &conversion,
+        );
+        let (mut task, ready, resume) =
+            start_party_race(&fixture, &owner, acceptance_event.clone());
+        wait_for_party_read(&ready, &mut task).await;
+        archive_party(&fixture, &owner, business_channel_id, conversion_party_id).await;
+        resume.notify_one();
+        let conversion_result = task.await.expect("join proposal conversion");
+        assert!(
+            matches!(conversion_result, Err(IngestError::Rejected(message)) if message.contains("referenced business record changed before the command committed"))
+        );
+        expect_event_missing(&fixture, &acceptance_event).await;
+        let claim_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM business_proposal_conversion_claims \
+             WHERE community_id = $1 AND conversion_id = $2",
+        )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(conversion.conversion_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count raced conversion claim");
+        assert_eq!(claim_count, 0);
     }
 }

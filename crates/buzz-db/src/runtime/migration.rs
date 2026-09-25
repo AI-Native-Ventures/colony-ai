@@ -1320,6 +1320,15 @@ mod postgres_tests {
             desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
             "schema.sql exclusion list must match the pre-0041 body after ledger removal"
         );
+
+        assert_eq!(migrations[47].version, 48);
+        let business_records = migrations[47].sql.as_str();
+        assert!(business_records.contains("ADD COLUMN business_channel_id UUID"));
+        assert!(business_records.contains("CREATE TABLE business_proposal_conversion_claims"));
+        assert!(business_records.contains(
+            "SELECT attach_community_write_fence('business_proposal_conversion_claims')"
+        ));
+        assert!(desired_schema.contains("CREATE TABLE business_proposal_conversion_claims"));
     }
 
     #[test]

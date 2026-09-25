@@ -17,6 +17,14 @@ member-signed command events with matching `h` and `d` tags. Unknown JSON fields
 are rejected for the typed schemas in `buzz-core` so an older relay fails
 closed when a client sends a future schema.
 
+Each community has one trusted internal business channel recorded as
+`communities.business_channel_id`. The first Party create may register it only
+when signed by a community owner or admin who is also a member of that private
+stream. Registration commits with the Party command. Party updates, proposal
+versions, and proposal acceptances must use that registered channel. The relay
+never infers the internal channel from a client-supplied `h` tag, and the
+registered channel cannot be changed through a business command.
+
 ## Kind registry
 
 The same integers are registered in `crates/buzz-core/src/kind.rs`, exposed by
@@ -118,7 +126,9 @@ The action is `create`, `update`, `archive`, or `restore`. Create omits
 `expectedHeadEventId`; every other action names the exact current relay head.
 `party` contains the same `partyId`, `partyType` (`person` or `organization`),
 `displayName`, and `externalIds`. Members, admins, and owners of the internal
-business channel can manage party records. Kind 30630 contains `status` and
+business channel can manage party records. If no business channel is registered,
+an owner or admin's first Party create registers the command's channel in the
+same transaction. Kind 30630 contains `status` and
 `sourceActionEventId`; archive sets status to `archived`, and restore sets it
 to `active`. A party must be active to link it to a client or proposal.
 
