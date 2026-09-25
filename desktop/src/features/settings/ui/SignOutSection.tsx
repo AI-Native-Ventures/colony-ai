@@ -167,10 +167,10 @@ function SignOutDialog({
       open={isOpen}
     >
       <SettingsAlertDialogContent
-        className="max-w-[34rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
+        className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-border bg-background p-0 shadow-xl"
         data-testid="signout-dialog"
       >
-        <div className="flex items-center justify-between border-b border-border/70 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-border/70 px-6 pt-5 pb-6">
           <AlertDialogHeader className="space-y-0">
             <AlertDialogTitle className="text-lg font-medium tracking-normal">
               Sign out of this device?
@@ -187,12 +187,12 @@ function SignOutDialog({
             <X aria-hidden="true" className="size-4" />
           </Button>
         </div>
-        <div className="space-y-6 px-6 py-6">
+        <div className="space-y-8 px-6 pt-6 pb-[2.5625rem]">
           <AlertDialogDescription className="text-sm leading-5">
             Your remote business and conversations stay available.
           </AlertDialogDescription>
           {localAgents > 0 ? (
-            <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
+            <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-3.5 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
               <p className="font-medium">
                 {localAgents} local{" "}
                 {localAgents === 1 ? "agent is" : "agents are"} running
@@ -239,7 +239,7 @@ function SignOutDialog({
             </div>
           ) : null}
         </div>
-        <AlertDialogFooter className="flex-row border-t border-border/70 px-6 py-4">
+        <AlertDialogFooter className="flex-row border-t border-border/70 px-6 py-5">
           <AlertDialogCancel disabled={isPending} onClick={onCancel}>
             Stay signed in
           </AlertDialogCancel>
