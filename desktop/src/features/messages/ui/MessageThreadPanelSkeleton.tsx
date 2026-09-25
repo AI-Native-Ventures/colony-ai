@@ -12,6 +12,7 @@ import {
   AuxiliaryPanel,
   AuxiliaryPanelBody,
   AuxiliaryPanelHeader,
+  AuxiliaryPanelHeaderActions,
   AuxiliaryPanelHeaderGroup,
   AuxiliaryPanelTitle,
 } from "@/shared/layout/AuxiliaryPanel";
@@ -22,6 +23,7 @@ export function MessageThreadPanelHeader({
   headerLeading,
   headerTitle = "Thread",
   headerTitleAriaLabel,
+  headerTitleSuffix,
   isFocusMode,
   isSinglePanelView,
   onClose,
@@ -31,6 +33,7 @@ export function MessageThreadPanelHeader({
   headerLeading?: React.ReactNode;
   headerTitle?: string;
   headerTitleAriaLabel?: string;
+  headerTitleSuffix?: string;
   isFocusMode: boolean;
   isSinglePanelView: boolean;
   onClose: () => void;
@@ -57,7 +60,6 @@ export function MessageThreadPanelHeader({
       <AuxiliaryPanelHeaderGroup
         backButtonAriaLabel="Back to conversation"
         backButtonTestId="message-thread-back"
-        leading={headerLeading}
         // Focus drawers fill width via isSinglePanelView but use the scrim to go
         // back, so they omit this control. The narrow single-column view keeps it.
         onBack={
@@ -66,8 +68,25 @@ export function MessageThreadPanelHeader({
             : undefined
         }
       >
-        <AuxiliaryPanelTitle>{title}</AuxiliaryPanelTitle>
+        <AuxiliaryPanelTitle
+          className={
+            headerTitleSuffix ? "colony-thread-panel-title" : undefined
+          }
+          data-testid="message-thread-title"
+        >
+          <span>{title}</span>
+          {headerTitleSuffix ? (
+            <span className="colony-thread-panel-title-suffix">
+              {headerTitleSuffix}
+            </span>
+          ) : null}
+        </AuxiliaryPanelTitle>
       </AuxiliaryPanelHeaderGroup>
+      {headerLeading ? (
+        <AuxiliaryPanelHeaderActions>
+          {headerLeading}
+        </AuxiliaryPanelHeaderActions>
+      ) : null}
     </AuxiliaryPanelHeader>
   );
 }
@@ -157,6 +176,7 @@ export function MessageThreadPanelSkeleton({
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
+  headerTitleSuffix,
   isFocusMode,
   isSinglePanelView = false,
   layout = "standalone",
@@ -220,6 +240,7 @@ export function MessageThreadPanelSkeleton({
           headerLeading={headerLeading}
           headerTitle={headerTitle}
           headerTitleAriaLabel={headerTitleAriaLabel}
+          headerTitleSuffix={headerTitleSuffix}
           isFocusMode={isFocusMode}
           isSinglePanelView={isSinglePanelView}
           onClose={onClose}

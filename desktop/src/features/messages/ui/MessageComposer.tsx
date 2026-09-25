@@ -74,6 +74,7 @@ function MessageComposerImpl({
   channelType = null,
   containerClassName,
   layoutMode = "standalone",
+  workspaceChrome = false,
   disabled = false,
   draftKey,
   autoSubmitDraftKey = null,
@@ -855,6 +856,7 @@ function MessageComposerImpl({
                 "backdrop-blur-md dark:backdrop-blur-xl",
             )}
             data-submit-locked={isSubmitLocked ? "true" : "false"}
+            data-workspace-chrome={workspaceChrome ? "true" : undefined}
             data-testid="message-composer"
             onDragEnter={acceptsDrop ? media.handleDragEnter : undefined}
             onDragLeave={acceptsDrop ? media.handleDragLeave : undefined}
@@ -958,6 +960,7 @@ function MessageComposerImpl({
               }
               autoPinConfirmationTitle={autoPinConfirmationTitle}
               layoutMode={layoutMode}
+              workspaceChrome={workspaceChrome}
               composerDisabled={composerDisabled}
               editor={richText.editor}
               extraActions={toolbarExtraActions}
@@ -981,6 +984,7 @@ function MessageComposerImpl({
               onLinkButton={linkEditor.openFromToolbar}
               onOpenMentionPicker={mentionPicker.openMentionSettings}
               onPaperclip={handlePaperclipClick}
+              onImagePicker={media.handleImagePicker}
               onFinishVoiceNote={() => void voiceNote.finish()}
               onVoiceNote={voiceNote.toggle}
               onRemoveAddressedAgent={removeAddressedAgent}

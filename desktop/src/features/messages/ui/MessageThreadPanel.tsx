@@ -63,6 +63,7 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   huddleMemberPubkeysPending?: boolean;
   /** Present the huddle's parent-channel thread as a dedicated live chat. */
   isHuddleTranscript?: boolean;
+  workspaceChrome?: boolean;
   editTarget?: MessageComposerEditTarget | null;
   isSending: boolean;
   onCancelEdit?: () => void;
@@ -153,12 +154,14 @@ export function MessageThreadPanel({
   huddleMemberPubkeys,
   huddleMemberPubkeysPending = false,
   isHuddleTranscript = false,
+  workspaceChrome = false,
   layout = "standalone",
   editTarget,
   enterMotion,
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
+  headerTitleSuffix,
   isSending,
   isFocusMode,
   isSinglePanelView = false,
@@ -844,6 +847,7 @@ export function MessageThreadPanel({
                 "pb-0",
               )}
               layoutMode="dock"
+              workspaceChrome={workspaceChrome}
               disabled={disabled || isSending || !channelId}
               draftKey={`thread:${threadHead.id}`}
               autoSubmitDraftKey={autoSendDraftKey}
@@ -857,9 +861,7 @@ export function MessageThreadPanel({
               onEditSave={onEditSave}
               onSend={onSend}
               placeholder={
-                isHuddleTranscript
-                  ? "Message the huddle"
-                  : `Reply in thread to ${threadHead.author}`
+                isHuddleTranscript ? "Message the huddle" : "Reply in thread…"
               }
               profiles={profiles}
               recentMentionPubkeys={recentMentionPubkeys}
@@ -911,6 +913,7 @@ export function MessageThreadPanel({
               headerLeading={headerLeading}
               headerTitle={headerTitle}
               headerTitleAriaLabel={headerTitleAriaLabel}
+              headerTitleSuffix={headerTitleSuffix}
               isFocusMode={isFocusMode}
               isSinglePanelView={isSinglePanelView}
               onClose={onClose}

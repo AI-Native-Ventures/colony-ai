@@ -3,6 +3,7 @@ import type { DesktopNotificationTarget } from "@/features/notifications/lib/des
 import type { SearchHit } from "@/shared/api/types";
 
 export type AppView =
+  | "today"
   | "home"
   | "channel"
   | "messages"
@@ -240,6 +241,13 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (pathname === "/today" || pathname.startsWith("/today/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "today",
+    };
+  }
+
   if (pathname === "/workflows" || pathname.startsWith("/workflows/")) {
     return {
       selectedChannelId: null,
@@ -257,7 +265,7 @@ export function deriveShellRoute(pathname: string): {
   if (pathname === "/pulse") {
     return {
       selectedChannelId: null,
-      selectedView: "pulse",
+      selectedView: "today",
     };
   }
 

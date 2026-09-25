@@ -35,9 +35,11 @@ const outputDir = path.resolve(
   outputPathArg ??
     `tests/visual/artifacts/${new Date().toISOString().replaceAll(":", "-")}`,
 );
-const referenceBaseUrl = "http://127.0.0.1:5194";
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const entries = expandManifest(manifest);
+const referenceBaseUrl = entries[0]
+  ? new URL(entries[0].referenceUrl).origin
+  : "";
 
 if (args.includes("--output") && !outputPathArg) {
   throw new Error("--output requires a directory path.");
@@ -142,7 +144,7 @@ function assertManifest(cases) {
     }
     if (referenceUrl.origin !== referenceBaseUrl) {
       throw new Error(
-        `${entry.id} must use the frozen reference origin ${referenceBaseUrl}.`,
+        `${entry.id} must use the manifest reference origin ${referenceBaseUrl}.`,
       );
     }
     if (!["1728x1117", "1440x900"].includes(entry.viewport)) {

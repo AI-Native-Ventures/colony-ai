@@ -33,16 +33,22 @@ export class AuthApiError extends Error {
   readonly code: AuthErrorCode;
   readonly status?: number;
   readonly retryAfterSecs?: number;
+  readonly remainingAttempts?: number;
 
   constructor(
     code: AuthErrorCode,
-    options: { status?: number; retryAfterSecs?: number } = {},
+    options: {
+      status?: number;
+      retryAfterSecs?: number;
+      remainingAttempts?: number;
+    } = {},
   ) {
     super(code);
     this.name = "AuthApiError";
     this.code = code;
     this.status = options.status;
     this.retryAfterSecs = options.retryAfterSecs;
+    this.remainingAttempts = options.remainingAttempts;
   }
 }
 
@@ -56,7 +62,10 @@ export type AuthAccount = {
 };
 
 /** Accepted response shared by verification and password reset code routes. */
-export type VerificationSent = { status: "verification_sent" };
+export type VerificationSent = {
+  status: "verification_sent";
+  retryAfterSecs?: number;
+};
 
 /** Internal response shape consumed by the native identity importer. */
 export type AuthSession = {
@@ -173,7 +182,11 @@ function verificationSentFrom(value: unknown): VerificationSent {
   if (!isRecord(value) || value.status !== "verification_sent") {
     throw new AuthApiError("invalid_response");
   }
-  return { status: "verification_sent" };
+  const cooldown = retryAfter(value);
+  return {
+    status: "verification_sent",
+    ...(cooldown === undefined ? {} : { retryAfterSecs: cooldown }),
+  };
 }
 
 function retryAfter(value: unknown): number | undefined {
@@ -181,6 +194,16 @@ function retryAfter(value: unknown): number | undefined {
   const secs = value.retry_after_secs;
   return typeof secs === "number" && Number.isFinite(secs) && secs >= 0
     ? Math.floor(secs)
+    : undefined;
+}
+
+function remainingAttempts(value: unknown): number | undefined {
+  if (!isRecord(value)) return undefined;
+  const attempts = value.remaining_attempts;
+  return typeof attempts === "number" &&
+    Number.isFinite(attempts) &&
+    attempts >= 0
+    ? Math.floor(attempts)
     : undefined;
 }
 
@@ -244,6 +267,7 @@ function errorFromResponse(status: number, value: unknown): AuthApiError {
     return new AuthApiError("rate_limited", {
       status,
       retryAfterSecs: retryAfter(value),
+      remainingAttempts: remainingAttempts(value),
     });
   }
   if (status === 404 && serverCode === "account_not_found") {
@@ -253,7 +277,10 @@ function errorFromResponse(status: number, value: unknown): AuthApiError {
     return new AuthApiError("invalid_request", { status });
   }
   if (status === 401 && serverCode === "invalid_credentials") {
-    return new AuthApiError("invalid_credentials", { status });
+    return new AuthApiError("invalid_credentials", {
+      status,
+      remainingAttempts: remainingAttempts(value),
+    });
   }
   if (status === 403 && serverCode === "email_unverified") {
     return new AuthApiError("email_unverified", { status });

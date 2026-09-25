@@ -11,17 +11,35 @@ class Grid {
   /// Twelve spacing - 12 pixels
   static const double twelve = 12.0;
 
+  /// Small layout gap - 14 pixels.
+  static const double fourteen = 14.0;
+
+  /// Compact row spacing - 15 pixels.
+  static const double fifteen = 15.0;
+
   /// Extra small spacing - 16 pixels
   static const double xs = 16.0;
+
+  /// Body spacing - 18 pixels.
+  static const double eighteen = 18.0;
 
   /// Standard app content gutter - 20 pixels
   static const double gutter = 20.0;
 
+  /// Scroll inset - 22 pixels.
+  static const double scrollInset = 22.0;
+
   /// Small spacing - 24 pixels
   static const double sm = 24.0;
 
+  /// Seven-step spacing - 28 pixels.
+  static const double twentyEight = 28.0;
+
   /// Medium spacing - 32 pixels
   static const double md = 32.0;
+
+  /// Section spacing - 30 pixels.
+  static const double thirty = 30.0;
 
   /// Large spacing - 40 pixels
   static const double lg = 40.0;

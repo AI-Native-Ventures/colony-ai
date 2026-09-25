@@ -11,6 +11,8 @@ export 'community_theme_provider.dart';
 export 'community_theme_sync.dart';
 export 'grid.dart';
 export 'message_typography.dart';
+export 'mobile_design_tokens.dart';
+export 'mobile_typography_tokens.dart';
 export 'theme_catalog.dart';
 export 'theme_extensions.dart';
 export 'theme_pairs.dart';

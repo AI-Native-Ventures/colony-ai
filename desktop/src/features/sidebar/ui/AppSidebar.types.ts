@@ -36,9 +36,11 @@ export type AppSidebarProps = {
   projectsOverviewActive: boolean;
   relayConnectionCard: ReturnType<typeof useSidebarRelayConnectionCard>;
   selfPresenceStatus: PresenceStatus;
+  showSidebarCollapseButton: boolean;
   errorMessage?: string;
   selectedChannelId: string | null;
   selectedView:
+    | "today"
     | "home"
     | "channel"
     | "messages"
@@ -85,8 +87,8 @@ export type AppSidebarProps = {
   onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onCreateAgent: () => void;
   onSelectAgents: () => void;
+  onSelectToday: () => void;
   onSelectProjects: () => void;
-  onSelectPulse: () => void;
   onSelectWorkflows: () => void;
   onSelectHome: () => void;
   onSelectChannel: (channelId: string) => void;
