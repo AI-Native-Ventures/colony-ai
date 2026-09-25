@@ -364,7 +364,9 @@ test("contract errors map to typed failures and preserve the retry hint without 
           status,
           body: {
             error,
-            ...(status === 429 ? { retry_after_secs: 37 } : {}),
+            ...(status === 429
+              ? { retry_after_secs: 37, remaining_attempts: 2 }
+              : {}),
           },
         };
         await assert.rejects(
@@ -373,12 +375,37 @@ test("contract errors map to typed failures and preserve the retry hint without 
             assert.ok(failure instanceof AuthApiError);
             assert.equal(failure.code, code);
             assert.equal(failure.status, status);
-            if (status === 429) assert.equal(failure.retryAfterSecs, 37);
+            if (status === 429) {
+              assert.equal(failure.retryAfterSecs, 37);
+              assert.equal(failure.remainingAttempts, 2);
+            }
             return true;
           },
         );
       }
       assert.equal(requests.length, cases.length);
+    },
+  );
+});
+
+test("invalid verification responses preserve only the server attempt count", async () => {
+  await withFakeServer(
+    async () => ({
+      status: 401,
+      body: { error: "invalid_credentials", remaining_attempts: 2 },
+    }),
+    async (baseUrl) => {
+      const auth = createService(baseUrl);
+      await assert.rejects(
+        auth.service.verifyEmail("founder@example.com", "000000"),
+        (failure) => {
+          assert.ok(failure instanceof AuthApiError);
+          assert.equal(failure.code, "invalid_credentials");
+          assert.equal(failure.remainingAttempts, 2);
+          assert.equal("remaining_attempts" in failure, false);
+          return true;
+        },
+      );
     },
   );
 });

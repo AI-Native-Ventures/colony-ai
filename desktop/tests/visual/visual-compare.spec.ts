@@ -38,6 +38,7 @@ type VisualCase = {
     | { selector: string }
     | { referenceSelector: string; appSelector?: string };
   referenceReadySelector?: string;
+  referenceCanvas?: boolean;
   appReadySelector?: string;
 };
 
@@ -129,9 +130,27 @@ test.describe("visual comparison captures", () => {
           entry.referencePrefs,
           new URL(entry.referenceUrl).origin,
         );
+        if (entry.referenceInventoryRoute === "onboarding/testing") {
+          await referencePage.addInitScript(() => {
+            const nativeSetTimeout = window.setTimeout.bind(window);
+            window.setTimeout = ((handler, timeout, ...args) => {
+              if (
+                window.location.hash === "#testing" &&
+                (timeout === 1050 || timeout === 2550)
+              ) {
+                return 0;
+              }
+              return nativeSetTimeout(handler, timeout, ...args);
+            }) as typeof window.setTimeout;
+          });
+        }
         await referencePage.goto(entry.referenceUrl, {
           waitUntil: "domcontentloaded",
         });
+        await referencePage.waitForLoadState("load");
+        if (entry.referenceCanvas) {
+          await fitReferenceCanvas(referencePage, width, height);
+        }
 
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
@@ -140,6 +159,7 @@ test.describe("visual comparison captures", () => {
         await appPage.goto(appUrl, {
           waitUntil: "domcontentloaded",
         });
+        await appPage.waitForLoadState("load");
 
         await waitForCaptureReady(
           referencePage,
@@ -280,25 +300,30 @@ async function waitForCaptureReady(
     );
   }, expectedFont);
   await waitForAnimations(page);
-  const fontState = await page.evaluate((family) => {
-    const computed = getComputedStyle(document.body).fontFamily;
-    const available = Array.from(document.fonts).some((face) => {
-      const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
-      const weight = face.weight.trim();
-      const supports400 =
-        weight === "normal" ||
-        weight === "400" ||
-        (/^\d+\s+\d+$/.test(weight) &&
-          Number(weight.split(/\s+/)[0]) <= 400 &&
-          Number(weight.split(/\s+/)[1]) >= 400);
-      return name === family && face.status === "loaded" && supports400;
-    });
-    return {
-      computed,
-      available,
-      check: document.fonts.check(`400 14px "${family}"`),
-    };
-  }, expectedFont);
+  const fontState = await page.evaluate(
+    ({ family, selector }) => {
+      const fontTarget =
+        (selector ? document.querySelector(selector) : null) ?? document.body;
+      const computed = getComputedStyle(fontTarget).fontFamily;
+      const available = Array.from(document.fonts).some((face) => {
+        const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
+        const weight = face.weight.trim();
+        const supports400 =
+          weight === "normal" ||
+          weight === "400" ||
+          (/^\d+\s+\d+$/.test(weight) &&
+            Number(weight.split(/\s+/)[0]) <= 400 &&
+            Number(weight.split(/\s+/)[1]) >= 400);
+        return name === family && face.status === "loaded" && supports400;
+      });
+      return {
+        computed,
+        available,
+        check: document.fonts.check(`400 14px "${family}"`),
+      };
+    },
+    { family: expectedFont, selector: readySelector },
+  );
   if (
     !fontState.computed.includes(expectedFont) ||
     !fontState.available ||
@@ -308,6 +333,47 @@ async function waitForCaptureReady(
       `Expected ${expectedFont} 400 to be loaded; computed=${fontState.computed}, faceLoaded=${fontState.available}, check=${fontState.check}.`,
     );
   }
+}
+
+async function fitReferenceCanvas(
+  page: import("@playwright/test").Page,
+  width: number,
+  height: number,
+) {
+  await page.evaluate(
+    ({ width, height }) => {
+      const setStyle = (selector: string, values: Record<string, string>) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        for (const [property, value] of Object.entries(values)) {
+          element.style.setProperty(property, value, "important");
+        }
+      };
+
+      setStyle(".reviewbar", { display: "none" });
+      setStyle(".reviewfoot", { display: "none" });
+      setStyle("body", { height: `${height}px` });
+      setStyle("#review-canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        padding: "0",
+        overflow: "hidden",
+      });
+      setStyle("#scale-space", {
+        width: `${width}px`,
+        height: `${height}px`,
+        margin: "0",
+      });
+      setStyle("#canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: "none",
+        borderRadius: "0",
+        boxShadow: "none",
+      });
+    },
+    { width, height },
+  );
 }
 
 async function inspectPageGeometry(
