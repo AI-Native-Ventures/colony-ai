@@ -15,6 +15,10 @@ import {
   StaticConnectContent,
 } from "./OnboardingConnectionContent";
 import { ConnectedScene, WorkspacePreview } from "./OnboardingSceneOverlays";
+import {
+  EmailCodePresentation,
+  isEmailCodeScene,
+} from "./EmailCodePresentation";
 import { Glyph, InlineAlert, PrimaryButton } from "./OnboardingScenePrimitives";
 import "./onboardingCalibration.css";
 import "./onboardingTypography.css";
@@ -37,6 +41,7 @@ function SceneBody(props: PresentationProps) {
     onCreditsRetry,
   } = props;
   if (contentOverride) return <>{contentOverride}</>;
+  if (isEmailCodeScene(scene)) return <EmailCodePresentation {...props} />;
   if (scene === "account" || scene === "account-error") {
     return (
       <AccountForm
@@ -202,6 +207,17 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   const access = accessScene(props.scene);
   const switchText = access ? null : props.scene === "account" ||
     props.scene === "account-error" ? (
+    <span>
+      Already have an account?{" "}
+      <button
+        className="link"
+        onClick={() => props.onNavigate?.("signin")}
+        type="button"
+      >
+        Sign in
+      </button>
+    </span>
+  ) : props.scene.startsWith("verify") ? (
     <span>
       Already have an account?{" "}
       <button

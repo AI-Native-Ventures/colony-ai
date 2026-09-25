@@ -48,9 +48,8 @@ function normalizedEmail(value: string) {
 }
 
 function clampCooldown(value: number | undefined) {
-  if (value === undefined || !Number.isFinite(value)) {
+  if (value === undefined || !Number.isFinite(value))
     return RESEND_COOLDOWN_SECONDS;
-  }
   return Math.max(0, Math.floor(value));
 }
 
@@ -82,6 +81,8 @@ function noticeMessage(state: AccountAuthFlowState) {
       return "Your email still needs verification. Enter the code we sent.";
     case "reset_requested":
       return "If an account exists for this email, a reset code is on its way.";
+    case "code_resent":
+      return "A new code is on its way.";
     default:
       return null;
   }
@@ -104,10 +105,20 @@ function screenTitle(
       return state.verificationPurpose === "claim"
         ? "Verify your email"
         : "Check your email";
+    case "verify-change-email":
+      return "Change email";
     case "reset-request":
       return "Reset your password";
     case "reset-confirm":
+      return "Check your email";
+    case "reset-change-email":
+      return "Change email";
+    case "reset-password":
       return "Choose a new password";
+    case "verify-success":
+      return "Email verified";
+    case "reset-success":
+      return "Password updated";
     case "complete":
       return mode === "claim" ? "Account connected" : "You're signed in";
   }
@@ -122,6 +133,36 @@ function failureMessage(
     return "Account setup is unavailable right now. Your workspace is still ready to use. Try again later.";
   }
   return accountAuthFailureMessage(state.failure, state.screen);
+}
+
+function codeScene(
+  state: AccountAuthFlowState,
+  pending: boolean,
+): OnboardingSceneId | null {
+  if (state.screen === "verify-success") return "verify-done";
+  if (state.screen === "verify-change-email") return "verify-change-email";
+  if (state.screen === "reset-success") return "reset-done";
+  if (state.screen === "reset-change-email") return "reset-change-email";
+  const reset = state.screen === "reset-confirm";
+  if (state.screen !== "verify" && !reset) return null;
+  const prefix = reset ? "reset" : "verify";
+  if (pending) return reset ? "reset-verifying" : "verify-verifying";
+  if (state.failure?.code === "invalid_credentials") {
+    return reset ? "reset-error" : "verify-error";
+  }
+  if (state.failure?.code === "code_expired") {
+    return reset ? "reset-expired" : "verify-expired";
+  }
+  if (state.failure?.code === "rate_limited") {
+    return reset ? "reset-locked" : "verify-locked";
+  }
+  if (state.failure?.code === "unreachable") {
+    return reset ? "reset-network" : "verify-network";
+  }
+  if (state.notice === "code_resent") {
+    return reset ? "reset-resent" : "verify-resent";
+  }
+  return prefix === "reset" ? "email-sent" : "verify";
 }
 
 function FlowHeading({
@@ -145,13 +186,21 @@ function FlowHeading({
             ? "Use the email address and password for your account."
             : state.screen === "verify"
               ? `Enter the 6-digit code sent to ${state.email}.`
-              : state.screen === "reset-request"
-                ? "We'll send a reset code if an account exists for that email."
-                : state.screen === "reset-confirm"
-                  ? "Enter the code from your email and choose a new password."
-                  : state.screen === "complete"
-                    ? "Your account is ready."
-                    : "";
+              : state.screen === "verify-change-email" ||
+                  state.screen === "reset-change-email"
+                ? "We’ll send a new code to this address. The previous code won’t be used here."
+                : state.screen === "reset-request"
+                  ? "We’ll email you a six-digit code to set a new one."
+                  : state.screen === "reset-confirm"
+                    ? `If an account exists for this address, we’ve sent a six-digit reset code to ${state.email}.`
+                    : state.screen === "reset-password"
+                      ? `Enter a new password for ${state.email}.`
+                      : state.screen === "verify-success" ||
+                          state.screen === "reset-success"
+                        ? "Your account is ready."
+                        : state.screen === "complete"
+                          ? "Your account is ready."
+                          : "";
 
   return (
     <div className="w-full text-left">
@@ -187,6 +236,8 @@ export function AccountAuthFlow({
   );
   const [password, setPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [googleScene, setGoogleScene] =
@@ -196,18 +247,32 @@ export function AccountAuthFlow({
     seconds: 0,
   });
   const resendCooldown = useCountdown(cooldownRequest);
+  const cooldownEndsAt = React.useRef(0);
   const requestCooldown = React.useCallback((seconds: number) => {
+    cooldownEndsAt.current = seconds > 0 ? Date.now() + seconds * 1000 : 0;
     setCooldownRequest({ seconds });
   }, []);
   const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const previousScreen = React.useRef(state.screen);
 
   // Clear credentials and restore heading focus whenever the view changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: screen changes intentionally reset this form state.
   React.useEffect(() => {
     headingRef.current?.focus();
     setPassword("");
-    setNewPassword("");
-    setCode("");
+    setPasswordError(null);
+    if (
+      !(
+        (previousScreen.current === "reset-confirm" &&
+          state.screen === "reset-password") ||
+        (previousScreen.current === "reset-password" &&
+          state.screen === "reset-confirm")
+      )
+    ) {
+      setCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+    previousScreen.current = state.screen;
   }, [state.screen]);
 
   const send = React.useCallback(
@@ -222,19 +287,53 @@ export function AccountAuthFlow({
         if (failure.code === "rate_limited") {
           requestCooldown(clampCooldown(failure.retryAfterSecs));
         }
-        dispatch({ type: "set_failure", failure });
+        if (state.screen === "reset-password") {
+          if (
+            failure.code === "invalid_credentials" ||
+            failure.code === "code_expired" ||
+            failure.code === "rate_limited" ||
+            failure.code === "unreachable"
+          ) {
+            if (failure.code !== "unreachable") {
+              setCode("");
+              setNewPassword("");
+              setConfirmPassword("");
+            }
+            dispatch({ type: "reset_code_failure", failure });
+          } else {
+            dispatch({ type: "set_failure", failure });
+          }
+        } else {
+          if (
+            (state.screen === "verify" || state.screen === "reset-confirm") &&
+            failure.code !== "unreachable"
+          ) {
+            setCode("");
+          }
+          dispatch({ type: "set_failure", failure });
+        }
       } finally {
         setPending(false);
       }
     },
-    [pending, requestCooldown],
+    [pending, requestCooldown, state.screen],
   );
 
   const authenticate = React.useCallback(
-    async (account: AccountAuthRecord) => {
+    async (
+      account: AccountAuthRecord,
+      outcome: "complete" | "verify" | "reset" = "complete",
+    ) => {
       try {
-        await onAuthenticated(account);
-        dispatch({ type: "complete" });
+        if (outcome !== "reset") await onAuthenticated(account);
+        dispatch({
+          type:
+            outcome === "verify"
+              ? "verify_success"
+              : outcome === "reset"
+                ? "reset_success"
+                : "complete",
+        });
       } catch (error) {
         dispatch({
           type: "set_failure",
@@ -249,9 +348,9 @@ export function AccountAuthFlow({
     event.preventDefault();
     const email = normalizedEmail(state.email);
     void send(async () => {
-      await authClient.signUp(email, password);
+      const sent = await authClient.signUp(email, password);
       setPassword("");
-      requestCooldown(RESEND_COOLDOWN_SECONDS);
+      requestCooldown(clampCooldown(sent.retryAfterSecs));
       dispatch({ type: "signup_sent", email });
     });
   };
@@ -290,7 +389,10 @@ export function AccountAuthFlow({
     event.preventDefault();
     const email = normalizedEmail(state.email);
     void send(async () => {
-      await authenticate(await authClient.verifyEmail(email, code));
+      await authenticate(
+        await authClient.verifyEmail(email, code),
+        mode === "onboarding" ? "verify" : "complete",
+      );
     });
   };
 
@@ -298,19 +400,44 @@ export function AccountAuthFlow({
     event.preventDefault();
     const email = normalizedEmail(state.email);
     void send(async () => {
-      await authClient.requestReset(email);
-      requestCooldown(RESEND_COOLDOWN_SECONDS);
+      const sent = await authClient.requestReset(email);
+      requestCooldown(clampCooldown(sent.retryAfterSecs));
       dispatch({ type: "reset_requested", email });
     });
   };
 
+  const submitResetCode = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (code.length === 6) dispatch({ type: "begin_reset_password" });
+  };
+
   const submitResetConfirm = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setPasswordError("The passwords don’t match. Try again.");
+      return;
+    }
     const email = normalizedEmail(state.email);
     void send(async () => {
       await authenticate(
         await authClient.confirmReset(email, code, newPassword),
+        mode === "onboarding" ? "reset" : "complete",
       );
+    });
+  };
+
+  const submitEmailChange = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const email = normalizedEmail(state.email);
+    void send(async () => {
+      if (state.screen === "verify-change-email") {
+        const sent = await authClient.resendCode(email, "verify");
+        requestCooldown(clampCooldown(sent.retryAfterSecs));
+      } else {
+        const sent = await authClient.requestReset(email);
+        requestCooldown(clampCooldown(sent.retryAfterSecs));
+      }
+      dispatch({ type: "code_resent", email });
     });
   };
 
@@ -344,12 +471,15 @@ export function AccountAuthFlow({
   };
 
   const resendCode = () => {
-    if (resendCooldown > 0 || pending) return;
+    if (cooldownEndsAt.current > Date.now() || pending) return;
     const purpose = state.screen === "reset-confirm" ? "reset" : "verify";
     void send(async () => {
-      await authClient.resendCode(normalizedEmail(state.email), purpose);
-      requestCooldown(RESEND_COOLDOWN_SECONDS);
-      dispatch({ type: "clear_feedback" });
+      const sent = await authClient.resendCode(
+        normalizedEmail(state.email),
+        purpose,
+      );
+      requestCooldown(clampCooldown(sent.retryAfterSecs));
+      dispatch({ type: "code_resent", email: normalizedEmail(state.email) });
     });
   };
 
@@ -373,6 +503,7 @@ export function AccountAuthFlow({
   const rateLimitLocked =
     state.failure?.code === "rate_limited" && resendCooldown > 0;
   const waitLabel = rateLimitLocked ? `Try again in ${resendCooldown}s` : null;
+  const emailCodeScene = codeScene(state, pending);
 
   if (
     standalone &&
@@ -831,7 +962,8 @@ export function AccountAuthFlow({
         ? "signin"
         : state.screen === "reset-request"
           ? "forgot"
-          : null;
+          : (emailCodeScene ??
+            (state.screen === "reset-password" ? "new-password" : null));
 
   if (standalone && mode === "onboarding" && designedScene) {
     const data: OnboardingSceneData = {
@@ -846,13 +978,23 @@ export function AccountAuthFlow({
       if (scene === "account") dispatchAndClear({ type: "begin_signup" });
       else if (scene === "signin") dispatchAndClear({ type: "show_signin" });
       else if (scene === "forgot") dispatchAndClear({ type: "begin_reset" });
+      else if (scene === "business") onAdvanced?.();
     };
     const submit =
       state.screen === "signup"
         ? submitSignup
         : state.screen === "signin"
           ? submitSignin
-          : submitResetRequest;
+          : state.screen === "reset-request"
+            ? submitResetRequest
+            : state.screen === "verify-change-email" ||
+                state.screen === "reset-change-email"
+              ? submitEmailChange
+              : state.screen === "reset-password"
+                ? submitResetConfirm
+                : state.screen === "reset-confirm"
+                  ? submitResetCode
+                  : submitVerify;
 
     return (
       <div
@@ -867,11 +1009,47 @@ export function AccountAuthFlow({
             onEmailChange={(email) =>
               dispatchAndClear({ type: "set_email", email })
             }
+            headingRef={headingRef}
             onNameChange={setName}
             onNavigate={navigate}
             onPasswordChange={setPassword}
             onSubmit={submit}
             scene={designedScene}
+            authCode={
+              emailCodeScene || state.screen === "reset-password"
+                ? {
+                    value: code,
+                    attemptsLeft: state.failure?.remainingAttempts,
+                    cooldownSecs: resendCooldown,
+                    newPassword,
+                    confirmPassword,
+                    pending,
+                    error:
+                      passwordError ??
+                      (state.screen === "reset-password" ? failureText : null),
+                    onCodeChange: (value) => {
+                      setCode(value.replace(/\D/g, "").slice(0, 6));
+                      if (state.failure) dispatch({ type: "clear_feedback" });
+                    },
+                    onCodeSubmit:
+                      state.screen === "verify"
+                        ? submitVerify
+                        : submitResetCode,
+                    onNewPasswordChange: (value) => {
+                      setNewPassword(value);
+                      setPasswordError(null);
+                    },
+                    onConfirmPasswordChange: (value) => {
+                      setConfirmPassword(value);
+                      setPasswordError(null);
+                    },
+                    onPasswordSubmit: submitResetConfirm,
+                    onChangeEmail: () =>
+                      dispatchAndClear({ type: "change_email" }),
+                    onResend: resendCode,
+                  }
+                : undefined
+            }
           />
         </div>
       </div>

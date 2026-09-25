@@ -123,6 +123,12 @@ export function StoryPanel({
       "new-password",
       "reset-done",
       "reset-expired",
+      "reset-verifying",
+      "reset-error",
+      "reset-locked",
+      "reset-resent",
+      "reset-network",
+      "reset-change-email",
       "businesses",
     ].includes(scene)
   ) {

@@ -1352,6 +1352,7 @@
   max-width: 560px;
   width: calc(100% - 42px);
   max-height: 85dvh;
+  transform: translateY(-30px);
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 24px 100px #2711364d;

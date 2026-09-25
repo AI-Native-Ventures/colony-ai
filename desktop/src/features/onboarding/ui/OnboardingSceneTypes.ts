@@ -48,6 +48,23 @@ export type OnboardingSceneActions = {
   onSelectBusiness?: (id: string) => void;
   onCreateBusiness?: () => void;
   canSubmit?: boolean;
+  headingRef?: React.RefObject<HTMLHeadingElement | null>;
+  authCode?: {
+    value: string;
+    attemptsLeft?: number;
+    cooldownSecs?: number;
+    newPassword?: string;
+    confirmPassword?: string;
+    pending?: boolean;
+    error?: string | null;
+    onCodeChange?: (value: string) => void;
+    onCodeSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
+    onNewPasswordChange?: (value: string) => void;
+    onConfirmPasswordChange?: (value: string) => void;
+    onPasswordSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
+    onChangeEmail?: () => void;
+    onResend?: () => void;
+  };
 };
 
 export type PresentationProps = {

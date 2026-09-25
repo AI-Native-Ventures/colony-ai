@@ -1,4 +1,5 @@
-/* Onboarding-scoped r15 tokens pending the shared g1-shell token update. */
+/* r16 onboarding tokens remain scoped because shared shell globals do not
+   define these roles. */
 .colony-onboarding-root,
 .colony-google-account-root {
   --onboarding-font-weight-semibold: 600;

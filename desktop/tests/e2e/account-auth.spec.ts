@@ -129,6 +129,20 @@ async function expectNoKeyCopy(page: Page) {
   expect(visibleText).not.toMatch(/\bkey\b/i);
 }
 
+async function pasteCode(page: Page, code: string) {
+  await page.getByLabel("Digit 1 of 6").evaluate((element, value) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text/plain", value);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: clipboard,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, code);
+}
+
 async function finishMachineSetup(page: Page) {
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await page.getByLabel("Business name").fill("North Star");
@@ -187,8 +201,13 @@ test("keyboard signup verifies email and installs the account identity", async (
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
-  await page.getByLabel("6-digit code").fill("123456");
-  await page.getByTestId("account-auth-verify").click();
+  await pasteCode(page, "12-34 56");
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toHaveValue(
+      String(index),
+    );
+  }
+  await page.getByTestId("otp-continue").click();
 
   await finishMachineSetup(page);
   const savedBusiness = await page.evaluate(() =>
@@ -217,6 +236,50 @@ test("keyboard signup verifies email and installs the account identity", async (
   );
   await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("nsec1");
+});
+
+test("email code entry supports focus movement and keeps the code on network failure", async ({
+  page,
+}) => {
+  await startFirstRun(page);
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("network@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+
+  const first = page.getByLabel("Digit 1 of 6");
+  const second = page.getByLabel("Digit 2 of 6");
+  const third = page.getByLabel("Digit 3 of 6");
+  await first.pressSequentially("1");
+  await expect(second).toBeFocused();
+  await second.pressSequentially("2");
+  await expect(third).toBeFocused();
+  await third.press("Backspace");
+  await expect(second).toBeFocused();
+  await expect(second).toHaveValue("");
+
+  await pasteCode(page, "123456");
+  await expect(page.getByLabel("Digit 6 of 6")).toBeFocused();
+  await page.getByLabel("Digit 6 of 6").press("ArrowLeft");
+  await expect(page.getByLabel("Digit 5 of 6")).toBeFocused();
+  await queueAuthError(page, "verifyEmail", { error: "Failed to fetch" });
+  await page.getByTestId("otp-continue").click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Couldn’t verify your code.",
+  );
+  await expect(page.getByRole("alert")).toContainText("No attempt was used.");
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toHaveValue(
+      String(index),
+    );
+  }
+  await page.getByTestId("otp-continue").click();
+  await finishMachineSetup(page);
 });
 
 test("sign in reaches the workspace setup path", async ({ page }) => {
@@ -288,7 +351,7 @@ test("forgot password requests a code and signs in after reset", async ({
   ).toBeVisible();
   await expectNoKeyCopy(page);
   await page.getByLabel("Email address").fill("reset@example.com");
-  await page.getByRole("button", { name: "Send reset link" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-confirm"),
   ).toBeVisible();
@@ -297,15 +360,46 @@ test("forgot password requests a code and signs in after reset", async ({
     page.getByRole("button", { name: "Resend code in 60s" }),
   ).toBeDisabled();
   await page.clock.fastForward(60_000);
-  await page.getByRole("button", { name: "Resend code" }).click();
+  const resendButton = page.getByRole("button", { name: "Resend code" });
+  await expect(resendButton).toBeEnabled();
+  await resendButton.click();
   await expect(
     page.getByRole("button", { name: "Resend code in 60s" }),
   ).toBeDisabled();
-  await page.getByLabel("6-digit code").fill("123456");
+  const resendCalls = (await accountAuthCalls(page)).filter(
+    ({ method }) => method === "resendCode",
+  );
+  expect(resendCalls.map(({ purpose }) => purpose)).toEqual(["reset"]);
+  await pasteCode(page, "123456");
+  await page.getByTestId("otp-continue").click();
   await page
-    .getByLabel("New password (at least 10 characters)")
+    .getByLabel("New password", { exact: true })
     .fill("new-correct-horse-12");
-  await page.getByTestId("account-auth-reset-confirm").click();
+  await page.getByLabel("Confirm new password").fill("new-correct-horse-12");
+  await queueAuthError(page, "confirmReset", {
+    error: "invalid_credentials",
+    remaining_attempts: 2,
+  });
+  await page.getByRole("button", { name: "Update password" }).click();
+  await expect(
+    page.getByTestId("account-auth-screen-reset-confirm"),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("2 attempts left.");
+  await pasteCode(page, "123456");
+  await page.getByTestId("otp-continue").click();
+  await page
+    .getByLabel("New password", { exact: true })
+    .fill("new-correct-horse-12");
+  await page.getByLabel("Confirm new password").fill("new-correct-horse-12");
+  await page.getByRole("button", { name: "Update password" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Password updated" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Back to sign in" }).click();
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("new-correct-horse-12");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await finishMachineSetup(page);
   const calls = await accountAuthCalls(page);
   expect(calls.map(({ route }) => route)).toContain(
@@ -317,6 +411,58 @@ test("forgot password requests a code and signs in after reset", async ({
   expect(calls.find(({ method }) => method === "resendCode")?.purpose).toBe(
     "reset",
   );
+  expect(calls.map(({ route }) => route)).toContain(
+    "POST /api/accounts/signin",
+  );
+});
+
+test("verification lockout keeps code blocked until resend is available", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await startFirstRun(page);
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("locked@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+
+  await pasteCode(page, "123456");
+  await queueAuthError(page, "verifyEmail", {
+    error: "rate_limited",
+    retry_after_secs: 2,
+    remaining_attempts: 0,
+  });
+  await page.getByTestId("otp-continue").click();
+  await expect(page.locator('[data-otp-state="locked"]')).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeDisabled();
+  }
+  await expect(page.getByTestId("otp-continue")).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Resend code in 2s" }),
+  ).toBeDisabled();
+
+  await page.clock.fastForward(2_000);
+  await expect(page.locator('[data-otp-state="locked"]')).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeDisabled();
+  }
+  const resend = page.getByRole("button", { name: "Resend code" });
+  await expect(resend).toBeEnabled();
+  await resend.click();
+  await expect(page.locator('[data-otp-state="resent"]')).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeEnabled();
+  }
+  expect(
+    (await accountAuthCalls(page)).find(({ method }) => method === "resendCode")
+      ?.purpose,
+  ).toBe("verify");
 });
 
 test("account auth screens never show key wording", async ({ page }) => {
@@ -334,13 +480,12 @@ test("account auth screens never show key wording", async ({ page }) => {
     .click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
-  await page.getByRole("button", { name: "Back" }).click();
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expectNoKeyCopy(page);
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expectNoKeyCopy(page);
   await page.getByLabel("Email address").fill("guard@example.com");
-  await page.getByRole("button", { name: "Send reset link" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-confirm"),
   ).toBeVisible();
@@ -394,22 +539,26 @@ test("contract errors are announced and email_unverified moves to verification",
   await queueAuthError(page, "signIn", { error: "email_unverified" });
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
-    "Your email still needs verification.",
-  );
+  await expect(
+    page.getByText("Enter the six-digit code sent to your email."),
+  ).toBeVisible();
   await expectNoKeyCopy(page);
 
-  await page.getByLabel("6-digit code").fill("123456");
-  await queueAuthError(page, "verifyEmail", { error: "invalid_credentials" });
-  await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "That code was not accepted. Check it and try again.",
-  );
+  await pasteCode(page, "123456");
+  await queueAuthError(page, "verifyEmail", {
+    error: "invalid_credentials",
+    remainingAttempts: 2,
+  });
+  await page.getByTestId("otp-continue").click();
+  await expect(page.getByRole("alert")).toContainText("That code isn’t right.");
+  await expect(page.getByRole("alert")).toContainText("2 attempts left.");
 
+  await pasteCode(page, "123456");
   await queueAuthError(page, "verifyEmail", { error: "code_expired" });
-  await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "This code has expired. Request a new one to continue.",
+  await page.getByTestId("otp-continue").click();
+  await expect(page.getByRole("alert")).toContainText("This code has expired.");
+  await expect(page.getByRole("alert")).toContainText(
+    "Resend a code to continue. Your email is kept.",
   );
 
   await page.clock.fastForward(60_000);
@@ -429,9 +578,7 @@ test("contract errors are announced and email_unverified moves to verification",
     retry_after_secs: 2,
   });
   await page.getByRole("button", { name: "Resend code" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Too many attempts. Try again in 2 seconds.",
-  );
+  await expect(page.getByRole("alert")).toContainText("Try again in 2s.");
   await expect(
     page.getByRole("button", { name: "Resend code in 2s" }),
   ).toBeDisabled();

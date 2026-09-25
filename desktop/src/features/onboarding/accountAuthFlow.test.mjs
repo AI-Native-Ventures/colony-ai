@@ -72,9 +72,22 @@ test("claim and password reset transitions retain the submitted email", () => {
     email: "reset@example.com",
   });
   assert.equal(reset.screen, "reset-confirm");
+  reset = accountAuthFlowReducer(reset, { type: "begin_reset_password" });
+  assert.equal(reset.screen, "reset-password");
+  reset = accountAuthFlowReducer(reset, { type: "back" });
+  assert.equal(reset.screen, "reset-confirm");
+  reset = accountAuthFlowReducer(reset, { type: "change_email" });
+  assert.equal(reset.screen, "reset-change-email");
+  reset = accountAuthFlowReducer(reset, {
+    type: "code_resent",
+    email: "new@example.com",
+  });
+  assert.equal(reset.screen, "reset-confirm");
+  assert.equal(reset.email, "new@example.com");
+  assert.equal(reset.notice, "code_resent");
   assert.deepEqual(accountAuthFlowReducer(reset, { type: "back" }), {
     screen: "reset-request",
-    email: "reset@example.com",
+    email: "new@example.com",
   });
 });
 
@@ -124,6 +137,20 @@ test("contract errors normalize snake case retry windows and network failures", 
   assert.deepEqual(normalizeAccountAuthFailure({ code: "network_error" }), {
     code: "unreachable",
   });
+  assert.deepEqual(
+    normalizeAccountAuthFailure({
+      code: "invalid_credentials",
+      remainingAttempts: 2.9,
+    }),
+    { code: "invalid_credentials", remainingAttempts: 2 },
+  );
+  assert.deepEqual(
+    normalizeAccountAuthFailure({
+      error: "invalid_credentials",
+      remaining_attempts: 1,
+    }),
+    { code: "invalid_credentials", remainingAttempts: 1 },
+  );
 });
 
 test("every contract error has screen-appropriate feedback", () => {

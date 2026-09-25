@@ -53,21 +53,21 @@
     {
       "id": "today-1728",
       "referenceInventoryRoute": "today",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#today",
       "appRoute": "/",
       "viewport": "1728x1117"
     },
     {
       "id": "today-1440",
       "referenceInventoryRoute": "today",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#today",
       "appRoute": "/",
       "viewport": "1440x900"
     },
     {
       "id": "channel-side-thread-1728",
       "referenceInventoryRoute": "channel/sales",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#thread/stockists",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#thread/stockists",
       "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
       "appReadySelector": "[data-testid=message-thread-panel]",
       "viewport": "1728x1117"
@@ -75,7 +75,7 @@
     {
       "id": "channel-side-thread-1440",
       "referenceInventoryRoute": "channel/sales",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#thread/stockists",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#thread/stockists",
       "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
       "appReadySelector": "[data-testid=message-thread-panel]",
       "viewport": "1440x900"
@@ -83,49 +83,49 @@
     {
       "id": "agents-directory-1728",
       "referenceInventoryRoute": "agents/catalogue",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#agents/catalogue",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#agents/catalogue",
       "appRoute": "/#/agents",
       "viewport": "1728x1117"
     },
     {
       "id": "agents-directory-1440",
       "referenceInventoryRoute": "agents/catalogue",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#agents/catalogue",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#agents/catalogue",
       "appRoute": "/#/agents",
       "viewport": "1440x900"
     },
     {
       "id": "factory-1728",
       "referenceInventoryRoute": "factory",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#factory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#factory",
       "appRoute": "/#/projects",
       "viewport": "1728x1117"
     },
     {
       "id": "factory-1440",
       "referenceInventoryRoute": "factory",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#factory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#factory",
       "appRoute": "/#/projects",
       "viewport": "1440x900"
     },
     {
       "id": "settings-appearance-1728",
       "referenceInventoryRoute": "settings/appearance",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#settings/appearance",
       "appRoute": "/#/settings?section=appearance",
       "viewport": "1728x1117"
     },
     {
       "id": "settings-appearance-1440",
       "referenceInventoryRoute": "settings/appearance",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/workspace/?embedded=1#settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1#settings/appearance",
       "appRoute": "/#/settings?section=appearance",
       "viewport": "1440x900"
     },
     {
       "id": "onboarding-account-1728x1117",
       "referenceInventoryRoute": "onboarding/account",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#account",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#account",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=account",
@@ -141,7 +141,7 @@
     {
       "id": "onboarding-account-1440x900",
       "referenceInventoryRoute": "onboarding/account",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#account",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#account",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=account",
@@ -157,7 +157,7 @@
     {
       "id": "onboarding-account-error-1728x1117",
       "referenceInventoryRoute": "onboarding/account-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#account-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#account-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=account-error",
@@ -173,7 +173,7 @@
     {
       "id": "onboarding-account-error-1440x900",
       "referenceInventoryRoute": "onboarding/account-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#account-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#account-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=account-error",
@@ -189,7 +189,7 @@
     {
       "id": "onboarding-additional-1728x1117",
       "referenceInventoryRoute": "onboarding/additional",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#additional",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#additional",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=additional",
@@ -205,7 +205,7 @@
     {
       "id": "onboarding-additional-1440x900",
       "referenceInventoryRoute": "onboarding/additional",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#additional",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#additional",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=additional",
@@ -221,7 +221,7 @@
     {
       "id": "onboarding-api-error-1728x1117",
       "referenceInventoryRoute": "onboarding/api-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#api-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#api-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=api-error",
@@ -237,7 +237,7 @@
     {
       "id": "onboarding-api-error-1440x900",
       "referenceInventoryRoute": "onboarding/api-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#api-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#api-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=api-error",
@@ -253,7 +253,7 @@
     {
       "id": "onboarding-api-key-1728x1117",
       "referenceInventoryRoute": "onboarding/api-key",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#api-key",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#api-key",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=api-key",
@@ -269,7 +269,7 @@
     {
       "id": "onboarding-api-key-1440x900",
       "referenceInventoryRoute": "onboarding/api-key",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#api-key",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#api-key",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=api-key",
@@ -285,7 +285,7 @@
     {
       "id": "onboarding-business-1728x1117",
       "referenceInventoryRoute": "onboarding/business",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#business",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#business",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=business",
@@ -301,7 +301,7 @@
     {
       "id": "onboarding-business-1440x900",
       "referenceInventoryRoute": "onboarding/business",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#business",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#business",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=business",
@@ -317,7 +317,7 @@
     {
       "id": "onboarding-business-error-1728x1117",
       "referenceInventoryRoute": "onboarding/business-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#business-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#business-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=business-error",
@@ -333,7 +333,7 @@
     {
       "id": "onboarding-business-error-1440x900",
       "referenceInventoryRoute": "onboarding/business-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#business-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#business-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=business-error",
@@ -349,7 +349,7 @@
     {
       "id": "onboarding-businesses-1728x1117",
       "referenceInventoryRoute": "onboarding/businesses",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#businesses",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#businesses",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=businesses",
@@ -365,7 +365,7 @@
     {
       "id": "onboarding-businesses-1440x900",
       "referenceInventoryRoute": "onboarding/businesses",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#businesses",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#businesses",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=businesses",
@@ -381,7 +381,7 @@
     {
       "id": "onboarding-connect-1728x1117",
       "referenceInventoryRoute": "onboarding/connect",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connect",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connect",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connect",
@@ -397,7 +397,7 @@
     {
       "id": "onboarding-connect-1440x900",
       "referenceInventoryRoute": "onboarding/connect",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connect",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connect",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connect",
@@ -413,7 +413,7 @@
     {
       "id": "onboarding-connected-1728x1117",
       "referenceInventoryRoute": "onboarding/connected",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connected",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connected",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connected",
@@ -429,7 +429,7 @@
     {
       "id": "onboarding-connected-1440x900",
       "referenceInventoryRoute": "onboarding/connected",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connected",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connected",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connected",
@@ -445,7 +445,7 @@
     {
       "id": "onboarding-connection-error-1728x1117",
       "referenceInventoryRoute": "onboarding/connection-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connection-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connection-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connection-error",
@@ -461,7 +461,7 @@
     {
       "id": "onboarding-connection-error-1440x900",
       "referenceInventoryRoute": "onboarding/connection-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#connection-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#connection-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=connection-error",
@@ -477,7 +477,7 @@
     {
       "id": "onboarding-credits-cancelled-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-cancelled",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-cancelled",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-cancelled",
@@ -493,7 +493,7 @@
     {
       "id": "onboarding-credits-cancelled-1440x900",
       "referenceInventoryRoute": "onboarding/credits-cancelled",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-cancelled",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-cancelled",
@@ -509,7 +509,7 @@
     {
       "id": "onboarding-credits-checkout-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-checkout",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-checkout",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-checkout",
@@ -525,7 +525,7 @@
     {
       "id": "onboarding-credits-checkout-1440x900",
       "referenceInventoryRoute": "onboarding/credits-checkout",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-checkout",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-checkout",
@@ -541,7 +541,7 @@
     {
       "id": "onboarding-credits-delayed-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-delayed",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-delayed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-delayed",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-delayed",
@@ -557,7 +557,7 @@
     {
       "id": "onboarding-credits-delayed-1440x900",
       "referenceInventoryRoute": "onboarding/credits-delayed",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-delayed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-delayed",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-delayed",
@@ -573,7 +573,7 @@
     {
       "id": "onboarding-credits-failed-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-failed",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-failed",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-failed",
@@ -589,7 +589,7 @@
     {
       "id": "onboarding-credits-failed-1440x900",
       "referenceInventoryRoute": "onboarding/credits-failed",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-failed",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-failed",
@@ -605,7 +605,7 @@
     {
       "id": "onboarding-credits-pending-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-pending",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-pending",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-pending",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-pending",
@@ -621,7 +621,7 @@
     {
       "id": "onboarding-credits-pending-1440x900",
       "referenceInventoryRoute": "onboarding/credits-pending",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-pending",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-pending",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-pending",
@@ -637,7 +637,7 @@
     {
       "id": "onboarding-credits-price-error-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-price-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-price-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-price-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-price-error",
@@ -653,7 +653,7 @@
     {
       "id": "onboarding-credits-price-error-1440x900",
       "referenceInventoryRoute": "onboarding/credits-price-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-price-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-price-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-price-error",
@@ -669,7 +669,7 @@
     {
       "id": "onboarding-credits-success-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-success",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-success",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-success",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-success",
@@ -685,7 +685,7 @@
     {
       "id": "onboarding-credits-success-1440x900",
       "referenceInventoryRoute": "onboarding/credits-success",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-success",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-success",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-success",
@@ -701,7 +701,7 @@
     {
       "id": "onboarding-credits-uncertain-1728x1117",
       "referenceInventoryRoute": "onboarding/credits-uncertain",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-uncertain",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-uncertain",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-uncertain",
@@ -717,7 +717,7 @@
     {
       "id": "onboarding-credits-uncertain-1440x900",
       "referenceInventoryRoute": "onboarding/credits-uncertain",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#credits-uncertain",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#credits-uncertain",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=credits-uncertain",
@@ -733,7 +733,7 @@
     {
       "id": "onboarding-email-sent-1728x1117",
       "referenceInventoryRoute": "onboarding/email-sent",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#email-sent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#email-sent",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=email-sent",
@@ -749,7 +749,7 @@
     {
       "id": "onboarding-email-sent-1440x900",
       "referenceInventoryRoute": "onboarding/email-sent",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#email-sent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#email-sent",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=email-sent",
@@ -765,7 +765,7 @@
     {
       "id": "onboarding-forgot-1728x1117",
       "referenceInventoryRoute": "onboarding/forgot",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#forgot",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#forgot",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=forgot",
@@ -781,7 +781,7 @@
     {
       "id": "onboarding-forgot-1440x900",
       "referenceInventoryRoute": "onboarding/forgot",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#forgot",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#forgot",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=forgot",
@@ -797,7 +797,7 @@
     {
       "id": "onboarding-funding-1728x1117",
       "referenceInventoryRoute": "onboarding/funding",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#funding",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#funding",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=funding",
@@ -813,7 +813,7 @@
     {
       "id": "onboarding-funding-1440x900",
       "referenceInventoryRoute": "onboarding/funding",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#funding",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#funding",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=funding",
@@ -829,7 +829,7 @@
     {
       "id": "onboarding-history-1728x1117",
       "referenceInventoryRoute": "onboarding/history",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#history",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=history",
@@ -845,7 +845,7 @@
     {
       "id": "onboarding-history-1440x900",
       "referenceInventoryRoute": "onboarding/history",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#history",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=history",
@@ -861,7 +861,7 @@
     {
       "id": "onboarding-history-review-1728x1117",
       "referenceInventoryRoute": "onboarding/history-review",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#history-review",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#history-review",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=history-review",
@@ -877,7 +877,7 @@
     {
       "id": "onboarding-history-review-1440x900",
       "referenceInventoryRoute": "onboarding/history-review",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#history-review",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#history-review",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=history-review",
@@ -893,7 +893,7 @@
     {
       "id": "onboarding-invite-1728x1117",
       "referenceInventoryRoute": "onboarding/invite",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#invite",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#invite",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=invite",
@@ -909,7 +909,7 @@
     {
       "id": "onboarding-invite-1440x900",
       "referenceInventoryRoute": "onboarding/invite",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#invite",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#invite",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=invite",
@@ -925,7 +925,7 @@
     {
       "id": "onboarding-new-password-1728x1117",
       "referenceInventoryRoute": "onboarding/new-password",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#new-password",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#new-password",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=new-password",
@@ -941,7 +941,7 @@
     {
       "id": "onboarding-new-password-1440x900",
       "referenceInventoryRoute": "onboarding/new-password",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#new-password",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#new-password",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=new-password",
@@ -957,7 +957,7 @@
     {
       "id": "onboarding-openrouter-connected-1728x1117",
       "referenceInventoryRoute": "onboarding/openrouter-connected",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-connected",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-connected",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-connected",
@@ -973,7 +973,7 @@
     {
       "id": "onboarding-openrouter-connected-1440x900",
       "referenceInventoryRoute": "onboarding/openrouter-connected",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-connected",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-connected",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-connected",
@@ -989,7 +989,7 @@
     {
       "id": "onboarding-openrouter-error-1728x1117",
       "referenceInventoryRoute": "onboarding/openrouter-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-error",
@@ -1005,7 +1005,7 @@
     {
       "id": "onboarding-openrouter-error-1440x900",
       "referenceInventoryRoute": "onboarding/openrouter-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-error",
@@ -1021,7 +1021,7 @@
     {
       "id": "onboarding-openrouter-limit-1728x1117",
       "referenceInventoryRoute": "onboarding/openrouter-limit",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-limit",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-limit",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-limit",
@@ -1037,7 +1037,7 @@
     {
       "id": "onboarding-openrouter-limit-1440x900",
       "referenceInventoryRoute": "onboarding/openrouter-limit",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-limit",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-limit",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-limit",
@@ -1053,7 +1053,7 @@
     {
       "id": "onboarding-openrouter-unlinked-1728x1117",
       "referenceInventoryRoute": "onboarding/openrouter-unlinked",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-unlinked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-unlinked",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-unlinked",
@@ -1069,7 +1069,7 @@
     {
       "id": "onboarding-openrouter-unlinked-1440x900",
       "referenceInventoryRoute": "onboarding/openrouter-unlinked",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#openrouter-unlinked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#openrouter-unlinked",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=openrouter-unlinked",
@@ -1085,7 +1085,7 @@
     {
       "id": "onboarding-reset-done-1728x1117",
       "referenceInventoryRoute": "onboarding/reset-done",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#reset-done",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-done",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=reset-done",
@@ -1101,7 +1101,7 @@
     {
       "id": "onboarding-reset-done-1440x900",
       "referenceInventoryRoute": "onboarding/reset-done",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#reset-done",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-done",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=reset-done",
@@ -1117,7 +1117,7 @@
     {
       "id": "onboarding-reset-expired-1728x1117",
       "referenceInventoryRoute": "onboarding/reset-expired",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#reset-expired",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-expired",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=reset-expired",
@@ -1133,7 +1133,7 @@
     {
       "id": "onboarding-reset-expired-1440x900",
       "referenceInventoryRoute": "onboarding/reset-expired",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#reset-expired",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-expired",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=reset-expired",
@@ -1149,7 +1149,7 @@
     {
       "id": "onboarding-signin-1728x1117",
       "referenceInventoryRoute": "onboarding/signin",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#signin",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#signin",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=signin",
@@ -1165,7 +1165,7 @@
     {
       "id": "onboarding-signin-1440x900",
       "referenceInventoryRoute": "onboarding/signin",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#signin",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#signin",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=signin",
@@ -1181,7 +1181,7 @@
     {
       "id": "onboarding-subscription-api-auth-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-api-auth",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-api-auth",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-api-auth",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-api-auth",
@@ -1197,7 +1197,7 @@
     {
       "id": "onboarding-subscription-api-auth-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-api-auth",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-api-auth",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-api-auth",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-api-auth",
@@ -1213,7 +1213,7 @@
     {
       "id": "onboarding-subscription-error-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-error",
@@ -1229,7 +1229,7 @@
     {
       "id": "onboarding-subscription-error-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-error",
@@ -1245,7 +1245,7 @@
     {
       "id": "onboarding-subscription-exhausted-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-exhausted",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-exhausted",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-exhausted",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-exhausted",
@@ -1261,7 +1261,7 @@
     {
       "id": "onboarding-subscription-exhausted-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-exhausted",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-exhausted",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-exhausted",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-exhausted",
@@ -1277,7 +1277,7 @@
     {
       "id": "onboarding-subscription-missing-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-missing",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-missing",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-missing",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-missing",
@@ -1293,7 +1293,7 @@
     {
       "id": "onboarding-subscription-missing-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-missing",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-missing",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-missing",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-missing",
@@ -1309,7 +1309,7 @@
     {
       "id": "onboarding-subscription-models-error-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-models-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-models-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-models-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-models-error",
@@ -1325,7 +1325,7 @@
     {
       "id": "onboarding-subscription-models-error-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-models-error",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-models-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-models-error",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-models-error",
@@ -1341,7 +1341,7 @@
     {
       "id": "onboarding-subscription-scan-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-scan",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-scan",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-scan",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-scan",
@@ -1357,7 +1357,7 @@
     {
       "id": "onboarding-subscription-scan-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-scan",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-scan",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-scan",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-scan",
@@ -1373,7 +1373,7 @@
     {
       "id": "onboarding-subscription-stale-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-stale",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-stale",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-stale",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-stale",
@@ -1389,7 +1389,7 @@
     {
       "id": "onboarding-subscription-stale-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-stale",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-stale",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-stale",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-stale",
@@ -1405,7 +1405,7 @@
     {
       "id": "onboarding-subscription-usage-unknown-1728x1117",
       "referenceInventoryRoute": "onboarding/subscription-usage-unknown",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-usage-unknown",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-usage-unknown",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-usage-unknown",
@@ -1421,7 +1421,7 @@
     {
       "id": "onboarding-subscription-usage-unknown-1440x900",
       "referenceInventoryRoute": "onboarding/subscription-usage-unknown",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#subscription-usage-unknown",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#subscription-usage-unknown",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=subscription-usage-unknown",
@@ -1437,7 +1437,7 @@
     {
       "id": "onboarding-testing-1728x1117",
       "referenceInventoryRoute": "onboarding/testing",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#testing",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#testing",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=testing",
@@ -1453,7 +1453,7 @@
     {
       "id": "onboarding-testing-1440x900",
       "referenceInventoryRoute": "onboarding/testing",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#testing",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#testing",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=testing",
@@ -1469,7 +1469,7 @@
     {
       "id": "onboarding-workspace-1728x1117",
       "referenceInventoryRoute": "onboarding/workspace",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#workspace",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#workspace",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=workspace",
@@ -1485,7 +1485,7 @@
     {
       "id": "onboarding-workspace-1440x900",
       "referenceInventoryRoute": "onboarding/workspace",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/app/onboarding/#workspace",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#workspace",
       "referencePrefs": {},
       "referenceReadySelector": ".app-frame",
       "appRoute": "/tests/visual/onboarding.html?scene=workspace",
@@ -1501,7 +1501,7 @@
     {
       "id": "google-01-sign-in-1728x1117",
       "referenceInventoryRoute": "desktop/01/sign-in",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/sign-in",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/sign-in",
       "appRoute": "/tests/visual/onboarding.html?googleScene=sign-in",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1513,7 +1513,7 @@
     {
       "id": "google-01-sign-in-1440x900",
       "referenceInventoryRoute": "desktop/01/sign-in",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/sign-in",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/sign-in",
       "appRoute": "/tests/visual/onboarding.html?googleScene=sign-in",
       "viewport": "1440x900",
       "theme": "light",
@@ -1525,7 +1525,7 @@
     {
       "id": "google-01-sign-up-1728x1117",
       "referenceInventoryRoute": "desktop/01/sign-up",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/sign-up",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/sign-up",
       "appRoute": "/tests/visual/onboarding.html?googleScene=sign-up",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1537,7 +1537,7 @@
     {
       "id": "google-01-sign-up-1440x900",
       "referenceInventoryRoute": "desktop/01/sign-up",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/sign-up",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/sign-up",
       "appRoute": "/tests/visual/onboarding.html?googleScene=sign-up",
       "viewport": "1440x900",
       "theme": "light",
@@ -1549,7 +1549,7 @@
     {
       "id": "google-01-cancelled-1728x1117",
       "referenceInventoryRoute": "desktop/01/cancelled",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/cancelled",
       "appRoute": "/tests/visual/onboarding.html?googleScene=cancelled",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1561,7 +1561,7 @@
     {
       "id": "google-01-cancelled-1440x900",
       "referenceInventoryRoute": "desktop/01/cancelled",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/cancelled",
       "appRoute": "/tests/visual/onboarding.html?googleScene=cancelled",
       "viewport": "1440x900",
       "theme": "light",
@@ -1573,7 +1573,7 @@
     {
       "id": "google-01-password-account-1728x1117",
       "referenceInventoryRoute": "desktop/01/password-account",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/password-account",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/password-account",
       "appRoute": "/tests/visual/onboarding.html?googleScene=password-account",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1585,7 +1585,7 @@
     {
       "id": "google-01-password-account-1440x900",
       "referenceInventoryRoute": "desktop/01/password-account",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/password-account",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/password-account",
       "appRoute": "/tests/visual/onboarding.html?googleScene=password-account",
       "viewport": "1440x900",
       "theme": "light",
@@ -1597,7 +1597,7 @@
     {
       "id": "google-01-unverified-1728x1117",
       "referenceInventoryRoute": "desktop/01/unverified",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/unverified",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/unverified",
       "appRoute": "/tests/visual/onboarding.html?googleScene=unverified",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1609,7 +1609,7 @@
     {
       "id": "google-01-unverified-1440x900",
       "referenceInventoryRoute": "desktop/01/unverified",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/unverified",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/unverified",
       "appRoute": "/tests/visual/onboarding.html?googleScene=unverified",
       "viewport": "1440x900",
       "theme": "light",
@@ -1621,7 +1621,7 @@
     {
       "id": "google-01-loading-1728x1117",
       "referenceInventoryRoute": "desktop/01/loading",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/loading",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/loading",
       "appRoute": "/tests/visual/onboarding.html?googleScene=loading",
       "viewport": "1728x1117",
       "theme": "light",
@@ -1633,7 +1633,7 @@
     {
       "id": "google-01-loading-1440x900",
       "referenceInventoryRoute": "desktop/01/loading",
-      "referenceUrl": "http://127.0.0.1:5197/20260924-r15/desktop/#01/loading",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/desktop/#01/loading",
       "appRoute": "/tests/visual/onboarding.html?googleScene=loading",
       "viewport": "1440x900",
       "theme": "light",
@@ -1641,6 +1641,486 @@
       "referenceReadySelector": ".auth-scene",
       "appReadySelector": "[data-testid=\"google-account-scene\"]",
       "referenceCanvas": true
+    },
+    {
+      "id": "onboarding-verify-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-1440x900",
+      "referenceInventoryRoute": "onboarding/verify",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-error-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-error",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-error",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-error-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-error",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-error",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-verifying-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-verifying",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-verifying",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-verifying",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-verifying-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-verifying",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-verifying",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-verifying",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-expired-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-expired",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-expired",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-expired",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-expired-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-expired",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-expired",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-expired",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-locked-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-locked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-locked",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-locked",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-locked-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-locked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-locked",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-locked",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-resent-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-resent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-resent",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-resent",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-resent-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-resent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-resent",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-resent",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-network-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-network",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-network",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-network",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-network-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-network",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-network",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-network",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-change-email-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-change-email",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-change-email",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-change-email",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-change-email-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-change-email",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-change-email",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-change-email",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-done-1728x1117",
+      "referenceInventoryRoute": "onboarding/verify-done",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-done",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-done",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-verify-done-1440x900",
+      "referenceInventoryRoute": "onboarding/verify-done",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#verify-done",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=verify-done",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-verifying-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-verifying",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-verifying",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-verifying",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-verifying-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-verifying",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-verifying",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-verifying",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-error-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-error",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-error",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-error-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-error",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-error",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-error",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-locked-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-locked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-locked",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-locked",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-locked-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-locked",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-locked",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-locked",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-resent-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-resent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-resent",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-resent",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-resent-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-resent",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-resent",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-resent",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-network-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-network",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-network",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-network",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-network-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-network",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-network",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-network",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-change-email-1728x1117",
+      "referenceInventoryRoute": "onboarding/reset-change-email",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-change-email",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-change-email",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1728x1117",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
+    },
+    {
+      "id": "onboarding-reset-change-email-1440x900",
+      "referenceInventoryRoute": "onboarding/reset-change-email",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/onboarding/#reset-change-email",
+      "referencePrefs": {},
+      "referenceReadySelector": ".app-frame",
+      "appRoute": "/tests/visual/onboarding.html?scene=reset-change-email",
+      "appPrefs": {},
+      "appReadySelector": ".app-frame",
+      "viewport": "1440x900",
+      "clip": {
+        "referenceSelector": ".app-frame",
+        "appSelector": ".app-frame"
+      },
+      "actions": []
     }
   ]
 }
