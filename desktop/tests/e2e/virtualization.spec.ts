@@ -454,14 +454,28 @@ test.describe("list virtualization", () => {
         let previousScrollTop = startScrollTop;
         let maxForwardTravel = 0;
         let maxRollback = 0;
-        const deadline = performance.now() + 400;
-        while (performance.now() < deadline) {
+        // Watch until all three exit wheels have been delivered, then a short
+        // settle window. A fixed 400ms window missed the last wheel on slower
+        // software-rendered CI hosts, where input delivery lags rendering.
+        let wheelsSeen = 0;
+        let lastWheelAt = performance.now();
+        const onWheel = () => {
+          wheelsSeen += 1;
+          lastWheelAt = performance.now();
+        };
+        s.addEventListener("wheel", onWheel, { passive: true });
+        const hardDeadline = performance.now() + 2_000;
+        while (
+          performance.now() < hardDeadline &&
+          (wheelsSeen < 3 || performance.now() - lastWheelAt < 200)
+        ) {
           const travel = s.scrollTop - startScrollTop;
           maxForwardTravel = Math.max(maxForwardTravel, travel);
           maxRollback = Math.max(maxRollback, previousScrollTop - s.scrollTop);
           previousScrollTop = s.scrollTop;
           await new Promise((resolve) => requestAnimationFrame(resolve));
         }
+        s.removeEventListener("wheel", onWheel);
         return { maxForwardTravel, maxRollback };
       });
       const exitBox = await timeline.boundingBox();
