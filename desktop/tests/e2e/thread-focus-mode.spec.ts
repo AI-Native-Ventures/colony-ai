@@ -281,9 +281,7 @@ test("focus and split preserve reading context and interaction ownership", async
 test("narrow threads do not offer an unavailable layout switch", async ({
   page,
 }) => {
-  // The Colony sidebar is 220px, so the channel area stays below the 600px
-  // split-pane breakpoint only when the window is narrower than about 830px.
-  await page.setViewportSize({ width: 820, height: 720 });
+  await page.setViewportSize({ width: 860, height: 720 });
   await installMockBridge(page);
   await page.goto("/");
   const rootId = await seedLongThread(page);
