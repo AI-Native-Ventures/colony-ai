@@ -191,8 +191,8 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar][data-prominent-active-tab]
   .w20-settings-sidebar.w20-settings-sidebar
   .w20-nav-item.is-active {
-  background: var(--w20-appearance-accent, #3b82f6);
-  color: #fff;
+  background: var(--w20-appearance-accent, #e7f0fe);
+  color: #2655a0;
 }
 
 :root[data-prominent-active-tab] .w20-nav-item.is-active::before {
@@ -212,8 +212,8 @@ body:has(.w20-settings-shell) {
 :root.dark[data-buzz-sidebar][data-prominent-active-tab]
   .w20-settings-sidebar.w20-settings-sidebar
   .w20-nav-item.is-active {
-  background: var(--w20-appearance-accent, #c0a2d0);
-  color: #211e26;
+  background: var(--w20-appearance-accent, #354157);
+  color: #e6e1ec;
 }
 
 .w20-nav-footer {
@@ -360,9 +360,9 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-settings-topbar {
-  border-color: rgb(57 50 63 / 75%);
+  border-color: rgb(60 53 68 / 75%);
   border-bottom-color: #39323f;
-  background: #211e26;
+  background: #26232d;
 }
 
 .w20-topbar-history {
@@ -482,8 +482,8 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-settings-surface .w20-inner-tabs {
-  border-color: #39323f;
-  background: #211e26;
+  border-color: #3c3544;
+  background: #26232d;
 }
 
 .dark .w20-inner-tab {
