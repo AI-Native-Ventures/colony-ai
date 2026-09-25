@@ -423,7 +423,7 @@ export function AudioMessageAttachment({
         "my-1 w-full max-w-[21rem] gap-2.5 px-2.5 py-2",
         !composer &&
           transcript &&
-          "colony-voice-note-card !max-w-[24.375rem] !grid !grid-cols-[2rem_minmax(0,1fr)_auto] !grid-rows-[2rem_auto] !items-center !gap-x-2.5 !gap-y-2 !px-3 py-2.5",
+          "colony-voice-note-card !max-w-[24.375rem] !grid !grid-cols-[2rem_minmax(0,1fr)_auto] !grid-rows-[2rem_auto] !items-center !gap-x-2.5 !gap-y-2 !px-3 py-2.5 !text-voice-note",
         composer && "shadow-none",
       )}
       data-testid={
