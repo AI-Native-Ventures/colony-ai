@@ -54,7 +54,7 @@
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="sidebar-primary-menu"] {
-  padding-inline: 0.375rem;
+  padding-inline: 0.5rem;
 }
 
 :root:has([data-colony-workspace-route="true"]) .sidebar-primary-menu {
