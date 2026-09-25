@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 const SHOTS = "test-results/persistent-agent-audience";
 const CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
@@ -360,7 +361,7 @@ test("keeps the composer and global automatic mention settings synchronized", as
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await selectSettingsSection(page, "agent-defaults");
   const settingsToggle = page
     .getByTestId("settings-automatic-agent-mentions")
     .getByRole("switch", { name: "Automatically mention agents" });

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings } from "../helpers/settings";
+import { openSettings, selectSettingsSection } from "../helpers/settings";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
 const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
@@ -354,7 +354,7 @@ test("settings is a route: section survives reload, closing returns to the previ
   await expect(page).toHaveURL(/#\/settings/);
 
   // Section switches rewrite the settings entry (replace, not push).
-  await page.getByTestId("settings-nav-notifications").click();
+  await selectSettingsSection(page, "notifications");
   await expect(page).toHaveURL(/section=notifications/);
 
   await page.reload();

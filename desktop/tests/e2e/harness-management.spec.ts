@@ -21,6 +21,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 // ── Shared catalog fixtures ───────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ async function openHarnessSettings(page: import("@playwright/test").Page) {
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await selectSettingsSection(page, "harnesses");
   await expect(page.getByTestId("settings-harnesses")).toBeVisible({
     timeout: 10_000,
   });

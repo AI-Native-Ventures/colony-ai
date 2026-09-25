@@ -20,6 +20,7 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { selectSettingsSection } from "../helpers/settings";
 
 const SHOTS = "test-results/screenshots-dialogs";
 
@@ -33,7 +34,7 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await selectSettingsSection(page, "agent-defaults");
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible({
     timeout: 10_000,
   });

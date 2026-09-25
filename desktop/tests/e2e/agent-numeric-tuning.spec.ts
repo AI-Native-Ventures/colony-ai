@@ -17,6 +17,7 @@
 
 import { expect, test } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await selectSettingsSection(page, "agent-defaults");
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible({
     timeout: 10_000,
   });

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 const SHORTCODE = "buzz";
 
@@ -38,7 +39,7 @@ test("settings card splits My emoji from read-only Community emoji", async ({
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-custom-emoji").click();
+  await selectSettingsSection(page, "custom-emoji");
 
   // The mock identity owns :buzz: (removable); :narf: belongs to another
   // member (read-only, no trash button).
