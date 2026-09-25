@@ -647,14 +647,19 @@
           "selector": "[data-testid=signout-open-dialog]"
         }
       ],
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=signout-dialog]"
+      }
     },
     {
       "id": "desktop-08-catalog",
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#08/catalog",
-      "appRoute": "/#/settings?section=appearance",
+      "appRoute": "/#/settings?section=settings/themes",
       "routeLabel": "Theme catalog",
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=settings-theme-catalog]"
     },
     {
       "id": "desktop-08-custom",
@@ -879,7 +884,11 @@
           "selector": "[data-testid=doctor-runtime-install-failure-codex]"
         }
       ],
-      "appReadySelector": "[data-testid=settings-harnesses]"
+      "appReadySelector": "[data-testid=settings-harnesses]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=doctor-runtime-install-failure-codex]"
+      }
     },
     {
       "id": "desktop-10-hosts",
@@ -978,7 +987,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1013,7 +1022,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1067,7 +1076,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1110,7 +1119,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1155,7 +1164,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
