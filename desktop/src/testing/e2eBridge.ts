@@ -36,6 +36,7 @@ import type { ConnectionState } from "@/shared/api/relayClientShared";
 import type {
   ChannelTemplate,
   FeedItemCategory,
+  HomeFeedVisualFixture,
   RelayEvent,
 } from "@/shared/api/types";
 import type {
@@ -203,6 +204,50 @@ type MockHuddleSeed = {
   transcriptionEnabled?: boolean;
   ttsEnabled?: boolean;
   isCreator?: boolean;
+};
+
+/** Exact records used only by the visual comparison mock bridge. */
+export type VisualFixtureSeed = {
+  id: string;
+  businessName: string;
+  identity: { pubkey: string; displayName: string };
+  profiles: Array<{
+    pubkey: string;
+    displayName: string;
+    isAgent: boolean;
+    avatarUrl?: string | null;
+  }>;
+  channels: Array<{
+    id: string;
+    name: string;
+    description: string;
+    lastMessageAt?: number;
+    members: Array<{
+      pubkey: string;
+      displayName: string;
+      role: RawChannelMember["role"];
+      isAgent: boolean;
+    }>;
+  }>;
+  messages: Array<{
+    channelId: string;
+    id: string;
+    pubkey: string;
+    createdAt: number;
+    kind: number;
+    tags: string[][];
+    content: string;
+    /** Keep a context-only thread root queryable without adding it to channel history. */
+    timelineVisibility?: "channel" | "thread-only";
+  }>;
+  todayUpdates?: Array<{
+    id: string;
+    pubkey: string;
+    createdAt: number;
+    content: string;
+    tags: string[][];
+  }>;
+  today: HomeFeedVisualFixture;
 };
 
 type E2eConfig = {
@@ -378,6 +423,8 @@ type E2eConfig = {
     /** Number of seeded rows in the deep-history fixture. Defaults to 600. */
     deepHistoryMessageCount?: number;
     feedReadError?: string;
+    /** Reference records for the visual comparison harness only. */
+    visualFixture?: VisualFixtureSeed;
     canvasReadError?: string;
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
@@ -842,6 +889,7 @@ type RawHomeFeedResponse = {
     total: number;
     generated_at: number;
   };
+  visual_fixture?: HomeFeedVisualFixture;
 };
 
 type RawThreadSummary = {
@@ -2854,7 +2902,11 @@ function getMockMemberPubkey(config: E2eConfig | undefined): string {
 }
 
 function getMockMemberDisplayName(config: E2eConfig | undefined): string {
-  return getActiveIdentity(config)?.username ?? getMockIdentity().displayName;
+  return (
+    config?.mock?.visualFixture?.identity.displayName ??
+    getActiveIdentity(config)?.username ??
+    getMockIdentity().displayName
+  );
 }
 
 function createCurrentMember(
@@ -3330,6 +3382,113 @@ const mockChannels: MockChannel[] = [
 ];
 
 const mockMessages = new Map<string, RelayEvent[]>();
+const mockVisualThreadOnlyMessageIds = new Set<string>();
+
+function seedVisualFixture(fixture: VisualFixtureSeed) {
+  mockVisualThreadOnlyMessageIds.clear();
+  DEFAULT_MOCK_IDENTITY.display_name = fixture.identity.displayName;
+  mockDisplayNames.set(fixture.identity.pubkey, fixture.identity.displayName);
+  mockProfiles.set(fixture.identity.pubkey, {
+    pubkey: fixture.identity.pubkey,
+    display_name: fixture.identity.displayName,
+    name: fixture.identity.displayName,
+    avatar_url: null,
+    about: null,
+    nip05_handle: null,
+    owner_pubkey: null,
+    is_agent: false,
+    has_profile_event: true,
+  });
+
+  for (const profile of fixture.profiles) {
+    mockDisplayNames.set(profile.pubkey, profile.displayName);
+    if (profile.isAgent) mockAgentPubkeys.add(profile.pubkey);
+    mockProfiles.set(profile.pubkey, {
+      pubkey: profile.pubkey,
+      display_name: profile.displayName,
+      name: profile.displayName,
+      avatar_url: profile.avatarUrl ?? null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: profile.isAgent,
+      has_profile_event: true,
+    });
+  }
+
+  const messagesByChannel = new Map<string, RelayEvent[]>();
+  for (const message of fixture.messages) {
+    if (message.timelineVisibility === "thread-only") {
+      mockVisualThreadOnlyMessageIds.add(message.id);
+    }
+    const events = messagesByChannel.get(message.channelId) ?? [];
+    events.push({
+      id: message.id,
+      pubkey: message.pubkey,
+      created_at: message.createdAt,
+      kind: message.kind,
+      tags: message.tags.map((tag) => [...tag]),
+      content: message.content,
+      sig: "mocksig".repeat(20).slice(0, 128),
+    });
+    messagesByChannel.set(message.channelId, events);
+  }
+
+  mockChannels.splice(
+    0,
+    mockChannels.length,
+    ...fixture.channels.map((channel) => {
+      const lastMessageAt = Math.max(
+        channel.lastMessageAt ?? 0,
+        ...(messagesByChannel.get(channel.id) ?? []).map(
+          (message) => message.created_at,
+        ),
+      );
+      const ageMinutes = lastMessageAt
+        ? Math.max(0, Math.floor((Date.now() / 1000 - lastMessageAt) / 60))
+        : 1440;
+      const members: RawChannelMember[] = channel.members.map((member) => ({
+        pubkey: member.pubkey,
+        role: member.role,
+        is_agent: member.isAgent,
+        joined_at: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
+        display_name: member.displayName,
+      }));
+      return createMockChannel({
+        id: channel.id,
+        name: channel.name,
+        channel_type: "stream",
+        visibility: "open",
+        description: channel.description,
+        topic: null,
+        purpose: null,
+        last_message_at: lastMessageAt
+          ? new Date(lastMessageAt * 1000).toISOString()
+          : null,
+        archived_at: null,
+        created_by: fixture.identity.pubkey,
+        topic_set_by: null,
+        topic_set_at: null,
+        purpose_set_by: null,
+        purpose_set_at: null,
+        topic_required: false,
+        max_members: null,
+        nip29_group_id: null,
+        created_minutes_ago: ageMinutes + 30,
+        updated_minutes_ago: ageMinutes,
+        members,
+      });
+    }),
+  );
+
+  mockMessages.clear();
+  for (const [channelId, events] of messagesByChannel) {
+    mockMessages.set(
+      channelId,
+      events.sort((first, second) => first.created_at - second.created_at),
+    );
+  }
+}
 const deferredSendMessageLiveEchoes: Array<{
   channelId: string;
   event: RelayEvent;
@@ -4613,6 +4772,7 @@ function isMockBroadcastReply(tags: string[][]): boolean {
  * depth-1 replies the real relay serves.
  */
 function isMockTopLevelRow(event: RelayEvent): boolean {
+  if (mockVisualThreadOnlyMessageIds.has(event.id)) return false;
   const { parentEventId, rootEventId } = getThreadReferenceFromTags(event.tags);
   if (rootEventId === null) {
     return true;
@@ -6092,6 +6252,22 @@ async function handleGetGlobalNotes(
   args: { limit?: number | null; before?: number | null } | null,
   config: E2eConfig | undefined,
 ): Promise<RawUserNotesResponse> {
+  const visualFixture = config?.mock?.visualFixture;
+  if (!isRelayMode(config) && visualFixture?.todayUpdates) {
+    const notes = visualFixture.todayUpdates
+      .filter((note) => (args?.before ? note.createdAt < args.before : true))
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, args?.limit ?? 50)
+      .map((note) => ({
+        id: note.id,
+        pubkey: note.pubkey,
+        content: note.content,
+        created_at: note.createdAt,
+        tags: note.tags.map((tag) => [...tag]),
+      }));
+    return { notes, next_cursor: null };
+  }
+
   const notes = [
     ...getMockUserNotes(DEFAULT_MOCK_IDENTITY.pubkey),
     ...getMockUserNotes(ALICE_PUBKEY),
@@ -8049,6 +8225,25 @@ async function handleGetFeed(
   const feedReadError = config?.mock?.feedReadError;
   if (feedReadError) {
     throw new Error(feedReadError);
+  }
+
+  const visualFixture = config?.mock?.visualFixture;
+  if (!isRelayMode(config) && visualFixture) {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      feed: {
+        mentions: [],
+        needs_action: [],
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: 0,
+        generated_at: now,
+      },
+      visual_fixture: visualFixture.today,
+    };
   }
 
   const identity = getIdentity(config);
@@ -11365,6 +11560,9 @@ export function maybeInstallE2eTauriMocks() {
   const config = getConfig();
   if (!config) {
     return;
+  }
+  if (!isRelayMode(config) && config.mock?.visualFixture) {
+    seedVisualFixture(config.mock.visualFixture);
   }
   window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
 

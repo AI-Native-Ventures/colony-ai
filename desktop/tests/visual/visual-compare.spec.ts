@@ -6,6 +6,7 @@ import UPNG from "upng-js";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { compareImages } from "../../scripts/visualComparison.mjs";
+import type { VisualFixtureSeed } from "../../src/testing/e2eBridge";
 
 type StorageSeed = {
   localStorage?: Record<string, unknown>;
@@ -29,6 +30,7 @@ type VisualCase = {
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
+  fixtureVariant?: "reviews-empty";
   viewport: "1728x1117" | "1440x900";
   theme: "light" | "dark";
   actions: VisualAction[];
@@ -72,6 +74,12 @@ if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
 const manifest = JSON.parse(
   await readFile(manifestPath, "utf8"),
 ) as VisualManifest;
+const r17Fixture = JSON.parse(
+  await readFile(new URL("./fixtures/g1-r17.json", import.meta.url), "utf8"),
+) as VisualFixtureSeed;
+const r17VoiceNoteWav = await readFile(
+  new URL("./fixtures/sample-note.wav", import.meta.url),
+);
 const manropeFont = await readFile(
   new URL(
     "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
@@ -104,6 +112,9 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
+        await referencePage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         // Keep the frozen reference files untouched while applying the owner
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
@@ -153,12 +164,67 @@ test.describe("visual comparison captures", () => {
         }
 
         const appPage = await appContext.newPage();
+        await appPage.route(
+          "https://example.invalid/voice-note-r17.wav",
+          (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "audio/x-wav",
+              body: r17VoiceNoteWav,
+            }),
+        );
+        await appPage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        await installMockBridge(appPage, entry.appMockData);
-        await appPage.goto(appUrl, {
-          waitUntil: "domcontentloaded",
+        await appPage.addInitScript(
+          ({ pubkey }) => {
+            localStorage.setItem(
+              `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+              JSON.stringify({
+                version: 1,
+                groups: {
+                  starred: "recent",
+                  "section:client-work": "recent",
+                },
+              }),
+            );
+          },
+          { pubkey: r17Fixture.identity.pubkey },
+        );
+        const visualFixture = {
+          ...r17Fixture,
+          today: {
+            ...r17Fixture.today,
+            ...(entry.fixtureVariant === "reviews-empty"
+              ? { businessReviews: [], reviewsEmpty: true }
+              : {}),
+          },
+        };
+        await installMockBridge(appPage, {
+          ...(entry.appMockData ?? {}),
+          visualFixture,
         });
+        if (entry.referenceInventoryRoute === "navigation/history") {
+          const channelUrl = new URL(
+            "/#/channels/c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+            appBaseUrl,
+          ).toString();
+          await appPage.goto(channelUrl, { waitUntil: "domcontentloaded" });
+          await appPage.goto(
+            new URL("/#/navigation/history", appBaseUrl).toString(),
+            { waitUntil: "domcontentloaded" },
+          );
+          await appPage.goto(new URL("/#/workflows", appBaseUrl).toString(), {
+            waitUntil: "domcontentloaded",
+          });
+          await appPage.goBack({ waitUntil: "domcontentloaded" });
+        } else {
+          await appPage.goto(appUrl, {
+            waitUntil: "domcontentloaded",
+          });
+        }
         await appPage.waitForLoadState("load");
 
         await waitForCaptureReady(
@@ -394,6 +460,8 @@ async function inspectPageGeometry(
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       devicePixelRatio: window.devicePixelRatio,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize,
+      bodyFontSize: getComputedStyle(document.body).fontSize,
       document: {
         bounds: bounds(document.documentElement),
         scrollWidth: document.documentElement.scrollWidth,
@@ -408,6 +476,30 @@ async function inspectPageGeometry(
         "#topbar",
         "#sidebar",
         "#surface",
+        ".studio-page",
+        ".studio-heading",
+        ".today-studio-grid",
+        ".cx-agent-attention",
+        ".cx-agent-attention .cx-row",
+        ".agency-attention-row",
+        ".attention-art",
+        ".studio-section",
+        ".studio-section-heading",
+        ".waiting-record",
+        ".coverage-entry",
+        ".r17-today-page",
+        ".r17-today-heading",
+        ".r17-today-grid",
+        ".r17-today-left",
+        ".r17-today-attention-row",
+        ".r17-today-business-heading",
+        ".r17-today-review-row",
+        ".r17-today-art",
+        ".r17-today-art-frame",
+        ".r17-today-right",
+        ".r17-today-section",
+        ".r17-today-waiting-record",
+        ".r17-today-money-record",
         ".colony-workspace-topbar",
         ".colony-channel-route-content",
         ".channel-pane",
@@ -415,11 +507,15 @@ async function inspectPageGeometry(
         ".channel-header",
         ".tabs",
         ".message-list",
+        ".day-divider",
+        ".day-divider p",
+        ".voice-player",
         ".channel-composer",
         ".channel-composer .composer",
         ".channel-composer .composer textarea",
         ".channel-composer .composer-footer",
         "[data-testid=app-sidebar]",
+        "[data-testid=sidebar-team-section]",
         "[data-testid=app-top-chrome]",
         "[data-buzz-content-surface]",
         "[data-testid=chat-header]",
@@ -430,8 +526,29 @@ async function inspectPageGeometry(
         "[data-testid=message-input-scroll]",
         "[data-testid=message-composer-toolbar]",
         "[data-testid=channel-view-tabs]",
+        "[data-testid=channel-view-tabs] > span:nth-child(1)",
+        "[data-testid=channel-view-tabs] > span:nth-child(2)",
+        "[data-testid=channel-view-tabs] > span:nth-child(3)",
+        "[data-testid=channel-view-tabs] > span:nth-child(4)",
+        "[data-testid=channel-view-tabs] > span:nth-child(5)",
+        "[data-testid=open-search] > span:first-of-type",
+        "[data-testid=sidebar-profile-name]",
+        "[data-testid=sidebar-profile-user-status]",
+        ".colony-composer-submit-hint",
         "[data-testid=message-timeline]",
+        "[data-testid=message-timeline-day-group]",
+        "[data-testid=message-timeline-day-divider]",
+        "[data-testid=message-timeline-day-divider] p",
+        "[data-testid=message-timeline-sticky-day-divider]",
+        "[data-testid=message-timeline-sticky-day-divider-content]",
+        "[data-testid=message-timeline-sticky-day-divider-content] p",
+        "[data-testid=audio-message-attachment]",
+        ".colony-voice-note-card",
         "[data-testid=message-thread-panel]",
+        ".colony-channel-topbar",
+        ".colony-channel-header",
+        ".colony-thread-panel-title",
+        ".colony-composer-submit-hint",
       ].map((selector) => {
         const element = document.querySelector(selector);
         if (!element) return { selector, count: 0 };
@@ -447,16 +564,175 @@ async function inspectPageGeometry(
             height: rect.height,
           },
           display: style.display,
+          text: element.textContent?.trim() ?? "",
           color: style.color,
           backgroundColor: style.backgroundColor,
           fontFamily: style.fontFamily,
           fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          width: style.width,
+          height: style.height,
+          padding: style.padding,
+          boxSizing: style.boxSizing,
+          transform: style.transform,
+          zoom: style.zoom,
           opacity: style.opacity,
+          visibility: style.visibility,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          zIndex: style.zIndex,
+          position: style.position,
           overflowY: style.overflowY,
           scrollHeight: element.scrollHeight,
           scrollWidth: element.scrollWidth,
         };
       }),
+      timelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-row"], article.message',
+        ),
+      ).map((element) => {
+        const rect = bounds(element);
+        const body = element.querySelector<HTMLElement>(
+          '[data-testid="message-body"], .message-body',
+        );
+        const meta = element.querySelector<HTMLElement>(
+          '[data-testid="message-meta"], .message-meta',
+        );
+        return {
+          bounds: rect,
+          text:
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 140) ??
+            "",
+          bodyBounds: body ? bounds(body) : null,
+          metaBounds: meta ? bounds(meta) : null,
+          children: Array.from(element.querySelectorAll<HTMLElement>("*"))
+            .filter(
+              (child) =>
+                child.parentElement === element ||
+                child.matches(
+                  "[data-testid], [class*='preview'], [class*='thread']",
+                ),
+            )
+            .slice(0, 16)
+            .map((child) => ({
+              tag: child.tagName,
+              className: child.className?.toString() ?? "",
+              testId: child.dataset.testid ?? null,
+              text:
+                child.textContent?.trim().replace(/\s+/g, " ").slice(0, 90) ??
+                "",
+              bounds: bounds(child),
+            })),
+          bodyChildren: body
+            ? Array.from(body.querySelectorAll<HTMLElement>("*"))
+                .filter(
+                  (child) =>
+                    child.children.length === 0 || child.dataset.testid,
+                )
+                .slice(0, 20)
+                .map((child) => ({
+                  tag: child.tagName,
+                  className: child.className?.toString() ?? "",
+                  testId: child.dataset.testid ?? null,
+                  text:
+                    child.textContent
+                      ?.trim()
+                      .replace(/\s+/g, " ")
+                      .slice(0, 90) ?? "",
+                  bounds: bounds(child),
+                }))
+            : [],
+        };
+      }),
+      sidebarChildren: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="sidebar-scroll-content"] > *',
+        ),
+      ).map((element) => ({
+        testId: element.dataset.testid ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
+        order: getComputedStyle(element).order,
+      })),
+      channelTabPaint: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="channel-view-tabs"] > span',
+        ),
+      ).map((element) => {
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textRect = range.getBoundingClientRect();
+        const ancestors: Array<Record<string, string>> = [];
+        let ancestor: HTMLElement | null = element;
+        while (ancestor && ancestors.length < 5) {
+          const ancestorStyle = getComputedStyle(ancestor);
+          ancestors.push({
+            tag: ancestor.tagName,
+            className: ancestor.className.toString(),
+            color: ancestorStyle.color,
+            opacity: ancestorStyle.opacity,
+            visibility: ancestorStyle.visibility,
+            display: ancestorStyle.display,
+            textIndent: ancestorStyle.textIndent,
+            overflow: ancestorStyle.overflow,
+            clipPath: ancestorStyle.clipPath,
+            filter: ancestorStyle.filter,
+            mixBlendMode: ancestorStyle.mixBlendMode,
+            textShadow: ancestorStyle.textShadow,
+            webkitTextFillColor: ancestorStyle.getPropertyValue(
+              "-webkit-text-fill-color",
+            ),
+          });
+          ancestor = ancestor.parentElement;
+        }
+        const hitStack = document
+          .elementsFromPoint(
+            textRect.x + textRect.width / 2,
+            textRect.y + textRect.height / 2,
+          )
+          .map((hit) => `${hit.tagName}.${(hit as HTMLElement).className}`);
+        return {
+          text: element.textContent?.trim() ?? "",
+          textRect: {
+            x: textRect.x,
+            y: textRect.y,
+            width: textRect.width,
+            height: textRect.height,
+          },
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          color: style.color,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          textStroke: style.getPropertyValue("-webkit-text-stroke-color"),
+          textShadow: style.textShadow,
+          textIndent: style.textIndent,
+          clipPath: style.clipPath,
+          filter: style.filter,
+          mixBlendMode: style.mixBlendMode,
+          animations: element
+            .getAnimations()
+            .map((animation) => animation.playState),
+          ancestors,
+          hitStack,
+        };
+      }),
+      messageTimelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-timeline"] [data-testid="message-row"]',
+        ),
+      ).map((element) => ({
+        id: element.dataset.messageId ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 180) ?? "",
+      })),
     };
   });
   if (
