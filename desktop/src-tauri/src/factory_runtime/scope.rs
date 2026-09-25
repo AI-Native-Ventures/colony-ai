@@ -1,4 +1,5 @@
 use super::*;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// Native-owned authorization scope for persisted Factory runs.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -38,6 +39,14 @@ impl FactoryScope {
                 identity_pubkey: self.identity_pubkey.clone(),
                 subject: FactoryMembershipSubject::ClientChannel(channel_id.clone()),
             })
+    }
+
+    pub(super) fn has_same_business_owner(&self, other: &Self) -> bool {
+        self.relay_url == other.relay_url
+            && self
+                .identity_pubkey
+                .eq_ignore_ascii_case(&other.identity_pubkey)
+            && self.business_community_id == other.business_community_id
     }
 }
 
@@ -80,73 +89,153 @@ pub(super) fn response_contains_business_membership(
             .any(|community| community.id == business_community_id))
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct CachedMembership {
+    pub(super) expires_at: Instant,
+    pub(super) is_member: bool,
+    revision: u64,
+}
+
+#[derive(Default)]
+struct MembershipState {
+    entries: HashMap<FactoryMembershipKey, CachedMembership>,
+    in_flight: HashMap<FactoryMembershipKey, u64>,
+    epochs: HashMap<FactoryMembershipKey, u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MembershipVerification {
+    Member(bool),
+    Superseded,
+}
+
+const MEMBERSHIP_REFRESH_LOCK_SHARDS: usize = 64;
+
 #[derive(Clone)]
 pub(super) struct MembershipCache {
-    pub(super) entries: Arc<Mutex<HashMap<FactoryMembershipKey, (Instant, bool)>>>,
-    pub(super) generations: Arc<Mutex<HashMap<FactoryMembershipKey, u64>>>,
+    state: Arc<Mutex<MembershipState>>,
+    refresh_locks: Arc<Vec<tokio::sync::Mutex<()>>>,
     pub(super) next_generation: Arc<AtomicU64>,
 }
 
 impl MembershipCache {
+    #[cfg(test)]
+    pub(super) fn cache_verified_membership(
+        &self,
+        key: FactoryMembershipKey,
+        expires_at: Instant,
+        is_member: bool,
+    ) {
+        let revision = self.next_generation.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut state) = self.state.lock() {
+            state.entries.insert(
+                key,
+                CachedMembership {
+                    expires_at,
+                    is_member,
+                    revision,
+                },
+            );
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn has_cached_membership(&self, key: &FactoryMembershipKey) -> bool {
+        self.state
+            .lock()
+            .ok()
+            .is_some_and(|state| state.entries.contains_key(key))
+    }
+
     pub(super) async fn verify_with<F, Fut>(
         &self,
         key: FactoryMembershipKey,
         force_refresh: bool,
         now: Instant,
         verify: F,
-    ) -> Result<bool, String>
+    ) -> Result<MembershipVerification, String>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<bool, String>>,
     {
-        if !force_refresh {
-            if let Some((_, is_member)) = self
+        let (observed_revision, observed_in_flight) = {
+            let state = self.state.lock().map_err(|error| error.to_string())?;
+            let entry = state
                 .entries
-                .lock()
-                .map_err(|error| error.to_string())?
                 .get(&key)
                 .copied()
-                .filter(|(expires_at, _)| *expires_at > now)
+                .filter(|entry| entry.expires_at > now);
+            if !force_refresh {
+                if let Some(entry) = entry {
+                    return Ok(MembershipVerification::Member(entry.is_member));
+                }
+            }
+            (
+                entry.map(|entry| entry.revision),
+                state.in_flight.get(&key).copied(),
+            )
+        };
+
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        let lock_index = hasher.finish() as usize % self.refresh_locks.len();
+        let _refresh_guard = self.refresh_locks[lock_index].lock().await;
+
+        {
+            let state = self.state.lock().map_err(|error| error.to_string())?;
+            if let Some(entry) = state
+                .entries
+                .get(&key)
+                .copied()
+                .filter(|entry| entry.expires_at > now)
             {
-                return Ok(is_member);
+                let refresh_completed_while_waiting =
+                    observed_revision.is_none_or(|revision| revision != entry.revision);
+                let joined_refresh_completed = observed_in_flight == Some(entry.revision);
+                if !force_refresh || refresh_completed_while_waiting || joined_refresh_completed {
+                    return Ok(MembershipVerification::Member(entry.is_member));
+                }
             }
         }
 
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
         {
-            let mut generations = self.generations.lock().map_err(|error| error.to_string())?;
-            generations.insert(key.clone(), generation);
-            self.entries
-                .lock()
-                .map_err(|error| error.to_string())?
-                .remove(&key);
+            let mut state = self.state.lock().map_err(|error| error.to_string())?;
+            state.epochs.insert(key.clone(), generation);
+            state.in_flight.insert(key.clone(), generation);
+            state.entries.remove(&key);
         }
-
-        let is_member = match verify().await {
-            Ok(is_member) => is_member,
-            Err(error) => {
-                let mut generations = self
-                    .generations
-                    .lock()
-                    .map_err(|failure| failure.to_string())?;
-                if generations.get(&key) == Some(&generation) {
-                    generations.remove(&key);
-                }
-                return Err(error);
-            }
+        let mut flight = MembershipFlightGuard {
+            state: Arc::clone(&self.state),
+            key: key.clone(),
+            generation,
+            finished: false,
         };
-        let mut generations = self.generations.lock().map_err(|error| error.to_string())?;
-        if generations.get(&key) != Some(&generation) {
-            return Err("Factory membership verification was superseded".to_string());
+
+        let is_member = verify().await?;
+        let mut state = self.state.lock().map_err(|error| error.to_string())?;
+        if state.epochs.get(&key) != Some(&generation) {
+            state.in_flight.remove(&key);
+            state.epochs.remove(&key);
+            flight.finished = true;
+            return Ok(MembershipVerification::Superseded);
         }
-        let mut entries = self.entries.lock().map_err(|error| error.to_string())?;
-        entries.retain(|_, (expires_at, _)| *expires_at > now);
-        if entries.len() >= MAX_MEMBERSHIP_CACHE_ENTRIES {
-            entries.clear();
+        state.entries.retain(|_, entry| entry.expires_at > now);
+        if state.entries.len() >= MAX_MEMBERSHIP_CACHE_ENTRIES {
+            state.entries.clear();
         }
-        entries.insert(key.clone(), (now + FACTORY_MEMBERSHIP_TTL, is_member));
-        generations.remove(&key);
-        Ok(is_member)
+        state.entries.insert(
+            key.clone(),
+            CachedMembership {
+                expires_at: now + FACTORY_MEMBERSHIP_TTL,
+                is_member,
+                revision: generation,
+            },
+        );
+        state.in_flight.remove(&key);
+        state.epochs.remove(&key);
+        flight.finished = true;
+        Ok(MembershipVerification::Member(is_member))
     }
 
     pub(super) async fn verify_for_bind<F, Fut>(
@@ -154,7 +243,7 @@ impl MembershipCache {
         key: FactoryMembershipKey,
         now: Instant,
         verify: F,
-    ) -> Result<bool, String>
+    ) -> Result<MembershipVerification, String>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<bool, String>>,
@@ -163,30 +252,77 @@ impl MembershipCache {
     }
 
     pub(super) fn has_fresh_membership(&self, scope: &FactoryScope, now: Instant) -> bool {
-        let Ok(entries) = self.entries.lock() else {
+        let Ok(state) = self.state.lock() else {
             return false;
         };
         let is_fresh_member = |key: &FactoryMembershipKey| {
-            entries
+            state
+                .entries
                 .get(key)
-                .is_some_and(|(expires_at, is_member)| *expires_at > now && *is_member)
+                .is_some_and(|entry| entry.expires_at > now && entry.is_member)
         };
         is_fresh_member(&scope.business_membership_key())
             && scope.membership_key().as_ref().is_none_or(is_fresh_member)
     }
 
-    pub(super) fn invalidate_scope(&self, scope: &FactoryScope) {
-        let Ok(mut generations) = self.generations.lock() else {
-            return;
-        };
-        let Ok(mut entries) = self.entries.lock() else {
-            return;
-        };
-        entries.remove(&scope.business_membership_key());
-        generations.remove(&scope.business_membership_key());
+    pub(super) fn invalidate_business_membership(&self, scope: &FactoryScope) {
+        self.invalidate_key(scope.business_membership_key());
+    }
+
+    pub(super) fn invalidate_client_membership(&self, scope: &FactoryScope) {
         if let Some(key) = scope.membership_key() {
-            entries.remove(&key);
-            generations.remove(&key);
+            self.invalidate_key(key);
+        }
+    }
+
+    fn invalidate_key(&self, key: FactoryMembershipKey) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state.entries.remove(&key);
+        if state.in_flight.contains_key(&key) {
+            let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+            state.epochs.insert(key, generation);
+        } else {
+            state.epochs.remove(&key);
+        }
+    }
+}
+
+impl Default for MembershipCache {
+    fn default() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(MembershipState::default())),
+            refresh_locks: Arc::new(
+                (0..MEMBERSHIP_REFRESH_LOCK_SHARDS)
+                    .map(|_| tokio::sync::Mutex::new(()))
+                    .collect(),
+            ),
+            next_generation: Arc::new(AtomicU64::new(0)),
+        }
+    }
+}
+
+struct MembershipFlightGuard {
+    state: Arc<Mutex<MembershipState>>,
+    key: FactoryMembershipKey,
+    generation: u64,
+    finished: bool,
+}
+
+impl Drop for MembershipFlightGuard {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if state.in_flight.get(&self.key) == Some(&self.generation) {
+            state.in_flight.remove(&self.key);
+        }
+        if !state.in_flight.contains_key(&self.key) {
+            state.epochs.remove(&self.key);
         }
     }
 }
@@ -398,13 +534,17 @@ where
             .await
     };
     match is_member {
-        Ok(true) => Ok(()),
-        Ok(false) => {
-            runtime.invalidate_scope(scope)?;
+        Ok(MembershipVerification::Member(true)) => Ok(()),
+        Ok(MembershipVerification::Member(false)) => {
+            runtime.invalidate_client_scope(scope)?;
             Err("current identity is not a member of the client channel".to_string())
         }
+        Ok(MembershipVerification::Superseded) => Err(
+            "Factory client membership verification was superseded; retry authorization"
+                .to_string(),
+        ),
         Err(error) => {
-            runtime.invalidate_scope(scope)?;
+            runtime.invalidate_client_scope(scope)?;
             Err(format!(
                 "Factory client membership could not be revalidated: {error}"
             ))
@@ -433,13 +573,17 @@ where
             .await
     };
     match membership {
-        Ok(true) => Ok(()),
-        Ok(false) => {
-            runtime.invalidate_scope(scope)?;
+        Ok(MembershipVerification::Member(true)) => Ok(()),
+        Ok(MembershipVerification::Member(false)) => {
+            runtime.invalidate_business_scope(scope)?;
             Err("current identity is not a member of the business community".to_string())
         }
+        Ok(MembershipVerification::Superseded) => Err(
+            "Factory business membership verification was superseded; retry authorization"
+                .to_string(),
+        ),
         Err(error) => {
-            runtime.invalidate_scope(scope)?;
+            runtime.invalidate_business_scope(scope)?;
             Err(format!(
                 "Factory business membership could not be revalidated: {error}"
             ))

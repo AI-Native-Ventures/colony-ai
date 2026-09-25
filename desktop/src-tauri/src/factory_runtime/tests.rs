@@ -56,10 +56,15 @@ fn seed_in_scope(path: &Path, run_id: &str, scope: &FactoryScope) {
 }
 
 fn cache_scope_memberships(runtime: &FactoryRuntime, scope: &FactoryScope, expires_at: Instant) {
-    let mut entries = runtime.memberships.entries.lock().unwrap();
-    entries.insert(scope.business_membership_key(), (expires_at, true));
+    runtime.memberships.cache_verified_membership(
+        scope.business_membership_key(),
+        expires_at,
+        true,
+    );
     if let Some(key) = scope.membership_key() {
-        entries.insert(key, (expires_at, true));
+        runtime
+            .memberships
+            .cache_verified_membership(key, expires_at, true);
     }
 }
 
@@ -624,7 +629,48 @@ async fn failed_final_status_write_is_journaled_and_same_host_list_recovers_with
 }
 
 #[tokio::test]
-async fn observer_lag_persists_a_gap_marker_and_fails_capture() {
+async fn finalization_retries_fail_once_journal_insert_and_same_host_snapshot_is_terminal() {
+    let (_dir, path) = temp_db();
+    let run_id = Uuid::new_v4().to_string();
+    seed(&path, &run_id);
+    store_transition(
+        &path,
+        &run_id,
+        Some(FactoryRunStatus::Queued),
+        FactoryRunStatus::Running,
+        None,
+    )
+    .unwrap();
+    let mut record_attempts = 0;
+    let result = persist_run_finalization_with(
+        || {
+            record_attempts += 1;
+            if record_attempts == 1 {
+                return Err("injected first finalization journal insert failure".to_string());
+            }
+            store_record_finalization(&path, &run_id, FactoryRunStatus::Done, None)
+        },
+        || store_apply_pending_finalization(&path, &run_id),
+    )
+    .await;
+
+    assert!(result.is_ok(), "journal insertion should retry once");
+    assert_eq!(record_attempts, 2);
+    let snapshot = store_snapshot(&path, &run_id, &test_scope(), 0).unwrap();
+    assert_eq!(snapshot.run.status, FactoryRunStatus::Done);
+    let connection = open_store(&path).unwrap();
+    let journal_rows: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM factory_run_finalizations WHERE run_id = ?1",
+            [&run_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(journal_rows, 0);
+}
+
+#[tokio::test]
+async fn observer_lag_retries_marker_persistence_and_fails_capture() {
     let (_dir, path) = temp_db();
     let run_id = Uuid::new_v4().to_string();
     seed(&path, &run_id);
@@ -641,7 +687,22 @@ async fn observer_lag_persists_a_gap_marker_and_fails_capture() {
         );
     }
 
-    let captured = capture_observer_stream(receiver, path.clone(), run_id.clone(), |_| {}).await;
+    let mut marker_attempts = 0;
+    let captured = capture_observer_stream(
+        receiver,
+        path.clone(),
+        run_id.clone(),
+        |_| {},
+        |marker_path, marker_run_id, reason| {
+            marker_attempts += 1;
+            if marker_attempts == 1 {
+                return Err("injected first transcript marker write failure".to_string());
+            }
+            store_append_capture_marker(marker_path, marker_run_id, reason)
+        },
+    )
+    .await;
+    assert_eq!(marker_attempts, 2);
     assert!(captured
         .as_ref()
         .is_err_and(|error| error.contains("observer lagged")));
@@ -687,7 +748,14 @@ async fn transcript_persistence_failure_overrides_successful_prompt_completion()
         }),
     );
 
-    let captured = capture_observer_stream(receiver, path.clone(), run_id.clone(), |_| {}).await;
+    let captured = capture_observer_stream(
+        receiver,
+        path.clone(),
+        run_id.clone(),
+        |_| {},
+        store_append_capture_marker,
+    )
+    .await;
     assert!(captured.is_err());
     let final_status = finish_status_after_capture((FactoryRunStatus::Done, None), captured);
     assert_eq!(final_status.0, FactoryRunStatus::Error);
@@ -942,6 +1010,252 @@ async fn factory_client_scope_business_revocation_invalidates_scope_and_cancels_
     assert_business_revocation_invalidates_scope(true).await;
 }
 
+#[tokio::test]
+async fn business_revocation_cancels_controls_and_attachments_in_sibling_client_scopes() {
+    let runtime = FactoryRuntime::default();
+    let scope_a = FactoryScope {
+        client_channel_id: Some("client-channel-a".to_string()),
+        ..test_scope()
+    };
+    let scope_b = FactoryScope {
+        client_channel_id: Some("client-channel-b".to_string()),
+        ..test_scope()
+    };
+    runtime.activate_scope(Some(scope_a.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope_a, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let control_a = runtime.register("run-a", scope_a.clone()).unwrap();
+    let scope_other_business = FactoryScope {
+        business_community_id: "business-two".to_string(),
+        client_channel_id: Some("client-channel-outside-business".to_string()),
+        ..test_scope()
+    };
+    runtime
+        .activate_scope(Some(scope_other_business.clone()))
+        .unwrap();
+    cache_scope_memberships(
+        &runtime,
+        &scope_other_business,
+        Instant::now() + FACTORY_MEMBERSHIP_TTL,
+    );
+    let control_other_business = runtime
+        .register("run-other-business", scope_other_business.clone())
+        .unwrap();
+    runtime.activate_scope(Some(scope_b.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope_b, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let control_b = runtime.register("run-b", scope_b.clone()).unwrap();
+
+    let attachment_a_cancel = CancellationToken::new();
+    let attachment_b_cancel = CancellationToken::new();
+    let attachment_other_business_cancel = CancellationToken::new();
+    {
+        let mut attachments = runtime.attachments.lock().unwrap();
+        attachments.insert(
+            "subscription-a".to_string(),
+            ScopedAttachment {
+                cancel: attachment_a_cancel.clone(),
+                scope: scope_a.clone(),
+            },
+        );
+        attachments.insert(
+            "subscription-b".to_string(),
+            ScopedAttachment {
+                cancel: attachment_b_cancel.clone(),
+                scope: scope_b.clone(),
+            },
+        );
+        attachments.insert(
+            "subscription-other-business".to_string(),
+            ScopedAttachment {
+                cancel: attachment_other_business_cancel.clone(),
+                scope: scope_other_business.clone(),
+            },
+        );
+    }
+    runtime.memberships.cache_verified_membership(
+        scope_b.business_membership_key(),
+        Instant::now() - Duration::from_secs(1),
+        true,
+    );
+
+    let result = authorize_active_factory_scope(
+        &runtime,
+        &scope_b,
+        false,
+        || async { Ok(false) },
+        || async { Ok(()) },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(control_a.cancel.is_cancelled());
+    assert!(control_b.cancel.is_cancelled());
+    assert!(!control_other_business.cancel.is_cancelled());
+    assert!(attachment_a_cancel.is_cancelled());
+    assert!(attachment_b_cancel.is_cancelled());
+    assert!(!attachment_other_business_cancel.is_cancelled());
+    assert!(runtime
+        .attachments
+        .lock()
+        .unwrap()
+        .contains_key("subscription-other-business"));
+}
+
+#[tokio::test]
+async fn client_revocation_cancels_only_that_client_scope() {
+    let runtime = FactoryRuntime::default();
+    let scope_a = FactoryScope {
+        client_channel_id: Some("client-channel-a".to_string()),
+        ..test_scope()
+    };
+    let scope_b = FactoryScope {
+        client_channel_id: Some("client-channel-b".to_string()),
+        ..test_scope()
+    };
+    runtime.activate_scope(Some(scope_a.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope_a, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let control_a = runtime.register("run-a", scope_a.clone()).unwrap();
+    runtime.activate_scope(Some(scope_b.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope_b, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let control_b = runtime.register("run-b", scope_b.clone()).unwrap();
+
+    let attachment_a_cancel = CancellationToken::new();
+    let attachment_b_cancel = CancellationToken::new();
+    {
+        let mut attachments = runtime.attachments.lock().unwrap();
+        attachments.insert(
+            "subscription-a".to_string(),
+            ScopedAttachment {
+                cancel: attachment_a_cancel.clone(),
+                scope: scope_a.clone(),
+            },
+        );
+        attachments.insert(
+            "subscription-b".to_string(),
+            ScopedAttachment {
+                cancel: attachment_b_cancel.clone(),
+                scope: scope_b.clone(),
+            },
+        );
+    }
+
+    let result =
+        verify_cached_client_membership(&runtime, &scope_b, true, || async { Ok(false) }).await;
+
+    assert!(result.is_err());
+    assert!(!control_a.cancel.is_cancelled());
+    assert!(control_b.cancel.is_cancelled());
+    assert!(!attachment_a_cancel.is_cancelled());
+    assert!(attachment_b_cancel.is_cancelled());
+    assert!(runtime
+        .attachments
+        .lock()
+        .unwrap()
+        .contains_key("subscription-a"));
+    assert!(runtime
+        .memberships
+        .has_fresh_membership(&scope_a, Instant::now()));
+}
+
+#[tokio::test]
+async fn business_invalidation_revokes_membership_before_waiting_for_scope_lock() {
+    let runtime = Arc::new(FactoryRuntime::default());
+    let scope = test_scope();
+    runtime.activate_scope(Some(scope.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let active_guard = runtime.active_scope.lock().unwrap();
+    let invalidating_runtime = Arc::clone(&runtime);
+    let invalidating_scope = scope.clone();
+    let invalidation = tokio::task::spawn_blocking(move || {
+        invalidating_runtime.invalidate_business_scope(&invalidating_scope)
+    });
+
+    let mut membership_revoked_before_scope_lock = false;
+    for _ in 0..100 {
+        if !runtime
+            .memberships
+            .has_fresh_membership(&scope, Instant::now())
+        {
+            membership_revoked_before_scope_lock = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    drop(active_guard);
+    invalidation.await.unwrap().unwrap();
+
+    assert!(membership_revoked_before_scope_lock);
+}
+
+#[tokio::test]
+async fn overlapping_successful_membership_refreshes_preserve_scope_and_workers() {
+    use tokio::sync::Notify;
+
+    let runtime = Arc::new(FactoryRuntime::default());
+    let scope = test_scope();
+    runtime.activate_scope(Some(scope.clone())).unwrap();
+    cache_scope_memberships(&runtime, &scope, Instant::now() + FACTORY_MEMBERSHIP_TTL);
+    let control = runtime.register("run-overlap", scope.clone()).unwrap();
+    runtime.memberships.cache_verified_membership(
+        scope.business_membership_key(),
+        Instant::now() - Duration::from_secs(1),
+        true,
+    );
+    let first_started = Arc::new(Notify::new());
+    let release_first = Arc::new(Notify::new());
+    let verify_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let first_runtime = Arc::clone(&runtime);
+    let first_scope = scope.clone();
+    let first_started_signal = Arc::clone(&first_started);
+    let first_release_signal = Arc::clone(&release_first);
+    let first_verify_calls = Arc::clone(&verify_calls);
+    let first = tokio::spawn(async move {
+        authorize_active_factory_scope(
+            &first_runtime,
+            &first_scope,
+            true,
+            move || async move {
+                first_verify_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                first_started_signal.notify_one();
+                first_release_signal.notified().await;
+                Ok(true)
+            },
+            || async { Ok(()) },
+        )
+        .await
+    });
+    first_started.notified().await;
+
+    let second_runtime = Arc::clone(&runtime);
+    let second_scope = scope.clone();
+    let second_entering = Arc::new(Notify::new());
+    let second_entering_signal = Arc::clone(&second_entering);
+    let second_verify_calls = Arc::clone(&verify_calls);
+    let second = tokio::spawn(async move {
+        second_entering_signal.notify_one();
+        authorize_active_factory_scope(
+            &second_runtime,
+            &second_scope,
+            true,
+            move || async move {
+                second_verify_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(true)
+            },
+            || async { Ok(()) },
+        )
+        .await
+    });
+    second_entering.notified().await;
+    tokio::task::yield_now().await;
+    release_first.notify_one();
+
+    assert!(first.await.unwrap().is_ok());
+    assert!(second.await.unwrap().is_ok());
+    assert_eq!(verify_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(runtime.active_scope().unwrap(), scope);
+    assert!(!control.cancel.is_cancelled());
+}
+
 async fn assert_business_revocation_invalidates_scope(with_client_channel: bool) {
     assert_eq!(FACTORY_MEMBERSHIP_TTL, Duration::from_secs(30));
     let runtime = FactoryRuntime::default();
@@ -985,13 +1299,11 @@ async fn assert_business_revocation_invalidates_scope(with_client_channel: bool)
         0
     );
 
-    {
-        let mut entries = runtime.memberships.entries.lock().unwrap();
-        entries.insert(
-            scope.business_membership_key(),
-            (Instant::now() - Duration::from_secs(1), true),
-        );
-    }
+    runtime.memberships.cache_verified_membership(
+        scope.business_membership_key(),
+        Instant::now() - Duration::from_secs(1),
+        true,
+    );
     let revoked = authorize_active_factory_scope(
         &runtime,
         &scope,
@@ -1012,22 +1324,12 @@ async fn assert_business_revocation_invalidates_scope(with_client_channel: bool)
     assert!(runtime.active_scope().is_err());
     assert!(control.cancel.is_cancelled());
     assert!(attachment_cancel.is_cancelled());
-    assert!(runtime
+    assert!(!runtime
         .memberships
-        .entries
-        .lock()
-        .unwrap()
-        .get(&scope.business_membership_key())
-        .is_none());
-    if let Some(client_key) = scope.membership_key() {
-        assert!(runtime
-            .memberships
-            .entries
-            .lock()
-            .unwrap()
-            .get(&client_key)
-            .is_none());
-    }
+        .has_cached_membership(&scope.business_membership_key()));
+    assert!(!runtime
+        .memberships
+        .has_fresh_membership(&scope, Instant::now()));
     assert!(runtime.attachments.lock().unwrap().is_empty());
 
     for operation in [
@@ -1056,17 +1358,16 @@ async fn assert_business_revocation_invalidates_scope(with_client_channel: bool)
 
 #[tokio::test]
 async fn factory_membership_cache_uses_explicit_thirty_second_freshness_window() {
-    let cache = MembershipCache {
-        entries: Arc::new(Mutex::new(HashMap::new())),
-        generations: Arc::new(Mutex::new(HashMap::new())),
-        next_generation: Arc::new(AtomicU64::new(0)),
-    };
+    let cache = MembershipCache::default();
     let scope = test_scope();
     let now = Instant::now();
-    assert!(cache
-        .verify_for_bind(scope.business_membership_key(), now, || async { Ok(true) })
-        .await
-        .unwrap());
+    assert_eq!(
+        cache
+            .verify_for_bind(scope.business_membership_key(), now, || async { Ok(true) })
+            .await
+            .unwrap(),
+        MembershipVerification::Member(true)
+    );
     assert!(cache.has_fresh_membership(&scope, now + Duration::from_secs(29)));
     assert!(!cache.has_fresh_membership(&scope, now + Duration::from_secs(30)));
 }
@@ -1075,11 +1376,7 @@ async fn factory_membership_cache_uses_explicit_thirty_second_freshness_window()
 async fn factory_membership_verification_rejects_stale_in_flight_results() {
     use tokio::sync::Notify;
 
-    let cache = MembershipCache {
-        entries: Arc::new(Mutex::new(HashMap::new())),
-        generations: Arc::new(Mutex::new(HashMap::new())),
-        next_generation: Arc::new(AtomicU64::new(0)),
-    };
+    let cache = MembershipCache::default();
     let scope = FactoryScope {
         client_channel_id: Some("client-channel-one".to_string()),
         ..test_scope()
@@ -1102,12 +1399,12 @@ async fn factory_membership_verification_rejects_stale_in_flight_results() {
     });
     started.notified().await;
 
-    assert!(!cache
-        .verify_for_bind(key, Instant::now(), || async { Ok(false) })
-        .await
-        .unwrap());
+    cache.invalidate_client_membership(&scope);
     release.notify_one();
-    assert!(stale.await.unwrap().is_err());
+    assert_eq!(
+        stale.await.unwrap().unwrap(),
+        MembershipVerification::Superseded
+    );
     assert!(!cache.has_fresh_membership(&scope, Instant::now()));
 }
 

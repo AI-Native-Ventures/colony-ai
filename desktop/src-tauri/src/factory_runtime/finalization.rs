@@ -20,18 +20,48 @@ pub(super) async fn persist_run_finalization(
     status: FactoryRunStatus,
     error: Option<&str>,
 ) -> Result<FinalizationResult, String> {
-    if !store_record_finalization(path, run_id, status, error)? {
+    persist_run_finalization_with(
+        || store_record_finalization(path, run_id, status, error),
+        || store_apply_pending_finalization(path, run_id),
+    )
+    .await
+}
+
+pub(super) async fn persist_run_finalization_with<RecordFinalization, ApplyFinalization>(
+    mut record_finalization: RecordFinalization,
+    mut apply_finalization: ApplyFinalization,
+) -> Result<FinalizationResult, String>
+where
+    RecordFinalization: FnMut() -> Result<bool, String>,
+    ApplyFinalization: FnMut() -> Result<Option<(FactoryRun, FactoryRunEvent)>, String>,
+{
+    let mut record_attempt = 0;
+    let recorded = loop {
+        match record_finalization() {
+            Ok(recorded) => break recorded,
+            Err(failure) => {
+                record_attempt += 1;
+                if record_attempt >= MAX_FINAL_STATUS_ATTEMPTS {
+                    return Err(format!(
+                        "Factory finalization journal could not be written after retries: {failure}"
+                    ));
+                }
+                tokio::time::sleep(finalization_retry_delay(record_attempt)).await;
+            }
+        }
+    };
+    if !recorded {
         return Ok(FinalizationResult::Noop);
     }
     let mut last_error = None;
     for attempt in 0..MAX_FINAL_STATUS_ATTEMPTS {
-        match store_apply_pending_finalization(path, run_id) {
+        match apply_finalization() {
             Ok(Some((run, event))) => return Ok(FinalizationResult::Applied(run, event)),
             Ok(None) => return Ok(FinalizationResult::Noop),
             Err(failure) => {
                 last_error = Some(failure);
                 if attempt + 1 < MAX_FINAL_STATUS_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_millis(40 * (attempt + 1) as u64)).await;
+                    tokio::time::sleep(finalization_retry_delay(attempt + 1)).await;
                 }
             }
         }
@@ -39,6 +69,33 @@ pub(super) async fn persist_run_finalization(
     Ok(FinalizationResult::Deferred(last_error.unwrap_or_else(
         || "Factory final status remains pending".to_string(),
     )))
+}
+
+pub(super) fn record_run_finalization_with_retry(
+    path: &Path,
+    run_id: &str,
+    status: FactoryRunStatus,
+    error: Option<&str>,
+) -> Result<bool, String> {
+    let mut last_error = None;
+    for attempt in 0..MAX_FINAL_STATUS_ATTEMPTS {
+        match store_record_finalization(path, run_id, status, error) {
+            Ok(recorded) => return Ok(recorded),
+            Err(failure) => {
+                last_error = Some(failure);
+                if attempt + 1 < MAX_FINAL_STATUS_ATTEMPTS {
+                    std::thread::sleep(finalization_retry_delay(attempt + 1));
+                }
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        "Factory finalization journal could not be written after retries".to_string()
+    }))
+}
+
+fn finalization_retry_delay(attempt: u32) -> Duration {
+    Duration::from_millis(40 * u64::from(attempt.min(7)))
 }
 
 async fn persist_queued_start_failure(

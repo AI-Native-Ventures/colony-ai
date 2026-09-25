@@ -65,6 +65,7 @@ const EVENT_BUFFER: usize = 256;
 const MAX_ATTACHMENTS: usize = 256;
 const MAX_BUSINESS_MEMBERSHIP_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_BUSINESS_MEMBERSHIP_COMMUNITIES: usize = 4096;
+const MAX_CAPTURE_MARKER_ATTEMPTS: u32 = 3;
 // Cached membership is usable for at most 30 seconds. Protected Factory
 // operations refresh expired entries and fail closed if membership is unknown.
 const FACTORY_MEMBERSHIP_TTL: Duration = Duration::from_secs(30);
@@ -458,21 +459,48 @@ impl FactoryRuntime {
         Ok(())
     }
 
-    fn invalidate_scope(&self, scope: &FactoryScope) -> Result<(), String> {
+    fn invalidate_business_scope(&self, scope: &FactoryScope) -> Result<(), String> {
+        self.invalidate_matching_scope(scope, true)
+    }
+
+    fn invalidate_client_scope(&self, scope: &FactoryScope) -> Result<(), String> {
+        self.invalidate_matching_scope(scope, false)
+    }
+
+    fn invalidate_matching_scope(
+        &self,
+        scope: &FactoryScope,
+        include_sibling_clients: bool,
+    ) -> Result<(), String> {
+        if include_sibling_clients {
+            self.memberships.invalidate_business_membership(scope);
+        } else {
+            self.memberships.invalidate_client_membership(scope);
+        }
         let mut active = self
             .active_scope
             .lock()
             .map_err(|error| error.to_string())?;
-        if active.as_ref() == Some(scope) {
+        let scope_matches = |candidate: &FactoryScope| {
+            if include_sibling_clients {
+                candidate.has_same_business_owner(scope)
+            } else {
+                candidate == scope
+            }
+        };
+        if active.as_ref().is_some_and(&scope_matches) {
             *active = None;
         }
         let controls = self.controls.lock().map_err(|error| error.to_string())?;
-        for control in controls.values().filter(|control| control.scope == *scope) {
+        for control in controls
+            .values()
+            .filter(|control| scope_matches(&control.scope))
+        {
             control.cancel.cancel();
         }
         let mut attachments = self.attachments.lock().map_err(|error| error.to_string())?;
         attachments.retain(|_, attachment| {
-            if attachment.scope == *scope {
+            if scope_matches(&attachment.scope) {
                 attachment.cancel.cancel();
                 false
             } else {
@@ -482,7 +510,6 @@ impl FactoryRuntime {
         drop(attachments);
         drop(controls);
         drop(active);
-        self.memberships.invalidate_scope(scope);
         Ok(())
     }
 
@@ -543,11 +570,7 @@ impl Default for FactoryRuntime {
             attachments: Arc::new(Mutex::new(HashMap::new())),
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_SESSIONS)),
             active_scope: Arc::new(Mutex::new(None)),
-            memberships: MembershipCache {
-                entries: Arc::new(Mutex::new(HashMap::new())),
-                generations: Arc::new(Mutex::new(HashMap::new())),
-                next_generation: Arc::new(AtomicU64::new(0)),
-            },
+            memberships: MembershipCache::default(),
         }
     }
 }
@@ -787,23 +810,54 @@ async fn capture_event(
     Ok(None)
 }
 
-async fn capture_observer_stream<F>(
+async fn retry_capture_marker<M>(
+    path: &Path,
+    run_id: &str,
+    reason: &str,
+    mut persist_marker: M,
+) -> Result<Option<FactoryRunEvent>, String>
+where
+    M: FnMut(&Path, &str, &str) -> Result<Option<FactoryRunEvent>, String>,
+{
+    let mut last_error = None;
+    for attempt in 0..MAX_CAPTURE_MARKER_ATTEMPTS {
+        match persist_marker(path, run_id, reason) {
+            Ok(event) => return Ok(event),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt + 1 < MAX_CAPTURE_MARKER_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(40 * u64::from(attempt + 1))).await;
+                }
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "Factory transcript marker could not be persisted".into()))
+}
+
+async fn capture_observer_stream<F, M>(
     mut observer_rx: broadcast::Receiver<buzz_acp::ObserverEvent>,
     path: PathBuf,
     run_id: String,
     mut publish_event: F,
+    persist_marker: M,
 ) -> Result<(), String>
 where
     F: FnMut(FactoryRunEvent),
+    M: FnMut(&Path, &str, &str) -> Result<Option<FactoryRunEvent>, String>,
 {
+    let mut persist_marker = persist_marker;
     loop {
         let event = match observer_rx.recv().await {
             Ok(event) => event,
             Err(broadcast::error::RecvError::Closed) => return Ok(()),
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
                 let error = format!("Factory transcript observer lagged by {skipped} events");
-                if let Ok(Some(marker)) = store_append_capture_marker(&path, &run_id, &error) {
-                    publish_event(marker);
+                match retry_capture_marker(&path, &run_id, &error, &mut persist_marker).await {
+                    Ok(Some(marker)) => publish_event(marker),
+                    Ok(None) => {}
+                    Err(marker_error) => eprintln!(
+                        "colony-desktop: Factory transcript gap marker retries exhausted: {marker_error}"
+                    ),
                 }
                 return Err(error);
             }
@@ -812,8 +866,12 @@ where
             Ok(Some(event)) => publish_event(event),
             Ok(None) => {}
             Err(error) => {
-                if let Ok(Some(marker)) = store_append_capture_marker(&path, &run_id, &error) {
-                    publish_event(marker);
+                match retry_capture_marker(&path, &run_id, &error, &mut persist_marker).await {
+                    Ok(Some(marker)) => publish_event(marker),
+                    Ok(None) => {}
+                    Err(marker_error) => eprintln!(
+                        "colony-desktop: Factory transcript error marker retries exhausted: {marker_error}"
+                    ),
                 }
                 return Err(error);
             }
@@ -905,9 +963,15 @@ async fn run_worker(
     let event_run_id = run.id.clone();
     let (storage_error_tx, mut storage_error_rx) = tokio::sync::oneshot::channel();
     let event_task = tokio::spawn(async move {
-        let result = capture_observer_stream(observer_rx, event_path, event_run_id, |event| {
-            publish(&event_app, &capture_authority, Some(&event_control), &event);
-        })
+        let result = capture_observer_stream(
+            observer_rx,
+            event_path,
+            event_run_id,
+            |event| {
+                publish(&event_app, &capture_authority, Some(&event_control), &event);
+            },
+            store_append_capture_marker,
+        )
         .await;
         if let Err(error) = &result {
             let _ = storage_error_tx.send(error.clone());
@@ -1187,14 +1251,14 @@ pub(crate) async fn factory_run_create(
         let control = match runtime.register(&run.id, scope.clone()) {
             Ok(control) => control,
             Err(error) => {
-                store_record_finalization(
+                record_run_finalization_with_retry(
                     &path,
                     &run.id,
                     FactoryRunStatus::Error,
                     Some("Factory run could not be scheduled"),
                 )
                 .map_err(|failure| {
-                    format!("{error}; final status could not be queued: {failure}")
+                    format!("{error}; final status could not be queued after retries: {failure}")
                 })?;
                 return Err(error);
             }
