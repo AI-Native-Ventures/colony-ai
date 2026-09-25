@@ -260,6 +260,11 @@ test.describe("visual comparison captures", () => {
             .toEqual(["Following", "Following"]);
         }
         if (entry.referenceInventoryRoute === "channel/sales") {
+          const crossPostControl = appPage.getByRole("checkbox", {
+            name: "Also send to #Sales",
+          });
+          await expect(crossPostControl).toBeVisible();
+          await expect(crossPostControl).not.toBeChecked();
           const previewMessage = appPage.locator(
             '[data-message-id="r17-sales-aya"]',
           );
