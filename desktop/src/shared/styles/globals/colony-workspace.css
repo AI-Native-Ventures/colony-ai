@@ -114,8 +114,7 @@
   color: inherit;
 }
 
-:root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs {
+:root:has([data-colony-workspace-route="true"]) .colony-channel-view-tabs {
   align-items: center;
   border-bottom: 1px solid hsl(var(--border));
   display: flex;
@@ -126,7 +125,8 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs > span {
+  .colony-channel-view-tabs
+  > span {
   align-items: center;
   align-self: stretch;
   color: hsl(var(--muted-foreground));
@@ -135,13 +135,15 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs > [aria-current="page"] {
+  .colony-channel-view-tabs
+  > [aria-current="page"] {
   color: hsl(var(--foreground));
   font-weight: 650;
 }
 
 :root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs > [aria-current="page"]::after {
+  .colony-channel-view-tabs
+  > [aria-current="page"]::after {
   background: #92739f;
   border-radius: 2px;
   bottom: -1px;
@@ -169,7 +171,8 @@
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="channel-composer-overlay"]
-  .composer-dock > footer {
+  .composer-dock
+  > footer {
   padding: 0;
 }
 
@@ -675,8 +678,7 @@ button.colony-today-attention-row:hover {
   opacity: 1;
 }
 
-:root:has([data-colony-workspace-route="true"])
-.colony-sidebar-profile-row {
+:root:has([data-colony-workspace-route="true"]) .colony-sidebar-profile-row {
   gap: 0.5rem;
 }
 
@@ -986,8 +988,7 @@ button.colony-today-attention-row:hover {
   }
 }
 
-:root:has([data-testid="channel-view-tabs"])
-  [data-testid="chat-header"] {
+:root:has([data-testid="channel-view-tabs"]) [data-testid="chat-header"] {
   display: flex;
   height: 54px;
   align-items: center;
