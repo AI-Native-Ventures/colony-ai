@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Moon, Sun } from "lucide-react";
+import { Sun } from "lucide-react";
 import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
 import { useSelfProfileCache } from "@/features/profile/hooks";
@@ -288,11 +288,7 @@ export function SidebarProfileCard({
           }}
           type="button"
         >
-          {isDark ? (
-            <Moon aria-hidden="true" className="size-3.5" />
-          ) : (
-            <Sun aria-hidden="true" className="size-3.5" />
-          )}
+          <Sun aria-hidden="true" className="size-3.5" />
         </button>
       </div>
     </div>

@@ -126,6 +126,13 @@
   display: none;
 }
 
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-sidebar="menu-button"][data-active="true"] {
+  background-color: #9dc1fb;
+  color: #19171d;
+}
+
 :root:has([data-colony-workspace-route="true"]) [data-testid="open-search"] {
   height: 2.125rem;
   border: 1px solid rgb(255 255 255 / 35%);
@@ -1185,6 +1192,36 @@
   border-color: hsl(var(--border));
   border-radius: 0.625rem;
   box-shadow: none;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  [data-testid="voice-note-playback-control"] {
+  background: #e7f0fe;
+  color: #2655a0;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  [data-testid="voice-note-playback-control"] {
+  background: #202a3b;
+  color: #9dc1fb;
+}
+
+.colony-voice-note-waveform-bar,
+.colony-voice-note-waveform-active {
+  background-color: #2655a0;
+}
+
+.colony-voice-note-waveform-bar {
+  opacity: 0.62;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  .colony-voice-note-waveform-bar,
+:root.dark:has([data-colony-workspace-route="true"])
+  .colony-voice-note-waveform-active {
+  background-color: #9dc1fb;
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -2295,15 +2332,35 @@ button.colony-today-attention-row:hover {
 :root:has([data-colony-workspace-route="true"])
   [data-avatar-shape="squircle"]:not(.colony-update-avatar)
   [data-slot="avatar-fallback"] {
-  background-color: #e6edf7 !important;
-  color: #5e7794 !important;
+  background-color: #e3ebf4 !important;
+  color: #617fa1 !important;
   font-size: var(--text-2xs) !important;
 }
 
 :root:has([data-colony-workspace-route="true"])
   [data-avatar-shape="circle"]:not(.colony-update-avatar)
   [data-slot="avatar-fallback"] {
-  background-color: #eee8f1 !important;
-  color: #766681 !important;
+  background-color: #ece5ed !important;
+  color: #796782 !important;
   font-size: var(--text-2xs) !important;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-avatar-shape="squircle"]:not(.colony-update-avatar)
+  [data-slot="avatar-fallback"] {
+  background-color: #29394d !important;
+  color: #9bb4d1 !important;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-avatar-shape="circle"]:not(.colony-update-avatar)
+  [data-slot="avatar-fallback"] {
+  background-color: #453a4a !important;
+  color: #d1bfd8 !important;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="message-row"]
+  [data-avatar-shape="circle"] {
+  border-radius: 0.625rem;
 }

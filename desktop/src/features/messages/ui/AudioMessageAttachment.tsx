@@ -396,13 +396,17 @@ export function AudioMessageAttachment({
           aria-hidden="true"
           className={cn(
             "w-[3px] shrink-0",
-            active
-              ? composer
-                ? "bg-primary"
-                : "bg-blue-500/70"
-              : composer
-                ? "bg-muted-foreground/35"
-                : "bg-blue-500/35",
+            !composer && transcript
+              ? active
+                ? "colony-voice-note-waveform-active"
+                : "colony-voice-note-waveform-bar"
+              : active
+                ? composer
+                  ? "bg-primary"
+                  : "bg-blue-500/70"
+                : composer
+                  ? "bg-muted-foreground/35"
+                  : "bg-blue-500/35",
           )}
           initial={false}
           key={BAR_KEYS[index]}
@@ -414,7 +418,7 @@ export function AudioMessageAttachment({
           }
         />
       )),
-    [peaks, shouldReduceMotion, composer],
+    [peaks, shouldReduceMotion, composer, transcript],
   );
 
   return (
@@ -435,9 +439,7 @@ export function AudioMessageAttachment({
         ref={mediaRef}
         className={cn(
           "rounded-lg bg-primary text-primary-foreground",
-          !composer &&
-            transcript &&
-            "!h-8 !w-8 !rounded-full !bg-blue-100 !text-blue-600",
+          !composer && transcript && "!h-8 !w-8 !rounded-full",
         )}
         data-testid="voice-note-playback-control"
       >
