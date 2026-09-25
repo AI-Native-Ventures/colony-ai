@@ -167,12 +167,12 @@ function SignOutDialog({
       open={isOpen}
     >
       <SettingsAlertDialogContent
-        className="max-w-[33.75rem] gap-0 overflow-hidden rounded-[0.9rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-xl dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
+        className="flex w-[33.75rem] max-w-[calc(100vw-2rem)] max-h-[90vh] flex-col gap-0 overflow-hidden rounded-[0.75rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-[0_24px_80px_#30203824] dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
         data-testid="signout-dialog"
       >
-        <div className="flex items-center justify-between border-b border-[#eae7eb] px-6 pt-5 pb-6 dark:border-[#3c3544]">
+        <div className="flex items-center justify-between border-b border-[#eae7eb] px-[1.5625rem] pt-6 pb-[1.3125rem] dark:border-[#3c3544]">
           <AlertDialogHeader className="space-y-0">
-            <AlertDialogTitle className="text-lg font-medium tracking-normal">
+            <AlertDialogTitle className="text-lg font-semibold tracking-[-0.025em]">
               Sign out of this device?
             </AlertDialogTitle>
           </AlertDialogHeader>
@@ -187,12 +187,12 @@ function SignOutDialog({
             <X aria-hidden="true" className="size-4" />
           </Button>
         </div>
-        <div className="space-y-8 px-6 pt-6 pb-[2.5625rem]">
-          <AlertDialogDescription className="text-sm leading-5 text-[#79747f] dark:text-[#a9a1b4]">
+        <div className="flex flex-col px-[1.5625rem] pt-[1.5625rem] pb-12">
+          <AlertDialogDescription className="mb-[1.375rem] text-sm leading-5 text-[#79747f] dark:text-[#a9a1b4]">
             Your remote business and conversations stay available.
           </AlertDialogDescription>
           {localAgents > 0 ? (
-            <div className="space-y-1 rounded-md border border-[#eee2c9] bg-[#fcf8ee] px-4 py-3.5 text-xs leading-5 text-[#92713e] dark:border-[#594831] dark:bg-[#3c3428] dark:text-[#d3b879]">
+            <div className="mb-[2.3125rem] space-y-1 rounded-[7px] border border-[#eee2c9] bg-[#fcf8ee] px-[1.125rem] py-3.5 text-xs leading-5 text-[#92713e] dark:border-[#594831] dark:bg-[#3c3428] dark:text-[#d3b879]">
               <p className="font-medium">
                 {localAgents} local{" "}
                 {localAgents === 1 ? "agent is" : "agents are"} running
@@ -212,7 +212,7 @@ function SignOutDialog({
                 </p>
               </div>
               <Button
-                className="shrink-0 text-[#2655a0] dark:text-[#a9bee8]"
+                className="h-[34px] shrink-0 rounded-md px-[13px] text-xs font-semibold text-[#2655a0] dark:text-[#a9bee8]"
                 data-testid="signout-review-work"
                 disabled={!onOpenDraftRecovery || isPending}
                 onClick={() => {
@@ -239,9 +239,9 @@ function SignOutDialog({
             </div>
           ) : null}
         </div>
-        <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-6 py-5 dark:border-[#3c3544]">
+        <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-[1.5625rem] py-[1.125rem] dark:border-[#3c3544]">
           <AlertDialogCancel
-            className="border-[#eae7eb] bg-transparent text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
+            className="h-[34px] rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
             disabled={isPending}
             onClick={onCancel}
           >
@@ -253,7 +253,7 @@ function SignOutDialog({
             onClick={onSignOut}
             type="button"
             variant="outline"
-            className="border-[#a04f6440] bg-[#a04f6408] text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
+            className="h-[34px] rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-xs font-semibold text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
           >
             {isPending ? (
               <LoaderCircle
