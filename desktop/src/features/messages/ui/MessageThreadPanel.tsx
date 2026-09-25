@@ -485,6 +485,7 @@ export function MessageThreadPanel({
     hoveredCollapseBranchId,
     isHuddleTranscript,
     threadHead,
+    workspaceChrome,
   ]);
 
   const {
