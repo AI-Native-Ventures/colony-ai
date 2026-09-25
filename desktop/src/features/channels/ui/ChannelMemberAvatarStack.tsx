@@ -11,9 +11,11 @@ const MAX_VISIBLE_AVATARS = 3;
 export function ChannelMemberAvatarStack({
   currentPubkey,
   members,
+  size = "default",
 }: {
   currentPubkey?: string;
   members: ChannelMember[];
+  size?: "compact" | "default";
 }) {
   const visibleMembers = members.slice(0, MAX_VISIBLE_AVATARS);
   const visiblePubkeys = React.useMemo(
@@ -22,6 +24,9 @@ export function ChannelMemberAvatarStack({
   );
   const profilesQuery = useUsersBatchQuery(visiblePubkeys);
   const profiles = profilesQuery.data?.profiles;
+  const avatarSizeClass = size === "compact" ? "!h-6 !w-6" : "!h-8 !w-8";
+  const avatarOverlapClass = size === "compact" ? "-ml-1.5" : "-ml-2";
+  const overflowSizeClass = size === "compact" ? "size-6" : "size-8";
   const overflowCount = members.length - visibleMembers.length;
   const stackItemCount = visibleMembers.length + (overflowCount > 0 ? 1 : 0);
 
@@ -46,14 +51,14 @@ export function ChannelMemberAvatarStack({
 
         return (
           <span
-            className={index > 0 ? "-ml-2" : ""}
+            className={index > 0 ? avatarOverlapClass : ""}
             data-testid="channel-management-member-avatar"
             key={normalizedPubkey}
             style={{ zIndex: index + 1 }}
           >
             <UserAvatar
               avatarUrl={profile?.avatarUrl ?? null}
-              className="!h-8 !w-8 border-2 border-background text-2xs"
+              className={`${avatarSizeClass} border-2 border-background text-2xs`}
               displayName={label}
               fallbackDelayMs={0}
               shape={profile?.isAgent ? "squircle" : "circle"}
@@ -63,7 +68,7 @@ export function ChannelMemberAvatarStack({
       })}
       {overflowCount > 0 ? (
         <span
-          className="-ml-2 flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground"
+          className={`${avatarOverlapClass} ${overflowSizeClass} flex items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground`}
           data-testid="channel-management-member-avatar-overflow"
           style={{ zIndex: stackItemCount }}
           title={`${overflowCount} more members`}

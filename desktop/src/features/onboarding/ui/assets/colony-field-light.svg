@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1400" viewBox="0 0 900 1400" preserveAspectRatio="xMidYMid slice">
+ <defs>
+  <linearGradient id="base" x1="0" y1="0" x2=".85" y2="1"><stop stop-color="#fae7ed"/><stop offset=".44" stop-color="#f3e8f7"/><stop offset="1" stop-color="#94b4fa"/></linearGradient>
+  <radialGradient id="rose"><stop stop-color="#f5a4d5"/><stop offset=".48" stop-color="#f7b4e0" stop-opacity=".9"/><stop offset="1" stop-color="#f7b4e0" stop-opacity="0"/></radialGradient>
+  <radialGradient id="blue"><stop stop-color="#5289f2"/><stop offset=".5" stop-color="#82a6ff" stop-opacity=".85"/><stop offset="1" stop-color="#82a6ff" stop-opacity="0"/></radialGradient>
+  <filter id="soft" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="78"/></filter>
+  <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".78" numOctaves="3" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+ </defs>
+ <path fill="url(#base)" d="M0 0h900v1400H0z"/>
+ <ellipse cx="-120" cy="505" rx="800" ry="670" fill="url(#rose)"/>
+ <ellipse cx="920" cy="1190" rx="910" ry="950" fill="url(#blue)"/>
+ <path d="M-220 1190C195 1110 30 670 525 510S1110 190 1150-260" fill="none" stroke="#fcf4ef" stroke-width="380" opacity=".88" filter="url(#soft)"/>
+ <path fill="#ffffff" filter="url(#grain)" opacity=".055" d="M0 0h900v1400H0z" style="mix-blend-mode:multiply"/>
+</svg>

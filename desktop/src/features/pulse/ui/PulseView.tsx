@@ -36,6 +36,7 @@ export type PulseTab =
   | "search"
   | "everyone"
   | "people"
+  | "people-only"
   | "liked"
   | "agents"
   | "mine";
@@ -45,6 +46,7 @@ const pulseTabId = (tab: PulseTab) => `pulse-tab-${tab}`;
 
 type PulseViewProps = {
   currentPubkey?: string;
+  layout?: "legacy" | "today-updates";
 };
 
 function EmptyState({ message }: { message: string }) {
@@ -72,7 +74,10 @@ function TimelineSkeleton() {
   );
 }
 
-export function PulseView({ currentPubkey }: PulseViewProps) {
+export function PulseView({
+  currentPubkey,
+  layout = "legacy",
+}: PulseViewProps) {
   const [activeTab, setActiveTab] = React.useState<PulseTab>("everyone");
   const [searchQuery, setSearchQuery] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -144,7 +149,9 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
     [currentPubkey, peoplePubkeys, agentPubkeys],
   );
 
-  const everyoneQuery = useGlobalNotesQuery(activeTab === "everyone");
+  const everyoneQuery = useGlobalNotesQuery(
+    activeTab === "everyone" || activeTab === "people-only",
+  );
   const peopleQuery = useTimelineQuery(peoplePubkeys, activeTab === "people");
   const likedNotesQuery = useLikedNotesQuery(
     currentPubkey,
@@ -161,6 +168,11 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
   const visibleNotes: UserNote[] = React.useMemo(() => {
     if (activeTab === "everyone") {
       return everyoneQuery.data?.notes ?? [];
+    }
+    if (activeTab === "people-only") {
+      return (everyoneQuery.data?.notes ?? []).filter(
+        (note) => !agentPubkeySet.has(note.pubkey),
+      );
     }
     if (activeTab === "people") {
       // Filter out agent notes from the people timeline unless the user follows them.
@@ -243,7 +255,7 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
   }, [mentionPubkeys, mentionProfiles]);
 
   const activeQuery =
-    activeTab === "everyone"
+    activeTab === "everyone" || activeTab === "people-only"
       ? everyoneQuery
       : activeTab === "people"
         ? peopleQuery
@@ -258,7 +270,8 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
     search: "Search Pulse notes by author or text.",
     everyone: "No public notes yet.",
     people: "No notes yet. Follow people to see their updates here.",
-    liked: "No likes yet — tap the heart on a note to save it here.",
+    "people-only": "No notes yet. Follow people to see their updates here.",
+    liked: "No likes yet. Tap the heart on a note to save it here.",
     agents:
       agentPubkeys.length === 0
         ? "No agents registered yet."
@@ -328,14 +341,20 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PulseTabBar
-        activeTab={activeTab}
-        getPanelId={pulsePanelId}
-        getTabId={pulseTabId}
-        onTabChange={setActiveTab}
-        relayAgents={relayAgents}
-      />
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      data-pulse-layout={layout}
+    >
+      {layout === "legacy" ? (
+        <PulseTabBar
+          activeTab={activeTab}
+          getPanelId={pulsePanelId}
+          getTabId={pulseTabId}
+          layout={layout}
+          onTabChange={setActiveTab}
+          relayAgents={relayAgents}
+        />
+      ) : null}
 
       <div className="mt-0 min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
         <div
@@ -407,7 +426,11 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
                   </div>
                 }
                 members={pulseMentionMembers}
-                placeholder="What's on your mind?"
+                placeholder={
+                  layout === "today-updates"
+                    ? "Share an update with your team…"
+                    : "What's on your mind?"
+                }
                 isSending={publishMutation.isPending}
                 onSubmit={(content, mentionPubkeys, mediaTags) =>
                   publishMutation.mutateAsync({
@@ -419,6 +442,17 @@ export function PulseView({ currentPubkey }: PulseViewProps) {
                 profiles={mentionProfiles}
               />
             </div>
+          ) : null}
+
+          {layout === "today-updates" ? (
+            <PulseTabBar
+              activeTab={activeTab}
+              getPanelId={pulsePanelId}
+              getTabId={pulseTabId}
+              layout={layout}
+              onTabChange={setActiveTab}
+              relayAgents={relayAgents}
+            />
           ) : null}
 
           {activeTab !== "search" ? <div>{renderTimeline()}</div> : null}
