@@ -132,11 +132,11 @@ test("primary navigation rows share the same inactive emphasis", async ({
 
   const primaryMenu = page.getByTestId("sidebar-primary-menu");
   const inactiveRows = [
+    primaryMenu.getByRole("button", { name: "Today", exact: true }),
     primaryMenu.getByRole("button", { name: "Inbox", exact: true }),
-    page.getByTestId("open-pulse-view"),
+    page.getByTestId("open-work-view"),
     page.getByTestId("open-projects-view"),
     page.getByTestId("open-agents-view"),
-    page.getByTestId("open-workflows-view"),
   ];
 
   for (const row of inactiveRows) {
@@ -148,14 +148,14 @@ test("primary navigation rows share the same inactive emphasis", async ({
     await expect(row.locator("svg")).toHaveCSS("opacity", "0.8");
   }
 
-  const pulse = page.getByTestId("open-pulse-view");
-  await pulse.click();
-  await expect(pulse).toHaveAttribute("data-active", "true");
-  await expect(pulse.locator("[data-sidebar=menu-label]")).toHaveCSS(
+  const work = page.getByTestId("open-work-view");
+  await work.click();
+  await expect(work).toHaveAttribute("data-active", "true");
+  await expect(work.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
     "1",
   );
-  await expect(pulse.locator("svg")).toHaveCSS("opacity", "1");
+  await expect(work.locator("svg")).toHaveCSS("opacity", "1");
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {

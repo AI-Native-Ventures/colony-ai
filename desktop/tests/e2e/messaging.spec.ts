@@ -3165,8 +3165,8 @@ test("opens a single-level thread panel with inline expansion", async ({
 test("thread panel width uses session storage and reset handle", async ({
   page,
 }) => {
-  const customWidthPx = 520;
-  const defaultWidthPx = 380;
+  const customWidthPx = 600;
+  const defaultWidthPx = 520;
 
   await page.addInitScript((width) => {
     window.sessionStorage.setItem(
@@ -3227,7 +3227,7 @@ test("thread panel width uses session storage and reset handle", async ({
     .toBe(defaultWidthPx);
 });
 
-test("narrow thread view collapses channel header actions into a menu", async ({
+test("narrow thread view keeps the reference channel actions visible", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 980, height: 720 });
@@ -3237,6 +3237,8 @@ test("narrow thread view collapses channel header actions into a menu", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-actions-menu-trigger")).toHaveCount(0);
+  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
+  await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
 
   const rootMessage = page.locator('[data-message-id="mock-general-alice"]');
   const threadPanel = page.getByTestId("message-thread-panel");
@@ -3245,33 +3247,10 @@ test("narrow thread view collapses channel header actions into a menu", async ({
   await page.getByTestId("reply-message-mock-general-alice").click();
   await expect(threadPanel).toBeVisible();
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
-
-  const menuTrigger = page.getByTestId("channel-actions-menu-trigger");
-  await expect(menuTrigger).toBeVisible();
-  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
-  await expect(page.getByTestId("channel-management-trigger")).toBeHidden();
-
-  const menuBox = await menuTrigger.boundingBox();
-  const threadPanelBox = await threadPanel.boundingBox();
-  if (!menuBox || !threadPanelBox) {
-    throw new Error("Expected header action menu and thread panel bounds");
-  }
-  const menuGap = threadPanelBox.x - (menuBox.x + menuBox.width);
-  const headerPaddingInlineEnd = await page
-    .getByTestId("chat-header")
-    .evaluate((header) =>
-      Number.parseFloat(window.getComputedStyle(header).paddingRight),
-    );
-  expect(menuGap).toBeGreaterThanOrEqual(0);
-  expect(menuGap).toBeLessThanOrEqual(headerPaddingInlineEnd + menuBox.width);
-
-  await menuTrigger.click();
-
-  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
+  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
+  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
 });
 
 test("single-panel thread view hides channel actions", async ({ page }) => {
@@ -4630,7 +4609,7 @@ test("a refused channel switch preserves the reply edit and retries after cancel
 });
 
 for (const backInput of ["button", "keyboard"] as const) {
-  test(`a refused ${backInput} Back preserves the reply edit and retries after cancel`, async ({
+  test(`a refused ${backInput} leave action preserves the reply edit`, async ({
     page,
   }) => {
     const sourceRoot = `History guard root ${backInput} ${Date.now()}`;
@@ -4685,7 +4664,7 @@ for (const backInput of ["button", "keyboard"] as const) {
     );
     const invokeBack = async () => {
       if (backInput === "button") {
-        await page.getByTestId("global-back").click();
+        await threadPanel.getByTestId("auxiliary-panel-close").click();
         return;
       }
       await page.keyboard.press(
@@ -4718,9 +4697,13 @@ for (const backInput of ["button", "keyboard"] as const) {
 
     await threadInput.press("Escape");
     await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-    await expect(page.getByTestId("global-back")).toBeEnabled();
     await invokeBack();
-    await expect(page).not.toHaveURL(navigationBefore.url);
+    if (backInput === "button") {
+      await expect(threadPanel).toBeHidden();
+      await expect(page).not.toHaveURL(navigationBefore.url);
+    } else {
+      await expect(page).not.toHaveURL(navigationBefore.url);
+    }
   });
 }
 

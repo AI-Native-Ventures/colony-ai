@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
 const COMMUNITY_ONBOARDING_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const DEFAULT_SIDEBAR_WIDTH = 300;
+const DEFAULT_SIDEBAR_WIDTH = 220;
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
@@ -84,18 +84,7 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   const hoverRow = page.getByTestId("channel-random");
 
   await page.mouse.move(600, 100);
-  const establishedActiveBackground = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "hsl(var(--sidebar-active))";
-    document.body.append(probe);
-    const background = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return background;
-  });
-  await expect(selectedRow).toHaveCSS(
-    "background-color",
-    establishedActiveBackground,
-  );
+  await expect(selectedRow).toHaveCSS("background-color", "rgb(36, 87, 168)");
   // The spacing and motion experiment must preserve the production selected
   // row typography.
   await expect(selectedRow).toHaveCSS("font-weight", "400");
@@ -572,53 +561,33 @@ test("keeps only search pinned while primary navigation scrolls", async ({
   expect(scrolledMenuBox?.y ?? 0).toBeLessThan(initialMenuBox?.y ?? 0);
 });
 
-test("scales the sidebar backward while its chrome closes", async ({
+test("collapses the sidebar to its icon rail and restores it", async ({
   page,
 }) => {
   await page.goto("/");
 
   const sidebar = page.getByTestId("app-sidebar");
   const sidebarSurface = sidebar.locator("[data-sidebar-transition-content]");
+  const expandedWidth = await sidebarWidth(page);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
-  await expect(sidebarSurface).toHaveCSS("opacity", "0");
-  await expect(sidebar).toHaveCSS("pointer-events", "none");
-  await expect(sidebar).toHaveCSS("overflow", "visible");
-  await expect(sidebar.locator(':scope > [data-sidebar="sidebar"]')).toHaveCSS(
-    "background-color",
-    await sidebarSurface.evaluate((element) => {
-      const sidebarElement = element.closest('[data-sidebar="sidebar"]');
-      if (!(sidebarElement instanceof HTMLElement)) return "";
-      return getComputedStyle(sidebarElement).backgroundColor;
-    }),
-  );
-  await expect(sidebarSurface).toHaveCSS("scale", "0.95");
-  await expect(sidebarSurface).toHaveCSS("translate", "24px");
-  const transformOrigin = await sidebarSurface.evaluate(
-    (element) => getComputedStyle(element).transformOrigin,
-  );
-  const [originX, originY] = transformOrigin.split(" ").map(Number.parseFloat);
-  const surfaceWidth = await sidebarSurface.evaluate(
-    (element) => element.clientWidth,
-  );
-  expect(Math.abs(originX - surfaceWidth / 2)).toBeLessThan(0.5);
-  expect(originY).toBe(0);
-  await expect(sidebarSurface).toHaveCSS(
-    "transition-property",
-    "opacity, scale, translate",
-  );
-  await expect(sidebarSurface).toHaveCSS("transition-duration", "0.2s");
-  await expect(sidebarSurface).toHaveCSS(
-    "transition-timing-function",
-    "linear",
-  );
+  await expect(
+    page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
+  ).toHaveCount(1);
+  await expect.poll(() => sidebarWidth(page)).toBeLessThan(expandedWidth);
+  await expect(sidebarSurface).toHaveCSS("opacity", "1");
+  await expect(sidebarSurface).toHaveCSS("scale", "none");
+  await expect(page.getByTestId("channel-general")).toBeVisible();
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(
+    page.locator('[data-state="expanded"][data-collapsible=""]'),
+  ).toHaveCount(1);
+  await expect.poll(() => sidebarWidth(page)).toBe(expandedWidth);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
-  await expect(sidebar).toHaveCSS("pointer-events", "auto");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
 });
 
@@ -635,9 +604,11 @@ test("disables the sidebar collapse transition for reduced motion", async ({
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
-  await expect(sidebarSurface).toHaveCSS("opacity", "0");
-  await expect(sidebarSurface).toHaveCSS("scale", "0.95");
-  await expect(sidebarSurface).toHaveCSS("translate", "24px");
+  await expect(
+    page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
+  ).toHaveCount(1);
+  await expect(sidebarSurface).toHaveCSS("opacity", "1");
+  await expect(sidebarSurface).toHaveCSS("scale", "none");
   await expect(sidebarSurface).toHaveCSS("transition-duration", "0s");
 });
 
@@ -662,12 +633,12 @@ test("resizes, persists, and snaps to the default sidebar width", async ({
 
   await dragSidebarRail(page, 64);
 
-  await expect.poll(() => sidebarWidth(page)).toBe(364);
-  await expect.poll(() => storedSidebarWidth(page)).toBe("364");
+  await expect.poll(() => sidebarWidth(page)).toBe(284);
+  await expect.poll(() => storedSidebarWidth(page)).toBe("284");
 
   await page.reload();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect.poll(() => sidebarWidth(page)).toBe(364);
+  await expect.poll(() => sidebarWidth(page)).toBe(284);
 
   await dragSidebarRail(page, -60);
 

@@ -688,7 +688,10 @@ test.describe("community rail", () => {
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
     await expect(page).toHaveURL(randomUrl);
 
-    await page.getByRole("button", { name: "Inbox" }).click();
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Inbox", exact: true })
+      .click();
     await expect(page).toHaveURL(/#\/$/);
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
     await expect(page).toHaveURL(generalUrl);
@@ -752,9 +755,9 @@ test.describe("community rail", () => {
       new RegExp(`#/channels/${rememberedChannelId}$`),
       { timeout: 700 },
     );
-    await expect(page.getByTestId("message-timeline")).toBeVisible({
-      timeout: 700,
-    });
+    await expect(
+      page.getByRole("region", { name: "Channel messages and composer" }),
+    ).toBeVisible({ timeout: 700 });
   });
 
   test("clears a remembered channel that is unavailable after switching", async ({
