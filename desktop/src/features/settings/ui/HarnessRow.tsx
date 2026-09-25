@@ -616,11 +616,11 @@ export function HarnessRow({
             </details>
           </div>
           <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-[1.5625rem] py-[1.125rem] dark:border-[#3c3544]">
-            <AlertDialogCancel className="h-[34px] rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]">
+            <AlertDialogCancel className="h-9 rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              className="h-[34px] rounded-md bg-[#2655a0] px-[13px] text-xs font-semibold text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              className="h-9 rounded-md bg-[#2655a0] px-[13px] text-xs font-semibold text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
               data-testid={`doctor-runtime-install-retry-${runtime.id}`}
               onClick={handleInstall}
             >

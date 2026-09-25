@@ -212,7 +212,7 @@ function SignOutDialog({
                 </p>
               </div>
               <Button
-                className="h-[34px] shrink-0 rounded-md px-[13px] text-xs font-semibold text-[#2655a0] dark:text-[#a9bee8]"
+                className="shrink-0 rounded-md px-0 text-xs font-semibold text-[#2655a0] dark:text-[#a9bee8]"
                 data-testid="signout-review-work"
                 disabled={!onOpenDraftRecovery || isPending}
                 onClick={() => {
@@ -241,7 +241,7 @@ function SignOutDialog({
         </div>
         <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-[1.5625rem] py-[1.125rem] dark:border-[#3c3544]">
           <AlertDialogCancel
-            className="h-[34px] rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
+            className="h-9 rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
             disabled={isPending}
             onClick={onCancel}
           >
@@ -253,7 +253,7 @@ function SignOutDialog({
             onClick={onSignOut}
             type="button"
             variant="outline"
-            className="h-[34px] rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-xs font-semibold text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
+            className="h-9 rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-xs font-semibold text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
           >
             {isPending ? (
               <LoaderCircle
