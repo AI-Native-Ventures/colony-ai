@@ -1662,7 +1662,12 @@ test("channels tab opens the latest matching conversation without leaving the pr
   await expect(discussedAgent).toBeFocused();
   await expect(discussedAgent).toHaveCSS("clip-path", "none");
 
-  await channelRow.click();
+  // Click the row's title area; the row centre can land on the participant
+  // avatars, which open profiles instead of the conversation.
+  const channelRowBox = await channelRow.boundingBox();
+  await channelRow.click({
+    position: { x: 96, y: (channelRowBox?.height ?? 36) / 2 },
+  });
 
   const panel = page.getByTestId("project-conversation-panel");
   await expect(panel).toBeVisible();
