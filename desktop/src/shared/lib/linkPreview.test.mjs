@@ -5,6 +5,7 @@ import {
   extractSupportedLinkPreviews,
   isSupportedLinkAutolinkLabel,
   parseSupportedLinkPreview,
+  stripRenderedPreviewPlaceholderLinks,
 } from "./linkPreview.ts";
 
 test("parseSupportedLinkPreview parses GitHub pull request URLs", () => {
@@ -521,5 +522,32 @@ test("extractSupportedLinkPreviews finds generic links and preserves exclusions"
       { kind: "generic-link", title: "example.com" },
       { kind: "generic-link", title: "the details" },
     ],
+  );
+});
+
+test("stripRenderedPreviewPlaceholderLinks removes only a rendered zero-width link", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `Review the prospects.\n\n[\u200b](${href})\n[more details](${href})`;
+
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(content, new Set([href])),
+    `Review the prospects.\n\n[more details](${href})`,
+  );
+});
+
+test("stripRenderedPreviewPlaceholderLinks preserves unresolved placeholders", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `[\u200b](${href})`;
+
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(content, new Set()),
+    content,
+  );
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(
+      content,
+      new Set(["https://other.example"]),
+    ),
+    content,
   );
 });

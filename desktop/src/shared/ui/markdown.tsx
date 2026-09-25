@@ -17,7 +17,10 @@ import { renderAudioMessageAttachment } from "@/features/messages/ui/AudioMessag
 import { useChannelNavigation } from "@/shared/context/ChannelNavigationContext";
 import { cn } from "@/shared/lib/cn";
 import { parseEntityLink } from "@/shared/lib/entityLink";
-import { parseSupportedLinkPreview } from "@/shared/lib/linkPreview";
+import {
+  parseSupportedLinkPreview,
+  stripRenderedPreviewPlaceholderLinks,
+} from "@/shared/lib/linkPreview";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
 import { useRelayOrigin } from "@/shared/lib/useRelayOrigin";
 import { AttachmentGroup } from "@/shared/ui/attachment";
@@ -1767,7 +1770,11 @@ function MarkdownInner({
     ],
   );
 
-  let processedContent = content;
+  let processedContent = stripRenderedPreviewPlaceholderLinks(
+    content,
+    new Set(resolvedLinkPreviews.map((preview) => preview.href)),
+    relayOrigin,
+  );
 
   // Note: stripping the sentinel here is intentionally omitted. When
   // configNudge !== null, selectProseOrNudge() returns null — suppressing
