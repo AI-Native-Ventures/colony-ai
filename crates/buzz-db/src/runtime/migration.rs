@@ -1687,11 +1687,12 @@ mod postgres_tests {
     /// desired-state bootstrap schema (`schema/schema.sql`).
     ///
     /// Compares parsed statements, not substrings: every deletion control-
-    /// plane table, function, trigger, and index 0028 creates must exist in
+    /// plane table, function, trigger, and index 0029 creates must exist in
     /// schema.sql with an identical normalized definition; every operator-
-    /// global registry row 0028 inserts must be inserted by schema.sql; the
-    /// write-fence attachment target sets must be equal; and every column
-    /// 0028 adds to `communities` must exist in the desired-state
+    /// global registry row 0029 inserts must be inserted by schema.sql;
+    /// write-fence attachment targets from migration 0029 onward must exist
+    /// in the desired-state schema; and every column 0029 adds to `communities`
+    /// must exist in the desired-state
     /// `communities` table. A desired-state bootstrap that passes this test
     /// cannot silently omit part of the deletion surface the way the
     /// pre-parity schema.sql omitted `community_deletion_manifest_keys` (and
@@ -1700,7 +1701,7 @@ mod postgres_tests {
     /// the missing relation.
     #[test]
     fn deletion_surface_parity_between_migration_0029_and_schema_sql() {
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, BTreeSet};
 
         #[derive(Default)]
         struct DeletionSurface {
@@ -1861,13 +1862,27 @@ mod postgres_tests {
                 "schema.sql is missing operator-global registry row {row:?}"
             );
         }
-        let mut expected_fences = migration.fence_attachments.clone();
+        let mut expected_fences = BTreeSet::new();
+        for later_migration in MIGRATOR.iter().filter(|candidate| candidate.version >= 29) {
+            expected_fences.extend(surface(later_migration.sql.as_ref()).fence_attachments);
+        }
         expected_fences.remove("product_feedback");
         expected_fences.remove("rate_limit_violations");
         assert_eq!(
             expected_fences, schema.fence_attachments,
-            "write-fence attachment targets differ after recovery policy"
+            "write-fence attachment targets across migrations differ from the desired-state schema after recovery policy"
         );
+
+        let reconciliation_sql = std::fs::read_to_string(
+            workspace_root.join("scripts/reconcile-schema-after-pgschema.sql"),
+        )
+        .expect("read schema reconciliation script");
+        let reconciliation = surface(&reconciliation_sql);
+        assert!(reconciliation
+            .fence_attachments
+            .contains("business_proposal_conversion_claims"));
+        assert!(reconciliation_sql
+            .contains("tgname = 'community_write_fence_business_proposal_conversion_claims'"));
 
         // 0029's ALTER TABLE additions are expressed inline by the
         // desired-state `communities` definition; require the columns to
