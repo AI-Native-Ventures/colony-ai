@@ -272,6 +272,11 @@
   border-radius: 0.5rem;
 }
 
+/* The channel drop overlay follows the workspace surface corners. */
+:root:has([data-colony-workspace-route="true"]) [data-testid="drop-zone-overlay"] {
+  border-radius: 0.5rem;
+}
+
 .colony-today-screen,
 .colony-updates-route {
   display: flex;
