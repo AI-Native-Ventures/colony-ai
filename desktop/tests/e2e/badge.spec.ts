@@ -548,6 +548,8 @@ test("regular message bolds inactive channel without numeric badge", async ({
     "data-active",
     "true",
   );
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
     "400",

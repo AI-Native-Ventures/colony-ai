@@ -6,7 +6,8 @@
   background-size: cover;
 }
 
-:root:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+  .buzz-theme-gradient-layer
   :is(.buzz-theme-gradient-layer-light, .buzz-theme-gradient-layer-dark) {
   background-image: none;
   opacity: 0;
