@@ -609,6 +609,18 @@ export function stripRenderedPreviewPlaceholderLinks(
     .join("\n");
 }
 
+export function stripPreview(
+  content: string,
+  previews: readonly Pick<SupportedLinkPreview, "href">[],
+  activeRelayOrigin?: string | null,
+): string {
+  return stripRenderedPreviewPlaceholderLinks(
+    content,
+    new Set(previews.map((preview) => preview.href)),
+    activeRelayOrigin,
+  );
+}
+
 export function isSupportedLinkAutolinkLabel(
   label: string,
   preview: SupportedLinkPreview,
@@ -713,3 +725,5 @@ export function extractSupportedLinkPreviews(
 
   return previews;
 }
+
+export { parseSupportedLinkPreview as parsePreview };
