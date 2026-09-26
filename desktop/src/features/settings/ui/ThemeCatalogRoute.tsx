@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Search } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -8,6 +8,8 @@ import {
   LIGHT_THEMES,
   SYNTAX_THEMES,
   type SyntaxThemeName,
+  extractThemeInfo,
+  loadThemeData,
 } from "@/shared/theme/theme-loader";
 import type { ThemePreviewVars } from "@/shared/theme/ThemePreviewFrame";
 import {
@@ -20,6 +22,12 @@ import { cn } from "@/shared/lib/cn";
 type ThemeCatalogRouteProps = {
   onBack: () => void;
   onPreview: (name: SyntaxThemeName) => void;
+};
+
+type ThemeCatalogPalette = {
+  background: string;
+  foreground: string;
+  accent: string;
 };
 
 function themeLabel(name: string): string {
@@ -43,32 +51,80 @@ function sidebarStyle(name: string): React.CSSProperties {
   };
 }
 
+function themeCardStyle(
+  vars: ThemePreviewVars,
+  palette: ThemeCatalogPalette | undefined,
+): React.CSSProperties {
+  return {
+    ...themeVarsStyle(vars),
+    ...(palette
+      ? { backgroundColor: palette.background, color: palette.foreground }
+      : {}),
+    borderColor: "#88888835",
+    "--theme-accent":
+      palette?.accent ??
+      vars["--status-added"] ??
+      `hsl(${vars["--foreground"]})`,
+  } as React.CSSProperties;
+}
+
+function useThemeCatalogPalettes() {
+  const [palettes, setPalettes] = React.useState<
+    Partial<Record<SyntaxThemeName, ThemeCatalogPalette>>
+  >({});
+
+  React.useEffect(() => {
+    let canceled = false;
+    void Promise.all(
+      SYNTAX_THEMES.map(async (name) => {
+        const info = extractThemeInfo(name, await loadThemeData(name));
+        return [
+          name,
+          {
+            background: info.bg,
+            foreground: info.fg,
+            accent: info.added ?? info.fg,
+          },
+        ] as const;
+      }),
+    ).then((entries) => {
+      if (!canceled) {
+        setPalettes(Object.fromEntries(entries));
+      }
+    });
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  return palettes;
+}
+
 function ThemeCardPreview({
-  name,
+  palette,
   vars,
 }: {
-  name: SyntaxThemeName;
+  palette: ThemeCatalogPalette | undefined;
   vars: ThemePreviewVars;
 }) {
   return (
     <div
       aria-hidden="true"
-      className="w20-theme-card-preview h-[8.75rem] overflow-hidden rounded-[10px] border border-border/70 bg-background text-foreground"
-      style={themeVarsStyle(vars)}
+      className="w20-theme-card-preview h-[8.75rem] overflow-hidden rounded-[10px] border bg-background text-foreground"
+      style={themeCardStyle(vars, palette)}
     >
       <div className="grid h-full grid-cols-[24%_minmax(0,1fr)]">
-        <div style={sidebarStyle(name)} />
-        <div className="flex min-w-0 flex-col gap-3 px-3 py-4">
-          <p className="truncate text-3xs font-medium">Campaign studio</p>
-          <p className="truncate text-3xs text-muted-foreground">
-            The designs are ready for review.
+        <div className="w20-theme-card-sidebar" />
+        <div className="flex min-w-0 flex-col gap-[13px] px-2.5 py-5">
+          <p className="truncate text-badge leading-[1.5] font-bold">
+            Campaign studio
           </p>
-          <p className="text-3xs text-emerald-600 dark:text-emerald-400">
+          <p className="truncate text-3xs">The designs are ready for review.</p>
+          <p className="text-3xs" style={{ color: "var(--theme-accent)" }}>
             2 replies
           </p>
-          <p className="truncate text-3xs text-muted-foreground">
-            Message your team...
-          </p>
+          <p className="truncate text-3xs">Message your team…</p>
         </div>
       </div>
     </div>
@@ -180,6 +236,7 @@ export function ThemeCatalogRoute({
 }: ThemeCatalogRouteProps) {
   const theme = useTheme();
   const previewVars = useThemePreviewVars();
+  const catalogPalettes = useThemeCatalogPalettes();
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<"all" | "light" | "dark">("all");
   const filtered = SYNTAX_THEMES.filter((name) => {
@@ -193,8 +250,16 @@ export function ThemeCatalogRoute({
   });
 
   return (
-    <section className="min-w-0" data-testid="settings-theme-catalog">
-      <div className="mb-7 flex items-start justify-between gap-4">
+    <section
+      className="min-w-0"
+      data-testid="settings-theme-catalog"
+      data-theme-catalog-ready={
+        Object.keys(catalogPalettes).length === SYNTAX_THEMES.length
+          ? "true"
+          : "false"
+      }
+    >
+      <div className="mb-[30px] flex items-start justify-between gap-4">
         <div>
           <h2 className="text-settings-title font-semibold">
             Find your atmosphere.
@@ -207,39 +272,37 @@ export function ThemeCatalogRoute({
           Back to appearance
         </Button>
       </div>
-      <div className="mb-6 flex flex-wrap items-center gap-5">
+      <div className="mb-[25px] flex flex-wrap items-center gap-5">
         <label
-          className="relative w-64 shrink-0"
+          className="w-[260px] min-w-[260px] shrink-0"
           htmlFor="theme-catalog-search"
         >
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
           <Input
-            className="h-11 pl-9"
+            aria-label="Search themes"
+            className="w20-theme-catalog-search h-[43.5px] rounded-[8px] border-[#eae7eb] bg-[#f8f7f8] px-[14px] py-[11px] dark:border-[#39323f] dark:bg-[#29252f]"
             id="theme-catalog-search"
             onChange={(event) => setQuery(event.target.value)}
             placeholder={`Search ${SYNTAX_THEMES.length} themes`}
+            type="search"
             value={query}
           />
         </label>
-        <fieldset className="flex items-center gap-1">
+        <fieldset className="flex items-center gap-[5px]">
           <legend className="sr-only">Filter themes</legend>
           {(["all", "light", "dark"] as const).map((value) => (
             <button
               aria-pressed={filter === value}
               className={cn(
-                "rounded-full px-4 py-2.5 text-sm font-medium capitalize",
+                "rounded-[20px] px-4 py-2 text-xs font-medium",
                 filter === value
-                  ? "bg-muted text-foreground"
+                  ? "bg-[#e6dbed] text-[#4d3a5e]"
                   : "text-muted-foreground hover:text-foreground",
               )}
               key={value}
               onClick={() => setFilter(value)}
               type="button"
             >
-              {value}
+              {value.charAt(0).toUpperCase() + value.slice(1)}
             </button>
           ))}
         </fieldset>
@@ -262,7 +325,7 @@ export function ThemeCatalogRoute({
               onClick={() => onPreview(name)}
               type="button"
             >
-              <ThemeCardPreview name={name} vars={vars} />
+              <ThemeCardPreview palette={catalogPalettes[name]} vars={vars} />
               <span className="mt-2.5 flex items-center justify-between gap-2 text-xs leading-[1.125rem] font-medium">
                 <span className="truncate">{themeLabel(name)}</span>
                 {theme.selectedThemeName === name ? (
@@ -276,9 +339,21 @@ export function ThemeCatalogRoute({
           );
         })}
         {filtered.length === 0 ? (
-          <p className="col-span-full py-12 text-center text-sm text-muted-foreground">
-            No themes match that search.
-          </p>
+          <div className="col-span-full py-[70px] text-center">
+            <h2 className="text-base font-semibold">No themes found</h2>
+            <p className="my-[15px] text-compact text-muted-foreground">
+              Try another name or clear the filters.
+            </p>
+            <Button
+              onClick={() => {
+                setFilter("all");
+                setQuery("");
+              }}
+              variant="outline"
+            >
+              Clear filters
+            </Button>
+          </div>
         ) : null}
       </div>
     </section>

@@ -368,7 +368,8 @@
       "referenceInventoryRoute": "settings/themes",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/themes",
       "appRoute": "/#/settings?section=settings/themes",
-      "routeLabel": "settings/themes"
+      "routeLabel": "settings/themes",
+      "appReadySelector": "[data-theme-catalog-ready=true]"
     },
     {
       "id": "workspace-settings-theme-preview",

@@ -623,6 +623,11 @@ body:has(.w20-settings-shell) {
   scrollbar-width: thin;
 }
 
+.w20-route-scroll:has([data-testid="settings-theme-catalog"]) {
+  padding-right: 42px;
+  padding-left: 42px;
+}
+
 .w20-route-content {
   display: flex;
   width: 100%;
@@ -760,6 +765,16 @@ body:has(.w20-settings-shell) {
 .w20-route-content-theme {
   max-width: none;
   margin: 0;
+}
+
+.w20-theme-card-sidebar {
+  background: linear-gradient(150deg, #ce8ab856, #84aad359);
+}
+
+.w20-theme-catalog-search {
+  border-radius: 8px;
+  font-size: var(--colony-text-compact);
+  line-height: 1.5;
 }
 
 .w20-route-scroll-templates {

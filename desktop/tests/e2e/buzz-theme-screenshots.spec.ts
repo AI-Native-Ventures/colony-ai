@@ -1959,6 +1959,19 @@ test("theme catalog applies a named theme through a scoped save", async ({
 
   await page.getByTestId("appearance-open-themes").click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
+  await expect(page.getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Dark" }).click();
+  const themeSearch = page.getByRole("searchbox", { name: "Search themes" });
+  await themeSearch.fill("no matching theme");
+  await expect(
+    page.getByRole("heading", { name: "No themes found" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(themeSearch).toHaveValue("");
+  await expect(page.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
   await page.getByTestId("theme-use").click();
