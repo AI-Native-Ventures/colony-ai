@@ -551,6 +551,8 @@ test.describe("list virtualization", () => {
       };
       s.addEventListener("wheel", onWheel, { passive: true });
       let commit: { ts: number; gapSinceInput: number } | null = null;
+      let lastScrollTop = s.scrollTop;
+      let stableFrames = 0;
       let sawSpinnerDuringHold = false;
       let anchorDriftAfterCommit: number | null = null;
       const deadline = performance.now() + 8_000;
@@ -564,10 +566,20 @@ test.describe("list virtualization", () => {
           ) {
             sawSpinnerDuringHold = true;
           }
+          // Track frame-over-frame stability like the gate does: smooth
+          // wheel scrolling keeps moving after the last input event.
+          stableFrames = s.scrollTop === lastScrollTop ? stableFrames + 1 : 0;
+          lastScrollTop = s.scrollTop;
           // First frame at rest (input quiet for 60ms — shorter than the
-          // gate's own window, so this reading always precedes admission):
-          // capture the row the at-rest commit must hold.
-          if (restAnchor === null && sawInput && now - lastInputTs >= 60) {
+          // gate's own window — and three stable frames, as the gate
+          // requires): capture the row the at-rest commit must hold. Reading
+          // it during the smooth-scroll tail counted that motion as drift.
+          if (
+            restAnchor === null &&
+            sawInput &&
+            now - lastInputTs >= 60 &&
+            stableFrames >= 3
+          ) {
             const scrollerTop = s.getBoundingClientRect().top;
             const row = Array.from(
               s.querySelectorAll<HTMLElement>("[data-message-id]"),
@@ -622,10 +634,31 @@ test.describe("list virtualization", () => {
     const box = await timeline.boundingBox();
     if (!box) throw new Error("timeline has no bounding box");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let burst = 0; burst < 30; burst += 1) {
+    // Real wheel input keeps the production scroll path, but round trips on a
+    // loaded host left 120-290ms gaps between bursts, longer than the gate's
+    // 100ms quiet window, so the gate correctly admitted mid-sequence. A 30ms
+    // in-page wheel heartbeat keeps the input stream continuous while the
+    // bursts run. The bursts stop after 2s, well under the gate's 4s hold
+    // deadline, so the page must then commit at rest.
+    await timeline.evaluate((scroller) => {
+      const w = window as unknown as { __virt09Heartbeat?: number };
+      w.__virt09Heartbeat = window.setInterval(() => {
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 1 }));
+      }, 30);
+    });
+    const burstStartedAt = Date.now();
+    for (
+      let burst = 0;
+      burst < 30 && Date.now() - burstStartedAt < 2_000;
+      burst += 1
+    ) {
       await page.mouse.wheel(0, 30);
       await page.waitForTimeout(40);
     }
+    await page.evaluate(() => {
+      const w = window as unknown as { __virt09Heartbeat?: number };
+      window.clearInterval(w.__virt09Heartbeat);
+    });
 
     const trace = await tracePromise;
     // The page must eventually commit — the gate defers, never strands.
