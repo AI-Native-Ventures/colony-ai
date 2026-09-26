@@ -34,7 +34,7 @@ body:has(.w20-settings-shell) {
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-underlay {
-  inset: 1px;
+  inset: 0;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) .buzz-theme-gradient-layer {

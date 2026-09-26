@@ -112,7 +112,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   for (const expected of [
     {
       viewport: { width: 1440, height: 900 },
-      fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
+      fieldLayer: { x: 0, y: 0, width: 1440, height: 900 },
       title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
       profileCard: { x: 314, y: 267.1875, width: 631.96875 },
       businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
@@ -121,7 +121,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     },
     {
       viewport: { width: 1728, height: 1117 },
-      fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
+      fieldLayer: { x: 0, y: 0, width: 1728, height: 1117 },
       title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
       profileCard: { x: 322, y: 275.1875, width: 801.328125 },
       businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
