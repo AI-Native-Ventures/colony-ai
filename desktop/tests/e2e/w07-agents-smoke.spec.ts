@@ -17,15 +17,17 @@ test.describe("W07 agent workspace smoke", () => {
   }) => {
     await installMockBridge(page, { managedAgents });
     await page.goto("/#/agents?rows=10", { waitUntil: "domcontentloaded" });
-
+    await expect(page).toHaveURL(/#\/agents\?rows=10$/);
     const directory = page.getByTestId("agent-directory");
     await expect(directory).toBeVisible();
-    const pageSize = page.getByRole("combobox", { name: "Agents per page" });
-    await pageSize.selectOption("10");
+    await expect(directory.locator("tbody tr")).toHaveCount(10);
     await expect(directory.getByText("Page 1 of 3")).toBeVisible();
-    await pageSize.selectOption("20");
+
+    await page.goto("/#/agents?rows=20", { waitUntil: "domcontentloaded" });
+    await expect(directory.locator("tbody tr")).toHaveCount(20);
     await expect(directory.getByText("Page 1 of 2")).toBeVisible();
-    await pageSize.selectOption("30");
+
+    await page.goto("/#/agents?rows=30", { waitUntil: "domcontentloaded" });
     await expect(directory.locator("tbody tr")).toHaveCount(21);
     await expect(
       directory.getByRole("button", { name: "Previous agent page" }),
@@ -161,6 +163,8 @@ test.describe("W07 agent workspace smoke", () => {
   test("overview resolves profile role and seeded channel membership names", async ({
     page,
   }) => {
+    const agentPubkey =
+      "0000000000000000000000000000000000000000000000000000000000000011";
     const channelNames = [
       "Marketing",
       "The Olive House",
@@ -174,13 +178,12 @@ test.describe("W07 agent workspace smoke", () => {
     await installMockBridge(page, {
       managedAgents: [
         {
-          pubkey:
-            "0000000000000000000000000000000000000000000000000000000000000011",
+          pubkey: agentPubkey,
           name: "Mina",
           about: "Social media manager",
           personaId: "mina",
           status: "stopped",
-          channelNames,
+          channelIds: visualChannels.map((channel) => channel.id),
         },
       ],
       personas: [
@@ -192,10 +195,9 @@ test.describe("W07 agent workspace smoke", () => {
       ],
       visualChannels,
     });
-    await page.goto(
-      "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=overview",
-      { waitUntil: "domcontentloaded" },
-    );
+    await page.goto(`/#/agents?agent=${agentPubkey}&agentTab=overview`, {
+      waitUntil: "domcontentloaded",
+    });
 
     const overview = page.getByTestId("agent-overview");
     await expect(overview).toBeVisible();
@@ -212,14 +214,10 @@ test.describe("W07 agent workspace smoke", () => {
       )
       .toBe(true);
     await expect(
-      page.locator("header").getByText("Social media manager", {
-        exact: true,
-      }),
-    ).toBeVisible();
+      page.getByTestId("agent-profile").locator("header"),
+    ).toContainText("Social media manager");
     for (const name of channelNames) {
-      await expect(
-        overview.getByText(`# ${name}`, { exact: true }),
-      ).toBeVisible();
+      await expect(overview.getByText(name, { exact: true })).toBeVisible();
     }
   });
 

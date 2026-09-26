@@ -29,18 +29,26 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function directoryPageSize(value: unknown): string | undefined {
+  if (value === 10 || value === 20 || value === 30) return String(value);
+  return nonEmptyString(value);
+}
+
 function validateAgentsSearch(
   search: Record<string, unknown>,
 ): AgentsRouteSearch {
+  const agent = nonEmptyString(search.agent);
   const view = search.view;
   return {
-    agent: nonEmptyString(search.agent),
-    agentTab: parseAgentProfileTab(nonEmptyString(search.agentTab)),
+    agent,
+    agentTab: agent
+      ? parseAgentProfileTab(nonEmptyString(search.agentTab))
+      : undefined,
     profile: nonEmptyString(search.profile),
     profilePersona: nonEmptyString(search.profilePersona),
     profileTab: parseProfilePanelTab(search.profileTab) ?? undefined,
     profileView: parseProfilePanelView(search.profileView) ?? undefined,
-    rows: nonEmptyString(search.rows),
+    rows: directoryPageSize(search.rows),
     view:
       view === "directory" ||
       view === "deployment" ||
