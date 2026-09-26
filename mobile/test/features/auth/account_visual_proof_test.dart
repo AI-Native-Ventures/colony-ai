@@ -143,7 +143,10 @@ final _screenCases = <_ScreenCase>[
       advancedIdentityPageBuilder: (_) => const SizedBox.shrink(),
     ),
   ),
-  _ScreenCase('sign-in', () => const SignInPage()),
+  _ScreenCase(
+    'sign-in',
+    () => SignInPage(pairIdentityPageBuilder: (_) => const SizedBox.shrink()),
+  ),
   _ScreenCase('sign-up', () => const CreateAccountPage()),
   _ScreenCase('reset-request', () => const RequestPasswordResetPage()),
   _ScreenCase(
@@ -242,8 +245,6 @@ class _ProofStatusBar extends StatelessWidget {
                 Row(
                   children: [
                     Icon(Icons.signal_cellular_alt, color: color, size: 14),
-                    const SizedBox(width: 3),
-                    Icon(Icons.wifi, color: color, size: 14),
                     const SizedBox(width: 3),
                     Icon(Icons.battery_full, color: color, size: 16),
                   ],
