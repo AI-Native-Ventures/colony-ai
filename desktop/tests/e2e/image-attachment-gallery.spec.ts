@@ -728,6 +728,96 @@ test("hidden spoiler images are excluded from gallery navigation until revealed"
   await expect(page.getByRole("button", { name: "Next image" })).toBeVisible();
 });
 
+test("a spoiler image joins the gallery as soon as it is revealed", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("chat-title")).toHaveText("general");
+  await waitForMockLiveSubscription(page, "general");
+
+  await page.evaluate(
+    ({ content, extraTags }) => {
+      (
+        window as Window & {
+          __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
+            channelName: string;
+            content: string;
+            extraTags?: string[][];
+          }) => unknown;
+        }
+      ).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content,
+        extraTags,
+      });
+    },
+    {
+      content: [
+        "spoiler reveal gallery",
+        `![visible](${SPOILER_VISIBLE_URL})`,
+        `||![hidden](${SPOILER_HIDDEN_URL})||`,
+      ].join("\n"),
+      extraTags: [
+        imageImetaTag({
+          dim: "160x100",
+          filename: "visible.png",
+          sha: SPOILER_VISIBLE_SHA,
+          url: SPOILER_VISIBLE_URL,
+        }),
+        imageImetaTag({
+          dim: "100x160",
+          filename: "hidden.png",
+          sha: SPOILER_HIDDEN_SHA,
+          url: SPOILER_HIDDEN_URL,
+        }),
+      ],
+    },
+  );
+
+  const row = page
+    .getByTestId("message-row")
+    .filter({ hasText: "spoiler reveal gallery" })
+    .last();
+  await expect(row.locator(`img[src*="${SPOILER_HIDDEN_SHA}"]`)).toHaveJSProperty(
+    "complete",
+    true,
+  );
+
+  // Open the gallery in the same task that commits the reveal: the revealed
+  // image is still at the start of its fade-in, so its computed opacity reads
+  // 0. It is revealed and must be part of the gallery.
+  await row.evaluate(
+    (element, visibleSha) =>
+      new Promise<void>((resolve, reject) => {
+        const spoiler = element.querySelector<HTMLElement>(
+          ".buzz-spoiler[data-spoiler]",
+        );
+        const trigger = element
+          .querySelector<HTMLImageElement>(`img[src*="${visibleSha}"]`)
+          ?.closest<HTMLElement>("[data-image-lightbox-trigger]");
+        if (!spoiler || !trigger) {
+          reject(new Error("spoiler or visible image trigger not found"));
+          return;
+        }
+        const observer = new MutationObserver(() => {
+          if (spoiler.getAttribute("data-revealed") !== "true") return;
+          observer.disconnect();
+          trigger.click();
+          resolve();
+        });
+        observer.observe(spoiler, {
+          attributeFilter: ["data-revealed"],
+          attributes: true,
+        });
+        spoiler.click();
+      }),
+    SPOILER_VISIBLE_SHA,
+  );
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next image" })).toBeVisible();
+});
+
 test("message images load a thumbnail before requesting the original", async ({
   page,
 }) => {
