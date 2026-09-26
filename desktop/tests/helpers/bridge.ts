@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
-import type { MockManagedAgentSeed } from "../../src/testing/e2eBridge";
+import type {
+  MockManagedAgentSeed,
+  VisualFixtureSeed,
+} from "../../src/testing/e2eBridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
 export const TEST_IDENTITIES = {
@@ -289,6 +292,8 @@ type MockBridgeOptions = {
   /** Number of seeded rows in the deep-history fixture. Defaults to 600. */
   deepHistoryMessageCount?: number;
   feedReadError?: string;
+  /** Exact reference records for visual comparison captures only. */
+  visualFixture?: VisualFixtureSeed;
   canvasReadError?: string;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
@@ -797,9 +802,10 @@ async function seedDefaultCommunity(
   page: Page,
   fallbackPubkey: string,
   relayWsUrl?: string,
+  businessName?: string,
 ) {
   await page.addInitScript(
-    ({ fallback, identityOverrideKey, relayUrl }) => {
+    ({ fallback, identityOverrideKey, relayUrl, seededBusinessName }) => {
       // If seedActiveIdentity() ran before this script (the normal ordering),
       // use its pubkey so the community matches the active identity and
       // migrateMachineOnboardingCompletion's strict voucher accepts it.
@@ -828,7 +834,7 @@ async function seedDefaultCommunity(
       const communityId = "e2e-default-community";
       const community = {
         id: communityId,
-        name: "E2E Test",
+        name: seededBusinessName ?? "E2E Test",
         relayUrl,
         pubkey: overridePubkey ?? fallback,
         addedAt: new Date().toISOString(),
@@ -843,6 +849,7 @@ async function seedDefaultCommunity(
       fallback: fallbackPubkey,
       identityOverrideKey: "buzz:e2e-identity-override.v1",
       relayUrl: relayWsUrl ?? DEFAULT_RELAY_WS_URL,
+      seededBusinessName: businessName,
     },
   );
 }
@@ -872,7 +879,12 @@ export async function installBridge(page: Page, options: BridgeOptions) {
   // the bridge identity's pubkey or DEFAULT_MOCK_PUBKEY for mock mode.
   if (!options.skipCommunitySeed) {
     const activePubkey = identity?.pubkey ?? DEFAULT_MOCK_PUBKEY;
-    await seedDefaultCommunity(page, activePubkey, options.relayWsUrl);
+    await seedDefaultCommunity(
+      page,
+      activePubkey,
+      options.relayWsUrl,
+      options.mock?.visualFixture?.businessName,
+    );
   }
   if (!options.skipOnboardingSeed) {
     await seedOnboardingCompletionForKnownIdentities(page, options.relayWsUrl);

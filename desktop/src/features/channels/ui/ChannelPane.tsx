@@ -373,16 +373,43 @@ export const ChannelPane = React.memo(function ChannelPane({
     onWelcomeAddAgent: onAddAgent ? handleWelcomeAddAgent : undefined,
   });
   const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
+  const workspaceChrome = !isHuddleTranscript && window.innerWidth >= 1440;
   const channelIntro =
     isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
-  const { mainTimelineEntries, recentMentions, visibleMessages } =
-    useChannelPaneMessages({
-      activeChannel,
-      isHuddleTranscript,
-      messages,
-      profiles,
-      threadSummaries,
-    });
+  const {
+    mainTimelineEntries: channelTimelineEntries,
+    recentMentions,
+    visibleMessages: channelVisibleMessages,
+  } = useChannelPaneMessages({
+    activeChannel,
+    isHuddleTranscript,
+    messages,
+    profiles,
+    threadSummaries,
+  });
+  const threadContextRootId = threadHeadMessage?.body
+    .trimStart()
+    .match(/^#{1,3}\s/u)
+    ? threadHeadMessage.id
+    : null;
+  const mainTimelineEntries = React.useMemo(
+    () =>
+      threadContextRootId
+        ? channelTimelineEntries.filter(
+            (entry) => entry.message.id !== threadContextRootId,
+          )
+        : channelTimelineEntries,
+    [channelTimelineEntries, threadContextRootId],
+  );
+  const visibleMessages = React.useMemo(
+    () =>
+      threadContextRootId
+        ? channelVisibleMessages.filter(
+            (message) => message.id !== threadContextRootId,
+          )
+        : channelVisibleMessages,
+    [channelVisibleMessages, threadContextRootId],
+  );
   useRenderScopedReactionHydration({
     activeChannel,
     mainTimelineEntries,
@@ -620,7 +647,7 @@ export const ChannelPane = React.memo(function ChannelPane({
           }
         >
           {isHuddleTranscript ? null : header}
-          {!isHuddleTranscript && activeChannel && hasOpenMessageThread ? (
+          {workspaceChrome && activeChannel && hasOpenMessageThread ? (
             <ChannelWorkspaceTabs />
           ) : null}
           {isHuddleTranscript && huddleThreadRepliesError ? (
@@ -642,7 +669,12 @@ export const ChannelPane = React.memo(function ChannelPane({
               hasOlderMessages={hasOlderMessages}
               historyExhausted={historyExhausted}
               hideDayDividers={isHuddleTranscript}
-              alwaysShowMessageIdentity={isHuddleTranscript}
+              alwaysShowMessageIdentity={
+                isHuddleTranscript || (workspaceChrome && hasOpenMessageThread)
+              }
+              compactThreadSummaryAvatars={
+                workspaceChrome && hasOpenMessageThread
+              }
               hideAgentAccessBadges={isHuddleTranscript}
               pinnedIntro={
                 isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined
@@ -766,7 +798,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                     channelType={activeChannel?.channelType ?? null}
                     containerClassName="px-5 pb-0"
                     layoutMode="dock"
-                    workspaceChrome={!isHuddleTranscript}
+                    workspaceChrome={workspaceChrome}
                     disabled={isComposerDisabled}
                     editTarget={mainEditTarget}
                     autoSubmitDraftKey={autoSendDraftKey}
@@ -858,7 +890,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                 huddleMemberPubkeys={huddleMemberPubkeys}
                 huddleMemberPubkeysPending={huddleMemberPubkeysPending}
                 isHuddleTranscript={isHuddleTranscript}
-                workspaceChrome={!isHuddleTranscript}
+                workspaceChrome={workspaceChrome}
                 isFollowingThread={isFollowingThread}
                 isMessageUnreadById={isMessageUnreadById}
                 isSending={isSending}

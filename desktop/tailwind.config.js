@@ -11,13 +11,47 @@ export default {
       fontSize: {
         "2xs": "calc(var(--buzz-type-rem) * 0.6875)", // 11px at 16px type rem
         "3xs": "calc(var(--buzz-type-rem) * 0.5)", // 8px at 16px type rem
+        "update-author": "calc(var(--buzz-type-rem) * 0.83)",
+        "update-body": "calc(var(--buzz-type-rem) * 0.89)",
+        "update-meta": "calc(var(--buzz-type-rem) * 0.72)",
         badge: "calc(var(--buzz-type-rem) * 0.625)", // 10px at 16px type rem
         compact: "var(--colony-text-compact)", // 13px at 16px type rem
         field: "var(--colony-text-field)", // 14.4px at 16px type rem
         label: "var(--colony-text-label)", // 12.64px at 16px type rem
+        "studio-title": "calc(var(--buzz-type-rem) * 1.7)",
+        "workspace-date": "calc(var(--buzz-type-rem) * 0.8)",
+        "workspace-card-title": [
+          "calc(var(--buzz-type-rem) * 0.81)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-card-body": [
+          "calc(var(--buzz-type-rem) * 0.8)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-card-meta": [
+          "calc(var(--buzz-type-rem) * 0.72)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-attention-title": [
+          "calc(var(--buzz-type-rem) * 0.85)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-attention-meta": [
+          "calc(var(--buzz-type-rem) * 0.74)",
+          { lineHeight: "1.6" },
+        ],
+        "today-status": [
+          "calc(var(--buzz-type-rem) * 0.6)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-review-meta": [
+          "calc(var(--buzz-type-rem) * 0.73)",
+          { lineHeight: "1.5" },
+        ],
         "workspace-button": "var(--colony-text-workspace-button)", // 11.84px at 16px type rem
         "onboarding-button": "var(--colony-text-onboarding-button)", // 12.96px at 16px type rem
         "status-indicator": "0.9375rem", // 15px at the default root size
+        "voice-note": ["0.9375rem", { lineHeight: "1.5" }],
         "channel-title": [
           "calc(var(--buzz-type-rem) * 1.45)",
           { lineHeight: "1.3", letterSpacing: "-0.035em" },

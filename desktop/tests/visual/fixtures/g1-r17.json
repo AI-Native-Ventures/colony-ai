@@ -1,0 +1,547 @@
+{
+  "id": "g1-r17",
+  "businessName": "Lerato Social",
+  "identity": {
+    "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "displayName": "Lerato Molefe"
+  },
+  "followedPubkeys": [
+    "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+    "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+  ],
+  "profiles": [
+    {
+      "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "displayName": "Aya",
+      "isAgent": true
+    },
+    {
+      "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "displayName": "Scout",
+      "isAgent": true
+    },
+    {
+      "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "displayName": "Mina",
+      "isAgent": true
+    },
+    {
+      "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+      "displayName": "Theo",
+      "isAgent": true
+    },
+    {
+      "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "displayName": "Noor",
+      "isAgent": true
+    },
+    {
+      "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+      "displayName": "Zinhle Dlamini",
+      "isAgent": false
+    }
+  ],
+  "channels": [
+    {
+      "id": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "name": "Sales",
+      "description": "From first hello to lasting partnerships.",
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
+    },
+    {
+      "id": "a2c7d1e0-4f39-5b61-9a32-1c8e7d4f6b20",
+      "name": "Marketing",
+      "description": "Campaigns, content and creative work.",
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "displayName": "Noor",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+          "displayName": "Zinhle Dlamini",
+          "role": "member",
+          "isAgent": false
+        }
+      ]
+    },
+    {
+      "id": "b3e8f2d1-6a40-5c72-ab43-2d9f8e5a7c31",
+      "name": "Operations",
+      "description": "Client delivery and day-to-day operations.",
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "displayName": "Noor",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+          "displayName": "Zinhle Dlamini",
+          "role": "member",
+          "isAgent": false
+        }
+      ]
+    },
+    {
+      "id": "c4f9a2e1-7b50-5d83-bc54-3e0f9a6b8c42",
+      "name": "The Olive House",
+      "description": "The Olive House client work.",
+      "lastMessageAt": 1790157000,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "displayName": "Noor",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+          "displayName": "Zinhle Dlamini",
+          "role": "member",
+          "isAgent": false
+        }
+      ]
+    },
+    {
+      "id": "d5a0b3f2-8c61-5e94-cd65-4f1a0b7c9d53",
+      "name": "Cedar Café",
+      "description": "Cedar Café client work.",
+      "lastMessageAt": 1790156400,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "displayName": "Noor",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+          "displayName": "Zinhle Dlamini",
+          "role": "member",
+          "isAgent": false
+        }
+      ]
+    },
+    {
+      "id": "e6b1c4a3-9d72-5fa5-de76-5a2b1c8d0e64",
+      "name": "Northline Interiors",
+      "description": "Northline Interiors client work.",
+      "lastMessageAt": 1790155800,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "owner",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "displayName": "Noor",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+          "displayName": "Zinhle Dlamini",
+          "role": "member",
+          "isAgent": false
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-lerato",
+      "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "createdAt": 1790147640,
+      "kind": 9,
+      "tags": [["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"]],
+      "content": "@Aya, let’s find independent businesses that need reliable social content. Start with a small, well-qualified list."
+    },
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-aya",
+      "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "createdAt": 1790149320,
+      "kind": 9,
+      "tags": [
+        ["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/independent-brands",
+          "Independent brands needing social support",
+          "Prospect directory",
+          "Review prospects before outreach.",
+          "",
+          "",
+          "",
+          ""
+        ]
+      ],
+      "content": "There are 12 prospects to review. Each profile keeps the source and qualification notes together.\n\n[​](https://example.com/independent-brands)"
+    },
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-stockists-context",
+      "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "createdAt": 1790149320,
+      "kind": 9,
+      "tags": [["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"]],
+      "content": "# Independent brands needing social support\n\nProspect evidence, qualification and service scope.",
+      "timelineVisibility": "thread-only"
+    },
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-aya-reply",
+      "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "createdAt": 1790149320,
+      "kind": 9,
+      "tags": [
+        ["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"],
+        ["e", "r17-sales-stockists-context", "", "root"],
+        ["e", "r17-sales-stockists-context", "", "reply"],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/prospects",
+          "Independent brands needing social support",
+          "Discovery",
+          "12 example prospects",
+          "",
+          "",
+          "",
+          ""
+        ]
+      ],
+      "content": "Review each prospect’s fit and source evidence. A proposal should follow a conversation about what the business needs.\n\n[​](https://example.com/prospects)"
+    },
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-aya-draft-reply",
+      "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "createdAt": 1790149350,
+      "kind": 9,
+      "tags": [
+        ["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"],
+        ["e", "r17-sales-stockists-context", "", "root"],
+        ["e", "r17-sales-stockists-context", "", "reply"],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/form-and-field",
+          "A consistent social presence for Form & Field",
+          "Form & Field",
+          "v1 · draft",
+          "",
+          "",
+          "",
+          ""
+        ]
+      ],
+      "content": "[​](https://example.com/form-and-field)"
+    },
+    {
+      "channelId": "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+      "id": "r17-sales-voice",
+      "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "createdAt": 1790149800,
+      "kind": 9,
+      "tags": [
+        ["h", "c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f"],
+        [
+          "imeta",
+          "url https://example.invalid/voice-note-r17.wav",
+          "m audio/wav",
+          "filename voice-note-sample.wav",
+          "duration 8",
+          "transcript Please keep the first slide simple. Show the product detail on slide two, and let Nandi approve the final caption before we schedule it."
+        ]
+      ],
+      "content": "[Voice note · Sample audio](https://example.invalid/voice-note-r17.wav)"
+    }
+  ],
+  "todayUpdates": [
+    {
+      "id": "r17-update-zinhle",
+      "pubkey": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+      "createdAt": 1790145900,
+      "content": "October briefs are ready. I’m checking client deadlines before we finalise the production calendar.",
+      "tags": []
+    },
+    {
+      "id": "r17-update-mina",
+      "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "createdAt": 1790148000,
+      "content": "The Olive House carousel is ready for internal review. Version 2 includes the revised opening slide.",
+      "tags": []
+    }
+  ],
+  "today": {
+    "agentWork": [
+      {
+        "id": "run-mina",
+        "agent": "Mina",
+        "title": "Prepare October carousel concepts",
+        "detail": "Waiting for permission to generate images",
+        "status": "permission"
+      },
+      {
+        "id": "run-aya",
+        "agent": "Aya",
+        "title": "Prepare Form & Field proposal",
+        "detail": "Waiting for Lerato to choose the scope",
+        "status": "question"
+      },
+      {
+        "id": "run-theo",
+        "agent": "Theo",
+        "title": "Reconcile September costs",
+        "detail": "Connection expired before external read",
+        "status": "failed"
+      },
+      {
+        "id": "run-noor",
+        "agent": "Noor",
+        "title": "Revise Cedar captions",
+        "detail": "Paused at the approved budget",
+        "status": "budget"
+      }
+    ],
+    "businessReviews": [
+      {
+        "id": "olive-1",
+        "client": "The Olive House",
+        "meta": "The Olive House · Agency review · v2",
+        "title": "Make room for slow mornings",
+        "artTitle": "Make room for slow mornings.",
+        "variant": "olive",
+        "footer": "THE SPRING EDIT"
+      },
+      {
+        "id": "cedar-2",
+        "client": "Cedar Café",
+        "meta": "Cedar Café · Agency review · v1",
+        "title": "See you on the sunny side",
+        "artTitle": "See you on the sunny side.",
+        "variant": "cedar",
+        "footer": "YOUR NEIGHBOURHOOD, BREWED"
+      },
+      {
+        "id": "cedar-instagram",
+        "client": "Cedar Café",
+        "meta": "Cedar Café · @cedarcafe",
+        "title": "Renew Instagram access",
+        "variant": "instagram"
+      },
+      {
+        "id": "northline-linkedin",
+        "client": "Northline Interiors",
+        "meta": "Northline Interiors · Northline Interiors",
+        "title": "Grant publishing access",
+        "variant": "linkedin"
+      },
+      {
+        "id": "task-access",
+        "client": "Cedar Café",
+        "meta": "Theo · Client authorization",
+        "title": "Restore Cedar Café publishing access",
+        "variant": "access"
+      },
+      {
+        "id": "bloom-enquiry",
+        "client": "Bloom Florist",
+        "meta": "Website enquiry · We need consistent Instagram content for our flower studio. Can you help with 8 posts a month?",
+        "title": "Bloom Florist",
+        "variant": "enquiry"
+      }
+    ],
+    "clientApproval": {
+      "client": "The Olive House",
+      "title": "Meet your everyday favourites",
+      "approver": "Nandi",
+      "version": 1
+    },
+    "nextDelivery": {
+      "title": "Small changes. Softer spaces.",
+      "detail": "The Olive House · Thu, 01 Oct · 09:00 SAST"
+    },
+    "moneyFollowUp": {
+      "client": "Cedar Café",
+      "invoice": "LS-027",
+      "due": "2026-09-20",
+      "amount": "R 3 000"
+    }
+  }
+}

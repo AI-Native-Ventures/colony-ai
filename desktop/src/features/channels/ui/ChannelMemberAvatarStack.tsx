@@ -12,22 +12,39 @@ export function ChannelMemberAvatarStack({
   currentPubkey,
   members,
   size = "default",
+  testIdPrefix = "channel-management-member",
 }: {
   currentPubkey?: string;
   members: ChannelMember[];
   size?: "compact" | "default";
+  testIdPrefix?: string;
 }) {
-  const visibleMembers = members.slice(0, MAX_VISIBLE_AVATARS);
+  const orderedMembers = React.useMemo(() => {
+    if (size !== "compact" || !currentPubkey) return members;
+    const normalizedCurrentPubkey = normalizePubkey(currentPubkey);
+    return [
+      ...members.filter(
+        (member) => normalizePubkey(member.pubkey) !== normalizedCurrentPubkey,
+      ),
+      ...members.filter(
+        (member) => normalizePubkey(member.pubkey) === normalizedCurrentPubkey,
+      ),
+    ];
+  }, [currentPubkey, members, size]);
+  const visibleMembers = orderedMembers.slice(0, MAX_VISIBLE_AVATARS);
   const visiblePubkeys = React.useMemo(
-    () => members.slice(0, MAX_VISIBLE_AVATARS).map((member) => member.pubkey),
-    [members],
+    () =>
+      orderedMembers
+        .slice(0, MAX_VISIBLE_AVATARS)
+        .map((member) => member.pubkey),
+    [orderedMembers],
   );
   const profilesQuery = useUsersBatchQuery(visiblePubkeys);
   const profiles = profilesQuery.data?.profiles;
   const avatarSizeClass = size === "compact" ? "!h-6 !w-6" : "!h-8 !w-8";
   const avatarOverlapClass = size === "compact" ? "-ml-1.5" : "-ml-2";
   const overflowSizeClass = size === "compact" ? "size-6" : "size-8";
-  const overflowCount = members.length - visibleMembers.length;
+  const overflowCount = orderedMembers.length - visibleMembers.length;
   const stackItemCount = visibleMembers.length + (overflowCount > 0 ? 1 : 0);
 
   if (members.length === 0) {
@@ -37,7 +54,7 @@ export function ChannelMemberAvatarStack({
   return (
     <div
       className="flex shrink-0 items-center pl-3"
-      data-testid="channel-management-member-avatar-stack"
+      data-testid={`${testIdPrefix}-avatar-stack`}
     >
       {visibleMembers.map((member, index) => {
         const normalizedPubkey = normalizePubkey(member.pubkey);
@@ -48,18 +65,24 @@ export function ChannelMemberAvatarStack({
           profiles,
           pubkey: member.pubkey,
         });
+        const avatarLabel =
+          size === "compact" &&
+          currentPubkey &&
+          normalizedPubkey === normalizePubkey(currentPubkey)
+            ? (member.displayName ?? label)
+            : label;
 
         return (
           <span
             className={index > 0 ? avatarOverlapClass : ""}
-            data-testid="channel-management-member-avatar"
+            data-testid={`${testIdPrefix}-avatar`}
             key={normalizedPubkey}
             style={{ zIndex: index + 1 }}
           >
             <UserAvatar
               avatarUrl={profile?.avatarUrl ?? null}
               className={`${avatarSizeClass} border-2 border-background text-2xs`}
-              displayName={label}
+              displayName={avatarLabel}
               fallbackDelayMs={0}
               shape={profile?.isAgent ? "squircle" : "circle"}
             />
@@ -69,7 +92,7 @@ export function ChannelMemberAvatarStack({
       {overflowCount > 0 ? (
         <span
           className={`${avatarOverlapClass} ${overflowSizeClass} flex items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground`}
-          data-testid="channel-management-member-avatar-overflow"
+          data-testid={`${testIdPrefix}-avatar-overflow`}
           style={{ zIndex: stackItemCount }}
           title={`${overflowCount} more members`}
         >

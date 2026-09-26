@@ -19,6 +19,8 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
+// Workspace channel rows use a smaller avatar than the base thread row model.
+const THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_CONTENT_OFFSET_REM =
   THREAD_REPLY_BODY_OFFSET_REM - THREAD_REPLY_ROW_MARGIN_INLINE_REM;
 const THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM = 0.5;
@@ -90,6 +92,7 @@ export function MessageThreadSummaryRow({
   showDepthGuides = true,
   summary,
   summaryIndentOffsetRem = 0,
+  compactTimelineAvatar = false,
   unreadCount,
 }: {
   collapseDepthGuideActions?: ReadonlyArray<ThreadDepthGuideAction>;
@@ -106,6 +109,7 @@ export function MessageThreadSummaryRow({
   showDepthGuides?: boolean;
   summary: TimelineThreadSummary;
   summaryIndentOffsetRem?: number;
+  compactTimelineAvatar?: boolean;
   unreadCount?: number;
 }) {
   const indentRem = getThreadReplyIndentRem(depth);
@@ -113,7 +117,8 @@ export function MessageThreadSummaryRow({
     indentRem + THREAD_REPLY_ROW_MARGIN_INLINE_REM + summaryIndentOffsetRem;
   const hoverLeft = threadReplyLength(hoverLeftRem);
   const contentPaddingStart = threadReplyLength(
-    THREAD_SUMMARY_CONTENT_OFFSET_REM,
+    THREAD_SUMMARY_CONTENT_OFFSET_REM -
+      (compactTimelineAvatar ? THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM : 0),
   );
   const surfaceInsetStart = `calc(${contentPaddingStart} - ${threadReplyLength(
     THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM,

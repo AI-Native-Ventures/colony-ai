@@ -704,6 +704,7 @@ export function ChannelScreen({
     hasAuxiliaryPanel &&
     channelContentWidthPx > 0 &&
     channelContentWidthPx < 760;
+  const referenceThreadPresentation = Boolean(effectiveOpenThreadHeadId);
   const channelHeaderChromeRef = useMeasuredCssVariable({
     targetRef: mainInsetRef,
     ...channelContentTopPaddingMeasurement,
@@ -747,9 +748,9 @@ export function ChannelScreen({
         activeChannel={activeChannel}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
-        referenceThreadPresentation={Boolean(openThreadHeadId)}
+        referenceThreadPresentation={referenceThreadPresentation}
         actionsVariant={
-          openThreadHeadId
+          referenceThreadPresentation
             ? "reference"
             : shouldCompactHeaderActions
               ? "compact"
@@ -774,7 +775,7 @@ export function ChannelScreen({
       activeChannel,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
-      openThreadHeadId,
+      referenceThreadPresentation,
       shouldCompactHeaderActions,
       activeDmAvatarUrl,
       activeDmHeaderParticipants,

@@ -6,13 +6,13 @@ export function ChannelWorkspaceTabs() {
       className="colony-channel-view-tabs"
       data-testid="channel-view-tabs"
     >
-      <span aria-current="page" className="text-2xs">
+      <span aria-current="page" className="text-sm">
         Discussion
       </span>
-      <span className="text-2xs">Work</span>
-      <span className="text-2xs">Knowledge</span>
-      <span className="text-2xs">Canvas</span>
-      <span className="text-2xs">Files</span>
+      <span className="text-sm">Work</span>
+      <span className="text-sm">Knowledge</span>
+      <span className="text-sm">Canvas</span>
+      <span className="text-sm">Files</span>
     </section>
   );
 }

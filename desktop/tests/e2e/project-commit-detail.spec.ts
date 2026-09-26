@@ -40,7 +40,7 @@ async function openProjectRepository(
   page: import("@playwright/test").Page,
   repositoryId: string,
 ) {
-  await expect(page).toHaveURL(/\/projects\//);
+  await expect(page).toHaveURL(/#\/projects(?:\/|$)/);
   const target = await page.evaluate((id) => {
     const url = new URL(window.location.href);
     url.searchParams.set("repositoryId", id);
@@ -625,6 +625,11 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(nestedChannel).toHaveAttribute("data-active", "true");
   await expect(projectRow).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("sidebar-projects-section")).toBeHidden();
+  await page.getByTestId("open-projects-view").click();
+  await expect(page).toHaveURL(/#\/projects(?:\/|$)/);
+  await expect(expand).toBeVisible();
+  await expect(nestedChannel).toBeVisible();
 
   const sidebarScrollContent = page.getByTestId("sidebar-scroll-content");
   const channelSidebarMetrics = await sidebarScrollContent.evaluate(
@@ -640,7 +645,7 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(nestedChannel).toBeHidden();
-  await expect(page).toHaveURL(/\/channels\//);
+  await expect(page).toHaveURL(/#\/projects(?:\/|$)/);
 
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "true");

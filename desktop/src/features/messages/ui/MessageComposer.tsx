@@ -99,6 +99,7 @@ function MessageComposerImpl({
   showBackgroundUploadProgress = true,
   showTopBorder = false,
   toolbarExtraActions,
+  footerContent,
   typingParentEventId = null,
   typingRootEventId = null,
 }: MessageComposerProps) {
@@ -954,6 +955,11 @@ function MessageComposerImpl({
             >
               <EditorContent editor={richText.editor} />
             </div>
+            {footerContent ? (
+              <div className="colony-message-composer-footer-content">
+                {footerContent}
+              </div>
+            ) : null}
             <ComposerDockToolbar
               addressedAgents={
                 editTarget == null && !composerDisabled ? lockedAgents : []

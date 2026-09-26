@@ -1,11 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import UPNG from "upng-js";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { compareImages } from "../../scripts/visualComparison.mjs";
+import type { VisualFixtureSeed } from "../../src/testing/e2eBridge";
 
 type StorageSeed = {
   localStorage?: Record<string, unknown>;
@@ -29,6 +30,7 @@ type VisualCase = {
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
+  fixtureVariant?: "reviews-empty";
   viewport: "1728x1117" | "1440x900";
   theme: "light" | "dark";
   actions: VisualAction[];
@@ -72,6 +74,12 @@ if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
 const manifest = JSON.parse(
   await readFile(manifestPath, "utf8"),
 ) as VisualManifest;
+const r17Fixture = JSON.parse(
+  await readFile(new URL("./fixtures/g1-r17.json", import.meta.url), "utf8"),
+) as VisualFixtureSeed;
+const r17VoiceNoteWav = await readFile(
+  new URL("./fixtures/sample-note.wav", import.meta.url),
+);
 const manropeFont = await readFile(
   new URL(
     "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
@@ -82,10 +90,23 @@ const defaults = manifest.defaults ?? {};
 const cases = (manifest.cases ?? manifest.entries ?? []).map((entry) => ({
   ...defaults,
   ...entry,
-  referencePrefs: entry.referencePrefs ?? defaults.referencePrefs ?? {},
-  appPrefs: entry.appPrefs ?? defaults.appPrefs ?? {},
+  referencePrefs: mergeStorageSeed(
+    defaults.referencePrefs,
+    entry.referencePrefs,
+  ),
+  appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
   actions: entry.actions ?? defaults.actions ?? [],
 })) as VisualCase[];
+
+function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
+  return {
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
+}
 
 test.describe("visual comparison captures", () => {
   test.describe.configure({ mode: "serial" });
@@ -104,6 +125,9 @@ test.describe("visual comparison captures", () => {
 
       try {
         const referencePage = await referenceContext.newPage();
+        await referencePage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         // Keep the frozen reference files untouched while applying the owner
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
@@ -153,12 +177,68 @@ test.describe("visual comparison captures", () => {
         }
 
         const appPage = await appContext.newPage();
+        await appPage.route(
+          "https://example.invalid/voice-note-r17.wav",
+          (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "audio/x-wav",
+              body: r17VoiceNoteWav,
+            }),
+        );
+        await appPage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        await installMockBridge(appPage, entry.appMockData);
-        await appPage.goto(appUrl, {
-          waitUntil: "domcontentloaded",
+        await appPage.addInitScript(
+          ({ pubkey }) => {
+            localStorage.setItem(
+              `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+              JSON.stringify({
+                version: 1,
+                groups: {
+                  dms: "recent",
+                  starred: "recent",
+                  "section:client-work": "recent",
+                },
+              }),
+            );
+          },
+          { pubkey: r17Fixture.identity.pubkey },
+        );
+        const visualFixture = {
+          ...r17Fixture,
+          today: {
+            ...r17Fixture.today,
+            ...(entry.fixtureVariant === "reviews-empty"
+              ? { businessReviews: [], reviewsEmpty: true }
+              : {}),
+          },
+        };
+        await installMockBridge(appPage, {
+          ...(entry.appMockData ?? {}),
+          visualFixture,
         });
+        if (entry.referenceInventoryRoute === "navigation/history") {
+          const channelUrl = new URL(
+            "/#/channels/c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+            appBaseUrl,
+          ).toString();
+          await appPage.goto(channelUrl, { waitUntil: "domcontentloaded" });
+          await appPage.goto(
+            new URL("/#/navigation/history", appBaseUrl).toString(),
+            { waitUntil: "domcontentloaded" },
+          );
+          await appPage.goto(new URL("/#/workflows", appBaseUrl).toString(), {
+            waitUntil: "domcontentloaded",
+          });
+          await appPage.goBack({ waitUntil: "domcontentloaded" });
+        } else {
+          await appPage.goto(appUrl, {
+            waitUntil: "domcontentloaded",
+          });
+        }
         await appPage.waitForLoadState("load");
 
         await waitForCaptureReady(
@@ -171,6 +251,57 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        if (entry.referenceInventoryRoute === "today/updates") {
+          const contactList = await appPage.evaluate(async () => {
+            const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+            if (!invoke) throw new Error("The visual mock bridge is missing.");
+            const identity = (await invoke("get_identity")) as {
+              pubkey: string;
+            };
+            const result = (await invoke("get_contact_list", {
+              pubkey: identity.pubkey,
+            })) as { tags: string[][] };
+            return { pubkey: identity.pubkey, tags: result.tags };
+          });
+          expect(contactList).toEqual({
+            pubkey: r17Fixture.identity.pubkey,
+            tags: r17Fixture.followedPubkeys?.map((pubkey) => ["p", pubkey]),
+          });
+          const followButtons = appPage.locator(".colony-update-follow");
+          await expect(followButtons).toHaveCount(2);
+          await expect
+            .poll(() => followButtons.allTextContents())
+            .toEqual(["Following", "Following"]);
+        }
+        if (entry.referenceInventoryRoute === "channel/sales") {
+          const crossPostControl = appPage.getByRole("checkbox", {
+            name: "Also send to #Sales",
+          });
+          await expect(crossPostControl).toBeVisible();
+          await expect(crossPostControl).not.toBeChecked();
+          const previewMessage = appPage.locator(
+            '[data-message-id="r17-sales-aya"]',
+          );
+          await expect(
+            previewMessage.locator(
+              '.message-markdown > p > a[href="https://example.com/independent-brands"]',
+            ),
+          ).toHaveCount(0);
+          await expect(
+            previewMessage.locator(
+              ".message-markdown [data-link-preview-list]",
+            ),
+          ).toHaveCount(1);
+          const threadPanel = appPage.locator(
+            '[data-testid="message-thread-panel"]',
+          );
+          await expect(
+            threadPanel.locator('[data-testid="message-author"]'),
+          ).toHaveCount(2);
+          await expect(
+            appPage.locator('[data-testid="voice-note-playback-waveform"]'),
+          ).toHaveAttribute("data-waveform-state", "ready");
+        }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
@@ -394,6 +525,8 @@ async function inspectPageGeometry(
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       devicePixelRatio: window.devicePixelRatio,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize,
+      bodyFontSize: getComputedStyle(document.body).fontSize,
       document: {
         bounds: bounds(document.documentElement),
         scrollWidth: document.documentElement.scrollWidth,
@@ -407,31 +540,209 @@ async function inspectPageGeometry(
       visualElements: [
         "#topbar",
         "#sidebar",
+        "#sidebar .sidebar-head",
+        "#sidebar .sidebar-collapse",
+        "#sidebar .business-switch",
+        "#sidebar .business-mark",
+        "#sidebar .business-mark > span",
+        "#sidebar .business-switch strong",
+        "#sidebar .sidebar-search",
+        "#sidebar .sidebar-search span",
+        "#sidebar .sidebar-search kbd",
+        "#sidebar .nav-item",
+        "#sidebar .nav-label",
+        "#sidebar .section-heading",
+        "#sidebar .section-toggle",
+        "#sidebar .section-heading:nth-of-type(2) .section-toggle",
+        "#sidebar .section-toggle > span:not(.icon)",
+        "#sidebar .section-heading > button:not(.section-toggle)",
+        "#sidebar .profile-row",
+        "#sidebar .profile-row > .avatar",
+        "#sidebar .profile-row strong",
+        "#sidebar .px-status-button",
         "#surface",
+        ".studio-page",
+        ".studio-heading",
+        ".today-studio-grid",
+        ".cx-agent-attention",
+        ".cx-agent-attention .cx-row",
+        ".agency-attention-row",
+        ".agency-attention-row h3",
+        ".agency-attention-row p",
+        ".agency-attention-row small",
+        ".attention-art",
+        ".studio-section",
+        ".studio-section > h2",
+        ".studio-section-heading",
+        ".studio-section-heading h2",
+        ".studio-section-heading > span",
+        ".waiting-record",
+        ".waiting-record strong",
+        ".waiting-record p",
+        ".waiting-record small",
+        ".coverage-entry",
+        ".r17-today-page",
+        ".r17-today-heading",
+        ".r17-today-grid",
+        ".r17-today-left",
+        ".r17-today-attention-row",
+        ".r17-today-attention-copy strong",
+        ".r17-today-attention-copy small",
+        ".r17-today-business-heading",
+        ".r17-today-business-heading h2",
+        ".r17-today-review-row",
+        ".r17-today-review-copy small",
+        ".r17-today-review-copy strong",
+        ".r17-today-art",
+        ".r17-today-art-frame",
+        ".r17-today-right",
+        ".r17-today-section",
+        ".r17-today-section-heading h2",
+        ".r17-today-section-heading > span",
+        ".r17-today-waiting-record",
+        ".r17-today-waiting-record strong",
+        ".r17-today-waiting-record p",
+        ".r17-today-waiting-record small",
+        ".r17-today-money-record",
+        ".r17-today-money-record small",
         ".colony-workspace-topbar",
+        ".studio-page",
+        ".studio-heading",
+        ".studio-actions > a",
+        ".studio-scroll",
+        ".studio-empty",
+        ".studio-empty > svg",
+        ".studio-empty h2",
+        ".studio-empty p",
+        ".colony-channel-pins-screen",
+        ".colony-channel-pins-content",
+        ".colony-channel-pins-heading",
+        ".colony-channel-pins-heading h1",
+        ".colony-channel-pins-heading button",
+        ".colony-channel-pins-empty",
+        ".colony-channel-pins-empty > svg",
+        ".colony-channel-pins-empty h2",
+        ".colony-channel-pins-empty p",
         ".colony-channel-route-content",
+        "header[data-testid=chat-header] > div",
+        "header[data-testid=chat-header] > div > div:first-child",
+        "header[data-testid=chat-header] > div > div:last-child",
+        ".colony-channel-header-actions",
+        ".colony-channel-header-actions > button",
+        ".colony-channel-header-actions [data-testid=channel-pins-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-start-huddle-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-management-trigger]",
         ".channel-pane",
         ".thread-pane",
         ".channel-header",
+        ".channel-header > div:first-child",
+        ".heading-actions",
+        ".heading-actions > a",
         ".tabs",
+        ".agency-tabs",
+        ".agency-tabs > a",
         ".message-list",
+        ".day-divider",
+        ".day-divider p",
+        ".voice-player",
+        ".message",
+        ".message-meta",
+        ".message-meta strong",
+        ".message-body",
+        ".message-body p",
+        ".message-author",
+        ".message-avatar",
         ".channel-composer",
         ".channel-composer .composer",
         ".channel-composer .composer textarea",
         ".channel-composer .composer-footer",
+        ".thread-pane .channel-composer",
+        ".thread-pane .channel-composer .composer",
+        ".thread-pane .channel-composer .composer textarea",
+        ".thread-pane .channel-composer .composer-footer",
         "[data-testid=app-sidebar]",
+        "[data-testid=sidebar-pinned-header]",
+        ".colony-sidebar-brand",
+        "[data-testid=sidebar-business-switcher]",
+        ".colony-sidebar-brand-mark",
+        "[data-testid=sidebar-business-switcher] > span:nth-child(2)",
+        "[data-testid=sidebar-pinned-header] [data-sidebar=trigger]",
+        "[data-testid=open-search]",
+        "[data-testid=sidebar-primary-menu] [data-sidebar=menu-button]",
+        "[data-testid=app-sidebar] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label]",
+        "[data-testid=stream-list-section-label] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label] + div",
+        "[data-testid=section-actions-channels-quick-create]",
+        "[data-testid=section-actions-channels]",
+        "[data-testid=section-title-client-work]",
+        "[data-testid=section-title-client-work] + div",
+        "[data-testid=section-actions-client-work-quick-create]",
+        "[data-testid=section-actions-client-work]",
+        "[data-testid=starred-list-section-label]",
+        "[data-testid=starred-list-section-label] > span[aria-hidden=true]",
+        "[data-testid=forum-list-section-label]",
+        "[data-testid=dm-list-section-label]",
+        "[data-testid=sidebar-team-section]",
+        "[data-testid=sidebar-team-section] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-profile-card]",
+        ".colony-sidebar-profile-row",
+        "[data-testid=sidebar-profile-avatar-button]",
+        "[data-testid=sidebar-theme-toggle]",
         "[data-testid=app-top-chrome]",
         "[data-buzz-content-surface]",
         "[data-testid=chat-header]",
         "[data-testid=chat-title]",
         "[data-testid=channel-drop-zone]",
         "[data-testid=channel-composer-overlay]",
+        "[data-testid=thread-composer-overlay]",
+        "[data-testid=thread-composer-overlay] > div",
+        "[data-testid=thread-composer-overlay] .composer-dock",
         "[data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] .colony-message-composer-footer-content",
+        "[data-testid=thread-composer-overlay] [data-testid=message-input-scroll]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer-toolbar]",
+        "[data-testid=thread-composer-overlay] [data-testid=send-message]",
         "[data-testid=message-input-scroll]",
         "[data-testid=message-composer-toolbar]",
+        "[data-testid=message-row]",
+        "[data-testid=message-header]",
+        "[data-testid=message-author]",
+        "[data-testid=message-timestamp]",
+        "[data-testid=message-body]",
+        "[data-testid=message-avatar]",
+        "[data-testid=system-message-row]",
+        "[data-testid=message-agent-owner]",
         "[data-testid=channel-view-tabs]",
+        "[data-testid=channel-view-tabs] > span:nth-child(1)",
+        "[data-testid=channel-view-tabs] > span:nth-child(2)",
+        "[data-testid=channel-view-tabs] > span:nth-child(3)",
+        "[data-testid=channel-view-tabs] > span:nth-child(4)",
+        "[data-testid=channel-view-tabs] > span:nth-child(5)",
+        "[data-testid=open-search] > span:first-of-type",
+        "[data-testid=open-search] > kbd",
+        "[data-testid=sidebar-profile-name]",
+        "[data-testid=sidebar-profile-user-status]",
+        ".colony-composer-submit-hint",
         "[data-testid=message-timeline]",
+        "[data-testid=message-timeline-day-group]",
+        "[data-testid=message-timeline-day-divider]",
+        "[data-testid=message-timeline-day-divider] p",
+        "[data-testid=message-timeline-sticky-day-divider]",
+        "[data-testid=message-timeline-sticky-day-divider-content]",
+        "[data-testid=message-timeline-sticky-day-divider-content] p",
+        "[data-testid=audio-message-attachment]",
+        ".colony-voice-note-card",
+        ".colony-voice-note-waveform-bar",
+        ".colony-voice-note-waveform-active",
         "[data-testid=message-thread-panel]",
+        ".colony-channel-topbar",
+        ".colony-channel-header",
+        ".colony-thread-panel-title",
+        "[data-testid=message-thread-panel] [data-testid=message-thread-title]",
+        "[data-testid=thread-composer-overlay] .colony-thread-crosspost",
+        ".colony-composer-submit-hint",
       ].map((selector) => {
         const element = document.querySelector(selector);
         if (!element) return { selector, count: 0 };
@@ -447,16 +758,175 @@ async function inspectPageGeometry(
             height: rect.height,
           },
           display: style.display,
+          text: element.textContent?.trim() ?? "",
           color: style.color,
           backgroundColor: style.backgroundColor,
           fontFamily: style.fontFamily,
           fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          width: style.width,
+          height: style.height,
+          padding: style.padding,
+          boxSizing: style.boxSizing,
+          transform: style.transform,
+          zoom: style.zoom,
           opacity: style.opacity,
+          visibility: style.visibility,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          zIndex: style.zIndex,
+          position: style.position,
           overflowY: style.overflowY,
           scrollHeight: element.scrollHeight,
           scrollWidth: element.scrollWidth,
         };
       }),
+      timelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-row"], article.message',
+        ),
+      ).map((element) => {
+        const rect = bounds(element);
+        const body = element.querySelector<HTMLElement>(
+          '[data-testid="message-body"], .message-body',
+        );
+        const meta = element.querySelector<HTMLElement>(
+          '[data-testid="message-meta"], .message-meta',
+        );
+        return {
+          bounds: rect,
+          text:
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 140) ??
+            "",
+          bodyBounds: body ? bounds(body) : null,
+          metaBounds: meta ? bounds(meta) : null,
+          children: Array.from(element.querySelectorAll<HTMLElement>("*"))
+            .filter(
+              (child) =>
+                child.parentElement === element ||
+                child.matches(
+                  "[data-testid], [class*='preview'], [class*='thread']",
+                ),
+            )
+            .slice(0, 16)
+            .map((child) => ({
+              tag: child.tagName,
+              className: child.className?.toString() ?? "",
+              testId: child.dataset.testid ?? null,
+              text:
+                child.textContent?.trim().replace(/\s+/g, " ").slice(0, 90) ??
+                "",
+              bounds: bounds(child),
+            })),
+          bodyChildren: body
+            ? Array.from(body.querySelectorAll<HTMLElement>("*"))
+                .filter(
+                  (child) =>
+                    child.children.length === 0 || child.dataset.testid,
+                )
+                .slice(0, 20)
+                .map((child) => ({
+                  tag: child.tagName,
+                  className: child.className?.toString() ?? "",
+                  testId: child.dataset.testid ?? null,
+                  text:
+                    child.textContent
+                      ?.trim()
+                      .replace(/\s+/g, " ")
+                      .slice(0, 90) ?? "",
+                  bounds: bounds(child),
+                }))
+            : [],
+        };
+      }),
+      sidebarChildren: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="sidebar-scroll-content"] > *',
+        ),
+      ).map((element) => ({
+        testId: element.dataset.testid ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
+        order: getComputedStyle(element).order,
+      })),
+      channelTabPaint: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="channel-view-tabs"] > span',
+        ),
+      ).map((element) => {
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textRect = range.getBoundingClientRect();
+        const ancestors: Array<Record<string, string>> = [];
+        let ancestor: HTMLElement | null = element;
+        while (ancestor && ancestors.length < 5) {
+          const ancestorStyle = getComputedStyle(ancestor);
+          ancestors.push({
+            tag: ancestor.tagName,
+            className: ancestor.className.toString(),
+            color: ancestorStyle.color,
+            opacity: ancestorStyle.opacity,
+            visibility: ancestorStyle.visibility,
+            display: ancestorStyle.display,
+            textIndent: ancestorStyle.textIndent,
+            overflow: ancestorStyle.overflow,
+            clipPath: ancestorStyle.clipPath,
+            filter: ancestorStyle.filter,
+            mixBlendMode: ancestorStyle.mixBlendMode,
+            textShadow: ancestorStyle.textShadow,
+            webkitTextFillColor: ancestorStyle.getPropertyValue(
+              "-webkit-text-fill-color",
+            ),
+          });
+          ancestor = ancestor.parentElement;
+        }
+        const hitStack = document
+          .elementsFromPoint(
+            textRect.x + textRect.width / 2,
+            textRect.y + textRect.height / 2,
+          )
+          .map((hit) => `${hit.tagName}.${(hit as HTMLElement).className}`);
+        return {
+          text: element.textContent?.trim() ?? "",
+          textRect: {
+            x: textRect.x,
+            y: textRect.y,
+            width: textRect.width,
+            height: textRect.height,
+          },
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          color: style.color,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          textStroke: style.getPropertyValue("-webkit-text-stroke-color"),
+          textShadow: style.textShadow,
+          textIndent: style.textIndent,
+          clipPath: style.clipPath,
+          filter: style.filter,
+          mixBlendMode: style.mixBlendMode,
+          animations: element
+            .getAnimations()
+            .map((animation) => animation.playState),
+          ancestors,
+          hitStack,
+        };
+      }),
+      messageTimelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-timeline"] [data-testid="message-row"]',
+        ),
+      ).map((element) => ({
+        id: element.dataset.messageId ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 180) ?? "",
+      })),
     };
   });
   if (

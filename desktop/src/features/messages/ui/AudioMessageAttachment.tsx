@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertCircle, Download, Loader2, X } from "lucide-react";
+import { AlertCircle, Download, Loader2, Mic, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 
@@ -31,10 +31,32 @@ import { MorphingPlayPauseIcon } from "./MorphingPlayPauseIcon";
 
 const PLAY_EVENT = "buzz-voice-note-play";
 const INITIAL_BAR_COUNT = 38;
+const WORKSPACE_VOICE_NOTE_BAR_COUNT = 48;
 const BAR_KEYS = Array.from(
   { length: 256 },
   (_, index) => `voice-note-bar-${index}`,
 );
+
+function workspaceVoiceNoteBarHeight(index: number): number {
+  return 4 + Math.sin(index * 1.4) ** 2 * 22;
+}
+
+function WorkspaceVoiceNotePlayIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.65}
+      viewBox="0 0 24 24"
+    >
+      <path d="m7 3 14 9-14 9Z" />
+    </svg>
+  );
+}
 
 function dotPeaks(count: number): number[] {
   return Array.from({ length: count }, () => 0);
@@ -54,7 +76,9 @@ export function renderAudioMessageAttachment(
   return attachment ? (
     <AudioMessageAttachment
       {...attachment}
+      displayLabel={label}
       downloadUrl={isVoiceNoteAttachment(entry) ? undefined : downloadUrl}
+      transcript={entry?.transcript}
     />
   ) : null;
 }
@@ -115,13 +139,17 @@ export function AudioMessageAttachment({
   filename,
   href,
   onRemove,
+  displayLabel,
+  transcript,
 }: {
   composer?: boolean;
   duration?: number;
+  displayLabel?: string;
   downloadUrl?: string;
   filename: string;
   href: string;
   onRemove?: () => void;
+  transcript?: string;
 }) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const playbackId = React.useId();
@@ -131,6 +159,7 @@ export function AudioMessageAttachment({
   const progressWaveformRef = React.useRef<HTMLDivElement | null>(null);
   const progressFrameRef = React.useRef<number | null>(null);
   const shouldReduceMotion = useReducedMotion();
+  const hasWorkspaceVoiceNoteLayout = !composer && Boolean(transcript);
   const [playbackHref, setPlaybackHref] = React.useState<string | undefined>(
     composer || href.startsWith("blob:") || href.startsWith("data:")
       ? href
@@ -143,7 +172,11 @@ export function AudioMessageAttachment({
       ? { attempt: 0, href }
       : undefined,
   );
-  const [barCount, setBarCount] = React.useState(INITIAL_BAR_COUNT);
+  const [barCount, setBarCount] = React.useState(
+    hasWorkspaceVoiceNoteLayout
+      ? WORKSPACE_VOICE_NOTE_BAR_COUNT
+      : INITIAL_BAR_COUNT,
+  );
   const [duration, setDuration] = React.useState(taggedDuration ?? 0);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -158,6 +191,8 @@ export function AudioMessageAttachment({
   >();
   const [peaks, setPeaks] = React.useState(() => dotPeaks(INITIAL_BAR_COUNT));
   const [waveformReady, setWaveformReady] = React.useState(false);
+  const [transcriptOpen, setTranscriptOpen] = React.useState(false);
+  const transcriptId = React.useId();
   useSmoothCorners(mediaRef);
   useSmoothCorners(playbackRateRef);
 
@@ -229,14 +264,19 @@ export function AudioMessageAttachment({
     if (!waveform) return;
     const updateCount = () => {
       setBarCount(
-        Math.min(256, Math.max(1, Math.floor((waveform.clientWidth + 2) / 5))),
+        hasWorkspaceVoiceNoteLayout
+          ? WORKSPACE_VOICE_NOTE_BAR_COUNT
+          : Math.min(
+              256,
+              Math.max(1, Math.floor((waveform.clientWidth + 2) / 5)),
+            ),
       );
     };
     updateCount();
     const observer = new ResizeObserver(updateCount);
     observer.observe(waveform);
     return () => observer.disconnect();
-  }, []);
+  }, [hasWorkspaceVoiceNoteLayout]);
 
   React.useEffect(() => {
     if (!playbackHref) return;
@@ -384,11 +424,25 @@ export function AudioMessageAttachment({
     (active: boolean) =>
       peaks.map((peak, index) => (
         <motion.span
-          animate={{ height: voiceNoteBarHeight(peak) }}
+          animate={{
+            height: hasWorkspaceVoiceNoteLayout
+              ? workspaceVoiceNoteBarHeight(index)
+              : voiceNoteBarHeight(peak),
+          }}
           aria-hidden="true"
           className={cn(
             "w-[3px] shrink-0",
-            active ? "bg-primary" : "bg-muted-foreground/35",
+            hasWorkspaceVoiceNoteLayout
+              ? active
+                ? "colony-voice-note-waveform-active"
+                : "colony-voice-note-waveform-bar"
+              : active
+                ? composer
+                  ? "bg-primary"
+                  : "bg-blue-500/70"
+                : composer
+                  ? "bg-muted-foreground/35"
+                  : "bg-blue-500/35",
           )}
           initial={false}
           key={BAR_KEYS[index]}
@@ -400,13 +454,21 @@ export function AudioMessageAttachment({
           }
         />
       )),
-    [peaks, shouldReduceMotion],
+    [peaks, shouldReduceMotion, composer, hasWorkspaceVoiceNoteLayout],
+  );
+
+  const waveformBarsClassName = cn(
+    "flex h-full items-center",
+    hasWorkspaceVoiceNoteLayout ? "justify-between" : "gap-0.5",
   );
 
   return (
     <Attachment
       className={cn(
         "my-1 w-full max-w-[21rem] gap-2.5 px-2.5 py-2",
+        !composer &&
+          transcript &&
+          "colony-voice-note-card !max-w-[24.375rem] !grid !grid-cols-[2rem_minmax(0,1fr)_auto] !grid-rows-[2rem_auto] !items-center !gap-x-2.5 !gap-y-2 !px-3 py-2.5 !text-voice-note",
         composer && "shadow-none",
       )}
       data-testid={
@@ -416,7 +478,10 @@ export function AudioMessageAttachment({
     >
       <AttachmentMedia
         ref={mediaRef}
-        className="rounded-lg bg-primary text-primary-foreground"
+        className={cn(
+          "rounded-lg bg-primary text-primary-foreground",
+          !composer && transcript && "!h-8 !w-8 !rounded-full",
+        )}
         data-testid="voice-note-playback-control"
       >
         <button
@@ -437,6 +502,8 @@ export function AudioMessageAttachment({
             <AlertCircle aria-hidden="true" />
           ) : pendingPlay ? (
             <Loader2 aria-hidden="true" className="animate-spin" />
+          ) : hasWorkspaceVoiceNoteLayout && !isPlaying ? (
+            <WorkspaceVoiceNotePlayIcon />
           ) : (
             <MorphingPlayPauseIcon isPlaying={isPlaying} />
           )}
@@ -450,7 +517,10 @@ export function AudioMessageAttachment({
           </div>
         ) : (
           <div
-            className="relative h-6 overflow-hidden rounded-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1"
+            className={cn(
+              "relative h-6 overflow-hidden rounded-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
+              !composer && transcript && "!h-8",
+            )}
             data-testid="voice-note-playback-waveform"
             data-waveform-state={
               waveformError ? "error" : waveformReady ? "ready" : "loading"
@@ -462,12 +532,13 @@ export function AudioMessageAttachment({
                 Waveform preview unavailable. Playback may still work.
               </span>
             ) : null}
-            <div className="flex h-full items-center gap-0.5">
-              {waveformBars(false)}
-            </div>
+            <div className={waveformBarsClassName}>{waveformBars(false)}</div>
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 flex items-center gap-0.5 will-change-[clip-path]"
+              className={cn(
+                "pointer-events-none absolute inset-0 will-change-[clip-path]",
+                waveformBarsClassName,
+              )}
               data-testid="voice-note-progress-waveform"
               ref={progressWaveformRef}
               style={{ clipPath: "inset(0 100% 0 0)" }}
@@ -494,13 +565,20 @@ export function AudioMessageAttachment({
           </div>
         )}
       </AttachmentContent>
-      <AttachmentActions className="grid min-w-9 place-items-center">
+      <AttachmentActions
+        className={cn(
+          "grid min-w-9 place-items-center",
+          !composer && transcript && "!flex !min-w-0 !gap-1.5",
+        )}
+      >
         <span
           aria-hidden={!composer}
           className={cn(
             "pointer-events-none col-start-1 row-start-1 text-xs tabular-nums text-muted-foreground transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
             !composer &&
               "group-hover/attachment:-translate-y-0.5 group-hover/attachment:opacity-0 group-focus-within/attachment:-translate-y-0.5 group-focus-within/attachment:opacity-0",
+            !composer && transcript && "!text-2xs !opacity-100",
+            !composer && transcript && "!static !transform-none",
           )}
         >
           {timeLabel}
@@ -509,7 +587,12 @@ export function AudioMessageAttachment({
           <button
             ref={playbackRateRef}
             aria-label={`Playback speed ${playbackRateLabel(playbackRate)}; next ${playbackRateLabel(nextPlaybackRate)}`}
-            className="col-start-1 row-start-1 grid rounded-full bg-primary px-2.5 py-0.5 text-2xs font-semibold tabular-nums text-primary-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out active:scale-95 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none motion-reduce:active:scale-100"
+            className={cn(
+              "col-start-1 row-start-1 grid rounded-full bg-primary px-2.5 py-0.5 text-2xs font-semibold tabular-nums text-primary-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out active:scale-95 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none motion-reduce:active:scale-100",
+              !composer &&
+                transcript &&
+                "!static !w-6 !px-0 !bg-transparent !text-muted-foreground !opacity-100",
+            )}
             data-testid="voice-note-playback-rate"
             onClick={() => {
               const next = nextVoiceNotePlaybackRate(playbackRate);
@@ -568,6 +651,27 @@ export function AudioMessageAttachment({
             <X />
           </AttachmentAction>
         </AttachmentActions>
+      ) : null}
+      {!composer && transcript ? (
+        <div className="colony-voice-note-meta">
+          <span>
+            <Mic aria-hidden="true" />
+            {displayLabel || "Voice note"}
+          </span>
+          <button
+            aria-controls={transcriptId}
+            aria-expanded={transcriptOpen}
+            onClick={() => setTranscriptOpen((open) => !open)}
+            type="button"
+          >
+            Transcript
+          </button>
+        </div>
+      ) : null}
+      {!composer && transcriptOpen ? (
+        <p className="colony-voice-note-transcript" id={transcriptId}>
+          {transcript}
+        </p>
       ) : null}
       {/* biome-ignore lint/a11y/useMediaCaption: voice notes are user-provided audio */}
       <audio

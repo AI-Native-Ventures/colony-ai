@@ -619,10 +619,7 @@ test.describe("channel activity hover preview", () => {
         );
       }
     }
-    await expect(page.getByTestId("channel-general")).not.toHaveCSS(
-      "font-weight",
-      "700",
-    );
+    await expect(page.getByTestId("channel-unread-dot-general")).toHaveCount(0);
     for (const itemId of inboxItemIds) {
       const inboxRow = page.getByTestId(`home-inbox-item-${itemId}`);
       await inboxRow.hover();
@@ -657,7 +654,7 @@ test.describe("channel activity hover preview", () => {
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "400",
+      "700",
     );
 
     await page.mouse.move(900, 680);
