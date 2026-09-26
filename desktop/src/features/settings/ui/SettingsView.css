@@ -1,5 +1,7 @@
 body:has(.w20-settings-shell) {
   background: #f3f1f5;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) {
