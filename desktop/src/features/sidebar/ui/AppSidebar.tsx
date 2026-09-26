@@ -842,28 +842,6 @@ export function AppSidebar({
                 </>
               ) : null}
 
-              <div
-                className="colony-sidebar-team-section"
-                data-testid="sidebar-team-section"
-              >
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      aria-current={
-                        selectedView === "agents" ? "page" : undefined
-                      }
-                      data-testid="sidebar-your-team"
-                      className="colony-sidebar-workspace-team-link"
-                      onClick={onSelectAgents}
-                      type="button"
-                    >
-                      <Users aria-hidden="true" />
-                      <span>Your team</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </div>
-
               {errorMessage && !relayConnectionCard.hasRelayUnreachableError ? (
                 <div className="px-3 py-2 text-sm text-destructive">
                   {errorMessage}
@@ -871,6 +849,25 @@ export function AppSidebar({
               ) : null}
             </div>
           </SidebarContent>
+          <div
+            className="colony-sidebar-team-section shrink-0"
+            data-testid="sidebar-team-section"
+          >
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  aria-current={selectedView === "agents" ? "page" : undefined}
+                  data-testid="sidebar-your-team"
+                  className="colony-sidebar-workspace-team-link"
+                  onClick={onSelectAgents}
+                  type="button"
+                >
+                  <Users aria-hidden="true" />
+                  <span>Your team</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </div>
         </div>
 
         <div className="relative z-30 shrink-0" data-buzz-glass-footer-wrap>
