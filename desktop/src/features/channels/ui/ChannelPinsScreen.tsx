@@ -52,7 +52,7 @@ export function ChannelPinsScreen({ channelId }: { channelId: string }) {
             Pinned in {channel?.name ?? channelId}
           </h1>
           <Button
-            className="h-7 rounded-md px-3 text-2xs font-medium"
+            className="h-7 rounded-md px-2.5 text-2xs font-semibold"
             onClick={openBrowseChannels}
             size="sm"
             type="button"

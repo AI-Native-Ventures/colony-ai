@@ -23,6 +23,10 @@
     --colony-text-field: calc(var(--buzz-type-rem) * 0.9);
     --colony-text-label: calc(var(--buzz-type-rem) * 0.79);
     --colony-text-workspace-button: calc(var(--buzz-type-rem) * 0.74);
+    --colony-text-channel-action: calc(var(--buzz-type-rem) * 0.68);
+    --colony-text-channel-header: calc(var(--buzz-type-rem) * 1.05);
+    --colony-text-message-author: 0.8rem;
+    --colony-text-message-timestamp: 0.61rem;
     --colony-text-onboarding-button: calc(var(--buzz-type-rem) * 0.81);
     --colony-display-tracking: -0.042em;
     --colony-onboarding-heading-size: 2.15rem;
