@@ -347,7 +347,7 @@ pub fn load_personas<R: tauri::Runtime>(
     // the legacy shape. Pre-fold stores are converted by
     // `fold_personas_into_agent_store` in boot migrations before any caller
     // reaches this shim.
-    let records = crate::managed_agents::storage::load_agent_definitions(app)?
+    let records = crate::managed_agents::storage::load_factory_agent_definitions(app)?
         .iter()
         .filter_map(|record| record.to_definition_view())
         .collect();
@@ -358,6 +358,18 @@ pub fn load_personas<R: tauri::Runtime>(
     }
 
     Ok(records)
+}
+
+/// Resolve persona definitions for Factory without writing merged built-ins
+/// back to the managed-agent store.
+pub(crate) fn load_factory_personas<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Vec<AgentDefinition>, String> {
+    let records = crate::managed_agents::storage::load_agent_definitions(app)?
+        .iter()
+        .filter_map(|record| record.to_definition_view())
+        .collect();
+    Ok(merge_personas(records, &now_iso()).0)
 }
 
 /// Read the raw persona records at `path` — no built-in merge, no write-back.

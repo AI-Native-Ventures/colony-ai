@@ -67,6 +67,8 @@ impl StopReason {
     ///
     /// Matching is case-insensitive so agents that send `"END_TURN"` or
     /// `"Cancelled"` are handled correctly without a protocol error.
+    // Keep the Option-returning API for existing ACP callers.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "end_turn" => Some(Self::EndTurn),
