@@ -221,6 +221,12 @@ test("appearance controls save a complete scoped snapshot and retain density", a
   await openSettings(page, "appearance");
 
   await expect(page.getByTestId("appearance-density")).toBeVisible();
+  const innerTabIndicatorColor = () =>
+    page
+      .getByTestId("settings-inner-appearance")
+      .evaluate(
+        (element) => getComputedStyle(element, "::after").backgroundColor,
+      );
   const sharedChrome = () =>
     page.evaluate(() => {
       const read = (selector: string) => {
@@ -254,12 +260,19 @@ test("appearance controls save a complete scoped snapshot and retain density", a
       borderRadius: "7px",
     },
   });
+  await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
 
   await page.getByTestId("appearance-mode-dark").click();
   await expect(page.getByTestId("appearance-mode-dark")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(true);
+  await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   expect(await sharedChrome()).toEqual({
     sectionLabelTracking: "-0.22px",
     searchTextColor: "rgb(236, 230, 239)",
@@ -272,7 +285,6 @@ test("appearance controls save a complete scoped snapshot and retain density", a
       borderRadius: "7px",
     },
   });
-
   const fieldBorderColor = await page
     .locator(".buzz-theme-gradient-layer")
     .evaluate((element) => getComputedStyle(element, "::after").borderTopColor);
@@ -316,9 +328,4 @@ test("appearance controls save a complete scoped snapshot and retain density", a
     glassBackground: false,
     prominentActiveTab: false,
   });
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.classList.contains("dark")),
-    )
-    .toBe(true);
 });

@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import {
   appearanceLastBusinessKey,
   appearanceSnapshotKey,
+  blendColor,
   writeAppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
 import {
@@ -192,6 +193,19 @@ export function SettingsView({
     const frameId = window.requestAnimationFrame(() => setIsLoaded(true));
     return () => window.cancelAnimationFrame(frameId);
   }, []);
+
+  React.useEffect(() => {
+    const accent =
+      theme.accentColor === "neutral" ? "#74717B" : theme.accentColor;
+    document.documentElement.style.setProperty(
+      "--w20-appearance-accent",
+      blendColor(
+        accent,
+        theme.isDark ? "#ffffff" : "#000000",
+        theme.isDark ? 0.5 : 0.65,
+      ),
+    );
+  }, [theme.accentColor, theme.isDark]);
 
   React.useEffect(() => {
     if (activeSection !== section) onSectionChange(activeSection);

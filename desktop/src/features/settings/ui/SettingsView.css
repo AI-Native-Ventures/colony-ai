@@ -177,6 +177,10 @@ body:has(.w20-settings-shell) {
   outline: none;
 }
 
+.dark .w20-nav-search input {
+  color: #ece6ef;
+}
+
 .w20-nav-search input::placeholder {
   color: #79747f;
   opacity: 0.85;
@@ -593,7 +597,7 @@ body:has(.w20-settings-shell) {
   left: 0;
   height: 2px;
   border-radius: 2px;
-  background: #3b82f6;
+  background: var(--w20-appearance-accent, #3b82f6);
   content: "";
 }
 
@@ -609,10 +613,6 @@ body:has(.w20-settings-shell) {
 .dark .w20-inner-tab:hover,
 .dark .w20-inner-tab.is-active {
   color: #ece6ef;
-}
-
-.dark .w20-inner-tab.is-active::after {
-  background: #c0a2d0;
 }
 
 .w20-route-scroll {
