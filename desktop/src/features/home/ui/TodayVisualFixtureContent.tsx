@@ -129,7 +129,7 @@ function BusinessReviewRow({
         <ReviewMark variant={review.variant} />
       )}
       <div className="r17-today-review-copy">
-        <small>{review.meta}</small>
+        <small className="text-workspace-review-meta">{review.meta}</small>
         <strong>{review.title}</strong>
       </div>
       <ChevronRight aria-hidden="true" className="r17-today-row-chevron" />
@@ -148,10 +148,10 @@ function AttentionRow({
         <Sparkle />
       </span>
       <span className="r17-today-attention-copy">
-        <strong>
+        <strong className="text-workspace-attention-title font-bold">
           {item.agent} · {item.title}
         </strong>
-        <small>{item.detail}</small>
+        <small className="text-workspace-attention-meta">{item.detail}</small>
       </span>
       <span className={`r17-today-status r17-today-status-${item.status}`}>
         {item.status}
@@ -243,9 +243,13 @@ export function TodayVisualFixtureContent({
         <aside aria-label="Agency activity" className="r17-today-right">
           <RightSection link="All approvals" title="With your clients">
             <article className="r17-today-waiting-record">
-              <strong>{fixture.clientApproval.client}</strong>
-              <p>{fixture.clientApproval.title}</p>
-              <small>
+              <strong className="text-workspace-card-title font-bold">
+                {fixture.clientApproval.client}
+              </strong>
+              <p className="text-workspace-card-body">
+                {fixture.clientApproval.title}
+              </p>
+              <small className="text-workspace-card-meta">
                 Awaiting {fixture.clientApproval.approver} · v
                 {fixture.clientApproval.version}
               </small>
@@ -253,15 +257,19 @@ export function TodayVisualFixtureContent({
           </RightSection>
           <RightSection link="Queue" title="Next delivery">
             <article className="r17-today-waiting-record">
-              <strong>{fixture.nextDelivery.title}</strong>
-              <small>{fixture.nextDelivery.detail}</small>
+              <strong className="text-workspace-card-title font-bold">
+                {fixture.nextDelivery.title}
+              </strong>
+              <small className="text-workspace-card-meta">
+                {fixture.nextDelivery.detail}
+              </small>
             </article>
           </RightSection>
           <RightSection title="Money to follow up">
             <article className="r17-today-money-record">
               <span>
                 {fixture.moneyFollowUp.client}
-                <small>
+                <small className="text-workspace-card-meta">
                   {fixture.moneyFollowUp.invoice} · due{" "}
                   {fixture.moneyFollowUp.due}
                 </small>

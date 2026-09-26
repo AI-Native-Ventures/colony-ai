@@ -20,6 +20,30 @@ export default {
         label: "var(--colony-text-label)", // 12.64px at 16px type rem
         "studio-title": "calc(var(--buzz-type-rem) * 1.7)",
         "workspace-date": "calc(var(--buzz-type-rem) * 0.8)",
+        "workspace-card-title": [
+          "calc(var(--buzz-type-rem) * 0.81)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-card-body": [
+          "calc(var(--buzz-type-rem) * 0.8)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-card-meta": [
+          "calc(var(--buzz-type-rem) * 0.72)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-attention-title": [
+          "calc(var(--buzz-type-rem) * 0.85)",
+          { lineHeight: "1.5" },
+        ],
+        "workspace-attention-meta": [
+          "calc(var(--buzz-type-rem) * 0.74)",
+          { lineHeight: "1.6" },
+        ],
+        "workspace-review-meta": [
+          "calc(var(--buzz-type-rem) * 0.73)",
+          { lineHeight: "1.5" },
+        ],
         "workspace-button": "var(--colony-text-workspace-button)", // 11.84px at 16px type rem
         "onboarding-button": "var(--colony-text-onboarding-button)", // 12.96px at 16px type rem
         "status-indicator": "0.9375rem", // 15px at the default root size
