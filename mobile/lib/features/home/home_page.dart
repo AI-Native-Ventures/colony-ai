@@ -39,6 +39,12 @@ class HomePage extends HookConsumerWidget {
     final chatsReselection = useValueNotifier(0);
     final activityReselection = useValueNotifier(0);
     final businessReselection = useValueNotifier(0);
+    final tabNavigatorKeys = useMemoized(
+      () => List.generate(
+        MobileShellDestination.values.length,
+        (_) => GlobalKey<NavigatorState>(),
+      ),
+    );
 
     MobileShellRouteContext routeContext(ValueListenable<int> tabReselection) =>
         MobileShellRouteContext(
@@ -68,16 +74,32 @@ class HomePage extends HookConsumerWidget {
       routeContext(businessReselection),
     );
 
-    Widget pageFor(MobileShellDestination destination, Widget? page) =>
-        visited.value.contains(destination)
-        ? page ?? const SizedBox.shrink()
-        : const SizedBox.shrink();
+    Widget pageFor(MobileShellDestination destination, Widget? page) {
+      if (!visited.value.contains(destination) || page == null) {
+        return const SizedBox.shrink();
+      }
+
+      final navigatorKey =
+          tabNavigatorKeys[MobileShellDestination.values.indexOf(destination)];
+      return NavigatorPopHandler<void>(
+        enabled: selected.value == destination,
+        onPopWithResult: (_) {
+          navigatorKey.currentState?.maybePop();
+        },
+        child: Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (settings) =>
+              MaterialPageRoute<void>(settings: settings, builder: (_) => page),
+        ),
+      );
+    }
 
     return MobileRouteScope(
       registry: routeRegistry,
       child: MobileShell(
         destination: selected.value,
         hasUnreadActivity: hasUnreadInbox,
+        showBrandBar: selected.value != MobileShellDestination.chats,
         overlayBuilder: overlayBuilder,
         onDestinationSelected: (next) {
           if (next == selected.value) {

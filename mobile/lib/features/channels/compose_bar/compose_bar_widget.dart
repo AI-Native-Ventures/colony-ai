@@ -5,6 +5,16 @@ class ComposeBar extends HookConsumerWidget {
   final String channelName;
   final String? hintText;
   final ComposeBarOnSend onSend;
+  final String? draftKeyOverride;
+  final bool postEditorMode;
+  final bool allowEmptySend;
+  final bool enabled;
+
+  final ComposeSubmitController? submitController;
+  final ValueChanged<String>? onBodyChanged;
+  final ValueChanged<int>? onAttachmentCountChanged;
+  final ValueChanged<bool>? onSubmissionChanged;
+  final ValueChanged<Object>? onFailure;
 
   /// Lets a parent prepare its layout before the editor requests focus.
   final VoidCallback? onFocusRequested;
@@ -23,6 +33,15 @@ class ComposeBar extends HookConsumerWidget {
     required this.channelId,
     this.channelName = '',
     this.hintText,
+    this.draftKeyOverride,
+    this.postEditorMode = false,
+    this.allowEmptySend = false,
+    this.enabled = true,
+    this.submitController,
+    this.onBodyChanged,
+    this.onAttachmentCountChanged,
+    this.onSubmissionChanged,
+    this.onFailure,
     this.threadHeadId,
     this.rootId,
     this.focusNode,
@@ -38,10 +57,12 @@ class ComposeBar extends HookConsumerWidget {
       () => controller.text,
     );
     useEffect(() => controller.dispose, [controller]);
-    final draftKey = composeDraftKey(channelId, threadHeadId: threadHeadId);
+    final draftKey =
+        draftKeyOverride ??
+        composeDraftKey(channelId, threadHeadId: threadHeadId);
     final draftRevision = useRef(0);
     final draftIdentity = _composerDraftIdentity(ref);
-    final isComposerExpanded = useState(false);
+    final isComposerExpanded = useState(postEditorMode);
     final androidImeTransitionStarted = useState(
       defaultTargetPlatform != TargetPlatform.android,
     );
@@ -68,6 +89,20 @@ class ComposeBar extends HookConsumerWidget {
     final isSending = useState(false);
     final showFormatting = useState(false);
     final attachments = useState<List<_PendingAttachment>>([]);
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) onBodyChanged?.call(composerText);
+      });
+      return null;
+    }, [composerText]);
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          onAttachmentCountChanged?.call(attachments.value.length);
+        }
+      });
+      return null;
+    }, [attachments.value.length]);
     _useOwnedAttachmentCleanup(attachments);
     final uploadError = useState<String?>(null);
     final uploadingCount = useState(0);
@@ -466,9 +501,10 @@ class ComposeBar extends HookConsumerWidget {
     // Send the message.
     Future<void> send() async {
       final text = controller.text.trim();
-      if ((text.isEmpty && !hasAttachments) ||
+      if ((text.isEmpty && !hasAttachments && !allowEmptySend) ||
           isSending.value ||
-          uploadingCount.value > 0) {
+          uploadingCount.value > 0 ||
+          !enabled) {
         return;
       }
       final submittedDraftRevision = draftRevision.value;
@@ -550,6 +586,8 @@ class ComposeBar extends HookConsumerWidget {
       );
 
       isSending.value = true;
+      onSubmissionChanged?.call(true);
+      var backgroundSubmission = false;
       try {
         if (queuedAttachments.isEmpty) {
           if (!context.mounted) return;
@@ -570,6 +608,8 @@ class ComposeBar extends HookConsumerWidget {
             outgoing: outgoing,
             onSend: onSend,
             messenger: messenger,
+            onFailure: onFailure,
+            preserveDraft: postEditorMode,
           );
           return;
         }
@@ -579,7 +619,7 @@ class ComposeBar extends HookConsumerWidget {
         final draftMentions = Map<String, MentionCandidate>.of(
           mentionMap.value,
         );
-        clearComposer();
+        if (!postEditorMode) clearComposer();
         final clearedDraftRevision = draftRevision.value;
         uploadingCount.value += 1;
         uploadProgress.value = 0;
@@ -589,6 +629,7 @@ class ComposeBar extends HookConsumerWidget {
         final uploadService = ref.read(mediaUploadServiceProvider);
         activeUploadCancellation.value = cancellation;
         final delivery = onSend;
+        backgroundSubmission = true;
         unawaited(() async {
           var retainedForRetry = false;
           try {
@@ -630,7 +671,8 @@ class ComposeBar extends HookConsumerWidget {
             if (context.mounted) uploadError.value = _formatUploadError(error);
             if (context.mounted &&
                 queueGeneration == uploadGeneration.value &&
-                draftRevision.value == clearedDraftRevision) {
+                (postEditorMode ||
+                    draftRevision.value == clearedDraftRevision)) {
               attachments.value = draftAttachments;
               retainedForRetry = true;
               mentionMap.value
@@ -639,6 +681,7 @@ class ComposeBar extends HookConsumerWidget {
               controller.value = draftText;
               focusNode.requestFocus();
             }
+            if (context.mounted) onFailure?.call(error);
           } finally {
             if (!retainedForRetry) {
               await _deleteOwnedAttachments(queuedAttachments);
@@ -649,12 +692,22 @@ class ComposeBar extends HookConsumerWidget {
             if (context.mounted && queueGeneration == uploadGeneration.value) {
               uploadingCount.value = math.max(0, uploadingCount.value - 1);
             }
+            if (context.mounted) onSubmissionChanged?.call(false);
           }
         }());
       } finally {
         if (context.mounted && isSending.value) isSending.value = false;
+        if (context.mounted && !backgroundSubmission) {
+          onSubmissionChanged?.call(false);
+        }
       }
     }
+
+    submitController?.bind(
+      () => unawaited(send()),
+      removeDraft: () =>
+          ref.read(composeDraftsProvider.notifier).remove(draftKey),
+    );
 
     final queueAttachment = useCallback(
       (
@@ -959,6 +1012,83 @@ class ComposeBar extends HookConsumerWidget {
 
     // Suggestions and attachments live in the overlay.
     final hasPendingUploads = uploadingCount.value > 0;
+    final composer = _ComposerOverlayPortal(
+      controller: suggestionOverlayController,
+      attachmentSurface: attachmentSurface,
+      reducedMotion: reducedMotion,
+      buildOverlayPanel: buildOverlayPanel,
+      onDismissAttachmentSurface: () {
+        attachmentSurface.value = _AttachmentSurface.closed;
+      },
+      child: _ComposeBarLayout(
+        voiceNoteRecorder: voiceNote.recorder,
+        attachments: attachments.value,
+        onRemoveAttachment: removeAttachment,
+        uploadError: uploadError.value,
+        isExpanded: isComposerExpanded.value,
+        controller: controller,
+        focusNode: focusNode,
+        contextMenuBuilder: buildContextMenu,
+        onContentInserted: uploadPastedImage,
+        onVoiceNote: voiceNote.start,
+        onSend: () => unawaited(send()),
+        resolvedHint: resolvedHint,
+        attachmentSurface: attachmentSurface.value,
+        onAttachmentTap: handleAttachmentTap,
+        onExpand: expandComposer,
+        expansionAnimation: composerExpansionController,
+        formattingOpen: showFormatting.value,
+        onCloseFormatting: () => showFormatting.value = false,
+        motionDuration: motionDuration,
+        resizeDuration: resizeDuration,
+        onFormat: applyFormat,
+        onMention: () {
+          attachmentSurface.value = _AttachmentSurface.closed;
+          triggerMention();
+        },
+        onChannel: () {
+          attachmentSurface.value = _AttachmentSurface.closed;
+          triggerChannel();
+        },
+        onEmoji: () {
+          attachmentSurface.value = _AttachmentSurface.closed;
+          isEmojiPickerOpen.value = true;
+          _showComposerEmojiPicker(context, insertEmoji, () {
+            if (!context.mounted) return;
+            isEmojiPickerOpen.value = false;
+            focusNode.requestFocus();
+          });
+        },
+        onOpenFormatting: () {
+          attachmentSurface.value = _AttachmentSurface.closed;
+          showFormatting.value = true;
+        },
+        hasPendingUploads: hasPendingUploads,
+        canSend: composerText.trim().isNotEmpty || hasAttachments,
+        isSending: isSending.value,
+        postEditorMode: postEditorMode,
+        enabled: enabled,
+      ),
+    );
+    if (postEditorMode) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _UploadProgressMotion(
+            visible: hasPendingUploads && !postEditorMode,
+            progress: uploadProgress.value,
+            reducedMotion: reducedMotion,
+            onCancel: () {
+              activeUploadCancellation.value?.cancel();
+              uploadGeneration.value += 1;
+              uploadingCount.value = 0;
+              uploadProgress.value = 0;
+            },
+          ),
+          composer,
+        ],
+      );
+    }
     return _ComposerDockFrame(
       expansionAnimation: composerExpansionController,
       forceFullWidth: _voiceNoteFullWidth(voiceNote, attachments.value),
@@ -976,61 +1106,7 @@ class ComposeBar extends HookConsumerWidget {
               uploadProgress.value = 0;
             },
           ),
-          _ComposerOverlayPortal(
-            controller: suggestionOverlayController,
-            attachmentSurface: attachmentSurface,
-            reducedMotion: reducedMotion,
-            buildOverlayPanel: buildOverlayPanel,
-            onDismissAttachmentSurface: () {
-              attachmentSurface.value = _AttachmentSurface.closed;
-            },
-            child: _ComposeBarLayout(
-              voiceNoteRecorder: voiceNote.recorder,
-              attachments: attachments.value,
-              onRemoveAttachment: removeAttachment,
-              uploadError: uploadError.value,
-              isExpanded: isComposerExpanded.value,
-              controller: controller,
-              focusNode: focusNode,
-              contextMenuBuilder: buildContextMenu,
-              onContentInserted: uploadPastedImage,
-              onSend: () => unawaited(send()),
-              resolvedHint: resolvedHint,
-              attachmentSurface: attachmentSurface.value,
-              onAttachmentTap: handleAttachmentTap,
-              onExpand: expandComposer,
-              expansionAnimation: composerExpansionController,
-              formattingOpen: showFormatting.value,
-              onCloseFormatting: () => showFormatting.value = false,
-              motionDuration: motionDuration,
-              resizeDuration: resizeDuration,
-              onFormat: applyFormat,
-              onMention: () {
-                attachmentSurface.value = _AttachmentSurface.closed;
-                triggerMention();
-              },
-              onChannel: () {
-                attachmentSurface.value = _AttachmentSurface.closed;
-                triggerChannel();
-              },
-              onEmoji: () {
-                attachmentSurface.value = _AttachmentSurface.closed;
-                isEmojiPickerOpen.value = true;
-                _showComposerEmojiPicker(context, insertEmoji, () {
-                  if (!context.mounted) return;
-                  isEmojiPickerOpen.value = false;
-                  focusNode.requestFocus();
-                });
-              },
-              onOpenFormatting: () {
-                attachmentSurface.value = _AttachmentSurface.closed;
-                showFormatting.value = true;
-              },
-              hasPendingUploads: hasPendingUploads,
-              canSend: composerText.trim().isNotEmpty || hasAttachments,
-              isSending: isSending.value,
-            ),
-          ),
+          composer,
         ],
       ),
     );

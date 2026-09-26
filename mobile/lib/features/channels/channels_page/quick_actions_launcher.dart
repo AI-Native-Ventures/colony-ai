@@ -25,6 +25,9 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
   /// Bottom system inset used by the navigation bar's [SafeArea].
   final double systemBottomInset;
 
+  /// App-composed routes needed by a newly opened forum channel.
+  final MobileRouteRegistry? routeRegistry;
+
   /// Distance between the launcher and the right edge of the screen.
   final double rightInset;
 
@@ -37,6 +40,7 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
     required this.navigationBarWidth,
     required this.systemBottomInset,
     required this.rightInset,
+    this.routeRegistry,
   });
 
   @override
@@ -71,7 +75,8 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ChannelDetailPage(channel: channel),
+          builder: (_) =>
+              ChannelDetailPage(channel: channel, routeRegistry: routeRegistry),
         ),
       );
     }

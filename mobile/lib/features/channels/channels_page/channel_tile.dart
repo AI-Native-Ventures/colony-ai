@@ -26,92 +26,143 @@ class _ChannelTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final contentColor = isMuted
-        ? navigationSecondaryForeground(context)
-        : navigationPrimaryForeground(
-            context,
-          ).withValues(alpha: isUnread ? 1 : 0.8);
+    final authorPubkey = channel.lastMessagePubkey?.toLowerCase();
+    final profile = authorPubkey == null
+        ? null
+        : ref.watch(
+            userCacheProvider.select((profiles) => profiles[authorPubkey]),
+          );
+    if (authorPubkey != null && profile == null) {
+      ref.read(userCacheProvider.notifier).preload([authorPubkey]);
+    }
+    final readState = ref.watch(readStateProvider);
+    final unreadCount = isUnread
+        ? (_computeUnreadChannelState(
+                    channels: [channel],
+                    readState: readState,
+                    channelsNotifier: ref.read(channelsProvider.notifier),
+                  ).counts[channel.id] ??
+                  1)
+              .clamp(1, 99)
+              .toInt()
+        : 0;
+    final preview = channel.lastMessageContent ?? '';
+    final authorName = profile?.displayName?.trim();
+    final prefix = channel.isDm || authorPubkey == null
+        ? ''
+        : currentPubkey?.toLowerCase() == authorPubkey
+        ? 'You: '
+        : authorName != null && authorName.isNotEmpty
+        ? '$authorName: '
+        : '';
+    final mutedColor = _chatMuted(context);
+    final time = _channelListTime(channel);
 
     return InkWell(
+      key: ValueKey('conversation-row-${channel.id}'),
       borderRadius: BorderRadius.circular(Radii.md),
       onTap: onTap,
       onLongPress: () => _showChannelActions(context, ref),
       child: Padding(
-        padding: const EdgeInsets.only(
-          left: _kChannelSectionInset,
-          right: _kChannelSectionInset,
-          top: _kChannelRowVerticalPadding,
-          bottom: _kChannelRowVerticalPadding,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            SizedBox(
-              width: _kChannelLeadingWidth,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: channel.isDm
-                    ? _DmAvatar(channel: channel, currentPubkey: currentPubkey)
-                    : Icon(
-                        channelIcon(channel),
-                        key: ValueKey('channel-icon-${channel.id}'),
-                        size: _kChannelIconSize,
-                        color: contentColor,
-                      ),
-              ),
-            ),
-            const SizedBox(width: _kChannelLabelGap),
+            _ConversationAvatar(channel: channel, currentPubkey: currentPubkey),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    resolveDmChannelDisplayLabel(
-                      channel,
-                      currentPubkey: currentPubkey,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: contentListTitleTextStyle.copyWith(
-                      color: contentColor,
-                      fontWeight: isUnread ? FontWeight.w700 : FontWeight.w400,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          resolveDmChannelDisplayLabel(
+                            channel,
+                            currentPubkey: currentPubkey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.textTheme.bodyMedium?.copyWith(
+                            color: isMuted ? mutedColor : _chatInk(context),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                      if (channel.isEphemeral) ...[
+                        const SizedBox(width: Grid.half),
+                        _EphemeralBadge(channel: channel),
+                      ],
+                      if (isMuted) ...[
+                        const SizedBox(width: Grid.half),
+                        Tooltip(
+                          message: 'Muted',
+                          child: Icon(
+                            LucideIcons.bellOff,
+                            size: 12,
+                            color: mutedColor,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
+                  if (preview.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      '$prefix$preview',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: mutedColor,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            if (channel.isEphemeral) ...[
-              const SizedBox(width: Grid.xxs),
-              _EphemeralBadge(channel: channel),
-            ],
-            if (isMuted) ...[
-              const SizedBox(width: Grid.xxs),
-              Icon(
-                LucideIcons.bellOff,
-                size: 12,
-                color: context.colors.onSurface.withValues(alpha: 0.4),
-              ),
-            ],
-            if (!channel.isMember && !channel.isDm)
-              Padding(
-                padding: const EdgeInsets.only(right: Grid.xxs),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Grid.half + 2,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.colors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(Radii.sm),
-                  ),
-                  child: Text(
-                    'Open',
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (time.isNotEmpty)
+                  Text(
+                    time,
                     style: context.textTheme.labelSmall?.copyWith(
-                      color: context.colors.primary,
-                      fontWeight: FontWeight.w600,
+                      color: mutedColor,
+                      fontSize: 10,
                     ),
                   ),
-                ),
-              ),
+                if (unreadCount > 0) ...[
+                  const SizedBox(height: 7),
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _chatBlue(context),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      unreadCount == 99 ? '99+' : '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -129,122 +180,116 @@ class _ChannelTile extends ConsumerWidget {
   }
 }
 
-class _DmAvatar extends ConsumerWidget {
+String _channelListTime(Channel channel) {
+  final timestamp =
+      channel.lastMessageCreatedAt ??
+      dateTimeToUnixSeconds(channel.lastMessageAt);
+  if (timestamp == null) return '';
+  final date = DateTime.fromMillisecondsSinceEpoch(
+    timestamp * 1000,
+    isUtc: true,
+  ).toLocal();
+  final now = DateTime.now();
+  if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+  final yesterday = now.subtract(const Duration(days: 1));
+  if (date.year == yesterday.year &&
+      date.month == yesterday.month &&
+      date.day == yesterday.day) {
+    return 'Yesterday';
+  }
+  return '${date.month}/${date.day}';
+}
+
+class _ConversationAvatar extends ConsumerWidget {
+  const _ConversationAvatar({
+    required this.channel,
+    required this.currentPubkey,
+  });
+
   final Channel channel;
   final String? currentPubkey;
 
-  const _DmAvatar({required this.channel, required this.currentPubkey});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (!channel.isDm) {
+      return Container(
+        width: 38,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: _chatLine(context)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          '#',
+          style: TextStyle(color: _chatMuted(context), fontSize: 21, height: 1),
+        ),
+      );
+    }
+
     final normalizedCurrent = currentPubkey?.toLowerCase();
     final otherPubkeys = [
-      for (final pk in channel.participantPubkeys)
-        if (pk.toLowerCase() != normalizedCurrent) pk.toLowerCase(),
+      for (final pubkey in channel.participantPubkeys)
+        if (pubkey.toLowerCase() != normalizedCurrent) pubkey.toLowerCase(),
     ];
     final visiblePubkeys = otherPubkeys.isNotEmpty
         ? otherPubkeys
-        : channel.participantPubkeys.map((pk) => pk.toLowerCase()).toList();
-
+        : channel.participantPubkeys
+              .map((pubkey) => pubkey.toLowerCase())
+              .toList();
     if (visiblePubkeys.length > 1) {
       return Container(
-        width: _kDmAvatarSize,
-        height: _kDmAvatarSize,
+        width: 38,
+        height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: context.colors.surfaceContainerHighest,
-          shape: BoxShape.circle,
-          border: Border.all(color: context.colors.outlineVariant),
+          color: _chatSoft(context),
+          borderRadius: BorderRadius.circular(11),
         ),
         child: Text(
           '${visiblePubkeys.length}',
           style: context.textTheme.labelSmall?.copyWith(
-            fontSize: 9,
-            color: context.colors.onSurface,
-            fontWeight: FontWeight.w600,
-            height: 1,
+            color: _chatInk(context),
+            fontWeight: FontWeight.w700,
           ),
         ),
       );
     }
 
-    final otherPubkey = visiblePubkeys.isNotEmpty ? visiblePubkeys.first : null;
+    final otherPubkey = visiblePubkeys.firstOrNull;
     final profile = ref.watch(
       userCacheProvider.select(
         (profiles) => otherPubkey == null ? null : profiles[otherPubkey],
       ),
     );
-    final presence = ref.watch(
-      presenceCacheProvider.select(
-        (presenceMap) => otherPubkey == null
-            ? 'offline'
-            : (presenceMap[otherPubkey] ?? 'offline'),
-      ),
-    );
-
-    // Trigger fetches if not cached yet.
-    if (otherPubkey != null) {
-      if (profile == null) {
-        ref.read(userCacheProvider.notifier).preload([otherPubkey]);
-      }
-      ref.read(presenceCacheProvider.notifier).track([otherPubkey]);
+    if (otherPubkey != null && profile == null) {
+      ref.read(userCacheProvider.notifier).preload([otherPubkey]);
     }
-
-    final avatarUrl = profile?.avatarUrl;
-    // Keyed to the hex public key when the counterpart is unnamed and the
-    // profile isn't cached — the compact-npub participant label would
-    // otherwise render `N` for every unnamed DM counterpart. Selection skips
-    // the current user like the row label does, so the initial always
-    // identifies the same counterpart the label names.
-    final initial =
-        profile?.initial ??
-        dmAvatarInitial(channel, currentPubkey: currentPubkey);
-    return SizedBox(
-      width: _kDmAvatarSize,
-      height: _kDmAvatarSize,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          AvatarImage(
-            imageUrl: avatarUrl,
-            radius: _kDmAvatarSize / 2,
-            backgroundColor: context.colors.primaryContainer,
+    final fallbackInitial = profile?.displayName?.trim().isNotEmpty == true
+        ? _chatInitials(profile!.displayName)
+        : dmAvatarInitial(channel, currentPubkey: currentPubkey);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(11),
+      child: ColoredBox(
+        color: _chatSoft(context),
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: AvatarImageContent(
+            imageUrl: profile?.avatarUrl,
             fallback: Text(
-              initial,
-              style: context.textTheme.labelSmall?.copyWith(
-                fontSize: 9,
-                color: context.colors.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            isAgent: profile?.isAgent == true,
-          ),
-          Positioned(
-            right: -1,
-            bottom: -1,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _presenceColor(context, presence),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: context.theme.scaffoldBackgroundColor,
-                  width: 1.5,
-                ),
+              fallbackInitial,
+              style: context.textTheme.labelMedium?.copyWith(
+                color: _chatInk(context),
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
-  }
-
-  Color _presenceColor(BuildContext context, String presence) {
-    return switch (presence) {
-      'online' => context.appColors.success,
-      'away' => context.appColors.warning,
-      _ => context.colors.outline,
-    };
   }
 }

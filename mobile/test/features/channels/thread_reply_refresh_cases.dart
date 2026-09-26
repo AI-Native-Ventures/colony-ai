@@ -69,10 +69,14 @@ void threadReplyRefreshTests() {
       }, retry: true);
       open(navigator);
       await tester.pumpAndSettle();
-      expect(find.text('1 reply'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('thread-app-bar-summary')),
+        findsOneWidget,
+      );
+      expect(find.text('1 reply'), findsNWidgets(2));
       container.invalidate(threadRepliesProvider(args));
       await tester.pump();
-      expect(find.text('1 reply'), findsOneWidget);
+      expect(find.text('1 reply'), findsNWidgets(2));
       refresh.completeError(Exception('Transient refresh failure'));
       await tester.pump();
       for (var frame = 0; frame < 20; frame++) {
@@ -98,7 +102,7 @@ void threadReplyRefreshTests() {
         ),
       ]);
       await tester.pumpAndSettle();
-      expect(find.text('2 replies'), findsOneWidget);
+      expect(find.text('2 replies'), findsNWidgets(2));
       expect(
         find.byKey(const ValueKey('thread-message-group-fresh-reply')),
         findsOneWidget,
@@ -166,7 +170,7 @@ void threadReplyRefreshTests() {
     expect(find.text('Loading replies…'), findsOneWidget);
     reopened.complete([reply]);
     await tester.pumpAndSettle();
-    expect(find.text('1 reply'), findsOneWidget);
+    expect(find.text('1 reply'), findsNWidgets(2));
     expect(find.text('Loading replies…'), findsNothing);
   });
 
@@ -188,7 +192,11 @@ void threadReplyRefreshTests() {
     final (navigator, _) = await mount(tester, () async => []);
     open(navigator);
     await tester.pumpAndSettle();
-    expect(find.text('0 replies'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('thread-app-bar-summary')),
+      findsOneWidget,
+    );
+    expect(find.text('0 replies'), findsNWidgets(2));
     expect(find.text('Loading replies…'), findsNothing);
     expect(find.text('Couldn’t load replies'), findsNothing);
   });

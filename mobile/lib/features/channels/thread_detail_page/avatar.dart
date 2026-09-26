@@ -3,32 +3,37 @@ part of '../thread_detail_page.dart';
 class _Avatar extends StatelessWidget {
   final UserProfile? profile;
   final String pubkey;
-  final bool isAgent;
 
-  const _Avatar({
-    required this.profile,
-    required this.pubkey,
-    required this.isAgent,
-  });
+  const _Avatar({required this.profile, required this.pubkey});
 
   @override
   Widget build(BuildContext context) {
     final initial =
         profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
     final avatarUrl = profile?.avatarUrl;
+    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
+    final tokens = context.mobileTokens;
 
-    return AvatarImage(
-      imageUrl: avatarUrl,
-      radius: messageAvatarSize / 2,
-      backgroundColor: context.colors.primaryContainer,
-      fallback: Text(
-        initial,
-        style: context.textTheme.labelMedium?.copyWith(
-          color: context.colors.onPrimaryContainer,
-          fontWeight: FontWeight.w600,
+    return ClipOval(
+      key: const ValueKey('message-avatar-circle'),
+      child: ColoredBox(
+        key: const ValueKey('message-avatar-surface'),
+        color: animatedAvatar == null ? tokens.soft : Colors.transparent,
+        child: SizedBox.square(
+          dimension: messageAvatarSize,
+          child: AvatarImageContent(
+            imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
+            fallback: Text(
+              initial,
+              style: context.mobileTypography.metadata.copyWith(
+                color: tokens.ink,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ),
       ),
-      isAgent: isAgent,
     );
   }
 }

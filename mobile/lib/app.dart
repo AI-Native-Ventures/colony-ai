@@ -30,7 +30,15 @@ import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
 import 'features/channels/deep_link_dispatcher.dart';
+import 'features/channels/compose_bar.dart';
+import 'features/channels/message_content.dart';
+import 'features/channels/channel_forum_route.dart';
+import 'features/forum/forum_new_post_page.dart';
+import 'features/forum/forum_posts_view.dart';
+import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
+import 'features/profile/user_profile_sheet.dart';
+import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
 import 'features/profile/settings_profile_header.dart';
 import 'features/profile/profile_edit_page.dart';
@@ -62,12 +70,13 @@ const _starterChannels = [
 /// App composition is the only layer that knows concrete feature pages.
 /// Today and Business builders are registered by their feature slices when
 /// their W00 data contracts are integrated.
-final _mobileRouteRegistry = MobileRouteRegistry.empty()
+final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     .register(MobileRoutes.chats, (context, routeContext) {
       return ChannelsPage(
         settingsPageBuilder: routeContext.settingsPageBuilder,
         tabReselection: routeContext.tabReselection,
         onSettingsTransitionProgress: routeContext.onSettingsTransitionProgress,
+        routeRegistry: _mobileRouteRegistry,
       );
     })
     .register(
@@ -76,7 +85,69 @@ final _mobileRouteRegistry = MobileRouteRegistry.empty()
           ActivityPage(tabReselection: routeContext.tabReselection),
     )
     .register(MobileRoutes.updates, (context, _) => const PulsePage())
-    .register(MobileRoutes.search, (context, _) => const SearchPage());
+    .register(MobileRoutes.search, (context, _) => const SearchPage())
+    .register(ChannelForumRoutes.posts, (context, arguments) {
+      return ForumPostsView(
+        channelId: arguments.channelId,
+        channelName: arguments.channelName,
+        currentPubkey: arguments.currentPubkey,
+        isMember: arguments.isMember,
+        isArchived: arguments.isArchived,
+        presentation: _forumPresentation(),
+      );
+    })
+    .register(ChannelForumRoutes.newPost, (context, arguments) {
+      return ForumNewPostPage(
+        channelId: arguments.channelId,
+        channelName: arguments.channelName,
+        memberCount: arguments.memberCount,
+        presentation: _forumPresentation(),
+      );
+    });
+
+ForumPresentationFactories _forumPresentation() => ForumPresentationFactories(
+  composeBarBuilder:
+      ({
+        required channelId,
+        required channelName,
+        required hintText,
+        required onSend,
+        draftKeyOverride,
+        postEditorMode = false,
+        allowEmptySend = false,
+        enabled = true,
+        submitController,
+        onBodyChanged,
+        onAttachmentCountChanged,
+        onSubmissionChanged,
+        onFailure,
+      }) => ComposeBar(
+        channelId: channelId,
+        channelName: channelName,
+        hintText: hintText,
+        onSend: onSend,
+        draftKeyOverride: draftKeyOverride,
+        postEditorMode: postEditorMode,
+        allowEmptySend: allowEmptySend,
+        enabled: enabled,
+        submitController: submitController,
+        onBodyChanged: onBodyChanged,
+        onAttachmentCountChanged: onAttachmentCountChanged,
+        onSubmissionChanged: onSubmissionChanged,
+        onFailure: onFailure,
+      ),
+  messageContentBuilder: (context, content) => MessageContent(
+    content: content.content,
+    mentionNames: content.mentionNames,
+    agentMentionPubkeys: content.agentMentionPubkeys,
+    tags: content.tags,
+    baseStyle: content.baseStyle,
+    maxLines: content.maxLines,
+    onMentionTap: content.onMentionTap,
+  ),
+  openProfile: showUserProfileSheet,
+  currentUserName: (ref) => ref.watch(profileProvider).value?.displayName,
+);
 
 final _inviteRelayConnectedProvider = FutureProvider.family<void, String>((
   ref,

@@ -44,6 +44,36 @@ class _SendButton extends StatelessWidget {
   }
 }
 
+class _VoiceNoteButton extends StatelessWidget {
+  final bool isDisabled;
+  final VoidCallback onTap;
+
+  const _VoiceNoteButton({required this.onTap, required this.isDisabled});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: IconButton(
+        tooltip: 'Record voice note',
+        onPressed: isDisabled ? null : () => _runComposerAction(onTap),
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          disabledBackgroundColor: Colors.transparent,
+          shape: const CircleBorder(),
+        ),
+        padding: EdgeInsets.zero,
+        icon: Icon(
+          LucideIcons.mic,
+          size: 18,
+          color: context.colors.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 String _formatUploadError(Object error) {
   return error.toString().replaceFirst('Exception: ', '');
 }
