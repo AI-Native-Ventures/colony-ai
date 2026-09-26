@@ -523,9 +523,8 @@ String _subtitle(FeedItem item, String author) {
     return '$author · $content';
   }
   if (item.category == 'agent_activity') {
-    return item.channelName.isEmpty
-        ? '$author · $content'
-        : '$author · ${item.channelName}';
+    final context = item.content.trim().isEmpty ? item.channelName : content;
+    return '$author · ${context.isEmpty ? item.displayContent : context}';
   }
   return content;
 }

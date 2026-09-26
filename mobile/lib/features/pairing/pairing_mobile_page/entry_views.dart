@@ -277,7 +277,10 @@ List<InlineSpan> _pairingInstructionEmphasis(String value) {
       text: value.substring(0, punctuation.start),
       style: const TextStyle(fontWeight: FontWeight.w700),
     ),
-    TextSpan(text: value.substring(punctuation.start)),
+    TextSpan(
+      text: value.substring(punctuation.start),
+      style: const TextStyle(fontWeight: FontWeight.w400),
+    ),
   ];
 }
 
