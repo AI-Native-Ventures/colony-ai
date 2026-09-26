@@ -344,7 +344,6 @@ export function AgentProfileView({
           ) : null}
         </div>
       ) : null}
-
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[11.875rem_minmax(0,1fr)]">
         <nav
           aria-label="Agent profile sections"
@@ -380,7 +379,6 @@ export function AgentProfileView({
             <p className="mt-2">Presence: {presenceLabel}</p>
           </div>
         </nav>
-
         <main
           className="min-h-0 min-w-0 overflow-y-auto p-5 sm:p-8 lg:px-[2.375rem] lg:py-[1.875rem]"
           data-testid="agent-profile-content"
