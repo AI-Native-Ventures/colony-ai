@@ -23,6 +23,7 @@ export default defineConfig({
         "**/account-auth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
         "**/owned-agent-discovery.spec.ts",
+        "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
         "**/tooltip-semantics.spec.ts",
