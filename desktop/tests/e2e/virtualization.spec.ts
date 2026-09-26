@@ -256,12 +256,15 @@ test.describe("list virtualization", () => {
     // reproduce Chromium/WebKit's native wheel → scroll callback ordering. The
     // old boundary rollback moved the viewport back down before the fetch
     // committed; keep that pre-prepend reversal below the same 5px frame bar.
-    // A 300ms relay delay leaves the input boundary and prepend commit as two
+    // A 1s relay delay leaves the input boundary and prepend commit as two
     // distinct phases so this assertion cannot accidentally measure only the
-    // later anchor correction.
+    // later anchor correction. The delay must also outlast the setup between
+    // the boundary crossing and the wheel trace (settle wait, anchor sample,
+    // trace start): on slower CI hosts 300ms let the prepend commit before the
+    // trace began, so the trace measured the anchor correction instead.
     await installMockBridge(page, {
       deepHistoryMessageCount: 1_800,
-      channelWindowDelayMs: 300,
+      channelWindowDelayMs: 1_000,
     });
     await page.goto("/#/channels/feedf00d-0000-4000-8000-000000000007");
     const timeline = page.getByTestId("message-timeline");
