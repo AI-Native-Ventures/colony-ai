@@ -12,8 +12,17 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        minio="$(docker compose config --images minio)"
-        init="$(docker compose config --images minio-init)"
+        # `config --images <service>` also lists dependency images (minio-init
+        # depends on minio), so read each service's own image from the JSON.
+        config="$(docker compose config --format json)"
+        minio="$(jq -r '.services.minio.image' <<<"$config")"
+        init="$(jq -r '.services["minio-init"].image' <<<"$config")"
+        for ref in "$minio" "$init"; do
+          if [ -z "$ref" ] || [ "$ref" = "null" ]; then
+            echo "Could not resolve a pinned service image from docker compose" >&2
+            exit 1
+          fi
+        done
         echo "minio=$minio" >> "$GITHUB_OUTPUT"
         echo "init=$init" >> "$GITHUB_OUTPUT"
         echo "key=buzz-service-images-v1-$(printf '%s\n%s' "$minio" "$init" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
