@@ -87,11 +87,11 @@ export function SendFeedbackDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden rounded-[11px] border-border/80 bg-card p-0 ${dialogHeight}`}
+        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden rounded-[11px] border-border/80 bg-card p-0 dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec] ${dialogHeight}`}
         data-testid="send-feedback-dialog"
         showCloseButton={false}
       >
-        <DialogHeader className="h-20 shrink-0 flex-row items-center justify-between gap-4 border-b border-border/70 px-[25px] py-5">
+        <DialogHeader className="h-20 shrink-0 flex-row items-center justify-between gap-4 border-b border-border/70 px-[25px] py-5 dark:border-[#3c3544]">
           <DialogTitle
             className="text-base font-semibold tracking-tight"
             data-testid="send-feedback-title"
@@ -100,7 +100,7 @@ export function SendFeedbackDialog({
           </DialogTitle>
           <DialogClose
             aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring dark:hover:bg-[#3a3243] dark:hover:text-[#e6e1ec]"
             disabled={isPending}
           >
             <X aria-hidden="true" className="h-4 w-4" />
@@ -127,7 +127,7 @@ export function SendFeedbackDialog({
             </div>
             <div className="flex justify-end">
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 data-testid="feedback-done"
                 onClick={() => onOpenChange(false)}
                 type="button"
@@ -146,7 +146,7 @@ export function SendFeedbackDialog({
             >
               <LoaderCircle
                 aria-hidden="true"
-                className="size-6 animate-spin"
+                className="size-6 animate-spin dark:text-[#a9bee8]"
               />
               <div className="space-y-1">
                 <p className="text-base font-medium">Sending your feedback…</p>
@@ -155,9 +155,9 @@ export function SendFeedbackDialog({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 justify-end gap-2 border-t border-border/70 px-[25px] pt-[18px]">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-border/70 px-[25px] pt-[18px] dark:border-[#3c3544]">
               <Button
-                className="rounded-md bg-card text-xs"
+                className="rounded-md bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
                 onClick={() => onOpenChange(false)}
                 type="button"
                 variant="outline"
@@ -165,7 +165,7 @@ export function SendFeedbackDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] disabled:opacity-100"
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] disabled:opacity-100 dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 disabled
                 data-testid="feedback-submit"
                 type="button"
@@ -184,7 +184,7 @@ export function SendFeedbackDialog({
           >
             {errorMessage ? (
               <div
-                className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive"
+                className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
                 data-testid="feedback-error"
                 role="alert"
               >
@@ -199,7 +199,7 @@ export function SendFeedbackDialog({
             >
               <span>Type</span>
               <select
-                className="h-[2.6875rem] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-[2.6875rem] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
                 data-testid="feedback-type"
                 disabled={isPending}
                 id="feedback-type"
@@ -224,7 +224,7 @@ export function SendFeedbackDialog({
             >
               <span>What would you like us to know?</span>
               <Textarea
-                className="min-h-[7.3125rem] resize-y bg-card text-sm leading-6"
+                className="min-h-[7.3125rem] resize-y bg-card text-sm leading-6 dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
                 data-testid="feedback-message"
                 disabled={isPending}
                 onChange={(event) => {
@@ -242,7 +242,7 @@ export function SendFeedbackDialog({
               >
                 <Checkbox
                   checked={includeLogs}
-                  className="border-input data-[state=checked]:bg-[#285fb5]"
+                  className="border-input data-[state=checked]:bg-[#285fb5] dark:border-[#5a5264] dark:data-[state=checked]:bg-[#a9bee8]"
                   data-testid="feedback-include-logs"
                   disabled={isPending}
                   id="feedback-include-logs"
@@ -254,7 +254,7 @@ export function SendFeedbackDialog({
               </label>
               <Button
                 aria-expanded={showDiagnostics}
-                className="h-auto px-0 text-xs text-blue-700 hover:text-blue-800 dark:text-blue-300"
+                className="h-auto px-0 text-xs text-blue-700 hover:text-blue-800 dark:text-[#a9bee8] dark:hover:text-[#a9bee8]"
                 data-testid="feedback-diagnostics-toggle"
                 onClick={() => setShowDiagnostics((visible) => !visible)}
                 type="button"
@@ -264,10 +264,10 @@ export function SendFeedbackDialog({
               </Button>
               {showDiagnostics ? (
                 <p
-                  className="rounded-md border border-blue-200 bg-blue-50 px-3 py-[10px] text-xs leading-6 text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100"
+                  className="rounded-md border border-blue-200 bg-blue-50 px-3 py-[10px] text-xs leading-6 text-blue-900 dark:border-[#3c3544] dark:bg-[#302b36] dark:text-[#e6e1ec]"
                   data-testid="feedback-diagnostics-details"
                 >
-                  <span className="mb-2 block font-medium text-blue-950 dark:text-blue-50">
+                  <span className="mb-2 block font-medium text-blue-950 dark:text-[#e6e1ec]">
                     Diagnostic information
                   </span>
                   {DIAGNOSTICS_DESCRIPTION}
@@ -276,10 +276,10 @@ export function SendFeedbackDialog({
             </div>
 
             <div
-              className={`${showDiagnostics ? "mt-[40px]" : "mt-[25px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px]`}
+              className={`${showDiagnostics ? "mt-[40px]" : "mt-[25px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
             >
               <Button
-                className="rounded-md border-input bg-card text-xs"
+                className="rounded-md border-input bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
                 onClick={() => onOpenChange(false)}
                 type="button"
                 variant="outline"
@@ -287,7 +287,7 @@ export function SendFeedbackDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 data-testid="feedback-submit"
                 disabled={message.trim().length === 0}
                 type="submit"
