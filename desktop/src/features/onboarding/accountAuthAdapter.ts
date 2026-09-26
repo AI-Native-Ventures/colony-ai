@@ -5,6 +5,7 @@ export type AccountAuthTestCall = {
   method: keyof AccountAuthClient;
   route: string;
   email?: string;
+  displayName?: string;
   purpose?: "verify" | "reset";
 };
 

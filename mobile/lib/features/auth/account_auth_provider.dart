@@ -167,13 +167,17 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
       codePurpose: AccountCodePurpose.reset,
     );
     try {
-      await ref
-          .read(accountApiProvider)
-          .confirmPasswordReset(
-            email: normalizedEmail,
-            code: code,
-            newPassword: newPassword,
-          );
+      final api = ref.read(accountApiProvider);
+      // Check the staged code first so an expired or wrong code reports its
+      // own failure before the new password is submitted.
+      await api.checkPasswordResetCode(email: normalizedEmail, code: code);
+      // The reset response carries a session, but the design returns to sign
+      // in with the new password ("Password updated"), so it is not adopted.
+      await api.confirmPasswordReset(
+        email: normalizedEmail,
+        code: code,
+        newPassword: newPassword,
+      );
       _clearPendingResetCode();
       state = AccountAuthState(
         status: AccountAuthStatus.resetComplete,
