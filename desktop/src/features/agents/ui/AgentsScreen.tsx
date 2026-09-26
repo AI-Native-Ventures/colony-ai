@@ -25,9 +25,7 @@ import { parseAgentProfileTab, type AgentProfileTab } from "./AgentProfileView";
 import type { AgentWorkspaceView } from "./AgentsView";
 
 function workspaceViewFromSearch(value: string | null): AgentWorkspaceView {
-  return value === "deployment" || value === "teams" || value === "templates"
-    ? value
-    : "directory";
+  return value === "teams" || value === "templates" ? value : "directory";
 }
 
 const AgentsView = React.lazy(async () => {

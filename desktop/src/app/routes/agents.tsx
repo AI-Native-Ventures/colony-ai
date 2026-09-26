@@ -50,10 +50,7 @@ function validateAgentsSearch(
     profileView: parseProfilePanelView(search.profileView) ?? undefined,
     rows: directoryPageSize(search.rows),
     view:
-      view === "directory" ||
-      view === "deployment" ||
-      view === "teams" ||
-      view === "templates"
+      view === "directory" || view === "teams" || view === "templates"
         ? view
         : undefined,
   };

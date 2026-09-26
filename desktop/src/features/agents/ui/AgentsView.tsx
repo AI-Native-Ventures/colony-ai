@@ -39,7 +39,6 @@ import { useArchivedIdentitiesQuery } from "@/features/identity-archive/hooks";
 import { useActiveAgentTurnsByChannel } from "@/features/agents/activeAgentTurnsStore";
 import { AgentDirectory } from "./AgentDirectory";
 import { AgentProfileView, type AgentProfileTab } from "./AgentProfileView";
-import { AgentDeploymentView } from "./AgentDeploymentView";
 import { parseAgentDirectoryPageSize } from "@/features/agents/agentDirectoryModel";
 import { useAppShell } from "@/app/AppShellContext";
 import { useRelayMembersQuery } from "@/features/community-members/hooks";
@@ -53,15 +52,10 @@ import {
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { getInheritedAgentDefaults } from "./bakedEnvHelpers";
 
-export type AgentWorkspaceView =
-  | "directory"
-  | "deployment"
-  | "teams"
-  | "templates";
+export type AgentWorkspaceView = "directory" | "teams" | "templates";
 
 const AGENT_WORKSPACE_TABS: Array<{ id: AgentWorkspaceView; label: string }> = [
   { id: "directory", label: "Directory" },
-  { id: "deployment", label: "Deployment" },
   { id: "teams", label: "Agent teams" },
   { id: "templates", label: "Templates & snapshots" },
 ];
@@ -490,18 +484,6 @@ export function AgentsView({
                   onMessageAgent={(pubkey) => void onMessageAgent(pubkey)}
                   pageSize={parseAgentDirectoryPageSize(pageSize)}
                   runtimes={runtimeCatalogQuery.data ?? []}
-                />
-              ) : null}
-              {view === "deployment" ? (
-                <AgentDeploymentView
-                  agents={agents.managedAgents}
-                  error={
-                    agents.managedAgentsQuery.error instanceof Error
-                      ? agents.managedAgentsQuery.error
-                      : null
-                  }
-                  isLoading={agents.managedAgentsQuery.isLoading}
-                  onOpenAgent={(agent) => onOpenAgent(agent.pubkey)}
                 />
               ) : null}
               {view === "teams" ? (
