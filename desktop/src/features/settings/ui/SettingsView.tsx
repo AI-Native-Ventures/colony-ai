@@ -296,7 +296,7 @@ export function SettingsView({
             Back to workspace
           </Button>
           <div>
-            <h1 className="w20-nav-title">Settings</h1>
+            <h1 className="w20-nav-title text-settings-nav-title">Settings</h1>
             <label className="w20-nav-search" htmlFor="settings-search-input">
               <Search
                 aria-hidden="true"

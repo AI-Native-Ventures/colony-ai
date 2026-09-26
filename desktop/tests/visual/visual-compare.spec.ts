@@ -575,6 +575,16 @@ async function inspectPageGeometry(
         };
       }),
       appearanceSamples: [
+        ".ap-back",
+        ".ap-nav-title",
+        ".ap-search",
+        ".ap-search input",
+        ".ap-nav-group h2",
+        ".ap-nav-item",
+        ".ap-nav-person",
+        ".ap-nav-person > .avatar",
+        ".ap-nav-person > span:last-child",
+        ".ap-nav-person > span:last-child small",
         ".ap-heading",
         ".ap-controls-scroll",
         ".d17-browse",
@@ -589,6 +599,16 @@ async function inspectPageGeometry(
         ".ap-live-window",
         ".ap-live-body",
         ".ap-foot",
+        ".w20-nav-back",
+        ".w20-nav-title",
+        ".w20-nav-search",
+        ".w20-nav-search input",
+        ".w20-nav-heading",
+        ".w20-nav-item",
+        ".w20-nav-person",
+        ".w20-nav-person-avatar",
+        ".w20-nav-person > div",
+        ".w20-nav-person > div small",
       ].map((selector) => ({
         selector,
         items: [...document.querySelectorAll(selector)].map((element) => {

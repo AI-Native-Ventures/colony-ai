@@ -62,6 +62,14 @@
         "buzz.appearance.linkPreviewStyle": "compact",
         "buzz.thread-view-mode": "split",
         "buzz-sidebar-width": "238",
+        "buzz-self-profile.v1:ws://127.0.0.1:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+          "version": 1,
+          "displayName": "Lerato Molefe",
+          "avatarUrl": null,
+          "about": "Workspace owner at Lerato Social",
+          "avatarDataUrl": null,
+          "updatedAt": 1790380800000
+        },
         "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
           "version": 1,
           "theme": "buzz",

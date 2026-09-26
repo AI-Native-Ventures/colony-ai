@@ -21,6 +21,10 @@ export default {
           "calc(var(--buzz-type-rem) * 1.75)",
           { lineHeight: "1.2", letterSpacing: "-0.055em" },
         ], // 28px at 16px type rem, for settings page titles
+        "settings-nav-title": [
+          "calc(var(--buzz-type-rem) * 1.3125)",
+          { lineHeight: "1.5", letterSpacing: "-0.04em" },
+        ], // 21px at 16px type rem, for settings navigation
         "settings-topbar": "calc(var(--buzz-type-rem) * 0.8)",
         "status-indicator": "0.9375rem", // 15px at the default root size
         "channel-title": [
