@@ -66,7 +66,9 @@ void main() {
             await tester.pumpWidget(
               ProviderScope(
                 overrides: [
-                  accountAuthProvider.overrideWith(_VisualProofAccountAuth.new),
+                  accountAuthProvider.overrideWith(
+                    () => _VisualProofAccountAuth(screen.initialAuthState),
+                  ),
                 ],
                 child: RepaintBoundary(
                   key: rootKey,
@@ -91,6 +93,10 @@ void main() {
             );
             await tester.pump(const Duration(milliseconds: 400));
             await _seedReferenceFields(tester, screen.name);
+            if (screen.resendOnMount) {
+              await tester.tap(find.text('Resend code'));
+              await tester.pumpAndSettle();
+            }
 
             if (screen.name == 'verify-code' || screen.name == 'reset-code') {
               expect(tester.getSize(find.byType(TextField).first).height, 52);
@@ -154,6 +160,46 @@ final _screenCases = <_ScreenCase>[
     () => const VerifyCodePage(email: 'lerato@example.com'),
   ),
   _ScreenCase(
+    'verify-expired',
+    () => const VerifyCodePage(email: 'lerato@example.com'),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      failure: AccountAuthFailure(AccountAuthFailureKind.codeExpired),
+    ),
+  ),
+  _ScreenCase(
+    'verify-wrong',
+    () => const VerifyCodePage(email: 'lerato@example.com'),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      failure: AccountAuthFailure(
+        AccountAuthFailureKind.wrongCode,
+        attemptsLeft: 2,
+      ),
+    ),
+  ),
+  _ScreenCase(
+    'verify-locked',
+    () => const VerifyCodePage(email: 'lerato@example.com'),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      failure: AccountAuthFailure(
+        AccountAuthFailureKind.tooManyAttempts,
+        retryAfterSecs: 60,
+      ),
+      retryAfterSecs: 60,
+    ),
+  ),
+  _ScreenCase(
+    'verify-resent',
+    () => const VerifyCodePage(email: 'lerato@example.com'),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      failure: AccountAuthFailure(AccountAuthFailureKind.codeExpired),
+    ),
+    resendOnMount: true,
+  ),
+  _ScreenCase(
     'reset-code',
     () => const VerifyCodePage(
       email: 'lerato@example.com',
@@ -200,15 +246,39 @@ Future<void> _seedReferenceFields(
 }
 
 class _ScreenCase {
-  const _ScreenCase(this.name, this.build);
+  const _ScreenCase(
+    this.name,
+    this.build, {
+    this.initialAuthState = const AccountAuthState(),
+    this.resendOnMount = false,
+  });
 
   final String name;
   final Widget Function() build;
+  final AccountAuthState initialAuthState;
+  final bool resendOnMount;
 }
 
 class _VisualProofAccountAuth extends AccountAuthNotifier {
+  _VisualProofAccountAuth(this.initialState);
+
+  final AccountAuthState initialState;
+
   @override
-  AccountAuthState build() => const AccountAuthState();
+  AccountAuthState build() => initialState;
+
+  @override
+  Future<void> resendCode({
+    required String email,
+    required AccountCodePurpose purpose,
+  }) async {
+    state = AccountAuthState(
+      status: AccountAuthStatus.verificationSent,
+      email: email,
+      codePurpose: purpose,
+      retryAfterSecs: 30,
+    );
+  }
 }
 
 class _ProofStatusBar extends StatelessWidget {

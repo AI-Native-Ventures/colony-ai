@@ -45,7 +45,11 @@ class CreateAccountPage extends HookConsumerWidget {
       }
       await ref
           .read(accountAuthProvider.notifier)
-          .signUp(email: email.text, password: password.text);
+          .signUp(
+            displayName: name.text,
+            email: email.text,
+            password: password.text,
+          );
       if (!context.mounted) return;
       final result = ref.read(accountAuthProvider);
       if (result.status == AccountAuthStatus.verificationSent) {

@@ -356,7 +356,7 @@ Widget _pairingRouteFooter({
           borderRadius: BorderRadius.circular(Radii.button),
         ),
       ),
-      child: Text(label),
+      child: Text(label, style: _pairingFooterLabelStyle),
     ),
   );
   Widget secondary(String label, VoidCallback? onPressed) => SizedBox(
@@ -370,7 +370,7 @@ Widget _pairingRouteFooter({
           borderRadius: BorderRadius.circular(Radii.button),
         ),
       ),
-      child: Text(label),
+      child: Text(label, style: _pairingFooterLabelStyle),
     ),
   );
   Widget softAction(String label, VoidCallback? onPressed) => SizedBox(
@@ -385,7 +385,7 @@ Widget _pairingRouteFooter({
           borderRadius: BorderRadius.circular(Radii.button),
         ),
       ),
-      child: Text(label),
+      child: Text(label, style: _pairingFooterLabelStyle),
     ),
   );
 
@@ -444,8 +444,14 @@ Widget _pairingRouteFooter({
         color: tokens.paper,
         border: Border(top: BorderSide(color: tokens.line)),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: children),
     ),
   );
 }
+
+const _pairingFooterLabelStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 12,
+  fontWeight: FontWeight.w600,
+);

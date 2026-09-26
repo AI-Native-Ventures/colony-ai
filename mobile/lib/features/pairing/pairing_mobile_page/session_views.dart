@@ -9,13 +9,14 @@ class _PairingCompareView extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return _PairingContent(
+      topPadding: 22,
       children: [
         const _PairingIntro(
           title: 'Do the codes match?',
           description:
               'Check this exact number on your desktop before approving.',
         ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 24),
         _PairingCodeCard(code: pairing.sasCode ?? ''),
         const SizedBox(height: 26),
         const _PairingDesktopRow(subtitle: 'Existing Colony identity'),
@@ -99,11 +100,13 @@ class _PairingCodeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Container(
-      height: 100,
+      key: const ValueKey('pairing-confirmation-code-card'),
+      height: 102,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: tokens.soft,
         borderRadius: BorderRadius.circular(Radii.container),
+        border: Border.all(color: tokens.line, width: 1),
       ),
       child: Semantics(
         label: 'Confirmation code $code',
@@ -113,7 +116,7 @@ class _PairingCodeCard extends StatelessWidget {
             style: context.mobileTypography.flowTitle.copyWith(
               color: tokens.ink,
               fontSize: 32,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               letterSpacing: 3.84,
               height: 1.15,
             ),

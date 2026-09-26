@@ -983,7 +983,10 @@ async fn steer_rejected_on_run_id_mismatch() {
         )
         .await;
 
+    // The fake turn can finish before the steer reply is written, so read
+    // until both replies have arrived rather than stopping at the prompt's.
     let mut saw_reject = false;
+    let mut saw_prompt_done = false;
     for _ in 0..40 {
         let v = h.recv().await;
         if v["id"] == json!(s_id) {
@@ -994,6 +997,9 @@ async fn steer_rejected_on_run_id_mismatch() {
             saw_reject = true;
         } else if v["id"] == json!(p_id) {
             // Turn finishes normally regardless of the rejected steer.
+            saw_prompt_done = true;
+        }
+        if saw_reject && saw_prompt_done {
             break;
         }
     }
@@ -1520,13 +1526,19 @@ async fn steer_rejected_on_empty_prompt() {
             json!({"sessionId": sid, "expectedRunId": run_id, "prompt": []}),
         )
         .await;
+    // The fake turn can finish before the steer reply is written, so read
+    // until both replies have arrived rather than stopping at the prompt's.
     let mut saw_reject = false;
+    let mut saw_prompt_done = false;
     for _ in 0..40 {
         let v = h.recv().await;
         if v["id"] == json!(s_id) {
             assert_eq!(v["error"]["code"], -32602, "empty prompt must be rejected");
             saw_reject = true;
         } else if v["id"] == json!(p_id) {
+            saw_prompt_done = true;
+        }
+        if saw_reject && saw_prompt_done {
             break;
         }
     }

@@ -109,6 +109,7 @@ enum AccountAuthStatus {
   idle,
   loading,
   verificationSent,
+  codeVerified,
   complete,
   resetComplete,
   failed,
@@ -122,12 +123,14 @@ class AccountAuthState {
     this.email,
     this.codePurpose,
     this.failure,
+    this.retryAfterSecs,
   });
 
   final AccountAuthStatus status;
   final String? email;
   final AccountCodePurpose? codePurpose;
   final AccountAuthFailure? failure;
+  final int? retryAfterSecs;
 
   bool get isLoading => status == AccountAuthStatus.loading;
 }

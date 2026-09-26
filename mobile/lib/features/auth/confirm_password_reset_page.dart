@@ -51,6 +51,17 @@ class ConfirmPasswordResetPage extends HookConsumerWidget {
             ),
           ),
         );
+      } else {
+        final failure = ref.read(accountAuthProvider).failure;
+        if (failure != null &&
+            const {
+              AccountAuthFailureKind.codeExpired,
+              AccountAuthFailureKind.wrongCode,
+              AccountAuthFailureKind.tooManyAttempts,
+              AccountAuthFailureKind.resendCooldown,
+            }.contains(failure.kind)) {
+          Navigator.of(context).pop();
+        }
       }
     }
 

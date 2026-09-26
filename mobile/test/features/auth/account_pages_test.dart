@@ -180,6 +180,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await _pumpFormResult(tester);
     expect(auth.signUpCalls, 1);
+    expect(auth.signUpDisplayName, 'Lerato Molefe');
     expect(find.text('Check your email'), findsOneWidget);
     expect(find.textContaining('person@example.com'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
@@ -259,19 +260,152 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
       await _pumpFormResult(tester);
+      expect(find.text('That code has expired'), findsOneWidget);
       expect(
-        find.text(
-          'This code can no longer be used. Request a new code and try again.',
-        ),
+        find.text('Request a new code. Your account details are kept.'),
         findsOneWidget,
       );
 
       await tester.tap(find.text('Resend code'));
       await _pumpFormResult(tester);
-      expect(find.text('A new code has been sent.'), findsOneWidget);
+      expect(find.text('A new code is on its way.'), findsOneWidget);
+      expect(
+        find.text(
+          'Use the latest email. Your previous code is no longer valid.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Resend code in 30s'), findsOneWidget);
       expect(auth.resendCalls, 1);
     },
   );
+
+  testWidgets('wrong and locked codes show attempts and relay wait', (
+    tester,
+  ) async {
+    _prepareMobileViewport(tester);
+    final wrong = _FakeAccountAuthNotifier(
+      initialState: const AccountAuthState(
+        status: AccountAuthStatus.failed,
+        failure: AccountAuthFailure(
+          AccountAuthFailureKind.wrongCode,
+          attemptsLeft: 2,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      WidgetHelpers.testable(
+        overrides: _overrides(wrong),
+        child: const VerifyCodePage(email: 'person@example.com'),
+      ),
+    );
+    expect(find.text('That code isn’t right.'), findsOneWidget);
+    expect(
+      find.text('2 attempts left. Check the six digits and try again.'),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    final locked = _FakeAccountAuthNotifier(
+      initialState: const AccountAuthState(
+        status: AccountAuthStatus.failed,
+        failure: AccountAuthFailure(
+          AccountAuthFailureKind.tooManyAttempts,
+          retryAfterSecs: 2,
+        ),
+        retryAfterSecs: 2,
+      ),
+    );
+    await tester.pumpWidget(
+      WidgetHelpers.testable(
+        overrides: _overrides(locked),
+        child: const VerifyCodePage(email: 'person@example.com'),
+      ),
+    );
+    expect(find.text('Too many attempts.'), findsOneWidget);
+    expect(
+      find.text('Try again in 2s. You can resend a code after the wait.'),
+      findsOneWidget,
+    );
+    expect(find.text('Resend code in 2s'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Continue'))
+          .onPressed,
+      isNull,
+    );
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Resend code'), findsOneWidget);
+    expect(find.text('Resend code in 2s'), findsNothing);
+    expect(find.text('Too many attempts.'), findsNothing);
+    expect(find.text('That code has expired'), findsOneWidget);
+    expect(
+      find.text('Request a new code. Your account details are kept.'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final cooldown = _FakeAccountAuthNotifier(
+      initialState: const AccountAuthState(
+        status: AccountAuthStatus.failed,
+        failure: AccountAuthFailure(
+          AccountAuthFailureKind.resendCooldown,
+          retryAfterSecs: 2,
+        ),
+        retryAfterSecs: 2,
+      ),
+    );
+    await tester.pumpWidget(
+      WidgetHelpers.testable(
+        overrides: _overrides(cooldown),
+        child: const VerifyCodePage(email: 'person@example.com'),
+      ),
+    );
+    expect(find.text('Resend code in 2s'), findsOneWidget);
+    expect(find.text('Resend code in 2s.'), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.tap(find.text('Resend code'));
+    await _pumpFormResult(tester);
+    expect(cooldown.resendCalls, 1);
+    expect(find.text('A new code is on its way.'), findsOneWidget);
+  });
+
+  testWidgets('reset code is checked before the password screen opens', (
+    tester,
+  ) async {
+    _prepareMobileViewport(tester);
+    final auth = _FakeAccountAuthNotifier()
+      ..resetCodeCheckResult = const AccountAuthState(
+        status: AccountAuthStatus.failed,
+        failure: AccountAuthFailure(
+          AccountAuthFailureKind.wrongCode,
+          attemptsLeft: 1,
+        ),
+      );
+    await tester.pumpWidget(
+      WidgetHelpers.testable(
+        overrides: _overrides(auth),
+        child: const VerifyCodePage(
+          email: 'person@example.com',
+          purpose: AccountCodePurpose.reset,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).first, '123456');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await _pumpFormResult(tester);
+
+    expect(auth.resetCodeChecks, 1);
+    expect(find.text('Choose a new password'), findsNothing);
+    expect(find.text('That code isn’t right.'), findsOneWidget);
+    expect(
+      find.text('1 attempt left. Check the six digits and try again.'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('code fields support arrows and backspace recovery', (
     tester,
@@ -359,6 +493,7 @@ void main() {
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
     await _pumpFormResult(tester);
+    expect(auth.resetCodeChecks, 1);
     expect(find.text('Choose a new password'), findsOneWidget);
     expect(find.text('Confirm new password'), findsOneWidget);
     await tester.enterText(find.byType(TextFormField).at(0), 'password-1234');
@@ -370,6 +505,50 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'successful reset finishes at Password updated without signing in',
+    (tester) async {
+      _prepareMobileViewport(tester);
+      final auth = _FakeAccountAuthNotifier();
+      await tester.pumpWidget(
+        WidgetHelpers.testable(
+          overrides: _overrides(auth),
+          child: const VerifyCodePage(
+            email: 'person@example.com',
+            purpose: AccountCodePurpose.reset,
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField).first, '123456');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+      await _pumpFormResult(tester);
+      expect(find.text('Choose a new password'), findsOneWidget);
+
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'new-password-10',
+      );
+      await tester.enterText(
+        find.byType(TextFormField).at(1),
+        'new-password-10',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Update password'));
+      await _pumpFormResult(tester);
+
+      expect(auth.confirmPasswordResetCalls, 1);
+      expect(find.text('Password updated'), findsOneWidget);
+      expect(
+        find.text('You can now sign in with your new password.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Back to sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Welcome back.'), findsOneWidget);
+    },
+  );
 
   testWidgets('claim form never asks the user to paste an identity secret', (
     tester,
@@ -418,9 +597,15 @@ Future<void> _pumpFormResult(WidgetTester tester) async {
 }
 
 class _FakeAccountAuthNotifier extends AccountAuthNotifier {
+  _FakeAccountAuthNotifier({this.initialState = const AccountAuthState()});
+
+  final AccountAuthState initialState;
   final signInResults = <AccountAuthState>[];
   int signUpCalls = 0;
+  String? signUpDisplayName;
   int resendCalls = 0;
+  int resetCodeChecks = 0;
+  int confirmPasswordResetCalls = 0;
   int claimCalls = 0;
   AccountAuthState verifyResult = const AccountAuthState(
     status: AccountAuthStatus.complete,
@@ -428,16 +613,25 @@ class _FakeAccountAuthNotifier extends AccountAuthNotifier {
   AccountAuthState resetResult = const AccountAuthState(
     status: AccountAuthStatus.resetComplete,
   );
+  AccountAuthState resetCodeCheckResult = const AccountAuthState(
+    status: AccountAuthStatus.codeVerified,
+  );
 
   @override
-  AccountAuthState build() => const AccountAuthState();
+  AccountAuthState build() => initialState;
 
   @override
-  Future<void> signUp({required String email, required String password}) async {
+  Future<void> signUp({
+    required String displayName,
+    required String email,
+    required String password,
+  }) async {
     signUpCalls++;
+    signUpDisplayName = displayName;
     state = const AccountAuthState(
       status: AccountAuthStatus.verificationSent,
       codePurpose: AccountCodePurpose.verify,
+      retryAfterSecs: 30,
     );
   }
 
@@ -460,6 +654,7 @@ class _FakeAccountAuthNotifier extends AccountAuthNotifier {
     state = const AccountAuthState(
       status: AccountAuthStatus.verificationSent,
       codePurpose: AccountCodePurpose.verify,
+      retryAfterSecs: 30,
     );
   }
 
@@ -472,10 +667,20 @@ class _FakeAccountAuthNotifier extends AccountAuthNotifier {
   }
 
   @override
+  Future<void> checkPasswordResetCode({
+    required String email,
+    required String code,
+  }) async {
+    resetCodeChecks++;
+    state = resetCodeCheckResult;
+  }
+
+  @override
   Future<void> confirmPasswordReset({
     required String email,
     required String newPassword,
   }) async {
+    confirmPasswordResetCalls++;
     state = resetResult;
   }
 

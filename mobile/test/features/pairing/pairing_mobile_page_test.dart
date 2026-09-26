@@ -147,6 +147,96 @@ void main() {
     expect(find.text('483 291'), findsOneWidget);
   });
 
+  testWidgets('pairing visual details match the frozen typography and card', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testApp(
+        notifier: _PairingTestNotifier(),
+        child: const PairingMobilePage(),
+      ),
+    );
+    final scanLabel = tester.widget<Text>(find.text('Scan QR code'));
+    expect(scanLabel.style?.fontFamily, 'Manrope');
+    expect(scanLabel.style?.fontSize, 12);
+    expect(scanLabel.style?.fontWeight, FontWeight.w600);
+
+    final startRichText = tester.widget<RichText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText && widget.text.toPlainText().contains('Mobile.'),
+      ),
+    );
+    List<TextSpan> collectSpans(TextSpan root) {
+      final spans = <TextSpan>[];
+      void visit(TextSpan span) {
+        spans.add(span);
+        for (final child in span.children ?? const <InlineSpan>[]) {
+          if (child is TextSpan) visit(child);
+        }
+      }
+
+      visit(root);
+      return spans;
+    }
+
+    final startSpans = collectSpans(startRichText.text as TextSpan);
+    expect(
+      startSpans.any(
+        (span) =>
+            span.text?.trim() == 'Mobile' &&
+            span.style?.fontWeight == FontWeight.w700,
+      ),
+      isTrue,
+    );
+    expect(
+      startSpans.any((span) => span.text == '.' && span.style == null),
+      isTrue,
+    );
+    final pairRichText = tester.widget<RichText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText().contains('Pair a phone.'),
+      ),
+    );
+    final pairSpans = collectSpans(pairRichText.text as TextSpan);
+    expect(
+      pairSpans.any(
+        (span) =>
+            span.text?.trim() == 'Pair a phone' &&
+            span.style?.fontWeight == FontWeight.w700,
+      ),
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      _testApp(
+        notifier: _PairingTestNotifier(
+          initialState: const PairingState(
+            status: PairingStatus.confirmingSas,
+            sasCode: '483 291',
+          ),
+        ),
+        child: const PairingMobilePage(
+          initialRoute: PairingMobileRoute.compare,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('pairing-confirmation-code-card')),
+      findsOneWidget,
+    );
+    final card = tester.widget<Container>(
+      find.byKey(const ValueKey('pairing-confirmation-code-card')),
+    );
+    final border = (card.decoration! as BoxDecoration).border! as Border;
+    expect(border.top.width, 1);
+    expect(border.left.width, 1);
+  });
+
   testWidgets('Open Colony exits pairing and nested sign in routes', (
     tester,
   ) async {
