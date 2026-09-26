@@ -14,8 +14,8 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-layer-light {
   background-image: url("../../onboarding/ui/assets/colony-field-light.svg");
-  background-position: 1px 0;
-  background-size: 100vw 100vh;
+  background-position: center;
+  background-size: cover;
   background-repeat: no-repeat;
 }
 
@@ -24,8 +24,8 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar].dark:has(.w20-settings-shell)
   .buzz-theme-gradient-layer-dark {
   background-image: url("../../onboarding/ui/assets/colony-field-dark.svg");
-  background-position: 1px 0;
-  background-size: 100vw 100vh;
+  background-position: center;
+  background-size: cover;
   background-repeat: no-repeat;
 }
 
@@ -640,10 +640,7 @@ body:has(.w20-settings-shell) {
 
 .w20-appearance .ap-heading h1 {
   margin: 0 0 9px;
-  font-size: var(--text-2xl);
   font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 1.2;
 }
 
 .w20-appearance .ap-heading p {

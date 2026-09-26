@@ -17,6 +17,10 @@ export default {
         label: "var(--colony-text-label)", // 12.64px at 16px type rem
         "workspace-button": "var(--colony-text-workspace-button)", // 11.84px at 16px type rem
         "onboarding-button": "var(--colony-text-onboarding-button)", // 12.96px at 16px type rem
+        "settings-title": [
+          "calc(var(--buzz-type-rem) * 1.75)",
+          { lineHeight: "1.2", letterSpacing: "-0.055em" },
+        ], // 28px at 16px type rem, for settings page titles
         "status-indicator": "0.9375rem", // 15px at the default root size
         "channel-title": [
           "calc(var(--buzz-type-rem) * 1.45)",

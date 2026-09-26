@@ -810,7 +810,7 @@ export function AppearanceSettingsPanel({
     >
       <header className="ap-heading">
         <div>
-          <h1>Make yourself at home.</h1>
+          <h1 className="text-settings-title">Make yourself at home.</h1>
           <p>Your appearance in {businessName}.</p>
         </div>
         <span className="ap-scope">
