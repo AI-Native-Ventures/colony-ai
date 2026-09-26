@@ -704,8 +704,7 @@ export function ChannelScreen({
     hasAuxiliaryPanel &&
     channelContentWidthPx > 0 &&
     channelContentWidthPx < 760;
-  const referenceThreadPresentation =
-    Boolean(effectiveOpenThreadHeadId) && window.innerWidth >= 1440;
+  const referenceThreadPresentation = Boolean(effectiveOpenThreadHeadId);
   const channelHeaderChromeRef = useMeasuredCssVariable({
     targetRef: mainInsetRef,
     ...channelContentTopPaddingMeasurement,
