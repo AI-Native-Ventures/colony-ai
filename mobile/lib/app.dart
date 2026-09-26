@@ -191,41 +191,10 @@ final _mobileRouteRegistry = MobileRouteRegistry.empty()
       );
     })
     .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
-    .register(MobileRoutes.updateNote, (context, noteId) {
-      return Consumer(
-        builder: (context, ref, _) {
-          final note = ref
-              .watch(globalNotesProvider)
-              .asData
-              ?.value
-              .where((candidate) => candidate.id == noteId)
-              .firstOrNull;
-          final needsAction =
-              ref.watch(activityProvider).asData?.value.needsAction ??
-              const <FeedItem>[];
-          final linkedReview = needsAction.where((item) {
-            final channelName = item.channelName.trim();
-            return channelName.isNotEmpty &&
-                note?.content.toLowerCase().contains(
-                      channelName.toLowerCase(),
-                    ) ==
-                    true;
-          }).firstOrNull;
-
-          return TeamUpdateNotePage(
-            noteId: noteId,
-            onReviewCampaign: linkedReview == null
-                ? null
-                : () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          ActivityPage(initialItemId: linkedReview.id),
-                    ),
-                  ),
-          );
-        },
-      );
-    })
+    .register(
+      MobileRoutes.updateNote,
+      (context, noteId) => buildTeamUpdateNoteRoute(noteId),
+    )
     .register(
       MobileRoutes.updateCompose,
       (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.compose),
@@ -243,6 +212,10 @@ final _mobileRouteRegistry = MobileRouteRegistry.empty()
       (context, _) => const TeamUpdatesPage(initiallyPublished: true),
     )
     .register(MobileRoutes.search, (context, _) => const SearchPage());
+
+/// Builds the production page for a team update note route.
+Widget buildTeamUpdateNoteRoute(String noteId) =>
+    TeamUpdateNotePage(noteId: noteId, onReviewCampaign: null);
 
 TodayReviewItem _todayReviewItem(WidgetRef ref, FeedItem item) {
   final author = ref.watch(

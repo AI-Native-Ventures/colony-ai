@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/misc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:buzz/app.dart' show buildTeamUpdateNoteRoute;
 import 'package:buzz/features/activity/activity_home_page.dart';
 import 'package:buzz/features/activity/activity_provider.dart';
 import 'package:buzz/features/activity/feed_item.dart';
@@ -281,13 +282,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: _providerOverrides(),
-        child: _proofApp(
-          TeamUpdateNotePage(
-            noteId: _rootNote.id,
-            onReviewCampaign: null,
-            now: DateTime(2026, 9, 24),
-          ),
-        ),
+        child: _proofApp(buildTeamUpdateNoteRoute(_rootNote.id)),
       ),
     );
     await tester.pumpAndSettle();
