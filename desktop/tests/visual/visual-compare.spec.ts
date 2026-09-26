@@ -880,7 +880,10 @@ async function performActions(
           throw new Error("A selectOption visual action needs a value.");
         await locator.selectOption(action.value, options);
       } else if (action.type === "setInputFiles") {
-        const file = createAvatarFixture(action.value ?? "avatar.png");
+        const file = await createAvatarFixture(
+          action.value ?? "avatar.png",
+          referencePage,
+        );
         await locator.setInputFiles(file, options);
       } else if (action.type === "waitFor") {
         await locator.waitFor({
@@ -897,12 +900,26 @@ async function performActions(
   }
 }
 
-function createAvatarFixture(name: string) {
+async function createAvatarFixture(
+  name: string,
+  referencePage: import("@playwright/test").Page,
+) {
   if (name.endsWith(".txt")) {
     return {
       name,
       mimeType: "text/plain",
       buffer: Buffer.from("unsupported avatar file"),
+    };
+  }
+  const cropAvatar = referencePage.locator(".crop-circle").first();
+  const profileAvatar = referencePage.locator(".row .avatar").first();
+  const targetAvatar =
+    (await cropAvatar.count()) > 0 ? cropAvatar : profileAvatar;
+  if ((await targetAvatar.count()) > 0) {
+    return {
+      name,
+      mimeType: "image/png",
+      buffer: await targetAvatar.screenshot({ animations: "disabled" }),
     };
   }
   const width = 128;

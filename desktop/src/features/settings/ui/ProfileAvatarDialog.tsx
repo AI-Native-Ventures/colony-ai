@@ -1,4 +1,4 @@
-import { File as FileIcon, LoaderCircle, Monitor, X } from "lucide-react";
+import { File as FileIcon, Monitor, X } from "lucide-react";
 import * as React from "react";
 
 import { emojiAvatarDataUrl } from "@/features/profile/ui/ProfileAvatarEditor.utils";
@@ -329,7 +329,7 @@ export function ProfileAvatarDialog({
     >
       <DialogContent
         aria-describedby={undefined}
-        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden border-border/80 bg-card p-0 ${dialogHeight}`}
+        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden border-border/80 bg-card p-0 dark:bg-[#26232d] ${dialogHeight}`}
         data-testid="profile-avatar-dialog"
         showCloseButton={false}
       >
@@ -389,7 +389,7 @@ export function ProfileAvatarDialog({
               </div>
               <div className="mt-[22px] flex flex-wrap items-center gap-[10px]">
                 <Button
-                  className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                  className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                   data-testid="avatar-upload-open"
                   onClick={() => setStage("upload")}
                   type="button"
@@ -413,7 +413,7 @@ export function ProfileAvatarDialog({
             <>
               {stage === "invalid" ? (
                 <div
-                  className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive"
+                  className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[15px] text-xs leading-[1.65] text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
                   data-testid="avatar-invalid"
                   role="alert"
                 >
@@ -437,7 +437,7 @@ export function ProfileAvatarDialog({
                 <span>JPEG, PNG or WebP</span>
                 <input
                   accept="image/jpeg,image/png,image/webp"
-                  className="mt-2 w-full text-xs"
+                  className="mt-2 w-full text-xs file:mr-2 file:rounded-[3px] file:border file:border-[#c4c4c4] file:bg-[#efefef] file:px-1 file:py-0 file:text-2xs file:text-[#282532] dark:file:border-[#5a5264] dark:file:bg-[#3a3243] dark:file:text-[#e6e1ec]"
                   data-testid="avatar-file-input"
                   onChange={(event) => {
                     const nextFile = event.target.files?.[0];
@@ -453,14 +453,14 @@ export function ProfileAvatarDialog({
 
           {stage === "camera" ? (
             <>
-              <p className="mb-[28px] rounded-md border border-[#c8def3] bg-[#eff6ff] px-4 py-3 text-xs leading-5 text-[#285f91]">
+              <p className="mb-[18px] rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[1.65] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
                 <strong className="mb-1 block font-medium">
                   Camera permission
                 </strong>
                 Use your camera to take a profile photo. Nothing is captured
                 until you choose Take photo.
               </p>
-              <div className="relative grid h-[275px] place-content-center overflow-hidden rounded-lg border border-border/70 bg-muted">
+              <div className="relative grid h-[275px] place-content-center overflow-hidden rounded-lg border border-[#eae7eb] bg-[#f8f7f8] dark:border-[#3c3544] dark:bg-[#302b36]">
                 <video
                   aria-label="Camera preview"
                   autoPlay
@@ -477,9 +477,9 @@ export function ProfileAvatarDialog({
                   </div>
                 ) : null}
               </div>
-              <div className="mt-[22px] flex justify-start">
+              <div className="flex justify-start">
                 <Button
-                  className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+                  className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                   data-testid="avatar-camera-capture"
                   disabled={!isCameraReady}
                   onClick={takePhoto}
@@ -495,7 +495,7 @@ export function ProfileAvatarDialog({
             <>
               {stage === "failed" ? (
                 <div
-                  className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive"
+                  className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[17px] text-xs leading-[1.65] text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
                   data-testid="avatar-save-error"
                   role="alert"
                 >
@@ -509,7 +509,7 @@ export function ProfileAvatarDialog({
                 aria-valuemin={0}
                 aria-valuenow={Math.round(cropPoint.x * 100)}
                 aria-valuetext={`Horizontal ${Math.round(cropPoint.x * 100)} percent, vertical ${Math.round(cropPoint.y * 100)} percent`}
-                className="relative mx-auto h-[275px] w-full touch-none overflow-hidden rounded-lg bg-[#d8d8d8] focus-visible:outline-ring"
+                className="relative mx-auto h-[275px] w-full touch-none overflow-hidden rounded-lg border border-[#eae7eb] bg-[#f8f7f8] focus-visible:outline-ring dark:border-[#3c3544] dark:bg-[#302b36]"
                 data-testid="avatar-crop-preview"
                 onKeyDown={(event) => {
                   if (
@@ -533,7 +533,7 @@ export function ProfileAvatarDialog({
                 role="slider"
                 tabIndex={0}
               >
-                <div className="absolute left-1/2 top-1/2 size-[184px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-[#ece5ed]">
+                <div className="absolute left-1/2 top-1/2 grid size-[180px] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full bg-[#ebe5ef] text-[4rem] text-[#9f87ac] outline outline-2 outline-white shadow-[0_0_0_100px_#0002]">
                   {previewUrl ? (
                     <img
                       alt="Avatar crop preview"
@@ -550,26 +550,30 @@ export function ProfileAvatarDialog({
                   )}
                 </div>
               </div>
-              <label
-                className="mt-5 flex flex-col gap-6 text-sm"
-                htmlFor="avatar-crop-zoom"
-              >
-                <span>Zoom</span>
-                <input
-                  className="w-full"
-                  data-testid="avatar-crop-zoom"
-                  id="avatar-crop-zoom"
-                  max="2"
-                  min="1"
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                  step="0.1"
-                  type="range"
-                  value={zoom}
-                />
-              </label>
-              <p className="mt-[30px] text-xs text-muted-foreground">
-                Drag to position; use arrow keys when the crop is focused.
-              </p>
+              {stage === "crop" ? (
+                <label
+                  className="my-[19px] flex flex-col gap-6 text-xs leading-[1.5]"
+                  htmlFor="avatar-crop-zoom"
+                >
+                  <span>Zoom</span>
+                  <input
+                    className="w-full p-0 accent-[#2655a0] dark:accent-[#a9bee8]"
+                    data-testid="avatar-crop-zoom"
+                    id="avatar-crop-zoom"
+                    max="2"
+                    min="1"
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                    step="0.1"
+                    type="range"
+                    value={zoom}
+                  />
+                </label>
+              ) : null}
+              {stage === "crop" ? (
+                <p className="mt-[30px] text-xs text-muted-foreground">
+                  Drag to position; use arrow keys when the crop is focused.
+                </p>
+              ) : null}
             </>
           ) : null}
 
@@ -578,9 +582,9 @@ export function ProfileAvatarDialog({
               className="flex min-h-[190px] flex-col items-center justify-center gap-3 text-center"
               data-testid="avatar-saving"
             >
-              <LoaderCircle
+              <span
                 aria-hidden="true"
-                className="size-6 animate-spin"
+                className="size-6 animate-spin rounded-full border-2 border-[#eae7eb] border-t-[#2655a0] dark:border-[#3c3544] dark:border-t-[#a9bee8]"
               />
               <p className="text-base font-medium">Saving your avatar…</p>
               <p className="text-sm text-muted-foreground">
@@ -605,7 +609,7 @@ export function ProfileAvatarDialog({
           </DialogClose>
           {stage === "crop" || stage === "failed" ? (
             <Button
-              className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5]"
+              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
               data-testid={stage === "failed" ? "avatar-retry" : "avatar-save"}
               disabled={isSaving}
               onClick={() => void retrySave()}
