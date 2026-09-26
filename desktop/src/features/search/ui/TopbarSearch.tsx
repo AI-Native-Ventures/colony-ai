@@ -957,7 +957,7 @@ export function TopbarSearch({
                 {query || "Find anything"}
               </span>
               <kbd className="shrink-0 text-3xs text-sidebar-foreground/45">
-                &#x2318;K
+                &#x2318; K
               </kbd>
             </>
           )}
