@@ -1,5 +1,6 @@
 body:has(.w20-settings-shell) {
   background: #f3f1f5;
+  text-rendering: auto;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) {
