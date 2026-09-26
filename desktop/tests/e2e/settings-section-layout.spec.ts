@@ -76,6 +76,23 @@ test("routes without a data-backed design fall back to Account profile", async (
   await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
 });
 
+test("archive follows the r19 title and empty state", async ({ page }) => {
+  await installMockBridge(page, { archivedIdentities: [] });
+  await page.goto("/#/settings?section=archived-records");
+
+  const archive = page.getByTestId("settings-archived-records");
+  await expect(
+    archive.getByRole("heading", { name: "Archive", exact: true }),
+  ).toBeVisible();
+  await expect(
+    archive.getByRole("heading", { name: "Archived records", exact: true }),
+  ).toBeVisible();
+  await expect(archive).toContainText("No archived records.");
+  await expect(archive).not.toContainText(
+    "Identities archived from community discovery.",
+  );
+});
+
 test("account profile follows the r19 grid and type scale at desktop widths", async ({
   page,
 }) => {

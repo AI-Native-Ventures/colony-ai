@@ -217,22 +217,19 @@ export function ArchivedRecordsSettingsPanel() {
 
   return (
     <section className="min-w-0" data-testid="settings-archived-records">
-      <SettingsSectionHeader
-        title="Archived records"
-        description="Identities archived from community discovery."
-      />
-      <SettingsOptionGroup title="Archived identities">
+      <SettingsSectionHeader title="Archive" />
+      <SettingsOptionGroup title="Archived records">
         {archivedQuery.isLoading ? (
           <SettingsOptionRow>
             <p className="text-sm text-muted-foreground">
-              Loading archived identities…
+              Loading archived records…
             </p>
           </SettingsOptionRow>
         ) : null}
         {archivedQuery.isError ? (
           <SettingsOptionRow>
             <p className="text-sm text-destructive">
-              Archived identities could not be loaded.
+              Archived records could not be loaded.
             </p>
           </SettingsOptionRow>
         ) : null}
@@ -241,7 +238,7 @@ export function ArchivedRecordsSettingsPanel() {
         identities.length === 0 ? (
           <SettingsOptionRow>
             <p className="text-sm text-muted-foreground">
-              No archived identities.
+              No archived records.
             </p>
           </SettingsOptionRow>
         ) : null}
