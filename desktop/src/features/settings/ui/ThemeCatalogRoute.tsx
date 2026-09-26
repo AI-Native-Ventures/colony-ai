@@ -53,7 +53,7 @@ function ThemeCardPreview({
   return (
     <div
       aria-hidden="true"
-      className="w20-theme-card-preview aspect-[1.86] overflow-hidden rounded-xl border border-border/70 bg-background text-foreground"
+      className="w20-theme-card-preview h-[8.75rem] overflow-hidden rounded-[10px] border border-border/70 bg-background text-foreground"
       style={themeVarsStyle(vars)}
     >
       <div className="grid h-full grid-cols-[24%_minmax(0,1fr)]">
@@ -196,7 +196,7 @@ export function ThemeCatalogRoute({
     <section className="min-w-0" data-testid="settings-theme-catalog">
       <div className="mb-7 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-semibold tracking-tight">
+          <h2 className="text-settings-title font-semibold">
             Find your atmosphere.
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -207,7 +207,7 @@ export function ThemeCatalogRoute({
           Back to appearance
         </Button>
       </div>
-      <div className="mb-5 flex flex-wrap items-center gap-5">
+      <div className="mb-6 flex flex-wrap items-center gap-5">
         <label
           className="relative w-64 shrink-0"
           htmlFor="theme-catalog-search"
@@ -263,7 +263,7 @@ export function ThemeCatalogRoute({
               type="button"
             >
               <ThemeCardPreview name={name} vars={vars} />
-              <span className="mt-2 flex items-center justify-between gap-2 text-xs font-medium">
+              <span className="mt-2.5 flex items-center justify-between gap-2 text-xs leading-[1.125rem] font-medium">
                 <span className="truncate">{themeLabel(name)}</span>
                 {theme.selectedThemeName === name ? (
                   <Check
