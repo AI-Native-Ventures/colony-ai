@@ -24,6 +24,11 @@ body:has(.w20-settings-shell) {
   --w20-appearance-caption: calc(var(--buzz-type-rem) * 0.5625);
 }
 
+.w20-settings-shell svg,
+.w20-settings-sidebar svg {
+  stroke-width: 1.65;
+}
+
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-underlay {
   background-image: url("/colony-field-light.svg");
