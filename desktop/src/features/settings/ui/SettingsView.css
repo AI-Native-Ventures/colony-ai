@@ -1445,6 +1445,13 @@ body:has(.w20-settings-shell) {
   white-space: nowrap;
 }
 
+.w20-appearance .ap-live-nav > span > .icon {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  opacity: 0.6;
+}
+
 .w20-appearance .ap-live-nav > span.selected {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }

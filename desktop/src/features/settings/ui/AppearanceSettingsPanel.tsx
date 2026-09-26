@@ -72,6 +72,39 @@ const ACCENTS = [
 
 const DEFAULT_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
 
+const appearancePreviewIconPaths = {
+  home: "M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
+  work: "M5 4h14v17H5Z M9 4V2h6v2M8 10h8M8 14h5",
+  globe:
+    "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18",
+  grid: "M3 3h7v7H3ZM14 3h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7Z",
+  folder: "M3 6h7l2 3h9v11H3Z",
+} as const;
+
+function AppearancePreviewIcon({
+  name,
+}: {
+  name: keyof typeof appearancePreviewIconPaths;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="icon"
+      fill="none"
+      focusable="false"
+      height="24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.65}
+      viewBox="0 0 24 24"
+      width="24"
+    >
+      <path d={appearancePreviewIconPaths[name]} />
+    </svg>
+  );
+}
+
 function currentMode(followSystem: boolean, theme: string): AppearanceMode {
   if (followSystem) return "system";
   return LIGHT_THEMES.has(theme as SyntaxThemeName) ? "light" : "dark";
@@ -416,10 +449,10 @@ function LiveAppearancePreview({
             <aside className="ap-live-nav">
               <strong>Lerato Social</strong>
               <span>
-                <span aria-hidden="true">⌂</span> Today
+                <AppearancePreviewIcon name="home" /> Today
               </span>
               <span>
-                <span aria-hidden="true">▦</span> Work
+                <AppearancePreviewIcon name="work" /> Work
               </span>
               <small>Channels</small>
               <span className="selected"># the-olive-house</span>
@@ -427,13 +460,13 @@ function LiveAppearancePreview({
               <span># design</span>
               <small>Business</small>
               <span>
-                <span aria-hidden="true">◎</span> Website
+                <AppearancePreviewIcon name="globe" /> Website
               </span>
               <span>
-                <span aria-hidden="true">▦</span> Social
+                <AppearancePreviewIcon name="grid" /> Social
               </span>
               <span>
-                <span aria-hidden="true">▱</span> Library
+                <AppearancePreviewIcon name="folder" /> Library
               </span>
               <div className="ap-live-person">
                 <span>LM</span> Lerato
