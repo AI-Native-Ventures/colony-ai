@@ -98,6 +98,7 @@ export function AppSidebar({
   showSidebarCollapseButton,
   errorMessage,
   selectedChannelId,
+  suppressTodaySelection = false,
   selectedView,
   unreadChannelCounts,
   unreadChannelIds,
@@ -583,6 +584,7 @@ export function AppSidebar({
                 onSelectProjects={onSelectProjects}
                 onSelectWorkflows={onSelectWorkflows}
                 projectsOverviewActive={projectsOverviewActive}
+                suppressTodaySelection={suppressTodaySelection}
                 selectedView={selectedView}
               />
 

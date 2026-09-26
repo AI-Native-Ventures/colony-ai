@@ -54,6 +54,7 @@ type AppSidebarPrimaryMenuProps = {
   onSelectProjects: () => void;
   onSelectWorkflows: () => void;
   projectsOverviewActive: boolean;
+  suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
 
@@ -141,6 +142,7 @@ export function AppSidebarPrimaryMenu({
   onSelectProjects,
   onSelectWorkflows,
   projectsOverviewActive,
+  suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
   return (
@@ -154,7 +156,7 @@ export function AppSidebarPrimaryMenu({
           <SidebarMenuItem>
             <SidebarMenuButton
               className="data-[active=true]:font-normal"
-              isActive={selectedView === "today"}
+              isActive={selectedView === "today" && !suppressTodaySelection}
               onClick={onSelectToday}
               tooltip="Today"
               type="button"

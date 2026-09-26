@@ -925,6 +925,9 @@ export function AppShell() {
                           }
                           profile={profileQuery.data}
                           showSidebarCollapseButton={!showAppTopChrome}
+                          suppressTodaySelection={location.pathname.startsWith(
+                            "/navigation/",
+                          )}
                           projectsOverviewActive={
                             location.pathname === "/projects"
                           }

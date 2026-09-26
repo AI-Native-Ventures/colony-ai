@@ -124,7 +124,11 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
   );
 }
 
-export function TodayScreen() {
+export function TodayScreen({
+  showUpdatesAction = true,
+}: {
+  showUpdatesAction?: boolean;
+}) {
   const feedQuery = useHomeFeedQuery();
   const { goChannel, goHome, goPulse } = useAppNavigation();
   const visualFixture =
@@ -154,6 +158,7 @@ export function TodayScreen() {
         <TodayVisualFixtureContent
           fixture={visualFixture}
           onOpenUpdates={() => void goPulse()}
+          showUpdatesAction={showUpdatesAction}
         />
       ) : (
         <div className="colony-today-scroll">
@@ -162,15 +167,17 @@ export function TodayScreen() {
               <h1>Today</h1>
               <p>{formatTodayDate(new Date())}</p>
             </div>
-            <Button
-              className="colony-secondary-button"
-              onClick={() => void goPulse()}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Team updates
-            </Button>
+            {showUpdatesAction ? (
+              <Button
+                className="colony-secondary-button"
+                onClick={() => void goPulse()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Team updates
+              </Button>
+            ) : null}
           </div>
 
           <div className="colony-today-grid">
