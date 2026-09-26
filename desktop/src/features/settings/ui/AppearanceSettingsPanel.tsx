@@ -972,7 +972,7 @@ export function AppearanceSettingsPanel({
               description={
                 glassBackgroundSupported
                   ? "Translucent navigation. Solid content."
-                  : "Available in the macOS desktop app."
+                  : "Translucent navigation. Solid content."
               }
               title="Glass background"
             >

@@ -367,7 +367,7 @@ body:has(.w20-settings-shell) {
   margin-left: 1px;
   align-items: center;
   gap: 10px;
-  padding: 0 12px 0 28px;
+  padding: 0 12px 0 25px;
   border: 1px solid rgb(232 224 230 / 40%);
   border-bottom-color: #eae7eb;
   border-radius: 11px 11px 0 0;
@@ -386,12 +386,18 @@ body:has(.w20-settings-shell) {
   display: flex;
   align-items: center;
   gap: 0;
-  margin-right: 5px;
+  margin-right: 14px;
+  padding-right: 10px;
+  border-right: 1px solid #eae7eb;
+}
+
+.dark .w20-topbar-history {
+  border-right-color: #3c3544;
 }
 
 .w20-settings-shell .w20-topbar-history button {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   color: #79747f;
 }
 
@@ -404,7 +410,7 @@ body:has(.w20-settings-shell) {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
 }
 
 .w20-topbar-title svg {

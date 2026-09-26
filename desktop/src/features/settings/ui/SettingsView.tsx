@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowLeft, ArrowRight, Search, Settings2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Settings, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import {
@@ -433,10 +433,12 @@ export function SettingsView({
               <ArrowRight aria-hidden="true" className="size-3.5" />
             </Button>
           </div>
-          <div className="w20-topbar-title">
-            <Settings2 aria-hidden="true" className="size-3.5" />
-            <span>Settings</span>
-            <span aria-hidden="true">/</span>
+          <div className="w20-topbar-title text-settings-topbar">
+            <Settings aria-hidden="true" className="size-4" />
+            <span className="text-xs">Settings</span>
+            <span aria-hidden="true" className="text-xs">
+              /
+            </span>
             <strong className="truncate">{activeGroup.label}</strong>
           </div>
           <div className="flex-1" />
