@@ -657,6 +657,7 @@ test("auth-required CLOSED restores the active live subscription", async ({
 test("reconnect backfills more missed channel messages than the live subscription limit", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -704,7 +705,9 @@ test("reconnect backfills more missed channel messages than the live subscriptio
           (element.textContent ?? "").includes("reconnect e2e missed 001"),
         );
       },
-      { intervals: [100, 150, 250], timeout: 15_000 },
+      // The walk loads many bounded older pages; on a 2-CPU host it takes
+      // ~12-18s, so 15s left no headroom on slower CI runners.
+      { intervals: [100, 150, 250], timeout: 30_000 },
     )
     .toBe(true);
 });
