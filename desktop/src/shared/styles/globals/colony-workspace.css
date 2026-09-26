@@ -113,6 +113,27 @@
   height: 1.75rem;
 }
 
+:root:has([data-colony-workspace-route="true"])
+  [data-collapsible="icon"]
+  [data-testid="sidebar-pinned-header"]
+  .colony-sidebar-brand {
+  justify-content: center;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-collapsible="icon"]
+  [data-testid="sidebar-pinned-header"]
+  [data-testid="sidebar-business-switcher"] {
+  display: none;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-collapsible="icon"]
+  [data-testid="sidebar-pinned-header"]
+  [data-sidebar="trigger"] {
+  margin-inline: auto;
+}
+
 :root:has([data-colony-workspace-route="true"]) [data-testid="app-sidebar"] {
   color: hsl(var(--colony-sidebar-foreground));
 }
@@ -1921,6 +1942,7 @@ button.colony-today-attention-row:hover {
 :root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   .composer-dock {
+  --composer-dock-quiet-inset: 0.9375rem;
   width: calc(100% - 1px);
   margin-left: 1px;
   padding: 10px 0 15px;

@@ -62,6 +62,7 @@ export function SystemRow({
 type MessageRowItemProps = {
   channelId?: string | null;
   currentPubkey?: string;
+  compactThreadSummaryAvatars?: boolean;
   entry: MainTimelineEntry;
   followThreadById?: (rootId: string) => void;
   footer: React.ReactNode;
@@ -94,6 +95,7 @@ type MessageRowItemProps = {
 export function MessageRowItem({
   channelId,
   currentPubkey,
+  compactThreadSummaryAvatars = false,
   entry,
   followThreadById,
   footer,
@@ -177,6 +179,7 @@ export function MessageRowItem({
           videoReviewContext={videoReviewContext}
         />
         <MessageThreadSummaryRow
+          compactTimelineAvatar={compactThreadSummaryAvatars}
           depth={message.depth}
           message={message}
           onOpenThread={onOpenThread}
