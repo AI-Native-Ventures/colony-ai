@@ -112,6 +112,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   for (const expected of [
     {
       viewport: { width: 1440, height: 900 },
+      fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
       title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
       profileCard: { x: 314, y: 267.1875, width: 631.96875 },
       businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
@@ -120,6 +121,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     },
     {
       viewport: { width: 1728, height: 1117 },
+      fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
       title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
       profileCard: { x: 322, y: 275.1875, width: 801.328125 },
       businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
@@ -147,6 +149,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
         throw new Error("Missing first account profile field");
       }
       return {
+        fieldLayer: bounds(".buzz-theme-gradient-underlay"),
         title: bounds('[data-testid="settings-profile"] h1'),
         profileCard: bounds('[data-testid="settings-account-profile-card"]'),
         businessCard: bounds('[data-testid="settings-account-business-card"]'),
@@ -162,6 +165,10 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     const expectCoordinate = (actual: number, expectedValue: number) => {
       expect(Math.abs(actual - expectedValue)).toBeLessThan(1);
     };
+    expectCoordinate(geometry.fieldLayer.x, expected.fieldLayer.x);
+    expectCoordinate(geometry.fieldLayer.y, expected.fieldLayer.y);
+    expectCoordinate(geometry.fieldLayer.width, expected.fieldLayer.width);
+    expectCoordinate(geometry.fieldLayer.height, expected.fieldLayer.height);
     expectCoordinate(geometry.title.x, expected.title.x);
     expectCoordinate(geometry.title.y, expected.title.y);
     expectCoordinate(geometry.title.width, expected.title.width);

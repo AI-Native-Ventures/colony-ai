@@ -24,6 +24,11 @@ body:has(.w20-settings-shell) {
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
+  .buzz-theme-gradient-underlay {
+  inset: 1px;
+}
+
+:root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-layer-light {
   background-image: url("/colony-field-light.svg");
   background-position: center;
