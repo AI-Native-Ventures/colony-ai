@@ -774,7 +774,7 @@ async fn run_worker(
     permits: Arc<Semaphore>,
     controls: Arc<Mutex<HashMap<String, RunControl>>>,
     event_authority: FactoryEventAuthority,
-) {
+) -> Result<(), String> {
     let transition = retry_queued_start_or_recover(
         Arc::clone(&permits),
         || {
@@ -795,47 +795,47 @@ async fn run_worker(
         Ok(QueuedStartOutcome::Started((running, event), permit)) => (running, event, permit),
         Ok(QueuedStartOutcome::Cancelled) => {
             FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-            return;
+            return Ok(());
         }
         Ok(QueuedStartOutcome::Blocked(finalization)) => {
-            let persisted =
-                finish_run_result(&app, &event_authority, Some(&control), Ok(finalization));
-            if persisted {
-                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-            }
-            return;
+            finish_run_result(
+                &app,
+                &event_authority,
+                Some(&control),
+                &run.id,
+                &controls,
+                Ok(finalization),
+            )?;
+            return Ok(());
         }
         Err(failure) => {
-            eprintln!(
-                "colony-desktop: Factory run start failure could not be journaled: {failure}"
-            );
-            return;
+            return Err(format!(
+                "Factory run start failure could not be journaled: {failure}"
+            ));
         }
     };
     publish(&app, &event_authority, Some(&control), &event);
 
     if control.cancel.is_cancelled() {
         FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        return;
+        return Ok(());
     }
     let mut client =
         match buzz_acp::AcpClient::spawn(&launch.command, &launch.args, &launch.env, false).await {
             Ok(client) => client,
             Err(_) => {
-                let persisted = finish_run(
+                finish_run(
                     &app,
                     &path,
                     &run.id,
                     &event_authority,
                     Some(&control),
+                    &controls,
                     FactoryRunStatus::Error,
                     Some("ACP process could not start"),
                 )
-                .await;
-                if persisted {
-                    FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-                }
-                return;
+                .await?;
+                return Ok(());
             }
         };
     let observer = buzz_acp::ObserverHandle::in_process();
@@ -874,7 +874,7 @@ async fn run_worker(
         let _ = event_task.await;
         client.shutdown().await;
         FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        return;
+        return Ok(());
     };
     let capabilities = match initialized {
         Ok(value) => value,
@@ -883,20 +883,18 @@ async fn run_worker(
             drop(observer);
             let _ = event_task.await;
             client.shutdown().await;
-            let persisted = finish_run(
+            finish_run(
                 &app,
                 &path,
                 &run.id,
                 &event_authority,
                 Some(&control),
+                &controls,
                 FactoryRunStatus::Error,
                 Some("ACP initialization failed"),
             )
-            .await;
-            if persisted {
-                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-            }
-            return;
+            .await?;
+            return Ok(());
         }
     };
     let protocol_version = capabilities
@@ -937,7 +935,7 @@ async fn run_worker(
         let _ = event_task.await;
         client.shutdown().await;
         FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        return;
+        return Ok(());
     };
     let session = match session {
         Ok(session) => session,
@@ -946,20 +944,18 @@ async fn run_worker(
             drop(observer);
             let _ = event_task.await;
             client.shutdown().await;
-            let persisted = finish_run(
+            finish_run(
                 &app,
                 &path,
                 &run.id,
                 &event_authority,
                 Some(&control),
+                &controls,
                 FactoryRunStatus::Error,
                 Some("ACP session could not be created"),
             )
-            .await;
-            if persisted {
-                FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-            }
-            return;
+            .await?;
+            return Ok(());
         }
     };
     if let Err(error) = store_set_acp_session(&path, &run.id, &session.session_id) {
@@ -968,20 +964,18 @@ async fn run_worker(
         drop(observer);
         let _ = event_task.await;
         client.shutdown().await;
-        let persisted = finish_run(
+        finish_run(
             &app,
             &path,
             &run.id,
             &event_authority,
             Some(&control),
+            &controls,
             FactoryRunStatus::Error,
             Some("Factory session checkpoint could not be saved"),
         )
-        .await;
-        if persisted {
-            FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-        }
-        return;
+        .await?;
+        return Ok(());
     }
     client.set_observer_context(buzz_acp::ObserverContext {
         session_id: Some(session.session_id.clone()),
@@ -1052,19 +1046,18 @@ async fn run_worker(
     let capture_result =
         drained.unwrap_or_else(|_| Err("Factory capture task panicked".to_string()));
     let final_status = finish_status_after_capture(status, capture_result);
-    let persisted = finish_run(
+    finish_run(
         &app,
         &path,
         &run.id,
         &event_authority,
         Some(&control),
+        &controls,
         final_status.0,
         final_status.1,
     )
-    .await;
-    if persisted {
-        FactoryRuntime::remove_control_from_handle(&controls, &run.id);
-    }
+    .await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1387,5 +1380,7 @@ fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
+#[cfg(test)]
+mod finalization_tests;
 #[cfg(test)]
 mod tests;

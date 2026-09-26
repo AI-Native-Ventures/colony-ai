@@ -20,11 +20,41 @@ pub(super) async fn persist_run_finalization(
     status: FactoryRunStatus,
     error: Option<&str>,
 ) -> Result<FinalizationResult, String> {
-    persist_run_finalization_with(
+    persist_run_finalization_with_recovery(
         || store_record_finalization(path, run_id, status, error),
+        || store_record_finalization_recovery(path, run_id, status, error),
         || store_apply_pending_finalization(path, run_id),
     )
     .await
+}
+
+pub(super) async fn persist_run_finalization_with_recovery<
+    RecordFinalization,
+    RecordRecovery,
+    ApplyFinalization,
+>(
+    record_finalization: RecordFinalization,
+    mut record_recovery: RecordRecovery,
+    apply_finalization: ApplyFinalization,
+) -> Result<FinalizationResult, String>
+where
+    RecordFinalization: FnMut() -> Result<bool, String>,
+    RecordRecovery: FnMut() -> Result<bool, String>,
+    ApplyFinalization: FnMut() -> Result<Option<(FactoryRun, FactoryRunEvent)>, String>,
+{
+    let finalization = persist_run_finalization_with(record_finalization, apply_finalization).await;
+    match finalization {
+        Ok(result) => Ok(result),
+        Err(journal_failure) => match record_recovery() {
+            Ok(true) => Ok(FinalizationResult::Deferred(format!(
+                "primary journal failed after bounded retries; same-host recovery record saved: {journal_failure}"
+            ))),
+            Ok(false) => Ok(FinalizationResult::Noop),
+            Err(recovery_failure) => Err(format!(
+                "primary finalization journal failed after bounded retries: {journal_failure}; same-host recovery record failed: {recovery_failure}"
+            )),
+        },
+    }
 }
 
 pub(super) async fn persist_run_finalization_with<RecordFinalization, ApplyFinalization>(
@@ -194,36 +224,56 @@ pub(super) async fn finish_run(
     run_id: &str,
     event_authority: &FactoryEventAuthority,
     control: Option<&RunControl>,
+    controls: &Arc<Mutex<HashMap<String, RunControl>>>,
     status: FactoryRunStatus,
     error: Option<&str>,
-) -> bool {
+) -> Result<(), String> {
     let finalization = persist_run_finalization(path, run_id, status, error).await;
-    finish_run_result(app, event_authority, control, finalization)
+    finish_run_result(
+        app,
+        event_authority,
+        control,
+        run_id,
+        controls,
+        finalization,
+    )
 }
 
 pub(super) fn finish_run_result(
     app: &AppHandle,
     event_authority: &FactoryEventAuthority,
     control: Option<&RunControl>,
+    run_id: &str,
+    controls: &Arc<Mutex<HashMap<String, RunControl>>>,
     finalization: Result<FinalizationResult, String>,
-) -> bool {
-    match finalization {
+) -> Result<(), String> {
+    finish_run_result_with(run_id, controls, finalization, |event| {
+        publish(app, event_authority, control, event);
+    })
+}
+
+pub(super) fn finish_run_result_with(
+    run_id: &str,
+    controls: &Arc<Mutex<HashMap<String, RunControl>>>,
+    finalization: Result<FinalizationResult, String>,
+    publish_event: impl FnOnce(&FactoryRunEvent),
+) -> Result<(), String> {
+    let result = match finalization {
         Ok(FinalizationResult::Applied(_run, event)) => {
-            publish(app, event_authority, control, &event);
-            true
+            publish_event(&event);
+            Ok(())
         }
         Ok(FinalizationResult::Deferred(failure)) => {
             eprintln!(
-                "colony-desktop: Factory finalization is journaled for same-host recovery: {failure}"
+                "colony-desktop: Factory finalization is recoverable on this host: {failure}"
             );
-            true
+            Ok(())
         }
-        Ok(FinalizationResult::Noop) => true,
-        Err(failure) => {
-            eprintln!(
-                "colony-desktop: Factory finalization journal could not be written: {failure}"
-            );
-            false
-        }
+        Ok(FinalizationResult::Noop) => Ok(()),
+        Err(failure) => Err(failure),
+    };
+    if result.is_ok() {
+        FactoryRuntime::remove_control_from_handle(controls, run_id);
     }
+    result
 }

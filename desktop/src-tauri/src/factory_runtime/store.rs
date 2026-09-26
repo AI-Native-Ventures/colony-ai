@@ -90,6 +90,12 @@ pub(super) fn open_store(path: &Path) -> Result<Connection, String> {
                 error TEXT,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS factory_run_finalization_recovery (
+                run_id TEXT PRIMARY KEY REFERENCES factory_runs(id) ON DELETE CASCADE,
+                status TEXT NOT NULL CHECK (status IN ('blocked','error','done','cancelled')),
+                error TEXT,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS factory_runtime_meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -173,10 +179,12 @@ pub(super) fn stored_payload_bytes(tx: &Transaction<'_>) -> Result<i64, String> 
              FROM factory_run_events)
             + (SELECT COALESCE(SUM(length(CAST(draft AS BLOB))), 0) FROM factory_run_drafts)
             + (SELECT COUNT(*) * ?2 FROM factory_runs)
-            + (SELECT COUNT(*) * ?3 FROM factory_run_finalizations)",
+            + (SELECT COUNT(*) * ?3 FROM factory_run_finalizations)
+            + (SELECT COUNT(*) * ?4 FROM factory_run_finalization_recovery)",
         params![
             EVENT_STORAGE_OVERHEAD_BYTES,
             RUN_STORAGE_OVERHEAD_BYTES,
+            FINALIZATION_STORAGE_OVERHEAD_BYTES,
             FINALIZATION_STORAGE_OVERHEAD_BYTES
         ],
         |row| row.get(0),
@@ -785,6 +793,67 @@ pub(super) fn store_record_finalization(
     Ok(true)
 }
 
+pub(super) fn store_record_finalization_recovery(
+    path: &Path,
+    run_id: &str,
+    status: FactoryRunStatus,
+    error: Option<&str>,
+) -> Result<bool, String> {
+    if !status.is_terminal() && status != FactoryRunStatus::Blocked {
+        return Err("Factory recovery status must be terminal or blocked".to_string());
+    }
+    let mut connection = open_store(path)?;
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|failure| failure.to_string())?;
+    let current: Option<String> = tx
+        .query_row(
+            "SELECT status FROM factory_runs WHERE id = ?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|failure| failure.to_string())?;
+    let Some(current) = current else {
+        return Err("Factory run was not found".to_string());
+    };
+    if FactoryRunStatus::parse(&current)?.is_terminal() {
+        tx.execute(
+            "DELETE FROM factory_run_finalization_recovery WHERE run_id = ?1",
+            [run_id],
+        )
+        .map_err(|failure| failure.to_string())?;
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(false);
+    }
+    let existing: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_run_finalization_recovery WHERE run_id = ?1)",
+            [run_id],
+            |row| row.get(0),
+        )
+        .map_err(|failure| failure.to_string())?;
+    ensure_storage_capacity(
+        stored_payload_bytes(&tx)?,
+        if existing {
+            0
+        } else {
+            FINALIZATION_STORAGE_OVERHEAD_BYTES
+        },
+        MAX_FACTORY_STORAGE_BYTES,
+    )?;
+    tx.execute(
+        "INSERT INTO factory_run_finalization_recovery (run_id, status, error, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(run_id) DO UPDATE SET status = excluded.status,
+           error = excluded.error, updated_at = excluded.updated_at",
+        params![run_id, status.as_str(), error, now_iso()],
+    )
+    .map_err(|failure| failure.to_string())?;
+    tx.commit().map_err(|failure| failure.to_string())?;
+    Ok(true)
+}
+
 pub(super) fn store_apply_pending_finalization(
     path: &Path,
     run_id: &str,
@@ -850,6 +919,71 @@ pub(super) fn store_apply_pending_finalization(
     Ok(Some((run, event)))
 }
 
+pub(super) fn store_apply_recovery_finalization(
+    path: &Path,
+    run_id: &str,
+) -> Result<Option<(FactoryRun, FactoryRunEvent)>, String> {
+    let mut connection = open_store(path)?;
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|failure| failure.to_string())?;
+    let pending: Option<(String, Option<String>)> = tx
+        .query_row(
+            "SELECT status, error FROM factory_run_finalization_recovery WHERE run_id = ?1",
+            [run_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|failure| failure.to_string())?;
+    let Some((status, error)) = pending else {
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(None);
+    };
+    let next = FactoryRunStatus::parse(&status)?;
+    let current: String = tx
+        .query_row(
+            "SELECT status FROM factory_runs WHERE id = ?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .map_err(|failure| failure.to_string())?;
+    if FactoryRunStatus::parse(&current)?.is_terminal() {
+        tx.execute(
+            "DELETE FROM factory_run_finalization_recovery WHERE run_id = ?1",
+            [run_id],
+        )
+        .map_err(|failure| failure.to_string())?;
+        tx.commit().map_err(|failure| failure.to_string())?;
+        return Ok(None);
+    }
+    let updated_at = now_iso();
+    tx.execute(
+        "UPDATE factory_runs SET status = ?2, updated_at = ?3, error = ?4 WHERE id = ?1",
+        params![run_id, next.as_str(), updated_at, error],
+    )
+    .map_err(|failure| failure.to_string())?;
+    let event = insert_event(
+        &tx,
+        run_id,
+        "status",
+        &serde_json::json!({ "status": next, "error": error }),
+        false,
+    )?
+    .ok_or_else(|| "failed to persist Factory recovery status event".to_string())?;
+    if next.is_terminal() {
+        let scope = transaction_scope(&tx, run_id)?;
+        prune_terminal_history(&tx, &scope, Some(run_id), MAX_RETAINED_TERMINAL_RUNS)?;
+    }
+    tx.execute(
+        "DELETE FROM factory_run_finalization_recovery WHERE run_id = ?1",
+        [run_id],
+    )
+    .map_err(|failure| failure.to_string())?;
+    let run = read_run(&tx, run_id)?;
+    tx.commit().map_err(|failure| failure.to_string())?;
+    Ok(Some((run, event)))
+}
+
 pub(super) fn store_replay_pending_finalizations(
     path: &Path,
     scope: &FactoryScope,
@@ -857,11 +991,17 @@ pub(super) fn store_replay_pending_finalizations(
     let connection = open_store(path)?;
     let mut statement = connection
         .prepare(
-            "SELECT f.run_id FROM factory_run_finalizations f
+            "SELECT run_id FROM (
+             SELECT f.run_id, f.updated_at FROM factory_run_finalizations f
              JOIN factory_runs r ON r.id = f.run_id
              WHERE r.relay_url = ?1 AND r.identity_pubkey = ?2
                AND r.business_community_id = ?3 AND r.client_channel_id = ?4
-             ORDER BY f.updated_at ASC",
+             UNION ALL
+             SELECT recovery.run_id, recovery.updated_at FROM factory_run_finalization_recovery recovery
+             JOIN factory_runs r ON r.id = recovery.run_id
+             WHERE r.relay_url = ?1 AND r.identity_pubkey = ?2
+               AND r.business_community_id = ?3 AND r.client_channel_id = ?4
+             ) ORDER BY updated_at ASC",
         )
         .map_err(|error| error.to_string())?;
     let values = scope.db_values();
@@ -879,6 +1019,9 @@ pub(super) fn store_replay_pending_finalizations(
         if let Err(error) = store_apply_pending_finalization(path, &run_id) {
             first_error.get_or_insert(error);
         }
+        if let Err(error) = store_apply_recovery_finalization(path, &run_id) {
+            first_error.get_or_insert(error);
+        }
     }
     match first_error {
         Some(error) => Err(error),
@@ -892,7 +1035,11 @@ fn overlay_pending_finalization(
 ) -> Result<(), String> {
     let pending: bool = connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM factory_run_finalizations WHERE run_id = ?1)",
+            "SELECT EXISTS(
+                 SELECT 1 FROM factory_run_finalizations WHERE run_id = ?1
+                 UNION ALL
+                 SELECT 1 FROM factory_run_finalization_recovery WHERE run_id = ?1
+             )",
             [&run.id],
             |row| row.get(0),
         )

@@ -78,10 +78,12 @@ native host starts with a different host id, queued, running, and waiting runs
 are marked `blocked`, with their saved transcript and drafts preserved. The
 runtime does not claim that the provider process resumed. The user can inspect
 the saved run and start another run to continue. Final status changes first
-write a durable local finalization record. If applying a final status fails,
-the run remains visibly blocked with a recovery message; same-scope list and
-snapshot reads retry the recorded transition in the same host, without
-requiring restart.
+write a durable local finalization record. If its three bounded insert attempts
+fail, the host writes the requested status to a recovery record counted against
+the same storage quota. Once either record is durable, the worker releases its
+control. Same-scope list and snapshot reads replay pending records in the same
+host, without requiring restart. If neither record can be saved, the storage
+error propagates and the control remains registered.
 
 Transcript capture treats observer lag and database write errors as run errors.
 It attempts to persist a `transcript_capture_error` marker. A failed capture
