@@ -55,7 +55,11 @@ export {
 } from "./SettingsPanels";
 
 type SettingsViewProps = SettingsPanelProps & {
+  canGoBack: boolean;
+  canGoForward: boolean;
   onClose: () => void;
+  onGoBack: () => void;
+  onGoForward: () => void;
   onSectionChange: (section: SettingsSection) => void;
   section: SettingsSection;
 };
@@ -150,7 +154,11 @@ export function SettingsView({
   notificationErrorMessage,
   notificationPermission,
   notificationSettings,
+  canGoBack,
+  canGoForward,
   onClose,
+  onGoBack,
+  onGoForward,
   onSectionChange,
   onSetDesktopNotificationsEnabled,
   onSetHomeBadgeEnabled,
@@ -417,7 +425,8 @@ export function SettingsView({
             <Button
               aria-label="Back"
               data-testid="settings-history-back"
-              onClick={() => window.history.back()}
+              disabled={!canGoBack}
+              onClick={onGoBack}
               size="icon"
               variant="ghost"
             >
@@ -426,7 +435,8 @@ export function SettingsView({
             <Button
               aria-label="Forward"
               data-testid="settings-history-forward"
-              onClick={() => window.history.forward()}
+              disabled={!canGoForward}
+              onClick={onGoForward}
               size="icon"
               variant="ghost"
             >

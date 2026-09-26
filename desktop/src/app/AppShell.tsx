@@ -834,6 +834,8 @@ export function AppShell() {
                     <div className="flex min-h-0 flex-1 overflow-hidden">
                       <React.Suspense fallback={null}>
                         <LazySettingsScreen
+                          canGoBack={canGoBack}
+                          canGoForward={canGoForward}
                           currentPubkey={identityQuery.data?.pubkey}
                           fallbackDisplayName={identityQuery.data?.displayName}
                           isUpdatingDesktopNotifications={
@@ -847,6 +849,8 @@ export function AppShell() {
                           }
                           notificationSettings={notificationSettings.settings}
                           onClose={handleCloseSettings}
+                          onGoBack={goBack}
+                          onGoForward={goForward}
                           onSectionChange={handleSettingsSectionChange}
                           onSetDesktopNotificationsEnabled={
                             notificationSettings.setDesktopEnabled

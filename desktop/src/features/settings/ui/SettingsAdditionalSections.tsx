@@ -69,20 +69,8 @@ export function BusinessProfileSettingsPanel() {
   );
 }
 
-export function WorkSettingsPanel() {
-  return null;
-}
-
-export function AgentConnectionsSettingsPanel() {
-  return null;
-}
-
 export function HarnessLifecycleSettingsPanel() {
   return <HarnessesSettingsPanel />;
-}
-
-export function BlocksSettingsPanel() {
-  return null;
 }
 
 export function AuditSettingsPanel() {

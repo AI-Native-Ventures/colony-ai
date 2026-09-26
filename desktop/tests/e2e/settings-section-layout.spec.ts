@@ -9,6 +9,8 @@ test("settings use nine groups, inner search, remembered sections, and return na
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page);
+  await expect(page.getByTestId("settings-history-back")).toBeEnabled();
+  await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
 
   for (const group of [
     "account",
@@ -70,6 +72,8 @@ test("routes without a data-backed design fall back to Account profile", async (
   await expect(page.getByTestId("settings-view")).toBeVisible();
   await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
   await expect(page.getByTestId("settings-panel-compute")).toHaveCount(0);
+  await expect(page.getByTestId("settings-history-back")).toBeDisabled();
+  await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
 });
 
 test("appearance controls save a complete scoped snapshot and retain density", async ({
