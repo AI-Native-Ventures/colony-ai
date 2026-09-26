@@ -1963,7 +1963,7 @@ test("theme catalog applies a named theme through a scoped save", async ({
     "aria-pressed",
     "true",
   );
-  await page.getByRole("button", { name: "Dark" }).click();
+  await page.getByRole("button", { exact: true, name: "Dark" }).click();
   const themeSearch = page.getByRole("searchbox", { name: "Search themes" });
   await themeSearch.fill("no matching theme");
   await expect(
