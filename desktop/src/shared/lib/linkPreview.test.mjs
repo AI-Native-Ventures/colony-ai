@@ -6,6 +6,7 @@ import {
   isSupportedLinkAutolinkLabel,
   parseSupportedLinkPreview,
   stripRenderedPreviewPlaceholderLinks,
+  stripPreview,
 } from "./linkPreview.ts";
 
 test("parseSupportedLinkPreview parses GitHub pull request URLs", () => {
@@ -550,4 +551,11 @@ test("stripRenderedPreviewPlaceholderLinks preserves unresolved placeholders", (
     ),
     content,
   );
+});
+
+test("stripPreview uses previews loaded for markdown", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `[\u200b](${href})`;
+
+  assert.equal(stripPreview(content, [{ href }]), "");
 });
