@@ -19,6 +19,7 @@ body:has(.w20-settings-shell) {
   --text-2xs: calc(var(--buzz-type-rem) * 0.6875);
   --text-3xs: calc(var(--buzz-type-rem) * 0.5);
   --text-badge: calc(var(--buzz-type-rem) * 0.625);
+  --w20-nav-avatar-font-size: calc(var(--buzz-type-rem) * 0.59);
   --text-compact: var(--colony-text-compact);
   --w20-appearance-caption: calc(var(--buzz-type-rem) * 0.5625);
 }
@@ -155,14 +156,16 @@ body:has(.w20-settings-shell) {
   gap: 7px;
   margin: 0 4px 10px;
   padding: 7px 8px;
-  border: 1px solid rgb(143 114 149 / 10%);
+  border: 1px solid color-mix(in srgb, #282532 12%, transparent);
   border-radius: 7px;
-  background: rgb(255 255 255 / 31%);
+  background: color-mix(in srgb, #fffefd 35%, transparent);
+  color: #282532;
 }
 
 .dark .w20-nav-search {
-  border-color: rgb(201 176 212 / 10%);
-  background: rgb(47 34 59 / 34%);
+  border-color: color-mix(in srgb, #ece6ef 12%, transparent);
+  background: color-mix(in srgb, #211e26 35%, transparent);
+  color: #ece6ef;
 }
 
 .w20-nav-search input {
@@ -202,8 +205,16 @@ body:has(.w20-settings-shell) {
   color: #79747f;
   font-size: var(--text-2xs);
   font-weight: 600;
-  letter-spacing: 0.015em;
+  letter-spacing: -0.02em;
   line-height: 1.5;
+}
+
+.dark .w20-nav-heading {
+  color: #a39aa9;
+}
+
+.dark .w20-settings-sidebar.w20-settings-sidebar .w20-nav-back {
+  color: #a39aa9;
 }
 
 .w20-nav-group:not(:first-child):has(.w20-nav-heading) {
@@ -271,7 +282,7 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-nav-item {
-  color: #c8b7d4;
+  color: #ece6ef;
 }
 
 .dark .w20-nav-item:hover,
@@ -329,30 +340,38 @@ body:has(.w20-settings-shell) {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   cursor: pointer;
 }
 
-.w20-nav-person-avatar > span {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  border-radius: inherit;
-  background: rgb(255 255 255 / 42%);
-  color: #735a82;
-  font-size: var(--text-2xs);
-  font-weight: 700;
+.w20-nav-person-avatar [data-testid="settings-profile-avatar"] {
+  border-radius: 7px;
+  background: #ece5ed;
+  color: #796782;
+  font-size: var(--w20-nav-avatar-font-size);
+  font-weight: 600;
+  line-height: 1.5;
 }
 
-.w20-nav-person-avatar:hover > span {
-  background: rgb(255 255 255 / 64%);
+.w20-nav-person-avatar [data-testid="settings-profile-avatar-fallback"] {
+  border-radius: 7px;
+  background: #ece5ed;
+  color: #796782;
+  font-size: var(--w20-nav-avatar-font-size);
+  font-weight: 600;
+  line-height: 1.5;
 }
 
-.dark .w20-nav-person-avatar > span {
-  background: rgb(255 255 255 / 8%);
-  color: #c8b7d4;
+.w20-nav-person-avatar:hover [data-testid="settings-profile-avatar"],
+.w20-nav-person-avatar:hover [data-testid="settings-profile-avatar-fallback"] {
+  background: #ece5ed;
+}
+
+.dark .w20-nav-person-avatar [data-testid="settings-profile-avatar"],
+.dark .w20-nav-person-avatar [data-testid="settings-profile-avatar-fallback"] {
+  background: #453a4a;
+  color: #d1bfd8;
 }
 
 .w20-nav-person-avatar:focus-visible {
@@ -436,6 +455,7 @@ body:has(.w20-settings-shell) {
   border-color: rgb(60 53 68 / 75%);
   border-bottom-color: #3c3544;
   background: #211e26;
+  color: #ece6ef;
 }
 
 .w20-topbar-history {
@@ -467,14 +487,21 @@ body:has(.w20-settings-shell) {
   min-width: 0;
   align-items: center;
   gap: 11px;
+  transform: translateY(-0.5px);
 }
 
 .w20-topbar-title svg {
-  color: #81728c;
+  width: 16px;
+  height: 18px;
+  color: #9a8d9e;
 }
 
 .w20-topbar-title > span {
   line-height: 1.5;
+}
+
+.dark .w20-topbar-title > span {
+  color: #a39aa9;
 }
 
 .w20-topbar-title strong {
@@ -490,6 +517,11 @@ body:has(.w20-settings-shell) {
   width: 30px;
   height: 30px;
   color: #79747f;
+}
+
+.dark .w20-settings-shell .w20-topbar-history button,
+.dark .w20-settings-shell .w20-settings-topbar > button:last-child {
+  color: #a39aa9;
 }
 
 .w20-settings-surface {

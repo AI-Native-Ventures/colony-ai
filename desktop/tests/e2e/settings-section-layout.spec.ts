@@ -221,11 +221,58 @@ test("appearance controls save a complete scoped snapshot and retain density", a
   await openSettings(page, "appearance");
 
   await expect(page.getByTestId("appearance-density")).toBeVisible();
+  const sharedChrome = () =>
+    page.evaluate(() => {
+      const read = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (!element) throw new Error(`Missing settings chrome: ${selector}`);
+        return getComputedStyle(element);
+      };
+      const avatar = read('[data-testid="settings-profile-avatar"]');
+      return {
+        sectionLabelTracking: read(".w20-nav-heading").letterSpacing,
+        searchTextColor: read(".w20-nav-search input").color,
+        breadcrumbColor: read(".w20-topbar-title > span").color,
+        avatar: {
+          backgroundColor: avatar.backgroundColor,
+          color: avatar.color,
+          fontSize: avatar.fontSize,
+          fontWeight: avatar.fontWeight,
+          borderRadius: avatar.borderRadius,
+        },
+      };
+    });
+  expect(await sharedChrome()).toEqual({
+    sectionLabelTracking: "-0.22px",
+    searchTextColor: "rgb(40, 37, 50)",
+    breadcrumbColor: "rgb(121, 116, 127)",
+    avatar: {
+      backgroundColor: "rgb(236, 229, 237)",
+      color: "rgb(121, 103, 130)",
+      fontSize: "9.44px",
+      fontWeight: "600",
+      borderRadius: "7px",
+    },
+  });
+
   await page.getByTestId("appearance-mode-dark").click();
   await expect(page.getByTestId("appearance-mode-dark")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+  expect(await sharedChrome()).toEqual({
+    sectionLabelTracking: "-0.22px",
+    searchTextColor: "rgb(236, 230, 239)",
+    breadcrumbColor: "rgb(163, 154, 169)",
+    avatar: {
+      backgroundColor: "rgb(69, 58, 74)",
+      color: "rgb(209, 191, 216)",
+      fontSize: "9.44px",
+      fontWeight: "600",
+      borderRadius: "7px",
+    },
+  });
+
   const fieldBorderColor = await page
     .locator(".buzz-theme-gradient-layer")
     .evaluate((element) => getComputedStyle(element, "::after").borderTopColor);
