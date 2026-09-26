@@ -101,7 +101,8 @@ services:
     restart: unless-stopped
 
   minio:
-    image: codemowers/minio:RELEASE.2025-09-07T16-13-09Z@sha256:ab5a28fd48a89e04a837ea4a80085ea342902f8ffdce1a52994ad6f8b3adfc77
+    # CI points this at a locally cached copy of the same pinned image.
+    image: ${BUZZ_MINIO_IMAGE:-codemowers/minio:RELEASE.2025-09-07T16-13-09Z@sha256:ab5a28fd48a89e04a837ea4a80085ea342902f8ffdce1a52994ad6f8b3adfc77}
     container_name: buzz-minio
     command: server /data --console-address ":9001"
     environment:
@@ -130,7 +131,8 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: public.ecr.aws/aws-cli/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5
+    # CI points this at a locally cached copy of the same pinned image.
+    image: ${BUZZ_MINIO_INIT_IMAGE:-public.ecr.aws/aws-cli/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5}
     container_name: buzz-minio-init
     depends_on:
       minio:
