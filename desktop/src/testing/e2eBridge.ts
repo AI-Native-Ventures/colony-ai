@@ -6282,8 +6282,9 @@ function resetMockFactoryRuntime(config?: E2eConfig) {
   );
   mockFactoryDrafts = new Map(
     seeds
-      .filter((seed): seed is MockFactoryRunSeed & { draft: string } =>
-        typeof seed.draft === "string",
+      .filter(
+        (seed): seed is MockFactoryRunSeed & { draft: string } =>
+          typeof seed.draft === "string",
       )
       .map((seed) => [
         seed.run.id,
@@ -6349,8 +6350,7 @@ function buildMockProjectEvents(): RelayEvent[] {
     const owner = getMockMemberPubkey(config);
     const now = Math.floor(Date.now() / 1000);
     return factoryProjects.flatMap((project, index) => {
-      const repositoryAddress =
-        `${KIND_REPO_ANNOUNCEMENT}:${owner}:${project.repositoryDtag}`;
+      const repositoryAddress = `${KIND_REPO_ANNOUNCEMENT}:${owner}:${project.repositoryDtag}`;
       return [
         createMockEvent(
           KIND_REPO_ANNOUNCEMENT,
@@ -6365,7 +6365,7 @@ function buildMockProjectEvents(): RelayEvent[] {
           ],
           owner,
           now - index,
-          `e2e-factory-repo-${project.repositoryDtag}`.padEnd(64, "0").slice(0, 64),
+          mockEventId(),
         ),
         createMockEvent(
           KIND_PROJECT_ANNOUNCEMENT,
@@ -6379,7 +6379,7 @@ function buildMockProjectEvents(): RelayEvent[] {
           ],
           owner,
           now - index,
-          `e2e-factory-project-${project.dtag}`.padEnd(64, "0").slice(0, 64),
+          mockEventId(),
         ),
       ];
     });
@@ -14287,9 +14287,7 @@ export function maybeInstallE2eTauriMocks() {
           runId: string;
           afterSequence?: number;
         };
-        if (
-          activeConfig?.mock?.factorySnapshotFailureRunIds?.includes(runId)
-        ) {
+        if (activeConfig?.mock?.factorySnapshotFailureRunIds?.includes(runId)) {
           throw new Error("Factory session is reconnecting.");
         }
         return getMockFactorySnapshot(runId, afterSequence);
@@ -14299,7 +14297,8 @@ export function maybeInstallE2eTauriMocks() {
       case "factory_run_cancel": {
         const { runId } = payload as { runId: string };
         const run = mockFactoryRuns.find((item) => item.id === runId);
-        if (!run) throw new Error("Factory run is not available in this scope.");
+        if (!run)
+          throw new Error("Factory run is not available in this scope.");
         run.status = "cancelled";
         run.updatedAt = new Date().toISOString();
         const snapshot = mockFactorySnapshots.get(runId);
@@ -14347,7 +14346,10 @@ export function maybeInstallE2eTauriMocks() {
           repositoryId: input.repositoryId ?? null,
           checkoutPath: input.checkoutPath,
           agentId: input.agentId,
-          harnessId: "local",
+          harnessId:
+            activeConfig?.mock?.managedAgents?.find(
+              (agent) => agent.pubkey === input.agentId,
+            )?.runtime ?? "local",
           parentRunId: input.parentRunId ?? null,
           status: "queued",
           createdAt: now,
@@ -14356,9 +14358,17 @@ export function maybeInstallE2eTauriMocks() {
           error: null,
         };
         mockFactoryRuns.unshift(run);
+        const promptEvent: FactoryRunEvent = {
+          sequence: 1,
+          runId: run.id,
+          createdAt: now,
+          kind: "user_prompt",
+          payload: { text: input.prompt },
+          scope,
+        };
         mockFactorySnapshots.set(run.id, {
           run: structuredClone(run),
-          events: [],
+          events: [promptEvent],
           draft: null,
           hasMore: false,
         });
@@ -14369,7 +14379,9 @@ export function maybeInstallE2eTauriMocks() {
         return structuredClone(mockFactoryDrafts.get(runId) ?? null);
       }
       case "factory_run_set_draft": {
-        const { input } = payload as { input: { runId: string; draft: string } };
+        const { input } = payload as {
+          input: { runId: string; draft: string };
+        };
         if (!mockFactoryRuns.some((run) => run.id === input.runId)) {
           throw new Error("Factory run is not available in this scope.");
         }

@@ -35,30 +35,43 @@ function mergeFactorySnapshot(
   return {
     ...current,
     ...incoming,
-    events: [...events.values()].sort((left, right) => left.sequence - right.sequence),
+    events: [...events.values()].sort(
+      (left, right) => left.sequence - right.sequence,
+    ),
   };
 }
 
 export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(
-    () => [
-      "factory-runs",
+    () =>
+      [
+        "factory-runs",
+        scope.relayUrl,
+        scope.identityPubkey,
+        scope.businessCommunityId,
+        scope.clientChannelId ?? "",
+      ] as const,
+    [
       scope.relayUrl,
       scope.identityPubkey,
       scope.businessCommunityId,
-      scope.clientChannelId ?? "",
-    ] as const,
-    [scope.relayUrl, scope.identityPubkey, scope.businessCommunityId, scope.clientChannelId],
+      scope.clientChannelId,
+    ],
   );
   const scopeKey = queryKey.join("\u0000");
   const [snapshots, setSnapshots] = React.useState<
     ReadonlyMap<string, FactoryRunSnapshot>
   >(() => new Map());
-  const [reattachErrors, setReattachErrors] = React.useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [reattachErrors, setReattachErrors] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [attachmentGeneration, setAttachmentGeneration] = React.useState(0);
+  const currentScopeKey = React.useRef(scopeKey);
+  currentScopeKey.current = scopeKey;
+  const currentAttachmentGeneration = React.useRef(attachmentGeneration);
+  currentAttachmentGeneration.current = attachmentGeneration;
+  const previousScopeKey = React.useRef(scopeKey);
   const runsQuery = useQuery({
     queryKey,
     queryFn: listFactoryRuns,
@@ -69,12 +82,17 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
   const runsById = React.useRef(new Map<string, FactoryRun>());
   runsById.current = new Map(runs.map((run) => [run.id, run]));
   const activeRunIds = runs
-    .filter((run) => ["queued", "running", "waiting"].includes(run.status))
+    .filter((run) =>
+      ["queued", "running", "waiting", "blocked"].includes(run.status),
+    )
     .map((run) => run.id)
     .sort()
     .join("\n");
   const terminalRunIds = runs
-    .filter((run) => !["queued", "running", "waiting"].includes(run.status))
+    .filter(
+      (run) =>
+        !["queued", "running", "waiting", "blocked"].includes(run.status),
+    )
     .map((run) => run.id)
     .sort()
     .join("\n");
@@ -85,6 +103,8 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
   }, [runsQuery.refetch]);
 
   React.useEffect(() => {
+    if (previousScopeKey.current === scopeKey) return;
+    previousScopeKey.current = scopeKey;
     setSnapshots(new Map());
     setReattachErrors(new Set());
   }, [scopeKey]);
@@ -92,12 +112,13 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
   React.useEffect(() => {
     if (!terminalRunIds) return;
     let active = true;
+    const effectScopeKey = scopeKey;
     for (const runId of terminalRunIds.split("\n")) {
       const run = runsById.current.get(runId);
       if (!run) continue;
       void getFactoryRunSnapshot(runId).then(
         (snapshot) => {
-          if (!active) return;
+          if (!active || currentScopeKey.current !== effectScopeKey) return;
           setSnapshots((current) => {
             const next = new Map(current);
             next.set(runId, mergeFactorySnapshot(current.get(runId), snapshot));
@@ -111,7 +132,8 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
           });
         },
         () => {
-          if (active) setReattachErrors((current) => new Set(current).add(runId));
+          if (active && currentScopeKey.current === effectScopeKey)
+            setReattachErrors((current) => new Set(current).add(runId));
         },
       );
     }
@@ -123,6 +145,12 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
   React.useEffect(() => {
     if (!activeRunIds) return;
     let active = true;
+    const effectScopeKey = scopeKey;
+    const effectAttachmentGeneration = attachmentGeneration;
+    const isCurrentAttachment = () =>
+      active &&
+      currentScopeKey.current === effectScopeKey &&
+      currentAttachmentGeneration.current === effectAttachmentGeneration;
     const attachments = activeRunIds.split("\n").flatMap((runId) => {
       const run = runsById.current.get(runId);
       if (!run) return [];
@@ -130,7 +158,7 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
         runId,
         0,
         (event) => {
-          if (!active) return;
+          if (!isCurrentAttachment()) return;
           setReattachErrors((current) => {
             if (!current.has(runId)) return current;
             const next = new Set(current);
@@ -139,7 +167,9 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
           });
           setSnapshots((current) => {
             const existing = current.get(runId);
-            if (existing?.events.some((item) => item.sequence === event.sequence)) {
+            if (
+              existing?.events.some((item) => item.sequence === event.sequence)
+            ) {
               return current;
             }
             const next = new Map(current);
@@ -155,15 +185,19 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
           });
           void getFactoryRunSnapshot(runId, event.sequence).then(
             (snapshot) => {
-              if (!active) return;
+              if (!isCurrentAttachment()) return;
               setSnapshots((current) => {
                 const next = new Map(current);
-                next.set(runId, mergeFactorySnapshot(current.get(runId), snapshot));
+                next.set(
+                  runId,
+                  mergeFactorySnapshot(current.get(runId), snapshot),
+                );
                 return next;
               });
             },
             () => {
-              if (active) setReattachErrors((current) => new Set(current).add(runId));
+              if (isCurrentAttachment())
+                setReattachErrors((current) => new Set(current).add(runId));
             },
           );
           void queryClient.invalidateQueries({ queryKey });
@@ -171,22 +205,26 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
         () => {
           void getFactoryRunSnapshot(runId).then(
             (snapshot) => {
-              if (!active) return;
+              if (!isCurrentAttachment()) return;
               setSnapshots((current) => {
                 const next = new Map(current);
-                next.set(runId, mergeFactorySnapshot(current.get(runId), snapshot));
+                next.set(
+                  runId,
+                  mergeFactorySnapshot(current.get(runId), snapshot),
+                );
                 return next;
               });
             },
             () => {
-              if (active) setReattachErrors((current) => new Set(current).add(runId));
+              if (isCurrentAttachment())
+                setReattachErrors((current) => new Set(current).add(runId));
             },
           );
         },
       );
       void attachment.snapshot.then(
         (snapshot) => {
-          if (!active) return;
+          if (!isCurrentAttachment()) return;
           setReattachErrors((current) => {
             if (!current.has(runId)) return current;
             const next = new Set(current);
@@ -200,7 +238,8 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
           });
         },
         () => {
-          if (active) setReattachErrors((current) => new Set(current).add(runId));
+          if (isCurrentAttachment())
+            setReattachErrors((current) => new Set(current).add(runId));
         },
       );
       return [attachment];
@@ -214,7 +253,7 @@ export function useFactoryRuns(scope: FactoryScope): FactoryRunsResult {
         });
       }
     };
-  }, [activeRunIds, attachmentGeneration, queryClient, queryKey]);
+  }, [activeRunIds, attachmentGeneration, queryClient, queryKey, scopeKey]);
 
   const cancelRun = React.useCallback(
     async (runId: string) => {

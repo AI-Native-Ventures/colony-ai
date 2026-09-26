@@ -18,6 +18,7 @@ export type FactoryPlanRecord = {
 };
 
 export const FACTORY_PLAN_STORAGE_VERSION = 1;
+export const FACTORY_PLAN_CHANGE_EVENT = "colony:factory-plans-changed";
 
 export function factoryPlanStorageKey(scope: FactoryScope) {
   const parts = [
@@ -51,7 +52,13 @@ export function saveFactoryPlan(
 ): FactoryPlanRecord[] {
   const plans = loadFactoryPlans(storage, scope);
   const next = [plan, ...plans.filter((item) => item.id !== plan.id)];
-  storage.setItem(factoryPlanStorageKey(scope), JSON.stringify(next));
+  const storageKey = factoryPlanStorageKey(scope);
+  storage.setItem(storageKey, JSON.stringify(next));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(FACTORY_PLAN_CHANGE_EVENT, { detail: storageKey }),
+    );
+  }
   return next;
 }
 
@@ -62,6 +69,12 @@ export function deleteFactoryPlan(
 ): FactoryPlanRecord[] {
   const plans = loadFactoryPlans(storage, scope);
   const next = plans.filter((item) => item.id !== planId);
-  storage.setItem(factoryPlanStorageKey(scope), JSON.stringify(next));
+  const storageKey = factoryPlanStorageKey(scope);
+  storage.setItem(storageKey, JSON.stringify(next));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(FACTORY_PLAN_CHANGE_EVENT, { detail: storageKey }),
+    );
+  }
   return next;
 }

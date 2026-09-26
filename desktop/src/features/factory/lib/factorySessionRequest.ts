@@ -39,3 +39,9 @@ export function subscribeFactorySessionStart(
     if (scopeListeners.size === 0) listeners.delete(key);
   };
 }
+
+/** Clears pending UI requests and listeners when the active community changes. */
+export function resetFactorySessionRequests() {
+  pendingScopeKey = null;
+  listeners.clear();
+}

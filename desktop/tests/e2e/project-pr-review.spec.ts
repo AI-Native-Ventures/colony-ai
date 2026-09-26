@@ -25,7 +25,7 @@ async function expectSinglePrimaryTextColumn(row: Locator) {
   expect(secondaryColors.every((color) => color !== primaryColor)).toBe(true);
 }
 
-// The projects surface is a preview feature — opt in before the app mounts.
+// The projects surface is a preview feature; opt in before the app mounts.
 // Must run before installMockBridge so React reads the override on mount.
 async function enableProjectsFeature(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
@@ -1141,9 +1141,18 @@ test("Factory navigation stays separate from legacy project browsing", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const factoryEntry = page.getByTestId("open-factory-view");
+  await expect(factoryEntry).toContainText("Software Factory");
   await factoryEntry.click();
   await expect(page).toHaveURL(/\/factory$/);
-  await expect(factoryEntry).toHaveAttribute("data-active", "true");
+  await expect(
+    page
+      .getByRole("navigation", { name: "Factory views" })
+      .getByRole("button", { name: "Workbench" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("factory-return-to-workspace")).toBeVisible();
+  await page.getByTestId("factory-return-to-workspace").click();
+  await expect(page).toHaveURL(/\/today$/);
+  await expect(factoryEntry).toHaveAttribute("data-active", "false");
   await openLegacyProjectsView(page);
   await expect(factoryEntry).toHaveAttribute("data-active", "false");
 
@@ -1170,7 +1179,8 @@ test("Factory navigation stays separate from legacy project browsing", async ({
   );
 
   await sidebarProject.click();
-  await expect(projectsOverview).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("projects-overview-layout")).toHaveCount(0);
+  await expect(page.getByTestId("project-channel-home")).toBeVisible();
   await expect(sidebarProject).toHaveAttribute("data-active", "true");
 });
 

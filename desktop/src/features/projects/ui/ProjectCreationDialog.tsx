@@ -2,14 +2,17 @@ import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCreateProjectMutation } from "@/features/projects/useCreateProject";
+import type { Project } from "@/features/projects/hooks";
 import { CreateProjectDialog } from "@/features/projects/ui/CreateProjectDialog";
 
 /** Shared project-creation flow for populated and first-run project views. */
 export function ProjectCreationDialog({
   onOpenChange,
+  onCreated,
   open,
 }: {
   onOpenChange: (open: boolean) => void;
+  onCreated?: (project: Project) => void;
   open: boolean;
 }) {
   const { goProject } = useAppNavigation();
@@ -27,7 +30,11 @@ export function ProjectCreationDialog({
         } else {
           toast.success(`Project "${result.project.name}" created.`);
         }
-        await goProject(result.project.id);
+        if (onCreated) {
+          onCreated(result.project);
+        } else {
+          await goProject(result.project.id);
+        }
       }}
       onOpenChange={onOpenChange}
       open={open}

@@ -24,6 +24,7 @@ import { ProtectedBestieSidebarEntry } from "@protected-feature-components";
 import { Button } from "@/shared/ui/button";
 import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
 import { useSidebar } from "@/shared/ui/sidebar";
+import colonyIcon from "../assets/colony-icon-v2.svg";
 
 type SidebarSelectedView =
   | "today"
@@ -96,9 +97,19 @@ export function AppSidebarPinnedHeader({
     >
       <div className="colony-sidebar-brand mb-2 flex h-10 items-center gap-2">
         {factoryView ? (
-          <div aria-label="Colony" className="flex min-w-0 flex-1 items-center gap-2 px-1" data-testid="factory-sidebar-brand">
-            <span aria-hidden="true" className="colony-sidebar-brand-mark">c</span>
-            <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">colony</span>
+          <div
+            className="flex min-w-0 flex-1 items-center gap-2 px-1"
+            data-testid="factory-sidebar-brand"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              className="h-[26px] w-[26px] rounded-md"
+              src={colonyIcon}
+            />
+            <span className="min-w-0 truncate text-xl font-bold tracking-[-0.055em] text-sidebar-foreground">
+              colony
+            </span>
           </div>
         ) : (
           <button
@@ -106,7 +117,9 @@ export function AppSidebarPinnedHeader({
             className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
             data-testid="sidebar-business-switcher"
             onClick={() =>
-              window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
+              window.dispatchEvent(
+                new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT),
+              )
             }
             type="button"
           >
@@ -140,7 +153,10 @@ export function AppSidebarPinnedHeader({
           type="button"
         >
           <ArrowLeft aria-hidden="true" />
-          <span><strong>{activeCommunityName}</strong><small>Business workspace</small></span>
+          <span>
+            <strong>{activeCommunityName}</strong>
+            <small>Business workspace</small>
+          </span>
         </button>
       ) : (
         <TopbarSearch
