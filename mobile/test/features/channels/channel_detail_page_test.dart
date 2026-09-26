@@ -846,6 +846,7 @@ void main() {
             );
             tester.view.physicalSize = size.value;
             tester.view.devicePixelRatio = 1;
+            tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
             final isDm = route == 'dm';
             final isThread = route == 'thread';
             await tester.pumpWidget(
@@ -913,6 +914,7 @@ void main() {
           }
         }
       }
+      tester.view.resetPadding();
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
@@ -2462,9 +2464,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Forum · 8 members'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
       await tester.pumpAndSettle();
       expect(find.byType(ForumNewPostPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsNothing,
+      );
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ForumNewPostPage), findsNothing);
+      expect(find.byType(ForumPostsView), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -2576,7 +2596,7 @@ void main() {
       for (final size in captureSizes.entries) {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
-        tester.view.padding = const FakeViewPadding(top: 46, bottom: 25);
+        tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
         for (final brightness in [Brightness.light, Brightness.dark]) {
           final mode = brightness == Brightness.light ? 'light' : 'dark';
           final forumRelay = _R19ForumCaptureRelay(forumFixtureEvents);
@@ -2616,6 +2636,17 @@ void main() {
           Future<void> capture(String route) async {
             FocusManager.instance.primaryFocus?.unfocus();
             await tester.pumpAndSettle();
+            if (route == 'forum' || route == 'forum-posted-first') {
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsOneWidget,
+              );
+            } else if (route.startsWith('forum-new')) {
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsNothing,
+              );
+            }
             final output = Directory('/tmp/w23-mobile-forum/${size.key}/$mode');
             output.createSync(recursive: true);
             final previousComparator = goldenFileComparator;
@@ -2640,6 +2671,15 @@ void main() {
               '• Bring one useful learning to Friday’s team catch-up.\n\n'
               'What needs your attention first?';
 
+          Future<void> addSampleAttachment() async {
+            await tester.tap(find.text('Add attachments'));
+            await tester.pump(const Duration(milliseconds: 300));
+            await tester.pump();
+            await tester.tap(find.text('Files'));
+            await tester.pumpAndSettle();
+            expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          }
+
           final postingRelay = _R19ForumCaptureRelay(forumFixtureEvents);
           await mountForum(postingRelay);
           await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
@@ -2652,11 +2692,7 @@ void main() {
             find.byKey(const ValueKey('forum-post-body')),
             capturePostBody,
           );
-          await tester.tap(find.text('Add attachments'));
-          await tester.pump(const Duration(milliseconds: 300));
-          await tester.pump();
-          await tester.tap(find.text('Files'));
-          await tester.pumpAndSettle();
+          await addSampleAttachment();
           final postingPreview = postingRelay.holdNextPublish();
           await tester.tap(find.widgetWithText(FilledButton, 'Post'));
           await tester.pump();
@@ -2686,18 +2722,18 @@ void main() {
           await tester.pumpAndSettle();
           await capture('forum-new-draft');
 
-          await tester.tap(find.text('Add attachments'));
-          await tester.pump(const Duration(milliseconds: 300));
-          await tester.pump();
-          await tester.tap(find.text('Files'));
-          await tester.pumpAndSettle();
+          await addSampleAttachment();
           await capture('forum-new-attachments');
+          await tester.tap(find.byTooltip('Remove attachment'));
+          await tester.pumpAndSettle();
+          expect(find.text('October campaign brief.pdf'), findsNothing);
 
           await tester.tap(find.text('Cancel'));
           await tester.pumpAndSettle();
           await capture('forum-new-discard');
           await tester.tap(find.text('Keep editing'));
           await tester.pumpAndSettle();
+          await addSampleAttachment();
           final pendingPost = forumRelay.holdNextPublish();
           await tester.tap(find.widgetWithText(FilledButton, 'Post'));
           await tester.pump();

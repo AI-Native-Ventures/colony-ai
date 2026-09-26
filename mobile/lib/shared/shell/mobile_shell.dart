@@ -35,6 +35,7 @@ class MobileShell extends StatelessWidget {
     required this.onDestinationSelected,
     required this.child,
     this.hasUnreadActivity = false,
+    this.showBrandBar = true,
     this.overlayBuilder,
     super.key,
   });
@@ -47,6 +48,7 @@ class MobileShell extends StatelessWidget {
   final ValueChanged<MobileShellDestination> onDestinationSelected;
   final Widget child;
   final bool hasUnreadActivity;
+  final bool showBrandBar;
   final MobileShellOverlayBuilder? overlayBuilder;
 
   @override
@@ -72,34 +74,45 @@ class MobileShell extends StatelessWidget {
           backgroundColor: tokens.canvas,
           body: Column(
             children: [
-              Container(
-                key: const ValueKey('mobile-brand-bar'),
-                height: brandBarHeight,
-                padding: const EdgeInsets.symmetric(horizontal: Grid.fourteen),
-                alignment: Alignment.centerLeft,
-                decoration: BoxDecoration(
-                  color: tokens.canvas,
-                  border: Border(
-                    bottom: BorderSide(color: tokens.brandBarDivider),
+              if (showBrandBar)
+                Container(
+                  key: const ValueKey('mobile-brand-bar'),
+                  height: brandBarHeight,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Grid.fourteen,
+                  ),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    color: tokens.canvas,
+                    border: Border(
+                      bottom: BorderSide(color: tokens.brandBarDivider),
+                    ),
+                  ),
+                  child: Text(
+                    'colony',
+                    style: context.textTheme.titleLarge?.copyWith(
+                      color: tokens.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -1.4,
+                    ),
                   ),
                 ),
-                child: Text(
-                  'colony',
-                  style: context.textTheme.titleLarge?.copyWith(
-                    color: tokens.ink,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -1.4,
-                  ),
-                ),
-              ),
               Expanded(child: child),
             ],
           ),
-          bottomNavigationBar: _MobileBottomNavigation(
-            destination: destination,
-            hasUnreadActivity: hasUnreadActivity,
-            onDestinationSelected: onDestinationSelected,
+          bottomNavigationBar: ColoredBox(
+            color: tokens.paper,
+            child: SafeArea(
+              top: false,
+              left: false,
+              right: false,
+              child: _MobileBottomNavigation(
+                destination: destination,
+                hasUnreadActivity: hasUnreadActivity,
+                onDestinationSelected: onDestinationSelected,
+              ),
+            ),
           ),
         ),
         if (overlay != null) Positioned.fill(child: overlay),

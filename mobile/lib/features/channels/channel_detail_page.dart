@@ -680,7 +680,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                         isMember: resolvedChannel.isMember,
                         isArchived: resolvedChannel.isArchived,
                       );
-                      Navigator.of(context).push(
+                      Navigator.of(context, rootNavigator: true).push(
                         MaterialPageRoute<void>(
                           builder: (routeContext) => routeRegistry!.build(
                             routeContext,

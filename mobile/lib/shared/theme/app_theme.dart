@@ -157,7 +157,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
+          textStyle: bodyExtraSmallTextStyle.copyWith(
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -170,7 +170,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
+          textStyle: bodyExtraSmallTextStyle.copyWith(
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -185,7 +185,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
+          textStyle: bodyExtraSmallTextStyle.copyWith(
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -198,7 +198,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
+          textStyle: bodyExtraSmallTextStyle.copyWith(
             fontWeight: FontWeight.w500,
           ),
         ),

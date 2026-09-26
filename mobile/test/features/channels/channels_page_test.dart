@@ -61,6 +61,7 @@ void main() {
         ? MobileShell(
             destination: MobileShellDestination.chats,
             onDestinationSelected: (_) {},
+            showBrandBar: false,
             overlayBuilder: (context, shellContext) =>
                 ChannelQuickActionsLauncher(
                   visible: true,
@@ -117,15 +118,22 @@ void main() {
                 mobileTokens: MobileDesignTokens.light,
               )
             : AppTheme.dark(mobileTokens: MobileDesignTokens.dark),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            disableAnimations: disableAnimations,
-            textScaler: textScaler,
-            padding: EdgeInsets.only(bottom: bottomPadding),
-            viewInsets: EdgeInsets.only(bottom: keyboardInset),
-          ),
-          child: child!,
-        ),
+        builder: (context, child) {
+          final mediaQuery = MediaQuery.of(context);
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              disableAnimations: disableAnimations,
+              textScaler: textScaler,
+              padding: mediaQuery.padding.copyWith(
+                bottom: bottomPadding == 0
+                    ? mediaQuery.padding.bottom
+                    : bottomPadding,
+              ),
+              viewInsets: EdgeInsets.only(bottom: keyboardInset),
+            ),
+            child: child!,
+          );
+        },
         home: home,
       ),
     );
@@ -315,6 +323,7 @@ void main() {
         );
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
         await tester.pumpWidget(
           buildTestable(
             includeShell: true,
@@ -392,6 +401,7 @@ void main() {
         goldenFileComparator = previousComparator;
       }
     }
+    tester.view.resetPadding();
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });

@@ -28,6 +28,22 @@ void main() {
     expect(side.width, 1);
   });
 
+  test('uses the shared compact Manrope style for every button family', () {
+    final theme = AppTheme.light();
+    final buttonStyles = [
+      theme.elevatedButtonTheme.style!.textStyle!.resolve({})!,
+      theme.filledButtonTheme.style!.textStyle!.resolve({})!,
+      theme.outlinedButtonTheme.style!.textStyle!.resolve({})!,
+      theme.textButtonTheme.style!.textStyle!.resolve({})!,
+    ];
+
+    expect(
+      buttonStyles.map((style) => style.fontFamily),
+      everyElement('Manrope'),
+    );
+    expect(buttonStyles.map((style) => style.fontSize), everyElement(12));
+  });
+
   test('keeps inactive Huddle controls distinct in dark mode', () {
     final colors = AppTheme.dark().extension<AppColors>()!;
 

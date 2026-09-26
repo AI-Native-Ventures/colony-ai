@@ -155,7 +155,7 @@ class ForumNewPostPage extends HookConsumerWidget {
           leading: IconButton(
             onPressed: requestCancel,
             tooltip: 'Back',
-            icon: const Icon(LucideIcons.arrowLeft, size: 20),
+            icon: const Icon(LucideIcons.chevronLeft, size: 20),
           ),
           titleContentHeight: appBarTitleHeight,
           title: Column(

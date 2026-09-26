@@ -13,6 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 MobileRouteRegistry buildTestRoutes({
   MobileRouteBuilder<MobileShellRouteContext>? todayBuilder,
+  MobileRouteBuilder<MobileShellRouteContext>? chatsBuilder,
   MobileRouteBuilder<NoMobileRouteArguments>? searchBuilder,
 }) => MobileRouteRegistry.empty()
     .register(
@@ -23,7 +24,9 @@ MobileRouteRegistry buildTestRoutes({
     )
     .register(
       MobileRoutes.chats,
-      (_, context) => _DestinationPage('Chats', context),
+      chatsBuilder ??
+          ((BuildContext _, MobileShellRouteContext context) =>
+              _DestinationPage('Chats', context)),
     )
     .register(
       MobileRoutes.activity,
@@ -158,10 +161,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
     await tester.pumpAndSettle();
     expect(find.text('Activity route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+    await tester.pumpAndSettle();
+    expect(find.text('Chats route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
     await tester.pump();
-    expect(find.text('Activity route 1'), findsOneWidget);
+    expect(find.text('Chats route 1'), findsOneWidget);
   });
 
   testWidgets('gives selection haptics only when the destination changes', (
@@ -260,6 +269,47 @@ void main() {
     expect(find.text('Updates route'), findsOneWidget);
   });
 
+  testWidgets('keeps tab routes inside the shell and handles back locally', (
+    tester,
+  ) async {
+    final routes = buildTestRoutes(
+      chatsBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const Center(child: Text('Channel detail')),
+            ),
+          ),
+          child: const Text('Open channel'),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open channel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Channel detail'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open channel'), findsOneWidget);
+    expect(find.text('Channel detail'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+  });
+
   testWidgets('builds a shell at the requested mobile viewport', (
     tester,
   ) async {
@@ -333,6 +383,27 @@ void main() {
       );
       debugPrint('Captured $outputPath/${destination.name}.png');
     }
+  });
+
+  testWidgets('keeps the tabs above the phone bottom safe area', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    addTearDown(() {
+      tester.view.resetPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(buildHome(routes: buildTestRoutes()));
+
+    final navigationRect = tester.getRect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+    );
+    expect(navigationRect.top, 755);
+    expect(navigationRect.bottom, 810);
   });
 }
 

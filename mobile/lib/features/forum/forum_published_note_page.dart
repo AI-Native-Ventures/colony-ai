@@ -105,7 +105,7 @@ class ForumPublishedNotePage extends ConsumerWidget {
         leading: IconButton(
           onPressed: backToForum,
           tooltip: 'Back',
-          icon: const Icon(LucideIcons.arrowLeft, size: 20),
+          icon: const Icon(LucideIcons.chevronLeft, size: 20),
         ),
         titleContentHeight: titleContentHeight,
         title: Column(

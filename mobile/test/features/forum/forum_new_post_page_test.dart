@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,6 +43,9 @@ void main() {
     _setSize(tester, const Size(390, 844));
     await tester.pumpWidget(_buildHarness(prefs: prefs));
     await _openComposer(tester);
+
+    expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
+    expect(find.byIcon(LucideIcons.arrowLeft), findsNothing);
 
     FilledButton postButton() =>
         tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Post'));
