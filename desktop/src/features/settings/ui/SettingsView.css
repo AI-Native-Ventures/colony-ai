@@ -14,6 +14,7 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-layer-light {
   background-image: url("../../onboarding/ui/assets/colony-field-light.svg");
+  background-position: 1px 0;
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
@@ -23,6 +24,7 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar].dark:has(.w20-settings-shell)
   .buzz-theme-gradient-layer-dark {
   background-image: url("../../onboarding/ui/assets/colony-field-dark.svg");
+  background-position: 1px 0;
   background-size: 100vw 100vh;
   background-repeat: no-repeat;
 }
@@ -548,6 +550,45 @@ body:has(.w20-settings-shell) {
 .w20-route-content-theme {
   max-width: none;
   margin: 0;
+}
+
+.w20-route-scroll-templates {
+  padding: 37px 44px 40px;
+}
+
+.w20-route-content-templates {
+  max-width: none;
+  min-height: 0;
+  gap: 0;
+  margin: 0;
+}
+
+.w20-template-create-button {
+  border-color: #6c567e;
+  background: #6c567e;
+  color: #fff;
+}
+
+.w20-template-create-button:hover {
+  border-color: #5e496e;
+  background: #5e496e;
+}
+
+.dark .w20-template-create-button {
+  border-color: #bca1ce;
+  background: #bca1ce;
+  color: #2a2032;
+}
+
+.dark .w20-template-create-button:hover {
+  border-color: #cfb7dd;
+  background: #cfb7dd;
+}
+
+@media (min-width: 1640px) {
+  .w20-route-scroll-templates {
+    padding: 45px 64px 40px;
+  }
 }
 
 .w20-route-scroll-appearance {

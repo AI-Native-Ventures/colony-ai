@@ -483,6 +483,8 @@ export function SettingsView({
             className={cn(
               "w20-route-scroll",
               activeSection === "appearance" && "w20-route-scroll-appearance",
+              activeSection === "channel-templates" &&
+                "w20-route-scroll-templates",
             )}
             data-testid="settings-content-scroll"
           >
@@ -495,6 +497,8 @@ export function SettingsView({
                   "w20-route-content-appearance",
                 activeSection.startsWith("settings/theme") &&
                   "w20-route-content-theme",
+                activeSection === "channel-templates" &&
+                  "w20-route-content-templates",
               )}
               data-testid={`settings-panel-${activeSection}`}
             >
