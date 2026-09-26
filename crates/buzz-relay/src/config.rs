@@ -124,6 +124,168 @@ pub struct AccountConfig {
     google_jwks_url: Option<String>,
 }
 
+/// Optional PayFast checkout settings for deployment-global account credits.
+#[derive(Clone)]
+pub struct PaymentsConfig {
+    enabled: bool,
+    merchant_id: Option<String>,
+    merchant_key: Option<Arc<Zeroizing<String>>>,
+    passphrase: Option<Arc<Zeroizing<String>>>,
+    sandbox: bool,
+    notify_url: Option<String>,
+    hosting_monthly_zar_cents: Option<i64>,
+}
+
+impl PaymentsConfig {
+    /// Whether credit checkout and subscription checkout are enabled.
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Configured PayFast merchant identifier.
+    pub(crate) fn merchant_id(&self) -> Option<&str> {
+        self.merchant_id.as_deref()
+    }
+
+    /// Configured PayFast merchant key.
+    pub(crate) fn merchant_key(&self) -> Option<&str> {
+        self.merchant_key.as_deref().map(|value| value.as_str())
+    }
+
+    /// Configured PayFast passphrase, if one is enabled.
+    pub(crate) fn passphrase(&self) -> Option<&str> {
+        self.passphrase.as_deref().map(|value| value.as_str())
+    }
+
+    /// Whether requests use PayFast's sandbox endpoints.
+    pub fn sandbox(&self) -> bool {
+        self.sandbox
+    }
+
+    /// Absolute public ITN callback URL configured for this deployment.
+    pub(crate) fn notify_url(&self) -> Option<&str> {
+        self.notify_url.as_deref()
+    }
+
+    /// Fixed ZAR charge for one monthly hosting subscription.
+    pub fn hosting_monthly_zar_cents(&self) -> Option<i64> {
+        self.hosting_monthly_zar_cents
+    }
+}
+
+impl std::fmt::Debug for PaymentsConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaymentsConfig")
+            .field("enabled", &self.enabled)
+            .field(
+                "merchant_id",
+                &self.merchant_id.as_ref().map(|_| "[CONFIGURED]"),
+            )
+            .field(
+                "merchant_key",
+                &self.merchant_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "passphrase",
+                &self.passphrase.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("sandbox", &self.sandbox)
+            .field("notify_url", &self.notify_url)
+            .field("hosting_monthly_zar_cents", &self.hosting_monthly_zar_cents)
+            .finish()
+    }
+}
+
+fn payments_config_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<PaymentsConfig, ConfigError> {
+    let parse_flag = |name: &str, default: bool| -> Result<bool, ConfigError> {
+        match lookup(name).as_deref().map(str::trim) {
+            None | Some("") => Ok(default),
+            Some("true" | "1") => Ok(true),
+            Some("false" | "0") => Ok(false),
+            Some(_) => Err(ConfigError::InvalidValue(format!(
+                "{name} must be true or false"
+            ))),
+        }
+    };
+    let enabled = parse_flag("COLONY_PAYMENTS_ENABLED", false)?;
+    let sandbox = parse_flag("COLONY_PAYMENTS_SANDBOX", true)?;
+    let merchant_id = lookup("PAYFAST_MERCHANT_ID")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let merchant_key = lookup("PAYFAST_MERCHANT_KEY")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let passphrase = lookup("PAYFAST_PASSPHRASE")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let notify_url = lookup("COLONY_PAYMENTS_NOTIFY_URL")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let hosting_monthly_zar_cents = match lookup("COLONY_HOSTING_MONTHLY_ZAR_CENTS") {
+        Some(raw) => Some(
+            raw.trim()
+                .parse::<i64>()
+                .ok()
+                .filter(|value| *value >= 500)
+                .ok_or_else(|| {
+                    ConfigError::InvalidValue(
+                        "COLONY_HOSTING_MONTHLY_ZAR_CENTS must be at least 500".to_owned(),
+                    )
+                })?,
+        ),
+        None => None,
+    };
+    if let Some(url) = notify_url.as_deref() {
+        let parsed = url::Url::parse(url).map_err(|_| {
+            ConfigError::InvalidValue("COLONY_PAYMENTS_NOTIFY_URL must be an absolute URL".into())
+        })?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || parsed.username() != ""
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || (enabled && !sandbox && parsed.scheme() != "https")
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_PAYMENTS_NOTIFY_URL must be a secure HTTP(S) URL without credentials, query, or fragment".into(),
+            ));
+        }
+    }
+    if enabled
+        && (merchant_id.is_none()
+            || merchant_key.is_none()
+            || passphrase.is_none()
+            || notify_url.is_none())
+    {
+        return Err(ConfigError::InvalidValue(
+            "enabled PayFast payments require merchant id, merchant key, passphrase, and notify URL".into(),
+        ));
+    }
+    if enabled
+        && !merchant_id.as_deref().is_some_and(|value| {
+            value.len() == 8 && value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return Err(ConfigError::InvalidValue(
+            "PAYFAST_MERCHANT_ID must be an eight digit merchant id".into(),
+        ));
+    }
+    Ok(PaymentsConfig {
+        enabled,
+        merchant_id,
+        merchant_key,
+        passphrase,
+        sandbox,
+        notify_url,
+        hosting_monthly_zar_cents,
+    })
+}
+
 /// Configured way to deliver account verification and reset codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AccountMailMode {
@@ -393,6 +555,8 @@ pub struct Config {
     pub auth: buzz_auth::AuthConfig,
     /// Email, password, Google, and server-held account key configuration.
     pub accounts: AccountConfig,
+    /// Optional PayFast credit and hosting payments configuration.
+    pub payments: PaymentsConfig,
     /// Whether REST API requests must present a valid token. Independent of
     /// WebSocket protocol auth, which is *always* required by REQ/EVENT/COUNT.
     pub require_auth_token: bool,
@@ -1092,6 +1256,7 @@ impl Config {
             rate_limits: rate_limit_config_from_env()?,
         };
         let accounts = account_config_from_lookup(|name| std::env::var(name).ok())?;
+        let payments = payments_config_from_lookup(|name| std::env::var(name).ok())?;
 
         if !require_auth_token {
             warn!(
@@ -1527,6 +1692,7 @@ impl Config {
             slow_client_grace_limit,
             auth,
             accounts,
+            payments,
             require_auth_token,
             cors_origins,
             relay_private_key,
@@ -1621,6 +1787,54 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn payments_config_defaults_to_disabled_sandbox_and_redacts_credentials() {
+        let config = payments_config_from_lookup(env_of(&[])).expect("defaults");
+        assert!(!config.enabled());
+        assert!(config.sandbox());
+        assert_eq!(config.hosting_monthly_zar_cents(), None);
+
+        let config = payments_config_from_lookup(env_of(&[
+            ("COLONY_PAYMENTS_ENABLED", "true"),
+            ("COLONY_PAYMENTS_SANDBOX", "true"),
+            ("PAYFAST_MERCHANT_ID", "12345678"),
+            ("PAYFAST_MERCHANT_KEY", "private-test-key"),
+            ("PAYFAST_PASSPHRASE", "private-test-passphrase"),
+            (
+                "COLONY_PAYMENTS_NOTIFY_URL",
+                "https://relay.example/api/payments/webhook/payfast",
+            ),
+        ]))
+        .expect("complete sandbox settings");
+        assert!(config.enabled());
+        let debug = format!("{config:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("private-test-key"));
+        assert!(!debug.contains("private-test-passphrase"));
+    }
+
+    #[test]
+    fn payments_config_fails_closed_on_missing_credentials_or_insecure_live_callback() {
+        assert!(
+            payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_ENABLED", "true")])).is_err()
+        );
+        assert!(payments_config_from_lookup(env_of(&[
+            ("COLONY_PAYMENTS_ENABLED", "true"),
+            ("COLONY_PAYMENTS_SANDBOX", "false"),
+            ("PAYFAST_MERCHANT_ID", "12345678"),
+            ("PAYFAST_MERCHANT_KEY", "private-test-key"),
+            ("PAYFAST_PASSPHRASE", "private-test-passphrase"),
+            (
+                "COLONY_PAYMENTS_NOTIFY_URL",
+                "http://relay.example/api/payments/webhook/payfast"
+            ),
+        ]))
+        .is_err());
+        assert!(
+            payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_SANDBOX", "maybe")])).is_err()
+        );
     }
 
     #[test]

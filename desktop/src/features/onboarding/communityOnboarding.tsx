@@ -40,6 +40,8 @@ export type CommunityOnboardingTransaction = {
   communityName: string;
   token?: string;
   reposDir?: string;
+  businessCommunityId?: string;
+  clientChannelId?: string;
   /**
    * Join-policy acceptance receipt minted before the claim (bound to the
    * invite code). Forwarded to `claimInvite` so relays with a configured
@@ -66,6 +68,8 @@ export type CommunityOnboardingTransactionPatch = Partial<
     | "previousCommunityId"
     | "addedCommunity"
     | "communityName"
+    | "businessCommunityId"
+    | "clientChannelId"
     | "error"
     | "acknowledged"
   >
@@ -79,6 +83,8 @@ export type StartCommunityOnboardingInput = {
   communityName?: string;
   token?: string;
   reposDir?: string;
+  businessCommunityId?: string;
+  clientChannelId?: string;
   policyReceipt?: string;
 };
 
@@ -162,6 +168,8 @@ export function startCommunityOnboarding(
       communityName: input.communityName?.trim() || existing.communityName,
       token: input.token?.trim() || existing.token,
       reposDir: input.reposDir ?? existing.reposDir,
+      businessCommunityId: input.businessCommunityId,
+      clientChannelId: input.clientChannelId,
       policyReceipt: input.policyReceipt ?? existing.policyReceipt,
       updatedAt: now.toISOString(),
       error: undefined,
@@ -184,6 +192,8 @@ export function startCommunityOnboarding(
     communityName: input.communityName?.trim() || deriveCommunityName(relayUrl),
     token: input.token?.trim() || undefined,
     reposDir: input.reposDir,
+    businessCommunityId: input.businessCommunityId,
+    clientChannelId: input.clientChannelId,
     policyReceipt: input.policyReceipt,
     createdAt: timestamp,
     updatedAt: timestamp,
