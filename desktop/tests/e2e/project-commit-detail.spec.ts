@@ -645,7 +645,7 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(nestedChannel).toBeHidden();
-  await expect(page).toHaveURL(/\/channels\//);
+  await expect(page).toHaveURL(/#\/projects(?:\/|$)/);
 
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "true");

@@ -997,9 +997,12 @@ test("a manual mention persists when automatic mentions are enabled", async ({
     .poll(() => readOutgoingMentionPubkeys(page, "@Morgarita hello"))
     .toContain(AGENT_A);
 
-  await expect(input).toHaveAttribute("contenteditable", "true", {
-    timeout: 2_500,
-  });
+  await expect(composer.getByTestId("message-composer")).toHaveAttribute(
+    "data-submit-locked",
+    "false",
+    { timeout: 2_500 },
+  );
+  await expect(input).toHaveAttribute("contenteditable", "true");
   await input.fill("follow up");
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),

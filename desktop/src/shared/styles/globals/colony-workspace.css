@@ -213,7 +213,7 @@
   height: 2.125rem;
   border: 1px solid rgb(143 114 149 / 10%);
   border-radius: 0.4375rem;
-  background: rgb(255 255 255 / 33%);
+  background: rgb(255 255 255 / 33.3%);
   color: #6c5c75;
   font-size: var(--colony-sidebar-search-font-size);
   line-height: 1.5;
@@ -240,6 +240,13 @@
   [data-testid="open-search"]
   > * {
   color: inherit;
+}
+
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"] {
+  background-color: rgb(47 34 59 / 20%);
+  color: #c2accd;
 }
 
 :root:has([data-colony-workspace-route="true"]) .colony-channel-view-tabs {
@@ -534,8 +541,18 @@
   [data-testid="app-sidebar"]
   [data-sidebar="group-label"] {
   min-height: 1.75rem;
-  color: hsl(var(--colony-sidebar-foreground) / 0.72);
+  color: #796c81;
   font-size: 0.6875rem;
+}
+
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-sidebar="group-label"],
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid$="-section-label"]
+  > [data-sidebar-section-title] {
+  color: #b6a4c0;
 }
 
 :root:has([data-colony-workspace-route="true"])
