@@ -63,10 +63,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('I already have an account'), findsOneWidget);
-    expect(
-      find.text('Advanced: use an existing Nostr identity'),
-      findsOneWidget,
-    );
+    expect(find.text('Pair with my desktop'), findsOneWidget);
     expect(find.textContaining('private key'), findsNothing);
     expect(
       tester
@@ -76,7 +73,34 @@ void main() {
           .onPressed,
       isNotNull,
     );
-    await tester.tap(find.text('Advanced: use an existing Nostr identity'));
+    await tester.tap(find.text('Pair with my desktop'));
+    await tester.pumpAndSettle();
+    expect(find.text('Existing identity pairing'), findsOneWidget);
+  });
+
+  testWidgets('sign-in keeps the existing desktop pairing entry reachable', (
+    tester,
+  ) async {
+    _prepareMobileViewport(tester);
+    await tester.pumpWidget(
+      WidgetHelpers.testable(
+        overrides: _overrides(_FakeAccountAuthNotifier()),
+        child: AuthEntryPage(
+          advancedIdentityPageBuilder: (_) =>
+              const Scaffold(body: Text('Existing identity pairing')),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('I already have an account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pair with my desktop'), findsOneWidget);
+    final createAccountLabel = tester.getRect(
+      find.text('New to Colony? Create an account'),
+    );
+    final pairDesktopLabel = tester.getRect(find.text('Pair with my desktop'));
+    expect(pairDesktopLabel.top - createAccountLabel.bottom, greaterThan(55));
+    await tester.tap(find.text('Pair with my desktop'));
     await tester.pumpAndSettle();
     expect(find.text('Existing identity pairing'), findsOneWidget);
   });
@@ -181,7 +205,9 @@ void main() {
       await tester.pumpWidget(
         WidgetHelpers.testable(
           overrides: _overrides(auth),
-          child: const SignInPage(),
+          child: SignInPage(
+            pairIdentityPageBuilder: (_) => const SizedBox.shrink(),
+          ),
         ),
       );
 

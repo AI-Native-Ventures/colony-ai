@@ -12,6 +12,7 @@ import '../../shared/theme/theme.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/ios_glass_navigation_button.dart';
 import '../../shared/widgets/tappable_flapping_bee.dart';
+import 'pairing_mobile_page.dart';
 import 'pairing_provider.dart';
 import 'pairing_qr_scanner.dart';
 
@@ -25,7 +26,7 @@ const _onboardingInk = Color(0xFF111111);
 const _onboardingMutedInk = Color(0xB3111111);
 const _onboardingErrorInk = Color(0xFF7A1025);
 
-class PairingPage extends HookConsumerWidget {
+class PairingPage extends StatelessWidget {
   /// When true, the pairing page is being used to add a new community
   /// (user is already authenticated with at least one community).
   final bool addingCommunity;
@@ -35,6 +36,29 @@ class PairingPage extends HookConsumerWidget {
     super.key,
     this.addingCommunity = false,
     this.identityRecoveryOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!addingCommunity && !identityRecoveryOnly) {
+      return const PairingMobilePage(startFresh: true);
+    }
+    return _LegacyPairingPage(
+      addingCommunity: addingCommunity,
+      identityRecoveryOnly: identityRecoveryOnly,
+      key: key,
+    );
+  }
+}
+
+class _LegacyPairingPage extends HookConsumerWidget {
+  final bool addingCommunity;
+  final bool identityRecoveryOnly;
+
+  const _LegacyPairingPage({
+    required this.addingCommunity,
+    required this.identityRecoveryOnly,
+    super.key,
   });
 
   @override
@@ -359,7 +383,7 @@ class _SasVerificationView extends StatelessWidget {
               ),
               const SizedBox(width: Grid.twelve),
               Text(
-                'Confirmed — waiting for desktop',
+                'Confirmed. Waiting for desktop',
                 style: context.textTheme.bodySmall?.copyWith(
                   color: _onboardingMutedInk,
                 ),
