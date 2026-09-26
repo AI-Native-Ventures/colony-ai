@@ -215,7 +215,7 @@ test("collapsed sidebar still shows the reconnect card", async ({ page }) => {
     .getByRole("button", { exact: true, name: "Toggle Sidebar" })
     .click();
   await expect(
-    page.locator('[data-state="collapsed"][data-collapsible="offcanvas"]'),
+    page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
   ).toHaveCount(1);
 
   // The card remains visible via the fixed overlay even with sidebar collapsed.

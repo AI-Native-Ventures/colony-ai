@@ -15,7 +15,7 @@ test("isProjectHomeWorkspaceSheetTab accepts overview workspace rows", () => {
 });
 
 test("projectHomeWorkspaceSheetTitle matches overview row labels", () => {
-  assert.equal(projectHomeWorkspaceSheetTitle("issues"), "Tasks");
+  assert.equal(projectHomeWorkspaceSheetTitle("issues"), "Issues");
   assert.equal(projectHomeWorkspaceSheetTitle("prs"), "Reviews");
   assert.equal(projectHomeWorkspaceSheetTitle("commits"), "Commits");
   assert.equal(projectHomeWorkspaceSheetTitle("files"), "Files");
