@@ -10,6 +10,20 @@ One community is your entire workspace. Work, conversation, agents, automation, 
 
 ---
 
+## Why Colony exists
+
+Colony is built on Buzz to run companies, not just host conversations.
+
+- **Paperclip** had the primitives to run a company: org chart, roles, goals, budgets, approvals. Its execution model was a task queue. Agents claimed tickets and worked alone, with little collaboration.
+- **Buzz** has the execution model real work needs: channels and threads where humans and agents discuss, loop each other in, and explore a topic in a thread while the main chat keeps moving. It had no company layer.
+- **Colony** is Buzz's channels and threads plus Paperclip's company primitives.
+
+Design rule: company primitives live inside channels and threads, never in place of them. A task opens a thread. A goal is visible where the work is discussed. An approval is an ask in the channel, not a status change in a hidden queue. If a feature would turn employees into ticket processors, it is moving away from this vision.
+
+> Paperclip runs agents like a ticket queue. Colony runs them like a team.
+
+---
+
 ## Surfaces
 
 | Surface | Model | Default Notifications |
