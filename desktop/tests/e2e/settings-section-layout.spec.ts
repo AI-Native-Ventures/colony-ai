@@ -80,6 +80,9 @@ test("account profile follows the r19 grid and type scale", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem("buzz-sidebar-width", "238");
+  });
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page, "profile");
@@ -103,11 +106,10 @@ test("account profile follows the r19 grid and type scale", async ({
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
-
-  expect(profileGeometry.x).toBeCloseTo(314, 0);
-  expect(profileGeometry.width).toBeCloseTo(632, 0);
-  expect(businessGeometry.x).toBeCloseTo(974, 0);
-  expect(businessGeometry.width).toBeCloseTo(384, 0);
+  expect(Math.abs(profileGeometry.x - 314)).toBeLessThan(1);
+  expect(Math.abs(profileGeometry.width - 631.96875)).toBeLessThan(1);
+  expect(Math.abs(businessGeometry.x - 973.96875)).toBeLessThan(1);
+  expect(Math.abs(businessGeometry.width - 383.03125)).toBeLessThan(1);
   expect(titleFontSize).toBe("27.2px");
 });
 

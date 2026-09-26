@@ -131,128 +131,127 @@ export function AccountProfileSettingsPanel({
 
       <div className="grid min-w-0 grid-cols-1 items-start gap-7 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
         <section
-          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border/70 bg-background/70"
+          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border bg-background"
           data-testid="settings-account-profile-card"
         >
           <h2 className="w20-account-card-title px-6 pt-[22px]">
             Your profile
           </h2>
-          <form onSubmit={saveProfile}>
-            <div className="space-y-4 px-6 pb-[22px]">
-              <div className="w20-account-field">
-                <label
-                  className="w20-account-field-label"
-                  htmlFor="account-profile-name"
-                >
-                  Name
-                </label>
-                <Input
-                  autoComplete="name"
-                  className="w20-account-control h-10 rounded-[7px]"
-                  data-testid="account-profile-name"
-                  id="account-profile-name"
-                  onChange={(event) => {
-                    dirtyRef.current =
-                      event.target.value.trim() !== profileName;
-                    setNameDraft(event.target.value);
-                  }}
-                  value={nameDraft}
-                />
-              </div>
+          <form
+            className="w20-account-profile-form px-6 pb-[22px]"
+            onSubmit={saveProfile}
+          >
+            <div className="w20-account-field">
+              <label
+                className="w20-account-field-label"
+                htmlFor="account-profile-name"
+              >
+                Name
+              </label>
+              <Input
+                autoComplete="name"
+                className="w20-account-control h-10 rounded-[7px]"
+                data-testid="account-profile-name"
+                id="account-profile-name"
+                onChange={(event) => {
+                  dirtyRef.current = event.target.value.trim() !== profileName;
+                  setNameDraft(event.target.value);
+                }}
+                value={nameDraft}
+              />
+            </div>
 
-              <div className="w20-account-field">
-                <label
-                  className="w20-account-field-label"
-                  htmlFor="account-profile-email"
-                >
-                  Email address
-                </label>
-                <Input
-                  autoComplete="email"
-                  className="w20-account-control h-10 rounded-[7px]"
-                  data-testid="account-profile-email"
-                  id="account-profile-email"
-                  readOnly
-                  value={accountQuery.data?.email ?? ""}
-                />
-                <button
-                  className="w20-account-email-link pt-1 text-left font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="account-change-email"
-                  onClick={() => onSectionChange("security")}
-                  type="button"
-                >
-                  Change your sign-in email
-                </button>
-              </div>
+            <div className="w20-account-field">
+              <label
+                className="w20-account-field-label"
+                htmlFor="account-profile-email"
+              >
+                Email address
+              </label>
+              <Input
+                autoComplete="email"
+                className="w20-account-control h-10 rounded-[7px]"
+                data-testid="account-profile-email"
+                id="account-profile-email"
+                readOnly
+                value={accountQuery.data?.email ?? ""}
+              />
+            </div>
 
-              <div className="w20-account-field">
-                <label
-                  className="w20-account-field-label"
-                  htmlFor="account-profile-status"
-                >
-                  Status
-                </label>
-                <Input
-                  className="w20-account-control h-10 rounded-[7px]"
-                  data-testid="account-profile-status"
-                  id="account-profile-status"
-                  readOnly
-                  value={accountStatusLabel(status)}
-                />
-              </div>
+            <button
+              className="w20-account-email-link text-left text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="account-change-email"
+              onClick={() => onSectionChange("security")}
+              type="button"
+            >
+              Change your sign-in email
+            </button>
 
-              <div className="w20-account-field">
-                <label
-                  className="w20-account-field-label"
-                  htmlFor="account-profile-timezone"
-                >
-                  Timezone
-                </label>
-                <select
-                  className="w20-account-control h-10 w-full rounded-[7px] border border-input bg-background disabled:cursor-default disabled:opacity-100"
-                  data-testid="account-profile-timezone"
-                  disabled
-                  id="account-profile-timezone"
-                  value={timezone}
-                >
-                  <option value={timezone}>{timezone}</option>
-                </select>
-              </div>
+            <div className="w20-account-field">
+              <label
+                className="w20-account-field-label"
+                htmlFor="account-profile-status"
+              >
+                Status
+              </label>
+              <Input
+                className="w20-account-control h-10 rounded-[7px]"
+                data-testid="account-profile-status"
+                id="account-profile-status"
+                readOnly
+                value={accountStatusLabel(status)}
+              />
+            </div>
 
-              {profileQuery.error instanceof Error ||
-              updateProfileMutation.error instanceof Error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {updateProfileMutation.error instanceof Error
-                    ? updateProfileMutation.error.message
-                    : profileQuery.error instanceof Error
-                      ? profileQuery.error.message
-                      : ""}
-                </p>
-              ) : null}
-              {accountQuery.error instanceof Error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {accountQuery.error.message}
-                </p>
-              ) : null}
+            <div className="w20-account-field">
+              <label
+                className="w20-account-field-label"
+                htmlFor="account-profile-timezone"
+              >
+                Timezone
+              </label>
+              <select
+                className="w20-account-control h-10 w-full rounded-[7px] border border-input bg-background disabled:cursor-default disabled:opacity-100"
+                data-testid="account-profile-timezone"
+                disabled
+                id="account-profile-timezone"
+                value={timezone}
+              >
+                <option value={timezone}>{timezone}</option>
+              </select>
+            </div>
 
-              <div className="flex justify-end pt-1">
-                <Button
-                  className="w20-account-save bg-[#705486] text-white hover:bg-[#604776]"
-                  data-testid="account-profile-save"
-                  disabled={
-                    updateProfileMutation.isPending || !nameDraft.trim()
-                  }
-                  type="submit"
-                >
-                  Save
-                </Button>
-              </div>
+            {profileQuery.error instanceof Error ||
+            updateProfileMutation.error instanceof Error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {updateProfileMutation.error instanceof Error
+                  ? updateProfileMutation.error.message
+                  : profileQuery.error instanceof Error
+                    ? profileQuery.error.message
+                    : ""}
+              </p>
+            ) : null}
+            {accountQuery.error instanceof Error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {accountQuery.error.message}
+              </p>
+            ) : null}
+
+            <div className="w20-account-save-row flex justify-end">
+              <Button
+                className="w20-account-save bg-[#6c567e] text-white hover:bg-[#5d466e]"
+                data-testid="account-profile-save"
+                disabled={updateProfileMutation.isPending || !nameDraft.trim()}
+                type="submit"
+              >
+                Save
+              </Button>
             </div>
           </form>
         </section>
 
         <section
-          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border/70 bg-background/70"
+          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border bg-background"
           data-testid="settings-account-business-card"
         >
           <h2 className="w20-account-card-title px-6 pt-[22px]">

@@ -2,6 +2,10 @@ body:has(.w20-settings-shell) {
   background: #f3f1f5;
 }
 
+.dark body:has(.w20-settings-shell) {
+  background: #19171d;
+}
+
 .w20-settings-shell,
 .w20-settings-sidebar {
   --text-2xs: calc(var(--buzz-type-rem) * 0.6875);
@@ -367,7 +371,7 @@ body:has(.w20-settings-shell) {
 
 .dark .w20-settings-shell {
   color: #ece6ef;
-  --background: 270 10.34% 13.33%;
+  --background: 262.5 11.76% 13.33%;
   --foreground: 273.33 17.14% 91.76%;
   --muted: 270 11.11% 16.47%;
   --muted-foreground: 270 7.04% 63.33%;
@@ -600,7 +604,7 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-account-card-title {
-  margin: 0 0 16px;
+  margin: 0 0 17px;
   color: #282532;
   font-size: var(--buzz-type-rem);
   font-weight: 600;
@@ -615,9 +619,11 @@ body:has(.w20-settings-shell) {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  margin-bottom: 16px;
 }
 
 .w20-account-field-label {
+  margin-bottom: 7px;
   font-size: calc(var(--buzz-type-rem) * 0.78);
   font-weight: 600;
   line-height: 1.5;
@@ -631,15 +637,28 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-account-email-link {
+  display: flex;
+  width: max-content;
+  min-height: 25px;
+  align-self: flex-start;
+  padding: 4px 0;
   font-size: calc(var(--buzz-type-rem) * 0.72);
-  line-height: 1.5;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .w20-account-save {
   height: 35px;
   padding: 8px 13px;
   font-size: calc(var(--buzz-type-rem) * 0.74);
+  font-weight: 600;
   line-height: 1.3;
+  border: 1px solid #6c567e;
+  border-radius: 7px;
+}
+
+.w20-account-save-row {
+  margin-top: 21px;
 }
 
 .w20-account-card-action {
@@ -647,7 +666,9 @@ body:has(.w20-settings-shell) {
   min-height: 29px;
   padding: 5px 10px;
   font-size: calc(var(--buzz-type-rem) * 0.68);
+  font-weight: 600;
   line-height: 1.2;
+  border-radius: 7px;
 }
 
 .w20-route-content-theme {
