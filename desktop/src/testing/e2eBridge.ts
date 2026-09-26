@@ -221,6 +221,7 @@ export type VisualFixtureSeed = {
     id: string;
     name: string;
     description: string;
+    channelType?: "stream" | "forum" | "dm";
     lastMessageAt?: number;
     members: Array<{
       pubkey: string;
@@ -3464,8 +3465,8 @@ function seedVisualFixture(fixture: VisualFixtureSeed) {
       return createMockChannel({
         id: channel.id,
         name: channel.name,
-        channel_type: "stream",
-        visibility: "open",
+        channel_type: channel.channelType ?? "stream",
+        visibility: channel.channelType === "dm" ? "private" : "open",
         description: channel.description,
         topic: null,
         purpose: null,
@@ -3479,10 +3480,21 @@ function seedVisualFixture(fixture: VisualFixtureSeed) {
         purpose_set_by: null,
         purpose_set_at: null,
         topic_required: false,
-        max_members: null,
+        max_members:
+          channel.channelType === "dm" ? channel.members.length : null,
         nip29_group_id: null,
         created_minutes_ago: ageMinutes + 30,
         updated_minutes_ago: ageMinutes,
+        participant_pubkeys:
+          channel.channelType === "dm"
+            ? members.map((member) => member.pubkey)
+            : [],
+        participants:
+          channel.channelType === "dm"
+            ? members.map(
+                (member) => member.display_name ?? member.pubkey.slice(0, 8),
+              )
+            : [],
         members,
       });
     }),
