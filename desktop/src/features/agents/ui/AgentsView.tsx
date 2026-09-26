@@ -249,6 +249,7 @@ export function AgentsView({
               onBack={onCloseAgent}
               onMessage={onMessageAgent}
               onOpenChannel={onOpenChannel}
+              onOpenHarnesses={() => appShell.onOpenSettings?.("agents")}
               onRestartAgent={(pubkey) => void agents.handleRestart(pubkey)}
               onStopAgent={(pubkey) => void agents.handleStop(pubkey)}
               onTabChange={onAgentTabChange}

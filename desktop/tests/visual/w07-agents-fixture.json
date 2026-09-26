@@ -959,21 +959,21 @@
             "slug": "principles",
             "body": "Keep internal review and client approval separate. Approval belongs to the exact version and destination the client saw.",
             "eventId": "ab00000000000000000000000000000000000000000000000000000000000010",
-            "createdAt": 1780012800,
+            "createdAt": 1790407200,
             "outgoingRefs": ["olive"]
           },
           {
             "slug": "olive",
             "body": "Use warm, straightforward copy. Nandi reviews the exact design and caption. New artwork invalidates the previous approval.",
             "eventId": "ab00000000000000000000000000000000000000000000000000000000000005",
-            "createdAt": 1780012800,
+            "createdAt": 1790407200,
             "outgoingRefs": ["principles"]
           },
           {
             "slug": "rhythm",
             "body": "Internal review on Tuesday, client review by Thursday. Ask Zinhle about capacity before promising a new delivery date.",
             "eventId": "ab00000000000000000000000000000000000000000000000000000000000006",
-            "createdAt": 1780012800,
+            "createdAt": 1790407200,
             "outgoingRefs": []
           }
         ],
