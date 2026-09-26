@@ -32,6 +32,27 @@ enum PairingStatus {
   error,
 }
 
+/// Terminal or recoverable error category for the pairing screen.
+enum PairingFailureKind {
+  /// The entered full pairing payload is invalid.
+  invalidCode,
+
+  /// A relay or session connection could not be established.
+  connection,
+
+  /// Identity validation, storage, or transfer failed.
+  transfer,
+
+  /// The shared pairing session expired.
+  expired,
+
+  /// Either device cancelled the shared pairing session.
+  cancelled,
+
+  /// The devices displayed different security comparison codes.
+  mismatch,
+}
+
 class PairingState {
   final PairingStatus status;
   final String? errorMessage;
@@ -41,6 +62,9 @@ class PairingState {
   final bool protectSensitiveActions;
   final bool authorizationInProgress;
 
+  /// Categorized reason for [PairingStatus.error], when present.
+  final PairingFailureKind? failureKind;
+
   const PairingState({
     this.status = PairingStatus.idle,
     this.errorMessage,
@@ -49,6 +73,7 @@ class PairingState {
     this.sendsIdentityToDesktop = false,
     this.protectSensitiveActions = true,
     this.authorizationInProgress = false,
+    this.failureKind,
   });
 
   PairingState copyWith({
@@ -59,6 +84,7 @@ class PairingState {
     bool? sendsIdentityToDesktop,
     bool? protectSensitiveActions,
     bool? authorizationInProgress,
+    PairingFailureKind? failureKind,
     bool clearErrorMessage = false,
   }) => PairingState(
     status: status ?? this.status,
@@ -71,6 +97,7 @@ class PairingState {
         protectSensitiveActions ?? this.protectSensitiveActions,
     authorizationInProgress:
         authorizationInProgress ?? this.authorizationInProgress,
+    failureKind: failureKind ?? this.failureKind,
   );
 }
 
@@ -140,6 +167,32 @@ class PairingNotifier extends Notifier<PairingState> {
     }
     // Legacy buzz:// flow.
     return _pairLegacy(trimmed);
+  }
+
+  /// Starts the signed, shared-session flow used by existing-identity pairing.
+  ///
+  /// The legacy `buzz://` payload contains credentials directly and does not
+  /// have the two-device SAS approval gate. New account entry points accept
+  /// only the NIP-AB desktop session URI.
+  Future<void> pairExistingIdentity(String rawInput) async {
+    if (state.status == PairingStatus.connecting ||
+        state.status == PairingStatus.confirmingSas ||
+        state.status == PairingStatus.transferring ||
+        state.status == PairingStatus.storing) {
+      return;
+    }
+
+    final trimmed = rawInput.trim();
+    if (!trimmed.startsWith('nostrpair://')) {
+      _cleanup();
+      state = const PairingState(
+        status: PairingStatus.error,
+        errorMessage: 'Enter the full pairing code shown on your desktop.',
+        failureKind: PairingFailureKind.invalidCode,
+      );
+      return;
+    }
+    await _pairNipAb(trimmed);
   }
 
   Future<bool> authorizeIdentityExport({required Community community}) async {
@@ -313,7 +366,19 @@ class PairingNotifier extends Notifier<PairingState> {
     _cleanup();
     state = PairingState(
       status: PairingStatus.error,
-      errorMessage: 'SAS code mismatch — pairing cancelled for security.',
+      failureKind: PairingFailureKind.mismatch,
+      errorMessage: 'SAS code mismatch. Pairing cancelled for security.',
+    );
+  }
+
+  /// Cancels the active shared session and reports the terminal cancellation.
+  void cancelPairing() {
+    _sendAbort('user_cancelled');
+    _cleanup();
+    state = const PairingState(
+      status: PairingStatus.error,
+      errorMessage: 'Pairing cancelled.',
+      failureKind: PairingFailureKind.cancelled,
     );
   }
 
@@ -412,7 +477,7 @@ class PairingNotifier extends Notifier<PairingState> {
       socket.subscribe('pair', 24134, _ephemeralPubkey!);
 
       // 6. Wait briefly for EOSE, then send offer.
-      // (In practice, we send the offer immediately — the relay will buffer it.)
+      // (In practice, we send the offer immediately; the relay will buffer it.)
       await Future.delayed(const Duration(milliseconds: 500));
       if (generation != _pairingGeneration) return;
 
@@ -447,6 +512,7 @@ class PairingNotifier extends Notifier<PairingState> {
           state = const PairingState(
             status: PairingStatus.error,
             errorMessage: 'Pairing session timed out.',
+            failureKind: PairingFailureKind.expired,
           );
         }
       });
@@ -456,6 +522,7 @@ class PairingNotifier extends Notifier<PairingState> {
       state = PairingState(
         status: PairingStatus.error,
         errorMessage: 'Invalid pairing code: ${e.message}',
+        failureKind: PairingFailureKind.invalidCode,
       );
     } catch (e) {
       if (generation != _pairingGeneration) return;
@@ -464,6 +531,7 @@ class PairingNotifier extends Notifier<PairingState> {
       state = PairingState(
         status: PairingStatus.error,
         errorMessage: _friendlyErrorMessage(e),
+        failureKind: PairingFailureKind.connection,
       );
     }
   }
@@ -595,8 +663,9 @@ class PairingNotifier extends Notifier<PairingState> {
       _cleanup();
       state = const PairingState(
         status: PairingStatus.error,
+        failureKind: PairingFailureKind.mismatch,
         errorMessage:
-            'Security verification failed — possible attack. Pairing aborted.',
+            'Security verification failed. Possible attack. Pairing aborted.',
       );
       return;
     }
@@ -608,7 +677,7 @@ class PairingNotifier extends Notifier<PairingState> {
     if (_userConfirmedSas) {
       unawaited(_continueAfterSas());
     }
-    // Otherwise stay in confirmingSas — user must still confirm via confirmSas().
+    // The user still needs to confirm with confirmSas().
   }
 
   bool _exportIdentityIsCurrent() {
@@ -667,6 +736,7 @@ class PairingNotifier extends Notifier<PairingState> {
       _cleanup();
       state = const PairingState(
         status: PairingStatus.error,
+        failureKind: PairingFailureKind.transfer,
         errorMessage: 'Received empty payload from source.',
       );
       return;
@@ -692,6 +762,7 @@ class PairingNotifier extends Notifier<PairingState> {
       _cleanup();
       state = const PairingState(
         status: PairingStatus.error,
+        failureKind: PairingFailureKind.transfer,
         errorMessage: 'Desktop could not store the identity.',
       );
       return;
@@ -706,6 +777,12 @@ class PairingNotifier extends Notifier<PairingState> {
     state = PairingState(
       status: PairingStatus.error,
       errorMessage: 'Source device aborted pairing: $reason',
+      failureKind: switch (reason) {
+        'sas_mismatch' => PairingFailureKind.mismatch,
+        'user_cancelled' => PairingFailureKind.cancelled,
+        'expired' => PairingFailureKind.expired,
+        _ => PairingFailureKind.connection,
+      },
     );
   }
 
@@ -773,6 +850,7 @@ class PairingNotifier extends Notifier<PairingState> {
       state = PairingState(
         status: PairingStatus.error,
         errorMessage: 'Failed to import credentials: $e',
+        failureKind: PairingFailureKind.transfer,
       );
     }
   }
@@ -803,7 +881,7 @@ class PairingNotifier extends Notifier<PairingState> {
         ],
       );
     } catch (_) {
-      // Best-effort — complete is advisory per NIP-AB.
+      // Complete is advisory per NIP-AB, so this send is best-effort.
     }
   }
 
@@ -843,6 +921,7 @@ class PairingNotifier extends Notifier<PairingState> {
     state = PairingState(
       status: PairingStatus.error,
       errorMessage: 'Lost connection to pairing relay.',
+      failureKind: PairingFailureKind.connection,
     );
   }
 
@@ -868,6 +947,7 @@ class PairingNotifier extends Notifier<PairingState> {
       state = PairingState(
         status: PairingStatus.error,
         errorMessage: 'Invalid pairing code: ${e.message}',
+        failureKind: PairingFailureKind.invalidCode,
       );
     } on RelayException catch (e) {
       if (generation != _pairingGeneration) return;
@@ -876,6 +956,7 @@ class PairingNotifier extends Notifier<PairingState> {
         errorMessage:
             'Could not connect to relay (${e.statusCode}). '
             'Check that the pairing code is valid.',
+        failureKind: PairingFailureKind.connection,
       );
     } catch (e) {
       if (generation != _pairingGeneration) return;
@@ -884,6 +965,7 @@ class PairingNotifier extends Notifier<PairingState> {
         errorMessage:
             'Connection failed. Make sure your device can reach the '
             'relay server.',
+        failureKind: PairingFailureKind.connection,
       );
     }
   }

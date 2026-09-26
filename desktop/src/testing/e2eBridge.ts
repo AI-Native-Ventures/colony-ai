@@ -11499,11 +11499,13 @@ export function maybeInstallE2eTauriMocks() {
     email: string | undefined,
     purpose: "verify" | "reset" | undefined,
     result: () => T,
+    displayName?: string,
   ): Promise<T> => {
     accountAuthCalls.push({
       method,
       route,
       ...(email ? { email } : {}),
+      ...(displayName ? { displayName } : {}),
       ...(purpose ? { purpose } : {}),
     });
     const errorIndex = queuedAccountAuthErrors.findIndex(
@@ -11531,7 +11533,7 @@ export function maybeInstallE2eTauriMocks() {
     if (email) mockAccountEmail = email;
   };
   window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__ = {
-    signUp: (email) =>
+    signUp: (email, _password, displayName) =>
       accountAuthCall(
         "signUp",
         "POST /api/accounts/signup",
@@ -11541,6 +11543,7 @@ export function maybeInstallE2eTauriMocks() {
           mockAccountEmail = email;
           return verificationSent();
         },
+        displayName,
       ),
     verifyEmail: (email) =>
       accountAuthCall(
@@ -11593,6 +11596,14 @@ export function maybeInstallE2eTauriMocks() {
         email,
         undefined,
         () => verificationSent(),
+      ),
+    checkResetCode: (email) =>
+      accountAuthCall(
+        "checkResetCode",
+        "POST /api/accounts/reset/check",
+        email,
+        undefined,
+        () => undefined,
       ),
     confirmReset: (email) =>
       accountAuthCall(

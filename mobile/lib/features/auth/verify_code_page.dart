@@ -18,11 +18,13 @@ class VerifyCodePage extends HookConsumerWidget {
   const VerifyCodePage({
     required this.email,
     this.purpose = AccountCodePurpose.verify,
+    this.pairIdentityPageBuilder,
     super.key,
   });
 
   final String email;
   final AccountCodePurpose purpose;
+  final WidgetBuilder? pairIdentityPageBuilder;
 
   bool get _isReset => purpose == AccountCodePurpose.reset;
 
@@ -43,7 +45,10 @@ class VerifyCodePage extends HookConsumerWidget {
             .stagePasswordResetCode(email: normalisedEmail, code: code.value);
         await Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => ConfirmPasswordResetPage(email: normalisedEmail),
+            builder: (_) => ConfirmPasswordResetPage(
+              email: normalisedEmail,
+              pairIdentityPageBuilder: pairIdentityPageBuilder,
+            ),
           ),
         );
         return;

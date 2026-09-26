@@ -13,6 +13,9 @@ export type AuthErrorCode =
   | "email_taken"
   | "identity_taken"
   | "code_expired"
+  | "wrong_code"
+  | "too_many_attempts"
+  | "resend_cooldown"
   | "weak_password"
   | "rate_limited"
   | "account_not_found"
@@ -199,7 +202,7 @@ function retryAfter(value: unknown): number | undefined {
 
 function remainingAttempts(value: unknown): number | undefined {
   if (!isRecord(value)) return undefined;
-  const attempts = value.remaining_attempts;
+  const attempts = value.attempts_left ?? value.remaining_attempts;
   return typeof attempts === "number" &&
     Number.isFinite(attempts) &&
     attempts >= 0
@@ -264,7 +267,11 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 function errorFromResponse(status: number, value: unknown): AuthApiError {
   const serverCode = isRecord(value) ? value.error : undefined;
   if (status === 429) {
-    return new AuthApiError("rate_limited", {
+    const code: AuthErrorCode =
+      serverCode === "too_many_attempts" || serverCode === "resend_cooldown"
+        ? serverCode
+        : "rate_limited";
+    return new AuthApiError(code, {
       status,
       retryAfterSecs: retryAfter(value),
       remainingAttempts: remainingAttempts(value),
@@ -296,6 +303,12 @@ function errorFromResponse(status: number, value: unknown): AuthApiError {
   }
   if (status === 422 && serverCode === "weak_password") {
     return new AuthApiError("weak_password", { status });
+  }
+  if (status === 422 && serverCode === "wrong_code") {
+    return new AuthApiError("wrong_code", {
+      status,
+      remainingAttempts: remainingAttempts(value),
+    });
   }
   return new AuthApiError("server_error", { status });
 }
@@ -396,9 +409,17 @@ export function createAuthApi(options: AuthApiOptions) {
   }
 
   return {
-    async signUp(email: string, password: string): Promise<VerificationSent> {
+    async signUp(
+      email: string,
+      password: string,
+      displayName?: string,
+    ): Promise<VerificationSent> {
+      const requestBody =
+        displayName === undefined
+          ? { email, password }
+          : { email, password, display_name: displayName };
       const body = await expectStatus(
-        request("POST", "/api/accounts/signup", { email, password }),
+        request("POST", "/api/accounts/signup", requestBody),
         202,
       );
       return verificationSentFrom(body);
@@ -445,6 +466,16 @@ export function createAuthApi(options: AuthApiOptions) {
         202,
       );
       return verificationSentFrom(body);
+    },
+
+    async checkResetCode(email: string, code: string): Promise<void> {
+      const body = await expectStatus(
+        request("POST", "/api/accounts/reset/check", { email, code }),
+        200,
+      );
+      if (!isRecord(body) || body.status !== "code_valid") {
+        throw new AuthApiError("invalid_response");
+      }
     },
 
     async confirmReset(

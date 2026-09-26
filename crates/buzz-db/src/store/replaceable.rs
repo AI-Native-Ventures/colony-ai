@@ -29,6 +29,8 @@ pub enum ParameterizedReplaceStatus {
 /// Structural precondition for a parameterized-replaceable write.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ParameterizedReplacePrecondition<'a> {
+    /// Require that no live head exists for this coordinate.
+    CreateOnly,
     /// Apply normal NIP-33 ordering without a revision precondition.
     Unconditional,
     /// Require the live head to match this validated event ID.
@@ -235,6 +237,15 @@ async fn replace_parameterized_event_in_transaction_impl(
         }
     }
 
+    if precondition == ParameterizedReplacePrecondition::CreateOnly && existing.is_some() {
+        return Ok(ParameterizedReplaceResult::new(
+            event,
+            received_at,
+            channel_id,
+            ParameterizedReplaceStatus::RevisionMismatch,
+        ));
+    }
+
     let dominated = existing
         .iter()
         .chain(watermark.iter())
@@ -360,6 +371,42 @@ async fn replace_parameterized_event_in_transaction_impl(
         channel_id,
         ParameterizedReplaceStatus::Inserted,
     ))
+}
+
+/// Lock a NIP-33 coordinate and return its current event id in a caller transaction.
+///
+/// The lock is the same transaction-scoped lock used by replacement, so a
+/// version check remains current until the caller commits or rolls back.
+pub async fn lock_parameterized_event_head_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    community_id: CommunityId,
+    kind: u32,
+    pubkey: &[u8],
+    d_tag: &str,
+) -> Result<Option<Vec<u8>>> {
+    let kind_i32 = kind as i32;
+    let lock_key =
+        event_replacement_lock_key(community_id, kind_i32, pubkey, Some(d_tag.as_bytes()));
+    observability::observe_advisory_lock(
+        LockType::Replacement,
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(lock_key)
+            .execute(&mut **tx),
+    )
+    .await?;
+
+    sqlx::query_scalar(
+        "SELECT id FROM events \
+         WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4 AND deleted_at IS NULL \
+         ORDER BY created_at DESC, id ASC LIMIT 1",
+    )
+    .bind(community_id.as_uuid())
+    .bind(kind_i32)
+    .bind(pubkey)
+    .bind(d_tag)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Into::into)
 }
 
 impl Db {

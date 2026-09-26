@@ -2,6 +2,8 @@
 pub mod admin_action_worker;
 pub mod admin_outbox_worker;
 pub mod auth;
+/// Nostr-first broker for business-record contracts.
+pub mod business_records;
 /// Pure NIP-29 channel membership-authority decisions (kinds 9000/9001/9022).
 pub mod channel_authz;
 /// Subscription close (CLOSE) handler.

@@ -284,6 +284,65 @@ pub async fn create_channel_with_id(
     Ok((record, was_created))
 }
 
+/// Create a private stream channel and its owner inside an existing transaction.
+///
+/// Returns `false` when the community already has a channel with this ID. This
+/// supports atomic business conversions that create a client group together
+/// with the signed conversion event and its canonical records.
+pub async fn create_client_channel_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    name: &str,
+    created_by: &[u8],
+) -> Result<bool> {
+    if channel_id.is_nil() {
+        return Err(DbError::InvalidData(
+            "client channel id must not be nil".into(),
+        ));
+    }
+    if created_by.len() != 32 {
+        return Err(DbError::InvalidData(format!(
+            "pubkey must be 32 bytes, got {}",
+            created_by.len()
+        )));
+    }
+    let name = buzz_core::channel::canonical_channel_name(name);
+    if name.is_empty() {
+        return Err(DbError::InvalidData("channel name is required".into()));
+    }
+
+    let inserted = sqlx::query(
+        "INSERT INTO channels (id, community_id, name, channel_type, visibility, created_by) \
+         VALUES ($1, $2, $3, 'stream'::channel_type, 'private'::channel_visibility, $4) \
+         ON CONFLICT (community_id, id) DO NOTHING",
+    )
+    .bind(channel_id)
+    .bind(community_id.as_uuid())
+    .bind(name)
+    .bind(created_by)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected()
+        == 1;
+
+    if !inserted {
+        return Ok(false);
+    }
+
+    sqlx::query(
+        "INSERT INTO channel_members (community_id, channel_id, pubkey, role, invited_by) \
+         VALUES ($1, $2, $3, 'owner', $3)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(created_by)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(true)
+}
+
 /// Fetches a channel record by `(community_id, id)`. Returns `ChannelNotFound` if missing or deleted.
 pub async fn get_channel(
     pool: &PgPool,
