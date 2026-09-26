@@ -189,7 +189,7 @@ test("top-level project lists show metadata and overflow actions", async ({
     page.getByTestId("create-pull-request-repository"),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByTestId("projects-overview-create-issue").click();
   await expect(page.getByTestId("create-issue-repository")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -208,7 +208,7 @@ test("top-level project lists show metadata and overflow actions", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await expect(page.getByRole("button", { name: "Filter tasks" })).toHaveCount(
     0,
   );
@@ -469,10 +469,7 @@ test("creating a project opens its channel conversation", async ({ page }) => {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
 
-  await page
-    .getByTestId("project-detail-chrome")
-    .getByRole("button", { name: "Projects" })
-    .click();
+  await page.getByTestId("open-projects-view").click();
   await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("multi-repo-demo");
   await page.getByTestId("create-project-submit").click();
@@ -860,7 +857,7 @@ test("project workspace sheet stays independent from an open thread", async ({
   await expect(coveredThreadSurface).toHaveAttribute("aria-hidden", "true");
   const coveredSnapshot = await page.locator("body").ariaSnapshot();
   expect(coveredSnapshot).not.toContain(threadRootContent);
-  expect(coveredSnapshot).toContain("Tasks");
+  expect(coveredSnapshot).toContain("Issues");
   expect(coveredSnapshot).toContain("Close panel");
 
   const workspaceClose = workspaceDrawer.getByTestId("auxiliary-panel-close");
@@ -1043,7 +1040,7 @@ test("commit detail opens from the commits feed with a diff", async ({
   ).toBeVisible();
   await expect(page.getByTestId("idle-auxiliary-back")).toHaveAttribute(
     "aria-label",
-    "Back to Tasks",
+    "Back to Issues",
   );
   await expect(
     page.getByTestId("project-home-workspace-sheet-create"),
@@ -1346,8 +1343,8 @@ test("pull request and issue feeds use compact work item rows", async ({
     .click();
   await expect(prRows.first()).toBeVisible();
 
-  // Tasks share the same compact structure.
-  await page.getByRole("tab", { name: "Tasks" }).click();
+  // Issues share the same compact structure.
+  await page.getByRole("tab", { name: "Issues" }).click();
   const issueRows = page.getByTestId("project-issue-row");
   await expect(issueRows.first()).toBeVisible({ timeout: 10_000 });
   await expect(

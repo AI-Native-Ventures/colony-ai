@@ -422,7 +422,7 @@ export function ProjectRepositoryActionsPanel({
                     onClick={onCreateTask}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Create task
+                    New issue
                   </RepositoryActionButton>
                 ) : null}
                 {showCreateReview && onCreatePullRequest ? (
@@ -489,7 +489,7 @@ export function ProjectRepositoryActionsPanel({
                       <div className="flex items-center justify-between gap-3">
                         <dt className="flex items-center gap-3 text-muted-foreground">
                           <CircleDot className="h-3.5 w-3.5" />
-                          {activeTab === "issues" ? "Tasks" : "Active tasks"}
+                          {activeTab === "issues" ? "Issues" : "Active issues"}
                         </dt>
                         <dd className="font-medium text-foreground">
                           {activeTab === "issues"
