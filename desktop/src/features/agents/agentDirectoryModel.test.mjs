@@ -61,6 +61,16 @@ test("directory status distinguishes active, idle, stopped, and missing runtime"
   );
 });
 
+test("directory classifies the structured harness auth error as needs connection", () => {
+  const expired = agent({ status: "stopped", lastErrorCode: -32001 });
+  const input = {
+    activePubkeys: new Set(),
+    archivedPubkeys: new Set(),
+    runtimes: [runtime],
+  };
+  assert.equal(agentDirectoryStatus(expired, input), "needs-connection");
+});
+
 test("directory filters search the real name and catalog harness label", () => {
   const mina = agent();
   const noor = agent({ pubkey: "b".repeat(64), name: "Noor" });

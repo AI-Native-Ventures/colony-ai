@@ -143,10 +143,6 @@ export function AgentsScreen() {
       }),
     [applyPatch],
   );
-  const handleDirectoryPageSizeChange = React.useCallback(
-    (rows: 10 | 20 | 30) => applyPatch({ rows: String(rows) }),
-    [applyPatch],
-  );
   const handleProfilePanelViewChange = React.useCallback(
     (view: ProfilePanelView, options?: { replace?: boolean }) =>
       applyPatch({ profileView: view === "summary" ? null : view }, options),
@@ -179,7 +175,6 @@ export function AgentsScreen() {
               agentTab={parseAgentProfileTab(values.agentTab)}
               onAgentTabChange={handleAgentTabChange}
               onCloseAgent={handleCloseAgent}
-              onDirectoryPageSizeChange={handleDirectoryPageSizeChange}
               onMessageAgent={(pubkey) => handleOpenDm([pubkey])}
               onOpenAgent={handleOpenAgent}
               onOpenChannel={(channelId) => void goChannel(channelId)}

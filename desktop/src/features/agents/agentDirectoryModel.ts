@@ -18,6 +18,7 @@ export type AgentDirectoryFilterInput = {
   activePubkeys: ReadonlySet<string>;
   archivedPubkeys: ReadonlySet<string>;
   runtimes: readonly AcpRuntimeCatalogEntry[];
+  agentRoles?: ReadonlyMap<string, string>;
 };
 
 export function parseAgentDirectoryPageSize(
@@ -56,6 +57,7 @@ export function agentDirectoryStatus(
   ) {
     return "needs-connection";
   }
+  if (agent.lastErrorCode === -32001) return "needs-connection";
   if (agent.status === "stopped") return "stopped";
   if (agent.status === "not_deployed") return "unknown";
   if (!runtime) return "unknown";
@@ -85,6 +87,7 @@ export function filterManagedAgents(
       agent.runtime,
       runtime?.label,
       runtime?.id,
+      input.agentRoles?.get(agent.pubkey.toLowerCase()),
     ]
       .filter((part): part is string => Boolean(part))
       .join(" ")

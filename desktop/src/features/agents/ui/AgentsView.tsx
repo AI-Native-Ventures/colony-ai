@@ -1,5 +1,12 @@
 import * as React from "react";
-import { EllipsisVertical, OctagonX, Settings2 } from "lucide-react";
+import {
+  EllipsisVertical,
+  OctagonX,
+  ArrowRight,
+  Plus,
+  Sun,
+  Settings2,
+} from "lucide-react";
 import {
   consumePendingSnapshotImport,
   subscribeSnapshotImport,
@@ -33,12 +40,9 @@ import { useActiveAgentTurnsByChannel } from "@/features/agents/activeAgentTurns
 import { AgentDirectory } from "./AgentDirectory";
 import { AgentProfileView, type AgentProfileTab } from "./AgentProfileView";
 import { AgentDeploymentView } from "./AgentDeploymentView";
-import {
-  parseAgentDirectoryPageSize,
-  type AgentDirectoryPageSize,
-} from "@/features/agents/agentDirectoryModel";
+import { parseAgentDirectoryPageSize } from "@/features/agents/agentDirectoryModel";
 import { useAppShell } from "@/app/AppShellContext";
-import type { ManagedAgent } from "@/shared/api/types";
+import { useRelayMembersQuery } from "@/features/community-members/hooks";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -73,7 +77,6 @@ export function AgentsView({
   onOpenChannel,
   onCloseAgent,
   onAgentTabChange,
-  onDirectoryPageSizeChange,
   onOpenSupervision,
 }: {
   view: AgentWorkspaceView;
@@ -86,7 +89,6 @@ export function AgentsView({
   onOpenChannel: (channelId: string) => void;
   onCloseAgent: () => void;
   onAgentTabChange: (tab: AgentProfileTab) => void;
-  onDirectoryPageSizeChange: (size: AgentDirectoryPageSize) => void;
   onOpenSupervision: () => void;
 }) {
   const { openPersonaProfilePanel, openProfilePanel } = useProfilePanel();
@@ -104,9 +106,7 @@ export function AgentsView({
   const fullAiDefaultsTriggerRef = React.useRef<HTMLButtonElement>(null);
   const compactActionsTriggerRef = React.useRef<HTMLButtonElement>(null);
   const [isAiDefaultsOpen, setIsAiDefaultsOpen] = React.useState(false);
-  const [agentToEdit, setAgentToEdit] = React.useState<ManagedAgent | null>(
-    null,
-  );
+  const relayMembersQuery = useRelayMembersQuery(view === "directory");
 
   function openAiDefaults(trigger: HTMLButtonElement | null) {
     aiDefaultsTriggerRef.current = trigger;
@@ -176,6 +176,22 @@ export function AgentsView({
       ),
     [archivedQuery.data],
   );
+  const directoryAgentPubkeys = React.useMemo(
+    () =>
+      new Set([
+        ...agents.managedAgents.map((agent) => agent.pubkey.toLowerCase()),
+        ...(agents.relayAgentsQuery.data ?? []).map((agent) =>
+          agent.pubkey.toLowerCase(),
+        ),
+      ]),
+    [agents.managedAgents, agents.relayAgentsQuery.data],
+  );
+  const directoryAgentCount = agents.managedAgents.filter(
+    (agent) => !archivedPubkeys.has(agent.pubkey.toLowerCase()),
+  ).length;
+  const directoryPeopleCount = (relayMembersQuery.data ?? []).filter(
+    (member) => !directoryAgentPubkeys.has(member.pubkey.toLowerCase()),
+  ).length;
   const selectedAgent = agentPubkey
     ? agents.managedAgents.find(
         (agent) => agent.pubkey.toLowerCase() === agentPubkey.toLowerCase(),
@@ -220,10 +236,10 @@ export function AgentsView({
   return (
     <>
       <div
-        className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${selectedAgent ? "" : "px-4 py-7 sm:px-6 sm:py-8"}`}
+        className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${selectedAgent || view === "directory" ? "" : "px-4 py-7 sm:px-6 sm:py-8"}`}
       >
         <div
-          className={`mx-auto w-full ${selectedAgent ? "max-w-none" : "max-w-6xl space-y-8 [container-type:inline-size]"}`}
+          className={`mx-auto w-full ${selectedAgent ? "h-full min-h-0 max-w-none" : view === "directory" ? "flex h-full min-h-0 max-w-none flex-col" : "max-w-6xl space-y-8 [container-type:inline-size]"}`}
           data-testid="agents-page-content"
         >
           {selectedAgent ? (
@@ -231,9 +247,9 @@ export function AgentsView({
               agent={selectedAgent}
               isActionPending={isActionPending}
               onBack={onCloseAgent}
-              onEdit={() => setAgentToEdit(selectedAgent)}
               onMessage={onMessageAgent}
               onOpenChannel={onOpenChannel}
+              onRestartAgent={(pubkey) => void agents.handleRestart(pubkey)}
               onStopAgent={(pubkey) => void agents.handleStop(pubkey)}
               onTabChange={onAgentTabChange}
               personas={personas.personasQuery.data ?? []}
@@ -257,111 +273,193 @@ export function AgentsView({
             </div>
           ) : (
             <>
-              <PageHeader
-                action={
-                  view === "teams" ? (
+              {view === "directory" ? (
+                <header className="flex flex-wrap items-center justify-between gap-4 px-7 pb-4 pt-5">
+                  <div>
+                    <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground">
+                      Your team
+                    </h1>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {directoryAgentCount} agents · {directoryPeopleCount}{" "}
+                      {directoryPeopleCount === 1 ? "person" : "people"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button
-                      onClick={teamActions.openCreateDialog}
+                      className="h-7 px-2.5 text-xs"
+                      onClick={(event) => openAiDefaults(event.currentTarget)}
+                      ref={fullAiDefaultsTriggerRef}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Sun aria-hidden="true" className="size-3.5" />
+                      Agent defaults
+                    </Button>
+                    <Button
+                      className="h-7 px-2.5 text-xs"
+                      onClick={() =>
+                        appShell.onOpenSettings?.("community-members")
+                      }
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Invite a person
+                    </Button>
+                    <Button
+                      className="h-7 px-2.5 text-xs"
+                      data-testid="agent-add-button"
+                      onClick={() => openCommunityCatalog("agents")}
                       size="sm"
                       type="button"
                     >
-                      Create team
+                      <Plus aria-hidden="true" className="size-3.5" />
+                      Add agent
                     </Button>
-                  ) : (
-                    <div className="flex flex-wrap justify-end gap-2">
+                  </div>
+                </header>
+              ) : (
+                <PageHeader
+                  action={
+                    view === "teams" ? (
                       <Button
-                        onClick={() =>
-                          appShell.onOpenSettings?.("community-members")
-                        }
+                        onClick={teamActions.openCreateDialog}
                         size="sm"
-                        variant="outline"
+                        type="button"
                       >
-                        Invite a person
+                        Create team
                       </Button>
-                      <Button
-                        data-testid="agent-add-button"
-                        onClick={() => openCommunityCatalog("agents")}
-                        size="sm"
-                      >
-                        Add agent
-                      </Button>
-                      <DropdownMenu modal={false}>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            aria-label="Agent actions"
-                            data-testid="agent-actions-menu-trigger"
-                            ref={compactActionsTriggerRef}
-                            size="icon"
-                            type="button"
-                            variant="outline"
-                          >
-                            <EllipsisVertical />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              openAiDefaults(compactActionsTriggerRef.current)
-                            }
-                          >
-                            <Settings2 />
-                            {hasSavedAgentDefaults
-                              ? "Agent defaults"
-                              : "Set agent defaults"}
-                          </DropdownMenuItem>
-                          {runningAgentCount > 0 ? (
+                    ) : (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          onClick={() =>
+                            appShell.onOpenSettings?.("community-members")
+                          }
+                          size="sm"
+                          variant="outline"
+                        >
+                          Invite a person
+                        </Button>
+                        <Button
+                          data-testid="agent-add-button"
+                          onClick={() => openCommunityCatalog("agents")}
+                          size="sm"
+                        >
+                          Add agent
+                        </Button>
+                        <DropdownMenu modal={false}>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              aria-label="Agent actions"
+                              data-testid="agent-actions-menu-trigger"
+                              ref={compactActionsTriggerRef}
+                              size="icon"
+                              type="button"
+                              variant="outline"
+                            >
+                              <EllipsisVertical />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              disabled={isActionPending}
                               onSelect={() =>
-                                void agents.handleBulkStopRunning()
+                                openAiDefaults(compactActionsTriggerRef.current)
                               }
                             >
-                              <OctagonX />
-                              Stop running agents
+                              <Settings2 />
+                              {hasSavedAgentDefaults
+                                ? "Agent defaults"
+                                : "Set agent defaults"}
                             </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )
-                }
-                description={
-                  view === "teams"
-                    ? undefined
-                    : `${agents.managedAgents.length} agents`
-                }
-                title={view === "teams" ? "Agent teams" : "Your team"}
-              />
-              <nav
-                aria-label="Agent workspace sections"
-                className="overflow-x-auto border-b border-border/60"
-              >
-                <div className="flex min-w-max gap-5">
+                            {runningAgentCount > 0 ? (
+                              <DropdownMenuItem
+                                disabled={isActionPending}
+                                onSelect={() =>
+                                  void agents.handleBulkStopRunning()
+                                }
+                              >
+                                <OctagonX />
+                                Stop running agents
+                              </DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )
+                  }
+                  description={
+                    view === "teams"
+                      ? undefined
+                      : `${agents.managedAgents.length} agents`
+                  }
+                  title={view === "teams" ? "Agent teams" : "Your team"}
+                />
+              )}
+              {view === "directory" ? (
+                <nav
+                  aria-label="Team views"
+                  className="flex items-center gap-6 border-b border-border/60 px-7 pt-2.5"
+                >
                   <button
-                    className="border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={onOpenSupervision}
+                    aria-current="page"
+                    className="border-b-2 border-[#2655a0] px-1 pb-2.5 text-sm font-medium text-foreground dark:border-[#adbfdf]"
                     type="button"
                   >
-                    Runs
+                    Agents
                   </button>
-                  {AGENT_WORKSPACE_TABS.map((tab) => (
+                  <button
+                    className="border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    onClick={() =>
+                      appShell.onOpenSettings?.("community-members")
+                    }
+                    type="button"
+                  >
+                    People
+                  </button>
+                  <button
+                    className="border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    onClick={() => onWorkspaceViewChange("templates")}
+                    type="button"
+                  >
+                    Templates
+                  </button>
+                  <button
+                    className="ml-auto inline-flex items-center gap-1 border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    onClick={() => appShell.onOpenSettings?.("agents")}
+                    type="button"
+                  >
+                    Harnesses &amp; connections
+                    <ArrowRight aria-hidden="true" className="size-3.5" />
+                  </button>
+                </nav>
+              ) : (
+                <nav
+                  aria-label="Agent workspace sections"
+                  className="overflow-x-auto border-b border-border/60"
+                >
+                  <div className="flex min-w-max gap-5">
                     <button
-                      aria-current={
-                        view === tab.id ||
-                        (view === "directory" && tab.id === "directory")
-                          ? "page"
-                          : undefined
-                      }
-                      className={`border-b-2 px-1 pb-3 text-sm font-medium ${view === tab.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-                      key={tab.id}
-                      onClick={() => onWorkspaceViewChange(tab.id)}
+                      className="border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-muted-foreground hover:text-foreground"
+                      onClick={onOpenSupervision}
                       type="button"
                     >
-                      {tab.label}
+                      Runs
                     </button>
-                  ))}
-                </div>
-              </nav>
+                    {AGENT_WORKSPACE_TABS.map((tab) => (
+                      <button
+                        aria-current={view === tab.id ? "page" : undefined}
+                        className={`border-b-2 px-1 pb-3 text-sm font-medium ${view === tab.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                        key={tab.id}
+                        onClick={() => onWorkspaceViewChange(tab.id)}
+                        type="button"
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </nav>
+              )}
               {view === "directory" ? (
                 <AgentDirectory
                   activePubkeys={activePubkeys}
@@ -382,16 +480,13 @@ export function AgentsView({
                       ? agents.managedAgentsQuery.error
                       : null
                   }
-                  isActionPending={isActionPending}
                   isLoading={
                     agents.managedAgentsQuery.isLoading ||
-                    runtimeCatalogQuery.isLoading
+                    runtimeCatalogQuery.isLoading ||
+                    relayMembersQuery.isLoading
                   }
-                  onEditAgent={setAgentToEdit}
                   onOpenAgent={(agent) => onOpenAgent(agent.pubkey)}
-                  onPageSizeChange={onDirectoryPageSizeChange}
-                  onStartAgent={(pubkey) => void agents.handleStart(pubkey)}
-                  onStopAgent={(pubkey) => void agents.handleStop(pubkey)}
+                  onMessageAgent={(pubkey) => void onMessageAgent(pubkey)}
                   pageSize={parseAgentDirectoryPageSize(pageSize)}
                   runtimes={runtimeCatalogQuery.data ?? []}
                 />
@@ -505,20 +600,6 @@ export function AgentsView({
         open={isAiDefaultsOpen}
         returnFocusRef={aiDefaultsTriggerRef}
       />
-
-      {agentToEdit ? (
-        <AgentDialog
-          agent={agentToEdit}
-          mode="instance-edit"
-          onOpenChange={(open) => {
-            if (!open) setAgentToEdit(null);
-          }}
-          onUpdated={() => {
-            void agents.refetchManagedAgents();
-          }}
-          open
-        />
-      ) : null}
 
       {agents.agentToAddToChannel ? (
         <AddAgentToChannelDialog

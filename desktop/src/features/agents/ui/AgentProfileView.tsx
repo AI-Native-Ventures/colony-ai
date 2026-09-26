@@ -2,17 +2,18 @@ import * as React from "react";
 import {
   Archive,
   ArchiveRestore,
-  Activity,
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  Cpu,
-  EllipsisVertical,
+  Clock3,
+  Ellipsis,
   FileText,
+  Hash,
   List,
   LockKeyhole,
   MessageSquare,
-  Pencil,
+  Settings,
+  Square,
   Users,
 } from "lucide-react";
 
@@ -69,10 +70,10 @@ const PROFILE_TABS: Array<{ id: AgentProfileTab; label: string }> = [
 
 const PROFILE_TAB_ICONS: Record<AgentProfileTab, typeof Users> = {
   overview: Users,
-  "model-runtime": Cpu,
+  "model-runtime": Settings,
   instructions: FileText,
   "tools-access": LockKeyhole,
-  activity: Activity,
+  activity: Clock3,
   advanced: List,
   memory: BookOpen,
 };
@@ -91,9 +92,9 @@ export function AgentProfileView({
   tab,
   onTabChange,
   onBack,
-  onEdit,
   onMessage,
   onOpenChannel,
+  onRestartAgent,
   onStopAgent,
   isActionPending,
 }: {
@@ -102,9 +103,9 @@ export function AgentProfileView({
   tab: AgentProfileTab;
   onTabChange: (tab: AgentProfileTab) => void;
   onBack: () => void;
-  onEdit: () => void;
   onMessage: (pubkey: string) => Promise<void>;
   onOpenChannel: (channelId: string) => void;
+  onRestartAgent: (pubkey: string) => void;
   onStopAgent: (pubkey: string) => void;
   isActionPending: boolean;
 }) {
@@ -122,6 +123,9 @@ export function AgentProfileView({
   const managedOwner = useIsManagedAgent(agent.pubkey);
   const identity = useIdentityQuery();
   const profileQuery = useUserProfileQuery(agent.pubkey);
+  const ownerProfileQuery = useUserProfileQuery(
+    profileQuery.data?.ownerPubkey ?? undefined,
+  );
   const refreshedSummaryPubkey = React.useRef<string | null>(null);
   const archive = useIdentityArchive(agent.pubkey);
   const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
@@ -159,7 +163,16 @@ export function AgentProfileView({
     managedOwner === true ||
     ownsAuthorAgent(profileQuery.data, identity.data?.pubkey);
   const role = profileQuery.data?.about?.trim() || null;
+  const ownerName = ownerProfileQuery.data?.displayName?.trim() || null;
   const description = linkedPersona?.description?.trim() || null;
+  const presenceLabel =
+    relayAgent?.status === "online"
+      ? "Online"
+      : relayAgent?.status === "away"
+        ? "Away"
+        : relayAgent?.status === "offline"
+          ? "Offline"
+          : "Unknown";
 
   React.useEffect(() => {
     const pubkey = agent.pubkey.toLowerCase();
@@ -199,77 +212,90 @@ export function AgentProfileView({
   }
 
   return (
-    <div className="min-h-full" data-testid="agent-profile">
+    <div className="flex h-full min-h-0 flex-col" data-testid="agent-profile">
       <header className="border-b border-border/60">
-        <div className="flex min-h-24 flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
+        <div className="flex min-h-[5.5rem] flex-wrap items-center justify-between gap-4 px-[1.875rem] py-[1.4375rem]">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               aria-label="Back to directory"
-              className="size-8 shrink-0"
+              className="size-7 shrink-0"
               onClick={onBack}
               size="icon"
               type="button"
               variant="ghost"
             >
-              <ArrowLeft aria-hidden="true" />
+              <ArrowLeft aria-hidden="true" className="size-3.5" />
             </Button>
-            <div
-              aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted text-lg font-medium text-muted-foreground"
-            >
-              {(agent.name || "?").slice(0, 1).toUpperCase()}
-            </div>
+            {agent.avatarUrl ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="size-[2.6875rem] shrink-0 rounded-xl object-cover"
+                src={agent.avatarUrl}
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                className="flex size-[2.6875rem] shrink-0 items-center justify-center rounded-xl bg-muted text-lg font-medium text-muted-foreground"
+              >
+                {(agent.name || "?").slice(0, 1).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold leading-tight text-foreground">
+              <h1 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">
                 {agent.name || "Unnamed agent"}
               </h1>
-              {role ? (
-                <p className="truncate text-sm text-muted-foreground">{role}</p>
+              {role || ownerName ? (
+                <p className="truncate text-xs text-muted-foreground">
+                  {role}
+                  {role && ownerName ? " · " : ""}
+                  {ownerName}
+                </p>
               ) : null}
             </div>
             <Badge
-              className="ml-2 shrink-0"
-              variant={profileStatus === "Working" ? "default" : "secondary"}
+              className="ml-1 shrink-0 rounded-[5px] border border-[#dce9df] bg-[#edf4ef] px-2 py-0.5 text-2xs font-medium normal-case tracking-normal text-[#507d69] dark:border-[#3c5445] dark:bg-[#25392e] dark:text-[#9ebda8]"
+              variant={profileStatus === "Working" ? "default" : "success"}
             >
               {profileStatus}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button
+              className="h-7 px-2.5 text-xs"
               disabled={isOpeningMessage}
               onClick={() => void openMessage()}
               size="sm"
               type="button"
               variant="outline"
             >
-              <MessageSquare aria-hidden="true" />
+              <MessageSquare aria-hidden="true" className="size-3.5" />
               {isOpeningMessage ? "Opening…" : "Message"}
             </Button>
             <Button
+              className="h-7 px-2.5 text-xs"
               disabled={!canStop || isActionPending}
               onClick={() => onStopAgent(agent.pubkey)}
               size="sm"
               type="button"
               variant="outline"
             >
+              <Square aria-hidden="true" className="size-3.5" />
               Stop agent
             </Button>
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label="More agent actions"
+                  className="size-7"
                   size="icon"
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                 >
-                  <EllipsisVertical aria-hidden="true" />
+                  <Ellipsis aria-hidden="true" className="size-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onEdit}>
-                  <Pencil aria-hidden="true" />
-                  Edit agent
-                </DropdownMenuItem>
                 {archive.canArchive && archive.isArchived !== undefined ? (
                   <DropdownMenuItem
                     disabled={archive.isPending}
@@ -301,10 +327,28 @@ export function AgentProfileView({
         ) : null}
       </header>
 
-      <div className="grid min-h-[calc(100%-6rem)] grid-cols-1 md:grid-cols-[12rem_minmax(0,1fr)]">
+      {agent.needsRestart ? (
+        <div className="flex items-center gap-2 border-b border-border/60 bg-primary/10 px-8 py-2.5 text-sm text-primary">
+          <span>Saved changes apply on the next start.</span>
+          {agent.backend.type === "local" ? (
+            <Button
+              className="ml-auto h-auto px-0 text-sm"
+              disabled={isActionPending}
+              onClick={() => onRestartAgent(agent.pubkey)}
+              size="sm"
+              type="button"
+              variant="link"
+            >
+              Restart agent
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[11.875rem_minmax(0,1fr)]">
         <nav
           aria-label="Agent profile sections"
-          className="border-b border-border/60 p-3 md:border-b-0 md:border-r"
+          className="flex flex-col border-b border-border/60 p-3 md:border-b-0 md:border-r md:px-3.5 md:pb-5 md:pt-[1.875rem]"
         >
           <div className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
             {PROFILE_TABS.map((profileTab) => {
@@ -312,9 +356,9 @@ export function AgentProfileView({
               return (
                 <button
                   aria-current={tab === profileTab.id ? "page" : undefined}
-                  className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors md:w-full ${
+                  className={`flex shrink-0 items-center gap-2.5 rounded-md px-[0.8125rem] py-2.5 text-left text-xs transition-colors md:w-full ${
                     tab === profileTab.id
-                      ? "bg-primary/10 font-medium text-primary"
+                      ? "bg-[#e7f0fe] font-medium text-[#2655a0] dark:bg-[#2b3547] dark:text-[#adbfdf]"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                   }`}
                   key={profileTab.id}
@@ -327,98 +371,110 @@ export function AgentProfileView({
               );
             })}
           </div>
+          <div className="mt-auto hidden px-[0.8125rem] pb-0 pt-[1.375rem] text-2xs text-muted-foreground md:block">
+            <p>
+              {agent.backend.type === "local"
+                ? "Managed on this Mac"
+                : "Not managed on this device"}
+            </p>
+            <p className="mt-2">Presence: {presenceLabel}</p>
+          </div>
         </nav>
 
         <main
-          className="min-w-0 p-5 sm:p-8 lg:px-10"
+          className="min-h-0 min-w-0 overflow-y-auto p-5 sm:p-8 lg:px-[2.375rem] lg:py-[1.875rem]"
           data-testid="agent-profile-content"
         >
-          {tab === "overview" ? (
-            <OverviewTab
-              agent={agent}
-              activeTurns={activeTurns}
-              channelOptions={channelOptions}
-              channelsLoading={
-                channelsQuery.isLoading || relayAgentsQuery.isLoading
-              }
-              channelError={
-                channelsQuery.error instanceof Error
-                  ? channelsQuery.error
-                  : relayAgentsQuery.error instanceof Error
-                    ? relayAgentsQuery.error
+          <div className="max-w-[58.75rem]">
+            {tab === "overview" ? (
+              <OverviewTab
+                agent={agent}
+                activeTurns={activeTurns}
+                channelOptions={channelOptions}
+                channelsLoading={
+                  channelsQuery.isLoading || relayAgentsQuery.isLoading
+                }
+                channelError={
+                  channelsQuery.error instanceof Error
+                    ? channelsQuery.error
+                    : relayAgentsQuery.error instanceof Error
+                      ? relayAgentsQuery.error
+                      : null
+                }
+                description={description}
+                harnessLabel={runtime?.label ?? "Not reported"}
+                onOpenChannel={onOpenChannel}
+                onTabChange={onTabChange}
+                providerLabel={
+                  agent.provider
+                    ? providerDisplayLabel(agent.provider)
+                    : "Not reported"
+                }
+              />
+            ) : null}
+            {tab === "model-runtime" ? (
+              <ModelRuntimeTab
+                agent={agent}
+                runtimeLabel={runtime?.label ?? "Not reported"}
+                runtimeAvailability={
+                  runtimesQuery.isLoading
+                    ? "loading"
+                    : runtimesQuery.isError
+                      ? "error"
+                      : runtime
+                        ? runtime.availability
+                        : "unknown"
+                }
+                authStatus={runtime?.authStatus.status ?? "unknown"}
+                runtimeConfig={runtimeConfigQuery.data}
+                isLoading={runtimeConfigQuery.isLoading}
+                error={
+                  runtimeConfigQuery.error instanceof Error
+                    ? runtimeConfigQuery.error
                     : null
-              }
-              description={description}
-              harnessLabel={runtime?.label ?? "Not reported"}
-              onEdit={onEdit}
-              onOpenChannel={onOpenChannel}
-              onTabChange={onTabChange}
-              providerLabel={
-                agent.provider
-                  ? providerDisplayLabel(agent.provider)
-                  : "Not reported"
-              }
-            />
-          ) : null}
-          {tab === "model-runtime" ? (
-            <ModelRuntimeTab
-              agent={agent}
-              runtimeLabel={runtime?.label ?? "Not reported"}
-              runtimeAvailability={
-                runtimesQuery.isLoading
-                  ? "loading"
-                  : runtimesQuery.isError
-                    ? "error"
-                    : runtime
-                      ? runtime.availability
-                      : "unknown"
-              }
-              authStatus={runtime?.authStatus.status ?? "unknown"}
-              runtimeConfig={runtimeConfigQuery.data}
-              isLoading={runtimeConfigQuery.isLoading}
-              error={
-                runtimeConfigQuery.error instanceof Error
-                  ? runtimeConfigQuery.error
-                  : null
-              }
-            />
-          ) : null}
-          {tab === "instructions" ? (
-            <InstructionsTab
-              agent={agent}
-              canEdit={agent.personaId === null}
-              instruction={
-                agent.systemPrompt ?? linkedPersona?.systemPrompt ?? null
-              }
-              key={agent.pubkey}
-            />
-          ) : null}
-          {tab === "tools-access" ? <ToolsAccessTab agent={agent} /> : null}
-          {tab === "activity" ? (
-            <ActivityTab
-              agent={agent}
-              activeChannelIds={activeChannelIds}
-              channelOptions={channelOptions}
-              currentChannelId={currentChannelId}
-              isLoading={channelsQuery.isLoading || relayAgentsQuery.isLoading}
-              onChannelChange={setSelectedChannelId}
-            />
-          ) : null}
-          {tab === "advanced" ? (
-            <AdvancedTab
-              agent={agent}
-              runtimeLabel={runtime?.label ?? "Not reported"}
-            />
-          ) : null}
-          {tab === "memory" ? (
-            <MemoryTab
-              agentPubkey={agent.pubkey}
-              isOwner={viewerIsOwner}
-              isOwnerLoading={
-                managedOwner === undefined && profileQuery.isLoading
-              }
-            />
-          ) : null}
+                }
+              />
+            ) : null}
+            {tab === "instructions" ? (
+              <InstructionsTab
+                agent={agent}
+                canEdit={agent.personaId === null}
+                instruction={
+                  agent.systemPrompt ?? linkedPersona?.systemPrompt ?? null
+                }
+                ownerName={ownerName}
+                key={agent.pubkey}
+              />
+            ) : null}
+            {tab === "tools-access" ? <ToolsAccessTab agent={agent} /> : null}
+            {tab === "activity" ? (
+              <ActivityTab
+                agent={agent}
+                activeChannelIds={activeChannelIds}
+                channelOptions={channelOptions}
+                currentChannelId={currentChannelId}
+                isLoading={
+                  channelsQuery.isLoading || relayAgentsQuery.isLoading
+                }
+                onChannelChange={setSelectedChannelId}
+              />
+            ) : null}
+            {tab === "advanced" ? (
+              <AdvancedTab
+                agent={agent}
+                runtimeLabel={runtime?.label ?? "Not reported"}
+              />
+            ) : null}
+            {tab === "memory" ? (
+              <MemoryTab
+                agentPubkey={agent.pubkey}
+                isOwner={viewerIsOwner}
+                isOwnerLoading={
+                  managedOwner === undefined && profileQuery.isLoading
+                }
+              />
+            ) : null}
+          </div>
         </main>
       </div>
 
@@ -441,7 +497,6 @@ function OverviewTab({
   channelsLoading,
   description,
   harnessLabel,
-  onEdit,
   onOpenChannel,
   onTabChange,
   providerLabel,
@@ -453,7 +508,6 @@ function OverviewTab({
   channelsLoading: boolean;
   description: string | null;
   harnessLabel: string;
-  onEdit: () => void;
   onOpenChannel: (channelId: string) => void;
   onTabChange: (tab: AgentProfileTab) => void;
   providerLabel: string;
@@ -462,14 +516,11 @@ function OverviewTab({
     <div className="space-y-5" data-testid="agent-overview">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold tracking-tight">Overview</h2>
-        <Button onClick={onEdit} size="sm" type="button" variant="ghost">
-          Edit profile
-        </Button>
       </div>
       {description ? (
         <p className="text-sm text-muted-foreground">{description}</p>
       ) : null}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
+      <div className="grid gap-10 lg:grid-cols-2">
         <section className="min-w-0" aria-labelledby="agent-overview-config">
           <h3 className="mb-2 text-sm font-semibold" id="agent-overview-config">
             Configuration
@@ -488,17 +539,18 @@ function OverviewTab({
             />
             <OverviewRow
               label="Last activity"
-              value={formatDate(agent.lastStartedAt)}
+              value={formatActivityTime(agent.lastStartedAt)}
             />
           </div>
           <Button
-            className="mt-3 px-0"
+            className="mt-3 px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
             onClick={() => onTabChange("model-runtime")}
             size="sm"
             type="button"
             variant="link"
           >
-            Inspect configuration
+            Inspect configuration{" "}
+            <ArrowRight aria-hidden="true" className="size-3.5" />
           </Button>
         </section>
 
@@ -525,7 +577,7 @@ function OverviewTab({
               No channel memberships are reported.
             </p>
           ) : (
-            <div className="divide-y divide-border/55">
+            <div>
               {channelOptions.map((channel) => (
                 <button
                   className="flex min-h-10 w-full items-center gap-2 py-2 text-left text-sm text-foreground hover:text-primary"
@@ -533,8 +585,12 @@ function OverviewTab({
                   onClick={() => onOpenChannel(channel.id)}
                   type="button"
                 >
+                  <Hash
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                  />
                   <span className="min-w-0 flex-1 truncate">
-                    # {channel.name}
+                    {channel.name}
                   </span>
                   <ArrowRight
                     aria-hidden="true"
@@ -554,13 +610,14 @@ function OverviewTab({
               : ""}
           </p>
           <Button
-            className="mt-2 px-0"
+            className="mt-2 px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
             onClick={() => onTabChange("tools-access")}
             size="sm"
             type="button"
             variant="link"
           >
-            Tools & access
+            Tools & access{" "}
+            <ArrowRight aria-hidden="true" className="size-3.5" />
           </Button>
         </section>
       </div>
@@ -574,18 +631,18 @@ function OverviewTab({
             Current work
           </h3>
           <Button
-            className="px-0"
+            className="px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
             onClick={() => onTabChange("activity")}
             size="sm"
             type="button"
             variant="link"
           >
-            Activity log
+            Activity log <ArrowRight aria-hidden="true" className="size-3.5" />
           </Button>
         </div>
         {activeTurns.length === 0 ? (
-          <p className="mt-2 rounded-lg border border-border/60 px-3 py-3 text-sm text-muted-foreground">
-            No active channel sessions are reported for this agent.
+          <p className="mt-2 min-h-[3.875rem] rounded-lg border border-dashed border-border/70 px-0 py-5 text-sm text-muted-foreground">
+            No work is currently assigned to this agent.
           </p>
         ) : (
           <div className="mt-2 divide-y divide-border/55 rounded-lg border border-border/60 px-3">
@@ -610,15 +667,6 @@ function OverviewTab({
           </div>
         )}
       </section>
-      {agent.needsRestart ? (
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm">
-          <p className="font-medium">Restart required</p>
-          <p className="mt-1 text-muted-foreground">
-            Saved settings differ from the configuration used by the running
-            agent.
-          </p>
-        </div>
-      ) : null}
       {friendlyAgentLastError(agent.lastError, agent.lastErrorCode)?.copy ? (
         <PanelSectionGroup title="Last error">
           <p className="whitespace-pre-wrap px-4 py-3 text-sm text-destructive">
@@ -632,9 +680,9 @@ function OverviewTab({
 
 function OverviewRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-4 py-2 text-sm">
+    <div className="grid min-h-11 grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)] items-center gap-4 py-2 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-right">{value}</span>
+      <span>{value}</span>
     </div>
   );
 }
@@ -769,10 +817,12 @@ function InstructionsTab({
   agent,
   canEdit,
   instruction,
+  ownerName,
 }: {
   agent: ManagedAgent;
   canEdit: boolean;
   instruction: string | null;
+  ownerName: string | null;
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const [draft, setDraft] = React.useState(instruction ?? "");
@@ -788,9 +838,14 @@ function InstructionsTab({
   if (!canEdit) {
     return (
       <div className="space-y-4" data-testid="agent-instructions">
-        <h2 className="text-lg font-semibold tracking-tight">
-          System instructions
-        </h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold tracking-tight">
+            System instructions
+          </h2>
+          <span className="text-2xs text-muted-foreground">
+            Version 1{ownerName ? ` · ${ownerName}` : ""}
+          </span>
+        </div>
         <div className="rounded-xl border border-border/60 bg-muted/20 p-5">
           {content ? (
             <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-foreground">
@@ -822,34 +877,50 @@ function InstructionsTab({
   }
 
   return (
-    <div className="space-y-4" data-testid="agent-instructions">
-      <SectionHeader
-        title="System instructions"
-        description="The instructions this agent receives. Review and edit the exact text."
-      />
+    <div data-testid="agent-instructions">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <h2 className="text-lg font-semibold tracking-tight">
+          System instructions
+        </h2>
+        <span className="text-2xs text-muted-foreground">
+          Version 1{ownerName ? ` · ${ownerName}` : ""}
+        </span>
+      </div>
+      <p className="mb-[1.6875rem] text-xs leading-[1.7] text-muted-foreground">
+        The instructions this agent receives. Review and edit the exact text.
+      </p>
       <textarea
         aria-label="System instructions"
-        className="min-h-[26rem] w-full resize-y rounded-lg border border-border/70 bg-muted/20 px-5 py-4 text-sm leading-6 text-foreground outline-none"
+        className="min-h-[26.25rem] w-full resize-y rounded-lg border border-border bg-muted p-[1.375rem] text-sm leading-[1.85] text-foreground outline-none"
         data-testid="agent-system-instructions"
         onChange={(event) => setDraft(event.currentTarget.value)}
         spellCheck={false}
         value={draft}
       />
-      <p className="text-sm text-muted-foreground">
-        Business knowledge remains a separate, shared reference.
-      </p>
+      <div className="mt-4 flex items-center gap-2 text-2xs text-muted-foreground">
+        <BookOpen aria-hidden="true" className="size-3.5 shrink-0" />
+        <span>Business knowledge remains a separate, shared reference.</span>
+        <Button
+          className="ml-auto h-auto px-0 text-2xs text-[#2655a0] disabled:opacity-100 dark:text-[#adbfdf]"
+          disabled
+          size="sm"
+          type="button"
+          variant="link"
+        >
+          View brand guide
+        </Button>
+      </div>
       {saveError ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="mt-3 text-sm text-destructive" role="alert">
           {saveError}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-        <p className="text-xs text-muted-foreground">
+      <div className="mt-[2.0625rem] flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
+        <p className="text-2xs text-muted-foreground">
           Changes apply after Save and the next start.
         </p>
         <div className="flex items-center gap-2">
           <Button
-            disabled={!isDirty || updateMutation.isPending}
             onClick={() => {
               setDraft(instruction ?? "");
               setSaveError(null);
@@ -1098,7 +1169,7 @@ function authStatusLabel(status: string) {
 function accessLabel(mode: ManagedAgent["respondTo"]) {
   switch (mode) {
     case "owner-only":
-      return "Owner only";
+      return "Only me";
     case "allowlist":
       return "Selected people";
     case "anyone":
@@ -1106,14 +1177,15 @@ function accessLabel(mode: ManagedAgent["respondTo"]) {
   }
 }
 
-function formatDate(value: string | null) {
+function formatActivityTime(value: string | null) {
   if (!value) return "Not reported";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Not reported"
     : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
       }).format(date);
 }
 

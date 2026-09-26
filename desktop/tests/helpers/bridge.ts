@@ -420,6 +420,11 @@ type MockBridgeOptions = {
    * evaluates false).
    */
   relayRole?: "owner" | "admin" | "member" | null;
+  /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+  relayMembers?: Array<{
+    pubkey: string;
+    role: "owner" | "admin" | "member";
+  }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single

@@ -125,6 +125,7 @@ export type MockManagedAgentSeed = {
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
   status?: RawManagedAgent["status"];
+  lastStartedAt?: string | null;
   channelNames?: string[];
   channelIds?: string[];
   backend?: RawManagedAgent["backend"];
@@ -519,6 +520,11 @@ type E2eConfig = {
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
     relayRole?: "owner" | "admin" | "member" | null;
+    /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+    relayMembers?: Array<{
+      pubkey: string;
+      role: "owner" | "admin" | "member";
+    }>;
     // Descriptors returned by the mocked `pick_and_upload_media` /
     // `upload_media_bytes` commands. Lets a spec drive the attachment flow
     // (e.g. a generic PDF) without a real upload pipeline. See
@@ -2038,6 +2044,16 @@ function cloneAgentMemoryListing(
 
 function resetMockRelayMembers(config: E2eConfig | undefined) {
   const pubkey = getMockMemberPubkey(config);
+  const seededMembers = config?.mock?.relayMembers;
+  if (seededMembers) {
+    mockRelayMembers = seededMembers.map((member, index) => ({
+      pubkey: member.pubkey.toLowerCase(),
+      role: member.role,
+      added_by: index === 0 ? null : pubkey,
+      created_at: isoMinutesAgo(120 - index * 15),
+    }));
+    return;
+  }
   // Drive the active identity's role from `mock.relayRole` so the e2e harness
   // can exercise the NIP-IA admin gate (owner/admin → true, member/null →
   // false). Default stays `owner` to preserve existing test behavior.
@@ -2561,7 +2577,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     pid: status === "running" ? 42000 + mockManagedAgents.length : null,
     created_at: now,
     updated_at: now,
-    last_started_at: status === "running" ? now : null,
+    last_started_at: seed.lastStartedAt ?? (status === "running" ? now : null),
     last_stopped_at: status === "stopped" ? now : null,
     last_exit_code: null,
     last_error: seed.lastError ?? null,

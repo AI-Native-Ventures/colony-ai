@@ -27,6 +27,7 @@ type VisualCase = {
   referenceUrl: string;
   referencePrefs: StorageSeed;
   referenceInventoryRoute?: string;
+  referenceIgnoreSelectors?: string[];
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
@@ -42,7 +43,13 @@ type VisualCase = {
     | string
     | { x: number; y: number; width: number; height: number }
     | { selector: string }
-    | { referenceSelector: string; appSelector?: string };
+    | {
+        referenceSelector: string;
+        appSelector?: string;
+        width?: number;
+        height?: number;
+        normalizeAppRootToReference?: boolean;
+      };
   referenceReadySelector?: string;
   referenceCanvas?: boolean;
   appReadySelector?: string;
@@ -131,9 +138,12 @@ test.describe("visual comparison captures", () => {
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
           const response = await route.fetch();
           const stylesheet = await response.text();
+          const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+            .map((selector) => `${selector} { display: none !important; }`)
+            .join("\n");
           await route.fulfill({
             response,
-            body: stylesheet.replace(/\bSatoshi\b/g, "Manrope"),
+            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
           });
         });
         await referencePage.route(
@@ -572,10 +582,37 @@ async function resolveClip(
     return { reference: box, app: box };
   }
   if (typeof clip === "object" && "referenceSelector" in clip) {
-    const reference = await locatorBox(referencePage, clip.referenceSelector);
-    const app = clip.appSelector
+    const referenceBox = await locatorBox(
+      referencePage,
+      clip.referenceSelector,
+    );
+    if (clip.normalizeAppRootToReference && clip.appSelector) {
+      await appPage
+        .locator(clip.appSelector)
+        .first()
+        .evaluate(
+          (element, bounds) => {
+            const root = element as HTMLElement;
+            root.style.width = `${bounds.width}px`;
+            root.style.minWidth = `${bounds.width}px`;
+            root.style.maxWidth = `${bounds.width}px`;
+            root.style.height = `${bounds.height}px`;
+            root.style.minHeight = "0";
+            root.style.maxHeight = `${bounds.height}px`;
+            root.style.flex = "none";
+          },
+          { width: referenceBox.width, height: referenceBox.height },
+        );
+    }
+    const appBox = clip.appSelector
       ? await locatorBox(appPage, clip.appSelector)
-      : reference;
+      : referenceBox;
+    const width = clip.width ?? Math.min(referenceBox.width, appBox.width);
+    const height = clip.height ?? Math.min(referenceBox.height, appBox.height);
+    const reference = { ...referenceBox, width, height };
+    const app = { ...appBox, width, height };
+    assertClipBox(reference);
+    assertClipBox(app);
     return { reference, app };
   }
   const selector = typeof clip === "string" ? clip : clip.selector;
