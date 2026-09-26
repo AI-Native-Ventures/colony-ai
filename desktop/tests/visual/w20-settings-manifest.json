@@ -721,7 +721,8 @@
           "selector": "[data-testid=appearance-open-themes]"
         }
       ],
-      "appReadySelector": "[data-testid=settings-theme-catalog]"
+      "appReadySelector": "[data-testid=settings-view]",
+      "appPostActionReadySelector": "[data-testid=settings-theme-catalog]"
     },
     {
       "id": "desktop-08-custom",

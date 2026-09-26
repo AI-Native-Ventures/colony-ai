@@ -48,6 +48,7 @@ type VisualCase = {
   referenceReadySelector?: string;
   referenceCanvas?: boolean;
   appReadySelector?: string;
+  appPostActionReadySelector?: string;
 };
 
 type VisualManifest = {
@@ -143,7 +144,7 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch();
+          const response = await route.fetch({ timeout: 30_000 });
           const stylesheet = await response.text();
           await route.fulfill({
             response,
@@ -237,7 +238,7 @@ test.describe("visual comparison captures", () => {
         await waitForCaptureReady(
           appPage,
           "Manrope Variable",
-          entry.appReadySelector,
+          entry.appPostActionReadySelector ?? entry.appReadySelector,
         );
         const referenceGeometry = await inspectPageGeometry(
           referencePage,
