@@ -54,6 +54,7 @@ CREATE TABLE communities (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host            VARCHAR(255) NOT NULL,
     signing_key     BYTEA,
+    business_channel_id UUID,
     -- Per-community workspace icon (NIP-11 `icon`), set via kind:9033.
     -- Added by migration 0003; kept here so desired-state applies match.
     icon            TEXT,
@@ -121,6 +122,48 @@ CREATE INDEX idx_channels_ttl_expiry ON channels (ttl_deadline)
 -- Not UNIQUE — the same channel id may exist under more than one community.
 CREATE INDEX idx_channels_id_live ON channels (id) INCLUDE (community_id)
     WHERE deleted_at IS NULL;
+
+ALTER TABLE communities
+    ADD CONSTRAINT communities_business_channel_fk
+    FOREIGN KEY (id, business_channel_id)
+    REFERENCES channels (community_id, id);
+
+-- One accepted proposal version may reserve only one conversion result.
+CREATE TABLE business_proposal_conversion_claims (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    business_channel_id UUID NOT NULL,
+    conversion_id UUID NOT NULL,
+    proposal_id UUID NOT NULL,
+    proposal_version_event_id BYTEA NOT NULL
+        CHECK (octet_length(proposal_version_event_id) = 32),
+    proposal_version_digest BYTEA NOT NULL
+        CHECK (octet_length(proposal_version_digest) = 32),
+    acceptance_event_id BYTEA NOT NULL
+        CHECK (octet_length(acceptance_event_id) = 32),
+    receipt_event_id BYTEA NOT NULL
+        CHECK (octet_length(receipt_event_id) = 32),
+    accepted_by_pubkey BYTEA NOT NULL
+        CHECK (octet_length(accepted_by_pubkey) = 32),
+    client_id UUID NOT NULL,
+    work_item_id UUID NOT NULL,
+    draft_invoice_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT transaction_timestamp(),
+    PRIMARY KEY (community_id, conversion_id),
+    FOREIGN KEY (community_id, business_channel_id)
+        REFERENCES channels (community_id, id),
+    UNIQUE (community_id, proposal_version_event_id),
+    UNIQUE (community_id, work_item_id),
+    UNIQUE (community_id, draft_invoice_id),
+    UNIQUE (community_id, acceptance_event_id),
+    CHECK (client_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (conversion_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (proposal_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (work_item_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (draft_invoice_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+);
+
+CREATE INDEX business_proposal_conversion_claims_client_idx
+    ON business_proposal_conversion_claims (community_id, client_id, created_at DESC);
 
 -- channels.community_id is immutable: a channel can never be re-tenanted.
 -- (Conformance: "Migration lint forbids channel re-tenanting except through an
@@ -1731,6 +1774,7 @@ $$;
 SELECT attach_community_write_fence('api_tokens');
 SELECT attach_community_write_fence('archived_identities');
 SELECT attach_community_write_fence('audit_log');
+SELECT attach_community_write_fence('business_proposal_conversion_claims');
 SELECT attach_community_write_fence('channel_members');
 SELECT attach_community_write_fence('channels');
 SELECT attach_community_write_fence('community_bans');

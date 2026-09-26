@@ -713,7 +713,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 49);
+        assert_eq!(migrations.len(), 50);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
@@ -1349,6 +1349,15 @@ mod postgres_tests {
             desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
             "schema.sql exclusion list must match the pre-0041 body after ledger removal"
         );
+
+        assert_eq!(migrations[49].version, 50);
+        let business_records = migrations[49].sql.as_str();
+        assert!(business_records.contains("ADD COLUMN business_channel_id UUID"));
+        assert!(business_records.contains("CREATE TABLE business_proposal_conversion_claims"));
+        assert!(business_records.contains(
+            "SELECT attach_community_write_fence('business_proposal_conversion_claims')"
+        ));
+        assert!(desired_schema.contains("CREATE TABLE business_proposal_conversion_claims"));
     }
 
     #[test]
@@ -1707,11 +1716,12 @@ mod postgres_tests {
     /// desired-state bootstrap schema (`schema/schema.sql`).
     ///
     /// Compares parsed statements, not substrings: every deletion control-
-    /// plane table, function, trigger, and index 0028 creates must exist in
+    /// plane table, function, trigger, and index 0029 creates must exist in
     /// schema.sql with an identical normalized definition; every operator-
-    /// global registry row 0028 inserts must be inserted by schema.sql; the
-    /// write-fence attachment target sets must be equal; and every column
-    /// 0028 adds to `communities` must exist in the desired-state
+    /// global registry row 0029 inserts must be inserted by schema.sql;
+    /// write-fence attachment targets from migration 0029 onward must exist
+    /// across the desired-state schema and its reconciliation; and every
+    /// column 0029 adds to `communities` must exist in the desired-state
     /// `communities` table. A desired-state bootstrap that passes this test
     /// cannot silently omit part of the deletion surface the way the
     /// pre-parity schema.sql omitted `community_deletion_manifest_keys` (and
@@ -1720,7 +1730,7 @@ mod postgres_tests {
     /// the missing relation.
     #[test]
     fn deletion_surface_parity_between_migration_0029_and_schema_sql() {
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, BTreeSet};
 
         #[derive(Default)]
         struct DeletionSurface {
@@ -1881,13 +1891,29 @@ mod postgres_tests {
                 "schema.sql is missing operator-global registry row {row:?}"
             );
         }
-        let mut expected_fences = migration.fence_attachments.clone();
+        let mut expected_fences = BTreeSet::new();
+        for later_migration in MIGRATOR.iter().filter(|candidate| candidate.version >= 29) {
+            expected_fences.extend(surface(later_migration.sql.as_ref()).fence_attachments);
+        }
         expected_fences.remove("product_feedback");
         expected_fences.remove("rate_limit_violations");
+        let reconciliation_sql = std::fs::read_to_string(
+            workspace_root.join("scripts/reconcile-schema-after-pgschema.sql"),
+        )
+        .expect("read schema reconciliation script");
+        let reconciliation = surface(&reconciliation_sql);
+        let mut configured_fences = schema.fence_attachments.clone();
+        configured_fences.extend(reconciliation.fence_attachments.iter().cloned());
         assert_eq!(
-            expected_fences, schema.fence_attachments,
-            "write-fence attachment targets differ after recovery policy"
+            expected_fences, configured_fences,
+            "write-fence attachment targets across migrations differ from the desired-state schema and its reconciliation after recovery policy"
         );
+
+        assert!(reconciliation
+            .fence_attachments
+            .contains("business_proposal_conversion_claims"));
+        assert!(reconciliation_sql
+            .contains("tgname = 'community_write_fence_business_proposal_conversion_claims'"));
 
         // 0029's ALTER TABLE additions are expressed inline by the
         // desired-state `communities` definition; require the columns to
@@ -2814,6 +2840,15 @@ mod postgres_tests {
             present.is_empty(),
             "all NIP-FI tables must be absent after migration 0044: {present:?}"
         );
+
+        let latest_migration = MIGRATOR
+            .iter()
+            .last()
+            .map(|migration| migration.version)
+            .expect("embedded migrations are present");
+        run_migrations_through(&pool, latest_migration)
+            .await
+            .expect("remaining migrations must apply after migration 0044");
 
         // The deletion catalog must validate with ledger relations gone.
         crate::deletion::DeletionStore::new(pool.clone())
