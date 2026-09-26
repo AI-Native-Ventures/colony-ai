@@ -121,8 +121,12 @@ test("thread head reflects the channel-window edit even before thread aux loads"
   );
 
   // 3. Open the thread via the reply action (the flow in the bug report).
+  // Hover the row so its action bar is interactive, then click normally: a
+  // forced click skipped actionability and could land on the row underneath
+  // before the hover state applied, leaving the thread closed.
   const replyButton = page.getByTestId(`reply-message-${rootId}`);
-  await replyButton.click({ force: true });
+  await timelineRow.hover();
+  await replyButton.click();
   const threadPanel = page.getByTestId("message-thread-panel");
   await expect(threadPanel).toBeVisible();
 
