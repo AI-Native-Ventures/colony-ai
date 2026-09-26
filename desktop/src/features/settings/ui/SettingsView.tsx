@@ -493,6 +493,8 @@ export function SettingsView({
                   "w20-route-content-account",
                 activeSection === "appearance" &&
                   "w20-route-content-appearance",
+                activeSection.startsWith("settings/theme") &&
+                  "w20-route-content-theme",
               )}
               data-testid={`settings-panel-${activeSection}`}
             >

@@ -191,8 +191,8 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar][data-prominent-active-tab]
   .w20-settings-sidebar.w20-settings-sidebar
   .w20-nav-item.is-active {
-  background: var(--w20-appearance-accent, #e7f0fe);
-  color: #2655a0;
+  background: #2655a0;
+  color: #fff;
 }
 
 :root[data-prominent-active-tab] .w20-nav-item.is-active::before {
@@ -212,8 +212,8 @@ body:has(.w20-settings-shell) {
 :root.dark[data-buzz-sidebar][data-prominent-active-tab]
   .w20-settings-sidebar.w20-settings-sidebar
   .w20-nav-item.is-active {
-  background: var(--w20-appearance-accent, #354157);
-  color: #e6e1ec;
+  background: #9dc1fb;
+  color: #211e26;
 }
 
 .w20-nav-footer {
@@ -543,6 +543,11 @@ body:has(.w20-settings-shell) {
 .w20-route-content-account {
   max-width: 1320px;
   padding-top: 34px;
+}
+
+.w20-route-content-theme {
+  max-width: none;
+  margin: 0;
 }
 
 .w20-route-scroll-appearance {
