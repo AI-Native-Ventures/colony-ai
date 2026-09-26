@@ -2,6 +2,14 @@ body:has(.w20-settings-shell) {
   background: #f3f1f5;
 }
 
+:root[data-buzz-sidebar]:has(.w20-settings-shell) {
+  background-color: transparent;
+}
+
+:root[data-buzz-sidebar].dark:has(.w20-settings-shell) {
+  background-color: transparent;
+}
+
 .dark body:has(.w20-settings-shell) {
   background: #19171d;
 }
@@ -26,6 +34,27 @@ body:has(.w20-settings-shell) {
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-underlay {
   inset: 1px;
+}
+
+:root[data-buzz-sidebar]:has(.w20-settings-shell) .buzz-theme-gradient-layer {
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+:root[data-buzz-sidebar]:has(.w20-settings-shell)
+  .buzz-theme-gradient-layer::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border: 1px solid #dcd4e2;
+  border-radius: 12px;
+  content: "";
+  pointer-events: none;
+}
+
+:root[data-buzz-sidebar].dark:has(.w20-settings-shell)
+  .buzz-theme-gradient-layer::after {
+  border-color: #493951;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell)

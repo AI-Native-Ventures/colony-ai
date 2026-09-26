@@ -150,6 +150,21 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       }
       return {
         fieldLayer: bounds(".buzz-theme-gradient-underlay"),
+        fieldFrame: (() => {
+          const layer = document.querySelector(".buzz-theme-gradient-layer");
+          if (!layer) throw new Error("Missing settings field frame");
+          const style = getComputedStyle(layer);
+          const border = getComputedStyle(layer, "::after");
+          return {
+            rootBackground: getComputedStyle(document.documentElement)
+              .backgroundColor,
+            borderRadius: style.borderRadius,
+            overflow: style.overflow,
+            frameRadius: border.borderTopLeftRadius,
+            borderWidth: border.borderTopWidth,
+            borderColor: border.borderTopColor,
+          };
+        })(),
         title: bounds('[data-testid="settings-profile"] h1'),
         profileCard: bounds('[data-testid="settings-account-profile-card"]'),
         businessCard: bounds('[data-testid="settings-account-business-card"]'),
@@ -169,6 +184,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     expectCoordinate(geometry.fieldLayer.y, expected.fieldLayer.y);
     expectCoordinate(geometry.fieldLayer.width, expected.fieldLayer.width);
     expectCoordinate(geometry.fieldLayer.height, expected.fieldLayer.height);
+    expect(geometry.fieldFrame).toEqual({
+      rootBackground: "rgba(0, 0, 0, 0)",
+      borderRadius: "12px",
+      overflow: "hidden",
+      frameRadius: "12px",
+      borderWidth: "1px",
+      borderColor: "rgb(220, 212, 226)",
+    });
     expectCoordinate(geometry.title.x, expected.title.x);
     expectCoordinate(geometry.title.y, expected.title.y);
     expectCoordinate(geometry.title.width, expected.title.width);
@@ -203,6 +226,23 @@ test("appearance controls save a complete scoped snapshot and retain density", a
     "aria-pressed",
     "true",
   );
+  const fieldBorderColor = await page
+    .locator(".buzz-theme-gradient-layer")
+    .evaluate((element) => getComputedStyle(element, "::after").borderTopColor);
+  expect(fieldBorderColor).toBe("rgb(73, 57, 81)");
+  const rootBackground = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement).backgroundColor;
+    const layer = document.querySelector(".buzz-theme-gradient-layer");
+    if (!layer) throw new Error("Missing settings field frame");
+    return {
+      root,
+      border: getComputedStyle(layer, "::after").borderTopColor,
+    };
+  });
+  expect(rootBackground).toEqual({
+    root: "rgba(0, 0, 0, 0)",
+    border: "rgb(73, 57, 81)",
+  });
   await expect
     .poll(() =>
       page.evaluate(
