@@ -118,6 +118,23 @@ test("initial workspace restore waits for avatar trust IPC", async () => {
   assert.equal(calls.filter(([cmd]) => cmd === "apply_workspace").length, 1);
 });
 
+test("workspace apply forwards the selected business and client scope to native", async () => {
+  const business = {
+    ...b,
+    businessCommunityId: "business-42",
+    clientChannelId: "client-channel-9",
+  };
+  const { result } = renderHook(
+    (communities) => useCommunityInit(business, "b", false, false, communities),
+    { initialProps: [a, business] },
+  );
+
+  await waitFor(() => assert.equal(result.current.isReady, true));
+  const apply = calls.find(([command]) => command === "apply_workspace");
+  assert.equal(apply[1].businessCommunityId, "business-42");
+  assert.equal(apply[1].clientChannelId, "client-channel-9");
+});
+
 test("source removal during pending trust serializes IPC and blocks restore until the latest update", async (t) => {
   holdTrust = true;
   const disconnect = t.mock.method(relayClient, "disconnect", () => {});

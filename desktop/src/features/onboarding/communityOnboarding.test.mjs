@@ -55,6 +55,24 @@ test("non-invite onboarding starts at connection", () => {
   assert.equal(transaction.stage, "connecting");
 });
 
+test("business and client scope ids persist through onboarding", () => {
+  const storage = createMemoryStorage();
+  const transaction = startCommunityOnboarding(
+    {
+      source: "first-community",
+      relayUrl: "wss://business.example",
+      businessCommunityId: "business-42",
+      clientChannelId: "client-channel-9",
+    },
+    storage,
+  );
+  const persisted = loadCommunityOnboardingTransaction(storage);
+  assert.equal(persisted?.businessCommunityId, "business-42");
+  assert.equal(persisted?.clientChannelId, "client-channel-9");
+  assert.equal(transaction.businessCommunityId, "business-42");
+  assert.equal(transaction.clientChannelId, "client-channel-9");
+});
+
 test("same-relay ingress resumes rather than replacing progress", () => {
   const storage = createMemoryStorage();
   const first = startCommunityOnboarding(
