@@ -1473,13 +1473,28 @@ pub(crate) mod tests {
     /// tests deterministically exercise fail-closed database seams without
     /// depending on whether a developer has the normal test database running.
     pub(crate) async fn test_state_with_database_url(database_url: &str) -> Arc<AppState> {
+        test_state_with_database_url_and_acquire_timeout(
+            database_url,
+            std::time::Duration::from_millis(100),
+        )
+        .await
+    }
+
+    /// The same test state with a caller-selected database pool acquire timeout.
+    /// Integration tests against disposable containers use a longer timeout so
+    /// a cold connection does not masquerade as a handler rejection.
+    pub(crate) async fn test_state_with_database_url_and_acquire_timeout(
+        database_url: &str,
+        acquire_timeout: std::time::Duration,
+    ) -> Arc<AppState> {
         let mut config = crate::config::Config::from_env().expect("default config loads");
         config.require_relay_membership = false;
-        config.redis_url = "redis://127.0.0.1:1".to_string();
+        config.redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:1".to_string());
         config.database_url = database_url.to_owned();
         config.read_database_url = None;
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .acquire_timeout(std::time::Duration::from_millis(100))
+            .acquire_timeout(acquire_timeout)
             .connect_lazy(&config.database_url)
             .expect("lazy pg pool");
         build_test_state(config, pool).await

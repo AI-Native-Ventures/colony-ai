@@ -21,11 +21,22 @@ void main() {
             request.url.path.endsWith('/google')) {
           return http.Response(_sessionBody, 200);
         }
-        return http.Response('{"status":"verification_sent"}', 202);
+        if (request.url.path.endsWith('/reset/check')) {
+          return http.Response('{"status":"code_valid"}', 200);
+        }
+        return http.Response(
+          '{"status":"verification_sent","retry_after_secs":30}',
+          202,
+        );
       });
       final api = AccountApi(client: client, baseUrl: 'https://relay.example/');
 
-      await api.signup(email: 'a@example.com', password: 'a-password-10');
+      final signup = await api.signup(
+        email: 'a@example.com',
+        password: 'a-password-10',
+        displayName: 'Ada Example',
+      );
+      expect(signup.retryAfterSecs, 30);
       await api.verify(email: 'a@example.com', code: '123456');
       await api.resendCode(
         email: 'a@example.com',
@@ -33,6 +44,7 @@ void main() {
       );
       await api.signIn(email: 'a@example.com', password: 'a-password-10');
       await api.requestPasswordReset(email: 'a@example.com');
+      await api.checkPasswordResetCode(email: 'a@example.com', code: '654321');
       await api.confirmPasswordReset(
         email: 'a@example.com',
         code: '654321',
@@ -49,6 +61,7 @@ void main() {
           'POST /api/accounts/resend-code',
           'POST /api/accounts/signin',
           'POST /api/accounts/reset/request',
+          'POST /api/accounts/reset/check',
           'POST /api/accounts/reset/confirm',
           'POST /api/accounts/google',
         ],
@@ -56,6 +69,7 @@ void main() {
       expect(jsonDecode(requests[0].body), {
         'email': 'a@example.com',
         'password': 'a-password-10',
+        'display_name': 'Ada Example',
       });
       expect(jsonDecode(requests[1].body), {
         'email': 'a@example.com',
@@ -73,9 +87,13 @@ void main() {
       expect(jsonDecode(requests[5].body), {
         'email': 'a@example.com',
         'code': '654321',
-        'new_password': 'new-password-10',
       });
       expect(jsonDecode(requests[6].body), {
+        'email': 'a@example.com',
+        'code': '654321',
+        'new_password': 'new-password-10',
+      });
+      expect(jsonDecode(requests[7].body), {
         'id_token': 'generated-test-id-token',
       });
       expect(requests.every((request) => !request.followRedirects), isTrue);
@@ -201,6 +219,11 @@ void main() {
       (410, '{"error":"code_expired"}', AccountAuthFailureKind.codeExpired),
       (422, '{"error":"weak_password"}', AccountAuthFailureKind.weakPassword),
       (
+        422,
+        '{"error":"wrong_code","attempts_left":3}',
+        AccountAuthFailureKind.wrongCode,
+      ),
+      (
         429,
         '{"error":"rate_limited","retry_after_secs":31}',
         AccountAuthFailureKind.rateLimited,
@@ -239,6 +262,67 @@ void main() {
       }
       client.close();
     }
+  });
+
+  test('preserves account-code retry fields as typed failures', () async {
+    final cases = [
+      (
+        '{"error":"too_many_attempts","retry_after_secs":91}',
+        AccountAuthFailureKind.tooManyAttempts,
+        91,
+      ),
+      (
+        '{"error":"resend_cooldown","retry_after_secs":24}',
+        AccountAuthFailureKind.resendCooldown,
+        24,
+      ),
+    ];
+
+    for (final (body, expectedKind, retryAfterSecs) in cases) {
+      final client = http_testing.MockClient(
+        (_) async => http.Response(body, 429),
+      );
+      final api = AccountApi(client: client, baseUrl: 'https://relay.example');
+      await expectLater(
+        api.resendCode(
+          email: 'a@example.com',
+          purpose: AccountCodePurpose.reset,
+        ),
+        throwsA(
+          isA<AccountAuthFailure>()
+              .having((failure) => failure.kind, 'kind', expectedKind)
+              .having(
+                (failure) => failure.retryAfterSecs,
+                'retryAfterSecs',
+                retryAfterSecs,
+              ),
+        ),
+      );
+      client.close();
+    }
+
+    final wrongCodeApi = AccountApi(
+      client: http_testing.MockClient(
+        (_) async =>
+            http.Response('{"error":"wrong_code","attempts_left":2}', 422),
+      ),
+      baseUrl: 'https://relay.example',
+    );
+    await expectLater(
+      wrongCodeApi.checkPasswordResetCode(
+        email: 'a@example.com',
+        code: '000000',
+      ),
+      throwsA(
+        isA<AccountAuthFailure>()
+            .having(
+              (failure) => failure.kind,
+              'kind',
+              AccountAuthFailureKind.wrongCode,
+            )
+            .having((failure) => failure.attemptsLeft, 'attemptsLeft', 2),
+      ),
+    );
   });
 
   test('rejects oversized or malformed session responses', () async {

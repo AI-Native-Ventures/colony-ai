@@ -151,6 +151,20 @@ test("contract errors normalize snake case retry windows and network failures", 
     }),
     { code: "invalid_credentials", remainingAttempts: 1 },
   );
+  assert.deepEqual(
+    normalizeAccountAuthFailure({
+      code: "wrong_code",
+      remainingAttempts: 2,
+    }),
+    { code: "wrong_code", remainingAttempts: 2 },
+  );
+  assert.deepEqual(
+    normalizeAccountAuthFailure({
+      code: "resend_cooldown",
+      retryAfterSecs: 18,
+    }),
+    { code: "resend_cooldown", retryAfterSecs: 18 },
+  );
 });
 
 test("every contract error has screen-appropriate feedback", () => {
@@ -167,6 +181,15 @@ test("every contract error has screen-appropriate feedback", () => {
       "This identity is already linked to an account. Sign in instead.",
     ],
     ["code_expired", "This code has expired. Request a new one to continue."],
+    [
+      "wrong_code",
+      "That code isn’t right. Check the six digits and try again.",
+    ],
+    [
+      "too_many_attempts",
+      "Too many attempts. The wait is over. Resend a fresh code to continue.",
+    ],
+    ["resend_cooldown", "Resend code when the countdown ends."],
     ["weak_password", "Use a password with at least 10 characters."],
     ["rate_limited", "Too many attempts. Try again in 4 seconds."],
     ["unreachable", "Can't reach the server right now. Try again later."],
@@ -176,9 +199,20 @@ test("every contract error has screen-appropriate feedback", () => {
   for (const [code, message] of expected) {
     const failure = {
       code,
-      ...(code === "rate_limited" ? { retryAfterSecs: 4 } : {}),
+      ...(["rate_limited", "too_many_attempts", "resend_cooldown"].includes(
+        code,
+      )
+        ? { retryAfterSecs: 4 }
+        : {}),
     };
-    assert.equal(accountAuthFailureMessage(failure, "signup"), message);
+    assert.equal(
+      accountAuthFailureMessage(failure, "signup"),
+      ["too_many_attempts", "resend_cooldown"].includes(code)
+        ? code === "too_many_attempts"
+          ? "Too many attempts. Try again in 4s. You can resend a code after the wait."
+          : "Resend code in 4s."
+        : message,
+    );
   }
 
   assert.equal(

@@ -79,6 +79,7 @@ user-idle = { version = "0.6", default-features = false }
 atomic-write-file = "0.3"
 colony_identity_kernel = { package = "colony-identity-kernel", path = "../identity-kernel" }
 colony_identity_store = { package = "colony-identity-store", path = "../identity-store", default-features = false }
+buzz-acp = { path = "../../crates/buzz-acp" }
 anyhow = "1"
 dirs = "6"
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }

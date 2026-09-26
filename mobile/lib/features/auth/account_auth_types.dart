@@ -9,6 +9,9 @@ enum AccountAuthFailureKind {
   emailTaken,
   identityTaken,
   codeExpired,
+  wrongCode,
+  tooManyAttempts,
+  resendCooldown,
   weakPassword,
   rateLimited,
   accountMissing,
@@ -22,9 +25,18 @@ enum AccountAuthFailureKind {
 /// A typed account failure with an optional relay-provided retry delay.
 class AccountAuthFailure implements Exception {
   /// Creates a safe failure with an optional retry delay.
-  const AccountAuthFailure(this.kind, {this.retryAfterSecs});
+  const AccountAuthFailure(this.kind, {this.retryAfterSecs, this.attemptsLeft});
 
   final AccountAuthFailureKind kind;
+  final int? retryAfterSecs;
+  final int? attemptsLeft;
+}
+
+/// Delivery response for signup, reset request, and code resend routes.
+class AccountCodeDelivery {
+  /// Creates the server's generic code-delivery response.
+  const AccountCodeDelivery({required this.retryAfterSecs});
+
   final int? retryAfterSecs;
 }
 
@@ -93,7 +105,14 @@ class AccountSession {
 }
 
 /// Current state of an account action shown by account screens.
-enum AccountAuthStatus { idle, loading, verificationSent, complete, failed }
+enum AccountAuthStatus {
+  idle,
+  loading,
+  verificationSent,
+  complete,
+  resetComplete,
+  failed,
+}
 
 /// Widget-safe state for account actions. It deliberately contains no nsec.
 class AccountAuthState {

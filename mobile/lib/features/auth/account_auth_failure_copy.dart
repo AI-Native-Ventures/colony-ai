@@ -14,7 +14,19 @@ String accountAuthFailureCopy(
   AccountAuthFailureKind.identityTaken =>
     'This identity is already linked to an account.',
   AccountAuthFailureKind.codeExpired =>
-    'That code expired. Request a new one and try again.',
+    'This code can no longer be used. Request a new code and try again.',
+  AccountAuthFailureKind.wrongCode =>
+    failure.attemptsLeft == null
+        ? 'That code isn’t right. Check the six digits and try again.'
+        : 'That code isn’t right. ${failure.attemptsLeft} ${failure.attemptsLeft == 1 ? 'attempt' : 'attempts'} left. Check the six digits and try again.',
+  AccountAuthFailureKind.tooManyAttempts =>
+    failure.retryAfterSecs == null || failure.retryAfterSecs == 0
+        ? 'Too many attempts. The wait is over. Resend a fresh code to continue.'
+        : 'Too many attempts. Try again in ${failure.retryAfterSecs}s. You can resend a code after the wait.',
+  AccountAuthFailureKind.resendCooldown =>
+    failure.retryAfterSecs == null || failure.retryAfterSecs == 0
+        ? 'Resend code when the countdown ends.'
+        : 'Resend code in ${failure.retryAfterSecs}s.',
   AccountAuthFailureKind.weakPassword =>
     'Use a password with at least 10 characters.',
   AccountAuthFailureKind.rateLimited =>

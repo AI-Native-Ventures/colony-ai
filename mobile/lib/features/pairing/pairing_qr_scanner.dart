@@ -38,6 +38,20 @@ Future<bool> usesDynamicIslandQrScannerPortal() async {
   }
 }
 
+/// Opens this app's native camera permission settings page.
+Future<bool> openPairingCameraSettings() async {
+  try {
+    return await _qrScannerPlatformChannel.invokeMethod<bool>(
+          'openCameraSettings',
+        ) ??
+        false;
+  } on PlatformException {
+    return false;
+  } on MissingPluginException {
+    return false;
+  }
+}
+
 /// Opens the Dynamic Island QR scanner portal.
 ///
 /// Callers determine device support with

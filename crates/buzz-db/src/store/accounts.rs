@@ -5,6 +5,7 @@
 //! code use, password updates, and mail outbox insertion are transactionally
 //! bound so partial requests leave durable retry state.
 
+use buzz_core::tenant::CommunityId;
 use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{PgPool, Postgres, Row, Transaction};
@@ -149,11 +150,46 @@ pub enum ConsumeAccountCodeOutcome {
     /// Code accepted and its account updated in the same transaction.
     Accepted(Box<AccountRecord>),
     /// The supplied code does not match the active code.
-    Invalid,
+    Invalid {
+        /// Failed submissions remaining before this code is locked.
+        attempts_left: i32,
+    },
     /// No active code exists or the active code expired.
     Expired,
     /// The active code reached its attempt limit.
-    AttemptsExceeded,
+    AttemptsExceeded {
+        /// Seconds until this code expires and can be replaced.
+        retry_after_secs: i64,
+    },
+}
+
+/// Result of checking an account code without consuming a valid code.
+pub enum CheckAccountCodeOutcome {
+    /// Code matches the active code and remains available for confirmation.
+    Valid,
+    /// The supplied code does not match the active code.
+    Invalid {
+        /// Failed submissions remaining before this code is locked.
+        attempts_left: i32,
+    },
+    /// No active code exists or the active code expired.
+    Expired,
+    /// The active code reached its attempt limit.
+    AttemptsExceeded {
+        /// Seconds until this code expires and can be replaced.
+        retry_after_secs: i64,
+    },
+}
+
+/// Result of atomically issuing a new account code.
+pub enum IssueAccountCodeOutcome {
+    /// The code and encrypted mail retry were committed.
+    Issued,
+    /// A previous code reached its attempt limit and has not expired.
+    Locked {
+        /// Seconds until the locked code expires.
+        retry_after_secs: i64,
+    },
 }
 
 /// Encrypted account email work claimed by one delivery worker.
@@ -203,6 +239,18 @@ impl Db {
         account: &NewAccount,
         code: Option<&NewAccountCode>,
     ) -> Result<CreateAccountOutcome> {
+        self.create_account_with_profile(account, code, None).await
+    }
+
+    /// Atomically create an account, its initial profile event, and optional
+    /// verification code plus mail retry.
+    #[datastore_span(name = "account_create_with_profile", system = "postgresql")]
+    pub async fn create_account_with_profile(
+        &self,
+        account: &NewAccount,
+        code: Option<&NewAccountCode>,
+        profile: Option<(&nostr::Event, CommunityId)>,
+    ) -> Result<CreateAccountOutcome> {
         let connection = observability::acquire_writer(
             &self.pool,
             observability::WriterOperation::Authorization,
@@ -234,6 +282,11 @@ impl Db {
             };
         };
 
+        if let Some((event, community_id)) = profile {
+            crate::store::event::insert_event_in_transaction(&mut tx, community_id, event, None)
+                .await?;
+        }
+
         if let Some(code) = code {
             insert_account_code(&mut tx, account_id, &account.email, code).await?;
         }
@@ -248,18 +301,59 @@ impl Db {
         account_id: Uuid,
         email: &str,
         code: &NewAccountCode,
-    ) -> Result<()> {
+    ) -> Result<IssueAccountCodeOutcome> {
         let connection = observability::acquire_writer(
             &self.pool,
             observability::WriterOperation::Authorization,
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
+        let active = sqlx::query(
+            "SELECT attempts, expires_at FROM account_codes \
+             WHERE account_id = $1 AND purpose = $2 \
+             ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE",
+        )
+        .bind(account_id)
+        .bind(code.purpose.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(active) = active {
+            let attempts: i32 = active.try_get("attempts")?;
+            let expires_at: DateTime<Utc> = active.try_get("expires_at")?;
+            if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS && expires_at > Utc::now() {
+                let retry_after_secs = retry_after_until(expires_at);
+                tx.rollback().await?;
+                return Ok(IssueAccountCodeOutcome::Locked { retry_after_secs });
+            }
+        }
         replace_active_code(&mut tx, account_id, code.purpose).await?;
         insert_account_code(&mut tx, account_id, email, code).await?;
         prune_old_account_mail(&mut tx).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(IssueAccountCodeOutcome::Issued)
+    }
+
+    /// Return how long a locked code remains blocked from resending.
+    #[datastore_span(name = "account_code_lockout_remaining", system = "postgresql")]
+    pub async fn account_code_lockout_remaining(
+        &self,
+        email: &str,
+        purpose: AccountCodePurpose,
+    ) -> Result<Option<i64>> {
+        sqlx::query_scalar(
+            "SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM (latest.expires_at - now())))::BIGINT) \
+             FROM (SELECT c.attempts, c.expires_at FROM account_codes c \
+                   JOIN accounts a ON a.id = c.account_id \
+                   WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+                   ORDER BY c.created_at DESC, c.id DESC LIMIT 1) latest \
+             WHERE latest.attempts >= $3 AND latest.expires_at > now()",
+        )
+        .bind(email)
+        .bind(purpose.as_str())
+        .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     /// Atomically compare, count, and consume a code while updating its account.
@@ -278,10 +372,10 @@ impl Db {
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
         let row = sqlx::query(
-            "SELECT c.id, c.account_id, c.code_hash, c.expires_at, c.attempts \
+            "SELECT c.id, c.account_id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
              FROM account_codes c JOIN accounts a ON a.id = c.account_id \
-             WHERE lower(a.email) = lower($1) AND c.purpose = $2 AND c.consumed_at IS NULL \
-             ORDER BY c.created_at DESC LIMIT 1 FOR UPDATE OF c",
+             WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+             ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
         )
         .bind(email)
         .bind(purpose.as_str())
@@ -297,6 +391,7 @@ impl Db {
         let stored_hash: Vec<u8> = row.try_get("code_hash")?;
         let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
         let attempts: i32 = row.try_get("attempts")?;
+        let consumed_at: Option<DateTime<Utc>> = row.try_get("consumed_at")?;
         if expires_at <= Utc::now() {
             sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
                 .bind(code_id)
@@ -307,13 +402,20 @@ impl Db {
             return Ok(ConsumeAccountCodeOutcome::Expired);
         }
         if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-            sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-                .bind(code_id)
-                .execute(&mut *tx)
-                .await?;
-            delete_code_outbox(&mut tx, code_id).await?;
+            if consumed_at.is_none() {
+                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+                    .bind(code_id)
+                    .execute(&mut *tx)
+                    .await?;
+                delete_code_outbox(&mut tx, code_id).await?;
+            }
+            let retry_after_secs = retry_after_until(expires_at);
             tx.commit().await?;
-            return Ok(ConsumeAccountCodeOutcome::AttemptsExceeded);
+            return Ok(ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs });
+        }
+        if consumed_at.is_some() {
+            tx.rollback().await?;
+            return Ok(ConsumeAccountCodeOutcome::Expired);
         }
 
         let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
@@ -329,14 +431,17 @@ impl Db {
             .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
             .execute(&mut *tx)
             .await?;
+            let attempts_left = ACCOUNT_CODE_MAX_ATTEMPTS.saturating_sub(next_attempts);
             if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
                 delete_code_outbox(&mut tx, code_id).await?;
             }
             tx.commit().await?;
             return Ok(if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-                ConsumeAccountCodeOutcome::AttemptsExceeded
+                ConsumeAccountCodeOutcome::AttemptsExceeded {
+                    retry_after_secs: retry_after_until(expires_at),
+                }
             } else {
-                ConsumeAccountCodeOutcome::Invalid
+                ConsumeAccountCodeOutcome::Invalid { attempts_left }
             });
         }
 
@@ -378,6 +483,100 @@ impl Db {
         let account = account_from_row(row)?;
         tx.commit().await?;
         Ok(ConsumeAccountCodeOutcome::Accepted(Box::new(account)))
+    }
+
+    /// Check a reset code without consuming a valid code or changing the
+    /// account. Invalid submissions still count against the active code.
+    #[datastore_span(name = "account_check_code", system = "postgresql")]
+    pub async fn check_account_code(
+        &self,
+        email: &str,
+        purpose: AccountCodePurpose,
+        provided_hash: &[u8; 32],
+    ) -> Result<CheckAccountCodeOutcome> {
+        let connection = observability::acquire_writer(
+            &self.pool,
+            observability::WriterOperation::Authorization,
+        )
+        .await?;
+        let mut tx = Transaction::begin(connection, None).await?;
+        let row = sqlx::query(
+            "SELECT c.id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
+             FROM account_codes c JOIN accounts a ON a.id = c.account_id \
+             WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+             ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
+        )
+        .bind(email)
+        .bind(purpose.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.rollback().await?;
+            return Ok(CheckAccountCodeOutcome::Expired);
+        };
+
+        let code_id: Uuid = row.try_get("id")?;
+        let stored_hash: Vec<u8> = row.try_get("code_hash")?;
+        let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
+        let attempts: i32 = row.try_get("attempts")?;
+        let consumed_at: Option<DateTime<Utc>> = row.try_get("consumed_at")?;
+        if expires_at <= Utc::now() {
+            if consumed_at.is_none() {
+                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+                    .bind(code_id)
+                    .execute(&mut *tx)
+                    .await?;
+                delete_code_outbox(&mut tx, code_id).await?;
+            }
+            tx.commit().await?;
+            return Ok(CheckAccountCodeOutcome::Expired);
+        }
+        if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
+            if consumed_at.is_none() {
+                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+                    .bind(code_id)
+                    .execute(&mut *tx)
+                    .await?;
+                delete_code_outbox(&mut tx, code_id).await?;
+            }
+            let retry_after_secs = retry_after_until(expires_at);
+            tx.commit().await?;
+            return Ok(CheckAccountCodeOutcome::AttemptsExceeded { retry_after_secs });
+        }
+        if consumed_at.is_some() {
+            tx.rollback().await?;
+            return Ok(CheckAccountCodeOutcome::Expired);
+        }
+
+        let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
+        if matches {
+            tx.commit().await?;
+            return Ok(CheckAccountCodeOutcome::Valid);
+        }
+
+        let next_attempts = attempts.saturating_add(1);
+        sqlx::query(
+            "UPDATE account_codes SET attempts = $2, \
+             consumed_at = CASE WHEN $2 >= $3 THEN now() ELSE consumed_at END \
+             WHERE id = $1",
+        )
+        .bind(code_id)
+        .bind(next_attempts)
+        .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
+        .execute(&mut *tx)
+        .await?;
+        let outcome = if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
+            delete_code_outbox(&mut tx, code_id).await?;
+            CheckAccountCodeOutcome::AttemptsExceeded {
+                retry_after_secs: retry_after_until(expires_at),
+            }
+        } else {
+            CheckAccountCodeOutcome::Invalid {
+                attempts_left: ACCOUNT_CODE_MAX_ATTEMPTS.saturating_sub(next_attempts),
+            }
+        };
+        tx.commit().await?;
+        Ok(outcome)
     }
 
     /// Update last sign-in and clear password lockout after a valid password.
@@ -819,6 +1018,14 @@ async fn prune_old_account_mail(tx: &mut Transaction<'_, Postgres>) -> Result<()
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+fn retry_after_until(expires_at: DateTime<Utc>) -> i64 {
+    let remaining_millis = (expires_at - Utc::now()).num_milliseconds();
+    remaining_millis
+        .saturating_add(999)
+        .div_euclid(1_000)
+        .max(1)
 }
 
 fn account_from_row(row: sqlx::postgres::PgRow) -> Result<AccountRecord> {
