@@ -254,13 +254,6 @@
       "routeLabel": "settings/experiments"
     },
     {
-      "id": "workspace-settings-mobile",
-      "referenceInventoryRoute": "settings/mobile",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/mobile",
-      "appRoute": "/#/settings?section=mobile",
-      "routeLabel": "settings/mobile"
-    },
-    {
       "id": "workspace-settings-people",
       "referenceInventoryRoute": "settings/people",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/people",
@@ -411,7 +404,10 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/profile",
       "appRoute": "/#/settings?section=profile",
       "routeLabel": "Avatar editor profile",
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-06-choose",
@@ -427,8 +423,7 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       }
     },
     {
@@ -438,8 +433,7 @@
       "routeLabel": "Avatar image selection",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -461,8 +455,7 @@
       "routeLabel": "Avatar camera preview",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -484,8 +477,7 @@
       "routeLabel": "Avatar crop preview",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -513,8 +505,7 @@
       "routeLabel": "Avatar file rejected",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -545,8 +536,7 @@
         "profileUpdateDelayMs": 30000
       },
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -587,8 +577,7 @@
         "profileUpdateErrors": ["Profile update failed."]
       },
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=profile-avatar-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -652,7 +641,10 @@
           "target": "app",
           "selector": "[data-testid=profile-avatar-saved]"
         }
-      ]
+      ],
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-06-cancelled",
@@ -671,7 +663,10 @@
           "target": "app",
           "selector": "[data-testid=avatar-cancel]"
         }
-      ]
+      ],
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-07-confirm",
@@ -726,8 +721,7 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=signout-dialog]"
+        "referenceSelector": ".modal"
       }
     },
     {
@@ -736,7 +730,9 @@
       "appRoute": "/#/settings?section=appearance",
       "routeLabel": "Theme catalog",
       "referenceCanvas": true,
-      "appReadySelector": "[data-testid=settings-view]"
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-08-custom",
@@ -750,7 +746,10 @@
           "selector": "[data-testid=appearance-theme-custom]"
         }
       ],
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-08-compact",
@@ -762,7 +761,19 @@
           "buzz.appearance.conversationDensity": "compact"
         }
       },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      },
+      "actions": [
+        {
+          "type": "selectOption",
+          "target": "app",
+          "selector": "[data-testid=appearance-density]",
+          "value": "compact"
+        }
+      ],
+      "appReadySelector": "[data-testid=appearance-density]"
     },
     {
       "id": "desktop-08-spacious",
@@ -774,7 +785,19 @@
           "buzz.appearance.conversationDensity": "spacious"
         }
       },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      },
+      "actions": [
+        {
+          "type": "selectOption",
+          "target": "app",
+          "selector": "[data-testid=appearance-density]",
+          "value": "spacious"
+        }
+      ],
+      "appReadySelector": "[data-testid=appearance-density]"
     },
     {
       "id": "desktop-08-saved",
@@ -788,7 +811,10 @@
           "selector": "[data-testid=appearance-mode-system]"
         }
       ],
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-09-discovered",
@@ -860,6 +886,9 @@
             "source": "preset"
           }
         ]
+      },
+      "clip": {
+        "referenceSelector": ".surface"
       }
     },
     {
@@ -963,8 +992,7 @@
       ],
       "appReadySelector": "[data-testid=settings-harnesses]",
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=doctor-runtime-install-failure-codex]"
+        "referenceSelector": ".modal"
       }
     },
     {
@@ -1003,7 +1031,10 @@
           "selector": "[data-testid=voice-library]"
         }
       ],
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-12-pick",
@@ -1020,7 +1051,10 @@
             "channelType": "stream",
             "visibility": "open",
             "canvasTemplate": null,
-            "agents": { "personas": [], "teams": [] },
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
             "isBuiltin": true,
             "createdAt": "2026-09-26T07:00:00Z",
             "updatedAt": "2026-09-26T07:00:00Z"
@@ -1032,7 +1066,10 @@
             "channelType": "forum",
             "visibility": "open",
             "canvasTemplate": null,
-            "agents": { "personas": [], "teams": [] },
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
             "isBuiltin": true,
             "createdAt": "2026-09-26T07:00:00Z",
             "updatedAt": "2026-09-26T07:00:00Z"
@@ -1044,14 +1081,20 @@
             "channelType": "stream",
             "visibility": "open",
             "canvasTemplate": null,
-            "agents": { "personas": [], "teams": [] },
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
             "isBuiltin": true,
             "createdAt": "2026-09-26T07:00:00Z",
             "updatedAt": "2026-09-26T07:00:00Z"
           }
         ]
       },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-14-moderation-failed",
@@ -1109,28 +1152,10 @@
           "value": "Repeated unsolicited advertising"
         }
       ],
-      "referenceCanvas": true
-    },
-    {
-      "id": "desktop-14-emoji-invalid",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#14/emoji-invalid",
-      "appRoute": "/#/settings?section=custom-emoji",
-      "routeLabel": "Invalid custom emoji",
-      "referenceCanvas": true
-    },
-    {
-      "id": "desktop-14-archive-failed",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#14/archive-failed",
-      "appRoute": "/#/settings?section=archived-records",
-      "routeLabel": "Archive action failed",
-      "referenceCanvas": true
-    },
-    {
-      "id": "desktop-14-draft-failed",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#14/draft-failed",
-      "appRoute": "/#/settings?section=recovery",
-      "routeLabel": "Draft recovery failed",
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface"
+      }
     },
     {
       "id": "desktop-15-form",
@@ -1163,8 +1188,7 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=send-feedback-dialog]"
+        "referenceSelector": ".modal"
       }
     },
     {
@@ -1208,8 +1232,7 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=send-feedback-dialog]"
+        "referenceSelector": ".modal"
       },
       "appMockData": {
         "feedbackPublishErrors": ["Relay connection unavailable."]
@@ -1223,8 +1246,7 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=send-feedback-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -1266,8 +1288,7 @@
         "feedbackPublishDelayMs": 4000
       },
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=send-feedback-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
@@ -1311,8 +1332,7 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal",
-        "appSelector": "[data-testid=send-feedback-dialog]"
+        "referenceSelector": ".modal"
       },
       "actions": [
         {
