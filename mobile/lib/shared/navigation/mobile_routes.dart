@@ -8,6 +8,19 @@ abstract final class MobileRoutes {
   static const activity = MobileRoute<MobileShellRouteContext>('activity');
   static const business = MobileRoute<MobileShellRouteContext>('business');
   static const updates = MobileRoute<NoMobileRouteArguments>('updates/feed');
+  static const updateNote = MobileRoute<String>('updates/note');
+  static const updateCompose = MobileRoute<NoMobileRouteArguments>(
+    'updates/compose',
+  );
+  static const updateDraft = MobileRoute<NoMobileRouteArguments>(
+    'updates/draft',
+  );
+  static const updateFailed = MobileRoute<NoMobileRouteArguments>(
+    'updates/failed',
+  );
+  static const updatePublished = MobileRoute<NoMobileRouteArguments>(
+    'updates/published',
+  );
   static const search = MobileRoute<NoMobileRouteArguments>(
     'navigation/search',
   );
