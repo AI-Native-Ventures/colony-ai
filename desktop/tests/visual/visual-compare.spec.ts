@@ -198,6 +198,7 @@ test.describe("visual comparison captures", () => {
               JSON.stringify({
                 version: 1,
                 groups: {
+                  dms: "recent",
                   starred: "recent",
                   "section:client-work": "recent",
                 },
