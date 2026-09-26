@@ -616,10 +616,10 @@
   border-radius: 0;
 }
 
-/* The channel drop overlay follows the workspace surface corners. */
+/* The channel drop overlay follows the workspace surface square corners. */
 :root:has([data-colony-workspace-route="true"])
   [data-testid="drop-zone-overlay"] {
-  border-radius: 0.5rem;
+  border-radius: 0;
 }
 
 .colony-today-screen,

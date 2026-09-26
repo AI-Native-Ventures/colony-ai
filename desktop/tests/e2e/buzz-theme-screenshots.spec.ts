@@ -351,18 +351,19 @@ async function expectBuzzGradientPaint(
 
   expect(paint.theme).toBe(mode === "light" ? "buzz" : "buzz-dark");
   expect(paint.isDark).toBe(mode === "dark");
-  expect(paint.surfaceImage).toBe("none");
   if (paint.hasWorkspaceChrome) {
-    expect(paint.underlayImage).toContain(
+    expect(paint.surfaceImage).toContain(
       mode === "light" ? "colony-field-light.svg" : "colony-field-dark.svg",
     );
+    expect(paint.underlayImage).toBe("none");
     expect(paint.lightImage).toBe("none");
     expect(paint.darkImage).toBe("none");
     expect(paint.lightOpacity).toBe("0");
     expect(paint.darkOpacity).toBe("0");
-    return paint.underlayImage;
+    return paint.surfaceImage;
   }
 
+  expect(paint.surfaceImage).toBe("none");
   expect(paint.lightImage).not.toBe("");
   expect(paint.lightImage).not.toBe("none");
   expect(paint.darkImage).not.toBe("");
