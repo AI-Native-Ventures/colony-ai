@@ -314,6 +314,117 @@
           "isAgent": false
         }
       ]
+    },
+    {
+      "id": "74c0f914-19e0-4d73-b7f5-84671d9b0101",
+      "name": "October planning",
+      "description": "October planning group conversation.",
+      "channelType": "dm",
+      "lastMessageAt": 1790158200,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "member",
+          "isAgent": false
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
+    },
+    {
+      "id": "74c0f914-19e0-4d73-b7f5-84671d9b0102",
+      "name": "DM",
+      "description": "Direct message with Scout.",
+      "channelType": "dm",
+      "lastMessageAt": 1790157600,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "member",
+          "isAgent": false
+        },
+        {
+          "pubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "displayName": "Scout",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
+    },
+    {
+      "id": "74c0f914-19e0-4d73-b7f5-84671d9b0103",
+      "name": "DM",
+      "description": "Direct message with Aya.",
+      "channelType": "dm",
+      "lastMessageAt": 1790157000,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "member",
+          "isAgent": false
+        },
+        {
+          "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "displayName": "Aya",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
+    },
+    {
+      "id": "74c0f914-19e0-4d73-b7f5-84671d9b0104",
+      "name": "DM",
+      "description": "Direct message with Mina.",
+      "channelType": "dm",
+      "lastMessageAt": 1790156400,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "member",
+          "isAgent": false
+        },
+        {
+          "pubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "displayName": "Mina",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
+    },
+    {
+      "id": "74c0f914-19e0-4d73-b7f5-84671d9b0105",
+      "name": "DM",
+      "description": "Direct message with Theo.",
+      "channelType": "dm",
+      "lastMessageAt": 1790155800,
+      "members": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "role": "member",
+          "isAgent": false
+        },
+        {
+          "pubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "displayName": "Theo",
+          "role": "bot",
+          "isAgent": true
+        }
+      ]
     }
   ],
   "messages": [
