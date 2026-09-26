@@ -293,7 +293,7 @@ test("appearance controls save a complete scoped snapshot and retain density", a
     )
     .toBe(true);
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
-  expect(await sharedChrome()).toEqual({
+  await expect.poll(sharedChrome).toEqual({
     sectionLabelTracking: "-0.22px",
     searchTextColor: "rgb(236, 230, 239)",
     breadcrumbColor: "rgb(163, 154, 169)",
