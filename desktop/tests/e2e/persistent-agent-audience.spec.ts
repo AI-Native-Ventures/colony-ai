@@ -1029,6 +1029,11 @@ test("a manual mention persists when automatic mentions are enabled", async ({
       { timeout: 5_000 },
     )
     .toBe(true);
+  await expect(composer.getByTestId("message-composer")).toHaveAttribute(
+    "data-submit-locked",
+    "false",
+    { timeout: 2_500 },
+  );
   await expect(input).toHaveAttribute("contenteditable", "true");
   await input.fill("follow up");
   await expect(
