@@ -148,9 +148,12 @@ void main() {
         container.read(accountAuthProvider).codePurpose,
         AccountCodePurpose.reset,
       );
-      await notifier.confirmPasswordReset(
+      notifier.stagePasswordResetCode(
         email: 'person@example.com',
         code: '123456',
+      );
+      await notifier.confirmPasswordReset(
+        email: 'person@example.com',
         newPassword: 'new-password-10',
       );
 
@@ -164,12 +167,9 @@ void main() {
       ]);
       expect(
         container.read(accountAuthProvider).status,
-        AccountAuthStatus.complete,
+        AccountAuthStatus.resetComplete,
       );
-      expect(
-        (await container.read(communityStorageProvider).loadAll()).single.nsec,
-        keys.nsec,
-      );
+      expect(await container.read(communityStorageProvider).loadAll(), isEmpty);
     },
   );
 

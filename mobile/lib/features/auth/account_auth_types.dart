@@ -93,7 +93,14 @@ class AccountSession {
 }
 
 /// Current state of an account action shown by account screens.
-enum AccountAuthStatus { idle, loading, verificationSent, complete, failed }
+enum AccountAuthStatus {
+  idle,
+  loading,
+  verificationSent,
+  complete,
+  resetComplete,
+  failed,
+}
 
 /// Widget-safe state for account actions. It deliberately contains no nsec.
 class AccountAuthState {

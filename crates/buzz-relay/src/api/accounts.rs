@@ -236,7 +236,7 @@ fn account_unavailable() -> (StatusCode, Json<Value>) {
     )
 }
 
-fn normalize_email(email: &str) -> Option<String> {
+pub(super) fn normalize_email(email: &str) -> Option<String> {
     let email = email.trim().to_lowercase();
     let (local, domain) = email.split_once('@')?;
     if email.len() > 254

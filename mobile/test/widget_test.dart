@@ -7,7 +7,7 @@ import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/theme/theme_provider.dart';
 
 void main() {
-  testWidgets('App renders pairing page when unauthenticated', (
+  testWidgets('App renders account welcome when unauthenticated', (
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -24,7 +24,10 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('Welcome to Buzz'), findsOneWidget);
+    expect(
+      find.text('Good people.\nGreat agents.\nYour next chapter.'),
+      findsOneWidget,
+    );
   });
 }
 
