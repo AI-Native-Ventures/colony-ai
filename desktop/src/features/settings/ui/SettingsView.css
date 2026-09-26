@@ -9,7 +9,9 @@
 
 body:has(.w20-settings-shell) {
   background: #f3f1f5;
-  font-family: Manrope, sans-serif;
+  font-family:
+    Manrope, "Manrope Variable", "Inter Variable", Inter, "Avenir Next",
+    "Segoe UI", sans-serif;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) {
