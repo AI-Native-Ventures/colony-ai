@@ -485,6 +485,17 @@
   }
 
   :root:has([data-testid="channel-view-tabs"])
+    [data-testid="message-author"].colony-agent-message-author {
+    font-size: var(--conversation-message-font-size);
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
+    [data-testid="message-author"].colony-agent-message-author
+    button {
+    line-height: 1.5;
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timestamp"] {
     font-size: var(--colony-text-message-timestamp);
     font-variant-numeric: proportional-nums;

@@ -897,6 +897,7 @@ button.colony-today-attention-row:hover {
   [data-testid="thread-composer-overlay"]
   .composer-dock {
   --composer-dock-quiet-inset: 0.9375rem;
+  border-top: 1px solid hsl(var(--border));
   width: calc(100% - 1px);
   margin-left: 1px;
   padding: 10px 0 15px;
@@ -924,14 +925,14 @@ button.colony-today-attention-row:hover {
 :root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   .colony-message-composer-footer-content {
-  min-height: 1.8125rem;
+  min-height: 1.5rem;
   margin-top: 0;
 }
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   .colony-thread-crosspost {
-  min-height: 1.8125rem;
+  min-height: 1.5rem;
 }
 
 .colony-thread-crosspost input {
