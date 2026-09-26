@@ -38,6 +38,7 @@ import type {
   FeedItemCategory,
   RelayEvent,
 } from "@/shared/api/types";
+import type { VoiceRegistryEntry } from "@/features/settings/ui/voiceSettingsLogic";
 import type {
   AccountAuthClient,
   AccountAuthRecord,
@@ -218,6 +219,8 @@ type E2eConfig = {
     };
     /** Native picker boundary result for Pocket voice import tests. */
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
+    /** Local voice files returned by the native registry in visual fixtures. */
+    importedPocketVoices?: VoiceRegistryEntry[];
     /** Advertised HEAD for the first mock project without adding that branch. */
     projectHeadBranch?: string;
     /** Override the repository access channel for project authorization states. */
@@ -12135,21 +12138,8 @@ export function maybeInstallE2eTauriMocks() {
       deviceName: state === "running" ? "Mock desktop" : null,
     };
   };
-  let mockImportedVoices: Array<{
-    key: string;
-    displayName: string;
-    backend: string;
-    backendName: string;
-    availability: "installed";
-    fallbackKey: string;
-    referenceFile: string;
-    provenance: {
-      source: string;
-      contentHash: string;
-      license: null;
-      sourceUrl: null;
-    };
-  }> = [];
+  let mockImportedVoices: VoiceRegistryEntry[] =
+    getConfig()?.mock?.importedPocketVoices ?? [];
   const handleMockCommand = async (
     command: string,
     payload: unknown,
@@ -12618,7 +12608,7 @@ export function maybeInstallE2eTauriMocks() {
           throw new Error("Voice WAV must contain PCM or 32-bit float audio");
         }
         const contentHash = "1".repeat(64);
-        const imported = {
+        const imported: VoiceRegistryEntry = {
           key: `pocket:imported:${contentHash}`,
           displayName: "My voice",
           backend: "pocket",
@@ -12633,7 +12623,7 @@ export function maybeInstallE2eTauriMocks() {
             sourceUrl: null,
           },
         };
-        mockImportedVoices = [imported];
+        mockImportedVoices = [...mockImportedVoices, imported];
         const current = activeConfig?.mock?.ttsSettings ?? {
           version: 1,
           agentTextToSpeech: true,

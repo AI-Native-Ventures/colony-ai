@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, Play, Trash2, Upload, Volume2 } from "lucide-react";
+import { ChevronDown, Mic, Play, Trash2, Upload, Volume2 } from "lucide-react";
 
 import { invokeTauri } from "@/shared/api/tauri";
 import { cn } from "@/shared/lib/cn";
@@ -49,10 +49,18 @@ type TtsVoiceMutation = {
 export function VoiceSettingsCard() {
   const [settings, setSettings] = React.useState<TtsSettings | null>(null);
   const [registry, setRegistry] = React.useState<VoiceRegistryEntry[]>([]);
+  const [hasLoaded, setHasLoaded] = React.useState(false);
+  const [showLibrary, setShowLibrary] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
+  const [previewingVoiceKey, setPreviewingVoiceKey] = React.useState<
+    string | null
+  >(null);
   const [deleteCandidate, setDeleteCandidate] =
     React.useState<VoiceRegistryEntry | null>(null);
+  const [importFailure, setImportFailure] = React.useState<
+    "invalid" | "failed" | null
+  >(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -65,10 +73,12 @@ export function VoiceSettingsCard() {
         if (!disposed) {
           setSettings(nextSettings);
           setRegistry(nextRegistry);
+          setHasLoaded(true);
         }
       })
       .catch((loadError) => {
         if (!disposed) {
+          setHasLoaded(true);
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -134,6 +144,7 @@ export function VoiceSettingsCard() {
 
   const importPocketVoice = React.useCallback(async () => {
     setBusy(true);
+    setImportFailure(null);
     setError(null);
     try {
       const result = await invokeTauri<TtsVoiceMutation | null>(
@@ -144,15 +155,20 @@ export function VoiceSettingsCard() {
         setRegistry(result.registry);
       }
     } catch (importError) {
-      setError(
+      const message =
         importError instanceof Error
           ? importError.message
-          : "Voice could not be imported.",
-      );
+          : "Voice could not be imported.";
+      if (showLibrary) {
+        setImportFailure(
+          /unsupported|pcm|wav|format/i.test(message) ? "invalid" : "failed",
+        );
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [showLibrary]);
 
   const deletePocketVoice = React.useCallback(async (voiceKey: string) => {
     setBusy(true);
@@ -177,12 +193,231 @@ export function VoiceSettingsCard() {
   }, []);
 
   const voices = voicesForBackend(registry, "pocket");
+  const localVoices = registry.filter((voice) =>
+    voice.key.startsWith("pocket:imported:"),
+  );
   const selectedVoice = selectedVoiceForBackend(
     settings?.voicePreferences ?? [],
     voices,
   );
   const enabled = settings?.agentTextToSpeech ?? true;
   const controlsDisabled = !settings || busy || !enabled;
+
+  const previewVoice = React.useCallback(async (voiceKey: string) => {
+    setPreviewing(true);
+    setPreviewingVoiceKey(voiceKey);
+    setError(null);
+    try {
+      await invokeTauri<void>("preview_pocket_voice", { voiceKey });
+    } catch (previewError) {
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Voice preview could not be played.",
+      );
+    } finally {
+      setPreviewing(false);
+      setPreviewingVoiceKey(null);
+    }
+  }, []);
+
+  const deleteDialog = (
+    <AlertDialog
+      onOpenChange={(open) => {
+        if (!open) setDeleteCandidate(null);
+      }}
+      open={deleteCandidate !== null}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove this voice?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {deleteCandidate
+              ? `Remove ${deleteCandidate.displayName} from the library. The original file is not deleted. Existing generated audio is unchanged.`
+              : "Remove this voice from the library. The original file is not deleted. Existing generated audio is unchanged."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            data-testid="confirm-pocket-voice-delete"
+            disabled={busy || !deleteCandidate}
+            onClick={(event) => {
+              event.preventDefault();
+              if (deleteCandidate) {
+                void deletePocketVoice(deleteCandidate.key);
+              }
+            }}
+          >
+            Remove from library
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const importDialog = (
+    <AlertDialog
+      onOpenChange={(open) => {
+        if (!open) {
+          setImportFailure(null);
+          setError(null);
+        }
+      }}
+      open={showLibrary && importFailure !== null}
+    >
+      <AlertDialogContent data-testid="voice-import-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Import voice file</AlertDialogTitle>
+          <AlertDialogDescription>
+            <span
+              className="block rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              {importFailure === "invalid" ? (
+                <>
+                  <span className="block font-medium">
+                    This is not a supported voice file
+                  </span>
+                  <span>
+                    Choose a file supported by the voice provider. Your existing
+                    library is unchanged.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block font-medium">
+                    The voice file couldn’t be imported
+                  </span>
+                  <span>
+                    The file could not be read. Choose another file or try
+                    again.
+                  </span>
+                </>
+              )}
+            </span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            data-testid="voice-import-retry"
+            disabled={busy}
+            onClick={(event) => {
+              event.preventDefault();
+              void importPocketVoice();
+            }}
+          >
+            Import
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (showLibrary) {
+    return (
+      <>
+        <section className="min-w-0" data-testid="settings-voice">
+          <div
+            className="flex items-start justify-between gap-4"
+            data-testid="voice-library"
+          >
+            <h2 className="text-xl font-semibold tracking-tight">
+              Voice library
+            </h2>
+            <span className="text-xs text-muted-foreground">This device</span>
+          </div>
+
+          {error && !importFailure ? (
+            <p
+              className="mt-5 text-sm text-destructive"
+              data-testid="voice-settings-error"
+              role="alert"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          {hasLoaded && !error && localVoices.length === 0 ? (
+            <div
+              className="mt-8 flex min-h-48 flex-col items-center justify-center gap-2 border-t border-border/60 px-4 text-center"
+              data-testid="voice-library-empty"
+            >
+              <Mic
+                aria-hidden="true"
+                className="h-5 w-5 text-muted-foreground"
+              />
+              <p className="text-sm font-medium">Your voice library is empty</p>
+              <p className="text-sm text-muted-foreground">
+                Import a voice file to make it available to compatible voice
+                tools.
+              </p>
+            </div>
+          ) : null}
+
+          {localVoices.length > 0 ? (
+            <div className="mt-8 border-t border-border/60">
+              <h3 className="py-4 text-sm font-semibold">Saved voices</h3>
+              {localVoices.map((voice) => (
+                <div
+                  className="flex min-h-20 items-center gap-4 border-b border-border/60 py-4"
+                  data-testid={`voice-library-row-${voice.key}`}
+                  key={voice.key}
+                >
+                  <Mic
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{voice.displayName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {voice.referenceFile ?? "Local file"} · Local file
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      data-testid={`voice-library-preview-${voice.key}`}
+                      disabled={previewing || busy}
+                      onClick={() => void previewVoice(voice.key)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Play className="h-4 w-4" />
+                      {previewingVoiceKey === voice.key ? "Playing" : "Preview"}
+                    </Button>
+                    <Button
+                      data-testid={`voice-library-remove-${voice.key}`}
+                      disabled={busy}
+                      onClick={() => setDeleteCandidate(voice)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <Button
+            className="mt-5 bg-[#315fae] text-white hover:bg-[#284f94]"
+            data-testid="voice-library-import"
+            disabled={busy || !hasLoaded}
+            onClick={() => void importPocketVoice()}
+            size="sm"
+          >
+            <Upload className="h-4 w-4" />
+            Import voice file
+          </Button>
+        </section>
+        {deleteDialog}
+        {importDialog}
+      </>
+    );
+  }
 
   return (
     <section className="min-w-0" data-testid="settings-voice">
@@ -283,19 +518,7 @@ export function VoiceSettingsCard() {
                   disabled={controlsDisabled || previewing || !selectedVoice}
                   onClick={() => {
                     if (!selectedVoice) return;
-                    setPreviewing(true);
-                    setError(null);
-                    void invokeTauri<void>("preview_pocket_voice", {
-                      voiceKey: selectedVoice.key,
-                    })
-                      .catch((previewError) => {
-                        setError(
-                          previewError instanceof Error
-                            ? previewError.message
-                            : "Voice preview could not be played.",
-                        );
-                      })
-                      .finally(() => setPreviewing(false));
+                    void previewVoice(selectedVoice.key);
                   }}
                   size="sm"
                   variant="outline"
@@ -333,6 +556,15 @@ export function VoiceSettingsCard() {
             </SettingsOptionRow>
           </SettingsOptionGroup>
         </div>
+        <Button
+          className="mt-3"
+          data-testid="voice-library-open"
+          onClick={() => setShowLibrary(true)}
+          size="sm"
+          variant="outline"
+        >
+          Preview voice library
+        </Button>
       </SettingsOptionGroupList>
       {error && (
         <p
@@ -343,41 +575,7 @@ export function VoiceSettingsCard() {
           {error}
         </p>
       )}
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) setDeleteCandidate(null);
-        }}
-        open={deleteCandidate !== null}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete imported voice?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteCandidate
-                ? `${deleteCandidate.displayName} and its local audio file will be removed.`
-                : "This imported voice and its local audio file will be removed."}
-              {selectedVoice?.key === deleteCandidate?.key &&
-                " Mary will be selected instead."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="confirm-pocket-voice-delete"
-              disabled={busy || !deleteCandidate}
-              onClick={(event) => {
-                event.preventDefault();
-                if (deleteCandidate) {
-                  void deletePocketVoice(deleteCandidate.key);
-                }
-              }}
-            >
-              Delete voice
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {deleteDialog}
     </section>
   );
 }

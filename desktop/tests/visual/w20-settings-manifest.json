@@ -990,6 +990,37 @@
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#11/library",
       "appRoute": "/#/settings?section=voice",
       "routeLabel": "Voice library",
+      "appMockData": {
+        "importedPocketVoices": [
+          {
+            "key": "pocket:imported:1111111111111111111111111111111111111111111111111111111111111111",
+            "displayName": "Studio narration",
+            "backend": "pocket",
+            "backendName": "Pocket TTS",
+            "availability": "installed",
+            "fallbackKey": "pocket:mary",
+            "referenceFile": "voice-studio.wav",
+            "provenance": {
+              "source": "local import",
+              "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+              "license": null,
+              "sourceUrl": null
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=voice-library-open]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=voice-library]"
+        }
+      ],
       "referenceCanvas": true
     },
     {
@@ -1025,6 +1056,10 @@
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/desktop/#14/moderation-failed",
       "appRoute": "/#/settings?section=moderation",
       "routeLabel": "Moderation save failed",
+      "appMockData": {
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
       "referenceCanvas": true
     },
     {

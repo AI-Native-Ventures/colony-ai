@@ -129,16 +129,16 @@ test.describe("Pocket voice settings", () => {
       "My voice",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeVisible();
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByTestId("pocket-voice-preview").click();
 
     await page.getByTestId("pocket-voice-delete").click();
-    await expect(page.getByText("Delete imported voice?")).toBeVisible();
+    await expect(page.getByText("Remove this voice?")).toBeVisible();
     await page.getByTestId("confirm-pocket-voice-delete").click();
     await expect(page.getByTestId("pocket-voice-selector")).toContainText(
       "Mary",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeHidden();
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByTestId("pocket-voice-preview").click();
 
     const mutations = await page.evaluate(() =>
       (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
@@ -208,5 +208,71 @@ test.describe("Pocket voice settings", () => {
       "Mary",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeHidden();
+  });
+
+  test("opens and manages the saved voice library from Voice & audio", async ({
+    page,
+  }) => {
+    const hash = "1".repeat(64);
+    const key = `pocket:imported:${hash}`;
+    await installMockBridge(page, {
+      importedPocketVoices: [
+        {
+          key,
+          displayName: "Studio narration",
+          backend: "pocket",
+          backendName: "Pocket TTS",
+          availability: "installed",
+          fallbackKey: "pocket:mary",
+          referenceFile: "voice-studio.wav",
+          provenance: {
+            source: "local import",
+            contentHash: hash,
+            license: null,
+            sourceUrl: null,
+          },
+        },
+      ],
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openSettings(page, "voice");
+    await page.getByTestId("voice-library-open").click();
+
+    await expect(page.getByTestId("voice-library")).toContainText(
+      "Voice library",
+    );
+    await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
+      "Studio narration",
+    );
+    await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
+      "voice-studio.wav · Local file",
+    );
+
+    await page.getByTestId(`voice-library-preview-${key}`).click();
+    await page.getByTestId(`voice-library-remove-${key}`).click();
+    await expect(page.getByText("Remove this voice?")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Remove Studio narration from the library. The original file is not deleted. Existing generated audio is unchanged.",
+      ),
+    ).toBeVisible();
+    await page.getByTestId("confirm-pocket-voice-delete").click();
+    await expect(page.getByTestId("voice-library-empty")).toContainText(
+      "Your voice library is empty",
+    );
+
+    const voiceCommands = await page.evaluate(() =>
+      (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
+        .filter((entry) =>
+          ["preview_pocket_voice", "delete_pocket_voice"].includes(
+            entry.command,
+          ),
+        )
+        .map((entry) => ({ command: entry.command, payload: entry.payload })),
+    );
+    expect(voiceCommands).toEqual([
+      { command: "preview_pocket_voice", payload: { voiceKey: key } },
+      { command: "delete_pocket_voice", payload: { voiceKey: key } },
+    ]);
   });
 });
