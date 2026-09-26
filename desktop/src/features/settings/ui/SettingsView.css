@@ -596,7 +596,7 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-route-content-account:has([data-testid="settings-profile"]) {
-  padding-top: 31px;
+  padding-top: 30px;
 }
 
 .w20-account-page-title {
@@ -604,7 +604,23 @@ body:has(.w20-settings-shell) {
   font-size: calc(var(--buzz-type-rem) * 1.7);
   font-weight: 700;
   letter-spacing: -0.045em;
-  line-height: 1.18;
+  line-height: 1.22;
+}
+
+@media (min-width: 1600px) {
+  .w20-route-scroll:has([data-testid="settings-profile"]) {
+    padding-right: 82px;
+    padding-left: 82px;
+  }
+
+  .w20-route-content-account:has([data-testid="settings-profile"]) {
+    max-width: none;
+    padding-top: 34px;
+  }
+
+  .w20-account-profile-header {
+    margin-bottom: 66px;
+  }
 }
 
 .w20-account-card-title {

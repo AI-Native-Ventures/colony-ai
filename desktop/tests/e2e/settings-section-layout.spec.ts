@@ -76,10 +76,9 @@ test("routes without a data-backed design fall back to Account profile", async (
   await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
 });
 
-test("account profile follows the r19 grid and type scale", async ({
+test("account profile follows the r19 grid and type scale at desktop widths", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     localStorage.setItem("buzz-sidebar-width", "238");
   });
@@ -91,18 +90,6 @@ test("account profile follows the r19 grid and type scale", async ({
     .getByTestId("settings-profile")
     .getByRole("heading", { name: "Your account", exact: true });
   await expect(profileTitle).toBeVisible();
-  const profileGeometry = await page
-    .getByTestId("settings-account-profile-card")
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { x: rect.x, width: rect.width };
-    });
-  const businessGeometry = await page
-    .getByTestId("settings-account-business-card")
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { x: rect.x, width: rect.width };
-    });
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
@@ -118,13 +105,82 @@ test("account profile follows the r19 grid and type scale", async ({
       return { width: rect.width, height: rect.height };
     });
 
-  expect(Math.abs(profileGeometry.x - 314)).toBeLessThan(1);
-  expect(Math.abs(profileGeometry.width - 631.96875)).toBeLessThan(1);
-  expect(Math.abs(businessGeometry.x - 973.96875)).toBeLessThan(1);
-  expect(Math.abs(businessGeometry.width - 383.03125)).toBeLessThan(1);
   expect(titleFontSize).toBe("27.2px");
   expect(breadcrumbLineHeights).toEqual(["18px", "18px"]);
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
+
+  for (const expected of [
+    {
+      viewport: { width: 1440, height: 900 },
+      title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
+      profileCard: { x: 314, y: 267.1875, width: 631.96875 },
+      businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
+      nameField: { x: 339, y: 331.1875, width: 581.96875, height: 72.71875 },
+      nameInput: { x: 339, y: 363.90625, width: 581.96875, height: 40 },
+    },
+    {
+      viewport: { width: 1728, height: 1117 },
+      title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
+      profileCard: { x: 322, y: 275.1875, width: 801.328125 },
+      businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
+      nameField: { x: 347, y: 339.1875, width: 751.328125, height: 72.71875 },
+      nameInput: { x: 347, y: 371.90625, width: 751.328125, height: 40 },
+    },
+  ]) {
+    await page.setViewportSize(expected.viewport);
+    const geometry = await page.evaluate(() => {
+      const bounds = (selector: string) => {
+        const rect = document.querySelector(selector)?.getBoundingClientRect();
+        if (!rect) throw new Error(`Missing settings geometry for ${selector}`);
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        };
+      };
+      const firstProfileField = document.querySelector(
+        '[data-testid="settings-profile"] .w20-account-field',
+      );
+      const firstProfileFieldRect = firstProfileField?.getBoundingClientRect();
+      if (!firstProfileFieldRect) {
+        throw new Error("Missing first account profile field");
+      }
+      return {
+        title: bounds('[data-testid="settings-profile"] h1'),
+        profileCard: bounds('[data-testid="settings-account-profile-card"]'),
+        businessCard: bounds('[data-testid="settings-account-business-card"]'),
+        nameField: {
+          x: firstProfileFieldRect.x,
+          y: firstProfileFieldRect.y,
+          width: firstProfileFieldRect.width,
+          height: firstProfileFieldRect.height,
+        },
+        nameInput: bounds('[data-testid="account-profile-name"]'),
+      };
+    });
+    const expectCoordinate = (actual: number, expectedValue: number) => {
+      expect(Math.abs(actual - expectedValue)).toBeLessThan(1);
+    };
+    expectCoordinate(geometry.title.x, expected.title.x);
+    expectCoordinate(geometry.title.y, expected.title.y);
+    expectCoordinate(geometry.title.width, expected.title.width);
+    expectCoordinate(geometry.title.height, expected.title.height);
+    expectCoordinate(geometry.profileCard.x, expected.profileCard.x);
+    expectCoordinate(geometry.profileCard.y, expected.profileCard.y);
+    expectCoordinate(geometry.profileCard.width, expected.profileCard.width);
+    expectCoordinate(geometry.businessCard.x, expected.businessCard.x);
+    expectCoordinate(geometry.businessCard.y, expected.businessCard.y);
+    expectCoordinate(geometry.businessCard.width, expected.businessCard.width);
+    expectCoordinate(geometry.nameField.x, expected.nameField.x);
+    expectCoordinate(geometry.nameField.y, expected.nameField.y);
+    expectCoordinate(geometry.nameField.width, expected.nameField.width);
+    expectCoordinate(geometry.nameField.height, expected.nameField.height);
+    expectCoordinate(geometry.nameInput.x, expected.nameInput.x);
+    expectCoordinate(geometry.nameInput.y, expected.nameInput.y);
+    expectCoordinate(geometry.nameInput.width, expected.nameInput.width);
+    expectCoordinate(geometry.nameInput.height, expected.nameInput.height);
+  }
 });
 
 test("appearance controls save a complete scoped snapshot and retain density", async ({
