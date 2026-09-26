@@ -1404,7 +1404,6 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     await openChannel(page);
 
     const root = page.locator("html");
-    const sidebar = page.getByTestId("app-sidebar");
     const activeRow = page.getByTestId("channel-general");
     await expect(root).toHaveClass(
       new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
