@@ -1,9 +1,5 @@
-/* Keep the frozen field artwork on a single layer inside the framed shell. */
 :root:has([data-colony-workspace-route="true"]) .buzz-theme-gradient-underlay {
-  background-image: url("/colony-field-light.svg");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
+  background-image: none;
 }
 
 :root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
@@ -11,11 +7,6 @@
   :is(.buzz-theme-gradient-layer-light, .buzz-theme-gradient-layer-dark) {
   background-image: none;
   opacity: 0;
-}
-
-:root.dark:has([data-colony-workspace-route="true"])
-  .buzz-theme-gradient-underlay {
-  background-image: url("/colony-field-dark.svg");
 }
 
 :root:has([data-colony-workspace-route="true"]) .buzz-huddle-shell {
@@ -28,11 +19,16 @@
 
 :root:has([data-colony-workspace-route="true"]) .buzz-huddle-app-surface {
   box-sizing: border-box;
+  background-image: url("/colony-field-light.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
   border: 1px solid #dcd4e2;
   border-radius: 0.75rem;
 }
 
 :root.dark:has([data-colony-workspace-route="true"]) .buzz-huddle-app-surface {
+  background-image: url("/colony-field-dark.svg");
   border-color: #493951;
 }
 
@@ -144,6 +140,8 @@
   --text-3xs: calc(var(--buzz-type-rem) * 0.5);
   --text-studio-title: calc(var(--buzz-type-rem) * 1.7);
   --text-workspace-date: calc(var(--buzz-type-rem) * 0.8);
+  --colony-text-card-section: calc(var(--buzz-type-rem) * 0.98);
+  --colony-text-today-review: calc(var(--buzz-type-rem) * 0.99);
   --colony-sidebar-section-font-size: calc(var(--buzz-type-rem) * 0.635);
   --colony-sidebar-search-font-size: calc(var(--buzz-type-rem) * 0.71);
   --colony-sidebar-profile-font-size: calc(var(--buzz-type-rem) * 0.68);
@@ -181,8 +179,10 @@
   height: 2.0625rem;
   border-radius: 0.3125rem;
   padding-inline: 0.625rem;
+  padding-block: 0.375rem;
   color: hsl(var(--colony-sidebar-foreground));
   font-size: var(--colony-text-compact);
+  line-height: 1.5;
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -983,6 +983,7 @@
   margin: 0;
   font-size: var(--text-base);
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .r17-today-business-heading > span {

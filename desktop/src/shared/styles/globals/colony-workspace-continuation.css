@@ -55,6 +55,7 @@
   flex: 1;
   flex-direction: column;
   gap: 0.375rem;
+  transform: translateY(-0.15rem);
 }
 
 .r17-today-review-copy small {
@@ -65,9 +66,10 @@
 
 .r17-today-review-copy strong {
   overflow: hidden;
-  font-size: var(--text-base);
+  font-size: var(--colony-text-today-review);
   font-weight: 600;
   line-height: 1.4;
+  letter-spacing: -0.02em;
   text-overflow: ellipsis;
 }
 
@@ -125,8 +127,9 @@
 
 .r17-today-section-heading h2 {
   margin: 0;
-  font-size: var(--text-base);
+  font-size: var(--colony-text-card-section);
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .r17-today-section-heading > span {
