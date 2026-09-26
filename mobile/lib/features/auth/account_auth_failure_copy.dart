@@ -14,7 +14,7 @@ String accountAuthFailureCopy(
   AccountAuthFailureKind.identityTaken =>
     'This identity is already linked to an account.',
   AccountAuthFailureKind.codeExpired =>
-    'That code expired. Request a new one and try again.',
+    'This code can no longer be used. Request a new code and try again.',
   AccountAuthFailureKind.wrongCode =>
     failure.attemptsLeft == null
         ? 'That code isn’t right. Check the six digits and try again.'

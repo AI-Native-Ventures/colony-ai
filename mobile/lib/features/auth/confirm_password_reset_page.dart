@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -8,10 +7,12 @@ import 'account_action_button.dart';
 import 'account_auth_error_text.dart';
 import 'account_auth_provider.dart';
 import 'account_auth_types.dart';
+import 'account_flow_palette.dart';
 import 'account_page_scaffold.dart';
 import 'account_text_field.dart';
+import 'account_flow_result_page.dart';
 
-/// Confirms an email reset code and signs into the restored account.
+/// Sets and confirms a password after a reset code was entered.
 class ConfirmPasswordResetPage extends HookConsumerWidget {
   const ConfirmPasswordResetPage({required this.email, super.key});
 
@@ -20,96 +21,146 @@ class ConfirmPasswordResetPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(GlobalKey<FormState>.new);
-    final code = useTextEditingController();
     final password = useTextEditingController();
-    final notice = useState<String?>(null);
+    final confirmation = useTextEditingController();
+    final showPasswords = useState(false);
     final auth = ref.watch(accountAuthProvider);
+    final brightness = Theme.of(context).brightness;
+
     Future<void> submit() async {
-      if (!(formKey.currentState?.validate() ?? false)) return;
+      if (!(formKey.currentState?.validate() ?? false) || auth.isLoading) {
+        return;
+      }
       await ref
           .read(accountAuthProvider.notifier)
-          .confirmPasswordReset(
-            email: email,
-            code: code.text,
-            newPassword: password.text,
-          );
+          .confirmPasswordReset(email: email, newPassword: password.text);
       if (!context.mounted) return;
-      if (ref.read(accountAuthProvider).status == AccountAuthStatus.complete) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+      if (ref.read(accountAuthProvider).status ==
+          AccountAuthStatus.resetComplete) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const AccountFlowResultPage(
+              kind: AccountFlowResultKind.passwordUpdated,
+            ),
+          ),
+        );
       }
     }
 
-    return AccountPageScaffold(
-      title: 'Choose a new password',
-      description:
-          'If an account uses $email, enter its reset code and a new password.',
-      children: [
-        Form(
-          key: formKey,
-          child: Column(
-            children: [
-              AccountTextField(
-                controller: code,
-                label: '6-digit code',
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.next,
-                maxLength: 6,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) => (value ?? '').trim().length == 6
-                    ? null
-                    : 'Enter the six-digit code.',
-              ),
-              const SizedBox(height: Grid.sm),
-              AccountTextField(
-                controller: password,
-                label: 'New password',
-                obscureText: true,
-                textInputAction: TextInputAction.done,
-                autofillHints: const [AutofillHints.newPassword],
-                onFieldSubmitted: (_) => submit(),
-                validator: _validatePassword,
-              ),
-            ],
-          ),
-        ),
-        if (notice.value != null) ...[
-          const SizedBox(height: Grid.xxs),
-          Semantics(liveRegion: true, child: Text(notice.value!)),
-        ],
-        const SizedBox(height: Grid.sm),
-        AccountAuthErrorText(failure: auth.failure),
-        AccountActionButton(
-          label: 'Reset password',
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && auth.status != AccountAuthStatus.resetComplete) {
+          ref
+              .read(accountAuthProvider.notifier)
+              .discardStagedPasswordResetCode();
+        }
+      },
+      child: AccountPageScaffold(
+        title: 'Choose a new password',
+        description: 'Your email is verified.\n$email',
+        titleTopSpacing: 0,
+        titleDescriptionSpacing: 10,
+        descriptionChildrenSpacing: 26,
+        footer: AccountActionButton(
+          label: 'Update password',
           isLoading: auth.isLoading,
           onPressed: auth.isLoading ? null : submit,
         ),
-        const SizedBox(height: Grid.xxs),
-        TextButton(
-          onPressed: auth.isLoading
-              ? null
-              : () async {
-                  notice.value = null;
-                  await ref
-                      .read(accountAuthProvider.notifier)
-                      .resendCode(
-                        email: email,
-                        purpose: AccountCodePurpose.reset,
-                      );
-                  if (!context.mounted) return;
-                  if (ref.read(accountAuthProvider).status ==
-                      AccountAuthStatus.verificationSent) {
-                    notice.value =
-                        'If an account uses this email, a new code has been sent.';
-                  }
-                },
-          child: const Text('Send a new code'),
-        ),
-      ],
+        children: [
+          Form(
+            key: formKey,
+            child: Column(
+              children: [
+                AccountTextField(
+                  controller: password,
+                  label: 'New password',
+                  labelFieldSpacing: 11,
+                  useSoftFill: true,
+                  obscureText: !showPasswords.value,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.newPassword],
+                  validator: _validatePassword,
+                ),
+                const SizedBox(height: 19),
+                AccountTextField(
+                  controller: confirmation,
+                  label: 'Confirm new password',
+                  labelFieldSpacing: 9,
+                  useSoftFill: true,
+                  obscureText: !showPasswords.value,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => submit(),
+                  validator: (value) =>
+                      value == password.text ? null : 'Passwords do not match.',
+                ),
+                const SizedBox(height: 20),
+                Semantics(
+                  container: true,
+                  label: 'Show passwords',
+                  checked: showPasswords.value,
+                  onTap: () => showPasswords.value = !showPasswords.value,
+                  child: ExcludeSemantics(
+                    child: InkWell(
+                      excludeFromSemantics: true,
+                      onTap: () => showPasswords.value = !showPasswords.value,
+                      child: SizedBox(
+                        height: 44,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: showPasswords.value
+                                    ? AccountFlowPalette.blue(brightness)
+                                    : AccountFlowPalette.paper(brightness),
+                                borderRadius: BorderRadius.circular(2),
+                                border: Border.all(
+                                  color: AccountFlowPalette.muted(brightness),
+                                ),
+                              ),
+                              child: showPasswords.value
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 11,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Show passwords',
+                              style: context.textTheme.bodySmall?.copyWith(
+                                fontSize: 12,
+                                color: AccountFlowPalette.ink(brightness),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (auth.failure == null) ...[
+            const SizedBox(height: Grid.xxs),
+            Text(
+              'Use a password with at least 10 characters.',
+              style: context.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: AccountFlowPalette.muted(brightness),
+              ),
+            ),
+          ],
+          const SizedBox(height: Grid.xs),
+          AccountAuthErrorText(failure: auth.failure),
+        ],
+      ),
     );
   }
 }
 
-String? _validatePassword(String? value) {
-  if ((value ?? '').length < 10) return 'Use at least 10 characters.';
-  return null;
-}
+String? _validatePassword(String? value) =>
+    (value ?? '').isEmpty ? 'Enter a new password.' : null;

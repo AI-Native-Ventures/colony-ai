@@ -7,7 +7,14 @@ const OTHER_RELAY_URL = "ws://localhost:3001";
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const STALE_COMMUNITY_PUBKEY = "cafebabe".repeat(8);
 const MATCHING_HASH = "mock-hash";
-const READ_DELAY_MS = 600;
+// The mock channels read is held for READ_DELAY_MS so a spec can observe the
+// boot frame (snapshot rows, or the loading state) before the live list lands.
+// Those observations must fall inside that window, so they wait up to
+// PRE_READ_TIMEOUT_MS, which stays below the delay. Budgets are measured from
+// page.goto, which includes app boot; slower CI hosts spent the old 500ms of a
+// 600ms window before the first frame painted.
+const READ_DELAY_MS = 2_500;
+const PRE_READ_TIMEOUT_MS = 2_000;
 const SNAPSHOT_FRAME_DELAY_MS = 3_000;
 
 function snapshotKey(relayUrl: string, ownerPubkey = OWNER_PUBKEY) {
@@ -302,7 +309,7 @@ test("matching not-modified preserves display mutations without persisting them"
 
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
     FULL_SNAPSHOT.length,
-    { timeout: 500 },
+    { timeout: PRE_READ_TIMEOUT_MS },
   );
   await mutateDisplayedChannels(page, optimisticName);
   await expect(
@@ -334,7 +341,7 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -371,7 +378,7 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -456,7 +463,7 @@ test("partial hash/list write fails toward a full fetch", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -498,7 +505,7 @@ test("mismatched not-modified hash falls back to a full list", async ({
 
   const snapshotRows = page.locator('[data-channel-id^="snapshot-"]');
   await expect(snapshotRows).toHaveCount(FULL_SNAPSHOT.length, {
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect
     .poll(() => getChannelsPayloads(page))
@@ -619,7 +626,7 @@ test("community switch validates a stale relay snapshot and replaces it", async 
   await page.getByTestId("community-rail-button-community-b").click();
   const switchedRows = page.locator('[data-channel-id^="switched-"]');
   await expect(switchedRows).toHaveCount(switchedSnapshot.length, {
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect
     .poll(async () =>

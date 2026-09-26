@@ -232,9 +232,12 @@ export function MessageThreadSummaryRow({
         </div>
       ) : null}
 
+      {/* Block-level flex, not inline-flex: an inline button sits on a text
+          line whose baseline moves when the avatar fallback text appears,
+          shifting this row 2px and the bottom-pinned timeline with it. */}
       <button
         aria-label={summaryAriaLabel}
-        className="group relative isolate inline-flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
+        className="group relative isolate flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
         data-thread-head-id={message.id}
         data-testid="message-thread-summary"
         onClick={() => onOpenThread(message)}
