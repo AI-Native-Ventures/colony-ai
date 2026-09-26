@@ -6,6 +6,7 @@ class ChannelForumEntryArguments {
   const ChannelForumEntryArguments({
     required this.channelId,
     required this.channelName,
+    required this.memberCount,
     required this.currentPubkey,
     required this.isMember,
     required this.isArchived,
@@ -16,6 +17,9 @@ class ChannelForumEntryArguments {
 
   /// Visible channel title for forum thread context.
   final String channelName;
+
+  /// Current forum member count shown on its note destinations.
+  final int memberCount;
 
   /// Signed-in identity used for ownership and mention treatment.
   final String? currentPubkey;
@@ -32,5 +36,10 @@ abstract final class ChannelForumRoutes {
   /// Opens the forum timeline for one channel.
   static const posts = MobileRoute<ChannelForumEntryArguments>(
     'channels/forum/posts',
+  );
+
+  /// Opens the new post composer for one channel.
+  static const newPost = MobileRoute<ChannelForumEntryArguments>(
+    'channels/forum/new-post',
   );
 }

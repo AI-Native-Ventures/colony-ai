@@ -585,16 +585,19 @@ class ChannelDetailPage extends HookConsumerWidget {
               )
             : null,
         iconColor: mobileTokens.ink,
-        titleContentHeight: appBarTitleContentHeight,
+        titleContentHeight: resolvedChannel.isForum
+            ? MobileLayoutTokens.appBarHeight
+            : appBarTitleContentHeight,
         titleStyle: context.mobileTypography.body.copyWith(
           color: mobileTokens.ink,
-          fontSize: 14,
+          fontSize: resolvedChannel.isForum ? 16 : 14,
           fontWeight: FontWeight.w700,
           height: 1.25,
         ),
-        frostedSurfaceOpacity: 1,
+        frostedSurfaceOpacity: resolvedChannel.isForum ? 0 : 1,
         frostedBlurSigma: 0,
         bottomDividerOpacity: 1,
+        horizontalInset: resolvedChannel.isForum ? Grid.gutter : Grid.xxs,
         title: Padding(
           padding: EdgeInsets.only(
             left: usesNativeIosGlassBackButton
@@ -662,6 +665,45 @@ class ChannelDetailPage extends HookConsumerWidget {
                 ),
               ]
             : [
+                if (resolvedChannel.isForum &&
+                    resolvedChannel.isMember &&
+                    !resolvedChannel.isArchived &&
+                    routeRegistry?.contains(ChannelForumRoutes.newPost) == true)
+                  TextButton(
+                    key: const ValueKey('forum-new-post-action'),
+                    onPressed: () {
+                      final arguments = ChannelForumEntryArguments(
+                        channelId: resolvedChannel.id,
+                        channelName: resolvedChannel.name,
+                        memberCount: resolvedChannel.memberCount,
+                        currentPubkey: currentPubkey,
+                        isMember: resolvedChannel.isMember,
+                        isArchived: resolvedChannel.isArchived,
+                      );
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (routeContext) => routeRegistry!.build(
+                            routeContext,
+                            ChannelForumRoutes.newPost,
+                            arguments,
+                          ),
+                        ),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      backgroundColor: mobileTokens.soft,
+                      foregroundColor: const Color(0xFF45669F),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: const Size(0, 44),
+                      textStyle: context.mobileTypography.body.copyWith(
+                        fontSize: 12,
+                      ),
+                    ),
+                    child: const Text('New post'),
+                  ),
                 if (showsComposer)
                   _HuddleButton(
                     channel: resolvedChannel,
@@ -691,6 +733,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                               ChannelForumEntryArguments(
                                 channelId: resolvedChannel.id,
                                 channelName: resolvedChannel.name,
+                                memberCount: resolvedChannel.memberCount,
                                 currentPubkey: currentPubkey,
                                 isMember: resolvedChannel.isMember,
                                 isArchived: resolvedChannel.isArchived,

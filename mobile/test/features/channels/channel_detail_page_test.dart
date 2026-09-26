@@ -12,18 +12,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:pointycastle/digests/sha256.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
+import 'package:buzz/features/channels/channel_forum_route.dart';
+import 'package:buzz/features/channels/compose_bar.dart';
+import 'package:buzz/features/channels/message_content.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_storage.dart';
 import 'package:buzz/features/channels/channel_stars/channel_stars_provider.dart';
 import 'package:buzz/features/channels/channel_stars/channel_stars_storage.dart';
+import 'package:buzz/features/channels/channels_page.dart';
 import 'package:buzz/features/channels/channel_typing_provider.dart';
 import 'package:buzz/features/channels/members_sheet.dart';
 import 'package:buzz/features/channels/composer_dock_size_reporter.dart';
@@ -48,6 +53,12 @@ import 'package:buzz/features/profile/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/features/profile/user_profile_sheet.dart';
+import 'package:buzz/features/forum/forum_models.dart';
+import 'package:buzz/features/forum/forum_new_post_page.dart';
+import 'package:buzz/features/forum/forum_posts_view.dart';
+import 'package:buzz/features/forum/forum_presentation.dart';
+import 'package:buzz/features/forum/forum_provider.dart';
+import 'package:buzz/features/forum/forum_published_note_page.dart';
 import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/emoji/emoji_burst.dart';
 import 'package:buzz/shared/mentions/agent_identity_provider.dart';
@@ -60,6 +71,9 @@ import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/frosted_scaffold.dart';
 import 'package:buzz/shared/widgets/flapping_bee.dart';
 import 'package:buzz/shared/widgets/keyboard_dismiss_on_drag.dart';
+import 'package:buzz/shared/navigation/mobile_route.dart';
+import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/features/home/home_page.dart';
 import 'package:buzz/shared/widgets/ios_glass_navigation_button.dart';
 import 'package:buzz/shared/widgets/lucide_star_icon.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
@@ -225,6 +239,9 @@ Widget _buildTestable({
   _FakeMessagesNotifier? messagesNotifier,
   _FakeTypingNotifier? typingNotifier,
   _FakeTypingNotifier? huddleTypingNotifier,
+  MobileRouteRegistry? routeRegistry,
+  ForumPostsResponse? forumPostsResponse,
+  MediaUploadService? mediaUploadService,
   String? canvasContent,
   String? initialMessageId,
   String? initialThreadRootId,
@@ -259,6 +276,7 @@ Widget _buildTestable({
       home ??
       ChannelDetailPage(
         channel: resolvedChannel,
+        routeRegistry: routeRegistry,
         initialMessageId: initialMessageId,
         initialThreadRootId: initialThreadRootId,
         initialThreadRouteBehavior: initialThreadRouteBehavior,
@@ -311,6 +329,12 @@ Widget _buildTestable({
             ? huddleMembers
             : ref.watch(_mutableHuddleMembersProvider),
       ),
+      if (forumPostsResponse != null)
+        forumPostsProvider(
+          _channelId,
+        ).overrideWith((ref) async => forumPostsResponse),
+      if (mediaUploadService != null)
+        mediaUploadServiceProvider.overrideWithValue(mediaUploadService),
       if (huddleMembersNotifier != null)
         _mutableHuddleMembersProvider.overrideWith(() => huddleMembersNotifier),
       if (!watchChannelMembershipUpdates)
@@ -424,6 +448,112 @@ Widget _buildTestable({
       home: routeInNavigationStack ? null : detailPage,
     ),
   );
+}
+
+ForumPresentationFactories _forumCapturePresentation() =>
+    ForumPresentationFactories(
+      composeBarBuilder:
+          ({
+            required channelId,
+            required channelName,
+            required hintText,
+            required onSend,
+            draftKeyOverride,
+            postEditorMode = false,
+
+            allowEmptySend = false,
+            enabled = true,
+            submitController,
+            onBodyChanged,
+            onAttachmentCountChanged,
+            onSubmissionChanged,
+            onFailure,
+          }) => ComposeBar(
+            channelId: channelId,
+            channelName: channelName,
+            hintText: hintText,
+            onSend: onSend,
+            draftKeyOverride: draftKeyOverride,
+            postEditorMode: postEditorMode,
+            allowEmptySend: allowEmptySend,
+            enabled: enabled,
+            submitController: submitController,
+            onBodyChanged: onBodyChanged,
+            onAttachmentCountChanged: onAttachmentCountChanged,
+            onSubmissionChanged: onSubmissionChanged,
+            onFailure: onFailure,
+          ),
+      messageContentBuilder: (context, content) => MessageContent(
+        content: content.content,
+        mentionNames: content.mentionNames,
+        agentMentionPubkeys: content.agentMentionPubkeys,
+        tags: content.tags,
+        baseStyle: content.baseStyle,
+        maxLines: content.maxLines,
+        onMentionTap: content.onMentionTap,
+      ),
+      openProfile: (context, pubkey) {},
+      currentUserName: (_) => 'Lerato Molefe',
+    );
+
+MobileRouteRegistry _forumCaptureRoutes() {
+  final presentation = _forumCapturePresentation();
+  return MobileRouteRegistry.empty()
+      .register(ChannelForumRoutes.posts, (context, arguments) {
+        return ForumPostsView(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          currentPubkey: arguments.currentPubkey,
+          isMember: arguments.isMember,
+          isArchived: arguments.isArchived,
+          presentation: presentation,
+        );
+      })
+      .register(ChannelForumRoutes.newPost, (context, arguments) {
+        return ForumNewPostPage(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          memberCount: arguments.memberCount,
+          presentation: presentation,
+        );
+      });
+}
+
+MobileRouteRegistry _forumRootCaptureRoutes() {
+  final presentation = _forumCapturePresentation();
+  late MobileRouteRegistry routes;
+  routes = MobileRouteRegistry.empty()
+      .register(MobileRoutes.today, (_, _) => const SizedBox.shrink())
+      .register(MobileRoutes.chats, (_, routeContext) {
+        return ChannelsPage(
+          settingsPageBuilder: routeContext.settingsPageBuilder,
+          tabReselection: routeContext.tabReselection,
+          onSettingsTransitionProgress:
+              routeContext.onSettingsTransitionProgress,
+          routeRegistry: routes,
+        );
+      })
+      .register(MobileRoutes.activity, (_, _) => const SizedBox.shrink())
+      .register(MobileRoutes.business, (_, _) => const SizedBox.shrink())
+      .register(ChannelForumRoutes.posts, (context, arguments) {
+        return ForumPostsView(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          currentPubkey: arguments.currentPubkey,
+          isMember: arguments.isMember,
+          isArchived: arguments.isArchived,
+          presentation: presentation,
+        );
+      })
+      .register(ChannelForumRoutes.newPost, (_, arguments) {
+        return ForumNewPostPage(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          memberCount: arguments.memberCount,
+          presentation: presentation,
+        );
+      });
+  return routes;
 }
 
 Widget _buildNavigationTestable({
@@ -2234,6 +2364,429 @@ void main() {
         find.byType(FrostedScaffold).first,
       );
       expect(scaffold.resizeToAvoidBottomInset, isTrue);
+    });
+
+    testWidgets('opens the registered New post route from a forum header', (
+      tester,
+    ) async {
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: forumChannel,
+          members: [
+            for (var index = 0; index < 8; index++)
+              ChannelMember(
+                pubkey: 'forum-member-$index',
+                role: index == 0 ? 'owner' : 'member',
+                joinedAt: DateTime(2026),
+                displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+              ),
+          ],
+          routeRegistry: _forumCaptureRoutes(),
+          forumPostsResponse: const ForumPostsResponse(posts: []),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Forum · 8 members'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('forum-new-post-action')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForumNewPostPage), findsOneWidget);
+      expect(find.byKey(const ValueKey('forum-post-title')), findsOneWidget);
+      expect(find.byKey(const ValueKey('forum-post-body')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reaches the forum composer through the root shell', (
+      tester,
+    ) async {
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: forumChannel,
+          members: [
+            for (var index = 0; index < 8; index++)
+              ChannelMember(
+                pubkey: 'forum-member-$index',
+                role: index == 0 ? 'owner' : 'member',
+                joinedAt: DateTime(2026),
+                displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+              ),
+          ],
+          home: HomePage(
+            routeRegistry: _forumRootCaptureRoutes(),
+            settingsPageBuilder: (_) => const SizedBox.shrink(),
+            hasUnreadInbox: false,
+          ),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+      await tester.pumpAndSettle();
+      expect(find.text('Team updates'), findsOneWidget);
+      await tester.tap(find.text('Team updates'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Forum · 8 members'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ForumNewPostPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('captures R19 forum and new post routes', (tester) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_FORUM');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+
+      final now = DateTime.now();
+      int timestamp(DateTime value) => value.millisecondsSinceEpoch ~/ 1000;
+      final firstPost = _forumCapturePost(
+        id: 'forum-this-week',
+        pubkey: 'self',
+        content:
+            'This week at Lerato\n\nThe work that matters this week: Olive Studio, Cedar’s launch, and client reports.',
+        createdAt: timestamp(now),
+        tags: const [
+          ['h', _channelId],
+        ],
+      );
+      final secondPost = _forumCapturePost(
+        id: 'forum-september-learning',
+        pubkey: 'maya',
+        content:
+            'What we learned in September\n\nSave the useful things. What should we repeat next month?',
+        createdAt: timestamp(now.subtract(const Duration(days: 1))),
+        tags: const [
+          ['h', _channelId],
+        ],
+      );
+      final firstSummary = _forumCapturePost(
+        id: 'forum-this-week-summary',
+        kind: EventKind.channelThreadSummary,
+        pubkey: 'relay',
+        content: jsonEncode({
+          'reply_count': 3,
+          'descendant_count': 3,
+          'last_reply_at': timestamp(now),
+          'participants': ['maya'],
+        }),
+        createdAt: timestamp(now),
+        tags: const [
+          ['h', _channelId],
+          ['e', 'forum-this-week'],
+        ],
+      );
+      final secondSummary = _forumCapturePost(
+        id: 'forum-september-summary',
+        kind: EventKind.channelThreadSummary,
+        pubkey: 'relay',
+        content: jsonEncode({
+          'reply_count': 8,
+          'descendant_count': 8,
+          'last_reply_at': timestamp(now.subtract(const Duration(days: 1))),
+          'participants': ['self'],
+        }),
+        createdAt: timestamp(now.subtract(const Duration(days: 1))),
+        tags: const [
+          ['h', _channelId],
+          ['e', 'forum-september-learning'],
+        ],
+      );
+      final forumFixtureEvents = [
+        firstPost,
+        secondPost,
+        firstSummary,
+        secondSummary,
+      ];
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      final forumMembers = [
+        for (var index = 0; index < 8; index++)
+          ChannelMember(
+            pubkey: 'forum-member-$index',
+            role: index == 0 ? 'owner' : 'member',
+            joinedAt: DateTime(2026),
+            displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+          ),
+      ];
+      final attachment = XFile.fromData(
+        Uint8List(254000),
+        path: '/test/October campaign brief.pdf',
+        mimeType: 'application/pdf',
+        length: 254000,
+      );
+      final mediaUploadService = _R19ForumCaptureMediaUploadService(attachment);
+      const captureKey = ValueKey('w23-forum-fullscreen-capture');
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+      for (final size in captureSizes.entries) {
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 25);
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          final forumRelay = _R19ForumCaptureRelay(forumFixtureEvents);
+          Future<void> mountForum(_R19ForumCaptureRelay relay) async {
+            await _testPrefs.clear();
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: const [],
+                channel: forumChannel,
+                users: const {
+                  'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
+                  'maya': UserProfile(pubkey: 'maya', displayName: 'Maya'),
+                },
+                members: forumMembers,
+                routeRegistry: _forumCaptureRoutes(),
+                mediaUploadService: mediaUploadService,
+                relaySessionNotifier: relay,
+                relayConfigNotifier: _R19ForumCaptureConfig(),
+                home: HomePage(
+                  routeRegistry: _forumRootCaptureRoutes(),
+                  settingsPageBuilder: (_) => const SizedBox.shrink(),
+                  hasUnreadInbox: false,
+                ),
+                brightness: brightness,
+                captureKey: captureKey,
+                profileDisplayName: 'Lerato Molefe',
+                disableAnimations: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+            await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('Team updates'));
+            await tester.pumpAndSettle();
+          }
+
+          Future<void> capture(String route) async {
+            FocusManager.instance.primaryFocus?.unfocus();
+            await tester.pumpAndSettle();
+            final output = Directory('/tmp/w23-mobile-forum/${size.key}/$mode');
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = LocalFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+            );
+            try {
+              await expectLater(
+                find.byKey(captureKey),
+                matchesGoldenFile('$route.png'),
+              );
+            } finally {
+              goldenFileComparator = previousComparator;
+            }
+          }
+
+          const capturePostTitle = 'A clear plan for October';
+          const capturePostBody =
+              'Let’s keep three priorities in focus this week.\n\n'
+              '• Finish the Olive Studio campaign review.\n'
+              '• Share Cedar’s launch brief by Thursday.\n'
+              '• Bring one useful learning to Friday’s team catch-up.\n\n'
+              'What needs your attention first?';
+
+          final postingRelay = _R19ForumCaptureRelay(forumFixtureEvents);
+          await mountForum(postingRelay);
+          await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-title')),
+            capturePostTitle,
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-body')),
+            capturePostBody,
+          );
+          await tester.tap(find.text('Add attachments'));
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.pump();
+          await tester.tap(find.text('Files'));
+          await tester.pumpAndSettle();
+          final postingPreview = postingRelay.holdNextPublish();
+          await tester.tap(find.widgetWithText(FilledButton, 'Post'));
+          await tester.pump();
+          await tester.pump();
+          await postingPreview.started.future;
+          await tester.pump();
+          expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          await capture('forum-new-posting');
+          postingPreview.result.completeError(StateError('Relay unavailable'));
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+
+          await mountForum(forumRelay);
+          await capture('forum');
+          await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+          await tester.pumpAndSettle();
+          await capture('forum-new');
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-title')),
+            capturePostTitle,
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-body')),
+            capturePostBody,
+          );
+          await tester.pumpAndSettle();
+          await capture('forum-new-draft');
+
+          await tester.tap(find.text('Add attachments'));
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.pump();
+          await tester.tap(find.text('Files'));
+          await tester.pumpAndSettle();
+          await capture('forum-new-attachments');
+
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          await capture('forum-new-discard');
+          await tester.tap(find.text('Keep editing'));
+          await tester.pumpAndSettle();
+          final pendingPost = forumRelay.holdNextPublish();
+          await tester.tap(find.widgetWithText(FilledButton, 'Post'));
+          await tester.pump();
+          await tester.pump();
+          final pendingEvent = await pendingPost.started.future;
+          expect(
+            pendingEvent.tags.any((tag) => tag.firstOrNull == 'imeta'),
+            isTrue,
+          );
+          await tester.pump();
+          pendingPost.result.completeError(StateError('Relay unavailable'));
+          await pendingPost.failed.future;
+          await tester.pumpAndSettle();
+          expect(find.text('Your post wasn’t sent.'), findsOneWidget);
+          expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          await capture('forum-new-failed');
+          await tester.tap(find.widgetWithText(FilledButton, 'Retry post'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ForumPublishedNotePage), findsOneWidget);
+          expect(
+            forumRelay.published.last.tags.any(
+              (tag) => tag.firstOrNull == 'imeta',
+            ),
+            isTrue,
+          );
+          expect(
+            forumRelay.published.last.content,
+            '$capturePostTitle\n\n'
+            '$capturePostBody\n'
+            '[October campaign brief.pdf](https://media.example/october-brief)',
+          );
+          final postedEvent = forumRelay.published.last;
+          await tester.pumpWidget(
+            _buildTestable(
+              messages: const [],
+              channel: forumChannel,
+              users: const {
+                'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
+                'maya': UserProfile(pubkey: 'maya', displayName: 'Maya'),
+              },
+              members: forumMembers,
+              routeRegistry: _forumCaptureRoutes(),
+              mediaUploadService: mediaUploadService,
+              relaySessionNotifier: forumRelay,
+              relayConfigNotifier: _R19ForumCaptureConfig(),
+              home: ForumPublishedNotePage(
+                channelId: _channelId,
+                channelName: 'Team updates',
+                memberCount: 8,
+                title: capturePostTitle,
+                body: capturePostBody,
+                postEventId: postedEvent.id,
+                mentionPubkeys: const [],
+                eventTags: postedEvent.tags,
+                presentation: _forumCapturePresentation(),
+              ),
+              brightness: brightness,
+              captureKey: captureKey,
+              profileDisplayName: 'Lerato Molefe',
+              disableAnimations: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+          await capture('forum-new-posted');
+
+          await mountForum(forumRelay);
+          expect(find.byType(ForumPostsView), findsOneWidget);
+          final forumCardTitles = tester.widgetList<Text>(
+            find.descendant(
+              of: find.byType(ForumPostsView),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Text &&
+                    (widget.data == 'A clear plan for October' ||
+                        widget.data == 'This week at Lerato' ||
+                        widget.data == 'What we learned in September'),
+              ),
+            ),
+          );
+          expect(forumCardTitles.first.data, 'A clear plan for October');
+          await capture('forum-posted-first');
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+      }
+      tester.view.resetPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      mediaUploadService.dispose();
     });
 
     testWidgets('renders video attachments from imeta tags in the timeline', (
@@ -15417,4 +15970,123 @@ String _previewRowAvatarInitial(WidgetTester tester, String pubkey) {
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+const _r19ForumCaptureSecretHex =
+    '0000000000000000000000000000000000000000000000000000000000000001';
+final _r19ForumCaptureNsec = nostr.Nip19.encode(
+  prefix: nostr.Nip19Prefix.nsec,
+  data: _r19ForumCaptureSecretHex,
+);
+
+NostrEvent _forumCapturePost({
+  required String id,
+  required String pubkey,
+  required String content,
+  required int createdAt,
+  int kind = EventKind.forumPost,
+  List<List<String>> tags = const [],
+}) => NostrEvent(
+  id: id,
+  pubkey: pubkey,
+  createdAt: createdAt,
+  kind: kind,
+  tags: tags,
+  content: content,
+  sig: '',
+);
+
+class _R19ForumCaptureConfig extends RelayConfigNotifier {
+  @override
+  RelayConfig build() =>
+      RelayConfig(baseUrl: 'http://localhost:3000', nsec: _r19ForumCaptureNsec);
+}
+
+class _R19ForumCaptureRelay extends RelaySessionNotifier {
+  final List<NostrEvent> _fixtureEvents;
+  final List<NostrEvent> published = [];
+  _R19ForumPendingPublish? _pendingPublish;
+
+  _R19ForumCaptureRelay(this._fixtureEvents);
+
+  @override
+  SessionState build() => const SessionState(status: SessionStatus.connected);
+
+  _R19ForumPendingPublish holdNextPublish() {
+    final pending = _R19ForumPendingPublish();
+    _pendingPublish = pending;
+    return pending;
+  }
+
+  @override
+  Future<NostrEvent> publish(
+    NostrEvent event, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final pending = _pendingPublish;
+    if (pending != null) {
+      _pendingPublish = null;
+      pending.started.complete(event);
+      try {
+        final acknowledged = await pending.result.future;
+        published.add(acknowledged);
+        return acknowledged;
+      } catch (_) {
+        pending.failed.complete();
+        rethrow;
+      }
+    }
+    published.add(event);
+    return event;
+  }
+
+  @override
+  Future<List<NostrEvent>> fetchHistory(
+    NostrFilter filter, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final ids = filter.ids;
+    if (ids == null) return const [];
+    return [
+      for (final event in [..._fixtureEvents, ...published])
+        if (ids.contains(event.id)) event,
+    ];
+  }
+
+  @override
+  Future<List<NostrEvent>> queryRelay(
+    List<NostrFilter> filters, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async => [..._fixtureEvents, ...published];
+}
+
+class _R19ForumPendingPublish {
+  final started = Completer<NostrEvent>();
+  final result = Completer<NostrEvent>();
+  final failed = Completer<void>();
+}
+
+class _R19ForumCaptureMediaUploadService extends MediaUploadService {
+  _R19ForumCaptureMediaUploadService(XFile attachment)
+    : super(
+        baseUrl: 'https://media.example',
+        nsec: _r19ForumCaptureNsec,
+        pickGalleryImage: () async => null,
+        pickGalleryVideo: () async => null,
+        pickAttachmentFile: () async => attachment,
+      );
+
+  @override
+  Future<BlobDescriptor> uploadFile(
+    XFile pickedFile, {
+    ValueChanged<double>? onProgress,
+    UploadCancellationToken? cancellationToken,
+  }) async => BlobDescriptor(
+    url: 'https://media.example/october-brief',
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    size: 254000,
+    type: 'application/pdf',
+    uploaded: DateTime.utc(2026, 9, 26).millisecondsSinceEpoch ~/ 1000,
+    filename: pickedFile.name,
+  );
 }

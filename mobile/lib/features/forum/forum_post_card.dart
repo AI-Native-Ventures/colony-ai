@@ -105,7 +105,7 @@ class ForumPostCard extends HookConsumerWidget {
       tags: post.tags,
       maxLines: 3,
       baseStyle: messageBodyTextStyle.copyWith(
-        color: context.colors.onSurfaceVariant,
+        color: context.mobileTokens.muted,
         fontSize: 12,
         height: 1.5,
       ),
@@ -125,11 +125,11 @@ class ForumPostCard extends HookConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(15),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           decoration: BoxDecoration(
-            color: context.colors.surface,
+            color: context.mobileTokens.paper,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: context.colors.outlineVariant),
+            border: Border.all(color: context.mobileTokens.line),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,8 +137,8 @@ class ForumPostCard extends HookConsumerWidget {
               Text(
                 'TEAM NOTE',
                 style: context.textTheme.labelSmall?.copyWith(
-                  color: context.colors.onSurfaceVariant,
-                  fontSize: 9,
+                  color: context.mobileTokens.muted,
+                  fontSize: 10,
                   letterSpacing: 0.35,
                 ),
               ),
@@ -149,15 +149,15 @@ class ForumPostCard extends HookConsumerWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: context.textTheme.titleSmall?.copyWith(
-                    color: context.colors.onSurface,
-                    fontSize: 14,
+                    color: context.mobileTokens.ink,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    height: 1.35,
+                    height: 1.4,
                   ),
                 ),
               ],
               if (contentParts.body.isNotEmpty) ...[
-                const SizedBox(height: 7),
+                const SizedBox(height: 12),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 62),
                   child: IgnorePointer(
@@ -175,15 +175,18 @@ class ForumPostCard extends HookConsumerWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 11),
-              Text(
-                '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'} · $footerAuthor · $footerTime',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textTheme.labelSmall?.copyWith(
-                  color: context.colors.primary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
+              const SizedBox(height: Grid.xxs),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'} · $footerAuthor · $footerTime',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.labelSmall?.copyWith(
+                    color: context.mobileTokens.action,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],

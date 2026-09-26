@@ -36,6 +36,7 @@ class _ChannelAppBarTitle extends ConsumerWidget {
     final memberCount = members?.length ?? channel.memberCount;
     final agentCount = members?.where((member) => member.isBot).length;
     final memberLabel =
+        '${channel.isForum ? 'Forum · ' : ''}'
         '$memberCount ${memberCount == 1 ? 'member' : 'members'}'
         '${agentCount == null || agentCount == 0 ? '' : ' · $agentCount agents'}';
     final tokens = context.mobileTokens;
@@ -72,7 +73,7 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                               overflow: TextOverflow.ellipsis,
                               style: typography.body.copyWith(
                                 color: tokens.ink,
-                                fontSize: 14,
+                                fontSize: channel.isForum ? 16 : 14,
                                 fontWeight: FontWeight.w700,
                                 height: 1.25,
                               ),
@@ -102,7 +103,7 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: typography.metadata.copyWith(
                           color: tokens.muted,
-                          fontSize: 10,
+                          fontSize: channel.isForum ? 11 : 10,
                           height: 1.3,
                         ),
                       ),

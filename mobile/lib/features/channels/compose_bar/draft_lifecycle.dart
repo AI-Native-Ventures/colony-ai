@@ -13,6 +13,8 @@ Future<void> _sendTextOnlyDraft({
   required _OutgoingMentions outgoing,
   required ComposeBarOnSend onSend,
   required ScaffoldMessengerState? messenger,
+  required ValueChanged<Object>? onFailure,
+  required bool preserveDraft,
 }) async {
   TextEditingValue? clearedDraftText;
   Map<String, MentionCandidate>? clearedDraftMentions;
@@ -38,7 +40,9 @@ Future<void> _sendTextOnlyDraft({
     // Clear before optimistic insertion so the outgoing row and draft never
     // appear simultaneously during the send transition. If the user edited
     // while membership changes were pending, preserve that newer draft.
-    if (context.mounted && draftRevision.value == submittedDraftRevision) {
+    if (!preserveDraft &&
+        context.mounted &&
+        draftRevision.value == submittedDraftRevision) {
       clearedDraftText = controller.value;
       clearedDraftMentions = Map<String, MentionCandidate>.of(mentionMap.value);
       clearComposer();
@@ -51,14 +55,24 @@ Future<void> _sendTextOnlyDraft({
     );
   } on StateError {
     restoreClearedDraft();
-    _reportSendCancelledByCommunitySwitch(messenger);
+    if (onFailure case final reportFailure?) {
+      reportFailure(
+        StateError('Forum post was cancelled by a community change'),
+      );
+    } else {
+      _reportSendCancelledByCommunitySwitch(messenger);
+    }
   } catch (error) {
     // The caller runs unawaited, so surface publish failures and restore the
     // sent draft unless the user has already started a new one.
     restoreClearedDraft();
-    messenger?.showSnackBar(
-      SnackBar(content: Text(_composeSendErrorMessage(error))),
-    );
+    if (onFailure case final reportFailure?) {
+      reportFailure(error);
+    } else {
+      messenger?.showSnackBar(
+        SnackBar(content: Text(_composeSendErrorMessage(error))),
+      );
+    }
   }
 }
 

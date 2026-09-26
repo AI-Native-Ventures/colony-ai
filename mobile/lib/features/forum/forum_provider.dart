@@ -108,13 +108,13 @@ class ForumEventDelivery {
   }
 
   /// Creates a new forum post (kind:45001).
-  Future<void> createPost({
+  Future<String> createPost({
     required String channelId,
     required String content,
     List<String> mentionPubkeys = const [],
     List<List<String>> mediaTags = const [],
   }) async {
-    await _submit(
+    final eventId = await _submit(
       kind: EventKind.forumPost,
       channelId: channelId,
       content: content,
@@ -122,6 +122,7 @@ class ForumEventDelivery {
       mediaTags: mediaTags,
     );
     _container.invalidate(forumPostsProvider(channelId));
+    return eventId;
   }
 
   /// Creates a reply to a forum post (kind:45003).
@@ -183,7 +184,7 @@ class ForumEventDelivery {
     );
   }
 
-  Future<void> _submit({
+  Future<String> _submit({
     required int kind,
     required String channelId,
     required String content,
@@ -205,7 +206,7 @@ class ForumEventDelivery {
         if (seen.add(pk.toLowerCase())) pk,
     ];
 
-    await _relay.submit(
+    final submitted = await _relay.submit(
       kind: kind,
       content: content,
       tags: [
@@ -216,6 +217,7 @@ class ForumEventDelivery {
         ...buildCustomEmojiTags(content, _customEmoji),
       ],
     );
+    return submitted.id;
   }
 }
 

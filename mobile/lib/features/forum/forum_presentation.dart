@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../shared/widgets/compose_submit_controller.dart';
 
 /// The function shape used by a forum post or reply composer.
 typedef ForumOnSend =
@@ -12,8 +15,19 @@ typedef ForumOnSend =
 typedef ForumComposeBarBuilder =
     Widget Function({
       required String channelId,
+      required String channelName,
       required String hintText,
       required ForumOnSend onSend,
+      String? draftKeyOverride,
+      bool postEditorMode,
+
+      bool allowEmptySend,
+      bool enabled,
+      ComposeSubmitController? submitController,
+      ValueChanged<String>? onBodyChanged,
+      ValueChanged<int>? onAttachmentCountChanged,
+      ValueChanged<bool>? onSubmissionChanged,
+      ValueChanged<Object>? onFailure,
     });
 
 /// Builds shared message formatting for a forum post or reply.
@@ -67,6 +81,7 @@ class ForumPresentationFactories {
     required this.composeBarBuilder,
     required this.messageContentBuilder,
     required this.openProfile,
+    this.currentUserName,
   });
 
   /// Builds the channels feature's production composer.
@@ -77,4 +92,7 @@ class ForumPresentationFactories {
 
   /// Opens the profile detail surface for the requested public key.
   final ForumProfileOpener openProfile;
+
+  /// Reads the signed-in author's current display name at the app boundary.
+  final String? Function(WidgetRef ref)? currentUserName;
 }

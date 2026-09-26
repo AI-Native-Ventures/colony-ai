@@ -45,13 +45,35 @@ const _aliceProfile = UserProfile(pubkey: 'alice', displayName: 'Alice');
 ForumPresentationFactories _testForumPresentation() =>
     ForumPresentationFactories(
       composeBarBuilder:
-          ({required channelId, required hintText, required onSend}) =>
-              ComposeBar(
-                channelId: channelId,
-                channelName: 'design-forum',
-                hintText: hintText,
-                onSend: onSend,
-              ),
+          ({
+            required channelId,
+            required channelName,
+            required hintText,
+            required onSend,
+            draftKeyOverride,
+            postEditorMode = false,
+            allowEmptySend = false,
+            enabled = true,
+            submitController,
+            onBodyChanged,
+            onAttachmentCountChanged,
+            onSubmissionChanged,
+            onFailure,
+          }) => ComposeBar(
+            channelId: channelId,
+            channelName: channelName,
+            hintText: hintText,
+            onSend: onSend,
+            draftKeyOverride: draftKeyOverride,
+            postEditorMode: postEditorMode,
+            allowEmptySend: allowEmptySend,
+            enabled: enabled,
+            submitController: submitController,
+            onBodyChanged: onBodyChanged,
+            onAttachmentCountChanged: onAttachmentCountChanged,
+            onSubmissionChanged: onSubmissionChanged,
+            onFailure: onFailure,
+          ),
       messageContentBuilder: (context, content) => MessageContent(
         content: content.content,
         mentionNames: content.mentionNames,
@@ -462,22 +484,11 @@ void main() {
       expect(find.text('Join this forum to create posts.'), findsOneWidget);
     });
 
-    testWidgets('shows FAB for members', (tester) async {
+    testWidgets('does not overlay notes with a floating compose button', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _buildPostsView(postsResponse: const ForumPostsResponse(posts: [])),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byType(FloatingActionButton), findsOneWidget);
-      expect(find.byTooltip('New post'), findsOneWidget);
-    });
-
-    testWidgets('hides FAB for non-members', (tester) async {
-      await tester.pumpWidget(
-        _buildPostsView(
-          postsResponse: const ForumPostsResponse(posts: []),
-          isMember: false,
-        ),
       );
       await tester.pumpAndSettle();
 

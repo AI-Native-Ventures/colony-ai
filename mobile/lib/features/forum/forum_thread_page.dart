@@ -317,6 +317,7 @@ class _ThreadContent extends HookConsumerWidget {
         if (isMember && !isArchived && presentationFactories != null)
           presentationFactories.composeBarBuilder(
             channelId: channelId,
+            channelName: channelName,
             hintText: 'Reply to this post\u2026',
             onSend:
                 (

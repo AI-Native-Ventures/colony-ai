@@ -15,10 +15,7 @@ import 'forum_provider.dart';
 import 'forum_presentation.dart';
 import 'forum_thread_page.dart';
 
-/// Main forum view — replaces the old _ForumPlaceholder.
-///
-/// Shows a list of forum posts for the channel with a FAB to open the compose
-/// bar, and navigates to [ForumThreadPage] when a post is tapped.
+/// Main forum view for a channel's recent posts.
 class ForumPostsView extends HookConsumerWidget {
   final String channelId;
   final String channelName;
@@ -40,7 +37,6 @@ class ForumPostsView extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final postsAsync = ref.watch(forumPostsProvider(channelId));
-    final isComposing = useState(false);
     // A queued attachment can finish after this view is popped. Capture the
     // app-level provider container instead of retaining the route's WidgetRef.
     final providerContainer = ProviderScope.containerOf(context, listen: false);
@@ -54,123 +50,75 @@ class ForumPostsView extends HookConsumerWidget {
       return timer.cancel;
     }, [channelId]);
 
-    final canPost = isMember && !isArchived;
-
-    return Column(
-      children: [
-        Expanded(
-          child: Scaffold(
-            // Transparent so the parent Scaffold's background shows through.
-            backgroundColor: Colors.transparent,
-            floatingActionButton: canPost && !isComposing.value
-                ? FloatingActionButton(
-                    heroTag: 'forum-fab',
-                    onPressed: () => isComposing.value = true,
-                    tooltip: 'New post',
-                    shape: const CircleBorder(),
-                    child: const Icon(LucideIcons.plus),
-                  )
-                : null,
-            body: postsAsync.when(
-              loading: () => Padding(
-                padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-                child: const Center(
-                  child: BuzzLoadingIndicator(
-                    size: 44,
-                    semanticLabel: 'Loading posts',
-                  ),
-                ),
-              ),
-              error: (e, _) => Padding(
-                padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-                child: Center(
-                  child: Text(
-                    'Failed to load posts',
-                    style: context.textTheme.bodyMedium?.copyWith(
-                      color: context.colors.error,
-                    ),
-                  ),
-                ),
-              ),
-              data: (response) {
-                final posts = response.posts;
-                if (posts.isEmpty) {
-                  return _EmptyState(
-                    isMember: isMember,
-                    isArchived: isArchived,
-                  );
-                }
-                return BeeRefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(forumPostsProvider(channelId));
-                    await ref.read(forumPostsProvider(channelId).future);
-                  },
-                  child: ListView.separated(
-                    padding: EdgeInsets.only(
-                      top: frostedAppBarHeight(context) + 10,
-                      left: 10,
-                      right: 10,
-                      bottom: Grid.xs,
-                    ),
-                    itemCount: posts.length + 1,
-                    separatorBuilder: (_, index) =>
-                        SizedBox(height: index == 0 ? 14 : 12),
-                    itemBuilder: (context, index) {
-                      if (index == 0) return const _RecentSortIndicator();
-                      final post = posts[index - 1];
-                      return ForumPostCard(
-                        post: post,
-                        currentPubkey: currentPubkey,
-                        presentation: presentation,
-                        onTap: () => _openThread(context, post),
-                        onDelete: (eventId) async {
-                          await forumDelivery.deleteEvent(
-                            channelId: channelId,
-                            eventId: eventId,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                );
-              },
+    return Scaffold(
+      // Transparent so the parent Scaffold's background shows through.
+      backgroundColor: Colors.transparent,
+      body: postsAsync.when(
+        loading: () => Padding(
+          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          child: const Center(
+            child: BuzzLoadingIndicator(
+              size: 44,
+              semanticLabel: 'Loading posts',
             ),
           ),
         ),
-        if (isComposing.value) ...[
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: Grid.xxs),
-              child: IconButton(
-                onPressed: () => isComposing.value = false,
-                icon: const Icon(LucideIcons.x, size: 18),
-                tooltip: 'Dismiss',
-                visualDensity: VisualDensity.compact,
+        error: (e, _) => Padding(
+          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          child: Center(
+            child: Text(
+              'Failed to load posts',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: context.colors.error,
               ),
             ),
           ),
-          if (presentation case final factories?)
-            factories.composeBarBuilder(
-              channelId: channelId,
-              hintText: 'Write your post…',
-              onSend:
-                  (
-                    content,
-                    mentionPubkeys, {
-                    mediaTags = const <List<String>>[],
-                  }) async {
-                    await forumDelivery.createPost(
+        ),
+        data: (response) {
+          final posts = response.posts;
+          if (posts.isEmpty) {
+            return _EmptyState(isMember: isMember, isArchived: isArchived);
+          }
+          return BeeRefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(forumPostsProvider(channelId));
+              await ref.read(forumPostsProvider(channelId).future);
+            },
+            child: ListView.separated(
+              padding: EdgeInsets.only(
+                top:
+                    frostedAppBarHeight(
+                      context,
+                      titleContentHeight: MobileLayoutTokens.appBarHeight,
+                    ) -
+                    Grid.half,
+                left: 16,
+                right: 16,
+                bottom: Grid.xs,
+              ),
+              itemCount: posts.length + 1,
+              separatorBuilder: (_, index) =>
+                  SizedBox(height: index == 0 ? 8 : 10),
+              itemBuilder: (context, index) {
+                if (index == 0) return const _RecentSortIndicator();
+                final post = posts[index - 1];
+                return ForumPostCard(
+                  post: post,
+                  currentPubkey: currentPubkey,
+                  presentation: presentation,
+                  onTap: () => _openThread(context, post),
+                  onDelete: (eventId) async {
+                    await forumDelivery.deleteEvent(
                       channelId: channelId,
-                      content: content,
-                      mentionPubkeys: mentionPubkeys,
-                      mediaTags: mediaTags,
+                      eventId: eventId,
                     );
-                    if (context.mounted) isComposing.value = false;
                   },
+                );
+              },
             ),
-        ],
-      ],
+          );
+        },
+      ),
     );
   }
 
@@ -200,20 +148,23 @@ class _RecentSortIndicator extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Semantics(
         label: 'Forum posts sorted by recent activity',
-        child: Container(
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 13),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: context.colors.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Text(
-            'Recent',
-            style: context.textTheme.labelMedium?.copyWith(
-              color: context.colors.onSurface,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+        child: SizedBox(
+          width: 66,
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.mobileTokens.soft,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text(
+              'Recent',
+              style: context.textTheme.labelMedium?.copyWith(
+                color: context.mobileTokens.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),

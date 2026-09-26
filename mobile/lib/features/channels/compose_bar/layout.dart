@@ -29,6 +29,8 @@ class _ComposeBarLayout extends HookWidget {
   final bool canSend;
   final bool hasPendingUploads;
   final bool isSending;
+  final bool postEditorMode;
+  final bool enabled;
 
   const _ComposeBarLayout({
     required this.voiceNoteRecorder,
@@ -59,6 +61,8 @@ class _ComposeBarLayout extends HookWidget {
     required this.canSend,
     required this.hasPendingUploads,
     required this.isSending,
+    required this.postEditorMode,
+    required this.enabled,
   });
 
   @override
@@ -87,6 +91,8 @@ class _ComposeBarLayout extends HookWidget {
     BuildContext context,
     Animation<double> recordingTransition,
   ) {
+    if (postEditorMode) return _buildPostEditor(context);
+
     final trimmedDraft = controller.text.trim();
     final collapsedText = trimmedDraft.isEmpty
         ? resolvedHint
@@ -336,6 +342,7 @@ class _ComposeBarLayout extends HookWidget {
       focusNode: focusNode,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
+      enabled: enabled,
       contextMenuBuilder: contextMenuBuilder,
       // Flutter's Cupertino magnifier rebuilds its overlay on every
       // selection-handle update. Keep the iOS handles and native edit menu,
@@ -366,6 +373,171 @@ class _ComposeBarLayout extends HookWidget {
       ),
     );
   }
+
+  Widget _buildPostEditor(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 260,
+          child: TextField(
+            key: const ValueKey('forum-post-body'),
+            controller: controller,
+            focusNode: focusNode,
+            enabled: enabled,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            contextMenuBuilder: contextMenuBuilder,
+            magnifierConfiguration: defaultTargetPlatform == TargetPlatform.iOS
+                ? TextMagnifierConfiguration.disabled
+                : null,
+            contentInsertionConfiguration: ContentInsertionConfiguration(
+              allowedMimeTypes: _pastedImageMimeTypes,
+              onContentInserted: onContentInserted,
+            ),
+            minLines: null,
+            maxLines: null,
+            style: context.mobileTypography.body.copyWith(
+              color: context.mobileTokens.ink,
+              fontSize: 14,
+              height: 1.8,
+            ),
+            decoration: InputDecoration(
+              hintText: resolvedHint,
+              hintStyle: context.mobileTypography.body.copyWith(
+                color: context.mobileTokens.muted,
+                fontSize: 14,
+                height: 1.8,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+          ),
+        ),
+        if (attachments.isNotEmpty) ...[
+          const SizedBox(height: Grid.half),
+          for (final attachment in attachments)
+            _PostAttachmentRow(
+              key: ValueKey('compose-post-attachment:${attachment.id}'),
+              attachment: attachment,
+              enabled: enabled,
+              onRemove: () => onRemoveAttachment(attachment.id),
+            ),
+        ],
+        if (enabled) ...[
+          const SizedBox(height: Grid.xxs),
+          Builder(
+            builder: (buttonContext) => DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: context.mobileTokens.line),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SizedBox(
+                height: 44,
+                child: TextButton.icon(
+                  onPressed: () => onAttachmentTap(buttonContext),
+                  style: TextButton.styleFrom(
+                    foregroundColor: context.mobileTokens.ink,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(LucideIcons.file, size: 18),
+                  label: const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Add attachments'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PostAttachmentRow extends HookWidget {
+  final _PendingAttachment attachment;
+  final bool enabled;
+  final VoidCallback onRemove;
+
+  const _PostAttachmentRow({
+    super.key,
+    required this.attachment,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fileLength = useMemoized(attachment.file.length, [attachment.file]);
+    final length = useFuture(fileLength).data;
+    return Container(
+      margin: const EdgeInsets.only(bottom: Grid.xxs),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      decoration: BoxDecoration(
+        color: context.mobileTokens.soft,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            attachment.kind == _PendingAttachmentKind.image
+                ? LucideIcons.image
+                : attachment.kind == _PendingAttachmentKind.video
+                ? LucideIcons.video
+                : LucideIcons.file,
+            size: 18,
+            color: context.mobileTokens.muted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  attachment.file.name.isEmpty ? 'File' : attachment.file.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.mobileTypography.body.copyWith(
+                    color: context.mobileTokens.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (length != null)
+                  Text(
+                    '${_postAttachmentSize(length)} · ${enabled ? 'Ready to attach' : 'Attachment'}',
+                    style: context.mobileTypography.body.copyWith(
+                      color: context.mobileTokens.muted,
+                      fontSize: 10,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (enabled)
+            IconButton(
+              onPressed: onRemove,
+              tooltip: 'Remove attachment',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(LucideIcons.x, size: 16),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _postAttachmentSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 class _ExpandedComposerActionsMotion extends StatelessWidget {
