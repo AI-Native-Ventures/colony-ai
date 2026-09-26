@@ -289,8 +289,8 @@ body:has(.w20-settings-shell) {
 
 .w20-nav-person-avatar {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 23px;
+  height: 23px;
   flex: none;
   place-items: center;
   padding: 0;
@@ -437,6 +437,10 @@ body:has(.w20-settings-shell) {
 
 .w20-topbar-title svg {
   color: #81728c;
+}
+
+.w20-topbar-title > span {
+  line-height: 1.5;
 }
 
 .w20-topbar-title strong {

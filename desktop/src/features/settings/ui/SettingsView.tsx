@@ -399,7 +399,7 @@ export function SettingsView({
             >
               <ProfileAvatar
                 avatarUrl={profile.data?.avatarUrl ?? null}
-                className="size-8 rounded-squircle"
+                className="size-full rounded-[7px]"
                 label={signedInDisplayName}
                 shape="squircle"
                 testId="settings-profile-avatar"

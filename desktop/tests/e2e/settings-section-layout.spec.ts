@@ -106,11 +106,25 @@ test("account profile follows the r19 grid and type scale", async ({
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
+  const breadcrumbLineHeights = await page
+    .locator(".w20-topbar-title > span")
+    .evaluateAll((elements) =>
+      elements.map((element) => getComputedStyle(element).lineHeight),
+    );
+  const profileAvatarSize = await page
+    .getByTestId("settings-profile-avatar")
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+
   expect(Math.abs(profileGeometry.x - 314)).toBeLessThan(1);
   expect(Math.abs(profileGeometry.width - 631.96875)).toBeLessThan(1);
   expect(Math.abs(businessGeometry.x - 973.96875)).toBeLessThan(1);
   expect(Math.abs(businessGeometry.width - 383.03125)).toBeLessThan(1);
   expect(titleFontSize).toBe("27.2px");
+  expect(breadcrumbLineHeights).toEqual(["18px", "18px"]);
+  expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 });
 
 test("appearance controls save a complete scoped snapshot and retain density", async ({
