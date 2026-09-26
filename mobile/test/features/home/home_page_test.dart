@@ -110,7 +110,7 @@ void main() {
       buildHome(routes: buildTestRoutes(), unreadActivity: true),
     );
 
-    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
     expect(
       find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
@@ -157,6 +157,15 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
     await tester.pumpAndSettle();
+    expect(find.text('Activity route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.pump();
     expect(find.text('Activity route 0'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
