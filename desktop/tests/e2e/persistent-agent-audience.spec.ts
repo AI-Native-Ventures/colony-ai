@@ -990,8 +990,9 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   // typed only after the send has finished, not in the gap before the lock.
   await input.evaluate((element) => {
     const cycle = { locked: false, unlocked: false };
-    (window as unknown as { __threadComposerLock?: typeof cycle })
-      .__threadComposerLock = cycle;
+    (
+      window as unknown as { __threadComposerLock?: typeof cycle }
+    ).__threadComposerLock = cycle;
     new MutationObserver(() => {
       const editable = element.getAttribute("contenteditable");
       if (editable === "false") cycle.locked = true;

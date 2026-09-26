@@ -779,10 +779,9 @@ test("a spoiler image joins the gallery as soon as it is revealed", async ({
     .getByTestId("message-row")
     .filter({ hasText: "spoiler reveal gallery" })
     .last();
-  await expect(row.locator(`img[src*="${SPOILER_HIDDEN_SHA}"]`)).toHaveJSProperty(
-    "complete",
-    true,
-  );
+  await expect(
+    row.locator(`img[src*="${SPOILER_HIDDEN_SHA}"]`),
+  ).toHaveJSProperty("complete", true);
 
   // Open the gallery in the same task that commits the reveal: the revealed
   // image is still at the start of its fade-in, so its computed opacity reads

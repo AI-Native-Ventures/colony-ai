@@ -163,11 +163,7 @@ export function CommunitySwitcher({
     // so the click lands on a menu hover already opened. Treat that click as
     // confirming the menu instead of toggling it shut. Keyboard activation
     // (detail 0) and click-opened menus keep the ordinary toggle.
-    if (
-      event.detail > 0 &&
-      dropdownOpen &&
-      profileMenuOpenedByHover.current
-    ) {
+    if (event.detail > 0 && dropdownOpen && profileMenuOpenedByHover.current) {
       event.preventDefault();
       clearProfileMenuHoverTimer();
       profileMenuOpenedByHover.current = false;

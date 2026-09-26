@@ -635,17 +635,15 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
   // later pointer moves never left the chip. Reveal the chip and let the
   // timeline settle first, so focusing it does not scroll.
   await sentChip.scrollIntoViewIfNeeded();
-  await page
-    .getByTestId("message-timeline")
-    .evaluate(async (element) => {
-      let prior = element.scrollTop;
-      let stableFrames = 0;
-      for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        stableFrames = element.scrollTop === prior ? stableFrames + 1 : 0;
-        prior = element.scrollTop;
-      }
-    });
+  await page.getByTestId("message-timeline").evaluate(async (element) => {
+    let prior = element.scrollTop;
+    let stableFrames = 0;
+    for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      stableFrames = element.scrollTop === prior ? stableFrames + 1 : 0;
+      prior = element.scrollTop;
+    }
+  });
   await sentChip.focus();
   await expect(tooltip).toBeVisible();
   const positionOverFragment = async (index: number) => {
