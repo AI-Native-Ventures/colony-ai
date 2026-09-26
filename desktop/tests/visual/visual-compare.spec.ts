@@ -361,6 +361,21 @@ async function waitForCaptureReady(
     // Faces load lazily on first use; request the expected face explicitly.
     await document.fonts.load(`400 14px "${family}"`);
     await document.fonts.ready;
+    const backgroundUrls = new Set<string>();
+    for (const element of document.querySelectorAll<HTMLElement>("*")) {
+      const background = getComputedStyle(element).backgroundImage;
+      for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
+        const url = new URL(match[1], location.href);
+        if (url.origin === location.origin) backgroundUrls.add(url.href);
+      }
+    }
+    await Promise.all(
+      [...backgroundUrls].map(async (url) => {
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+      }),
+    );
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
