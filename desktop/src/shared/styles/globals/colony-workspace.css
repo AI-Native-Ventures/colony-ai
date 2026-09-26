@@ -64,6 +64,13 @@
   line-height: inherit;
 }
 
+:root.dark:has([data-colony-workspace-route="true"])
+  .colony-sidebar-brand-mark {
+  border-color: #dfc5ea20;
+  background: #dfc5ea20;
+  color: #ece6ef;
+}
+
 :root:has([data-colony-workspace-route="true"]) [data-testid="app-top-chrome"] {
   display: none;
 }
@@ -1403,6 +1410,12 @@
   .colony-voice-note-card
   [data-testid="voice-note-playback-waveform"] {
   background-color: #f8f8f8;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  [data-testid="voice-note-playback-waveform"] {
+  background-color: #29252f;
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -2748,6 +2761,34 @@ button.colony-today-attention-row:hover {
   color: #998b9f;
   font-size: var(--colony-sidebar-shortcut-font-size);
   line-height: 1.5;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"],
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"]:hover,
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"]:focus-visible {
+  border-color: #c9b0d416;
+  background-color: #2f223b33;
+  color: #c2accd;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"]
+  > span {
+  color: #c2accd;
+}
+
+:root.dark:has([data-colony-workspace-route="true"])
+  [data-testid="app-sidebar"]
+  [data-testid="open-search"]
+  > kbd {
+  color: #a18aaf;
 }
 
 :root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
