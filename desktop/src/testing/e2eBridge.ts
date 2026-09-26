@@ -31,6 +31,14 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
+  REFERENCE_SELF_NAME,
+  referenceChannelSeeds,
+  referenceSalesMessages,
+  seedReferenceSidebarStorage,
+} from "./e2eReferenceWorkspace.ts";
 export { mockSearchHitMatches };
 import type { ConnectionState } from "@/shared/api/relayClientShared";
 import type {
@@ -233,6 +241,8 @@ type E2eConfig = {
     } | null;
     /** Account state returned by the mocked account API. Defaults to linked. */
     accountLinked?: boolean;
+    /** Visual harness: reproduce the reference "Lerato Social" workspace. */
+    referenceWorkspace?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -4256,6 +4266,60 @@ const mockFeedOverrides: RawHomeFeedResponse["feed"] = {
 };
 
 let installed = false;
+let referenceWorkspaceActive = false;
+
+/**
+ * Replaces the default mock community with the reference workspace used by
+ * the visual comparison harness (see e2eReferenceWorkspace.ts).
+ */
+function applyReferenceWorkspace(config: E2eConfig): void {
+  referenceWorkspaceActive = true;
+  const self = getMockMemberPubkey(config);
+  mockDisplayNames.set(self, REFERENCE_SELF_NAME);
+  const selfProfile = mockProfiles.get(self);
+  if (selfProfile) {
+    mockProfiles.set(self, {
+      ...selfProfile,
+      display_name: REFERENCE_SELF_NAME,
+    });
+  }
+  for (const agent of Object.values(REFERENCE_AGENTS)) {
+    mockDisplayNames.set(agent.pubkey, agent.name);
+    mockAgentPubkeys.add(agent.pubkey);
+  }
+  const channels = referenceChannelSeeds().map((seed) =>
+    createMockChannel({
+      id: seed.id,
+      name: seed.name,
+      channel_type: "stream",
+      visibility: "open",
+      description: seed.description,
+      topic: null,
+      purpose: null,
+      last_message_at:
+        seed.id === REFERENCE_CHANNEL_IDS.sales ? isoMinutesAgo(30) : null,
+      archived_at: null,
+      created_by: self,
+      topic_set_by: null,
+      topic_set_at: null,
+      purpose_set_by: null,
+      purpose_set_at: null,
+      topic_required: false,
+      max_members: null,
+      nip29_group_id: null,
+      created_minutes_ago: 1440,
+      updated_minutes_ago: 30,
+      members: [
+        createMockMember(self, "owner", 1440),
+        ...seed.agentMembers.map((pubkey) =>
+          createMockMember(pubkey, "member", 1200),
+        ),
+      ],
+    }),
+  );
+  mockChannels.splice(0, mockChannels.length, ...channels);
+  seedReferenceSidebarStorage(self);
+}
 let directPanelRoot: Root | null = null;
 let directPanelContainer: HTMLDivElement | null = null;
 let directPanelQueryClient: QueryClient | null = null;
@@ -4677,6 +4741,14 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
   const existing = mockMessages.get(channelId);
   if (existing) {
     return existing;
+  }
+  if (referenceWorkspaceActive) {
+    const referenceSeeded =
+      channelId === REFERENCE_CHANNEL_IDS.sales
+        ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
+        : [];
+    mockMessages.set(channelId, referenceSeeded);
+    return referenceSeeded;
   }
 
   const seeded: RelayEvent[] =
@@ -11367,6 +11439,9 @@ export function maybeInstallE2eTauriMocks() {
     return;
   }
   window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
+  if (config.mock?.referenceWorkspace) {
+    applyReferenceWorkspace(config);
+  }
 
   let mockAccountLinked = config.mock?.accountLinked ?? true;
   let mockAccountEmail = "person@example.com";

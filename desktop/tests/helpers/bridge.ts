@@ -150,6 +150,8 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Visual harness: reproduce the reference "Lerato Social" workspace. */
+  referenceWorkspace?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
