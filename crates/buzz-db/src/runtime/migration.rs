@@ -495,6 +495,11 @@ mod postgres_tests {
             "account_codes",
             "account_mail_outbox",
             "account_test_mail",
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -708,7 +713,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 47);
+        assert_eq!(migrations.len(), 49);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
@@ -1315,6 +1320,30 @@ mod postgres_tests {
         assert!(accounts.contains("ON DELETE CASCADE"));
         assert!(accounts.contains("code_hash BYTEA NOT NULL CHECK (octet_length(code_hash) = 32)"));
         assert!(accounts.contains("claim_token UUID"));
+
+        assert_eq!(migrations[47].version, 48);
+        let payments = migrations[47].sql.as_str();
+        for table in [
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
+        ] {
+            assert!(
+                payments.contains(&format!("CREATE TABLE {table}")),
+                "migration 48 must create {table}"
+            );
+            assert!(
+                payments.contains(&format!("('{table}',")),
+                "migration 48 must register {table} as operator-global"
+            );
+        }
+
+        assert_eq!(migrations[48].version, 49);
+        let subscription_cycle_fence = migrations[48].sql.as_str();
+        assert!(subscription_cycle_fence.contains("provider_cycles_complete"));
+        assert!(subscription_cycle_fence.contains("last_provider_payment_cycle"));
         // schema.sql exclusion list must match the restored (pre-0041) body.
         assert!(
             desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
@@ -2143,32 +2172,21 @@ mod postgres_tests {
         .expect("read applied migrations")
     }
 
-    /// The desired-state file (`schema/schema.sql`) and the incremental
-    /// migrations are two independent sources of the same schema. When a
-    /// migration mutates the admin tables, `schema.sql` must be hand-updated to
-    /// match — nothing enforces that automatically, and the lease/claim-token
-    /// migrations (0035/0036) once drifted for exactly this reason.
+    /// The desired-state file (`schema/schema.sql`) and incremental migrations
+    /// are independent sources of the same schema. This test bootstraps one
+    /// probe database through the real `bin/pgschema apply` binary, runs the
+    /// required reconciliation script, migrates another probe database through
+    /// version 49, and compares admin and account payment table columns and
+    /// indexes. Columns are keyed by name because migrations may append them
+    /// with `ALTER TABLE` while desired state declares them inline.
     ///
-    /// This bootstraps one probe database from `schema.sql` **through the real
-    /// `bin/pgschema apply` binary** — the exact path CI (`ci.yml`) and both
-    /// test-relay launchers take — and migrates another through 1–38, then
-    /// asserts the three admin tables have identical column definitions (name,
-    /// type, nullability, default) and identical index shapes, including each
-    /// key's catalog sort/null options (`pg_index.indoption`). Columns are keyed
-    /// by name, not ordinal, because migrations append via `ALTER TABLE` while
-    /// `schema.sql` declares them inline — positions legitimately differ, shapes
-    /// must not.
-    ///
-    /// Driving the real binary is load-bearing: `pgschema` 1.7.4 discards
-    /// per-key `NULLS FIRST`/`NULLS LAST` when it re-emits an index, so a naive
-    /// `sqlx::raw_sql(schema.sql)` bootstrap would preserve ordering the actual
-    /// deployment path silently drops — the same false-confidence class as the
-    /// drift this test guards against. `indoption` (not just `indexdef` text) is
-    /// asserted so a resurrected `NULLS FIRST` in a migration that `pgschema`
-    /// cannot represent is caught.
+    /// The real pgschema binary is required because it can discard per-key
+    /// `NULLS FIRST` and `NULLS LAST` when it re-emits an index. Index shapes
+    /// include `pg_index.indoption`, so migration constructs unsupported by
+    /// pgschema cannot silently pass this parity check.
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn admin_schema_parity_between_desired_state_and_migrations() {
+    async fn schema_parity_between_desired_state_and_migrations() {
         use sqlx::AssertSqlSafe;
 
         async fn columns(
@@ -2285,15 +2303,27 @@ mod postgres_tests {
         let migrated = PgPool::connect(&format!("{base_prefix}/{migrated_db}"))
             .await
             .expect("connect migrated probe database");
+        sqlx::raw_sql(include_str!(
+            "../../../../scripts/reconcile-schema-after-pgschema.sql"
+        ))
+        .execute(&desired)
+        .await
+        .expect("run post-pgschema desired-state reconciliation");
         MIGRATOR
-            .run_to(39, &migrated)
+            .run_to(49, &migrated)
             .await
-            .expect("apply migrations 1-39");
+            .expect("apply migrations 1-49");
 
         for table in [
             "relay_admin_actions",
             "relay_admin_outbox",
             "relay_operator_audit",
+            "accounts",
+            "account_credit_ledger",
+            "account_payment_intents",
+            "account_site_subscriptions",
+            "account_site_subscription_payments",
+            "account_payment_notifications",
         ] {
             assert_eq!(
                 columns(&desired, table).await,
