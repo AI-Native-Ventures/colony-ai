@@ -366,16 +366,33 @@ async function waitForCaptureReady(
       const background = getComputedStyle(element).backgroundImage;
       for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
         const url = new URL(match[1], location.href);
-        if (url.origin === location.origin) backgroundUrls.add(url.href);
+        if (
+          url.origin === location.origin &&
+          /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.pathname)
+        ) {
+          backgroundUrls.add(url.href);
+        }
       }
     }
-    await Promise.all(
-      [...backgroundUrls].map(async (url) => {
-        const image = new Image();
-        image.src = url;
-        await image.decode();
-      }),
-    );
+    const failedBackgroundUrls = (
+      await Promise.all(
+        [...backgroundUrls].map(async (url) => {
+          const image = new Image();
+          image.src = url;
+          try {
+            await image.decode();
+            return null;
+          } catch {
+            return url;
+          }
+        }),
+      )
+    ).filter((url): url is string => url !== null);
+    if (failedBackgroundUrls.length > 0) {
+      throw new Error(
+        `Could not decode CSS background images: ${failedBackgroundUrls.join(", ")}`,
+      );
+    }
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
