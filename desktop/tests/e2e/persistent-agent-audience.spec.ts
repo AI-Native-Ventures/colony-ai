@@ -598,35 +598,36 @@ test("the mention button opens settings and can undo an address", async ({
     })
     .click();
   await expect(input).toHaveText("@Morgarita draft text");
-  await expect(
-    composer.getByRole("button", { name: "Mention someone" }),
-  ).toBeVisible();
+  const mentionSomeone = composer.getByRole("button", {
+    name: "Mention someone",
+  });
+  await expect(mentionSomeone).toBeVisible();
   // Clear through the keyboard: a programmatic fill can race ProseMirror's
   // DOM observer around the mention node and leave the draft in place.
-  // Focus without clicking so the open mention menu stays open.
   await input.focus();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.press("Backspace");
   await expect(input).toHaveText("");
+  // Editing without an @ query closes the button-opened picker once the
+  // mention debounce settles. Wait for that, then reopen it from the button
+  // instead of racing the debounce with a click on the closing menu.
+  await expect(menu).toHaveCount(0);
+  await mentionSomeone.click();
+  await expect(menu).toBeVisible();
 
   const manualMention = menu.getByRole("button", {
     name: "Mention Morgarita",
     exact: true,
   });
   await expect(manualMention).toBeVisible();
-  const manualMentionBox = await manualMention.boundingBox();
-  expect(manualMentionBox).not.toBeNull();
-  if (!manualMentionBox) {
-    throw new Error("Manual mention suggestion is not laid out");
-  }
-  await page.mouse.click(
-    manualMentionBox.x + manualMentionBox.width / 2,
-    manualMentionBox.y + manualMentionBox.height / 2,
-  );
+  await manualMention.click();
   await expect(input).toHaveText("@Morgarita ");
+  // After "Don't automatically mention", a plain mention is one-off: this
+  // message mentions the agent, but the agent is not pinned again. The chip
+  // that was just removed can still be fading out here, so wait for it to go.
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await input.type("later");
   await input.press("Enter");
