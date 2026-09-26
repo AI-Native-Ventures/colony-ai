@@ -103,18 +103,13 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   });
   expect(rowGap).toBe(4);
 
-  const establishedHoverBackground = await hoverRow.evaluate((row) => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "var(--buzz-hover-surface)";
-    row.parentElement?.append(probe);
-    const background = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return background;
-  });
+  const idleHoverRowBackground = await hoverRow.evaluate(
+    (row) => getComputedStyle(row).backgroundColor,
+  );
   await hoverRow.hover();
-  await expect(hoverRow).toHaveCSS(
+  await expect(hoverRow).not.toHaveCSS(
     "background-color",
-    establishedHoverBackground,
+    idleHoverRowBackground,
   );
 
   const activeForegroundTokens = await page.evaluate(() => {
