@@ -39,6 +39,7 @@ export type AppSidebarProps = {
   showSidebarCollapseButton: boolean;
   errorMessage?: string;
   selectedChannelId: string | null;
+  suppressTodaySelection?: boolean;
   selectedView:
     | "today"
     | "home"

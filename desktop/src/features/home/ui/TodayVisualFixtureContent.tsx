@@ -184,9 +184,11 @@ function RightSection({
 export function TodayVisualFixtureContent({
   fixture,
   onOpenUpdates,
+  showUpdatesAction,
 }: {
   fixture: HomeFeedVisualFixture;
   onOpenUpdates: () => void;
+  showUpdatesAction: boolean;
 }) {
   return (
     <main className="r17-today-page">
@@ -195,15 +197,17 @@ export function TodayVisualFixtureContent({
           <h1 className="text-studio-title">Today</h1>
           <p className="text-workspace-date">{formatTodayDate()}</p>
         </div>
-        <Button
-          className="r17-today-updates-button"
-          onClick={onOpenUpdates}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          Team updates
-        </Button>
+        {showUpdatesAction ? (
+          <Button
+            className="r17-today-updates-button"
+            onClick={onOpenUpdates}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Team updates
+          </Button>
+        ) : null}
       </div>
 
       <div className="r17-today-grid">
