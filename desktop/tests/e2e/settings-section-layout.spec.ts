@@ -44,9 +44,32 @@ test("settings use nine groups, inner search, remembered sections, and return na
   await page.getByTestId("settings-group-agents-group").click();
   await expect(page.getByTestId("settings-harnesses")).toBeVisible();
 
+  await page.getByTestId("settings-group-business").click();
+  await expect(page.getByTestId("settings-inner-work")).toHaveCount(0);
+  await expect(page.getByTestId("settings-inner-connections")).toHaveCount(0);
+  await page.getByTestId("settings-group-agents-group").click();
+  await expect(page.getByTestId("settings-inner-ai-connections")).toHaveCount(
+    0,
+  );
+  await page.getByTestId("settings-group-blocks-templates").click();
+  await expect(page.getByTestId("settings-inner-blocks")).toHaveCount(0);
+  await page.getByTestId("settings-group-app-devices").click();
+  await expect(page.getByTestId("settings-inner-compute")).toHaveCount(0);
+
   await page.getByTestId("settings-back-to-app").click();
   await expect(page.getByTestId("settings-view")).toHaveCount(0);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
+
+test("routes without a data-backed design fall back to Account profile", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=compute");
+
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
+  await expect(page.getByTestId("settings-panel-compute")).toHaveCount(0);
 });
 
 test("appearance controls save a complete scoped snapshot and retain density", async ({

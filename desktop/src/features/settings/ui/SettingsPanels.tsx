@@ -5,7 +5,6 @@ import {
   BellRing,
   Bot,
   ChevronDown,
-  Cpu,
   Download,
   FlaskConical,
   Keyboard,
@@ -85,17 +84,13 @@ import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import {
   AccessibilitySettingsPanel,
-  AgentConnectionsSettingsPanel,
   AppPreferencesSettingsPanel,
   ArchivedRecordsSettingsPanel,
   AuditSettingsPanel,
-  BlocksSettingsPanel,
-  BusinessConnectionsSettingsPanel,
   BusinessProfileSettingsPanel,
   DraftRecoverySettingsPanel,
   FeedbackSettingsPanel,
   HarnessLifecycleSettingsPanel,
-  WorkSettingsPanel,
 } from "./SettingsAdditionalSections";
 
 export type SettingsSection =
@@ -107,16 +102,11 @@ export type SettingsSection =
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "ai-connections"
   | "channel-templates"
-  | "compute"
   | "appearance"
   | "accessibility"
   | "business-profile"
   | "people"
-  | "work"
-  | "connections"
-  | "blocks"
   | "shortcuts"
   | "community-members"
   | "moderation"
@@ -197,8 +187,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     sections: [
       { value: "business-profile", label: "Profile" },
       { value: "people", label: "People & access" },
-      { value: "work", label: "Work & approvals" },
-      { value: "connections", label: "Connections" },
     ],
   },
   {
@@ -208,7 +196,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     sections: [
       { value: "agent-defaults", label: "Defaults" },
       { value: "harnesses", label: "Harnesses" },
-      { value: "ai-connections", label: "AI connections" },
     ],
   },
   {
@@ -216,7 +203,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     label: "Blocks & templates",
     icon: Layers3,
     sections: [
-      { value: "blocks", label: "Blocks" },
       { value: "channel-templates", label: "Channel templates" },
       { value: "custom-emoji", label: "Custom emoji" },
     ],
@@ -239,7 +225,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
       { value: "experimental", label: "Experiments" },
-      { value: "compute", label: "Compute & hosts" },
     ],
   },
   {
@@ -278,16 +263,11 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "agents",
   "agent-defaults",
   "harnesses",
-  "ai-connections",
   "channel-templates",
-  "compute",
   "appearance",
   "accessibility",
   "business-profile",
   "people",
-  "work",
-  "connections",
-  "blocks",
   "shortcuts",
   "community-members",
   "moderation",
@@ -379,11 +359,6 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     label: "Channel templates",
     icon: LayoutTemplate,
     featureGate: "channel-templates",
-  },
-  {
-    value: "compute",
-    label: "Compute",
-    icon: Cpu,
   },
   {
     value: "shortcuts",
@@ -1034,12 +1009,8 @@ export function renderSettingsSection(
       return <AgentDefaultsSettingsCard />;
     case "harnesses":
       return <HarnessLifecycleSettingsPanel />;
-    case "ai-connections":
-      return <AgentConnectionsSettingsPanel />;
     case "channel-templates":
       return <ChannelTemplatesSettingsCard />;
-    case "compute":
-      return null;
     case "appearance":
       return (
         <AppearanceSettingsPanel
@@ -1055,12 +1026,6 @@ export function renderSettingsSection(
       return (
         <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
       );
-    case "work":
-      return <WorkSettingsPanel />;
-    case "connections":
-      return <BusinessConnectionsSettingsPanel />;
-    case "blocks":
-      return <BlocksSettingsPanel />;
     case "shortcuts":
       return <KeyboardShortcutsCard />;
     case "community-members":

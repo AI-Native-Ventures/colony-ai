@@ -8,16 +8,12 @@ type SettingsSection =
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "ai-connections"
   | "channel-templates"
   | "compute"
   | "appearance"
   | "accessibility"
   | "business-profile"
   | "people"
-  | "work"
-  | "connections"
-  | "blocks"
   | "shortcuts"
   | "community-members"
   | "moderation"
@@ -43,7 +39,6 @@ const sectionRoute: Record<
   agents: { group: "agents-group", section: "agent-defaults" },
   "agent-defaults": { group: "agents-group", section: "agent-defaults" },
   harnesses: { group: "agents-group", section: "harnesses" },
-  "ai-connections": { group: "agents-group", section: "ai-connections" },
   "channel-templates": {
     group: "blocks-templates",
     section: "channel-templates",
@@ -53,9 +48,6 @@ const sectionRoute: Record<
   accessibility: { group: "appearance-group", section: "accessibility" },
   "business-profile": { group: "business", section: "business-profile" },
   people: { group: "business", section: "people" },
-  work: { group: "business", section: "work" },
-  connections: { group: "business", section: "connections" },
-  blocks: { group: "blocks-templates", section: "blocks" },
   shortcuts: { group: "preferences", section: "shortcuts" },
   "community-members": { group: "business", section: "people" },
   moderation: { group: "administration", section: "moderation" },

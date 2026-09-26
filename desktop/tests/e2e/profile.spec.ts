@@ -8,7 +8,11 @@ import {
 } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { expectEmojiMartStylesInstalled } from "../helpers/css";
-import { openProfileMenu, openSettings } from "../helpers/settings";
+import {
+  openProfileMenu,
+  openSettings,
+  selectSettingsSection,
+} from "../helpers/settings";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -2745,14 +2749,19 @@ test("settings subtitles share the Appearance secondary color", async ({
     "local-archive",
     "channel-templates",
     "agents",
-    "compute",
     "experimental",
     "mobile",
     "updates",
   ]) {
-    await page.getByTestId(`settings-nav-${section}`).click();
+    await selectSettingsSection(page, section);
+    const panelSection =
+      section === "local-archive"
+        ? "storage"
+        : section === "agents"
+          ? "agent-defaults"
+          : section;
     const subtitles = page
-      .getByTestId(`settings-panel-${section}`)
+      .getByTestId(`settings-panel-${panelSection}`)
       .locator("[data-settings-subcopy]");
     await expect(subtitles.first()).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
