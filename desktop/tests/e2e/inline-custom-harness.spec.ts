@@ -17,6 +17,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 const ADD_ENTRY = "Add custom harness…";
 const HARNESS_LABEL = "My Weird Agent";
@@ -48,7 +49,7 @@ async function registerHarness(page: Page) {
 /** Open the create-agent dialog (AgentDefinitionDialog, create mode). */
 async function openCreateDialog(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -59,10 +60,7 @@ async function openCreateDialog(page: Page) {
 /** Open the edit dialog for a saved definition (same dialog, edit mode). */
 async function openDefinitionEditDialog(page: Page, name: string) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-agents-view").click();
-  await expect(page.getByTestId("agents-library-personas")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentTemplatesView(page);
   await page.getByRole("button", { name: `Open actions for ${name}` }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const dialog = page.getByTestId("persona-dialog");
@@ -160,7 +158,7 @@ test.describe("inline add custom harness", () => {
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.getByTestId("open-agents-view").click();
+    await openAgentTemplatesView(page);
     await page
       .getByRole("button", { name: "Instance Agent agent profile" })
       .click();
