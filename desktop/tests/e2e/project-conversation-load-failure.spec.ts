@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 /**
@@ -139,7 +141,7 @@ test.describe("project conversation load failure", () => {
     expect(rootId).toBeTruthy();
 
     // Navigate to the project's Channels tab and open the general conversation.
-    await page.getByTestId("open-projects-view").click();
+    await openLegacyProjectsView(page);
     await page.getByTestId("projects-section-projects").click();
     const projectEntry = page
       .locator(

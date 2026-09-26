@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
@@ -19,7 +21,7 @@ test("Buzz Git pull request renders and stays actionable in Inbox", async ({
   await page.setViewportSize({ width: 1024, height: 720 });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByRole("button", { name: "Repositories", exact: true }).click();
   const repositoryCardBody = page
     .getByTestId("repository-card-buzz")

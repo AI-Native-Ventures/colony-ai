@@ -26,7 +26,8 @@ type SidebarSelectedView =
   | "agents"
   | "workflows"
   | "pulse"
-  | "projects";
+  | "projects"
+  | "factory";
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;
@@ -51,9 +52,8 @@ type AppSidebarPrimaryMenuProps = {
   onSelectToday: () => void;
   onSelectAgents: () => void;
   onSelectHome: () => void;
-  onSelectProjects: () => void;
+  onSelectFactory: () => void;
   onSelectWorkflows: () => void;
-  projectsOverviewActive: boolean;
   selectedView: SidebarSelectedView;
 };
 
@@ -138,9 +138,8 @@ export function AppSidebarPrimaryMenu({
   onSelectToday,
   onSelectAgents,
   onSelectHome,
-  onSelectProjects,
+  onSelectFactory,
   onSelectWorkflows,
-  projectsOverviewActive,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
   return (
@@ -213,10 +212,10 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="projects">
             <SidebarMenuItem>
               <SidebarMenuButton
-                data-testid="open-projects-view"
-                isActive={selectedView === "projects" && projectsOverviewActive}
-                onClick={onSelectProjects}
-                tooltip="Projects"
+                data-testid="open-factory-view"
+                isActive={selectedView === "factory"}
+                onClick={onSelectFactory}
+                tooltip="Software Factory"
                 type="button"
               >
                 <Folders className="h-4 w-4" />

@@ -112,6 +112,7 @@ export function AppShell() {
   useTauriWindowDrag();
   useWebviewScrollBoundaryLock();
   const communitiesHook = useCommunities();
+  const location = useLocation();
   const {
     handleHuddleCompanionOpen,
     handleHuddleEnded,
@@ -128,6 +129,11 @@ export function AppShell() {
     showHuddleInMainApp,
     viewHuddleChannel,
   } = useHuddlePresentation();
+  const { selectedChannelId, selectedView } = React.useMemo(
+    () => deriveShellRoute(location.pathname),
+    [location.pathname],
+  );
+  const isFactoryRoute = selectedView === "factory";
   const hasCommunityRail = communitiesHook.communities.length > 1;
   const addCommunityDialog = useAddCommunityDialogState();
   const [isChannelManagementOpen, setIsChannelManagementOpen] =
@@ -141,7 +147,6 @@ export function AppShell() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = React.useState(false);
   const [isSendFeedbackOpen, setIsSendFeedbackOpen] = React.useState(false);
   const mainInsetRef = React.useRef<HTMLElement>(null);
-  const location = useLocation();
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
@@ -149,7 +154,7 @@ export function AppShell() {
     goChannel,
     goHome,
     goNewMessage,
-    goProjects,
+    goFactory,
     goToday,
     goSettings,
     goWorkflows,
@@ -158,10 +163,6 @@ export function AppShell() {
   } = useAppNavigation();
   const { canGoBack, canGoForward, goBack, goForward } =
     useBackForwardControls();
-  const { selectedChannelId, selectedView } = React.useMemo(
-    () => deriveShellRoute(location.pathname),
-    [location.pathname],
-  );
   const {
     removeCommunity: handleRemoveCommunity,
     switchCommunity: handleSwitchCommunity,
@@ -174,6 +175,7 @@ export function AppShell() {
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
   const showAppTopChrome =
+    !isFactoryRoute &&
     !settingsOpen &&
     !isHuddleRoom &&
     location.pathname !== "/today" &&
@@ -904,7 +906,7 @@ export function AppShell() {
                             scopeSearchFocusRequest,
                           ]}
                           onSelectHome={() => void goHome()}
-                          onSelectProjects={() => void goProjects()}
+                          onSelectFactory={() => void goFactory()}
                           onSelectSettings={handleOpenSettings}
                           onSelectWorkflows={() => void goWorkflows()}
                           onSetPresenceStatus={(status) =>
@@ -919,9 +921,6 @@ export function AppShell() {
                           }
                           profile={profileQuery.data}
                           showSidebarCollapseButton={!showAppTopChrome}
-                          projectsOverviewActive={
-                            location.pathname === "/projects"
-                          }
                           selfUserStatus={
                             deferredPubkey
                               ? (visibleUserStatus(

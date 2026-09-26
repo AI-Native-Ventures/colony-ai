@@ -138,6 +138,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goFactory = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/factory",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goProject = React.useCallback(
     (
       projectId: string,
@@ -481,6 +492,7 @@ export function useAppNavigation() {
     goNewWorkflowForChannel,
     goProject,
     goProjects,
+    goFactory,
     goPulse,
     goProfile,
     goSettings,

@@ -90,7 +90,6 @@ export function AppSidebar({
   isCreatingChannel,
   isCreatingForum,
   profile,
-  projectsOverviewActive,
   relayConnectionCard,
   selfPresenceStatus,
   showSidebarCollapseButton,
@@ -119,7 +118,7 @@ export function AppSidebar({
   onCreateAgent,
   onSelectAgents,
   onSelectToday,
-  onSelectProjects,
+  onSelectFactory,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -578,9 +577,8 @@ export function AppSidebar({
                 onSelectToday={onSelectToday}
                 onSelectAgents={onSelectAgents}
                 onSelectHome={onSelectHome}
-                onSelectProjects={onSelectProjects}
+                onSelectFactory={onSelectFactory}
                 onSelectWorkflows={onSelectWorkflows}
-                projectsOverviewActive={projectsOverviewActive}
                 selectedView={selectedView}
               />
 
