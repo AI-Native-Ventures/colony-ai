@@ -115,11 +115,17 @@ type MockCommandAvailability = {
 export type MockManagedAgentSeed = {
   pubkey: string;
   name: string;
+  about?: string | null;
   avatarUrl?: string | null;
   personaId?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  modelSource?: RawManagedAgent["model_source"];
+  systemPrompt?: string | null;
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
   status?: RawManagedAgent["status"];
+  lastStartedAt?: string | null;
   channelNames?: string[];
   channelIds?: string[];
   backend?: RawManagedAgent["backend"];
@@ -157,6 +163,7 @@ type MockPersonaSeed = {
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
+  description?: string | null;
   systemPrompt: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -314,6 +321,9 @@ type E2eConfig = {
       mcp?: MockCommandAvailability;
     };
     managedAgents?: MockManagedAgentSeed[];
+    /** Channel records used only to reproduce frozen visual reference data. */
+    visualChannels?: VisualChannelSeed[];
+    agentUsageSeries?: import("@/shared/api/tauriArchive").AgentUsageSeries;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -342,6 +352,8 @@ type E2eConfig = {
     /** Outcomes for successive explicit persona share publications. */
     personaSharePublicationStatuses?: Array<"published" | "queued">;
     teams?: MockTeamSeed[];
+    /** Use only the explicitly supplied teams instead of the generic mock teams. */
+    replaceDefaultTeams?: boolean;
     /** Community team-catalog (kind:30178) heads returned by relay queries. */
     teamCatalogEvents?: RelayEvent[];
     /** Outcomes for successive explicit team share publications. */
@@ -508,6 +520,11 @@ type E2eConfig = {
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
     relayRole?: "owner" | "admin" | "member" | null;
+    /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+    relayMembers?: Array<{
+      pubkey: string;
+      role: "owner" | "admin" | "member";
+    }>;
     // Descriptors returned by the mocked `pick_and_upload_media` /
     // `upload_media_bytes` commands. Lets a spec drive the attachment flow
     // (e.g. a generic PDF) without a real upload pipeline. See
@@ -815,6 +832,11 @@ type MockChannel = Omit<RawChannelDetail, "member_pubkeys"> & {
   members: RawChannelMember[];
 };
 
+type VisualChannelSeed = {
+  id: string;
+  name: string;
+};
+
 type RawFeedItem = {
   id: string;
   kind: number;
@@ -963,6 +985,7 @@ type RawManagedAgent = {
   system_prompt: string | null;
   avatar_url: string | null;
   model: string | null;
+  model_source?: "definition" | "global" | "instance_legacy" | null;
   provider?: string | null;
   env_vars?: Record<string, string>;
   status: "running" | "stopped" | "deployed" | "not_deployed";
@@ -2021,6 +2044,16 @@ function cloneAgentMemoryListing(
 
 function resetMockRelayMembers(config: E2eConfig | undefined) {
   const pubkey = getMockMemberPubkey(config);
+  const seededMembers = config?.mock?.relayMembers;
+  if (seededMembers) {
+    mockRelayMembers = seededMembers.map((member, index) => ({
+      pubkey: member.pubkey.toLowerCase(),
+      role: member.role,
+      added_by: index === 0 ? null : pubkey,
+      created_at: isoMinutesAgo(120 - index * 15),
+    }));
+    return;
+  }
   // Drive the active identity's role from `mock.relayRole` so the e2e harness
   // can exercise the NIP-IA admin gate (owner/admin → true, member/null →
   // false). Default stays `owner` to preserve existing test behavior.
@@ -2534,15 +2567,17 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     idle_timeout_seconds: null,
     max_turn_duration_seconds: null,
     parallelism: 1,
-    system_prompt: null,
+    system_prompt: seed.systemPrompt ?? null,
     avatar_url: seed.avatarUrl ?? null,
-    model: null,
+    model: seed.model ?? null,
+    model_source: seed.modelSource ?? (seed.model ? "definition" : null),
+    provider: seed.provider ?? null,
     env_vars: { ...(seed.envVars ?? {}) },
     status,
     pid: status === "running" ? 42000 + mockManagedAgents.length : null,
     created_at: now,
     updated_at: now,
-    last_started_at: status === "running" ? now : null,
+    last_started_at: seed.lastStartedAt ?? (status === "running" ? now : null),
     last_stopped_at: status === "stopped" ? now : null,
     last_exit_code: null,
     last_error: seed.lastError ?? null,
@@ -2618,7 +2653,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
       pubkey: seed.pubkey,
       display_name: seed.name,
       avatar_url: null,
-      about: null,
+      about: seed.about ?? null,
       nip05_handle: null,
       owner_pubkey: MOCK_IDENTITY_PUBKEY,
       is_agent: true,
@@ -2696,6 +2731,7 @@ function resetMockPersonas(config?: E2eConfig) {
       id: persona.id ?? crypto.randomUUID(),
       display_name: persona.displayName,
       avatar_url: persona.avatarUrl ?? null,
+      description: persona.description ?? null,
       system_prompt: persona.systemPrompt,
       runtime: persona.runtime ?? null,
       model: persona.model ?? null,
@@ -2720,47 +2756,49 @@ function resetMockPersonas(config?: E2eConfig) {
 
 function resetMockTeams(config?: E2eConfig) {
   const now = new Date().toISOString();
-  mockTeams = [
-    {
-      id: "team-engineering-001",
-      name: "Engineering",
-      description: "Core engineering personas",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: null,
-      is_symlink: false,
-      symlink_target: null,
-      version: null,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: "team-research-002",
-      name: "Research Agents",
-      description: "Directory-backed research team",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: "/Users/dev/agents/research",
-      is_symlink: false,
-      symlink_target: null,
-      version: "1.2.0",
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: "team-platform-003",
-      name: "Platform Tools",
-      description: "Symlinked platform team",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: "/Users/dev/agents/platform",
-      is_symlink: true,
-      symlink_target: "/opt/shared-teams/platform",
-      version: "2.0.1",
-      created_at: now,
-      updated_at: now,
-    },
-  ];
+  mockTeams = config?.mock?.replaceDefaultTeams
+    ? []
+    : [
+        {
+          id: "team-engineering-001",
+          name: "Engineering",
+          description: "Core engineering personas",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: null,
+          is_symlink: false,
+          symlink_target: null,
+          version: null,
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: "team-research-002",
+          name: "Research Agents",
+          description: "Directory-backed research team",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: "/Users/dev/agents/research",
+          is_symlink: false,
+          symlink_target: null,
+          version: "1.2.0",
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: "team-platform-003",
+          name: "Platform Tools",
+          description: "Symlinked platform team",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: "/Users/dev/agents/platform",
+          is_symlink: true,
+          symlink_target: "/opt/shared-teams/platform",
+          version: "2.0.1",
+          created_at: now,
+          updated_at: now,
+        },
+      ];
 
   for (const team of config?.mock?.teams ?? []) {
     mockTeams.push({
@@ -2837,11 +2875,57 @@ function listMockProfiles(): RawProfile[] {
 }
 
 function listMockChannels(config?: E2eConfig): RawChannelWithMembership[] {
-  return mockChannels.map((channel) => toRawChannel(channel, config));
+  const visualChannels = buildVisualChannels(config);
+  const visualIds = new Set(visualChannels.map((channel) => channel.id));
+  return [
+    ...mockChannels.filter((channel) => !visualIds.has(channel.id)),
+    ...visualChannels,
+  ].map((channel) => toRawChannel(channel, config));
+}
+
+function buildVisualChannels(config?: E2eConfig): MockChannel[] {
+  return (config?.mock?.visualChannels ?? []).map((seed) => {
+    const agentMembers = (config?.mock?.managedAgents ?? [])
+      .filter(
+        (agent) =>
+          agent.channelIds?.includes(seed.id) ||
+          agent.channelNames?.includes(seed.name),
+      )
+      .map((agent) => createMockMember(agent.pubkey, "bot", 900));
+    const members = [
+      createMockMember(getMockMemberPubkey(config), "owner", 1440),
+      ...agentMembers,
+    ];
+
+    return createMockChannel({
+      id: seed.id,
+      name: seed.name,
+      channel_type: "stream",
+      visibility: "open",
+      description: "",
+      topic: null,
+      purpose: null,
+      last_message_at: null,
+      archived_at: null,
+      created_by: getMockMemberPubkey(config),
+      topic_set_by: null,
+      topic_set_at: null,
+      purpose_set_by: null,
+      purpose_set_at: null,
+      topic_required: false,
+      max_members: null,
+      nip29_group_id: null,
+      created_minutes_ago: 1440,
+      updated_minutes_ago: 1440,
+      members,
+    });
+  });
 }
 
 function getMockChannel(channelId: string): MockChannel {
-  const channel = mockChannels.find((candidate) => candidate.id === channelId);
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id === channelId,
+  );
   if (!channel) {
     throw new Error(`Channel ${channelId} not found.`);
   }
@@ -4262,13 +4346,14 @@ let directPanelQueryClient: QueryClient | null = null;
 let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
+  const config = getConfig();
   const baseAgents = mockRelayAgents.filter(
     (agent) =>
       !mockManagedAgents.some((managed) => managed.pubkey === agent.pubkey),
   );
   const managedAgentsAsRelay: RawRelayAgent[] = mockManagedAgents.map(
     (agent) => {
-      const memberships = getManagedAgentRelayMembership(agent.pubkey);
+      const memberships = getManagedAgentRelayMembership(agent.pubkey, config);
 
       return {
         pubkey: agent.pubkey,
@@ -4291,21 +4376,36 @@ function syncMockRelayAgentsFromManagedAgents() {
   // actual roster, including additions and newly created DMs.
   for (const agent of baseAgents) {
     if (agent.owner_pubkey !== MOCK_IDENTITY_PUBKEY) continue;
-    const membership = getManagedAgentRelayMembership(agent.pubkey);
+    const membership = getManagedAgentRelayMembership(agent.pubkey, config);
     agent.channel_ids = membership.channelIds;
     agent.channels = membership.channels;
   }
   mockRelayAgents = [...baseAgents, ...managedAgentsAsRelay];
 }
 
-function getManagedAgentRelayMembership(pubkey: string) {
+function getManagedAgentRelayMembership(pubkey: string, config = getConfig()) {
   const memberships = mockChannels.filter((channel) =>
     channel.members.some((member) => member.pubkey === pubkey),
   );
+  const configuredAgent = [
+    ...(config?.mock?.managedAgents ?? []),
+    ...(config?.mock?.relayAgents ?? []),
+  ].find((agent) => agent.pubkey === pubkey);
+  const visualMemberships = (config?.mock?.visualChannels ?? []).filter(
+    (channel) =>
+      configuredAgent?.channelIds?.includes(channel.id) ||
+      configuredAgent?.channelNames?.includes(channel.name),
+  );
 
   return {
-    channelIds: memberships.map((channel) => channel.id),
-    channels: memberships.map((channel) => channel.name),
+    channelIds: [
+      ...memberships.map((channel) => channel.id),
+      ...visualMemberships.map((channel) => channel.id),
+    ],
+    channels: [
+      ...memberships.map((channel) => channel.name),
+      ...visualMemberships.map((channel) => channel.name),
+    ],
   };
 }
 
@@ -6941,6 +7041,16 @@ async function handleGetUserProfile(
   }
 
   const targetPubkey = args.pubkey ?? identity.pubkey;
+  const hasSeededManagedAgentProfile = config?.mock?.managedAgents?.some(
+    (agent) => agent.pubkey.toLowerCase() === targetPubkey.toLowerCase(),
+  );
+  if (hasSeededManagedAgentProfile) {
+    const seededProfile = getMockProfileByPubkey(targetPubkey);
+    if (seededProfile) {
+      return cloneProfile(seededProfile);
+    }
+  }
+
   const events = await relayQuery(config, [
     { kinds: [0], authors: [targetPubkey], limit: 1 },
   ]);
@@ -15298,6 +15408,24 @@ export function maybeInstallE2eTauriMocks() {
         // `serialized_response_matches_the_typescript_contract`.
         return { channels: results };
       }
+      case "get_agent_usage_series":
+        return (
+          config?.mock?.agentUsageSeries ?? {
+            collectionEnabled: true,
+            buckets: [],
+            agents: [],
+            coverage: {
+              firstArchivedAt: null,
+              lastArchivedAt: null,
+              firstReportedAt: null,
+              lastReportedAt: null,
+              reportCount: 0,
+              invalidReportCount: 0,
+              hasUnknownUsage: false,
+            },
+            hasArchivedEvidence: null,
+          }
+        );
       case "agent_metric_archive_default_enabled":
         return activeConfig?.mock?.agentMetricArchiveDefaultEnabled ?? true;
       case "set_prevent_sleep_active":

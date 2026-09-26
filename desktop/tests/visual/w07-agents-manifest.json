@@ -1,0 +1,3867 @@
+{
+  "version": 1,
+  "fixture": "w07-agents-fixture.json",
+  "defaults": {},
+  "cases": [
+    {
+      "id": "agents-directory-light-1728",
+      "referenceInventoryRoute": "team",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#team",
+      "appRoute": "/#/agents?rows=30",
+      "appReadySelector": "[data-testid=\"agent-directory\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "clip": {
+        "referenceSelector": ".team-workspace",
+        "appSelector": "[data-testid=\"agents-page-content\"]",
+        "normalizeAppRootToReference": true
+      },
+      "referenceIgnoreSelectors": [".cx-agent-nav"],
+      "appActiveTurns": [
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-aya"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000004",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-atlas"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-luca"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000b",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-juno"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000001e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-wren"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000017",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-rumi"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000010",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-milo"
+        }
+      ]
+    },
+    {
+      "id": "agents-directory-light-1440",
+      "referenceInventoryRoute": "team",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#team",
+      "appRoute": "/#/agents?rows=30",
+      "appReadySelector": "[data-testid=\"agent-directory\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "clip": {
+        "referenceSelector": ".team-workspace",
+        "appSelector": "[data-testid=\"agents-page-content\"]",
+        "normalizeAppRootToReference": true
+      },
+      "referenceIgnoreSelectors": [".cx-agent-nav"],
+      "appActiveTurns": [
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-aya"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000004",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-atlas"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-luca"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000b",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-juno"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000001e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-wren"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000017",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-rumi"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000010",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-milo"
+        }
+      ]
+    },
+    {
+      "id": "agents-directory-dark-1728",
+      "referenceInventoryRoute": "team",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#team",
+      "appRoute": "/#/agents?rows=30",
+      "appReadySelector": "[data-testid=\"agent-directory\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "clip": {
+        "referenceSelector": ".team-workspace",
+        "appSelector": "[data-testid=\"agents-page-content\"]",
+        "normalizeAppRootToReference": true
+      },
+      "referenceIgnoreSelectors": [".cx-agent-nav"],
+      "appActiveTurns": [
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-aya"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000004",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-atlas"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-luca"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000b",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-juno"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000001e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-wren"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000017",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-rumi"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000010",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-milo"
+        }
+      ]
+    },
+    {
+      "id": "agents-directory-dark-1440",
+      "referenceInventoryRoute": "team",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#team",
+      "appRoute": "/#/agents?rows=30",
+      "appReadySelector": "[data-testid=\"agent-directory\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "clip": {
+        "referenceSelector": ".team-workspace",
+        "appSelector": "[data-testid=\"agents-page-content\"]",
+        "normalizeAppRootToReference": true
+      },
+      "referenceIgnoreSelectors": [".cx-agent-nav"],
+      "appActiveTurns": [
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000005",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-aya"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000004",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-atlas"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-luca"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000000b",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-juno"
+        },
+        {
+          "agentPubkey": "000000000000000000000000000000000000000000000000000000000000001e",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-wren"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000017",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-rumi"
+        },
+        {
+          "agentPubkey": "0000000000000000000000000000000000000000000000000000000000000010",
+          "channelId": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",
+          "turnId": "reference-run-milo"
+        }
+      ]
+    },
+    {
+      "id": "agents-profile-overview-light-1728",
+      "referenceInventoryRoute": "agent/mina/overview",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/overview",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=overview",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-overview-light-1440",
+      "referenceInventoryRoute": "agent/mina/overview",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/overview",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=overview",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-overview-dark-1728",
+      "referenceInventoryRoute": "agent/mina/overview",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/overview",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=overview",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-overview-dark-1440",
+      "referenceInventoryRoute": "agent/mina/overview",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/overview",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=overview",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-runtime-light-1728",
+      "referenceInventoryRoute": "agent/mina/configuration",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/configuration",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=model-runtime",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-runtime-light-1440",
+      "referenceInventoryRoute": "agent/mina/configuration",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/configuration",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=model-runtime",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-runtime-dark-1728",
+      "referenceInventoryRoute": "agent/mina/configuration",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/configuration",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=model-runtime",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-runtime-dark-1440",
+      "referenceInventoryRoute": "agent/mina/configuration",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/configuration",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=model-runtime",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-instructions-light-1728",
+      "referenceInventoryRoute": "agent/mina/instructions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/instructions",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=instructions",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-instructions-light-1440",
+      "referenceInventoryRoute": "agent/mina/instructions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/instructions",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=instructions",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-instructions-dark-1728",
+      "referenceInventoryRoute": "agent/mina/instructions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/instructions",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=instructions",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-instructions-dark-1440",
+      "referenceInventoryRoute": "agent/mina/instructions",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/instructions",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=instructions",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-access-light-1728",
+      "referenceInventoryRoute": "agent/mina/access",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/access",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=tools-access",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-access-light-1440",
+      "referenceInventoryRoute": "agent/mina/access",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/access",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=tools-access",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-access-dark-1728",
+      "referenceInventoryRoute": "agent/mina/access",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/access",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=tools-access",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-access-dark-1440",
+      "referenceInventoryRoute": "agent/mina/access",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/access",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=tools-access",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-activity-light-1728",
+      "referenceInventoryRoute": "agent/mina/activity",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/activity",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=activity",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-activity-light-1440",
+      "referenceInventoryRoute": "agent/mina/activity",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/activity",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=activity",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-activity-dark-1728",
+      "referenceInventoryRoute": "agent/mina/activity",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/activity",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=activity",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-activity-dark-1440",
+      "referenceInventoryRoute": "agent/mina/activity",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/activity",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=activity",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-advanced-light-1728",
+      "referenceInventoryRoute": "agent/mina/advanced",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/advanced",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=advanced",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-advanced-light-1440",
+      "referenceInventoryRoute": "agent/mina/advanced",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/advanced",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=advanced",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-advanced-dark-1728",
+      "referenceInventoryRoute": "agent/mina/advanced",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/advanced",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=advanced",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-advanced-dark-1440",
+      "referenceInventoryRoute": "agent/mina/advanced",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/advanced",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=advanced",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-memory-light-1728",
+      "referenceInventoryRoute": "agent/mina/memory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/memory",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=memory",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-memory-light-1440",
+      "referenceInventoryRoute": "agent/mina/memory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/memory",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=memory",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-memory-dark-1728",
+      "referenceInventoryRoute": "agent/mina/memory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/memory",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=memory",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-profile-memory-dark-1440",
+      "referenceInventoryRoute": "agent/mina/memory",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agent/mina/memory",
+      "appRoute": "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=memory",
+      "appReadySelector": "[data-testid=\"agent-profile\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [],
+      "appActiveTurns": [],
+      "clip": {
+        "referenceSelector": ".agent-workspace",
+        "appSelector": "[data-testid=\"agent-profile\"]",
+        "normalizeAppRootToReference": true
+      }
+    },
+    {
+      "id": "agents-teams-light-1728",
+      "referenceInventoryRoute": "agents/teams",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/teams",
+      "appRoute": "/#/agents?view=teams",
+      "appReadySelector": "[data-testid=\"agent-team-review\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-teams-light-1440",
+      "referenceInventoryRoute": "agents/teams",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/teams",
+      "appRoute": "/#/agents?view=teams",
+      "appReadySelector": "[data-testid=\"agent-team-review\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-teams-dark-1728",
+      "referenceInventoryRoute": "agents/teams",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/teams",
+      "appRoute": "/#/agents?view=teams",
+      "appReadySelector": "[data-testid=\"agent-team-review\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-teams-dark-1440",
+      "referenceInventoryRoute": "agents/teams",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/teams",
+      "appRoute": "/#/agents?view=teams",
+      "appReadySelector": "[data-testid=\"agent-team-review\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-deployment-light-1728",
+      "referenceInventoryRoute": "agents/deployments",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/deployments",
+      "appRoute": "/#/agents?view=deployment",
+      "appReadySelector": "[data-testid=\"agent-deployment\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-deployment-light-1440",
+      "referenceInventoryRoute": "agents/deployments",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/deployments",
+      "appRoute": "/#/agents?view=deployment",
+      "appReadySelector": "[data-testid=\"agent-deployment\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-deployment-dark-1728",
+      "referenceInventoryRoute": "agents/deployments",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/deployments",
+      "appRoute": "/#/agents?view=deployment",
+      "appReadySelector": "[data-testid=\"agent-deployment\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-deployment-dark-1440",
+      "referenceInventoryRoute": "agents/deployments",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#agents/deployments",
+      "appRoute": "/#/agents?view=deployment",
+      "appReadySelector": "[data-testid=\"agent-deployment\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-light-1728",
+      "referenceInventoryRoute": "supervision",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision",
+      "appRoute": "/#/supervision",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-light-1440",
+      "referenceInventoryRoute": "supervision",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision",
+      "appRoute": "/#/supervision",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-dark-1728",
+      "referenceInventoryRoute": "supervision",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision",
+      "appRoute": "/#/supervision",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-dark-1440",
+      "referenceInventoryRoute": "supervision",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision",
+      "appRoute": "/#/supervision",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-mina-light-1728",
+      "referenceInventoryRoute": "supervision/run-mina",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision/run-mina",
+      "appRoute": "/#/supervision?channel=b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e&agent=0000000000000000000000000000000000000000000000000000000000000011",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-mina-light-1440",
+      "referenceInventoryRoute": "supervision/run-mina",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision/run-mina",
+      "appRoute": "/#/supervision?channel=b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e&agent=0000000000000000000000000000000000000000000000000000000000000011",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-mina-dark-1728",
+      "referenceInventoryRoute": "supervision/run-mina",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision/run-mina",
+      "appRoute": "/#/supervision?channel=b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e&agent=0000000000000000000000000000000000000000000000000000000000000011",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "agents-supervision-mina-dark-1440",
+      "referenceInventoryRoute": "supervision/run-mina",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#supervision/run-mina",
+      "appRoute": "/#/supervision?channel=b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e&agent=0000000000000000000000000000000000000000000000000000000000000011",
+      "appReadySelector": "[data-testid=\"agent-supervision\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-overview-light-1728",
+      "referenceInventoryRoute": "power",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power",
+      "appRoute": "/#/power",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-overview-light-1440",
+      "referenceInventoryRoute": "power",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power",
+      "appRoute": "/#/power",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-overview-dark-1728",
+      "referenceInventoryRoute": "power",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power",
+      "appRoute": "/#/power",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-overview-dark-1440",
+      "referenceInventoryRoute": "power",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power",
+      "appRoute": "/#/power",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-usage-light-1728",
+      "referenceInventoryRoute": "power/usage",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/usage",
+      "appRoute": "/#/power?section=usage",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-usage-light-1440",
+      "referenceInventoryRoute": "power/usage",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/usage",
+      "appRoute": "/#/power?section=usage",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-usage-dark-1728",
+      "referenceInventoryRoute": "power/usage",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/usage",
+      "appRoute": "/#/power?section=usage",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-usage-dark-1440",
+      "referenceInventoryRoute": "power/usage",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/usage",
+      "appRoute": "/#/power?section=usage",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-history-light-1728",
+      "referenceInventoryRoute": "power/history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/history",
+      "appRoute": "/#/power?section=history",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-history-light-1440",
+      "referenceInventoryRoute": "power/history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/history",
+      "appRoute": "/#/power?section=history",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-history-dark-1728",
+      "referenceInventoryRoute": "power/history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/history",
+      "appRoute": "/#/power?section=history",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-history-dark-1440",
+      "referenceInventoryRoute": "power/history",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/history",
+      "appRoute": "/#/power?section=history",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-checkout-light-1728",
+      "referenceInventoryRoute": "power/checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/checkout",
+      "appRoute": "/#/power?section=checkout",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-checkout-light-1440",
+      "referenceInventoryRoute": "power/checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/checkout",
+      "appRoute": "/#/power?section=checkout",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-checkout-dark-1728",
+      "referenceInventoryRoute": "power/checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/checkout",
+      "appRoute": "/#/power?section=checkout",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    },
+    {
+      "id": "power-checkout-dark-1440",
+      "referenceInventoryRoute": "power/checkout",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#power/checkout",
+      "appRoute": "/#/power?section=checkout",
+      "appReadySelector": "[data-testid=\"power-screen\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "default",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": []
+    }
+  ]
+}

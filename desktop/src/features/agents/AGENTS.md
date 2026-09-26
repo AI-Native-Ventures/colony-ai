@@ -193,6 +193,14 @@ with a TypeScript lookup table or an id comparison in a component.
    from an explicit choice, global default, config file, or runtime override.
    Do not add provenance lines, shadowed/struck-through values, pre-start
    placeholders, or whole-section dimming; use an em dash for an unknown value.
+14. **Profile instruction saves follow the prompt owner.** A definition-less
+   managed-agent instance owns its `system_prompt`, so its profile editor may
+   persist through `update_managed_agent`. A persona-linked instance renders
+   the effective persona prompt read-only because the native update command
+   intentionally ignores per-instance prompt writes for linked records.
+   Updating the persona from this profile would change a shared definition;
+   do not route that write through this surface unless the product flow makes
+   that broader scope explicit.
    Info, activity, agent-configuration, and model-setting rows use the same bare
    16px leading-icon treatment as agent management actions. Keep semantic icons
    visible in profile variants and do not wrap them in background shapes. An

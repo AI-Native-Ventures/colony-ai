@@ -85,6 +85,7 @@ type MockPersonaSeed = {
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
+  description?: string | null;
   systemPrompt: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -223,6 +224,9 @@ type MockBridgeOptions = {
     mcp?: MockCommandAvailability;
   };
   managedAgents?: MockManagedAgentSeed[];
+  /** Channel records used only to reproduce frozen visual reference data. */
+  visualChannels?: Array<{ id: string; name: string }>;
+  agentUsageSeries?: import("../../src/shared/api/tauriArchive").AgentUsageSeries;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;
@@ -257,6 +261,8 @@ type MockBridgeOptions = {
   /** Outcomes for successive explicit persona share publications. */
   personaSharePublicationStatuses?: Array<"published" | "queued">;
   teams?: MockTeamSeed[];
+  /** Use only the explicitly supplied teams instead of the generic mock teams. */
+  replaceDefaultTeams?: boolean;
   /** Community team-catalog (kind:30178) heads returned by relay queries. */
   teamCatalogEvents?: RelayEvent[];
   /** Outcomes for successive explicit team share publications. */
@@ -414,6 +420,11 @@ type MockBridgeOptions = {
    * evaluates false).
    */
   relayRole?: "owner" | "admin" | "member" | null;
+  /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+  relayMembers?: Array<{
+    pubkey: string;
+    role: "owner" | "admin" | "member";
+  }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single

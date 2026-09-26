@@ -14,9 +14,10 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type: "click" | "hover";
+  type: "click" | "hover" | "select";
   target?: "reference" | "app" | "both";
   selector: string;
+  value?: string;
   timeoutMs?: number;
   options?: Record<string, unknown>;
 };
@@ -26,9 +27,15 @@ type VisualCase = {
   referenceUrl: string;
   referencePrefs: StorageSeed;
   referenceInventoryRoute?: string;
+  referenceIgnoreSelectors?: string[];
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
+  appActiveTurns?: Array<{
+    agentPubkey: string;
+    channelId: string;
+    turnId: string;
+  }>;
   viewport: "1728x1117" | "1440x900";
   theme: "light" | "dark";
   actions: VisualAction[];
@@ -36,13 +43,21 @@ type VisualCase = {
     | string
     | { x: number; y: number; width: number; height: number }
     | { selector: string }
-    | { referenceSelector: string; appSelector?: string };
+    | {
+        referenceSelector: string;
+        appSelector?: string;
+        width?: number;
+        height?: number;
+        normalizeAppRootToReference?: boolean;
+      };
   referenceReadySelector?: string;
   referenceCanvas?: boolean;
   appReadySelector?: string;
+  appPreActionsReadySelector?: string;
 };
 
 type VisualManifest = {
+  fixture?: string;
   defaults?: Partial<VisualCase>;
   cases?: Array<
     Partial<VisualCase> &
@@ -60,6 +75,11 @@ type VisualManifest = {
   >;
 };
 
+type VisualFixture = {
+  appMockData?: Record<string, unknown>;
+  activeTurns?: VisualCase["appActiveTurns"];
+};
+
 const manifestPath = process.env.VISUAL_COMPARE_MANIFEST;
 const outputRoot = process.env.VISUAL_COMPARE_OUTPUT_DIR;
 const appBaseUrl = process.env.VISUAL_COMPARE_APP_BASE_URL;
@@ -72,6 +92,14 @@ if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
 const manifest = JSON.parse(
   await readFile(manifestPath, "utf8"),
 ) as VisualManifest;
+const visualFixture = manifest.fixture
+  ? (JSON.parse(
+      await readFile(
+        path.resolve(path.dirname(manifestPath), manifest.fixture),
+        "utf8",
+      ),
+    ) as VisualFixture)
+  : null;
 const manropeFont = await readFile(
   new URL(
     "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
@@ -110,9 +138,12 @@ test.describe("visual comparison captures", () => {
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
           const response = await route.fetch();
           const stylesheet = await response.text();
+          const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+            .map((selector) => `${selector} { display: none !important; }`)
+            .join("\n");
           await route.fulfill({
             response,
-            body: stylesheet.replace(/\bSatoshi\b/g, "Manrope"),
+            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
           });
         });
         await referencePage.route(
@@ -155,7 +186,10 @@ test.describe("visual comparison captures", () => {
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        await installMockBridge(appPage, entry.appMockData);
+        await installMockBridge(
+          appPage,
+          entry.appMockData ?? visualFixture?.appMockData,
+        );
         await appPage.goto(appUrl, {
           waitUntil: "domcontentloaded",
         });
@@ -169,8 +203,34 @@ test.describe("visual comparison captures", () => {
         await waitForCaptureReady(
           appPage,
           "Manrope Variable",
-          entry.appReadySelector,
+          entry.appPreActionsReadySelector ?? entry.appReadySelector,
         );
+        const activeTurns =
+          entry.appActiveTurns ?? visualFixture?.activeTurns ?? [];
+        if (activeTurns.length > 0) {
+          await appPage.waitForFunction(
+            () =>
+              typeof (
+                window as Window & {
+                  __BUZZ_E2E_SEED_ACTIVE_TURNS__?: unknown;
+                }
+              ).__BUZZ_E2E_SEED_ACTIVE_TURNS__ === "function",
+            null,
+            { timeout: 10_000 },
+          );
+          await appPage.evaluate((turns) => {
+            const seed = (
+              window as Window & {
+                __BUZZ_E2E_SEED_ACTIVE_TURNS__?: (turn: {
+                  agentPubkey: string;
+                  channelId: string;
+                  turnId: string;
+                }) => void;
+              }
+            ).__BUZZ_E2E_SEED_ACTIVE_TURNS__;
+            for (const turn of turns) seed?.(turn);
+          }, activeTurns);
+        }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,
@@ -490,6 +550,11 @@ async function performActions(
         await locator.click(options);
       } else if (action.type === "hover") {
         await locator.hover(options);
+      } else if (action.type === "select") {
+        if (action.value === undefined) {
+          throw new Error("Select visual actions need a value.");
+        }
+        await locator.selectOption(action.value);
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }
@@ -517,10 +582,37 @@ async function resolveClip(
     return { reference: box, app: box };
   }
   if (typeof clip === "object" && "referenceSelector" in clip) {
-    const reference = await locatorBox(referencePage, clip.referenceSelector);
-    const app = clip.appSelector
+    const referenceBox = await locatorBox(
+      referencePage,
+      clip.referenceSelector,
+    );
+    if (clip.normalizeAppRootToReference && clip.appSelector) {
+      await appPage
+        .locator(clip.appSelector)
+        .first()
+        .evaluate(
+          (element, bounds) => {
+            const root = element as HTMLElement;
+            root.style.width = `${bounds.width}px`;
+            root.style.minWidth = `${bounds.width}px`;
+            root.style.maxWidth = `${bounds.width}px`;
+            root.style.height = `${bounds.height}px`;
+            root.style.minHeight = "0";
+            root.style.maxHeight = `${bounds.height}px`;
+            root.style.flex = "none";
+          },
+          { width: referenceBox.width, height: referenceBox.height },
+        );
+    }
+    const appBox = clip.appSelector
       ? await locatorBox(appPage, clip.appSelector)
-      : reference;
+      : referenceBox;
+    const width = clip.width ?? Math.min(referenceBox.width, appBox.width);
+    const height = clip.height ?? Math.min(referenceBox.height, appBox.height);
+    const reference = { ...referenceBox, width, height };
+    const app = { ...appBox, width, height };
+    assertClipBox(reference);
+    assertClipBox(app);
     return { reference, app };
   }
   const selector = typeof clip === "string" ? clip : clip.selector;

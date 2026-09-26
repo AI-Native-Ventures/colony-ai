@@ -21,6 +21,14 @@ import {
 import { useHistorySearchState } from "@/shared/hooks/useHistorySearchState";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
+import { parseAgentProfileTab, type AgentProfileTab } from "./AgentProfileView";
+import type { AgentWorkspaceView } from "./AgentsView";
+
+function workspaceViewFromSearch(value: string | null): AgentWorkspaceView {
+  return value === "deployment" || value === "teams" || value === "templates"
+    ? value
+    : "directory";
+}
 
 const AgentsView = React.lazy(async () => {
   const module = await import("@/features/agents/ui/AgentsView");
@@ -32,10 +40,14 @@ type ProfilePanelTarget =
   | { kind: "persona"; persona: AgentPersona };
 
 const AGENTS_PROFILE_SEARCH_KEYS = [
+  "agent",
+  "agentTab",
   "profile",
   "profilePersona",
   "profileTab",
   "profileView",
+  "rows",
+  "view",
 ] as const;
 
 export function AgentsScreen() {
@@ -64,11 +76,13 @@ export function AgentsScreen() {
   }, [personasQuery.data, values.profile, values.profilePersona]);
   const threadPanelWidth = useThreadPanelWidth();
   const openDmMutation = useOpenDmMutation();
-  const { goChannel } = useAppNavigation();
+  const { goChannel, goSupervision } = useAppNavigation();
 
   const handleOpenProfilePanel = React.useCallback(
     (pubkey: string, options?: ProfilePanelOpenOptions) => {
       applyPatch({
+        agent: null,
+        agentTab: null,
         profile: pubkey,
         profilePersona: null,
         profileTab: options?.tab === "info" ? null : (options?.tab ?? null),
@@ -81,6 +95,8 @@ export function AgentsScreen() {
   const handleOpenPersonaProfilePanel = React.useCallback(
     (persona: AgentPersona) => {
       applyPatch({
+        agent: null,
+        agentTab: null,
         profile: null,
         profilePersona: persona.id,
         profileTab: null,
@@ -97,6 +113,36 @@ export function AgentsScreen() {
       profileView: null,
     });
   }, [applyPatch]);
+  const handleOpenAgent = React.useCallback(
+    (pubkey: string) =>
+      applyPatch({
+        agent: pubkey,
+        agentTab: "overview",
+        profile: null,
+        profilePersona: null,
+        profileTab: null,
+        profileView: null,
+        view: null,
+      }),
+    [applyPatch],
+  );
+  const handleCloseAgent = React.useCallback(
+    () => applyPatch({ agent: null, agentTab: null }),
+    [applyPatch],
+  );
+  const handleAgentTabChange = React.useCallback(
+    (agentTab: AgentProfileTab) => applyPatch({ agentTab }),
+    [applyPatch],
+  );
+  const handleWorkspaceViewChange = React.useCallback(
+    (view: AgentWorkspaceView) =>
+      applyPatch({
+        agent: null,
+        agentTab: null,
+        view: view === "directory" ? null : view,
+      }),
+    [applyPatch],
+  );
   const handleProfilePanelViewChange = React.useCallback(
     (view: ProfilePanelView, options?: { replace?: boolean }) =>
       applyPatch({ profileView: view === "summary" ? null : view }, options),
@@ -124,7 +170,19 @@ export function AgentsScreen() {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
           <React.Suspense fallback={<ViewLoadingFallback kind="agents" />}>
-            <AgentsView />
+            <AgentsView
+              agentPubkey={values.agent ?? undefined}
+              agentTab={parseAgentProfileTab(values.agentTab)}
+              onAgentTabChange={handleAgentTabChange}
+              onCloseAgent={handleCloseAgent}
+              onMessageAgent={(pubkey) => handleOpenDm([pubkey])}
+              onOpenAgent={handleOpenAgent}
+              onOpenChannel={(channelId) => void goChannel(channelId)}
+              onOpenSupervision={() => void goSupervision()}
+              onWorkspaceViewChange={handleWorkspaceViewChange}
+              pageSize={values.rows ?? undefined}
+              view={workspaceViewFromSearch(values.view)}
+            />
           </React.Suspense>
           {profilePanelTarget ? (
             <UserProfilePanel
