@@ -24,6 +24,7 @@ import type {
   AgentUsageSeriesBucket,
 } from "@/shared/api/tauriArchive";
 import type { ManagedAgent } from "@/shared/api/types";
+import { truncateNpub } from "@/shared/lib/pubkey";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { PageHeader, SectionHeader } from "@/shared/ui/PageHeader";
@@ -388,7 +389,7 @@ function PowerUsage({
     () =>
       (effectiveSeries?.agents ?? []).flatMap((agentUsage) => {
         const agent = managedByKey.get(agentUsage.agentPubkey.toLowerCase());
-        const name = agent?.name ?? `${agentUsage.agentPubkey.slice(0, 8)}…`;
+        const name = agent?.name ?? truncateNpub(agentUsage.agentPubkey);
         if (
           agentFilter !== "all" &&
           agentUsage.agentPubkey.toLowerCase() !== agentFilter
@@ -420,7 +421,7 @@ function PowerUsage({
                 key={agentUsage.agentPubkey}
                 value={agentUsage.agentPubkey.toLowerCase()}
               >
-                {agent?.name ?? agentUsage.agentPubkey.slice(0, 8)}
+                {agent?.name ?? truncateNpub(agentUsage.agentPubkey)}
               </option>
             );
           })}
