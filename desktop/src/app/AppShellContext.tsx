@@ -5,6 +5,7 @@ import type { ThreadActivityItem } from "@/features/channels/useUnreadChannels";
 import type { FeedItemState } from "@/features/home/useFeedItemState";
 import type { FeedItem } from "@/shared/api/types";
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
+import type { CreateChannelKind } from "@/features/sidebar/lib/useCreateChannelForm";
 
 const EMPTY_SET = new Set<string>();
 
@@ -25,6 +26,10 @@ type AppShellContextValue = {
   ) => void;
   openBrowseChannels: () => void;
   openCreateChannel: () => void;
+  openCreateChannelFromTemplate: (
+    templateId: string,
+    channelKind: CreateChannelKind,
+  ) => void;
   openChannelManagement: (channelId?: string) => void;
   // NIP-RS read marker for a channel as a unix-seconds timestamp, or null
   // when unknown. Backed by the single AppShell-mounted ReadStateManager so
@@ -89,6 +94,7 @@ const AppShellContext = React.createContext<AppShellContextValue>({
   clearChannelUnreadSource: () => {},
   openBrowseChannels: () => {},
   openCreateChannel: () => {},
+  openCreateChannelFromTemplate: () => {},
   openChannelManagement: () => {},
   getChannelReadAt: () => null,
   getThreadReadAt: () => null,

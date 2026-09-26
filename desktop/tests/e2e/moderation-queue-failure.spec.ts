@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 
 const targetEventId = "b".repeat(64);
-const channelId = "00000000-0000-4000-8000-000000000001";
+const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
 test("failed enforcement keeps the report open and shows the designed failure", async ({
   page,
@@ -52,12 +52,33 @@ test("failed enforcement keeps the report open and shows the designed failure", 
   await group.getByTestId("moderation-resolve-trigger").click();
   await page.getByTestId("moderation-resolve-delete").click();
 
-  const failure = group.getByTestId("moderation-action-failed");
+  const actionForm = page.getByTestId("moderation-action-form");
+  await expect(actionForm).toBeVisible();
+  await expect(
+    actionForm.getByRole("heading", { name: "Moderation failed" }),
+  ).toBeVisible();
+  await expect(
+    actionForm.getByText("Reported message", { exact: true }),
+  ).toBeVisible();
+  await expect(actionForm.getByLabel("Reason for action")).toHaveValue("");
+  await expect(actionForm.getByLabel("Action", { exact: true })).toHaveValue(
+    "delete",
+  );
+
+  const failure = actionForm.getByTestId("moderation-action-failed");
   await expect(failure).toContainText("Moderation action failed");
   await expect(failure).toContainText(
     "The content remains unchanged. Retry after checking your permissions.",
   );
-  await expect(group).toBeVisible();
+
+  await actionForm
+    .getByLabel("Reason for action")
+    .fill("The message contains repeated advertising.");
+  await actionForm.getByTestId("moderation-confirm-action").click();
+  await expect(actionForm.getByLabel("Reason for action")).toHaveValue(
+    "The message contains repeated advertising.",
+  );
+  await expect(failure).toBeVisible();
   await expect(page.getByText("Report resolved", { exact: true })).toHaveCount(
     0,
   );

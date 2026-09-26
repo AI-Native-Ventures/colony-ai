@@ -196,12 +196,23 @@ test.describe("visual comparison captures", () => {
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        await installMockBridge(appPage, entry.appMockData, {
+        const mockData = { ...(entry.appMockData ?? {}) };
+        const moderationReports = mockData.moderationReports;
+        delete mockData.moderationReports;
+        await installMockBridge(appPage, mockData, {
           skipCommunitySeed: Object.hasOwn(
             entry.appPrefs.localStorage ?? {},
             "buzz-communities",
           ),
         });
+        if (Array.isArray(moderationReports)) {
+          await appPage.route("**/moderation/reports**", (route) =>
+            route.fulfill({ json: moderationReports }),
+          );
+          await appPage.route("**/moderation/audit**", (route) =>
+            route.fulfill({ json: [] }),
+          );
+        }
         await appPage.goto(appUrl, {
           waitUntil: "domcontentloaded",
         });

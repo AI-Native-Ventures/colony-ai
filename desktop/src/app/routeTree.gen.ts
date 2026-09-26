@@ -17,6 +17,7 @@ import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
@@ -80,6 +81,11 @@ const messagesDotnewRoute = messagesDotnewRouteImport.update({
   path: "/messages/new",
   getParentRoute: () => rootRouteImport,
 } as any);
+const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
+  id: "/channels/from-template",
+  path: "/channels/from-template",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   id: "/channels/$channelId",
   path: "/channels/$channelId",
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/today/updates": typeof todayDotupdatesRoute;
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/today/updates": typeof todayDotupdatesRoute;
@@ -135,6 +143,7 @@ export interface FileRoutesById {
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/today/updates": typeof todayDotupdatesRoute;
@@ -153,6 +162,7 @@ export interface FileRouteTypes {
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/messages/new"
     | "/projects/$projectId"
     | "/today/updates"
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/messages/new"
     | "/projects/$projectId"
     | "/today/updates"
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/messages/new"
     | "/projects/$projectId"
     | "/today/updates"
@@ -202,6 +214,7 @@ export interface RootRouteChildren {
   todayRoute: typeof todayRoute;
   workflowsRoute: typeof workflowsRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
+  channelsDotfromTemplateRoute: typeof channelsDotfromTemplateRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
@@ -295,6 +308,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof messagesDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/channels/from-template": {
+      id: "/channels/from-template";
+      path: "/channels/from-template";
+      fullPath: "/channels/from-template";
+      preLoaderRoute: typeof channelsDotfromTemplateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId": {
       id: "/channels/$channelId";
       path: "/channels/$channelId";
@@ -322,6 +342,7 @@ const rootRouteChildren: RootRouteChildren = {
   todayRoute: todayRoute,
   workflowsRoute: workflowsRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
+  channelsDotfromTemplateRoute: channelsDotfromTemplateRoute,
   messagesDotnewRoute: messagesDotnewRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,

@@ -1532,6 +1532,58 @@ test("create channel template selector matches the lifecycle controls", async ({
   );
 });
 
+test("template picker returns a real template to the channel creation flow", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    channelTemplates: [
+      {
+        id: "team-updates",
+        name: "Team updates",
+        description: "An async forum for your team.",
+        channelType: "forum",
+        visibility: "private",
+        canvasTemplate: null,
+        agents: { personas: [], teams: [] },
+        isBuiltin: true,
+        createdAt: "2026-09-26T07:00:00Z",
+        updatedAt: "2026-09-26T07:00:00Z",
+      },
+    ],
+  });
+
+  await page.goto("/");
+  await openCreateChannelDialog(page);
+  await page.getByTestId("create-channel-name").fill("weekly-updates");
+  await page.getByTestId("create-channel-template").click();
+  await page.getByTestId("create-channel-browse-templates").click();
+
+  const picker = page.getByTestId("channel-template-picker");
+  await expect(picker).toBeVisible();
+  await expect(
+    picker.getByRole("heading", { name: "Create from a template" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
+
+  const teamUpdates = page
+    .getByTestId("channel-template-card")
+    .filter({ hasText: "Team updates" });
+  await teamUpdates.getByTestId("channel-template-use").click();
+
+  const createForum = page.getByTestId("create-channel-dialog");
+  await expect(createForum).toBeVisible();
+  await expect(createForum).toContainText("Create a new forum");
+  await expect(createForum.getByTestId("create-channel-name")).toHaveValue(
+    "weekly-updates",
+  );
+  await expect(createForum.getByTestId("create-channel-template")).toHaveText(
+    "Team updates",
+  );
+  await expect(
+    createForum.getByTestId("create-channel-description"),
+  ).toHaveValue("An async forum for your team.");
+});
+
 test("create channel exposes templates when the library is empty", async ({
   page,
 }) => {

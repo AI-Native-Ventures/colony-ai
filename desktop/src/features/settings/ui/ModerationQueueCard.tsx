@@ -14,6 +14,7 @@ import {
   type ResolutionAction,
 } from "@/features/moderation/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useChannelsQuery } from "@/features/channels/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import {
   deleteMessage,
@@ -36,6 +37,7 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
+import { Textarea } from "@/shared/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +46,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 
 // The queue is mod-only: only relay owners/admins may read /moderation/* (the
@@ -113,6 +114,7 @@ async function enforceResolution(
   group: ModerationQueueGroup,
   action: ResolutionAction,
   ban: (input: { pubkey: string; reason?: string }) => Promise<unknown>,
+  reason = "",
 ): Promise<void> {
   switch (action) {
     case "delete":
@@ -121,7 +123,10 @@ async function enforceResolution(
       await deleteMessage(group.channelId, group.target);
       return;
     case "ban":
-      await ban({ pubkey: await resolveTargetAuthor(group) });
+      await ban({
+        pubkey: await resolveTargetAuthor(group),
+        reason: reason.trim() || undefined,
+      });
       return;
     case "kick":
       // Gated to event targets with a channel (resolvableActions).
@@ -292,13 +297,11 @@ function QueueGroupCard({
   reporterNames,
   onResolve,
   disabled,
-  actionFailed,
 }: {
   group: ModerationQueueGroup;
   reporterNames: Record<string, string | null | undefined>;
   onResolve: (group: ModerationQueueGroup, action: ResolutionAction) => void;
   disabled: boolean;
-  actionFailed: boolean;
 }) {
   const topType = groupTopReportType(group);
   const tier = severityTier(topType);
@@ -352,27 +355,13 @@ function QueueGroupCard({
         ))}
       </div>
 
-      {actionFailed ? (
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          data-testid="moderation-action-failed"
-          role="alert"
-        >
-          <p className="font-medium">Moderation action failed</p>
-          <p className="mt-1 text-xs">
-            The content remains unchanged. Retry after checking your
-            permissions.
-          </p>
-        </div>
-      ) : null}
-
       {group.priorActions.length > 0 ? (
         <div className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {group.priorActions.length} prior action
             {group.priorActions.length === 1 ? "" : "s"} against this target
-            {" — "}
+            {": "}
             {group.priorActions
               .slice(0, 3)
               .map((a) => a.action)
@@ -384,15 +373,34 @@ function QueueGroupCard({
   );
 }
 
-function QueueTab() {
+type FailedModerationResolution = {
+  group: ModerationQueueGroup;
+  action: ResolutionAction;
+  reason: string;
+};
+
+const FAILURE_ACTION_LABELS: Partial<Record<ResolutionAction, string>> = {
+  delete: "Remove reported message",
+  ban: "Restrict member",
+  kick: "Remove from channel",
+};
+
+function QueueTab({
+  onFailurePanelChange,
+}: {
+  onFailurePanelChange: (open: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const reportsQuery = useModerationReportsQuery({ status: "open" });
   const auditQuery = useModerationAuditQuery();
   const resolveMutation = useResolveReportMutation();
   const banMutation = useBanMemberMutation();
-  const [failedActionTargets, setFailedActionTargets] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
+  const [failedResolution, setFailedResolution] =
+    useState<FailedModerationResolution | null>(null);
+  const [pendingTargetKey, setPendingTargetKey] = useState<string | null>(null);
+  const channelsQuery = useChannelsQuery({
+    enabled: failedResolution !== null,
+  });
 
   const groups = useMemo(() => {
     const reports = (reportsQuery.data ?? []).map(toQueueReport);
@@ -421,31 +429,24 @@ function QueueTab() {
   async function handleResolve(
     group: ModerationQueueGroup,
     action: ResolutionAction,
+    reason = "",
   ) {
     const status = statusForAction(action);
     const openReports = group.reports.filter(
       (report) => report.status === "open",
     );
 
-    setFailedActionTargets((current) => {
-      if (!current.has(group.targetKey)) return current;
-      const next = new Set(current);
-      next.delete(group.targetKey);
-      return next;
-    });
-
+    setPendingTargetKey(group.targetKey);
     try {
       // Enforce FIRST. The 9044 resolve DMs the reporter "reviewed and acted
-      // on" — if enforcement fails we must not send that lie, and we leave the
+      // on". If enforcement fails we must not send that lie, and we leave the
       // report open (retryable, no orphan decision row). Only after the paired
       // 9040/9005/9001 lands do we resolve every open report about this target.
-      await enforceResolution(group, action, banMutation.mutateAsync);
+      await enforceResolution(group, action, banMutation.mutateAsync, reason);
     } catch {
-      setFailedActionTargets((current) => {
-        const next = new Set(current);
-        next.add(group.targetKey);
-        return next;
-      });
+      setFailedResolution({ group, action, reason });
+      onFailurePanelChange(true);
+      setPendingTargetKey(null);
       return;
     }
 
@@ -462,17 +463,132 @@ function QueueTab() {
             reportEventId: report.reportEventId,
             status,
             action,
+            reason: reason.trim() || undefined,
           }),
         ),
       );
+      setFailedResolution(null);
+      onFailurePanelChange(false);
       toast.success(
         status === "dismissed" ? "Report dismissed" : "Report resolved",
       );
     } catch (error) {
+      setFailedResolution(null);
+      onFailurePanelChange(false);
       toast.error(
         error instanceof Error ? error.message : "Failed to resolve the report",
       );
+    } finally {
+      setPendingTargetKey(null);
     }
+  }
+
+  if (failedResolution) {
+    const channel = channelsQuery.data?.find(
+      (item) => item.id === failedResolution.group.channelId,
+    );
+    const actions = resolvableActions(
+      failedResolution.group.targetKind,
+      failedResolution.group.channelId != null,
+    ).filter(
+      (action) => action === "delete" || action === "ban" || action === "kick",
+    );
+
+    return (
+      <form
+        className="max-w-[880px] border-b border-border pb-6"
+        data-testid="moderation-action-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleResolve(
+            failedResolution.group,
+            failedResolution.action,
+            failedResolution.reason,
+          );
+        }}
+      >
+        <h3 className="mb-4 text-sm font-semibold text-foreground">
+          Moderation failed
+        </h3>
+        <div className="border-b border-border pb-5">
+          <p className="text-sm font-medium text-foreground">
+            Reported message
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {channel ? `# ${channel.name} · ` : ""}Reported by a member
+          </p>
+        </div>
+        <div className="mt-5">
+          <label
+            className="mb-2 block text-xs text-foreground"
+            htmlFor="moderation-action-reason"
+          >
+            Reason for action
+          </label>
+          <Textarea
+            className="min-h-[116px] resize-y rounded-md border-border/70 bg-background text-sm"
+            data-testid="moderation-action-reason"
+            id="moderation-action-reason"
+            onChange={(event) =>
+              setFailedResolution((current) =>
+                current ? { ...current, reason: event.target.value } : current,
+              )
+            }
+            value={failedResolution.reason}
+          />
+        </div>
+        <div className="mt-5">
+          <label
+            className="mb-2 block text-xs text-foreground"
+            htmlFor="moderation-action-select"
+          >
+            Action
+          </label>
+          <select
+            className="h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm text-foreground"
+            data-testid="moderation-action-select"
+            id="moderation-action-select"
+            onChange={(event) =>
+              setFailedResolution((current) =>
+                current
+                  ? {
+                      ...current,
+                      action: event.target.value as ResolutionAction,
+                    }
+                  : current,
+              )
+            }
+            value={failedResolution.action}
+          >
+            {actions.map((action) => (
+              <option key={action} value={action}>
+                {FAILURE_ACTION_LABELS[action] ?? action}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div
+          className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive"
+          data-testid="moderation-action-failed"
+          role="alert"
+        >
+          <p className="text-xs font-semibold">Moderation action failed</p>
+          <p className="mt-2 text-xs">
+            The content remains unchanged. Retry after checking your
+            permissions.
+          </p>
+        </div>
+        <Button
+          className="mt-4 h-[34px] rounded-md px-[13px] text-xs font-semibold text-destructive hover:bg-destructive/10"
+          data-testid="moderation-confirm-action"
+          disabled={pendingTargetKey !== null}
+          type="submit"
+          variant="outline"
+        >
+          Confirm action
+        </Button>
+      </form>
+    );
   }
 
   if (reportsQuery.error instanceof Error) {
@@ -496,8 +612,11 @@ function QueueTab() {
     <div className="space-y-3">
       {groups.map((group) => (
         <QueueGroupCard
-          actionFailed={failedActionTargets.has(group.targetKey)}
-          disabled={resolveMutation.isPending || banMutation.isPending}
+          disabled={
+            pendingTargetKey !== null ||
+            resolveMutation.isPending ||
+            banMutation.isPending
+          }
           group={group}
           key={group.targetKey}
           onResolve={handleResolve}
@@ -611,16 +730,23 @@ export function ModerationQueueCard({
   const membershipQuery = useMyRelayMembershipQuery();
   const role = membershipQuery.data?.role;
   const isModerator = role === "owner" || role === "admin";
+  const [isFailurePanelOpen, setIsFailurePanelOpen] = useState(false);
 
   return (
     <section
       className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       data-testid="settings-moderation"
     >
-      <SettingsSectionHeader
-        title={title}
-        description="Review reported content and take action. Visible to community moderators only."
-      />
+      {!isFailurePanelOpen ? (
+        <SettingsSectionHeader
+          title={title}
+          description={
+            initialTab === "queue"
+              ? "Review reported content and take action. Visible to community moderators only."
+              : undefined
+          }
+        />
+      ) : null}
 
       {!isModerator ? (
         membershipQuery.isLoading ? (
@@ -630,23 +756,10 @@ export function ModerationQueueCard({
             The moderation queue is available to community moderators only.
           </p>
         )
+      ) : initialTab === "queue" ? (
+        <QueueTab onFailurePanelChange={setIsFailurePanelOpen} />
       ) : (
-        <Tabs defaultValue={initialTab}>
-          <TabsList>
-            <TabsTrigger data-testid="moderation-tab-queue" value="queue">
-              Queue
-            </TabsTrigger>
-            <TabsTrigger data-testid="moderation-tab-audit" value="audit">
-              Audit log
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="queue">
-            <QueueTab />
-          </TabsContent>
-          <TabsContent value="audit">
-            <AuditTab />
-          </TabsContent>
-        </Tabs>
+        <AuditTab />
       )}
     </section>
   );

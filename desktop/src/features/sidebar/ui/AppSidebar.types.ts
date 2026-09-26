@@ -3,6 +3,7 @@ import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity
 import type { Community } from "@/features/communities/types";
 import type { useSidebarRelayConnectionCard } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
+import type { CreateChannelFormDraft } from "@/features/sidebar/lib/useCreateChannelForm";
 import type { UserStatusInput } from "@/features/user-status/types";
 import type {
   Channel,
@@ -106,9 +107,14 @@ export type AppSidebarProps = {
   onNewMessage: () => void;
   onBackgroundClick?: () => void;
   isCreateChannelOpen?: boolean;
+  createChannelTemplateDraft?: CreateChannelFormDraft | null;
+  createChannelTemplateId?: string | null;
+  createChannelTemplateKind?: CreateChannelKind | null;
   isHuddleCompanionOpen?: boolean;
   onHuddleEnded?: (ephemeralChannelId: string | null) => void;
   onCreateChannelOpenChange?: (open: boolean) => void;
+  onClearChannelTemplateRequest?: () => void;
+  onOpenTemplatePicker?: (draft: CreateChannelFormDraft) => void;
   mutedChannelIds?: ReadonlySet<string>;
   onMuteChannel?: (channelId: string) => void;
   onUnmuteChannel?: (channelId: string) => void;

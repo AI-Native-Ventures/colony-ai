@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ProtectedGlobalOverlay } from "@protected-feature-components";
 import { useQueryClient } from "@tanstack/react-query";
-import { Outlet, useLocation } from "@tanstack/react-router";
+import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { deriveShellRoute, markAllReadSources } from "@/app/AppShell.helpers";
 import { useTerminalContext } from "@/app/useTerminalContext";
 import { AppShellProvider } from "@/app/AppShellContext";
@@ -78,6 +78,7 @@ import {
 import { useDueReminderBadgeCount } from "@/features/reminders/hooks";
 import { useReminderNotifications } from "@/features/reminders/useReminderNotifications";
 import { AppSidebar } from "@/features/sidebar/ui/AppSidebar";
+import type { CreateChannelFormDraft } from "@/features/sidebar/lib/useCreateChannelForm";
 import { requestFocusedThreadClose } from "@/features/channels/focusedThreadCloseRequest";
 import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
 import { useChannelMutes } from "@/features/sidebar/lib/useChannelMutes";
@@ -139,9 +140,17 @@ export function AppShell() {
   const [scopeSearchFocusRequest, setScopeSearchFocusRequest] =
     React.useState(0);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = React.useState(false);
+  const [createChannelTemplateDraft, setCreateChannelTemplateDraft] =
+    React.useState<CreateChannelFormDraft | null>(null);
+  const [createChannelTemplateId, setCreateChannelTemplateId] = React.useState<
+    string | null
+  >(null);
+  const [createChannelTemplateKind, setCreateChannelTemplateKind] =
+    React.useState<"stream" | "forum" | null>(null);
   const [isSendFeedbackOpen, setIsSendFeedbackOpen] = React.useState(false);
   const mainInsetRef = React.useRef<HTMLElement>(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
@@ -679,6 +688,28 @@ export function AppShell() {
     () => setIsCreateChannelOpen(true),
     [],
   );
+  const handleClearChannelTemplateRequest = React.useCallback(() => {
+    setCreateChannelTemplateDraft(null);
+    setCreateChannelTemplateId(null);
+    setCreateChannelTemplateKind(null);
+  }, []);
+  const handleOpenTemplatePicker = React.useCallback(
+    (draft: CreateChannelFormDraft) => {
+      setCreateChannelTemplateDraft(draft);
+      setCreateChannelTemplateId(null);
+      void navigate({ to: "/channels/from-template" });
+    },
+    [navigate],
+  );
+  const handleCreateChannelFromTemplate = React.useCallback(
+    (templateId: string, channelKind: "stream" | "forum") => {
+      setCreateChannelTemplateId(templateId);
+      setCreateChannelTemplateKind(channelKind);
+      setIsCreateChannelOpen(true);
+      void goHome();
+    },
+    [goHome],
+  );
   useAppShellKeyboardShortcuts({
     activeChannelId: selectedView === "channel" ? selectedChannelId : null,
     canSearchCurrentChannel:
@@ -721,6 +752,7 @@ export function AppShell() {
             clearChannelUnreadSource,
             openBrowseChannels: handleOpenBrowseChannels,
             openCreateChannel: handleOpenCreateChannel,
+            openCreateChannelFromTemplate: handleCreateChannelFromTemplate,
             openChannelManagement: (channelId?: string) => {
               setManagedChannelId(
                 typeof channelId === "string" ? channelId : null,
@@ -855,6 +887,11 @@ export function AppShell() {
                           isCreatingForum={createForumMutation.isPending}
                           isLoading={channelsQuery.isLoading}
                           isCreateChannelOpen={isCreateChannelOpen}
+                          createChannelTemplateDraft={
+                            createChannelTemplateDraft
+                          }
+                          createChannelTemplateId={createChannelTemplateId}
+                          createChannelTemplateKind={createChannelTemplateKind}
                           isHuddleCompanionOpen={isHuddleCompanionOpen}
                           isPresencePending={presenceSession.isPending}
                           onAddCommunity={(community) => {
@@ -870,7 +907,14 @@ export function AppShell() {
                           }
                           onNewMessage={goNewMessage}
                           onBackgroundClick={requestFocusedThreadClose}
-                          onCreateChannelOpenChange={setIsCreateChannelOpen}
+                          onCreateChannelOpenChange={(open) => {
+                            setIsCreateChannelOpen(open);
+                            if (!open) handleClearChannelTemplateRequest();
+                          }}
+                          onClearChannelTemplateRequest={
+                            handleClearChannelTemplateRequest
+                          }
+                          onOpenTemplatePicker={handleOpenTemplatePicker}
                           onOpenAddCommunity={addCommunityDialog.openDialog}
                           onSendFeedback={() => setIsSendFeedbackOpen(true)}
                           onUpdateCommunity={communitiesHook.updateCommunity}

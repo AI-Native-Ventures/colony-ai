@@ -144,6 +144,11 @@ export function AppSidebar({
   starredChannelIds,
   onStarChannel,
   onUnstarChannel,
+  createChannelTemplateDraft,
+  createChannelTemplateId,
+  createChannelTemplateKind,
+  onClearChannelTemplateRequest,
+  onOpenTemplatePicker,
 }: AppSidebarProps) {
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
@@ -234,9 +239,9 @@ export function AppSidebar({
   // dialog's `onOpenChange` below.
   React.useEffect(() => {
     if (isCreateChannelOpenProp) {
-      openCreateDialog("stream");
+      openCreateDialog(createChannelTemplateKind ?? "stream");
     }
-  }, [isCreateChannelOpenProp, openCreateDialog]);
+  }, [createChannelTemplateKind, isCreateChannelOpenProp, openCreateDialog]);
   const [collapsedGroups, setCollapsedGroups] = React.useState<
     Record<CollapsibleSidebarGroup, boolean>
   >({
@@ -893,6 +898,8 @@ export function AppSidebar({
 
       <CreateChannelDialog
         channelKind={createDialogKind}
+        initialDraft={createChannelTemplateDraft}
+        initialTemplateId={createChannelTemplateId}
         isCreating={isCreatingAny}
         onOpenChange={(open) => {
           if (!open) {
@@ -901,9 +908,19 @@ export function AppSidebar({
             if (createDialogKind === "stream") {
               onCreateChannelOpenChange?.(false);
             }
+            onClearChannelTemplateRequest?.();
             setCreateDialogKind(null);
           }
         }}
+        onBrowseTemplates={
+          onOpenTemplatePicker
+            ? (draft) => {
+                setCreateDialogKind(null);
+                onCreateChannelOpenChange?.(false);
+                onOpenTemplatePicker(draft);
+              }
+            : undefined
+        }
         onCreate={handleCreateFromDialog}
       />
 

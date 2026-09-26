@@ -993,15 +993,49 @@
     {
       "id": "desktop-12-pick",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#12/pick",
-      "appRoute": "/#/settings?section=channel-templates",
+      "appRoute": "/#/channels/from-template",
       "routeLabel": "Channel template picker",
-      "referenceCanvas": true
-    },
-    {
-      "id": "desktop-12-unavailable",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#12/unavailable",
-      "appRoute": "/#/settings?section=channel-templates",
-      "routeLabel": "Channel templates unavailable",
+      "appReadySelector": "[data-testid=channel-template-picker]",
+      "appMockData": {
+        "channelTemplates": [
+          {
+            "id": "client-campaign",
+            "name": "Client campaign",
+            "description": "Briefs, reviews and delivery.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": { "personas": [], "teams": [] },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          },
+          {
+            "id": "team-updates",
+            "name": "Team updates",
+            "description": "An async forum for your team.",
+            "channelType": "forum",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": { "personas": [], "teams": [] },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          },
+          {
+            "id": "project-delivery",
+            "name": "Project delivery",
+            "description": "Milestones, decisions and handoffs.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": { "personas": [], "teams": [] },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          }
+        ]
+      },
       "referenceCanvas": true
     },
     {
@@ -1009,10 +1043,57 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#14/moderation-failed",
       "appRoute": "/#/settings?section=moderation",
       "routeLabel": "Moderation save failed",
+      "appReadySelector": "[data-testid=settings-moderation]",
       "appMockData": {
         "relayRequiresMembership": true,
-        "relayRole": "owner"
+        "relayRole": "owner",
+        "deleteMessageError": "Permission denied.",
+        "moderationReports": [
+          {
+            "id": "visual-report-row-1",
+            "report_event_id": "visual-report-event-1",
+            "reporter_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "target_kind": "event",
+            "target": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "channel_id": "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
+            "report_type": "spam",
+            "note": "Repeated unsolicited advertising",
+            "status": "open",
+            "resolved_by": null,
+            "resolved_at": null,
+            "action_id": null,
+            "created_at": "2026-09-26T07:00:00.000Z"
+          }
+        ]
       },
+      "actions": [
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid^=moderation-group-]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=moderation-resolve-trigger]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=moderation-resolve-delete]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=moderation-action-failed]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=moderation-action-reason]",
+          "value": "Repeated unsolicited advertising"
+        }
+      ],
       "referenceCanvas": true
     },
     {
