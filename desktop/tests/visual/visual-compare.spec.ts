@@ -98,6 +98,9 @@ test.describe("visual comparison captures", () => {
         deviceScaleFactor: 1,
         colorScheme: entry.theme,
         timezoneId: "Africa/Johannesburg",
+        // The reference is a South African business and renders 24-hour
+        // times; match its locale so time formatting is not a false diff.
+        locale: "en-ZA",
       } as const;
       const referenceContext = await browser.newContext(contextOptions);
       const appContext = await browser.newContext(contextOptions);
