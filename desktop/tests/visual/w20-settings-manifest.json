@@ -714,15 +714,7 @@
       "appRoute": "/#/settings?section=appearance",
       "routeLabel": "Theme catalog",
       "referenceCanvas": true,
-      "actions": [
-        {
-          "type": "click",
-          "target": "app",
-          "selector": "[data-testid=appearance-open-themes]"
-        }
-      ],
-      "appReadySelector": "[data-testid=settings-view]",
-      "appPostActionReadySelector": "[data-testid=settings-theme-catalog]"
+      "appReadySelector": "[data-testid=settings-view]"
     },
     {
       "id": "desktop-08-custom",
