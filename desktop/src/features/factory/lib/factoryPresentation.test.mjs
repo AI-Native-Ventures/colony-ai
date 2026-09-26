@@ -8,9 +8,15 @@ import {
 
 test("Factory maps every native status to its visible state", () => {
   assert.deepEqual(
-    ["queued", "running", "waiting", "blocked", "error", "done", "cancelled"].map(
-      (status) => factoryStatusPresentation(status).label,
-    ),
+    [
+      "queued",
+      "running",
+      "waiting",
+      "blocked",
+      "error",
+      "done",
+      "cancelled",
+    ].map((status) => factoryStatusPresentation(status).label),
     ["Queued", "Working", "Waiting", "Blocked", "Failed", "Done", "Cancelled"],
   );
 });

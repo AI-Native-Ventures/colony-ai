@@ -29,7 +29,10 @@ test("Factory routes select the standalone Factory destination", () => {
 
 test("legacy project routes remain separate from the Factory destination", () => {
   assert.equal(deriveShellRoute("/projects").selectedView, "projects");
-  assert.equal(deriveShellRoute("/projects/project-id").selectedView, "projects");
+  assert.equal(
+    deriveShellRoute("/projects/project-id").selectedView,
+    "projects",
+  );
 });
 
 test("shouldBounceForChannelNotification_allowsTopLevelChannelMessages", () => {

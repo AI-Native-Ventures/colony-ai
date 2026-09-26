@@ -58,5 +58,8 @@ test("deleting one plan preserves the other scoped records", () => {
   saveFactoryPlan(storage, scope, { id: "plan-a" });
   saveFactoryPlan(storage, scope, { id: "plan-b" });
 
-  assert.deepEqual(deleteFactoryPlan(storage, scope, "plan-a").map((plan) => plan.id), ["plan-b"]);
+  assert.deepEqual(
+    deleteFactoryPlan(storage, scope, "plan-a").map((plan) => plan.id),
+    ["plan-b"],
+  );
 });
