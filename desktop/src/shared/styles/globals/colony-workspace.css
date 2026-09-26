@@ -1383,11 +1383,35 @@
   column-gap: 0.625rem;
   row-gap: 0.5rem;
   margin-block-end: 0;
+  margin-block-start: 4.8125px;
   padding-block: 0.75rem;
   background: hsl(var(--muted));
   border-color: hsl(var(--border));
   border-radius: 0.625rem;
   box-shadow: none;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  [data-testid="voice-note-playback-waveform"]
+  > div {
+  justify-content: flex-start;
+  gap: 2.59375px;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  [data-testid="voice-note-playback-waveform"] {
+  background-color: #f8f8f8;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  .colony-voice-note-waveform-bar,
+:root:has([data-colony-workspace-route="true"])
+  .colony-voice-note-card
+  .colony-voice-note-waveform-active {
+  width: 2.59375px;
 }
 
 :root:has([data-colony-workspace-route="true"])
