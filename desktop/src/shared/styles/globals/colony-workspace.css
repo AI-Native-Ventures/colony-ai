@@ -598,6 +598,75 @@
   padding-inline: 1.5rem;
 }
 
+.colony-channel-pins-screen {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.colony-channel-pins-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 1.875rem 2.125rem 1.5rem;
+  scrollbar-width: none;
+}
+
+.colony-channel-pins-content::-webkit-scrollbar {
+  display: none;
+}
+
+.colony-channel-pins-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.colony-channel-pins-heading h1 {
+  margin: 0;
+  font-size: var(--text-studio-title);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+}
+
+.colony-channel-pins-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 4.5rem auto 0;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.colony-channel-pins-empty > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: hsl(var(--muted-foreground) / 0.62);
+}
+
+.colony-channel-pins-empty h2 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.5rem;
+}
+
+.colony-channel-pins-empty p {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5rem;
+}
+
 .colony-channel-route {
   display: flex;
   min-width: 0;
@@ -1750,6 +1819,33 @@ button.colony-today-attention-row:hover {
   line-height: 1.25;
 }
 
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .composer-dock {
+  width: calc(100% - 1px);
+  margin-left: 1px;
+  padding: 10px 0 15px;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  [data-testid="message-composer"]:has(.colony-thread-crosspost) {
+  padding: 0;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .colony-message-composer-footer-content {
+  min-height: 1.8125rem;
+  margin-top: 0;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .colony-thread-crosspost {
+  min-height: 1.8125rem;
+}
+
 .colony-thread-crosspost input {
   width: 0.75rem;
   height: 0.75rem;
@@ -1769,8 +1865,8 @@ button.colony-today-attention-row:hover {
 :root:has([data-colony-workspace-route="true"])
   [data-testid="message-composer"]:has(.colony-thread-crosspost)
   [data-testid="message-input-scroll"] {
-  min-height: 2.75rem;
-  padding: 0.5rem 0 0.375rem;
+  min-height: 3.75rem;
+  padding: 0.75rem 0.75rem 0.4375rem;
 }
 
 :root:has([data-colony-workspace-route="true"])

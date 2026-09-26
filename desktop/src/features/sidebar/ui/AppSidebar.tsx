@@ -511,7 +511,9 @@ export function AppSidebar({
       className="!z-[100] !border-r-0"
       collapsible="icon"
       data-colony-workspace-route={
-        selectedView === "today" || selectedView === "channel"
+        selectedView === "today" ||
+        selectedView === "channel" ||
+        selectedView === "pins"
           ? "true"
           : undefined
       }
