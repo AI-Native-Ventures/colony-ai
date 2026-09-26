@@ -545,20 +545,37 @@ pub(super) fn store_find_operation(
     read_run_scoped(&connection, &run_id, scope).map(Some)
 }
 
+pub(super) struct StoreCreateRequest<'a> {
+    pub(super) scope: &'a FactoryScope,
+    pub(super) run_id: &'a str,
+    pub(super) operation_key: &'a str,
+    pub(super) request_hash: &'a str,
+    pub(super) project_id: Option<&'a str>,
+    pub(super) repository_id: Option<&'a str>,
+    pub(super) checkout_path: &'a str,
+    pub(super) agent_id: &'a str,
+    pub(super) harness_id: &'a str,
+    pub(super) parent_run_id: Option<&'a str>,
+    pub(super) prompt: &'a str,
+}
+
 pub(super) fn store_create(
     path: &Path,
-    scope: &FactoryScope,
-    run_id: &str,
-    operation_key: &str,
-    request_hash: &str,
-    project_id: Option<&str>,
-    repository_id: Option<&str>,
-    checkout_path: &str,
-    agent_id: &str,
-    harness_id: &str,
-    parent_run_id: Option<&str>,
-    prompt: &str,
+    request: StoreCreateRequest<'_>,
 ) -> Result<StoreCreateResult, String> {
+    let StoreCreateRequest {
+        scope,
+        run_id,
+        operation_key,
+        request_hash,
+        project_id,
+        repository_id,
+        checkout_path,
+        agent_id,
+        harness_id,
+        parent_run_id,
+        prompt,
+    } = request;
     let mut connection = open_store(path)?;
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)

@@ -32,17 +32,19 @@ fn seed_in_scope(path: &Path, run_id: &str, scope: &FactoryScope) {
     .unwrap();
     store_create(
         path,
-        scope,
-        run_id,
-        &operation_key,
-        &request_hash,
-        Some("project-1"),
-        Some("repo-1"),
-        &checkout,
-        "agent-1",
-        "codex",
-        None,
-        prompt,
+        StoreCreateRequest {
+            scope,
+            run_id,
+            operation_key: &operation_key,
+            request_hash: &request_hash,
+            project_id: Some("project-1"),
+            repository_id: Some("repo-1"),
+            checkout_path: &checkout,
+            agent_id: "agent-1",
+            harness_id: "codex",
+            parent_run_id: None,
+            prompt,
+        },
     )
     .unwrap();
 }

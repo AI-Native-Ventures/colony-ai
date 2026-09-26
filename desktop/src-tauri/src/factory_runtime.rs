@@ -377,7 +377,7 @@ impl FactoryRuntime {
             return Err("Factory workspace scope changed before run scheduling".to_string());
         }
         let mut controls = self.controls.lock().map_err(|error| error.to_string())?;
-        if controls.len() >= MAX_CONCURRENT_SESSIONS as usize + MAX_QUEUED_RUNS as usize {
+        if controls.len() >= MAX_CONCURRENT_SESSIONS + MAX_QUEUED_RUNS as usize {
             return Err("Factory run queue is full".to_string());
         }
         let (events, _) = broadcast::channel(EVENT_BUFFER);
@@ -764,17 +764,30 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
     &value[..end]
 }
 
-async fn run_worker(
+struct RunWorkerContext {
     app: AppHandle,
     path: PathBuf,
-    run: FactoryRun,
-    prompt: String,
     launch: RunLaunchConfig,
     control: RunControl,
     permits: Arc<Semaphore>,
     controls: Arc<Mutex<HashMap<String, RunControl>>>,
     event_authority: FactoryEventAuthority,
+}
+
+async fn run_worker(
+    context: RunWorkerContext,
+    run: FactoryRun,
+    prompt: String,
 ) -> Result<(), String> {
+    let RunWorkerContext {
+        app,
+        path,
+        launch,
+        control,
+        permits,
+        controls,
+        event_authority,
+    } = context;
     let transition = retry_queued_start_or_recover(
         Arc::clone(&permits),
         || {
@@ -804,7 +817,7 @@ async fn run_worker(
                 Some(&control),
                 &run.id,
                 &controls,
-                Ok(finalization),
+                Ok(*finalization),
             )?;
             return Ok(());
         }
@@ -825,12 +838,14 @@ async fn run_worker(
             Ok(client) => client,
             Err(_) => {
                 finish_run(
-                    &app,
+                    FinishRunContext {
+                        app: &app,
+                        event_authority: &event_authority,
+                        control: Some(&control),
+                        controls: &controls,
+                    },
                     &path,
                     &run.id,
-                    &event_authority,
-                    Some(&control),
-                    &controls,
                     FactoryRunStatus::Error,
                     Some("ACP process could not start"),
                 )
@@ -884,12 +899,14 @@ async fn run_worker(
             let _ = event_task.await;
             client.shutdown().await;
             finish_run(
-                &app,
+                FinishRunContext {
+                    app: &app,
+                    event_authority: &event_authority,
+                    control: Some(&control),
+                    controls: &controls,
+                },
                 &path,
                 &run.id,
-                &event_authority,
-                Some(&control),
-                &controls,
                 FactoryRunStatus::Error,
                 Some("ACP initialization failed"),
             )
@@ -945,12 +962,14 @@ async fn run_worker(
             let _ = event_task.await;
             client.shutdown().await;
             finish_run(
-                &app,
+                FinishRunContext {
+                    app: &app,
+                    event_authority: &event_authority,
+                    control: Some(&control),
+                    controls: &controls,
+                },
                 &path,
                 &run.id,
-                &event_authority,
-                Some(&control),
-                &controls,
                 FactoryRunStatus::Error,
                 Some("ACP session could not be created"),
             )
@@ -965,12 +984,14 @@ async fn run_worker(
         let _ = event_task.await;
         client.shutdown().await;
         finish_run(
-            &app,
+            FinishRunContext {
+                app: &app,
+                event_authority: &event_authority,
+                control: Some(&control),
+                controls: &controls,
+            },
             &path,
             &run.id,
-            &event_authority,
-            Some(&control),
-            &controls,
             FactoryRunStatus::Error,
             Some("Factory session checkpoint could not be saved"),
         )
@@ -1047,12 +1068,14 @@ async fn run_worker(
         drained.unwrap_or_else(|_| Err("Factory capture task panicked".to_string()));
     let final_status = finish_status_after_capture(status, capture_result);
     finish_run(
-        &app,
+        FinishRunContext {
+            app: &app,
+            event_authority: &event_authority,
+            control: Some(&control),
+            controls: &controls,
+        },
         &path,
         &run.id,
-        &event_authority,
-        Some(&control),
-        &controls,
         final_status.0,
         final_status.1,
     )
@@ -1107,17 +1130,19 @@ pub(crate) async fn factory_run_create(
     let created = runtime.while_scope_active(&app, &scope, || {
         store_create(
             &path,
-            &scope,
-            &id,
-            &operation_key,
-            &request_hash,
-            input.project_id.as_deref(),
-            input.repository_id.as_deref(),
-            &checkout.to_string_lossy(),
-            &agent_id,
-            &harness_id,
-            parent_run_id.as_deref(),
-            &input.prompt,
+            StoreCreateRequest {
+                scope: &scope,
+                run_id: &id,
+                operation_key: &operation_key,
+                request_hash: &request_hash,
+                project_id: input.project_id.as_deref(),
+                repository_id: input.repository_id.as_deref(),
+                checkout_path: &checkout.to_string_lossy(),
+                agent_id: &agent_id,
+                harness_id: &harness_id,
+                parent_run_id: parent_run_id.as_deref(),
+                prompt: &input.prompt,
+            },
         )
     });
     let created = created?;
@@ -1145,15 +1170,17 @@ pub(crate) async fn factory_run_create(
             publish(&app, &event_authority, Some(&control), &event);
         }
         tauri::async_runtime::spawn(run_worker(
-            app.clone(),
-            path.clone(),
+            RunWorkerContext {
+                app: app.clone(),
+                path: path.clone(),
+                launch,
+                control,
+                permits,
+                controls,
+                event_authority,
+            },
             run.clone(),
             prompt,
-            launch,
-            control,
-            permits,
-            controls,
-            event_authority,
         ));
         Ok(())
     })
@@ -1382,5 +1409,7 @@ fn now_iso() -> String {
 
 #[cfg(test)]
 mod finalization_tests;
+#[cfg(test)]
+mod store_create_tests;
 #[cfg(test)]
 mod tests;

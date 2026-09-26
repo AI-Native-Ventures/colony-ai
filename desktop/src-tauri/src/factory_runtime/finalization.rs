@@ -3,7 +3,7 @@ use super::*;
 pub(super) type RunFinish = (FactoryRunStatus, Option<&'static str>);
 
 pub(super) enum FinalizationResult {
-    Applied(FactoryRun, FactoryRunEvent),
+    Applied(Box<FactoryRun>, FactoryRunEvent),
     Deferred(String),
     Noop,
 }
@@ -11,7 +11,7 @@ pub(super) enum FinalizationResult {
 pub(super) enum QueuedStartOutcome<T> {
     Started(T, tokio::sync::OwnedSemaphorePermit),
     Cancelled,
-    Blocked(FinalizationResult),
+    Blocked(Box<FinalizationResult>),
 }
 
 pub(super) async fn persist_run_finalization(
@@ -86,7 +86,9 @@ where
     let mut last_error = None;
     for attempt in 0..MAX_FINAL_STATUS_ATTEMPTS {
         match apply_finalization() {
-            Ok(Some((run, event))) => return Ok(FinalizationResult::Applied(run, event)),
+            Ok(Some((run, event))) => {
+                return Ok(FinalizationResult::Applied(Box::new(run), event));
+            }
             Ok(None) => return Ok(FinalizationResult::Noop),
             Err(failure) => {
                 last_error = Some(failure);
@@ -213,28 +215,32 @@ where
             eprintln!("colony-desktop: Factory run start persistence exhausted retries: {error}");
             persist_queued_start_failure(path, run_id)
                 .await
-                .map(QueuedStartOutcome::Blocked)
+                .map(|result| QueuedStartOutcome::Blocked(Box::new(result)))
         }
     }
 }
 
+pub(super) struct FinishRunContext<'a> {
+    pub(super) app: &'a AppHandle,
+    pub(super) event_authority: &'a FactoryEventAuthority,
+    pub(super) control: Option<&'a RunControl>,
+    pub(super) controls: &'a Arc<Mutex<HashMap<String, RunControl>>>,
+}
+
 pub(super) async fn finish_run(
-    app: &AppHandle,
+    context: FinishRunContext<'_>,
     path: &Path,
     run_id: &str,
-    event_authority: &FactoryEventAuthority,
-    control: Option<&RunControl>,
-    controls: &Arc<Mutex<HashMap<String, RunControl>>>,
     status: FactoryRunStatus,
     error: Option<&str>,
 ) -> Result<(), String> {
     let finalization = persist_run_finalization(path, run_id, status, error).await;
     finish_run_result(
-        app,
-        event_authority,
-        control,
+        context.app,
+        context.event_authority,
+        context.control,
         run_id,
-        controls,
+        context.controls,
         finalization,
     )
 }
