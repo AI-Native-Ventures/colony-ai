@@ -341,7 +341,20 @@ test.describe("visual comparison captures", () => {
             .poll(() => followButtons.allTextContents())
             .toEqual(["Following", "Following"]);
         }
-        if (entry.referenceInventoryRoute === "channel/sales") {
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          entry.appMockData?.referenceWorkspace === true
+        ) {
+          await expect(
+            appPage.locator('[data-message-id="reference-sales-lerato-0914"]'),
+          ).toBeVisible();
+          await expect(
+            appPage.locator('[data-message-id="reference-sales-aya-0942"]'),
+          ).toBeVisible();
+          await expect(
+            appPage.locator('[data-testid="message-thread-panel"]'),
+          ).toHaveCount(0);
+        } else if (entry.referenceInventoryRoute === "channel/sales") {
           const crossPostControl = appPage.getByRole("checkbox", {
             name: "Also send to #Sales",
           });
