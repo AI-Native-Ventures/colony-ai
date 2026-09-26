@@ -825,7 +825,7 @@ export function AppearanceSettingsPanel({
           <section className="ap-section ap-named-themes">
             <div>
               <h2>Named themes</h2>
-              <p>Browse the existing theme catalog.</p>
+              <p>Browse 62 palettes. Preview before applying.</p>
             </div>
             <button
               className="ap-text-button"
