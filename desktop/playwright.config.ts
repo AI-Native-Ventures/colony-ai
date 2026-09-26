@@ -50,6 +50,7 @@ export default defineConfig({
         "**/custom-emoji.spec.ts",
         "**/profile-custom-emoji-status.spec.ts",
         "**/custom-emoji-ui.spec.ts",
+        "**/moderation-queue-failure.spec.ts",
         "**/channel-mute.spec.ts",
         "**/channel-star.spec.ts",
         "**/channel-controls.spec.ts",

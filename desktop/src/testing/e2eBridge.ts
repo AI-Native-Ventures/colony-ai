@@ -371,6 +371,8 @@ type E2eConfig = {
     channelMembersReadDelayMs?: number;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
+    /** Reject the mock delete_message command before changing its message store. */
+    deleteMessageError?: string;
     channelsReadError?: string;
     /** Reject successive mock `get_channels` calls, then resume. */
     channelsReadErrors?: (string | null)[];
@@ -10490,6 +10492,9 @@ function handleDeleteMessage(
   },
   config: E2eConfig | undefined,
 ): void {
+  const error = config?.mock?.deleteMessageError;
+  if (error) throw new Error(error);
+
   const history = mockMessages.get(args.channelId);
   if (history) {
     const index = history.findIndex((ev) => ev.id === args.eventId);

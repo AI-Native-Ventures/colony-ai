@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, ShieldAlert } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { invalidateChannelMembersRosters } from "@/features/channels/rosterFreshness";
@@ -292,11 +292,13 @@ function QueueGroupCard({
   reporterNames,
   onResolve,
   disabled,
+  actionFailed,
 }: {
   group: ModerationQueueGroup;
   reporterNames: Record<string, string | null | undefined>;
   onResolve: (group: ModerationQueueGroup, action: ResolutionAction) => void;
   disabled: boolean;
+  actionFailed: boolean;
 }) {
   const topType = groupTopReportType(group);
   const tier = severityTier(topType);
@@ -350,6 +352,20 @@ function QueueGroupCard({
         ))}
       </div>
 
+      {actionFailed ? (
+        <div
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          data-testid="moderation-action-failed"
+          role="alert"
+        >
+          <p className="font-medium">Moderation action failed</p>
+          <p className="mt-1 text-xs">
+            The content remains unchanged. Retry after checking your
+            permissions.
+          </p>
+        </div>
+      ) : null}
+
       {group.priorActions.length > 0 ? (
         <div className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -374,6 +390,9 @@ function QueueTab() {
   const auditQuery = useModerationAuditQuery();
   const resolveMutation = useResolveReportMutation();
   const banMutation = useBanMemberMutation();
+  const [failedActionTargets, setFailedActionTargets] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   const groups = useMemo(() => {
     const reports = (reportsQuery.data ?? []).map(toQueueReport);
@@ -407,12 +426,30 @@ function QueueTab() {
     const openReports = group.reports.filter(
       (report) => report.status === "open",
     );
+
+    setFailedActionTargets((current) => {
+      if (!current.has(group.targetKey)) return current;
+      const next = new Set(current);
+      next.delete(group.targetKey);
+      return next;
+    });
+
     try {
       // Enforce FIRST. The 9044 resolve DMs the reporter "reviewed and acted
       // on" — if enforcement fails we must not send that lie, and we leave the
       // report open (retryable, no orphan decision row). Only after the paired
       // 9040/9005/9001 lands do we resolve every open report about this target.
       await enforceResolution(group, action, banMutation.mutateAsync);
+    } catch {
+      setFailedActionTargets((current) => {
+        const next = new Set(current);
+        next.add(group.targetKey);
+        return next;
+      });
+      return;
+    }
+
+    try {
       if (action === "kick" && group.channelId != null) {
         // The kick writes the roster directly (no member mutation); without
         // this, the kicked identity stays in the cached roster for the
@@ -459,6 +496,7 @@ function QueueTab() {
     <div className="space-y-3">
       {groups.map((group) => (
         <QueueGroupCard
+          actionFailed={failedActionTargets.has(group.targetKey)}
           disabled={resolveMutation.isPending || banMutation.isPending}
           group={group}
           key={group.targetKey}
