@@ -292,7 +292,89 @@
       "referenceInventoryRoute": "settings/templates",
       "referenceUrl": "http://127.0.0.1:5197/20260925-r17/app/workspace/?embedded=1#settings/templates",
       "appRoute": "/#/settings?section=channel-templates",
-      "routeLabel": "settings/templates"
+      "routeLabel": "settings/templates",
+      "appReadySelector": "[data-testid=settings-channel-templates]",
+      "actions": [
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "text=Client workspace"
+        }
+      ],
+      "appMockData": {
+        "channelTemplates": [
+          {
+            "id": "client-workspace",
+            "name": "Client workspace",
+            "description": "A brief, content review and delivery conversation for each client.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": "Keep the agreed brief pinned. Share drafts for review and wait for client approval before publishing.",
+            "agents": {
+              "personas": [
+                {
+                  "personaId": "mina",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                },
+                {
+                  "personaId": "theo",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                }
+              ],
+              "teams": []
+            },
+            "isBuiltin": false,
+            "createdAt": "2026-09-25T00:00:00.000Z",
+            "updatedAt": "2026-09-25T00:00:00.000Z"
+          },
+          {
+            "id": "project-room",
+            "name": "Project room",
+            "description": "A focused place for a project team and its agents.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": "Clarify scope, track decisions and keep the next action visible.",
+            "agents": {
+              "personas": [
+                {
+                  "personaId": "aya",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                }
+              ],
+              "teams": []
+            },
+            "isBuiltin": false,
+            "createdAt": "2026-09-25T00:00:00.000Z",
+            "updatedAt": "2026-09-25T00:00:00.000Z"
+          }
+        ],
+        "personas": [
+          {
+            "id": "mina",
+            "displayName": "Mina",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          },
+          {
+            "id": "theo",
+            "displayName": "Theo",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          },
+          {
+            "id": "aya",
+            "displayName": "Aya",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          }
+        ]
+      }
     },
     {
       "id": "workspace-settings-updates",
