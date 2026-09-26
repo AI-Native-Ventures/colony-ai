@@ -536,7 +536,7 @@
 :root:has([data-colony-workspace-route="true"]) .colony-sidebar-team-section {
   border-top: 1px solid rgb(85 73 103 / 12%);
   margin-top: auto;
-  padding: 0.5rem 0.375rem 0.625rem;
+  padding: 0.5625rem 0.625rem 0.5rem;
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -552,7 +552,7 @@
 :root:has([data-colony-workspace-route="true"])
   .colony-sidebar-team-section
   [data-sidebar="menu-button"] {
-  height: 2rem;
+  height: 2.0625rem;
   padding-inline: 0.625rem;
   color: hsl(var(--colony-sidebar-foreground));
   font-size: var(--text-2xs);
@@ -2458,6 +2458,7 @@ button.colony-today-attention-row:hover {
     [data-testid="message-row"]
     [data-testid="message-body"] {
     margin-top: 0.3125rem !important;
+    margin-right: 0.25rem;
   }
 
   :root:has([data-testid="channel-view-tabs"]) [data-testid="message-header"] {
@@ -2473,7 +2474,9 @@ button.colony-today-attention-row:hover {
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timestamp"] {
     font-size: var(--colony-text-message-timestamp);
+    font-variant-numeric: proportional-nums;
     line-height: 1.5;
+    transform: translateY(-0.109375rem);
   }
 
   :root:has([data-testid="channel-view-tabs"])
