@@ -181,7 +181,7 @@ export function buildProjectDetailAgentContext({
     channels: "Channels",
     contributors: "Contributors",
     files: "Files",
-    issues: "Tasks",
+    issues: "Issues",
     overview: "Overview",
     prs: "Reviews",
   };

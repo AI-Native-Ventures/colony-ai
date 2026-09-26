@@ -483,9 +483,16 @@ test("selected hard-break lines stay newline-separated in one code block", async
         () =>
           (
             window as Window & {
-              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ content: string }>;
+              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                content: string;
+                kind: number;
+              }>;
             }
-          ).__BUZZ_E2E_SIGNED_EVENTS__?.at(-1)?.content,
+          ).__BUZZ_E2E_SIGNED_EVENTS__
+            // The first-run theme seed can sign after the message on slow
+            // hosts; read the latest channel message, not the latest event.
+            ?.filter((event) => event.kind === 9)
+            .at(-1)?.content,
       ),
     )
     .toBe("```\none\ntwo\nthree\n```");
@@ -526,9 +533,16 @@ test("selected list items become one multiline code block and keep neighbors", a
         () =>
           (
             window as Window & {
-              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ content: string }>;
+              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                content: string;
+                kind: number;
+              }>;
             }
-          ).__BUZZ_E2E_SIGNED_EVENTS__?.at(-1)?.content,
+          ).__BUZZ_E2E_SIGNED_EVENTS__
+            // The first-run theme seed can sign after the message on slow
+            // hosts; read the latest channel message, not the latest event.
+            ?.filter((event) => event.kind === 9)
+            .at(-1)?.content,
       ),
     )
     .toBe("- before\n\n```\none\ntwo\n```\n\n- after");
@@ -553,9 +567,16 @@ test("caret-only block formatting serializes the prior draft unchanged", async (
         () =>
           (
             window as Window & {
-              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ content: string }>;
+              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                content: string;
+                kind: number;
+              }>;
             }
-          ).__BUZZ_E2E_SIGNED_EVENTS__?.at(-1)?.content,
+          ).__BUZZ_E2E_SIGNED_EVENTS__
+            // The first-run theme seed can sign after the message on slow
+            // hosts; read the latest channel message, not the latest event.
+            ?.filter((event) => event.kind === 9)
+            .at(-1)?.content,
       ),
     )
     .toBe("before\n\n- item");
@@ -586,9 +607,16 @@ test("block formatting preserves the lines around a selected composer line", asy
         () =>
           (
             window as Window & {
-              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ content: string }>;
+              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                content: string;
+                kind: number;
+              }>;
             }
-          ).__BUZZ_E2E_SIGNED_EVENTS__?.at(-1)?.content,
+          ).__BUZZ_E2E_SIGNED_EVENTS__
+            // The first-run theme seed can sign after the message on slow
+            // hosts; read the latest channel message, not the latest event.
+            ?.filter((event) => event.kind === 9)
+            .at(-1)?.content,
       ),
     )
     .toBe("before\n\n- selected\n\nafter");
