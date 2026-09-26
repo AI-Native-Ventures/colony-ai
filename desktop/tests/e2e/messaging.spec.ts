@@ -3623,6 +3623,67 @@ test("thread composer switches directly between visible reply edits", async ({
   );
 });
 
+test("thread summary keeps its height while participant avatars resolve", async ({
+  page,
+}) => {
+  const root = `Thread summary height root ${Date.now()}`;
+
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function",
+  );
+  const rootId = await page.evaluate((rootContent) => {
+    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+    if (!emit) throw new Error("Mock message emitter is unavailable.");
+    const rootEvent = emit({ channelName: "general", content: rootContent });
+    for (const content of ["summary reply one", "summary reply two"]) {
+      emit({ channelName: "general", content, parentEventId: rootEvent.id });
+    }
+    return rootEvent.id;
+  }, root);
+
+  // Sample the summary line every frame from the moment it mounts until its
+  // avatar fallback (shown after a 200ms delay) has rendered. A height change
+  // here shifts the bottom-pinned timeline and drops the reader's hover.
+  const heightsPromise = page.evaluate(
+    (id) =>
+      new Promise<number[]>((resolve, reject) => {
+        const heights: number[] = [];
+        const deadline = performance.now() + 5_000;
+        let framesAfterFallback = -1;
+        const tick = () => {
+          const summary = document.querySelector<HTMLElement>(
+            `[data-testid="message-timeline"] [data-thread-head-id="${id}"][data-testid="message-thread-summary"]`,
+          );
+          if (summary?.parentElement) {
+            heights.push(summary.parentElement.getBoundingClientRect().height);
+            if (
+              framesAfterFallback < 0 &&
+              summary.querySelector(
+                '[data-testid="message-thread-summary-avatar-0-fallback"]',
+              )
+            ) {
+              framesAfterFallback = 0;
+            }
+          }
+          if (framesAfterFallback >= 0) framesAfterFallback += 1;
+          if (framesAfterFallback > 5) return resolve(heights);
+          if (performance.now() > deadline) {
+            return reject(new Error(`summary never settled: ${heights}`));
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    rootId,
+  );
+  await page.getByTestId("channel-general").click();
+  const heights = await heightsPromise;
+
+  expect(heights.length).toBeGreaterThan(1);
+  expect(new Set(heights.map((height) => Math.round(height))).size).toBe(1);
+});
+
 test("editing a broadcast reply from a thread returns to the main composer", async ({
   page,
 }) => {
