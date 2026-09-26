@@ -96,6 +96,7 @@ export function AppSidebarPinnedHeader({
         >
           <span aria-hidden="true" className="colony-sidebar-brand-mark">
             {communityInitial}
+            <span className="colony-sidebar-brand-mark-dot">·</span>
           </span>
           <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
             {activeCommunityName || "No community"}
