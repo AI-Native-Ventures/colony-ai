@@ -274,7 +274,7 @@ export function AgentDirectory({
                     <tr
                       key={agent.pubkey}
                       className="h-12"
-                      data-testid={`agent-row-${agent.pubkey}`}
+                      data-testid={`managed-agent-${agent.pubkey}`}
                     >
                       <td className="truncate px-0 py-1.5">
                         <AgentIdentityButton
