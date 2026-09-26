@@ -1,4 +1,5 @@
 import {
+  closestCenter,
   DndContext,
   DragOverlay,
   KeyboardSensor,
@@ -378,6 +379,7 @@ export function CommunityRail({
       data-testid="community-rail"
     >
       <DndContext
+        collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
         onDragStart={handleDragStart}
         sensors={sensors}

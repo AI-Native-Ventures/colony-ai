@@ -536,6 +536,19 @@
   opacity: 1;
 }
 
+/*
+ * The Colony field artwork uses SVG noise and blur filters. Give each layer
+ * its own compositing layer so scrolling content and the backdrop blurs
+ * above it (channel header, composer) do not re-rasterize the artwork every
+ * frame; without this, software-rendered hosts drop to about 20 fps.
+ */
+.buzz-theme-gradient-underlay,
+.buzz-theme-gradient-layer-light,
+.buzz-theme-gradient-layer-dark {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
 /* The mobile sidebar is portaled outside the app surface. */
 :root[data-buzz-sidebar]:not(.dark)
   [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {

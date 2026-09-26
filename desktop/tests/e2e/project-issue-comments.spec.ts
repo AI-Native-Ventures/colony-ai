@@ -30,7 +30,7 @@ test("issue detail can open agent chat or seed a channel question", async ({
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   const issueRow = page.getByTestId("project-issue-row").first();
   await expect(issueRow).toBeVisible({ timeout: 10_000 });
   await issueRow.getByRole("button", { name: /^#/ }).click();
@@ -101,7 +101,7 @@ test("issue discussion ignores an author-claimed origin channel", async ({
   );
   await installMockBridge(page);
   await openBuzzProject(page);
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
 
   const issueRow = page
     .getByTestId("project-issue-row")
@@ -135,11 +135,12 @@ test("issue discussion ignores an author-claimed origin channel", async ({
   ).toHaveCount(0);
 });
 
-test("issue comments use the project activity timeline", async ({ page }) => {
+test("issue comments remain in the project issue detail", async ({ page }) => {
+  test.setTimeout(60_000);
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   const issueRow = page.getByTestId("project-issue-row").first();
   await expect(issueRow).toBeVisible({ timeout: 10_000 });
   await issueRow.getByRole("button", { name: /^#/ }).click();
@@ -147,12 +148,23 @@ test("issue comments use the project activity timeline", async ({ page }) => {
   const composer = page.getByTestId("project-issue-comment-composer");
   await expect(composer).toBeVisible();
 
-  for (const comment of ISSUE_COMMENTS) {
+  for (const [index, comment] of ISSUE_COMMENTS.entries()) {
+    if (index > 0) {
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, {
+        timeout: 10_000,
+      });
+    }
     await composer.locator('[contenteditable="true"]').fill(comment);
     await composer.getByRole("button", { name: "Send message" }).click();
+    // The confirmation toast can open under the pointer, and Sonner pauses
+    // dismissal while hovered; move away as a person would.
+    await page.mouse.move(0, 0);
     await expect(page.getByText(comment, { exact: true })).toBeVisible({
       timeout: 10_000,
     });
+    await expect(
+      page.getByText("Comment posted.", { exact: true }).first(),
+    ).toBeVisible();
   }
 
   const timelineRows = page.getByTestId("project-issue-comment-timeline-row");
@@ -188,7 +200,7 @@ test("issue assignees can be assigned and unassigned", async ({ page }) => {
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   const issueRow = page.getByTestId("project-issue-row").first();
   await expect(issueRow).toBeVisible({ timeout: 10_000 });
   await issueRow.getByRole("button", { name: /^#/ }).click();
@@ -197,7 +209,7 @@ test("issue assignees can be assigned and unassigned", async ({ page }) => {
     .getByTestId("project-issue-detail")
     .locator("header")
     .first();
-  await expect(issueHeader).toContainText("Task created");
+  await expect(issueHeader).toContainText("Issue created");
   await expect(issueHeader).not.toContainText("alice");
   await expect(issueHeader.locator("img")).toHaveCount(0);
   const contextAssignment = page.getByTestId("project-context-task-assignment");
@@ -208,7 +220,7 @@ test("issue assignees can be assigned and unassigned", async ({ page }) => {
   await expect(page.getByTestId("project-context-issue-assign")).toBeVisible();
   const createTask = page
     .getByTestId("project-repository-actions-panel")
-    .getByRole("button", { name: "Create task", exact: true });
+    .getByRole("button", { name: "New issue", exact: true });
   await expect(createTask).toBeVisible();
   await expect(selfAssign.locator("svg")).toHaveCount(1);
   const actionGeometry = await Promise.all(

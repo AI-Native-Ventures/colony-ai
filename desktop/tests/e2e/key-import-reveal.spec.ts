@@ -1,69 +1,27 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge } from "../helpers/bridge";
-import { openAdvancedIdentityPath } from "../helpers/onboarding";
+import { startR17AccountAuth } from "../helpers/onboarding";
 
-const SAMPLE_NSEC =
-  "nsec1u70xptkumvfc4k4hu0rc4fnzcexvw63zvq2ng9vmqujsaayhparqu8eju9";
-
-test("key import masks the key with a reveal toggle", async ({ page }) => {
+test("R17 account passwords stay masked while entering credentials", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-  await openAdvancedIdentityPath(page);
+  await startR17AccountAuth(page);
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  const input = page.getByTestId("nostr-import-nsec-input");
-  await expect(input).toBeVisible();
-  await waitForAnimations(page);
+  const signInPassword = page.getByLabel("Password", { exact: true });
+  await expect(signInPassword).toHaveAttribute("type", "password");
+  await signInPassword.fill("correct-horse-12");
+  await expect(signInPassword).toHaveAttribute("type", "password");
 
-  // Masked by default; no toggle until there is input. The refreshed card
-  // keeps key text on the standard foreground token.
-  const toggle = page.getByTestId("nostr-import-reveal-toggle");
-  await expect(input).toHaveAttribute("type", "password");
-  await expect(toggle).toHaveCSS("opacity", "0");
-  await expect(input).toHaveAttribute(
-    "class",
-    /text-\[oklch\(0\.22213_0_0\)\]/,
-  );
+  await page.getByRole("button", { name: "Create an account" }).click();
+  const signupPassword = page.getByRole("textbox", { name: "Password" });
+  await expect(signupPassword).toHaveAttribute("type", "password");
+  await signupPassword.fill("correct-horse-12");
+  await expect(signupPassword).toHaveAttribute("type", "password");
 
-  // The toggle is absolutely positioned: its appearance must not resize the
-  // input or shift the centered text.
-  const widthBefore = await input.evaluate(
-    (el) => el.getBoundingClientRect().width,
-  );
-  await input.fill(SAMPLE_NSEC);
-  await expect(toggle).toHaveCSS("opacity", "1");
-  const widthAfter = await input.evaluate(
-    (el) => el.getBoundingClientRect().width,
-  );
-  expect(widthAfter).toBe(widthBefore);
-
-  // Reveal, then clear: a sticky reveal must never carry over to newly
-  // pasted content, so the next key starts masked again.
-  await toggle.click();
-  await expect(input).toHaveAttribute("type", "text");
-  await input.fill("");
-  await expect(toggle).toHaveCSS("opacity", "0");
-  await input.fill(SAMPLE_NSEC);
-  await expect(input).toHaveAttribute("type", "password");
-
-  // Re-masking via the toggle still works.
-  await toggle.click();
-  await expect(input).toHaveAttribute("type", "text");
-  await toggle.click();
-  await expect(input).toHaveAttribute("type", "password");
-
-  // Narrow viewport: the absolutely positioned toggle must not cause
-  // horizontal overflow.
   await page.setViewportSize({ width: 720, height: 620 });
-  await waitForAnimations(page);
-  const overflow = await page.evaluate(
+  const overflows = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
-  expect(overflow).toBe(false);
+  expect(overflows).toBe(false);
 });
