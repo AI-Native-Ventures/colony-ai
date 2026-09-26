@@ -63,12 +63,13 @@ class _PairingStartView extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return _PairingContent(
+      topPadding: 22,
       children: [
         const _PairingIntro(
           title: 'Your Colony.\nOn this phone.',
           description: 'Use the same identity you already have on desktop.',
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 27),
         const _PairingDeviceIllustration(),
         const SizedBox(height: 32),
         const _PairingInstruction(
@@ -87,7 +88,7 @@ class _PairingStartView extends StatelessWidget {
           number: '3',
           text: 'Scan its QR code, then compare and confirm on both devices.',
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 23),
         Text(
           'Only pair with a desktop you trust. This phone will gain access to your Colony identity.',
           style: context.mobileTypography.metadata.copyWith(
@@ -237,17 +238,9 @@ class _PairingInstruction extends StatelessWidget {
               style: style,
               children: [
                 TextSpan(text: text),
-                if (emphasisParts != null && emphasisParts.length == 1)
-                  TextSpan(
-                    text: emphasisParts.single,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                if (emphasisParts != null && emphasisParts.length > 1)
+                if (emphasisParts != null)
                   for (final (index, part) in emphasisParts.indexed) ...[
-                    TextSpan(
-                      text: part,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    ..._pairingInstructionEmphasis(part),
                     if (index < emphasisParts.length - 1)
                       WidgetSpan(
                         alignment: PlaceholderAlignment.middle,
@@ -267,6 +260,25 @@ class _PairingInstruction extends StatelessWidget {
       ],
     );
   }
+}
+
+List<InlineSpan> _pairingInstructionEmphasis(String value) {
+  final punctuation = RegExp(r'[.!?]+$').firstMatch(value);
+  if (punctuation == null) {
+    return [
+      TextSpan(
+        text: value,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ];
+  }
+  return [
+    TextSpan(
+      text: value.substring(0, punctuation.start),
+      style: const TextStyle(fontWeight: FontWeight.w700),
+    ),
+    TextSpan(text: value.substring(punctuation.start)),
+  ];
 }
 
 class _PairingScanView extends StatelessWidget {

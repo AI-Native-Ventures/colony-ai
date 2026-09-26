@@ -10,11 +10,15 @@ class AccountCodeInput extends HookWidget {
   const AccountCodeInput({
     required this.label,
     required this.onChanged,
+    this.enabled = true,
+    this.isInvalid = false,
     super.key,
   });
 
   final String label;
   final ValueChanged<String> onChanged;
+  final bool enabled;
+  final bool isInvalid;
 
   @override
   Widget build(BuildContext context) {
@@ -110,10 +114,12 @@ class AccountCodeInput extends HookWidget {
               child: Semantics(
                 label: 'Digit ${index + 1} of 6',
                 textField: true,
+                enabled: enabled,
                 child: TextField(
                   controller: controllers[index],
                   focusNode: focusNodes[index],
                   textAlign: TextAlign.center,
+                  enabled: enabled,
                   keyboardType: TextInputType.number,
                   textInputAction: index == 5
                       ? TextInputAction.done
@@ -131,7 +137,9 @@ class AccountCodeInput extends HookWidget {
                   ),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: AccountFlowPalette.soft(brightness),
+                    fillColor: isInvalid
+                        ? AccountFlowPalette.errorContainer(brightness)
+                        : AccountFlowPalette.soft(brightness),
                     isDense: true,
                     constraints: const BoxConstraints.tightFor(height: 52),
                     contentPadding: const EdgeInsets.symmetric(
@@ -139,12 +147,20 @@ class AccountCodeInput extends HookWidget {
                       vertical: 14,
                     ),
                     border: border,
-                    enabledBorder: border,
                     focusedBorder: border.copyWith(
                       borderSide: BorderSide(
-                        color: AccountFlowPalette.blue(brightness),
+                        color: isInvalid
+                            ? AccountFlowPalette.error(brightness)
+                            : AccountFlowPalette.blue(brightness),
                       ),
                     ),
+                    enabledBorder: isInvalid
+                        ? border.copyWith(
+                            borderSide: BorderSide(
+                              color: AccountFlowPalette.error(brightness),
+                            ),
+                          )
+                        : border,
                   ),
                   onChanged: (value) => setDigit(index, value),
                   onTap: () =>
