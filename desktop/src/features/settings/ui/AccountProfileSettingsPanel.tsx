@@ -116,8 +116,8 @@ export function AccountProfileSettingsPanel({
           : "false"
       }
     >
-      <header className="mb-16 flex min-h-8 items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
+      <header className="w20-account-profile-header mb-[62px] flex min-h-8 items-center justify-between gap-4">
+        <h1 className="w20-account-page-title">Your account</h1>
         <Button
           className="h-8 px-3 text-xs"
           data-testid="settings-profile-back-to-today"
@@ -129,26 +129,26 @@ export function AccountProfileSettingsPanel({
         </Button>
       </header>
 
-      <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[1.65fr_1fr]">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-7 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
         <section
-          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-background/70"
+          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border/70 bg-background/70"
           data-testid="settings-account-profile-card"
         >
-          <h2 className="px-4 pt-4 text-sm font-semibold text-muted-foreground/70">
+          <h2 className="w20-account-card-title px-6 pt-[22px]">
             Your profile
           </h2>
           <form onSubmit={saveProfile}>
-            <div className="space-y-7 px-4 pb-4 pt-3">
-              <div className="space-y-1.5">
+            <div className="space-y-4 px-6 pb-[22px]">
+              <div className="w20-account-field">
                 <label
-                  className="block text-xs font-semibold"
+                  className="w20-account-field-label"
                   htmlFor="account-profile-name"
                 >
                   Name
                 </label>
                 <Input
                   autoComplete="name"
-                  className="h-10 text-sm"
+                  className="w20-account-control h-10 rounded-[7px]"
                   data-testid="account-profile-name"
                   id="account-profile-name"
                   onChange={(event) => {
@@ -160,23 +160,23 @@ export function AccountProfileSettingsPanel({
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="w20-account-field">
                 <label
-                  className="block text-xs font-semibold"
+                  className="w20-account-field-label"
                   htmlFor="account-profile-email"
                 >
                   Email address
                 </label>
                 <Input
                   autoComplete="email"
-                  className="h-10 text-sm"
+                  className="w20-account-control h-10 rounded-[7px]"
                   data-testid="account-profile-email"
                   id="account-profile-email"
                   readOnly
                   value={accountQuery.data?.email ?? ""}
                 />
                 <button
-                  className="pt-1 text-left text-xs font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w20-account-email-link pt-1 text-left font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="account-change-email"
                   onClick={() => onSectionChange("security")}
                   type="button"
@@ -185,15 +185,15 @@ export function AccountProfileSettingsPanel({
                 </button>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="w20-account-field">
                 <label
-                  className="block text-xs font-semibold"
+                  className="w20-account-field-label"
                   htmlFor="account-profile-status"
                 >
                   Status
                 </label>
                 <Input
-                  className="h-10 text-sm"
+                  className="w20-account-control h-10 rounded-[7px]"
                   data-testid="account-profile-status"
                   id="account-profile-status"
                   readOnly
@@ -201,15 +201,15 @@ export function AccountProfileSettingsPanel({
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="w20-account-field">
                 <label
-                  className="block text-xs font-semibold"
+                  className="w20-account-field-label"
                   htmlFor="account-profile-timezone"
                 >
                   Timezone
                 </label>
                 <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-default disabled:opacity-100"
+                  className="w20-account-control h-10 w-full rounded-[7px] border border-input bg-background disabled:cursor-default disabled:opacity-100"
                   data-testid="account-profile-timezone"
                   disabled
                   id="account-profile-timezone"
@@ -237,7 +237,7 @@ export function AccountProfileSettingsPanel({
 
               <div className="flex justify-end pt-1">
                 <Button
-                  className="h-8 bg-[#705486] px-4 text-xs text-white hover:bg-[#604776]"
+                  className="w20-account-save bg-[#705486] text-white hover:bg-[#604776]"
                   data-testid="account-profile-save"
                   disabled={
                     updateProfileMutation.isPending || !nameDraft.trim()
@@ -252,14 +252,14 @@ export function AccountProfileSettingsPanel({
         </section>
 
         <section
-          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-background/70"
+          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border/70 bg-background/70"
           data-testid="settings-account-business-card"
         >
-          <h2 className="px-4 pt-4 text-sm font-semibold text-muted-foreground/70">
+          <h2 className="w20-account-card-title px-6 pt-[22px]">
             This business
           </h2>
-          <div className="space-y-6 px-4 pb-6 pt-3">
-            <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-5 text-xs">
+          <div className="px-6 pb-6">
+            <div className="mt-[18px] grid grid-cols-[145px_minmax(0,1fr)] gap-x-[18px] gap-y-[13px] text-compact leading-[1.7]">
               <span className="text-muted-foreground">Business</span>
               <span
                 className="min-w-0 truncate"
@@ -270,9 +270,9 @@ export function AccountProfileSettingsPanel({
               <span className="text-muted-foreground">Your role</span>
               <span data-testid="account-business-role">{roleLabel}</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-2">
               <Button
-                className="h-8 px-3 text-xs"
+                className="w20-account-card-action"
                 data-testid="account-business-settings"
                 onClick={() => onSectionChange("business-profile")}
                 size="sm"
@@ -281,7 +281,7 @@ export function AccountProfileSettingsPanel({
                 Business settings
               </Button>
               <Button
-                className="h-8 px-3 text-xs"
+                className="w20-account-card-action"
                 data-testid="account-business-members"
                 onClick={() => onSectionChange("people")}
                 size="sm"

@@ -76,6 +76,41 @@ test("routes without a data-backed design fall back to Account profile", async (
   await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
 });
 
+test("account profile follows the r19 grid and type scale", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "profile");
+
+  const profileTitle = page
+    .getByTestId("settings-profile")
+    .getByRole("heading", { name: "Your account", exact: true });
+  await expect(profileTitle).toBeVisible();
+  const profileGeometry = await page
+    .getByTestId("settings-account-profile-card")
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, width: rect.width };
+    });
+  const businessGeometry = await page
+    .getByTestId("settings-account-business-card")
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, width: rect.width };
+    });
+  const titleFontSize = await profileTitle.evaluate(
+    (element) => getComputedStyle(element).fontSize,
+  );
+
+  expect(profileGeometry.x).toBeCloseTo(314, 0);
+  expect(profileGeometry.width).toBeCloseTo(632, 0);
+  expect(businessGeometry.x).toBeCloseTo(974, 0);
+  expect(businessGeometry.width).toBeCloseTo(384, 0);
+  expect(titleFontSize).toBe("27.2px");
+});
+
 test("appearance controls save a complete scoped snapshot and retain density", async ({
   page,
 }) => {
