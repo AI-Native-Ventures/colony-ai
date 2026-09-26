@@ -1,6 +1,10 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
-import type { MockManagedAgentSeed } from "../../src/testing/e2eBridge";
+import type {
+  MockFactoryProjectSeed,
+  MockFactoryRunSeed,
+  MockManagedAgentSeed,
+} from "../../src/testing/e2eBridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
 export const TEST_IDENTITIES = {
@@ -159,6 +163,14 @@ type MockBridgeOptions = {
   pocketVoiceImportResult?: "success" | "cancel" | "invalid";
   /** Advertised HEAD for the first mock project without adding that branch. */
   projectHeadBranch?: string;
+  /** Factory-only project announcements for focused Factory E2E coverage. */
+  factoryProjects?: MockFactoryProjectSeed[];
+  /** Native-like Factory runtime state for focused Factory E2E coverage. */
+  factoryRuns?: MockFactoryRunSeed[];
+  /** Run ids whose snapshot reads fail, exercising reconnect states. */
+  factorySnapshotFailureRunIds?: string[];
+  /** Local checkout paths returned by the E2E filesystem boundary. */
+  factoryLocalRepositories?: Array<{ name: string; path: string }>;
   /** Relay NIP-11 identity used to sign authoritative repository state. */
   relaySelf?: string | null;
   /** Native-like huddle state seeded from authoritative role-bearing membership. */

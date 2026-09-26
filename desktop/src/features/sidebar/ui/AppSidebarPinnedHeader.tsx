@@ -1,4 +1,11 @@
-import { Bot, BriefcaseBusiness, Folders, House, Inbox } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  BriefcaseBusiness,
+  Folders,
+  House,
+  Inbox,
+} from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
@@ -31,6 +38,7 @@ type SidebarSelectedView =
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;
+  factoryView?: boolean;
   channelLabels: Record<string, string>;
   currentChannelId?: string | null;
   currentPubkey?: string;
@@ -40,6 +48,7 @@ type AppSidebarPinnedHeaderProps = {
   onOpenDm: (input: { pubkeys: string[] }) => Promise<void>;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;
   onSelectChannel: (channelId: string) => void;
+  onReturnToWorkspace?: () => void;
   searchChannels: Channel[];
   searchFocusRequest: number;
   showSidebarCollapseButton: boolean;
@@ -59,6 +68,7 @@ type AppSidebarPrimaryMenuProps = {
 
 export function AppSidebarPinnedHeader({
   activeCommunityName,
+  factoryView = false,
   channelLabels,
   currentChannelId,
   currentPubkey,
@@ -68,6 +78,7 @@ export function AppSidebarPinnedHeader({
   onOpenDm,
   onOpenSearchResult,
   onSelectChannel,
+  onReturnToWorkspace,
   searchChannels,
   searchFocusRequest,
   showSidebarCollapseButton,
@@ -84,22 +95,29 @@ export function AppSidebarPinnedHeader({
       data-testid="sidebar-pinned-header"
     >
       <div className="colony-sidebar-brand mb-2 flex h-10 items-center gap-2">
-        <button
-          aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
-          data-testid="sidebar-business-switcher"
-          onClick={() =>
-            window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
-          }
-          type="button"
-        >
-          <span aria-hidden="true" className="colony-sidebar-brand-mark">
-            {communityInitial}
-          </span>
-          <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
-            {activeCommunityName || "No community"}
-          </span>
-        </button>
+        {factoryView ? (
+          <div aria-label="Colony" className="flex min-w-0 flex-1 items-center gap-2 px-1" data-testid="factory-sidebar-brand">
+            <span aria-hidden="true" className="colony-sidebar-brand-mark">c</span>
+            <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">colony</span>
+          </div>
+        ) : (
+          <button
+            aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+            data-testid="sidebar-business-switcher"
+            onClick={() =>
+              window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="colony-sidebar-brand-mark">
+              {communityInitial}
+            </span>
+            <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
+              {activeCommunityName || "No community"}
+            </span>
+          </button>
+        )}
         {showSidebarCollapseButton ? (
           <Button
             aria-label="Toggle Sidebar"
@@ -114,21 +132,33 @@ export function AppSidebarPinnedHeader({
           </Button>
         ) : null}
       </div>
-      <TopbarSearch
-        channelLabels={channelLabels}
-        channels={searchChannels}
-        currentChannelId={currentChannelId}
-        currentPubkey={currentPubkey}
-        focusRequest={searchFocusRequest}
-        onOpenChannel={onSelectChannel}
-        onOpenResult={onOpenSearchResult}
-        onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
-        onBrowseChannels={onBrowseChannels}
-        onCreateAgent={onCreateAgent}
-        onCreateChannel={onCreateChannel}
-        scopeFocusRequest={scopeSearchFocusRequest}
-        suggestionChannels={suggestionChannels}
-      />
+      {factoryView ? (
+        <button
+          className="fx-sidebar-workspace-link"
+          data-testid="factory-return-to-workspace"
+          onClick={onReturnToWorkspace}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" />
+          <span><strong>{activeCommunityName}</strong><small>Business workspace</small></span>
+        </button>
+      ) : (
+        <TopbarSearch
+          channelLabels={channelLabels}
+          channels={searchChannels}
+          currentChannelId={currentChannelId}
+          currentPubkey={currentPubkey}
+          focusRequest={searchFocusRequest}
+          onOpenChannel={onSelectChannel}
+          onOpenResult={onOpenSearchResult}
+          onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
+          onBrowseChannels={onBrowseChannels}
+          onCreateAgent={onCreateAgent}
+          onCreateChannel={onCreateChannel}
+          scopeFocusRequest={scopeSearchFocusRequest}
+          suggestionChannels={suggestionChannels}
+        />
+      )}
     </div>
   );
 }

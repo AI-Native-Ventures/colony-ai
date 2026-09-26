@@ -63,6 +63,8 @@ import {
 } from "@/features/sidebar/ui/sidebarLoadingSkeleton";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
 import { SidebarUpdateCard } from "@/features/settings/SidebarUpdateCard";
+import { FactoryNavigator } from "@/features/factory/ui/FactoryNavigator";
+import type { FactoryScope } from "@/shared/api/factoryRuntime";
 import { useUpdaterContext } from "@/features/settings/hooks/UpdaterProvider";
 import { shouldShowSidebarUpdateCard } from "@/features/settings/sidebarUpdateCardVisibility";
 import type { Channel, ChannelVisibility } from "@/shared/api/types";
@@ -153,6 +155,22 @@ export function AppSidebar({
     React.useState(false);
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
+  const factoryScope = React.useMemo<FactoryScope>(
+    () => ({
+      relayUrl: activeCommunity?.relayUrl ?? "unavailable",
+      identityPubkey: currentPubkey ?? "unavailable",
+      businessCommunityId:
+        activeCommunity?.businessCommunityId ?? activeCommunity?.id ?? "unavailable",
+      clientChannelId: activeCommunity?.clientChannelId ?? null,
+    }),
+    [
+      activeCommunity?.businessCommunityId,
+      activeCommunity?.clientChannelId,
+      activeCommunity?.id,
+      activeCommunity?.relayUrl,
+      currentPubkey,
+    ],
+  );
   const [dmActionsMenuOpen, setDmActionsMenuOpen] = React.useState(false);
   const allDirectMessages = React.useMemo(
     () => channels.filter((channel) => channel.channelType === "dm"),
@@ -511,6 +529,7 @@ export function AppSidebar({
           ? "true"
           : undefined
       }
+      data-colony-factory={selectedView === "factory" ? "true" : undefined}
       data-testid="app-sidebar"
       onClick={(event) => {
         if (isSidebarBackgroundTarget(event.target)) {
@@ -528,6 +547,7 @@ export function AppSidebar({
       >
         <AppSidebarPinnedHeader
           activeCommunityName={activeCommunity?.name ?? ""}
+          factoryView={selectedView === "factory"}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
@@ -539,6 +559,7 @@ export function AppSidebar({
           onOpenDm={onOpenDm}
           onOpenSearchResult={onOpenSearchResult}
           onSelectChannel={onSelectChannel}
+          onReturnToWorkspace={onSelectToday}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
           showSidebarCollapseButton={showSidebarCollapseButton}
@@ -551,7 +572,7 @@ export function AppSidebar({
           data-sidebar-background
           data-testid="sidebar-channel-content"
         >
-          {unreadAboveCount > 0 ? (
+          {unreadAboveCount > 0 && selectedView !== "factory" ? (
             <MoreUnreadButton
               count={unreadAboveCount}
               emphasis={hasHighPriorityAbove ? "primary" : "default"}
@@ -567,11 +588,15 @@ export function AppSidebar({
             data-sidebar-background
             ref={scrollRef}
           >
-            <div
-              className="flex w-full flex-col gap-2 px-[3px]"
-              data-sidebar-background
-              data-testid="sidebar-scroll-content"
-            >
+          <div
+            className="flex w-full flex-col gap-2 px-[3px]"
+            data-sidebar-background
+            data-testid="sidebar-scroll-content"
+          >
+            {selectedView === "factory" ? (
+              <FactoryNavigator scope={factoryScope} />
+            ) : (
+              <>
               <AppSidebarPrimaryMenu
                 homeBadgeCount={homeBadgeCount}
                 onSelectToday={onSelectToday}
@@ -814,11 +839,14 @@ export function AppSidebar({
                   {errorMessage}
                 </div>
               ) : null}
+              </>
+            )}
             </div>
           </SidebarContent>
         </div>
 
-        <div className="relative z-30 shrink-0" data-buzz-glass-footer-wrap>
+        {selectedView === "factory" ? null : (
+          <div className="relative z-30 shrink-0" data-buzz-glass-footer-wrap>
           {unreadBelowCount > 0 ? (
             <MoreUnreadButton
               bottomClassName="bottom-full"
@@ -886,7 +914,8 @@ export function AppSidebar({
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarFooter>
-        </div>
+          </div>
+        )}
       </div>
 
       <CreateChannelDialog

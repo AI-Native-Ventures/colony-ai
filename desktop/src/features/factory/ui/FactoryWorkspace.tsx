@@ -42,6 +42,7 @@ import {
   loadFactoryPlans,
   saveFactoryPlan,
 } from "@/features/factory/plans/factoryPlanStore.ts";
+import { subscribeFactorySessionStart } from "@/features/factory/lib/factorySessionRequest";
 import "./factory.css";
 
 type FactoryPlanTask = {
@@ -209,6 +210,11 @@ function FactoryConnected({
     }
   }, [scope]);
 
+  React.useEffect(
+    () => subscribeFactorySessionStart(scope, () => setStartDialogOpen(true)),
+    [scope],
+  );
+
   React.useEffect(() => {
     try {
       saveFactoryDesk(window.localStorage, scope, desk);
@@ -232,8 +238,12 @@ function FactoryConnected({
     plans.find((plan) => plan.id === (route.kind === "plan" ? route.planId : activePlanId ?? "")) ?? null;
   const selectedRunId = route.kind === "review" ? route.runId : activeRunId ?? "";
   const selectedRun = runsState.runs.find((run) => run.id === selectedRunId) ?? null;
-  const runProjectName = (run: FactoryRun) =>
-    projects.find((project) => project.projectAddress === run.projectId || project.id === run.projectId)?.name ?? "Project unavailable";
+  const projectForRun = (run: FactoryRun) =>
+    projects.find(
+      (project) =>
+        project.projectAddress === run.projectId || project.id === run.projectId,
+    ) ?? null;
+  const runProjectName = (run: FactoryRun) => projectForRun(run)?.name ?? "";
 
   const go = (path: string) => void navigate({ to: path as never });
 
@@ -371,11 +381,9 @@ function FactoryConnected({
             Reviews{latestReviewRun ? <span>{runsState.runs.filter((run) => run.status === "done").length}</span> : null}
           </button>
         </nav>
-        {route.kind === "workbench" ? (
-          <button className="fx-button fx-button-primary" onClick={() => setStartDialogOpen(true)} type="button">
-            <Plus aria-hidden="true" /> Add agent
-          </button>
-        ) : null}
+        <button className="fx-button fx-button-primary" onClick={() => setStartDialogOpen(true)} type="button">
+          <Plus aria-hidden="true" /> Add agent
+        </button>
       </header>
 
       {route.kind === "workbench" ? (
@@ -406,14 +414,6 @@ function FactoryConnected({
           {storageError ? <FactoryError message={storageError} /> : null}
           <div className="fx-workbench-content">
             {runsState.loading ? <p className="fx-muted">Loading sessions…</p> : null}
-            {!runsState.loading && sessionsForTab.length === 0 ? (
-              <div className="fx-empty-state">
-                <Bot aria-hidden="true" />
-                <h2>No sessions here</h2>
-                <p>Start an agent from a project or a task.</p>
-                <button className="fx-button fx-button-primary" onClick={() => setStartDialogOpen(true)} type="button"><Plus aria-hidden="true" /> Add agent</button>
-              </div>
-            ) : null}
             <div className="fx-run-grid">
               {sessionsForTab.map((run) => (
                 <FactoryRunCard
@@ -442,36 +442,41 @@ function FactoryConnected({
             {projects.map((project) => {
               const sessionCount = runsState.runs.filter((run) => run.projectId === project.projectAddress || run.projectId === project.id).length;
               return <button className="fx-project-card" key={project.id} onClick={() => go(`/factory/project/${encodeURIComponent(project.id)}`)} type="button">
-                <div className="fx-project-card-top"><span className="fx-project-chip">{project.repositories.length} repositories</span><ChevronRight aria-hidden="true" /></div>
-                <h3>{project.name}</h3><p>{project.description || ""}</p>
-                <footer><GitBranch aria-hidden="true" />{project.repositories.map((repo) => repo.name).join(", ") || "No repository linked"}<span>{sessionCount} sessions</span></footer>
+                <div className="fx-project-card-top"><span className="fx-project-chip">{project.name}</span><ChevronRight aria-hidden="true" /></div>
+                <h3>{project.name}</h3><p>{project.description}</p>
+                <footer><GitBranch aria-hidden="true" />{project.repositories.map((repo) => `${repo.owner}/${repo.name}`).join(", ")}<span>{sessionCount} sessions</span></footer>
               </button>;
             })}
           </div>
-          {!projectsQuery.isPending && projects.length === 0 ? <div className="fx-empty-state"><FolderGit2 aria-hidden="true" /><h2>No projects yet</h2><p>Projects from this workspace appear here.</p><button className="fx-button fx-button-primary" onClick={() => setProjectDialogOpen(true)} type="button"><Plus aria-hidden="true" /> Add project</button></div> : null}
         </FactoryPage>
       ) : null}
 
       {route.kind === "project" ? (
-        <FactoryPage title={selectedProject?.name ?? "Project"} actions={<button className="fx-button fx-button-primary" onClick={() => setStartDialogOpen(true)} type="button"><Plus aria-hidden="true" /> Add agent</button>}>
+        <FactoryPage title={selectedProject?.name ?? ""}>
           {selectedProject ? <ProjectDetail
             project={selectedProject}
             runs={runsState.runs.filter((run) => run.projectId === selectedProject.projectAddress || run.projectId === selectedProject.id)}
             agents={localAgents}
             snapshots={runsState.snapshots}
+            localRepositories={localRepositories}
             onAddAgent={() => setStartDialogOpen(true)}
             onCancelRun={(runId) => void runsState.cancelRun(runId)}
             onOpenRun={(runId) => go(`/factory/review/${encodeURIComponent(runId)}`)}
             onOpenPlan={(planId) => planId === "new" ? setPlanDialogOpen(true) : go(`/factory/plan/${encodeURIComponent(planId)}`)}
+            onOpenRepository={(repositoryId, tab) => void navigate({
+              to: "/projects/$projectId" as never,
+              params: { projectId: selectedProject.id },
+              search: { repositoryId, tab } as never,
+            } as never)}
             plans={plans.filter((plan) => plan.projectId === selectedProject.projectAddress || plan.projectId === selectedProject.id)}
           /> : <FactoryEmptyDetail loading={projectsQuery.isPending} label="Project" />}
         </FactoryPage>
       ) : null}
 
       {route.kind === "plans" || route.kind === "plan" ? (
-        <FactoryPage title={route.kind === "plans" ? "Plans that keep moving" : selectedPlan?.title ?? "Plan"} actions={route.kind === "plans" ? <button className="fx-button fx-button-primary" onClick={() => setPlanDialogOpen(true)} type="button"><Plus aria-hidden="true" /> New plan</button> : <button className="fx-button" onClick={() => setPlanTaskDialogOpen(true)} type="button"><Plus aria-hidden="true" /> Add task</button>}>
+        <FactoryPage title={route.kind === "plans" ? "Plans that keep moving" : selectedPlan?.title ?? ""} actions={route.kind === "plans" ? <button className="fx-button fx-button-primary" onClick={() => setPlanDialogOpen(true)} type="button"><Plus aria-hidden="true" /> New plan</button> : <button className="fx-button" onClick={() => go("/factory/plans")} type="button">All plans</button>}>
           {planError ? <FactoryError message={planError} /> : null}
-          {route.kind === "plans" ? <PlansList plans={plans} projects={projects} onOpen={(plan) => { setActivePlanId(plan.id); go(`/factory/plan/${encodeURIComponent(plan.id)}`); }} /> : selectedPlan ? <PlanDetail plan={selectedPlan} projects={projects} onOpenProject={(id) => go(`/factory/project/${encodeURIComponent(id)}`)} onApprove={() => updatePlanStatus(selectedPlan, "approved")} onRequestRevision={() => updatePlanStatus(selectedPlan, "review")} onEdit={() => { setActivePlanId(selectedPlan.id); setEditingPlanId(selectedPlan.id); setPlanDialogOpen(true); }} /> : <FactoryEmptyDetail loading={false} label="Plan" />}
+          {route.kind === "plans" ? <PlansList plans={plans} projects={projects} onOpen={(plan) => { setActivePlanId(plan.id); go(`/factory/plan/${encodeURIComponent(plan.id)}`); }} /> : selectedPlan ? <PlanDetail plan={selectedPlan} projects={projects} onOpenProject={(id) => go(`/factory/project/${encodeURIComponent(id)}`)} onAddTask={() => setPlanTaskDialogOpen(true)} onApprove={() => updatePlanStatus(selectedPlan, "approved")} onRequestRevision={() => updatePlanStatus(selectedPlan, "review")} onEdit={() => { setActivePlanId(selectedPlan.id); setEditingPlanId(selectedPlan.id); setPlanDialogOpen(true); }} /> : <FactoryEmptyDetail loading={false} label="Plan" />}
         </FactoryPage>
       ) : null}
 
@@ -484,13 +489,13 @@ function FactoryConnected({
       ) : null}
 
       {route.kind === "review" ? (
-        <FactoryPage title={selectedRun ? (selectedRun.projectId ? runProjectName(selectedRun) : "Session review") : "Changes to review"} actions={<button className="fx-button" onClick={() => go("/factory/sessions")} type="button">All sessions</button>}>
-          {selectedRun ? <RunReview run={selectedRun} projectName={runProjectName(selectedRun)} agent={localAgents.find((agent) => agent.pubkey === selectedRun.agentId)} snapshot={runsState.snapshots.get(selectedRun.id)} reconnecting={runsState.reattachErrors.has(selectedRun.id)} /> : <SessionList runs={runsState.runs.filter((run) => run.status === "done" || run.status === "error")} projects={projects} agents={localAgents} reconnecting={runsState.reattachErrors} onOpen={(run) => { setActiveRunId(run.id); go(`/factory/review/${encodeURIComponent(run.id)}`); }} onCancel={(run) => void runsState.cancelRun(run.id)} />}
+        <FactoryPage title={selectedRun ? runTitle(selectedRun, runsState.snapshots.get(selectedRun.id), localAgents.find((agent) => agent.pubkey === selectedRun.agentId)?.name) : ""} actions={<button className="fx-button" onClick={() => { setSessionFilter("done"); go("/factory/sessions"); }} type="button">All reviews</button>}>
+          {selectedRun ? <RunReview run={selectedRun} projectName={runProjectName(selectedRun)} agent={localAgents.find((agent) => agent.pubkey === selectedRun.agentId)} snapshot={runsState.snapshots.get(selectedRun.id)} reconnecting={runsState.reattachErrors.has(selectedRun.id)} /> : null}
         </FactoryPage>
       ) : null}
 
       {route.kind === "states" ? (
-        <FactoryPage title="Review the workbench states">
+        <FactoryPage title="Review the workbench states" actions={<button className="fx-button" onClick={() => go("/factory")} type="button">Back to workbench</button>}>
           <FactoryStateGroups runs={runsState.runs} snapshots={runsState.snapshots} reconnecting={runsState.reattachErrors} projects={projects} onOpen={(run) => go(`/factory/review/${encodeURIComponent(run.id)}`)} />
           {runsState.error ? <FactoryError message={runsState.error.message} onRetry={() => void runsState.refresh()} /> : null}
         </FactoryPage>
@@ -506,7 +511,7 @@ function FactoryConnected({
 }
 
 function FactoryPage({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
-  return <section className="fx-page"><header><h2>{title}</h2><div>{actions}</div></header>{children}</section>;
+  return <section className="fx-page"><header>{title ? <h2>{title}</h2> : <span />}<div>{actions}</div></header>{children}</section>;
 }
 
 function FactoryError({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -514,19 +519,22 @@ function FactoryError({ message, onRetry }: { message: string; onRetry?: () => v
 }
 
 function FactoryEmptyDetail({ loading, label }: { loading: boolean; label: string }) {
-  return <div className="fx-empty-state"><FolderGit2 aria-hidden="true" /><h2>{loading ? "Loading" : `${label} unavailable`}</h2><p>{loading ? "Loading workspace records." : "This record is not available in the current workspace."}</p></div>;
+  void loading;
+  void label;
+  return null;
 }
 
 function FactoryRunCard({ run, agent, projectName, snapshot, reconnecting, onCancel, onOpen }: { run: FactoryRun; agent?: ManagedAgent; projectName: string; snapshot?: { events: Array<{ sequence: number; kind: string; payload: unknown }> }; reconnecting: boolean; onCancel: () => void; onOpen: () => void }) {
   const presentation = factoryStatusPresentation(run.status);
   const lastEvent = snapshot?.events.at(-1);
+  const title = runTitle(run, snapshot, agent?.name);
   const canCancel = ["queued", "running", "waiting", "blocked"].includes(run.status);
   return <article className="fx-run-card" data-status={run.status}>
-    <div className="fx-run-head"><span className="fx-agent-mark"><Bot aria-hidden="true" /></span><div><button className="fx-run-title" onClick={onOpen} type="button">{agent?.name ?? "Agent session"}</button><span>{agent?.runtime ?? run.harnessId}</span></div><StatusLabel status={run.status} /></div>
-    <div className="fx-pane-context"><span className="fx-project-chip">{projectName}</span><span><GitBranch aria-hidden="true" />{run.repositoryId ?? "Repository unavailable"}</span></div>
+    <div className="fx-run-head"><span className="fx-agent-mark"><Bot aria-hidden="true" /></span><div><button className="fx-run-title" onClick={onOpen} type="button">{title}</button><span>{agent?.runtime ?? run.harnessId}</span></div><StatusLabel status={run.status} /></div>
+    <div className="fx-pane-context"><span className="fx-project-chip">{projectName}</span><span><GitBranch aria-hidden="true" />{run.repositoryId}</span></div>
     {reconnecting ? <div className="fx-run-message" data-state="reconnecting"><RefreshCw aria-hidden="true" /> Reconnecting to this session</div> : null}
     {run.status === "blocked" || run.status === "waiting" || run.status === "error" ? <div className={`fx-run-message fx-${presentation.tone}`}><CircleAlert aria-hidden="true" /><span>{run.error || presentation.label}</span></div> : null}
-    {lastEvent ? <p className="fx-run-output">{eventText(lastEvent.payload)}</p> : <p className="fx-run-output fx-muted">Session history will appear here.</p>}
+    {lastEvent && eventText(lastEvent.payload) ? <p className="fx-run-output">{eventText(lastEvent.payload)}</p> : null}
     <footer><button className="fx-text-button" onClick={onOpen} type="button">Open session <ArrowUpRight aria-hidden="true" /></button>{canCancel ? <button className="fx-text-button fx-danger" onClick={onCancel} type="button">Cancel</button> : null}</footer>
   </article>;
 }
@@ -545,46 +553,74 @@ function eventText(payload: unknown) {
     if (typeof value.content === "string") return value.content;
     if (typeof value.message === "string") return value.message;
   }
-  return "Output recorded.";
+  return "";
 }
 
-function ProjectDetail({ project, runs, agents, snapshots, onAddAgent, onCancelRun, onOpenRun, onOpenPlan, plans }: { project: Project; runs: FactoryRun[]; agents: ManagedAgent[]; snapshots: ReadonlyMap<string, { events: Array<{ sequence: number; kind: string; payload: unknown }> }>; onAddAgent: () => void; onCancelRun: (runId: string) => void; onOpenRun: (runId: string) => void; onOpenPlan: (planId: string) => void; plans: FactoryPlan[] }) {
+function runTitle(
+  run: FactoryRun,
+  snapshot: { events: Array<{ kind: string; payload: unknown }> } | undefined,
+  fallback?: string,
+) {
+  const initialPrompt = snapshot?.events.find((event) => event.kind === "user_prompt");
+  const promptText = initialPrompt ? eventText(initialPrompt.payload) : "";
+  const firstLine = promptText
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find(Boolean)
+    ?.replace(/^Task:\s*/iu, "");
+  return firstLine || fallback || run.harnessId;
+}
+
+function ProjectDetail({ project, runs, agents, snapshots, localRepositories, onAddAgent, onCancelRun, onOpenRun, onOpenPlan, onOpenRepository, plans }: { project: Project; runs: FactoryRun[]; agents: ManagedAgent[]; snapshots: ReadonlyMap<string, { events: Array<{ sequence: number; kind: string; payload: unknown }> }>; localRepositories: Array<{ name: string; path: string }>; onAddAgent: () => void; onCancelRun: (runId: string) => void; onOpenRun: (runId: string) => void; onOpenPlan: (planId: string) => void; onOpenRepository: (repositoryId: string, tab: "files" | "issues" | "prs") => void; plans: FactoryPlan[] }) {
+  const primaryRepository = project.repositories.find(
+    (repository) => repository.repoAddress === project.primaryRepositoryAddress,
+  ) ?? project.repositories[0];
+  const localCheckout = primaryRepository
+    ? localRepositories.find(
+        (repository) => repository.name.toLowerCase() === primaryRepository.name.toLowerCase(),
+      )
+    : undefined;
   return <>
-    <div className="fx-project-summary"><span className="fx-project-chip">{project.repositories.length} repositories</span><p>{project.description || ""}</p><dl><dt>Repository</dt><dd>{project.repositories.map((repo) => repo.name).join(", ") || "No repository linked"}</dd><dt>Local folder</dt><dd>Available checkouts are selected when starting a session.</dd><dt>Default branch</dt><dd>{project.repositories.map((repo) => repo.defaultBranch).filter(Boolean).join(", ") || "Not set"}</dd><dt>Execution boundary</dt><dd>Sessions run in a selected local working copy.</dd></dl></div>
-    <div className="fx-section-label"><h3>Plans & tasks</h3><button className="fx-text-button" onClick={() => onOpenPlan("")} type="button">New plan <Plus aria-hidden="true" /></button></div>
-    {plans.length ? <PlansList plans={plans} projects={[project]} onOpen={(plan) => onOpenPlan(plan.id)} /> : <p className="fx-muted">No plans here</p>}
+    <div className="fx-project-actions">
+      {primaryRepository ? <>
+        <button className="fx-button" onClick={() => onOpenRepository(primaryRepository.repoAddress, "files")} type="button">Browse repository</button>
+        <button className="fx-button" onClick={() => onOpenRepository(primaryRepository.repoAddress, "issues")} type="button">Issues</button>
+        <button className="fx-button" onClick={() => onOpenRepository(primaryRepository.repoAddress, "prs")} type="button">Change reviews</button>
+      </> : null}
+    </div>
+    <div className="fx-project-summary"><span className="fx-project-chip">{project.name}</span><p>{project.description}</p><dl><dt>Repository</dt><dd>{project.repositories.map((repo) => `${repo.owner}/${repo.name}`).join(", ")}</dd><dt>Local folder</dt><dd>{localCheckout?.path}</dd><dt>Default branch</dt><dd>{primaryRepository?.defaultBranch}</dd><dt>Execution boundary</dt><dd>Each implementation session gets its own working copy.</dd></dl></div>
+    <div className="fx-section-label"><h3>Plans & tasks</h3><button className="fx-text-button" onClick={() => onOpenPlan("new")} type="button">New plan <Plus aria-hidden="true" /></button></div>
+    {plans.length ? <PlansList plans={plans} projects={[project]} onOpen={(plan) => onOpenPlan(plan.id)} /> : null}
     <div className="fx-section-label"><h3>Agent sessions</h3><button className="fx-text-button" onClick={onAddAgent} type="button">Add agent <Plus aria-hidden="true" /></button></div>
     <SessionList runs={runs} projects={[project]} agents={agents} reconnecting={new Set()} onOpen={(run) => onOpenRun(run.id)} onCancel={(run) => onCancelRun(run.id)} snapshots={snapshots} />
   </>;
 }
 
 function PlansList({ plans, projects, onOpen }: { plans: FactoryPlan[]; projects: Project[]; onOpen: (plan: FactoryPlan) => void }) {
-  if (!plans.length) return <div className="fx-empty-state fx-empty-compact"><ListTodoIcon /><h2>No plans yet</h2><p>Create a plan to capture the outcome and acceptance criteria.</p></div>;
-  return <div className="fx-plan-list">{plans.map((plan) => <button className="fx-plan-row" key={plan.id} onClick={() => onOpen(plan)} type="button"><span className="fx-plan-icon"><Check aria-hidden="true" /></span><div><strong>{plan.title}</strong><p>{projects.find((project) => project.projectAddress === plan.projectId || project.id === plan.projectId)?.name ?? "Project unavailable"} · Version {plan.revisions.length} · {plan.tasks.length} tasks</p></div><span className="fx-pill">{plan.status === "approved" ? "Approved" : plan.status === "review" ? "Changes requested" : "Plan review"}</span><ChevronRight aria-hidden="true" /></button>)}</div>;
+  if (!plans.length) return null;
+  return <div className="fx-plan-list">{plans.map((plan) => <button className="fx-plan-row" key={plan.id} onClick={() => onOpen(plan)} type="button"><span className="fx-plan-icon"><FolderGit2 aria-hidden="true" /></span><div><strong>{plan.title}</strong><p>{projects.find((project) => project.projectAddress === plan.projectId || project.id === plan.projectId)?.name} · Version {plan.revisions.length} · {plan.tasks.length} tasks</p></div><span className="fx-pill">{plan.status === "approved" ? "Approved" : plan.status === "review" ? "Changes requested" : "Plan review"}</span><ChevronRight aria-hidden="true" /></button>)}</div>;
 }
 
-function ListTodoIcon() { return <FolderGit2 aria-hidden="true" />; }
-
-function PlanDetail({ plan, projects, onOpenProject, onApprove, onRequestRevision, onEdit }: { plan: FactoryPlan; projects: Project[]; onOpenProject: (id: string) => void; onApprove: () => void; onRequestRevision: () => void; onEdit: () => void }) {
+function PlanDetail({ plan, projects, onOpenProject, onAddTask, onApprove, onRequestRevision, onEdit }: { plan: FactoryPlan; projects: Project[]; onOpenProject: (id: string) => void; onAddTask: () => void; onApprove: () => void; onRequestRevision: () => void; onEdit: () => void }) {
   const project = projects.find((item) => item.projectAddress === plan.projectId || item.id === plan.projectId);
   return <>
-    <div className="fx-plan-heading"><button className="fx-project-chip fx-chip-button" onClick={() => project && onOpenProject(project.id)} type="button">{project?.name ?? "Project unavailable"}</button><span>Version {plan.revisions.length}</span><span className="fx-pill">{plan.status === "approved" ? "Approved" : plan.status === "review" ? "Changes requested" : "Plan review"}</span></div>
-    <div className="fx-plan-layout"><section><h3>Outcome</h3><p>{plan.outcome}</p><h3>Acceptance criteria</h3><ul>{plan.acceptanceCriteria.map((criterion, index) => <li key={`${index}-${criterion}`}>{criterion}</li>)}</ul><div className="fx-section-label"><h3>Tasks & dependencies</h3><span>{plan.tasks.length} tasks</span></div>{plan.tasks.length ? plan.tasks.map((task) => <div className="fx-task-row" key={task.id}><div><strong>{task.title}</strong><p>{task.dependencies.length ? `After ${task.dependencies.map((id) => plan.tasks.find((other) => other.id === id)?.title ?? "task").join(", ")}` : "Can run independently"}</p></div><span className="fx-pill">{task.status === "blocked" ? "Blocked" : task.status === "done" ? "Done" : "Ready"}</span></div>) : <p className="fx-muted">No tasks yet</p>}</section><aside><h3>Plan decisions</h3>{plan.revisions.map((revision) => <p className="fx-plan-note" key={revision.version}>Version {revision.version} · {new Date(revision.updatedAt).toLocaleDateString()}</p>)}{plan.status !== "approved" ? <button className="fx-button fx-button-primary fx-plan-action" onClick={onApprove} type="button">Approve this version</button> : null}<button className="fx-button fx-plan-action" onClick={onRequestRevision} type="button">Request a revision</button><button className="fx-button fx-plan-action" onClick={onEdit} type="button">Edit plan</button><p className="fx-muted">Approval records the scope. Start each agent when its task is ready.</p></aside></div>
+    <div className="fx-plan-heading">{project ? <button className="fx-project-chip fx-chip-button" onClick={() => onOpenProject(project.id)} type="button">{project.name}</button> : null}<span>Version {plan.revisions.length} {plan.status === "approved" ? "approved" : ""}</span></div>
+    <div className="fx-plan-layout"><section><h3>Outcome</h3><p>{plan.outcome}</p><h3>Acceptance criteria</h3><ul>{plan.acceptanceCriteria.map((criterion, index) => <li key={`${index}-${criterion}`}>{criterion}</li>)}</ul><div className="fx-section-label"><h3>Tasks & dependencies</h3><span>{plan.tasks.length} tasks</span><button className="fx-button fx-button-primary" onClick={onAddTask} type="button"><Plus aria-hidden="true" /> Add task</button></div>{plan.tasks.map((task) => <div className="fx-task-row" key={task.id}><div><strong>{task.title}</strong><p>{task.dependencies.length ? `After ${task.dependencies.map((id) => plan.tasks.find((other) => other.id === id)?.title ?? "").filter(Boolean).join(", ")}` : "Can run independently"}</p></div><span className="fx-pill">{task.status === "blocked" ? "Blocked" : task.status === "done" ? "Done" : "Ready"}</span></div>)}</section><aside><h3>Plan decisions</h3>{plan.revisions.map((revision) => <p className="fx-plan-note" key={revision.version}>Version {revision.version} · {new Date(revision.updatedAt).toLocaleDateString()}</p>)}{plan.status !== "approved" ? <button className="fx-button fx-button-primary fx-plan-action" onClick={onApprove} type="button">Approve this version</button> : null}<button className="fx-button fx-plan-action" onClick={onRequestRevision} type="button">Request a revision</button><button className="fx-button fx-plan-action" onClick={onEdit} type="button">Edit plan</button></aside></div>
   </>;
 }
 
 function SessionList({ runs, projects, agents, reconnecting, onOpen, onCancel, snapshots = new Map() }: { runs: FactoryRun[]; projects: Project[]; agents: ManagedAgent[]; reconnecting: ReadonlySet<string>; onOpen: (run: FactoryRun) => void; onCancel: (run: FactoryRun) => void; snapshots?: ReadonlyMap<string, { events: Array<{ sequence: number; kind: string; payload: unknown }> }> }) {
-  if (!runs.length) return <div className="fx-empty-state fx-empty-compact"><Bot aria-hidden="true" /><h2>No sessions here</h2><p>Start an agent from a project or a task.</p></div>;
+  if (!runs.length) return null;
   const sorted = [...runs].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  return <div className="fx-session-table">{sorted.map((run) => <div className="fx-session-row" key={run.id}><span className="fx-agent-mark"><Bot aria-hidden="true" /></span><div><button className="fx-run-title" onClick={() => onOpen(run)} type="button">{agents.find((agent) => agent.pubkey === run.agentId)?.name ?? "Agent session"}</button><p>{projects.find((project) => project.projectAddress === run.projectId || project.id === run.projectId)?.name ?? "Project unavailable"} · {run.harnessId} · {run.checkoutPath}</p>{snapshots.get(run.id)?.events.at(-1) ? <p className="fx-session-output">{eventText(snapshots.get(run.id)?.events.at(-1)?.payload)}</p> : null}{reconnecting.has(run.id) ? <p className="fx-reconnect-label">Reconnecting to this session</p> : null}</div><StatusLabel status={run.status} /><button className="fx-button fx-button-small" onClick={() => onOpen(run)} type="button">Open</button>{["queued", "running", "waiting", "blocked"].includes(run.status) ? <button aria-label="Cancel session" className="fx-text-button fx-danger" onClick={() => onCancel(run)} type="button">Cancel</button> : null}</div>)}</div>;
+  return <div className="fx-session-table">{sorted.map((run) => { const snapshot = snapshots.get(run.id); return <div className="fx-session-row" key={run.id}><span className="fx-agent-mark"><Bot aria-hidden="true" /></span><div><button className="fx-run-title" onClick={() => onOpen(run)} type="button">{runTitle(run, snapshot, agents.find((agent) => agent.pubkey === run.agentId)?.name)}</button><p>{projects.find((project) => project.projectAddress === run.projectId || project.id === run.projectId)?.name} · {run.harnessId} · {run.checkoutPath}</p>{snapshot?.events.at(-1) && eventText(snapshot.events.at(-1)?.payload) ? <p className="fx-session-output">{eventText(snapshot.events.at(-1)?.payload)}</p> : null}{reconnecting.has(run.id) ? <p className="fx-reconnect-label">Reconnecting to this session</p> : null}</div><StatusLabel status={run.status} /><button className="fx-button fx-button-small" onClick={() => onOpen(run)} type="button">Open</button>{["queued", "running", "waiting", "blocked"].includes(run.status) ? <button aria-label="Cancel session" className="fx-text-button fx-danger" onClick={() => onCancel(run)} type="button">Cancel</button> : null}</div>; })}</div>;
 }
 
 function RunReview({ run, projectName, agent, snapshot, reconnecting }: { run: FactoryRun; projectName: string; agent?: ManagedAgent; snapshot?: { events: Array<{ sequence: number; createdAt: string; kind: string; payload: unknown }> }; reconnecting: boolean }) {
   return <>
-    <div className="fx-review-meta"><span className="fx-project-chip">{projectName}</span><StatusLabel status={run.status} /><span><GitBranch aria-hidden="true" /> {run.repositoryId ?? "Repository unavailable"}</span>{agent ? <span>{agent.name} · {agent.runtime ?? run.harnessId}</span> : <span>{run.harnessId}</span>}</div>
+    <div className="fx-review-meta"><span className="fx-project-chip">{projectName}</span><StatusLabel status={run.status} /><span><GitBranch aria-hidden="true" /> {run.repositoryId}</span>{agent ? <span>{agent.name} · {agent.runtime ?? run.harnessId}</span> : <span>{run.harnessId}</span>}</div>
     {reconnecting ? <FactoryError message="Reconnecting to this session" /> : null}
-    {(run.status === "error" || run.status === "blocked" || run.status === "waiting") ? <div className="fx-run-note"><strong>{factoryStatusPresentation(run.status).label}</strong><p>{run.error || "The run is retained with its saved history and working copy."}</p></div> : null}
-    <div className="fx-review-layout"><section className="fx-output-panel"><h3>Session output</h3>{snapshot?.events.length ? snapshot.events.map((event) => <article className="fx-output-event" key={event.sequence}><small>{event.kind} · {new Date(event.createdAt).toLocaleTimeString()}</small><p>{eventText(event.payload)}</p></article>) : <p className="fx-muted">No output has been recorded for this session.</p>}</section><aside><h3>Review this iteration</h3><div className="fx-checklist"><p><Clock3 aria-hidden="true" /> Repository diff is not available for this run.</p><p><Clock3 aria-hidden="true" /> Checks are not recorded.</p><p><Clock3 aria-hidden="true" /> Review decision is not recorded.</p></div><p className="fx-muted">This runtime stores session output. Review actions need a repository diff and check result for this checkout.</p></aside></div>
+    {run.error ? <div className="fx-run-note"><strong>{factoryStatusPresentation(run.status).label}</strong><p>{run.error}</p></div> : null}
+    <div className="fx-review-layout"><section className="fx-output-panel">{snapshot?.events.map((event) => <article className="fx-output-event" key={event.sequence}><small>{event.kind} · {new Date(event.createdAt).toLocaleTimeString()}</small><p>{eventText(event.payload)}</p></article>)}</section></div>
   </>;
 }
 
@@ -595,7 +631,7 @@ function FactoryStateGroups({ runs, snapshots, reconnecting, projects, onOpen }:
     ["error", "Interrupted session", runs.filter((run) => run.status === "error")],
     ["reconnecting", "Reconnecting", runs.filter((run) => reconnecting.has(run.id))],
   ];
-  return <div className="fx-state-grid">{groups.map(([id, title, items]) => <section key={id}><h3>{title}</h3><p>{id === "reconnecting" ? "The host attachment is being restored." : `Sessions currently in the ${title.toLowerCase()} state.`}</p>{items.length ? items.map((run) => <button className="fx-state-run" key={run.id} onClick={() => onOpen(run)} type="button"><span>{projects.find((project) => project.projectAddress === run.projectId || project.id === run.projectId)?.name ?? "Project unavailable"}</span><StatusLabel status={run.status} /><small>{snapshots.get(run.id)?.events.length ?? 0} output events</small><ChevronRight aria-hidden="true" /></button>) : <span className="fx-muted">No sessions</span>}</section>)}</div>;
+  return <div className="fx-state-grid">{groups.filter(([, , items]) => items.length).map(([id, title, items]) => <section key={id}><h3>{title}</h3>{items.map((run) => <button className="fx-state-run" key={run.id} onClick={() => onOpen(run)} type="button"><span>{projects.find((project) => project.projectAddress === run.projectId || project.id === run.projectId)?.name}</span><StatusLabel status={run.status} />{snapshots.get(run.id)?.events.length ? <small>{snapshots.get(run.id)?.events.length} output events</small> : null}<ChevronRight aria-hidden="true" /></button>)}</section>)}</div>;
 }
 
 function NameDialog({ title, label, action, onClose, onSubmit }: { title: string; label: string; action: string; onClose: () => void; onSubmit: (value: string) => void }) {
