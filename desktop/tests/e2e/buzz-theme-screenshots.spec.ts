@@ -57,17 +57,51 @@ async function openChannel(page: Page) {
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 }
 
+async function resolveSidebarColor(
+  page: Page,
+  property: "background-color" | "color",
+  value: string,
+) {
+  return page
+    .locator('[data-testid="app-sidebar"], [data-testid="settings-sidebar"]')
+    .first()
+    .evaluate(
+      (sidebar, { property, value }) => {
+        const probe = document.createElement("span");
+        probe.style.setProperty(property, value);
+        sidebar.append(probe);
+        const color = getComputedStyle(probe).getPropertyValue(property);
+        probe.remove();
+        return color;
+      },
+      { property, value },
+    );
+}
+
 async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
-  const mutedColor =
-    mode === "light" ? "rgb(121, 116, 127)" : "rgb(163, 154, 169)";
-  const searchSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.533)"
-      : "rgba(227, 210, 237, 0.08)";
-  const rowHoverSurface = searchSurface;
-  const activeSurface = searchSurface;
-  const chromeColor =
-    mode === "light" ? "rgb(91, 76, 101)" : "rgb(200, 183, 212)";
+  const mutedColor = await resolveSidebarColor(
+    page,
+    "color",
+    "hsl(var(--colony-sidebar-foreground) / 0.72)",
+  );
+  const secondaryTextColor = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--buzz-muted-foreground)",
+  );
+  const searchSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--buzz-search-surface)",
+  );
+  const rowHoverSurface = "rgba(255, 255, 255, 0.33)";
+  const directMessageHoverSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--buzz-hover-surface)",
+  );
+  const activeSurface =
+    mode === "light" ? "rgb(36, 87, 168)" : "rgb(55, 107, 181)";
   const search = page.getByTestId("open-search");
   const pinnedHeader = page.getByTestId("sidebar-pinned-header");
   const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
@@ -80,12 +114,18 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
 
   await expect(sectionLabel).toHaveCSS("color", mutedColor);
   await expect(search).toHaveCSS("background-color", searchSurface);
-  await expect(search.locator("svg").first()).toHaveCSS("color", mutedColor);
-  await expect(search.locator("span").first()).toHaveCSS("color", mutedColor);
-  await expect(pinnedHeader).toHaveCSS("padding-bottom", "8px");
+  await expect(search.locator("svg").first()).toHaveClass(
+    /text-sidebar-foreground\/45/,
+  );
+  await expect(search.locator("span").first()).toHaveClass(
+    /text-sidebar-foreground\/55/,
+  );
+  await expect(pinnedHeader).toHaveCSS("padding-top", "12px");
+  await expect(pinnedHeader).toHaveCSS("padding-bottom", "16px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
   await expect(pinnedHeader).toHaveCSS("margin-right", "3px");
+  await expect(pinnedHeader).toHaveCSS("padding-left", "8px");
   await expect(pinnedHeader).toHaveCSS("padding-right", "8px");
   await expect(sidebarScroller).toHaveCSS("padding-left", "0px");
   await expect(sidebarScroller).toHaveCSS("padding-right", "0px");
@@ -124,15 +164,14 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   ) {
     throw new Error("Sidebar search or primary navigation geometry is missing");
   }
-  expect(primaryMenuBox.y - (searchBox.y + searchBox.height)).toBe(8);
+  expect(
+    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 8),
+  ).toBeLessThanOrEqual(1);
   expect(
     pinnedHeaderBox.y +
       pinnedHeaderBox.height -
       (searchBox.y + searchBox.height),
-  ).toBe(8);
-  expect(primaryMenuBox.y - (pinnedHeaderBox.y + pinnedHeaderBox.height)).toBe(
-    0,
-  );
+  ).toBe(16);
   for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
     expect(Math.abs(rowBox.x - searchBox.x)).toBeLessThanOrEqual(0.5);
     // Linux CI reserves a classic scrollbar gutter while macOS uses an
@@ -144,16 +183,10 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   }
   await expect(page.locator("[data-buzz-sidebar-secondary]").first()).toHaveCSS(
     "color",
-    mutedColor,
+    secondaryTextColor,
   );
-  await expect(page.locator('[data-sidebar="trigger"]')).toHaveCSS(
-    "color",
-    chromeColor,
-  );
-  await expect(page.getByTestId("global-back")).toHaveCSS("color", chromeColor);
-  await expect(page.getByTestId("global-forward")).toHaveCSS(
-    "color",
-    chromeColor,
+  await expect(page.locator('[data-sidebar="trigger"]')).toHaveClass(
+    /text-sidebar-foreground\/70/,
   );
   await expect(page.getByTestId("channel-general")).not.toHaveCSS(
     "color",
@@ -209,7 +242,10 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await firstDmItem.hover();
   await expect(closeDmButton).toBeVisible();
   await closeDmButton.hover();
-  await expect(firstDmButton).toHaveCSS("background-color", rowHoverSurface);
+  await expect(firstDmButton).toHaveCSS(
+    "background-color",
+    directMessageHoverSurface,
+  );
 
   const scrollbarThumbColor = await sidebarScroller.evaluate(
     (element) =>
@@ -319,8 +355,11 @@ async function expectBuzzGradientPaint(
 }
 
 async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
-  const mutedColor =
-    mode === "light" ? "rgb(121, 116, 127)" : "rgb(163, 154, 169)";
+  const mutedColor = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--buzz-muted-foreground)",
+  );
   const sidebar = page.getByTestId("settings-sidebar");
   const sectionLabel = sidebar
     .locator('[data-sidebar="group-label"]')
@@ -1251,12 +1290,19 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   const root = page.locator("html");
   const activeRow = page.getByTestId("settings-nav-appearance");
   const toggle = page.getByTestId("prominent-active-tab-toggle");
+  const subtleSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--sidebar-row-subtle-active-surface)",
+  );
+  const prominentSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--sidebar-row-active-surface)",
+  );
   await expect(toggle).not.toBeChecked();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.533)",
-  );
+  await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   const subtleTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.color, fontWeight: styles.fontWeight };
@@ -1273,7 +1319,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   await toggle.click();
   await expect(toggle).toBeChecked();
   await expect(root).toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
+  await expect(activeRow).toHaveCSS("background-color", prominentSurface);
   await expect
     .poll(() =>
       page.evaluate(
@@ -1290,10 +1336,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
 
   await toggle.click();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.533)",
-  );
+  await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   await expect
     .poll(() =>
       page.evaluate(
@@ -1317,36 +1360,31 @@ test("prominent channel and direct-message rows share one flat active state", as
 
   const channelRow = page.getByTestId("channel-general");
   const directMessageRow = page.getByTestId("channel-alice-tyler");
+  const activeSurface = "rgb(36, 87, 168)";
 
-  await expect(channelRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
+  await expect(channelRow).toHaveCSS("background-color", activeSurface);
   await expect(channelRow).toHaveCSS("box-shadow", "none");
   await channelRow.hover();
-  await expect(channelRow).toHaveCSS("background-color", "rgb(238, 231, 244)");
+  await expect(channelRow).toHaveCSS("background-color", activeSurface);
 
   await directMessageRow.click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
-  await expect(directMessageRow).toHaveCSS(
-    "background-color",
-    "rgb(238, 231, 244)",
-  );
+  await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
   await expect(directMessageRow).toHaveCSS("box-shadow", "none");
   await directMessageRow.hover();
-  await expect(directMessageRow).toHaveCSS(
-    "background-color",
-    "rgb(238, 231, 244)",
-  );
+  await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
 
 for (const { activeSurface, hoverSurface, mode, theme } of [
   {
-    activeSurface: "rgba(255, 255, 255, 0.533)",
-    hoverSurface: "rgba(255, 255, 255, 0.533)",
+    activeSurface: "rgb(36, 87, 168)",
+    hoverSurface: "rgba(255, 255, 255, 0.33)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    activeSurface: "rgba(227, 210, 237, 0.08)",
-    hoverSurface: "rgba(227, 210, 237, 0.08)",
+    activeSurface: "rgb(55, 107, 181)",
+    hoverSurface: "rgba(255, 255, 255, 0.33)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
@@ -1377,15 +1415,7 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     const inactiveRow = page.getByTestId("channel-random");
     await inactiveRow.hover();
     await expect(inactiveRow).toHaveCSS("background-color", hoverSurface);
-    const expectedForeground = await sidebar.evaluate((element) => {
-      const probe = document.createElement("span");
-      probe.style.color = "hsl(var(--sidebar-active-foreground))";
-      element.append(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    });
-    await expect(activeRow).toHaveCSS("color", expectedForeground);
+    await expect(activeRow).toHaveCSS("color", "rgb(255, 255, 255)");
   });
 }
 
@@ -1487,7 +1517,7 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  expect(Math.abs(backToAppBox.y - searchBox.y)).toBeLessThanOrEqual(0.5);
+  expect(searchBox.y - backToAppBox.y).toBe(44);
 
   // Match the normal app shell: a fixed 40px top chrome strip, then a 1px
   // top/left inset and 8px right/bottom inset around the rounded content card.

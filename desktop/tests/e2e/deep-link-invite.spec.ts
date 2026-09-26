@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { seedActiveIdentity } from "../helpers/onboarding";
+import { seedActiveIdentity, startR17AccountAuth } from "../helpers/onboarding";
 
 // Community deep links that arrive before machine onboarding complete are
 // drained from Rust into a persisted transaction and acknowledged immediately.
@@ -11,6 +11,23 @@ const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const COMMUNITY_ONBOARDING_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const TRANSACTION_STORAGE_KEY = "buzz-community-onboarding-transaction.v1";
 const COMMUNITY_RELAY_URL = "wss://hive.example.com";
+
+async function startMachineSetupWithPendingLink(
+  page: import("@playwright/test").Page,
+  link: typeof PENDING_JOIN_LINK | typeof PENDING_CONNECT_LINK,
+) {
+  await startR17AccountAuth(page, {
+    mock: { pendingCommunityDeepLinks: [link] },
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await page.getByLabel("Email address").fill("invite@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+}
 
 const PENDING_JOIN_LINK = {
   id: "dl-join-1",
@@ -50,12 +67,7 @@ test("join deep link is acknowledged without claiming before setup", async ({
     claimCalls++;
     await route.abort();
   });
-  await installMockBridge(
-    page,
-    { pendingCommunityDeepLinks: [PENDING_JOIN_LINK] },
-    { skipCommunitySeed: true, skipOnboardingSeed: true },
-  );
-  await page.goto("/");
+  await startMachineSetupWithPendingLink(page, PENDING_JOIN_LINK);
 
   const gate = page.getByTestId("pending-invite-gate");
   await expect(gate).toBeVisible();
@@ -64,7 +76,7 @@ test("join deep link is acknowledged without claiming before setup", async ({
   ).toBeVisible();
   await page.getByTestId("pending-invite-continue").click();
   await expect(gate).toHaveCount(0);
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   expect(claimCalls).toBe(0);
   await expect
     .poll(() =>
@@ -81,12 +93,7 @@ test("connect deep link shows a static acknowledgment during setup", async ({
 }) => {
   // No invite code means nothing to confirm against the relay — the gate
   // acknowledges the link and waits for the user instead of auto-advancing.
-  await installMockBridge(
-    page,
-    { pendingCommunityDeepLinks: [PENDING_CONNECT_LINK] },
-    { skipCommunitySeed: true, skipOnboardingSeed: true },
-  );
-  await page.goto("/");
+  await startMachineSetupWithPendingLink(page, PENDING_CONNECT_LINK);
 
   const gate = page.getByTestId("pending-invite-gate");
   await expect(gate).toBeVisible();
@@ -99,7 +106,7 @@ test("connect deep link shows a static acknowledgment during setup", async ({
   // connect resumes in CommunityOnboardingFlow after machine setup.
   await page.getByTestId("pending-invite-continue").click();
   await expect(gate).toHaveCount(0);
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(

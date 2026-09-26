@@ -1,92 +1,41 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge } from "../helpers/bridge";
-import { openAdvancedIdentityPath } from "../helpers/onboarding";
+import { startR17AccountAuth } from "../helpers/onboarding";
 
-const HELP_SEEN_KEY = "buzz.machine-onboarding.identity-key-help-seen.v1";
-
-test("identity key help explains the first-run choice", async ({ page }) => {
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-  await openAdvancedIdentityPath(page);
-
-  const trigger = page.getByTestId("identity-key-help-trigger");
-  // No initial opacity-0 assertion: on a slow runner the 2s reveal timer can
-  // fire before the first assertion runs, failing the test for the wrong
-  // reason. The reveal + persistence assertions below carry the coverage.
-  await expect(trigger).toHaveCSS("opacity", "1", { timeout: 5000 });
-  await expect
-    .poll(() =>
-      page.evaluate((key) => localStorage.getItem(key), HELP_SEEN_KEY),
-    )
-    .toBe("true");
-
+test("R17 account access fits a compact desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 620 });
-  await trigger.click();
+  await startR17AccountAuth(page);
 
-  const dialog = page.getByTestId("identity-key-help-dialog");
-  await expect(dialog).toBeVisible();
-  await waitForAnimations(page);
+  await expect(page.getByTestId("google-account-scene")).toBeVisible();
   await expect(
-    dialog.getByRole("heading", { name: "What’s an identity key?" }),
+    page.getByRole("heading", { name: "Welcome back" }),
   ).toBeVisible();
-  await expect(dialog).toHaveClass(/w-full/);
-  await expect(page.getByTestId("dialog-overlay")).toHaveCount(0);
-  const dialogBounds = await dialog.boundingBox();
-  expect(dialogBounds).not.toBeNull();
-  expect(dialogBounds?.x).toBeGreaterThanOrEqual(0);
-  expect(
-    (dialogBounds?.x ?? 0) + (dialogBounds?.width ?? 0),
-  ).toBeLessThanOrEqual(720);
-
-  await page.getByTestId("onboarding-back").click();
-  await expect(dialog).not.toBeVisible();
-  await expect(trigger).toHaveCSS("opacity", "1");
-
-  await page.reload();
-  await openAdvancedIdentityPath(page);
-  await expect(page.getByTestId("identity-key-help-trigger")).toHaveCSS(
-    "opacity",
-    "1",
+  await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
   );
+  expect(overflows).toBe(false);
+  await expect(page.getByTestId("identity-key-help-dialog")).toHaveCount(0);
 });
 
-test("identity key help stays readable when the app resolves dark mode", async ({
+test("R17 account access remains readable in the system dark theme", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-  await openAdvancedIdentityPath(page);
+  await startR17AccountAuth(page);
 
-  // Fresh profiles follow the system scheme, so the emulated dark scheme is
-  // the first-run repro: the app resolves the dark theme while onboarding.
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.classList.contains("dark")),
     )
     .toBe(true);
-
-  const trigger = page.getByTestId("identity-key-help-trigger");
-  await expect(trigger).toHaveCSS("opacity", "1", { timeout: 5000 });
-  await trigger.click();
-
-  const dialog = page.getByTestId("identity-key-help-dialog");
-  await expect(dialog).toBeVisible();
-  await waitForAnimations(page);
-
-  // The textured powder card is baked light in both themes, so the dialog pins
-  // the neutral onboarding theme to its light variant. Without the pin the
-  // dark theme flips --foreground to near-white and the title disappears
-  // against the white card.
   await expect(
-    dialog.getByRole("heading", { name: "What’s an identity key?" }),
-  ).toHaveCSS("color", "rgb(23, 23, 23)");
+    page.getByRole("heading", { name: "Welcome back" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
 });
