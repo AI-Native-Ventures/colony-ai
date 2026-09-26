@@ -176,6 +176,7 @@ export function AppShell() {
   const showAppTopChrome =
     !settingsOpen &&
     !isHuddleRoom &&
+    selectedView !== "pins" &&
     location.pathname !== "/today" &&
     !location.pathname.startsWith("/today/") &&
     !location.pathname.startsWith("/navigation/") &&
@@ -784,7 +785,8 @@ export function AppShell() {
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
                   location.pathname.startsWith("/navigation/") ||
-                  selectedView === "channel")
+                  selectedView === "channel" ||
+                  selectedView === "pins")
                   ? "true"
                   : undefined
               }

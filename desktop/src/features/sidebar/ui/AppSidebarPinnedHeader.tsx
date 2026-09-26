@@ -26,7 +26,8 @@ type SidebarSelectedView =
   | "agents"
   | "workflows"
   | "pulse"
-  | "projects";
+  | "projects"
+  | "pins";
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;

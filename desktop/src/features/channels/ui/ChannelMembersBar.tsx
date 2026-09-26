@@ -2,6 +2,7 @@ import { EllipsisVertical, Settings2, Users } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useHuddle } from "@/features/huddle";
 import { HuddleIndicator } from "@/features/huddle/components/HuddleIndicator";
 import { formatHuddleActionError } from "@/features/huddle/lib/huddleError";
@@ -55,6 +56,7 @@ export function ChannelMembersBar({
 }: ChannelMembersBarProps) {
   const [uncontrolledAddBotOpen, setUncontrolledAddBotOpen] =
     React.useState(false);
+  const navigate = useNavigate();
   const isAddBotOpen = isAddBotOpenProp ?? uncontrolledAddBotOpen;
   const setIsAddBotOpen = React.useCallback(
     (open: boolean) => {
@@ -235,6 +237,20 @@ export function ChannelMembersBar({
       </div>
     ) : variant === "reference" ? (
       <div className="colony-channel-header-actions flex items-center gap-2">
+        <Button
+          className="h-7 px-2 text-xs font-medium"
+          data-testid="channel-pins-trigger"
+          onClick={() =>
+            void navigate({
+              to: "/channels/pins/$channelId",
+              params: { channelId: channel.id },
+            })
+          }
+          type="button"
+          variant="outline"
+        >
+          Pins
+        </Button>
         {huddleIndicator}
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>

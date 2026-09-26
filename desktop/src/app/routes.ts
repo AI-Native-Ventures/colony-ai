@@ -16,6 +16,7 @@ export const routes = rootRoute("root.tsx", [
   route("/projects", "projects.tsx"),
   route("/projects/$projectId", "projects.$projectId.tsx"),
   route("/messages/new", "messages.new.tsx"),
+  route("/channels/pins/$channelId", "channels.pins.$channelId.tsx"),
   route("/channels/$channelId", "channels.$channelId.tsx"),
   route(
     "/channels/$channelId/posts/$postId",
