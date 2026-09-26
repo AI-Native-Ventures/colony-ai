@@ -702,22 +702,30 @@ test("team cards use the thread-style overlapping avatar stack", async ({
       };
     }),
   );
+  const cardSurface = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.className = "bg-card";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   expect(overlapStyles).toEqual([
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },

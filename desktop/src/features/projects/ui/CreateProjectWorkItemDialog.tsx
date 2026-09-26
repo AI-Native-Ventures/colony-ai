@@ -28,6 +28,7 @@ export function CreateProjectWorkItemDialog({
   description,
   isCreating,
   itemName,
+  workItemLabel: workItemLabelOverride,
   onCreate,
   onOpenChange,
   open,
@@ -40,6 +41,7 @@ export function CreateProjectWorkItemDialog({
   description: string;
   isCreating: boolean;
   itemName: "issue" | "pull-request";
+  workItemLabel?: string;
   onCreate: (input: CreateProjectWorkItemDialogInput) => Promise<void>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -54,7 +56,8 @@ export function CreateProjectWorkItemDialog({
   const titleInputRef = React.useRef<HTMLInputElement>(null);
   const submitInFlightRef = React.useRef(false);
   const testIdPrefix = `create-${itemName}`;
-  const itemLabel = itemName === "issue" ? "task" : "review";
+  const itemLabel =
+    workItemLabelOverride ?? (itemName === "issue" ? "task" : "review");
 
   React.useEffect(() => {
     if (!open) return;

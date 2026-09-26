@@ -21,14 +21,15 @@ export function CreateIssueDialog({
   return (
     <CreateProjectWorkItemDialog
       bodyPlaceholder="Add context, expected behavior, or reproduction steps"
-      description={`Create a task in ${projectName}`}
+      description={`Create an issue in ${projectName}`}
       isCreating={isCreating}
       itemName="issue"
+      workItemLabel="issue"
       onCreate={onCreate}
       onOpenChange={onOpenChange}
       open={open}
-      title="Create a task"
-      titlePlaceholder="Describe the task"
+      title="New issue"
+      titlePlaceholder="Describe the issue"
     />
   );
 }

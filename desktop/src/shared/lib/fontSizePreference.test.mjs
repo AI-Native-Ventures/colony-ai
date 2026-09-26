@@ -9,6 +9,10 @@ const typographyCss = readFileSync(
   new URL("../styles/globals/typography.css", import.meta.url),
   "utf8",
 );
+const themeCss = readFileSync(
+  new URL("../styles/globals/theme.css", import.meta.url),
+  "utf8",
+);
 
 const values = new Map();
 const attributes = new Map();
@@ -40,6 +44,7 @@ test("scales fixed line-height utilities with the typography rem", () => {
     "message-author": "var(--conversation-author-line-height)",
     "colony-body": "var(--colony-line-height-body)",
   });
+  assert.match(themeCss, /--colony-line-height-body:\s*1\.5;/);
 });
 
 test("derives the typography rem from the real root so zoom scales layout too", () => {
