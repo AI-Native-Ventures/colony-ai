@@ -229,7 +229,7 @@ test("restricted repositories keep event work visible and offer access help", as
     "—",
   );
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expect(page.getByTestId("project-issue-row").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
@@ -660,7 +660,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(agentChatPanel).toBeVisible();
   await expect(projectPanelLayout).toHaveAttribute("data-detached", "false");
   await expect(projectContentPod).toHaveCount(0);
-  await expect(appContentSurface).toHaveCSS("border-radius", "16px");
+  await expect(appContentSurface).toHaveCSS("border-radius", "15px");
   await expect
     .poll(() =>
       appContentSurface.evaluate(
@@ -782,18 +782,18 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     ]);
   expect(attachedContentSurfaceBounds).not.toBeNull();
   await expect(appContentSurface).toHaveCSS("box-shadow", "none");
-  // The detached pod fills the surface minus its hairline top/left inset and
-  // the 8px bottom gutter (ml-px mt-px mb-2 on the pod wrapper).
+  // The pod starts after the 1px frame border and wrapper inset, with an
+  // 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
   expect(
     (projectContentPodBounds?.x ?? 0) - (attachedContentSurfaceBounds?.x ?? 0),
-  ).toBe(1);
+  ).toBe(2);
   expect(
     (projectContentPodBounds?.y ?? 0) - (attachedContentSurfaceBounds?.y ?? 0),
-  ).toBe(1);
+  ).toBe(2);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
       (projectContentPodBounds?.height ?? 0),
-  ).toBe(9);
+  ).toBe(11);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
   expect(viewportSize).not.toBeNull();
@@ -803,7 +803,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
         (collapsedMainPaneBounds?.width ?? 0) -
         (viewportSize?.width ?? 0),
     ),
-  ).toBeLessThanOrEqual(8);
+  ).toBeLessThanOrEqual(9);
   await repositoryPanelTab.click();
   await expect(contextRail).toHaveCSS("width", "288px");
   await expect(repositoryPanelTab).toHaveAttribute("aria-pressed", "true");
@@ -875,7 +875,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   ).toBeVisible();
   await expect(
     workspacePanel.getByTestId("project-repository-entry-icon").first(),
-  ).toHaveCSS("border-radius", "8px");
+  ).toHaveCSS("border-radius", "10px");
   const repositoryEntryCell = workspacePanel
     .getByTestId("project-repository-entry-row")
     .first()
@@ -967,7 +967,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expectInsetSection();
 
   // Issues tab: the create action lives in the section header.
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expect(repositoryActionsPanel).toBeVisible();
   await expectProjectContextGroups(repositoryActionsPanel, {
     hasActions: true,
@@ -993,22 +993,22 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   );
   await expectInsetSection();
   const newIssueButton = workspacePanel.getByRole("button", {
-    name: "Create task",
+    name: "New issue",
   });
   await expect(newIssueButton).toBeVisible();
   const contextCreateTaskButton = repositoryActionsPanel.getByRole("button", {
-    name: "Create task",
+    name: "New issue",
     exact: true,
   });
   await expect(contextCreateTaskButton).toBeVisible();
   await contextCreateTaskButton.click();
   await expect(page.getByTestId("create-issue-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(
-    tabMenu.getByRole("button", { name: "Create task" }),
-  ).toHaveCount(0);
+  await expect(tabMenu.getByRole("button", { name: "New issue" })).toHaveCount(
+    0,
+  );
   const issuesHeading = workspacePanel.getByRole("heading", {
-    name: "Tasks",
+    name: "Issues",
     exact: true,
   });
   const issuesHeadingBounds = await issuesHeading.boundingBox();
@@ -1018,7 +1018,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(newIssueBounds?.x).toBeGreaterThan(issuesHeadingBounds?.x ?? 0);
   const issueRow = page.getByTestId("project-issue-row").first();
   await expect(issueRow).toBeVisible({ timeout: 10_000 });
-  await expect(issueRow).toHaveCSS("border-radius", "8px");
+  await expect(issueRow).toHaveCSS("border-radius", "10px");
   const [issueHeaderBounds, firstIssueBounds, secondIssueBounds] =
     await Promise.all([
       page.getByTestId("project-work-item-group-header").first().boundingBox(),
@@ -1042,7 +1042,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
       ((firstIssueBounds?.y ?? 0) + (firstIssueBounds?.height ?? 0)),
   ).toBe(2);
   const issueDate = issueRow.getByTestId("project-issue-row-date");
-  const issueId = issueRow.getByTitle("View task");
+  const issueId = issueRow.getByTitle("View issue");
   await expect(issueDate).toBeVisible();
   const issueDateBounds = await issueDate.boundingBox();
   const issueIdBounds = await issueId.boundingBox();
@@ -1103,7 +1103,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   // PR list: the create action lives in both the section header and context.
   await page
     .getByRole("navigation", { name: "Project breadcrumb" })
-    .getByRole("button", { name: "Tasks", exact: true })
+    .getByRole("button", { name: "Issues", exact: true })
     .click();
   await expect(tabMenu).toBeVisible();
   await page.getByRole("tab", { name: "Review", exact: true }).click();

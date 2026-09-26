@@ -1,210 +1,176 @@
 import 'package:buzz/features/home/home_page.dart';
-import 'package:buzz/features/channels/channels_page.dart';
-import 'package:buzz/features/profile/profile_avatar.dart';
+import 'package:buzz/shared/business/mobile_business_entry_points.dart';
+import 'package:buzz/shared/navigation/mobile_navigation.dart';
+import 'package:buzz/shared/navigation/mobile_route.dart';
+import 'package:buzz/shared/navigation/mobile_route_context.dart';
+import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+MobileRouteRegistry buildTestRoutes({
+  MobileRouteBuilder<MobileShellRouteContext>? todayBuilder,
+  MobileRouteBuilder<NoMobileRouteArguments>? searchBuilder,
+}) => MobileRouteRegistry.empty()
+    .register(
+      MobileRoutes.today,
+      todayBuilder ??
+          ((BuildContext _, MobileShellRouteContext context) =>
+              _DestinationPage('Today', context)),
+    )
+    .register(
+      MobileRoutes.chats,
+      (_, context) => _DestinationPage('Chats', context),
+    )
+    .register(
+      MobileRoutes.activity,
+      (_, context) => _DestinationPage('Activity', context),
+    )
+    .register(
+      MobileRoutes.business,
+      (_, context) => _DestinationPage('Business', context),
+    )
+    .register(
+      MobileRoutes.search,
+      searchBuilder ?? (_, _) => const Text('Search route'),
+    )
+    .register(MobileRoutes.updates, (_, _) => const Text('Updates route'));
+
+Widget buildHome({
+  required MobileRouteRegistry routes,
+  bool unreadActivity = false,
+  Brightness brightness = Brightness.light,
+}) => ProviderScope(
+  child: MaterialApp(
+    theme: brightness == Brightness.light
+        ? AppTheme.light(mobileTokens: MobileDesignTokens.light)
+        : AppTheme.dark(mobileTokens: MobileDesignTokens.dark),
+    home: RepaintBoundary(
+      key: const ValueKey('mobile-shell-capture'),
+      child: HomePage(
+        routeRegistry: routes,
+        settingsPageBuilder: (_) => const Text('Settings route'),
+        hasUnreadInbox: unreadActivity,
+      ),
+    ),
+  ),
+);
+
+Widget buildShellCapture({
+  required MobileShellDestination destination,
+  required Brightness brightness,
+}) {
+  final tokens = brightness == Brightness.light
+      ? MobileDesignTokens.light
+      : MobileDesignTokens.dark;
+  return MaterialApp(
+    theme: brightness == Brightness.light
+        ? AppTheme.light(mobileTokens: tokens)
+        : AppTheme.dark(mobileTokens: tokens),
+    home: RepaintBoundary(
+      key: const ValueKey('mobile-shell-capture'),
+      child: MobileShell(
+        destination: destination,
+        onDestinationSelected: (_) {},
+        child: ColoredBox(color: tokens.canvas),
+      ),
+    ),
+  );
+}
 
 void main() {
-  Future<Widget> buildHome({
-    int unreadInboxCount = 0,
-    bool disableAnimations = false,
-    Gradient? topSectionGradient,
-  }) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    return ProviderScope(
-      overrides: [savedPrefsProvider.overrideWithValue(prefs)],
-      child: MaterialApp(
-        theme: AppTheme.light(topSectionGradient: topSectionGradient),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(disableAnimations: disableAnimations),
-          child: child!,
-        ),
-        home: HomePage(
-          settingsPageBuilder: _buildSettingsPage,
-          hasUnreadInbox: unreadInboxCount > 0,
-        ),
-      ),
-    );
-  }
-
-  testWidgets('shows icon-only navigation and an aligned quick action', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildHome());
-    await tester.pump();
-
-    expect(find.text('Home'), findsNothing);
-    expect(find.text('Activity'), findsNothing);
-    expect(find.text('Search'), findsNothing);
-    expect(find.bySemanticsLabel('Home'), findsOneWidget);
-    expect(find.bySemanticsLabel('Activity'), findsOneWidget);
-    expect(find.bySemanticsLabel('Search'), findsOneWidget);
-
-    final quickAction = find.byTooltip('Create or start conversation');
-    expect(quickAction, findsOneWidget);
-    final launcherSize = tester.getSize(
-      find.byType(ChannelQuickActionsLauncher),
-    );
-    expect(launcherSize.width, 800);
-    expect(launcherSize.height, greaterThan(0));
-    final motionRect = tester.getRect(
-      find.byKey(const Key('channel-quick-actions-motion')),
-    );
-    expect(motionRect.width, const Size.square(56).width);
-    expect(motionRect.left, greaterThanOrEqualTo(0));
-    expect(tester.getSize(quickAction), const Size.square(56));
-    final quickActionRect = tester.getRect(quickAction);
-    expect(quickActionRect.left, greaterThanOrEqualTo(0));
-    expect(quickActionRect.top, greaterThanOrEqualTo(0));
-    expect(quickActionRect.right, lessThanOrEqualTo(800));
-    expect(quickActionRect.bottom, lessThanOrEqualTo(600));
-    final homeDestinationRect = tester.getRect(find.bySemanticsLabel('Home'));
-    expect(
-      quickActionRect.center.dy,
-      closeTo(homeDestinationRect.center.dy, 0.01),
-    );
+  test('exposes all frozen Business destinations through shared routes', () {
+    expect(MobileBusinessSection.values.map((section) => section.label), [
+      'Business',
+      'Team & tools',
+      'Manage',
+    ]);
+    expect(MobileBusinessEntryPoints.all.map((entry) => entry.route.path), [
+      'social/calendar',
+      'website/home',
+      'clients/home',
+      'money/home',
+      'discovery/search',
+      'agents/roster',
+      'factory/home',
+      'work/files',
+      'blocks/catalog',
+      'credits/balance',
+      'settings/home',
+    ]);
   });
 
-  testWidgets('keeps the Buzz backdrop behind the scalable Home screen', (
+  testWidgets('renders four primary destinations and marks the selection', (
     tester,
   ) async {
-    const gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Colors.yellow, Colors.blue],
+    await tester.pumpWidget(
+      buildHome(routes: buildTestRoutes(), unreadActivity: true),
     );
-    await tester.pumpWidget(await buildHome(topSectionGradient: gradient));
-    await tester.pump();
 
-    final backdrop = find.byKey(
-      const ValueKey('home-settings-transition-backdrop'),
-    );
-    final decoration =
-        tester.widget<DecoratedBox>(backdrop).decoration as BoxDecoration;
-    expect(decoration.gradient, gradient);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('home-settings-transition-scale')),
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
     );
     expect(
-      tester
-          .widget<Transform>(
-            find.byKey(const ValueKey('home-settings-transition-scale')),
-          )
-          .transform
-          .getMaxScaleOnAxis(),
-      1,
+      tester.widget<Semantics>(find.byKey(const ValueKey('mobile-nav-today'))),
+      isA<Semantics>()
+          .having((semantics) => semantics.properties.label, 'label', 'Today')
+          .having((semantics) => semantics.properties.onTap, 'onTap', isNotNull)
+          .having(
+            (semantics) => semantics.properties.selected,
+            'selected',
+            isTrue,
+          ),
     );
     expect(
       tester
-          .widget<Opacity>(
-            find.byKey(const ValueKey('home-settings-transition-opacity')),
-          )
-          .opacity,
-      1,
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-chats')))
+          .properties
+          .label,
+      'Chats',
     );
-  });
-
-  testWidgets('keeps Home opaque beneath the Settings transition', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildHome());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(ProfileAvatar));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 95));
-
-    double homeOpacity() => tester
-        .widget<Opacity>(
-          find.byKey(const ValueKey('home-settings-transition-opacity')),
-        )
-        .opacity;
-
-    expect(homeOpacity(), 1);
-
-    await tester.pumpAndSettle();
-    Navigator.of(
-      tester.element(
-        find.byKey(
-          const ValueKey('settings-transition-opacity'),
-          skipOffstage: false,
-        ),
-      ),
-    ).pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 95));
-
-    expect(homeOpacity(), 1);
-  });
-
-  testWidgets('uses one monotonic route animation for Settings and Home', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildHome());
-    await tester.pumpAndSettle();
-
-    double homeScale() => tester
-        .widget<Transform>(
-          find.byKey(const ValueKey('home-settings-transition-scale')),
-        )
-        .transform
-        .storage[0];
-
-    await tester.tap(find.byType(ProfileAvatar));
-    await tester.pump();
-
-    final settingsTransition = find.byKey(
-      const ValueKey('settings-transition-opacity'),
-      skipOffstage: false,
-    );
-    final settingsRoute = ModalRoute.of(tester.element(settingsTransition));
-
-    final entranceScales = <double>[homeScale()];
-    final routeValues = <double>[settingsRoute!.animation!.value];
-    for (var frame = 0; frame < 15; frame++) {
-      await tester.pump(const Duration(milliseconds: 16));
-      entranceScales.add(homeScale());
-      routeValues.add(settingsRoute.animation!.value);
-    }
-    expect(entranceScales.first, closeTo(1, 0.000001));
-    final reversalFrames = <int>[];
-    for (var frame = 1; frame < entranceScales.length; frame++) {
-      if (entranceScales[frame] > entranceScales[frame - 1] + 0.000001) {
-        reversalFrames.add(frame);
-      }
-    }
     expect(
-      reversalFrames,
-      isEmpty,
-      reason:
-          'Home must scale down in one direction on entrance. '
-          'scales=$entranceScales route=$routeValues',
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-activity')))
+          .properties
+          .label,
+      'Activity, unread',
     );
-    expect(entranceScales, everyElement(inInclusiveRange(0.97, 1)));
-    expect(entranceScales.last, closeTo(0.97, 0.001));
-
-    await tester.pumpAndSettle();
-    Navigator.of(tester.element(settingsTransition)).pop();
-    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-business')))
+          .properties
+          .label,
+      'Business',
+    );
+    expect(find.text('Today route 0'), findsOneWidget);
   });
 
-  testWidgets('gives selection haptics only when the tab changes', (
+  testWidgets('switches destinations and signals selected-tab reselection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildHome(routes: buildTestRoutes()));
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.pumpAndSettle();
+    expect(find.text('Activity route 0'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.pump();
+    expect(find.text('Activity route 1'), findsOneWidget);
+  });
+
+  testWidgets('gives selection haptics only when the destination changes', (
     tester,
   ) async {
     final hapticCalls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'HapticFeedback.vibrate') {
-            hapticCalls.add(call);
-          }
+          if (call.method == 'HapticFeedback.vibrate') hapticCalls.add(call);
           return null;
         });
     addTearDown(
@@ -212,227 +178,175 @@ void main() {
           .setMockMethodCallHandler(SystemChannels.platform, null),
     );
 
-    await tester.pumpWidget(await buildHome());
-    await tester.pump();
-
-    await tester.tap(find.byTooltip('Home'));
+    await tester.pumpWidget(buildHome(routes: buildTestRoutes()));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-today')));
     await tester.pump();
     expect(hapticCalls, isEmpty);
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.selectionClick');
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
 
-    await tester.tap(find.byTooltip('Search'));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-business')));
     await tester.pump();
     expect(hapticCalls, hasLength(2));
   });
 
-  testWidgets('gives a light impact when the Home quick action is pressed', (
+  testWidgets('keeps Search callable through the shared route scope', (
     tester,
   ) async {
-    final hapticCalls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'HapticFeedback.vibrate') {
-            hapticCalls.add(call);
-          }
-          return null;
-        });
-    addTearDown(
-      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null),
-    );
-
-    await tester.pumpWidget(await buildHome());
-    await tester.pump();
-
-    await tester.tap(find.byTooltip('Create or start conversation'));
-    await tester.pump();
-
-    expect(hapticCalls, hasLength(1));
-    expect(hapticCalls.single.arguments, 'HapticFeedbackType.lightImpact');
-  });
-
-  testWidgets('badges the Inbox tab when it has unread rows', (tester) async {
-    await tester.pumpWidget(await buildHome(unreadInboxCount: 1));
-    await tester.pump();
-
-    expect(
-      find.byKey(const ValueKey('activity-tab-unread-dot')),
-      findsOneWidget,
-    );
-    final badge = tester.widget<Container>(
-      find.byKey(const ValueKey('activity-tab-unread-dot')),
-    );
-    expect(badge.constraints?.maxWidth, 12);
-    expect(badge.constraints?.maxHeight, 12);
-    expect(find.bySemanticsLabel('Activity, unread'), findsOneWidget);
-    AnimatedScale unreadDotScale() => tester.widget<AnimatedScale>(
-      find.byKey(const ValueKey('activity-tab-unread-dot-scale')),
-    );
-    expect(unreadDotScale().scale, 1);
-    expect(unreadDotScale().alignment, const Alignment(-0.5, 0.5));
-    expect(unreadDotScale().duration, const Duration(milliseconds: 220));
-
-    await tester.tap(find.byTooltip('Activity'));
-    await tester.pump();
-
-    expect(
-      find.byKey(const ValueKey('activity-tab-unread-dot')),
-      findsOneWidget,
-    );
-    expect(unreadDotScale().scale, 0);
-    expect(find.bySemanticsLabel('Activity, unread'), findsNothing);
-
-    await tester.tap(find.byTooltip('Home'));
-    await tester.pump();
-
-    expect(unreadDotScale().scale, 1);
-  });
-
-  testWidgets('fades and slides tab content in the selected direction', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildHome());
-    await tester.pump();
-
-    Transform bodyTransform() => tester.widget<Transform>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-transform')),
-    );
-    Opacity bodyOpacity() => tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-opacity')),
-    );
-    Transform appBarTransform() => tester.widget<Transform>(
-      find.byKey(
-        const ValueKey('frosted-app-bar-content-transition-transform'),
-      ),
-    );
-    Opacity appBarOpacity() => tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-app-bar-content-transition-opacity')),
-    );
-    double bodyOffset() => bodyTransform().transform.getTranslation().x;
-    double appBarOffset() => appBarTransform().transform.getTranslation().x;
-
-    expect(bodyOffset(), closeTo(0, 0.001));
-    expect(appBarOffset(), closeTo(0, 0.001));
-    expect(bodyOpacity().opacity, closeTo(1, 0.001));
-    expect(appBarOpacity().opacity, closeTo(1, 0.001));
-
-    await tester.tap(find.byTooltip('Activity'));
-    await tester.pump();
-
-    expect(bodyOffset(), closeTo(24, 0.001));
-    expect(appBarOffset(), closeTo(24, 0.001));
-    expect(bodyOpacity().opacity, closeTo(0, 0.001));
-    expect(appBarOpacity().opacity, closeTo(0, 0.001));
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('frosted-app-bar-background')),
-        matching: find.byKey(
-          const ValueKey('frosted-app-bar-content-transition-transform'),
+    final routes = buildTestRoutes(
+      todayBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => MobileNavigation.openSearch(context),
+          child: const Text('Open search'),
         ),
       ),
-      findsOneWidget,
     );
 
-    await tester.pump(const Duration(milliseconds: 120));
-
-    expect(bodyOffset(), inExclusiveRange(0, 24));
-    expect(appBarOffset(), inExclusiveRange(0, 24));
-    expect(bodyOpacity().opacity, inExclusiveRange(0, 1));
-    expect(appBarOpacity().opacity, inExclusiveRange(0, 1));
-
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.text('Open search'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Home'));
-    await tester.pump();
 
-    expect(bodyOffset(), closeTo(-24, 0.001));
-    expect(appBarOffset(), closeTo(-24, 0.001));
-    expect(bodyOpacity().opacity, closeTo(0, 0.001));
-    expect(appBarOpacity().opacity, closeTo(0, 0.001));
-
-    await tester.pumpAndSettle();
-    expect(bodyOffset(), closeTo(0, 0.001));
-    expect(appBarOffset(), closeTo(0, 0.001));
-    expect(bodyOpacity().opacity, closeTo(1, 0.001));
-    expect(appBarOpacity().opacity, closeTo(1, 0.001));
+    expect(find.text('Search route'), findsOneWidget);
   });
 
-  testWidgets('switches tab content instantly with reduced motion', (
+  testWidgets('keeps Updates callable through the shared route scope', (
     tester,
   ) async {
-    await tester.pumpWidget(await buildHome(disableAnimations: true));
-    await tester.pump();
-
-    await tester.tap(find.byTooltip('Activity'));
-    await tester.pump();
-
-    final bodyTransform = tester.widget<Transform>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-transform')),
-    );
-    final bodyOpacity = tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-opacity')),
-    );
-    final appBarTransform = tester.widget<Transform>(
-      find.byKey(
-        const ValueKey('frosted-app-bar-content-transition-transform'),
+    final routes = buildTestRoutes(
+      todayBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => MobileNavigation.openUpdates(context),
+          child: const Text('Open updates'),
+        ),
       ),
     );
-    final appBarOpacity = tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-app-bar-content-transition-opacity')),
-    );
-    expect(bodyTransform.transform.getTranslation().x, closeTo(0, 0.001));
-    expect(appBarTransform.transform.getTranslation().x, closeTo(0, 0.001));
-    expect(bodyOpacity.opacity, closeTo(1, 0.001));
-    expect(appBarOpacity.opacity, closeTo(1, 0.001));
+
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.text('Open updates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Updates route'), findsOneWidget);
   });
 
-  testWidgets('scales and fades the quick action as tabs change', (
+  testWidgets('retains route scope inside a pushed route', (tester) async {
+    final routes = buildTestRoutes(
+      todayBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => MobileNavigation.openSearch(context),
+          child: const Text('Open search'),
+        ),
+      ),
+      searchBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => MobileNavigation.openUpdates(context),
+          child: const Text('Open updates from search'),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.text('Open search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open updates from search'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Updates route'), findsOneWidget);
+  });
+
+  testWidgets('builds a shell at the requested mobile viewport', (
     tester,
   ) async {
-    await tester.pumpWidget(await buildHome());
-    await tester.pump();
-
-    double scale() => tester
-        .widget<Transform>(find.byKey(const Key('channel-quick-actions-scale')))
-        .transform
-        .storage
-        .first;
-    double opacity() => tester
-        .widget<Opacity>(find.byKey(const Key('channel-quick-actions-opacity')))
-        .opacity;
-
-    expect(scale(), closeTo(1, 0.001));
-    expect(opacity(), closeTo(1, 0.001));
-
-    await tester.tap(find.byTooltip('Activity'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-
-    expect(scale(), inExclusiveRange(0.8, 1));
-    expect(opacity(), inExclusiveRange(0, 1));
-
-    await tester.pumpAndSettle();
-    expect(scale(), closeTo(0.8, 0.001));
-    expect(opacity(), closeTo(0, 0.001));
-
-    await tester.tap(find.byTooltip('Home'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-
-    expect(scale(), inExclusiveRange(0.8, 1));
-    expect(opacity(), inExclusiveRange(0, 1));
-
-    await tester.pumpAndSettle();
-    expect(scale(), closeTo(1, 0.001));
-    expect(opacity(), closeTo(1, 0.001));
+    const captureScreenshots = bool.fromEnvironment(
+      'CAPTURE_MOBILE_SHELL_SHOTS',
+    );
+    const captureSizeName = String.fromEnvironment(
+      'CAPTURE_MOBILE_SIZE',
+      defaultValue: '390x844',
+    );
+    const destinationName = String.fromEnvironment(
+      'CAPTURE_MOBILE_DESTINATION',
+      defaultValue: 'today',
+    );
+    const captureDark = bool.fromEnvironment('CAPTURE_MOBILE_DARK');
+    const captureSizes = {'390x844': Size(390, 844), '412x915': Size(412, 915)};
+    final captureSize = captureSizes[captureSizeName];
+    if (captureSize == null) {
+      throw ArgumentError.value(captureSizeName, 'CAPTURE_MOBILE_SIZE');
+    }
+    final destination = MobileShellDestination.values.firstWhere(
+      (value) => value.name == destinationName,
+      orElse: () => throw ArgumentError.value(
+        destinationName,
+        'CAPTURE_MOBILE_DESTINATION',
+      ),
+    );
+    final brightness = captureDark ? Brightness.dark : Brightness.light;
+    final sizeName =
+        '${captureSize.width.toInt()}x${captureSize.height.toInt()}';
+    final modeName = captureDark ? 'dark' : 'light';
+    final outputPath = '/tmp/colony-mobile-shell/$sizeName/$modeName';
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    tester.view.physicalSize = captureSize;
+    tester.view.devicePixelRatio = 1;
+    if (captureScreenshots) {
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+    }
+    await tester.pumpWidget(
+      buildShellCapture(destination: destination, brightness: brightness),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('mobile-brand-bar'))).height,
+      MobileShell.brandBarHeight,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('mobile-bottom-navigation')))
+          .height,
+      MobileShell.navigationBarHeight,
+    );
+    if (captureScreenshots) {
+      final previousComparator = goldenFileComparator;
+      goldenFileComparator = LocalFileComparator(
+        Uri.file('$outputPath/golden_test.dart'),
+      );
+      addTearDown(() => goldenFileComparator = previousComparator);
+      await expectLater(
+        find.byKey(const ValueKey('mobile-shell-capture')),
+        matchesGoldenFile('${destination.name}.png'),
+      );
+      debugPrint('Captured $outputPath/${destination.name}.png');
+    }
   });
 }
 
-Widget _buildSettingsPage(BuildContext context) => const SizedBox.shrink();
+class _DestinationPage extends StatelessWidget {
+  const _DestinationPage(this.name, this.routeContext);
+
+  final String name;
+  final MobileShellRouteContext routeContext;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ValueListenableBuilder<int>(
+      valueListenable: routeContext.tabReselection,
+      builder: (_, reselections, _) => Text('$name route $reselections'),
+    ),
+  );
+}

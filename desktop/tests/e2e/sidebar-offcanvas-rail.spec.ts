@@ -42,14 +42,11 @@ async function setup(page: Page, theme: string) {
 }
 
 /**
- * Regression: the app-sidebar layer is overflow-visible (huddle drawer), so
- * the offcanvas-collapsed sidebar slides out of its container but kept
- * painting over the community rail — opaquely on flat themes, as ghost
- * fragments on the transparent Buzz chrome. The collapsed sidebar must be
- * invisible and non-interactive, leaving the rail clean in every theme.
+ * The app sidebar collapses to an icon rail. The community rail remains visible
+ * and interactive in every theme while the workspace navigation is collapsed.
  */
 for (const theme of ["buzz", "buzz-dark", "vesper"]) {
-  test(`collapsed sidebar leaves the community rail clean — ${theme}`, async ({
+  test(`collapsed sidebar keeps the community rail usable in ${theme}`, async ({
     page,
   }) => {
     await setup(page, theme);
@@ -63,96 +60,22 @@ for (const theme of ["buzz", "buzz-dark", "vesper"]) {
     const railBoxBeforeCollapse = await communityRail.boundingBox();
     expect(railBoxBeforeCollapse).not.toBeNull();
 
-    // Observe the transition before triggering it, then hold every animated
-    // sidebar-content property at its midpoint. This keeps the regression
-    // causal without making its assertions depend on Playwright or rAF
-    // scheduler latency.
-    const transition = await communityButton.evaluate(async (button) => {
-      const rail = button.closest('[data-testid="community-rail"]');
-      const trigger = document.querySelector<HTMLElement>(
-        '[data-sidebar="trigger"]',
-      );
-      const sidebarContent = document.querySelector<HTMLElement>(
-        "[data-sidebar-transition-content]",
-      );
-      if (!(rail instanceof HTMLElement) || !trigger || !sidebarContent) {
-        return null;
-      }
+    await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+    await expect(
+      page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
+    ).toHaveCount(1);
 
-      const transitionStarted = new Promise<void>((resolve) => {
-        sidebarContent.addEventListener("transitionrun", () => resolve(), {
-          once: true,
-        });
-      });
-      trigger.click();
-      await transitionStarted;
-
-      const animations = sidebarContent.getAnimations();
-      await Promise.all(animations.map((animation) => animation.ready));
-      for (const animation of animations) {
-        animation.pause();
-        animation.currentTime = 100;
-      }
-
-      const buttonBox = button.getBoundingClientRect();
-      const railBox = rail.getBoundingClientRect();
-      const hit = document.elementFromPoint(
-        buttonBox.x + buttonBox.width / 2,
-        buttonBox.y + buttonBox.height / 2,
-      );
-      const railStyle = getComputedStyle(rail);
-      const sidebarStyle = getComputedStyle(sidebarContent);
-      const result = {
-        durations: animations.map(
-          (animation) => animation.effect?.getTiming().duration,
-        ),
-        hitRail: hit === rail || rail.contains(hit),
-        opacity: railStyle.opacity,
-        sidebarOpacity: Number.parseFloat(sidebarStyle.opacity),
-        sidebarScale: sidebarStyle.scale,
-        sidebarTranslateX: Number.parseFloat(sidebarStyle.translate),
-        visibility: railStyle.visibility,
-        x: railBox.x,
-        y: railBox.y,
-      };
-
-      for (const animation of animations) animation.finish();
-      return result;
-    });
-    expect(transition).not.toBeNull();
-    expect(transition?.durations).toEqual([200, 200, 200]);
-    expect(transition).toMatchObject({
-      hitRail: true,
-      opacity: "1",
-      visibility: "visible",
-      x: railBoxBeforeCollapse?.x,
-      y: railBoxBeforeCollapse?.y,
-    });
-    expect(transition?.sidebarOpacity).toBeGreaterThan(0);
-    expect(transition?.sidebarOpacity).toBeLessThan(1);
-    expect(transition?.sidebarScale).not.toBe("none");
-    expect(transition?.sidebarScale).not.toBe("0.95");
-    expect(transition?.sidebarTranslateX).toBeGreaterThan(0);
-    expect(transition?.sidebarTranslateX).toBeLessThan(24);
-
-    const shell = page.locator(
-      '[data-state="collapsed"][data-collapsible="offcanvas"]',
-    );
-    await expect(shell).toHaveCount(1);
-
-    // Let the 200ms slide finish; visibility flips at the transition's end.
-    await page.waitForTimeout(250);
-
-    // Second direct child = the sliding sidebar container (first is the gap).
-    const offscreenSidebar = shell.locator("> div").nth(1);
-    await expect(offscreenSidebar).toHaveCSS("visibility", "hidden");
-    await expect(offscreenSidebar).toHaveCSS("pointer-events", "none");
-
-    // The community rail stays visible and interactive beneath it.
     await expect(page.getByTestId("community-rail")).toBeVisible();
     await expect(
       page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`),
     ).toBeVisible();
+    const railBoxAfterCollapse = await communityRail.boundingBox();
+    expect(railBoxAfterCollapse).not.toBeNull();
+    expect(railBoxAfterCollapse?.x).toBe(railBoxBeforeCollapse?.x);
+    expect(railBoxAfterCollapse?.y).toBe(railBoxBeforeCollapse?.y);
+
+    await communityButton.click();
+    await expect(communityButton).toHaveAttribute("aria-current", "true");
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/${theme}-collapsed.png` });
   });

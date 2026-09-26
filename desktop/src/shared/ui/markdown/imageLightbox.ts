@@ -437,13 +437,33 @@ function isVisibleImageLightboxTrigger(trigger: HTMLElement): boolean {
     if (
       style.display === "none" ||
       style.visibility === "hidden" ||
-      Number(style.opacity) === 0
+      (Number(style.opacity) === 0 && !isFadingIn(element))
     ) {
       return false;
     }
   }
 
   return true;
+}
+
+/**
+ * True while an opacity transition or animation on `element` is heading to a
+ * visible value. A spoiler reveal fades its media in from opacity 0, so in the
+ * first frame after the reveal the computed opacity still reads 0 even though
+ * the image is already revealed.
+ */
+function isFadingIn(element: Element): boolean {
+  if (typeof element.getAnimations !== "function") return false;
+  return element.getAnimations().some((animation) => {
+    if (animation.playState === "finished" || animation.playState === "idle") {
+      return false;
+    }
+    const effect = animation.effect;
+    if (!(effect instanceof KeyframeEffect)) return false;
+    const keyframes = effect.getKeyframes();
+    const finalOpacity = keyframes.at(-1)?.opacity;
+    return finalOpacity != null && Number(finalOpacity) > 0;
+  });
 }
 
 export function visibleImageGalleryForTrigger(

@@ -11,7 +11,7 @@ await authService.signUp(email, password);
 const account = await authService.verifyEmail(email, code);</code></pre>
 
 The service exposes signUp, verifyEmail, resendCode, signIn, signInWithGoogle,
-requestReset, confirmReset, claimAccount, changePassword, getAccount, and
+requestReset, checkResetCode, confirmReset, claimAccount, changePassword, getAccount, and
 deleteAccount.
 
 ## Identity handling

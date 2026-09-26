@@ -449,6 +449,7 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         // Ingest persists them to `moderation_reports` and suppresses public
         // storage/fanout; reports are signals, never enforcement triggers.
         KIND_REPORT | KIND_PRODUCT_FEEDBACK => Ok(Scope::MessagesWrite),
+        k if buzz_core::kind::is_business_record_kind(k) => Ok(Scope::MessagesWrite),
         // Community moderation commands are direct, mod-authz-gated writes.
         // Scope only proves the transport can submit message writes; the
         // command handler owns role/capability authorization.
@@ -705,9 +706,10 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
 
 /// Kinds that require an `h` tag for channel scoping.
 pub(crate) fn requires_h_channel_scope(kind: u32) -> bool {
-    matches!(
-        kind,
-        KIND_STREAM_MESSAGE
+    buzz_core::kind::is_business_record_kind(kind)
+        || matches!(
+            kind,
+            KIND_STREAM_MESSAGE
             | KIND_STREAM_MESSAGE_V2
             | KIND_STREAM_MESSAGE_EDIT
             | KIND_STREAM_MESSAGE_PINNED
@@ -732,7 +734,7 @@ pub(crate) fn requires_h_channel_scope(kind: u32) -> bool {
             | KIND_HUDDLE_PARTICIPANT_LEFT
             | KIND_HUDDLE_ENDED
             | KIND_HUDDLE_GUIDELINES
-    )
+        )
 }
 
 /// Check channel membership: member OR open-visibility channel.
@@ -2289,6 +2291,12 @@ async fn ingest_event_inner(
         return super::command_executor::handle_command(tenant, state, event, auth).await;
     }
 
+    if buzz_core::kind::is_business_record_kind(kind_u32) {
+        return Err(IngestError::Rejected(
+            "unsupported: this business record kind has no write handler yet".into(),
+        ));
+    }
+
     // Product feedback is sidecarred directly into its private deployment table.
     // It never enters ordinary event storage or subscription fan-out.
     if kind_u32 == KIND_PRODUCT_FEEDBACK {
@@ -3683,6 +3691,24 @@ mod postgres_tests {
             assert!(
                 requires_h_channel_scope(kind),
                 "kind {kind} should require h"
+            );
+        }
+    }
+
+    #[test]
+    fn business_record_kinds_require_channel_scope_and_message_write() {
+        for &kind in buzz_core::kind::BUSINESS_RECORD_KINDS {
+            let event = EventBuilder::new(Kind::Custom(kind as u16), "{}")
+                .sign_with_keys(&nostr::Keys::generate())
+                .expect("signed business event");
+            assert!(
+                requires_h_channel_scope(kind),
+                "business kind {kind} must use an h channel scope"
+            );
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "business kind {kind} must require message write scope"
             );
         }
     }

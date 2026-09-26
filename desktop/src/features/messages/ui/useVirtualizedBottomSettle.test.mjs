@@ -28,6 +28,9 @@ class ElementShim extends EventTargetShim {
     this.children = [];
     this.childNodes = [];
     this.isContentEditable = false;
+    this.clientHeight = 0;
+    this.scrollHeight = 0;
+    this.scrollTop = 0;
     this.nodeName = "DIV";
     this.tagName = "DIV";
     this.nodeType = 1;
@@ -270,6 +273,71 @@ test("typing and editable navigation keys preserve bottom intent", async () => {
     target: editable,
     type: "keydown",
   });
+
+  resizeObservers
+    .find((observer) => observer.targets?.includes(content))
+    .callback();
+  flushAnimationFrames();
+  assert.equal(writes.length, 2);
+  await act(async () => root.unmount());
+});
+
+function placeScroller(scroller, { clientHeight, scrollHeight, scrollTop }) {
+  scroller.clientHeight = clientHeight;
+  scroller.scrollHeight = scrollHeight;
+  scroller.scrollTop = scrollTop;
+  // Browsers report every offset change with a scroll event.
+  scroller.dispatchEvent({ type: "scroll" });
+}
+
+test("scrolling away from the bottom without reader input releases bottom intent", async () => {
+  // Keyboard focus, assistive technology, find-in-page and programmatic
+  // navigation move the scroller without wheel, touch, pointer or scroll keys.
+  // A later geometry change must not pull the reader back to the newest row.
+  const { content, refs, root, scroller, writes } = await mountHarness();
+  placeScroller(scroller, {
+    clientHeight: 600,
+    scrollHeight: 10_000,
+    scrollTop: 9_400,
+  });
+  refs.api.current.settle();
+  assert.equal(writes.length, 1);
+
+  scroller.scrollTop = 5_000;
+  scroller.dispatchEvent({ type: "scroll" });
+  resizeObservers
+    .find((observer) => observer.targets?.includes(content))
+    .callback();
+  flushAnimationFrames();
+
+  assert.equal(writes.length, 1);
+  await act(async () => root.unmount());
+  assert.equal(scroller.listeners.get("scroll")?.length ?? 0, 0);
+});
+
+test("scrolls that keep the physical floor preserve bottom intent", async () => {
+  // Virtua's own corrections while pinned (prepend shift, estimate
+  // re-measurement, clamping after content shrinks) keep the viewport at the
+  // floor, so they must not be mistaken for navigation away from it.
+  const { content, refs, root, scroller, writes } = await mountHarness();
+  placeScroller(scroller, {
+    clientHeight: 600,
+    scrollHeight: 10_000,
+    scrollTop: 9_400,
+  });
+  refs.api.current.settle();
+
+  // Downward shift after a prepend above the viewport.
+  scroller.scrollHeight = 12_000;
+  scroller.scrollTop = 11_400;
+  scroller.dispatchEvent({ type: "scroll" });
+  // Clamp upward after rows measured smaller than their estimates.
+  scroller.scrollHeight = 11_000;
+  scroller.scrollTop = 10_400;
+  scroller.dispatchEvent({ type: "scroll" });
+  // A small upward correction that stays near the floor.
+  scroller.scrollTop = 10_380;
+  scroller.dispatchEvent({ type: "scroll" });
 
   resizeObservers
     .find((observer) => observer.targets?.includes(content))

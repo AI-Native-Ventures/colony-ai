@@ -12,59 +12,69 @@ import 'package:buzz/shared/security/sensitive_action_authorizer.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
 import 'package:buzz/shared/widgets/ios_glass_navigation_button.dart';
-import 'package:buzz/shared/widgets/tappable_flapping_bee.dart';
 
 import '../../helpers/widget_helpers.dart';
 
 void main() {
   group('PairingPage', () {
-    testWidgets('renders branding and progressive pairing actions', (
+    testWidgets('renders the frozen existing-identity pairing entry', (
       tester,
     ) async {
       await tester.pumpWidget(
         WidgetHelpers.testable(child: const PairingPage()),
       );
 
-      expect(find.byType(TappableFlappingBee), findsOneWidget);
-      expect(find.text('Welcome to Buzz'), findsOneWidget);
-      expect(find.text('Scan a QR code'), findsOneWidget);
-      expect(find.text('Use pairing code'), findsOneWidget);
-      expect(find.text('Connect'), findsNothing);
+      expect(find.text('Your Colony.\nOn this phone.'), findsOneWidget);
+      expect(find.text('Scan QR code'), findsOneWidget);
+      expect(find.text('Enter a code instead'), findsOneWidget);
+      expect(find.text('Welcome to Buzz'), findsNothing);
       expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('uses compact desktop-style onboarding actions', (
-      tester,
-    ) async {
+    testWidgets('uses the r18 pairing actions', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
       await tester.pumpWidget(
         WidgetHelpers.testable(child: const PairingPage()),
       );
 
       final scanButton = tester.getSize(
-        find.widgetWithText(FilledButton, 'Scan a QR code'),
+        find.widgetWithText(FilledButton, 'Scan QR code'),
       );
       final pairingCodeButton = tester.getSize(
-        find.widgetWithText(TextButton, 'Use pairing code'),
+        find.widgetWithText(TextButton, 'Enter a code instead'),
       );
 
-      expect(scanButton.width, lessThan(440));
-      expect(pairingCodeButton.width, lessThan(440));
+      expect(scanButton.width, 358);
+      expect(pairingCodeButton.width, 358);
       expect(find.byType(OutlinedButton), findsNothing);
     });
 
-    testWidgets('uses dark status-bar icons on the onboarding surface', (
+    testWidgets('uses dark status-bar icons on the pairing surface', (
       tester,
     ) async {
       await tester.pumpWidget(
         WidgetHelpers.testable(child: const PairingPage()),
       );
 
-      final overlay = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
-        find.byKey(const Key('pairing-onboarding-system-overlay')),
-      );
+      final overlays = tester
+          .widgetList<AnnotatedRegion<SystemUiOverlayStyle>>(
+            find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+          )
+          .toList();
 
-      expect(overlay.value.statusBarIconBrightness, Brightness.dark);
-      expect(overlay.value.statusBarColor, Colors.transparent);
+      expect(
+        overlays.any(
+          (overlay) =>
+              overlay.value.statusBarIconBrightness == Brightness.dark &&
+              overlay.value.statusBarColor == Colors.transparent,
+        ),
+        isTrue,
+      );
     });
 
     testWidgets('uses the onboarding surface for dark-theme SAS verification', (
@@ -75,7 +85,10 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConfirmingSasPairingNotifier()),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -174,7 +187,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        WidgetHelpers.testable(child: const PairingPage()),
+        WidgetHelpers.testable(
+          child: const PairingPage(identityRecoveryOnly: true),
+        ),
       );
 
       await _expandPairingCode(tester);
@@ -188,7 +203,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        WidgetHelpers.testable(child: const PairingPage()),
+        WidgetHelpers.testable(
+          child: const PairingPage(identityRecoveryOnly: true),
+        ),
       );
       await _expandPairingCode(tester);
 
@@ -203,7 +220,9 @@ void main() {
 
     testWidgets('connect button is full width', (tester) async {
       await tester.pumpWidget(
-        WidgetHelpers.testable(child: const PairingPage()),
+        WidgetHelpers.testable(
+          child: const PairingPage(identityRecoveryOnly: true),
+        ),
       );
       await _expandPairingCode(tester);
 
@@ -224,7 +243,7 @@ void main() {
               () => _ErrorPairingNotifier('Invalid pairing code: bad input'),
             ),
           ],
-          child: const PairingPage(),
+          child: const PairingPage(identityRecoveryOnly: true),
         ),
       );
       await tester.pump();
@@ -238,7 +257,7 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConnectingPairingNotifier()),
           ],
-          child: const PairingPage(),
+          child: const PairingPage(identityRecoveryOnly: true),
         ),
       );
       await tester.pump();
@@ -254,7 +273,7 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConnectingPairingNotifier()),
           ],
-          child: const PairingPage(),
+          child: const PairingPage(identityRecoveryOnly: true),
         ),
       );
       await tester.pump();
@@ -320,7 +339,10 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConfirmingSasPairingNotifier()),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -348,7 +370,7 @@ void main() {
             ],
             child: MaterialApp(
               theme: AppTheme.dark(),
-              home: const PairingPage(),
+              home: const PairingPage(identityRecoveryOnly: true),
             ),
           ),
         );
@@ -377,7 +399,7 @@ void main() {
             ],
             child: MaterialApp(
               theme: AppTheme.dark(),
-              home: const PairingPage(),
+              home: const PairingPage(identityRecoveryOnly: true),
             ),
           ),
         );
@@ -400,7 +422,10 @@ void main() {
               () => _ConfirmingSasPairingNotifier(sendsIdentityToDesktop: true),
             ),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -420,7 +445,10 @@ void main() {
               () => _ConfirmingSasPairingNotifier(sendsIdentityToDesktop: true),
             ),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -438,7 +466,10 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConfirmingSasPairingNotifier()),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -490,7 +521,7 @@ void main() {
       final firstDigitText = tester.widget<Text>(
         find.descendant(of: digitFinders.first, matching: find.text('1')),
       );
-      expect(firstDigitText.style?.fontFamily, 'Inter');
+      expect(firstDigitText.style?.fontFamily, 'Manrope');
       expect(
         firstDigitText.style?.fontSize,
         theme.textTheme.displaySmall?.fontSize,
@@ -573,7 +604,10 @@ void main() {
                 () => _ConfirmingSasPairingNotifier(errorMessage: errorMessage),
               ),
             ],
-            child: MaterialApp(theme: theme, home: const PairingPage()),
+            child: MaterialApp(
+              theme: theme,
+              home: const PairingPage(identityRecoveryOnly: true),
+            ),
           ),
         );
 
@@ -602,7 +636,10 @@ void main() {
           overrides: [
             pairingProvider.overrideWith(() => _ConfirmingSasPairingNotifier()),
           ],
-          child: MaterialApp(theme: AppTheme.dark(), home: const PairingPage()),
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            home: const PairingPage(identityRecoveryOnly: true),
+          ),
         ),
       );
 
@@ -662,6 +699,9 @@ class _ErrorPairingNotifier extends Notifier<PairingState>
   Future<void> pair(String rawInput) async {}
 
   @override
+  Future<void> pairExistingIdentity(String rawInput) async {}
+
+  @override
   void reset() {}
 
   @override
@@ -672,6 +712,9 @@ class _ErrorPairingNotifier extends Notifier<PairingState>
 
   @override
   void denySas() {}
+
+  @override
+  void cancelPairing() {}
 }
 
 class _ConnectingPairingNotifier extends Notifier<PairingState>
@@ -687,6 +730,9 @@ class _ConnectingPairingNotifier extends Notifier<PairingState>
   Future<void> pair(String rawInput) async {}
 
   @override
+  Future<void> pairExistingIdentity(String rawInput) async {}
+
+  @override
   void reset() {}
 
   @override
@@ -697,6 +743,9 @@ class _ConnectingPairingNotifier extends Notifier<PairingState>
 
   @override
   void denySas() {}
+
+  @override
+  void cancelPairing() {}
 }
 
 class _RecordingPairingNotifier extends Notifier<PairingState>
@@ -714,6 +763,10 @@ class _RecordingPairingNotifier extends Notifier<PairingState>
   Future<void> pair(String rawInput) async => pairedCodes.add(rawInput);
 
   @override
+  Future<void> pairExistingIdentity(String rawInput) async =>
+      pairedCodes.add(rawInput);
+
+  @override
   void reset() {}
 
   @override
@@ -724,6 +777,9 @@ class _RecordingPairingNotifier extends Notifier<PairingState>
 
   @override
   void denySas() {}
+
+  @override
+  void cancelPairing() {}
 }
 
 class _ConfirmingSasPairingNotifier extends Notifier<PairingState>
@@ -753,6 +809,9 @@ class _ConfirmingSasPairingNotifier extends Notifier<PairingState>
   Future<void> pair(String rawInput) async {}
 
   @override
+  Future<void> pairExistingIdentity(String rawInput) async {}
+
+  @override
   void reset() {}
 
   @override
@@ -763,4 +822,7 @@ class _ConfirmingSasPairingNotifier extends Notifier<PairingState>
 
   @override
   void denySas() => denied = true;
+
+  @override
+  void cancelPairing() {}
 }

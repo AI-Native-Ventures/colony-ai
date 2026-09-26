@@ -24,13 +24,17 @@ void main() {
       late http.Request request;
       final container = _container((value) async {
         request = value;
-        return http.Response('{"status":"verification_sent"}', 202);
+        return http.Response(
+          '{"status":"verification_sent","retry_after_secs":30}',
+          202,
+        );
       });
       addTearDown(container.dispose);
 
       await container
           .read(accountAuthProvider.notifier)
           .signUp(
+            displayName: '  Lerato Molefe  ',
             email: '  Person@Example.com ',
             password: 'generated-password-10',
           );
@@ -39,6 +43,7 @@ void main() {
       expect(jsonDecode(request.body), {
         'email': 'person@example.com',
         'password': 'generated-password-10',
+        'display_name': 'Lerato Molefe',
       });
       expect(
         container.read(accountAuthProvider).status,
@@ -48,6 +53,7 @@ void main() {
         container.read(accountAuthProvider).codePurpose,
         AccountCodePurpose.verify,
       );
+      expect(container.read(accountAuthProvider).retryAfterSecs, 30);
       expect(
         container.read(accountAuthProvider).toString(),
         isNot(contains('nsec')),
@@ -131,12 +137,17 @@ void main() {
     () async {
       final keys = nostr.Keys.generate();
       final bodies = <Map<String, dynamic>>[];
+      final paths = <String>[];
       final container = _container((request) async {
+        paths.add(request.url.path);
         if (request.url.path.endsWith('/reset/request')) {
           bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
           return http.Response('{"status":"verification_sent"}', 202);
         }
         bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (request.url.path.endsWith('/reset/check')) {
+          return http.Response('{"status":"code_valid"}', 200);
+        }
         return http.Response(_sessionBody(keys), 200);
       });
       addTearDown(container.dispose);
@@ -148,28 +159,92 @@ void main() {
         container.read(accountAuthProvider).codePurpose,
         AccountCodePurpose.reset,
       );
-      await notifier.confirmPasswordReset(
+      await notifier.checkPasswordResetCode(
         email: 'person@example.com',
         code: '123456',
+      );
+      expect(
+        container.read(accountAuthProvider).status,
+        AccountAuthStatus.codeVerified,
+      );
+      await notifier.confirmPasswordReset(
+        email: 'person@example.com',
         newPassword: 'new-password-10',
       );
 
       expect(bodies, [
         {'email': 'person@example.com'},
+        {'email': 'person@example.com', 'code': '123456'},
         {
           'email': 'person@example.com',
           'code': '123456',
           'new_password': 'new-password-10',
         },
       ]);
+      expect(paths, [
+        '/api/accounts/reset/request',
+        '/api/accounts/reset/check',
+        '/api/accounts/reset/confirm',
+      ]);
       expect(
         container.read(accountAuthProvider).status,
-        AccountAuthStatus.complete,
+        AccountAuthStatus.resetComplete,
+      );
+      expect(await container.read(communityStorageProvider).loadAll(), isEmpty);
+    },
+  );
+
+  test(
+    'reset code failures and resend cooldown retain server details',
+    () async {
+      final paths = <String>[];
+      final container = _container((request) async {
+        paths.add(request.url.path);
+        return switch (request.url.path) {
+          '/api/accounts/reset/request' => http.Response(
+            '{"status":"verification_sent","retry_after_secs":30}',
+            202,
+          ),
+          '/api/accounts/reset/check' => http.Response(
+            '{"error":"wrong_code","attempts_left":2}',
+            422,
+          ),
+          '/api/accounts/resend-code' => http.Response(
+            '{"error":"resend_cooldown","retry_after_secs":17}',
+            429,
+          ),
+          _ => throw StateError('Unexpected account route'),
+        };
+      });
+      addTearDown(container.dispose);
+
+      final notifier = container.read(accountAuthProvider.notifier);
+      await notifier.requestPasswordReset(email: 'person@example.com');
+      expect(container.read(accountAuthProvider).retryAfterSecs, 30);
+      await notifier.checkPasswordResetCode(
+        email: 'person@example.com',
+        code: '000000',
       );
       expect(
-        (await container.read(communityStorageProvider).loadAll()).single.nsec,
-        keys.nsec,
+        container.read(accountAuthProvider).failure?.kind,
+        AccountAuthFailureKind.wrongCode,
       );
+      expect(container.read(accountAuthProvider).failure?.attemptsLeft, 2);
+
+      await notifier.resendCode(
+        email: 'person@example.com',
+        purpose: AccountCodePurpose.reset,
+      );
+      expect(
+        container.read(accountAuthProvider).failure?.kind,
+        AccountAuthFailureKind.resendCooldown,
+      );
+      expect(container.read(accountAuthProvider).retryAfterSecs, 17);
+      expect(paths, [
+        '/api/accounts/reset/request',
+        '/api/accounts/reset/check',
+        '/api/accounts/resend-code',
+      ]);
     },
   );
 

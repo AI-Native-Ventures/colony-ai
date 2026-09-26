@@ -58,6 +58,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "api_tokens",
     "archived_identities",
     "audit_log",
+    "business_proposal_conversion_claims",
     "channel_members",
     "channels",
     "community_bans",
@@ -95,6 +96,7 @@ pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "moderation_reports",
     "subscriptions",
     "api_tokens",
+    "business_proposal_conversion_claims",
     "channel_members",
     "thread_metadata",
     "moderation_actions",
@@ -1296,6 +1298,7 @@ impl DeletionStore {
         .execute(&mut *tx)
         .await?;
         set_executor_gucs(&mut tx, token.community_id, generation).await?;
+
         let affected = sqlx::query(
             "UPDATE communities SET deletion_state = 'quiescing', \
                     archived_at = COALESCE(archived_at, now()) \
@@ -1728,6 +1731,12 @@ impl DeletionStore {
         validate_catalog_on(&mut tx).await?;
         verify_lease_and_fence(&mut tx, token, DeletionStage::BindingsRemoved, generation).await?;
         set_executor_gucs(&mut tx, token.community_id, generation).await?;
+        // The trusted channel pointer is a community registry field, not a
+        // tenant child row. Clear it before the channel purge to release its FK.
+        sqlx::query("UPDATE communities SET business_channel_id = NULL WHERE id = $1")
+            .bind(token.community_id.as_uuid())
+            .execute(&mut *tx)
+            .await?;
         // Migration 0011 fences hard deletion of NIP-RS rows against legacy
         // writers. Whole-community deletion is an intentional hard-delete path,
         // and the transaction is already bound to an approved, fenced tenant.
@@ -4403,6 +4412,47 @@ mod postgres_tests {
         let (db, store) = store().await;
         let (request, inventory) = inventoried_request(&db, &store).await;
         let host = request.community_host.clone();
+        let business_channel_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO channels \
+             (community_id, id, name, channel_type, visibility, created_by) \
+             VALUES ($1, $2, $3, 'stream', 'private', $4)",
+        )
+        .bind(request.community_id.as_uuid())
+        .bind(business_channel_id)
+        .bind(format!("business-{}", Uuid::new_v4().simple()))
+        .bind(vec![2_u8; 32])
+        .execute(&db.pool)
+        .await
+        .expect("insert business channel for deletion test");
+        sqlx::query("UPDATE communities SET business_channel_id = $2 WHERE id = $1")
+            .bind(request.community_id.as_uuid())
+            .bind(business_channel_id)
+            .execute(&db.pool)
+            .await
+            .expect("register business channel for deletion test");
+        sqlx::query(
+            "INSERT INTO business_proposal_conversion_claims \
+             (community_id, business_channel_id, conversion_id, proposal_id, \
+              proposal_version_event_id, proposal_version_digest, acceptance_event_id, \
+              receipt_event_id, accepted_by_pubkey, client_id, work_item_id, draft_invoice_id) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        )
+        .bind(request.community_id.as_uuid())
+        .bind(business_channel_id)
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .bind(vec![3_u8; 32])
+        .bind(vec![4_u8; 32])
+        .bind(vec![5_u8; 32])
+        .bind(vec![6_u8; 32])
+        .bind(vec![7_u8; 32])
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&db.pool)
+        .await
+        .expect("insert conversion claim for deletion test");
         let read_state_d_tag = format!("read-state:{}", "a".repeat(32));
         sqlx::query(
             "INSERT INTO events \
@@ -4487,6 +4537,14 @@ mod postgres_tests {
             .expect("bindings");
         let first = store.purge_postgres(&token).await.expect("purge postgres");
         assert_eq!(first.len(), EXPECTED_SCOPED_TABLES.len());
+        assert_eq!(first["business_proposal_conversion_claims"], 1);
+        let business_channel_after_purge: Option<Uuid> =
+            sqlx::query_scalar("SELECT business_channel_id FROM communities WHERE id = $1")
+                .bind(request.community_id.as_uuid())
+                .fetch_one(&db.pool)
+                .await
+                .expect("read business channel after purge");
+        assert_eq!(business_channel_after_purge, None);
         assert!(
             store.purge_postgres(&token).await.is_err(),
             "completed stage cannot be replayed under stale checkpoint state"

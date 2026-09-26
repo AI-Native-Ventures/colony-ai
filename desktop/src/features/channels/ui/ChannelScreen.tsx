@@ -18,6 +18,7 @@ import {
 } from "@/features/channels/readState/readStateFormat";
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
+import { ChannelWorkspaceTopBar } from "@/features/channels/ui/ChannelWorkspaceTopBar";
 import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { ForumChannelContent } from "@/features/channels/ui/ForumChannelContent";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
@@ -73,7 +74,6 @@ import { channelContentTopPaddingMeasurement } from "@/shared/layout/chromeLayou
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
 import { useElementWidth } from "@/shared/hooks/use-mobile";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
-import { AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX } from "@/shared/layout/AuxiliaryPanel";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useChannelActivityTyping } from "./useChannelActivityTyping";
 import { useChannelAgentSessions } from "./useChannelAgentSessions";
@@ -87,12 +87,15 @@ import { useChannelUnreadState } from "./useChannelUnreadState";
 import type { ChannelScreenProps } from "./ChannelScreen.types";
 import { GuardedChannelPane } from "./GuardedChannelPane"; import { useNavigationGuard } from "./useNavigationGuard"; import * as searchForwarding from "./searchTargetForwarding";
 const EMPTY_RELAY_EVENTS: RelayEvent[] = [];
+// The Colony sidebar is 220px, narrower than the previous shell. A 640px
+// content breakpoint keeps the same window widths single-panel as before.
+const CHANNEL_SINGLE_PANEL_CONTENT_BREAKPOINT_PX = 640;
 export function ChannelScreen({
   activeChannel,
   autoSendDraftKey,
   currentIdentity,
   currentProfile,
-  headerEndActions, idleAuxiliaryPanel,
+  headerEndActions, hideWorkspaceTopBar = false, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
   onAddFiles, onCloseIdleAuxiliaryPanel,
@@ -692,7 +695,7 @@ export function ChannelScreen({
   );
   const isNarrowPanelViewport =
     channelContentWidthPx > 0 &&
-    channelContentWidthPx < AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX;
+    channelContentWidthPx < CHANNEL_SINGLE_PANEL_CONTENT_BREAKPOINT_PX;
   const isSinglePanelView =
     isNarrowPanelViewport &&
     activeChannel?.channelType !== "forum" &&
@@ -744,7 +747,14 @@ export function ChannelScreen({
         activeChannel={activeChannel}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
-        actionsVariant={shouldCompactHeaderActions ? "compact" : "inline"}
+        referenceThreadPresentation={Boolean(openThreadHeadId)}
+        actionsVariant={
+          openThreadHeadId
+            ? "reference"
+            : shouldCompactHeaderActions
+              ? "compact"
+              : "inline"
+        }
         activeDmAvatarUrl={activeDmAvatarUrl}
         activeDmHeaderParticipants={activeDmHeaderParticipants}
         activeDmPresenceStatus={activeDmPresenceStatus}
@@ -764,6 +774,7 @@ export function ChannelScreen({
       activeChannel,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
+      openThreadHeadId,
       shouldCompactHeaderActions,
       activeDmAvatarUrl,
       activeDmHeaderParticipants,
@@ -805,10 +816,21 @@ export function ChannelScreen({
           }}
           open={emptyDeleteId !== null}
         />
-        <div
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          ref={channelContentRef}
-        >
+        <div className="colony-channel-route">
+          {activeChannel && !hideWorkspaceTopBar && !isHuddleTranscript ? (
+            <ChannelWorkspaceTopBar
+              channelTitle={activeChannelTitle}
+              currentPubkey={currentPubkey}
+              isThreadOpen={Boolean(openThreadHeadId)}
+              members={channelMembers ?? []}
+              onToggleMembers={handleToggleMembers}
+              onOpenInbox={() => void goHome()}
+            />
+          ) : null}
+          <div
+            className="colony-channel-route-content"
+            ref={channelContentRef}
+          >
           {activeChannel ? (
             activeChannel.channelType === "forum" ? (
               searchForwarding.renderSearchAwareForum(
@@ -981,7 +1003,7 @@ export function ChannelScreen({
           ) : (
             <ChannelScreenEmptyState />
           )}
-        </div>
+          </div>
         <MembersSidebar
           channel={activeChannel}
           currentPubkey={currentPubkey}
@@ -990,6 +1012,7 @@ export function ChannelScreen({
           onViewActivity={handleOpenAgentSession}
           relayUrl={activeCommunity?.relayUrl}
         />
+        </div>
       </ProfilePanelProvider>
     </AgentSessionProvider>
   );

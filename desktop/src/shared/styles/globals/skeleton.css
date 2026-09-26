@@ -1,7 +1,8 @@
 :root {
-  --skel-pulse-dur: 1000ms;
+  --skel-pulse-dur: var(--colony-motion-skeleton);
   --skel-pulse-count: infinite;
   --skel-pulse-min: 0.5;
+  --skel-pulse-ease: var(--colony-ease-skeleton);
   --skel-reveal-dur: 400ms;
   --skel-reveal-blur: 2px;
   --skel-reveal-ease: ease-in-out;
@@ -81,7 +82,7 @@
 
 .t-skel-bar.is-pulsing,
 .t-skel-skeleton.is-pulsing > :not(:has(.t-skel-bar)) {
-  animation: t-skel-pulse var(--skel-pulse-dur) ease-in-out
+  animation: t-skel-pulse var(--skel-pulse-dur) var(--skel-pulse-ease)
     var(--skel-pulse-count);
 }
 

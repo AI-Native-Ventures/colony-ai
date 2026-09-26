@@ -35,7 +35,8 @@ type ChannelScreenHeaderProps = {
   activeChannel: Channel | null;
   activeChannelEphemeralDisplay: EphemeralChannelDisplay | null;
   activeChannelTitle: string;
-  actionsVariant?: "inline" | "compact";
+  referenceThreadPresentation?: boolean;
+  actionsVariant?: "inline" | "compact" | "reference";
   activeDmAvatarUrl: string | null;
   activeDmHeaderParticipants: ActiveDmHeaderParticipant[];
   activeDmPresenceStatus: PresenceStatus | null;
@@ -56,6 +57,7 @@ export function ChannelScreenHeader({
   activeChannel,
   activeChannelEphemeralDisplay,
   activeChannelTitle,
+  referenceThreadPresentation = false,
   actionsVariant = "inline",
   activeDmAvatarUrl,
   activeDmHeaderParticipants,
@@ -84,20 +86,21 @@ export function ChannelScreenHeader({
     onJoinChannel;
 
   const terminalPanel = useTerminalPanel();
-  const terminalButton = activeChannel ? (
-    <Button
-      aria-label={
-        terminalPanel.mode === "closed" ? "Open Buzz Term" : "Hide Buzz Term"
-      }
-      onClick={toggleTerminalPanel}
-      size="icon"
-      title="Buzz Term (⌘J)"
-      type="button"
-      variant={terminalPanel.mode === "closed" ? "outline" : "secondary"}
-    >
-      <SquareTerminal />
-    </Button>
-  ) : null;
+  const terminalButton =
+    activeChannel && !referenceThreadPresentation ? (
+      <Button
+        aria-label={
+          terminalPanel.mode === "closed" ? "Open Buzz Term" : "Hide Buzz Term"
+        }
+        onClick={toggleTerminalPanel}
+        size="icon"
+        title="Buzz Term (⌘J)"
+        type="button"
+        variant={terminalPanel.mode === "closed" ? "outline" : "secondary"}
+      >
+        <SquareTerminal />
+      </Button>
+    ) : null;
   const channelActions = activeChannel ? (
     showJoinButton ? (
       <div className="flex items-center gap-1">
@@ -139,9 +142,9 @@ export function ChannelScreenHeader({
     return null;
   }
 
-  return (
+  const header = (
     <ChatHeader
-      belowSystemChrome
+      belowSystemChrome={!referenceThreadPresentation}
       chromeWrapperRef={chromeWrapperRef}
       actions={actions}
       channelType={activeChannel?.channelType}
@@ -209,6 +212,9 @@ export function ChannelScreenHeader({
         </>
       }
       title={activeChannelTitle}
+      titleClassName={
+        referenceThreadPresentation ? "text-channel-title" : undefined
+      }
       titleAdornment={
         activeChannel?.channelType === "dm" && !isGroupDm ? (
           <UserNameIndicators
@@ -221,6 +227,12 @@ export function ChannelScreenHeader({
       transparentChrome={transparentChrome}
       visibility={activeChannel?.visibility}
     />
+  );
+
+  return referenceThreadPresentation ? (
+    <div className="relative z-40">{header}</div>
+  ) : (
+    header
   );
 }
 

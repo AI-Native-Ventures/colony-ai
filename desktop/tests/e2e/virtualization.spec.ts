@@ -103,7 +103,12 @@ test.describe("list virtualization", () => {
   }) => {
     await installMockBridge(page);
     await page.goto("/");
-    await page.getByTestId("open-pulse-view").click();
+    // R17 moves Pulse into Today > Updates.
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Today", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Team updates" }).click();
 
     // The seeded feed overflows the viewport (30 notes), so the windowed list
     // renders a subset and the composer stays pinned. Wait for virtual rows.
@@ -251,12 +256,15 @@ test.describe("list virtualization", () => {
     // reproduce Chromium/WebKit's native wheel → scroll callback ordering. The
     // old boundary rollback moved the viewport back down before the fetch
     // committed; keep that pre-prepend reversal below the same 5px frame bar.
-    // A 300ms relay delay leaves the input boundary and prepend commit as two
+    // A 1s relay delay leaves the input boundary and prepend commit as two
     // distinct phases so this assertion cannot accidentally measure only the
-    // later anchor correction.
+    // later anchor correction. The delay must also outlast the setup between
+    // the boundary crossing and the wheel trace (settle wait, anchor sample,
+    // trace start): on slower CI hosts 300ms let the prepend commit before the
+    // trace began, so the trace measured the anchor correction instead.
     await installMockBridge(page, {
       deepHistoryMessageCount: 1_800,
-      channelWindowDelayMs: 300,
+      channelWindowDelayMs: 1_000,
     });
     await page.goto("/#/channels/feedf00d-0000-4000-8000-000000000007");
     const timeline = page.getByTestId("message-timeline");
@@ -449,14 +457,28 @@ test.describe("list virtualization", () => {
         let previousScrollTop = startScrollTop;
         let maxForwardTravel = 0;
         let maxRollback = 0;
-        const deadline = performance.now() + 400;
-        while (performance.now() < deadline) {
+        // Watch until all three exit wheels have been delivered, then a short
+        // settle window. A fixed 400ms window missed the last wheel on slower
+        // software-rendered CI hosts, where input delivery lags rendering.
+        let wheelsSeen = 0;
+        let lastWheelAt = performance.now();
+        const onWheel = () => {
+          wheelsSeen += 1;
+          lastWheelAt = performance.now();
+        };
+        s.addEventListener("wheel", onWheel, { passive: true });
+        const hardDeadline = performance.now() + 2_000;
+        while (
+          performance.now() < hardDeadline &&
+          (wheelsSeen < 3 || performance.now() - lastWheelAt < 200)
+        ) {
           const travel = s.scrollTop - startScrollTop;
           maxForwardTravel = Math.max(maxForwardTravel, travel);
           maxRollback = Math.max(maxRollback, previousScrollTop - s.scrollTop);
           previousScrollTop = s.scrollTop;
           await new Promise((resolve) => requestAnimationFrame(resolve));
         }
+        s.removeEventListener("wheel", onWheel);
         return { maxForwardTravel, maxRollback };
       });
       const exitBox = await timeline.boundingBox();
@@ -529,6 +551,8 @@ test.describe("list virtualization", () => {
       };
       s.addEventListener("wheel", onWheel, { passive: true });
       let commit: { ts: number; gapSinceInput: number } | null = null;
+      let lastScrollTop = s.scrollTop;
+      let stableFrames = 0;
       let sawSpinnerDuringHold = false;
       let anchorDriftAfterCommit: number | null = null;
       const deadline = performance.now() + 8_000;
@@ -542,10 +566,20 @@ test.describe("list virtualization", () => {
           ) {
             sawSpinnerDuringHold = true;
           }
+          // Track frame-over-frame stability like the gate does: smooth
+          // wheel scrolling keeps moving after the last input event.
+          stableFrames = s.scrollTop === lastScrollTop ? stableFrames + 1 : 0;
+          lastScrollTop = s.scrollTop;
           // First frame at rest (input quiet for 60ms — shorter than the
-          // gate's own window, so this reading always precedes admission):
-          // capture the row the at-rest commit must hold.
-          if (restAnchor === null && sawInput && now - lastInputTs >= 60) {
+          // gate's own window — and three stable frames, as the gate
+          // requires): capture the row the at-rest commit must hold. Reading
+          // it during the smooth-scroll tail counted that motion as drift.
+          if (
+            restAnchor === null &&
+            sawInput &&
+            now - lastInputTs >= 60 &&
+            stableFrames >= 3
+          ) {
             const scrollerTop = s.getBoundingClientRect().top;
             const row = Array.from(
               s.querySelectorAll<HTMLElement>("[data-message-id]"),
@@ -600,10 +634,31 @@ test.describe("list virtualization", () => {
     const box = await timeline.boundingBox();
     if (!box) throw new Error("timeline has no bounding box");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let burst = 0; burst < 30; burst += 1) {
+    // Real wheel input keeps the production scroll path, but round trips on a
+    // loaded host left 120-290ms gaps between bursts, longer than the gate's
+    // 100ms quiet window, so the gate correctly admitted mid-sequence. A 30ms
+    // in-page wheel heartbeat keeps the input stream continuous while the
+    // bursts run. The bursts stop after 2s, well under the gate's 4s hold
+    // deadline, so the page must then commit at rest.
+    await timeline.evaluate((scroller) => {
+      const w = window as unknown as { __virt09Heartbeat?: number };
+      w.__virt09Heartbeat = window.setInterval(() => {
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 1 }));
+      }, 30);
+    });
+    const burstStartedAt = Date.now();
+    for (
+      let burst = 0;
+      burst < 30 && Date.now() - burstStartedAt < 2_000;
+      burst += 1
+    ) {
       await page.mouse.wheel(0, 30);
       await page.waitForTimeout(40);
     }
+    await page.evaluate(() => {
+      const w = window as unknown as { __virt09Heartbeat?: number };
+      window.clearInterval(w.__virt09Heartbeat);
+    });
 
     const trace = await tracePromise;
     // The page must eventually commit — the gate defers, never strands.

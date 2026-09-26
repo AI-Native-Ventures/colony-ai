@@ -96,7 +96,9 @@ void main() {
             '?secret=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
             '&relay=wss%3A%2F%2Fpairing.buzz.xyz&v=1';
 
-        await container.read(pairingProvider.notifier).pair(code);
+        await container
+            .read(pairingProvider.notifier)
+            .pairExistingIdentity(code);
 
         expect(container.read(pairingProvider).status, PairingStatus.error);
         expect(
@@ -109,7 +111,7 @@ void main() {
     test('payload missing nsec errors before contacting relay', () async {
       container = createContainer();
 
-      // Valid payload shape but no nsec — provider should refuse without
+      // Valid payload shape but no nsec , provider should refuse without
       // attempting any network call.
       final code = _encodePairingCode();
       await container.read(pairingProvider.notifier).pair(code);
@@ -131,6 +133,29 @@ void main() {
       expect(state.errorMessage, contains('missing nsec'));
       expect(fakeAuth.lastCommunity, isNull);
     });
+
+    test(
+      'existing identity entry rejects legacy credentials and review data',
+      () async {
+        container = createContainer();
+
+        for (final input in [
+          'buzz://legacy-payload',
+          'COLONY-DEMO-R18',
+          '483 291',
+        ]) {
+          await container
+              .read(pairingProvider.notifier)
+              .pairExistingIdentity(input);
+          final state = container.read(pairingProvider);
+          expect(state.status, PairingStatus.error);
+          expect(state.failureKind, PairingFailureKind.invalidCode);
+          container.read(pairingProvider.notifier).reset();
+        }
+
+        expect(fakeAuth.lastCommunity, isNull);
+      },
+    );
 
     test('invalid base64 sets format error', () async {
       container = createContainer();

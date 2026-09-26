@@ -17,19 +17,33 @@ final accountAuthProvider =
 
 /// Runs public account flows and hands successful identities to local storage.
 class AccountAuthNotifier extends Notifier<AccountAuthState> {
+  String? _pendingResetEmail;
+  String? _pendingResetCode;
+
   @override
   AccountAuthState build() => const AccountAuthState();
 
   /// Clears transient account form state.
-  void reset() => state = const AccountAuthState();
+  void reset() {
+    _clearPendingResetCode();
+    state = const AccountAuthState();
+  }
 
   /// Creates an account and sends its verification code.
-  Future<void> signUp({required String email, required String password}) async {
+  Future<void> signUp({
+    required String displayName,
+    required String email,
+    required String password,
+  }) async {
     final normalizedEmail = _normalizeEmail(email);
     await _run(
       () => ref
           .read(accountApiProvider)
-          .signup(email: normalizedEmail, password: password),
+          .signup(
+            displayName: displayName.trim(),
+            email: normalizedEmail,
+            password: password,
+          ),
       successStatus: AccountAuthStatus.verificationSent,
       email: normalizedEmail,
       codePurpose: AccountCodePurpose.verify,
@@ -81,6 +95,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
             .read(accountApiProvider)
             .verify(email: normalizedEmail, code: code.trim());
         await _persistSession(session);
+        return null;
       },
       successStatus: AccountAuthStatus.complete,
       email: normalizedEmail,
@@ -93,6 +108,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
     required AccountCodePurpose purpose,
   }) async {
     final normalizedEmail = _normalizeEmail(email);
+    if (purpose == AccountCodePurpose.reset) _clearPendingResetCode();
     await _run(
       () => ref
           .read(accountApiProvider)
@@ -106,6 +122,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
   /// Requests a password reset code without revealing account existence.
   Future<void> requestPasswordReset({required String email}) async {
     final normalizedEmail = _normalizeEmail(email);
+    _clearPendingResetCode();
     await _run(
       () => ref
           .read(accountApiProvider)
@@ -116,34 +133,100 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
     );
   }
 
-  /// Confirms a reset code and persists the restored identity locally.
-  Future<void> confirmPasswordReset({
+  /// Checks a reset code before the user enters a new password.
+  Future<void> checkPasswordResetCode({
     required String email,
     required String code,
-    required String newPassword,
   }) async {
     final normalizedEmail = _normalizeEmail(email);
+    final normalizedCode = code.trim();
+    _clearPendingResetCode();
     state = AccountAuthState(
       status: AccountAuthStatus.loading,
       email: normalizedEmail,
       codePurpose: AccountCodePurpose.reset,
     );
     try {
-      final session = await ref
+      await ref
           .read(accountApiProvider)
-          .confirmPasswordReset(
-            email: normalizedEmail,
-            code: code.trim(),
-            newPassword: newPassword,
-          );
-      await _persistSession(session);
-      state = const AccountAuthState(status: AccountAuthStatus.complete);
+          .checkPasswordResetCode(email: normalizedEmail, code: normalizedCode);
+      _pendingResetEmail = normalizedEmail;
+      _pendingResetCode = normalizedCode;
+      state = AccountAuthState(
+        status: AccountAuthStatus.codeVerified,
+        email: normalizedEmail,
+        codePurpose: AccountCodePurpose.reset,
+      );
     } on AccountAuthFailure catch (failure) {
       state = AccountAuthState(
         status: AccountAuthStatus.failed,
         email: normalizedEmail,
         codePurpose: AccountCodePurpose.reset,
         failure: failure,
+        retryAfterSecs: failure.retryAfterSecs,
+      );
+    } catch (_) {
+      state = AccountAuthState(
+        status: AccountAuthStatus.failed,
+        email: normalizedEmail,
+        codePurpose: AccountCodePurpose.reset,
+        failure: const AccountAuthFailure(AccountAuthFailureKind.unavailable),
+      );
+    }
+  }
+
+  /// Discards the code when a reset flow is exited or sent back to code entry.
+  void discardStagedPasswordResetCode() => _clearPendingResetCode();
+
+  /// Confirms the staged reset code and returns the user to sign-in.
+  Future<void> confirmPasswordReset({
+    required String email,
+    required String newPassword,
+  }) async {
+    final normalizedEmail = _normalizeEmail(email);
+    final code = _pendingResetEmail == normalizedEmail
+        ? _pendingResetCode
+        : null;
+    if (code == null || code.isEmpty) {
+      _clearPendingResetCode();
+      state = AccountAuthState(
+        status: AccountAuthStatus.failed,
+        email: normalizedEmail,
+        codePurpose: AccountCodePurpose.reset,
+        failure: const AccountAuthFailure(
+          AccountAuthFailureKind.invalidRequest,
+        ),
+      );
+      return;
+    }
+    state = AccountAuthState(
+      status: AccountAuthStatus.loading,
+      email: normalizedEmail,
+      codePurpose: AccountCodePurpose.reset,
+    );
+    try {
+      final api = ref.read(accountApiProvider);
+      // The reset response carries a session, but the design returns to sign
+      // in with the new password ("Password updated"), so it is not adopted.
+      await api.confirmPasswordReset(
+        email: normalizedEmail,
+        code: code,
+        newPassword: newPassword,
+      );
+      _clearPendingResetCode();
+      state = AccountAuthState(
+        status: AccountAuthStatus.resetComplete,
+        email: normalizedEmail,
+        codePurpose: AccountCodePurpose.reset,
+      );
+    } on AccountAuthFailure catch (failure) {
+      _clearPendingResetCode();
+      state = AccountAuthState(
+        status: AccountAuthStatus.failed,
+        email: normalizedEmail,
+        codePurpose: AccountCodePurpose.reset,
+        failure: failure,
+        retryAfterSecs: failure.retryAfterSecs,
       );
     } catch (_) {
       state = AccountAuthState(
@@ -227,7 +310,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
   }
 
   Future<void> _run(
-    Future<void> Function() operation, {
+    Future<AccountCodeDelivery?> Function() operation, {
     required AccountAuthStatus successStatus,
     String? email,
     AccountCodePurpose? codePurpose,
@@ -238,11 +321,12 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
       codePurpose: codePurpose,
     );
     try {
-      await operation();
+      final delivery = await operation();
       state = AccountAuthState(
         status: successStatus,
         email: email,
         codePurpose: codePurpose,
+        retryAfterSecs: delivery?.retryAfterSecs,
       );
     } on AccountAuthFailure catch (failure) {
       state = AccountAuthState(
@@ -250,6 +334,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         email: email,
         codePurpose: codePurpose,
         failure: failure,
+        retryAfterSecs: failure.retryAfterSecs,
       );
     } catch (_) {
       state = AccountAuthState(
@@ -289,6 +374,11 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
       throw const AccountAuthFailure(AccountAuthFailureKind.localStorage);
     }
     ref.invalidate(accountLinkStatusProvider);
+  }
+
+  void _clearPendingResetCode() {
+    _pendingResetEmail = null;
+    _pendingResetCode = null;
   }
 }
 

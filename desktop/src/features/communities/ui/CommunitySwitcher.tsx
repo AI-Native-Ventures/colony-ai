@@ -115,6 +115,9 @@ export function CommunitySwitcher({
   const [leaveError, setLeaveError] = React.useState<string | null>(null);
   const [isLeaving, setIsLeaving] = React.useState(false);
   const profileMenuHoverTimer = React.useRef<number | null>(null);
+  // True while the profile menu is open because the pointer dwelled on it,
+  // rather than because the reader clicked or used the keyboard.
+  const profileMenuOpenedByHover = React.useRef(false);
   const connectionState = useRelayConnection();
   const degraded = isRelayConnectionDegraded(connectionState);
   const connectionLabel = CONNECTION_STATE_LABEL[connectionState];
@@ -133,7 +136,10 @@ export function CommunitySwitcher({
     if (variant !== "profile-menu") return;
     clearProfileMenuHoverTimer();
     profileMenuHoverTimer.current = window.setTimeout(
-      () => setDropdownOpen(nextOpen),
+      () => {
+        profileMenuOpenedByHover.current = nextOpen;
+        setDropdownOpen(nextOpen);
+      },
       nextOpen
         ? PROFILE_MENU_HOVER_OPEN_DELAY_MS
         : PROFILE_MENU_HOVER_CLOSE_DELAY_MS,
@@ -148,8 +154,27 @@ export function CommunitySwitcher({
     if (!nextOpen) {
       clearProfileMenuHoverTimer();
     }
+    profileMenuOpenedByHover.current = false;
     setDropdownOpen(nextOpen);
   }
+
+  function handleProfileMenuTriggerClick(event: React.MouseEvent) {
+    // Pointer paths usually dwell past the hover-open delay before clicking,
+    // so the click lands on a menu hover already opened. Treat that click as
+    // confirming the menu instead of toggling it shut. Keyboard activation
+    // (detail 0) and click-opened menus keep the ordinary toggle.
+    if (event.detail > 0 && dropdownOpen && profileMenuOpenedByHover.current) {
+      event.preventDefault();
+      clearProfileMenuHoverTimer();
+      profileMenuOpenedByHover.current = false;
+    }
+  }
+
+  React.useEffect(() => {
+    // Every close path (menu actions, dismissal, hover exit) ends the
+    // hover-opened state, so a later click toggles normally.
+    if (!dropdownOpen) profileMenuOpenedByHover.current = false;
+  }, [dropdownOpen]);
 
   React.useEffect(
     () => () => {
@@ -184,6 +209,7 @@ export function CommunitySwitcher({
           ? error.message
           : "Couldn't leave the community. Try again.",
       );
+      profileMenuOpenedByHover.current = false;
       setDropdownOpen(true);
     } finally {
       setIsLeaving(false);
@@ -259,6 +285,7 @@ export function CommunitySwitcher({
             }
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-popover-foreground outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none data-[state=open]:bg-muted/50 data-[state=open]:text-popover-foreground"
             data-testid="community-switcher"
+            onClick={handleProfileMenuTriggerClick}
             onMouseEnter={() => scheduleProfileMenu(true)}
             onMouseLeave={() => scheduleProfileMenu(false)}
             role="menuitem"

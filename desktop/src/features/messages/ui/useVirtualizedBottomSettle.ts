@@ -11,6 +11,13 @@ const SCROLL_INTENT_KEYS = new Set([
   " ",
 ]);
 
+/**
+ * Distance above the physical floor beyond which an upward scroll counts as
+ * navigation away from the newest row. Virtua's own corrections while pinned
+ * keep the viewport at the floor, so they stay well inside this band.
+ */
+const BOTTOM_INTENT_RELEASE_DISTANCE_PX = 48;
+
 function isEditableKeyboardTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -84,6 +91,21 @@ export function useVirtualizedBottomSettle(
         cancel();
       }
     };
+    // Keyboard focus, assistive technology, find-in-page and programmatic
+    // navigation can move the scroller without any of the input events above.
+    // An upward scroll that leaves the floor is the reader navigating away, so
+    // later geometry changes must not pull them back to the newest row.
+    let lastScrollTop = scroller.scrollTop;
+    const retireForScrollAway = () => {
+      const scrollTop = scroller.scrollTop;
+      const movedUp = scrollTop < lastScrollTop;
+      lastScrollTop = scrollTop;
+      if (!movedUp) return;
+      const distanceFromFloor =
+        scroller.scrollHeight - scroller.clientHeight - scrollTop;
+      if (distanceFromFloor > BOTTOM_INTENT_RELEASE_DISTANCE_PX) cancel();
+    };
+    scroller.addEventListener("scroll", retireForScrollAway, { passive: true });
     scroller.addEventListener("pointerdown", retireForPointer, {
       passive: true,
     });
@@ -91,6 +113,7 @@ export function useVirtualizedBottomSettle(
     scroller.addEventListener("wheel", retireForWheel, { passive: true });
     window.addEventListener("keydown", retireForScrollKey, true);
     return () => {
+      scroller.removeEventListener("scroll", retireForScrollAway);
       scroller.removeEventListener("pointerdown", retireForPointer);
       scroller.removeEventListener("touchmove", retire);
       scroller.removeEventListener("wheel", retireForWheel);

@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   isomorphic-git: e9b414a60d4cf1d8aa18f7a779483984e821989967c235662566e94ef0238d3f
-  virtua@0.49.3: 30a7a92b94800ec37be8d36546ea98c04a05dcd0637f9fac27a06f016ba2eff4
+  virtua@0.49.3: 0b6c110f0e18378ad0ac4d0f8b373726ae1ebf20fd5a281adcd6d8db4e1c5ae6
 
 importers:
 
@@ -84,6 +84,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@fontsource-variable/manrope':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
@@ -248,7 +251,7 @@ importers:
         version: 2.1.0
       virtua:
         specifier: 0.49.3
-        version: 0.49.3(patch_hash=30a7a92b94800ec37be8d36546ea98c04a05dcd0637f9fac27a06f016ba2eff4)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 0.49.3(patch_hash=0b6c110f0e18378ad0ac4d0f8b373726ae1ebf20fd5a281adcd6d8db4e1c5ae6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       yaml:
         specifier: ^2.8.3
         version: 2.9.0
@@ -733,6 +736,9 @@ packages:
 
   '@fontsource-variable/inter@5.2.8':
     resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
+
+  '@fontsource-variable/manrope@5.3.0':
+    resolution: {integrity: sha512-6D5dgokHsWDDMtmXHznKa0hK229NN+1a4BLPmUCLqcO1Pw5EEhWY5RFt0AcXnVRAljFFPfRtLkJePQj6LSsV6g==}
 
   '@fontsource/jetbrains-mono@5.3.0':
     resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
@@ -4355,6 +4361,8 @@ snapshots:
 
   '@fontsource-variable/inter@5.2.8': {}
 
+  '@fontsource-variable/manrope@5.3.0': {}
+
   '@fontsource/jetbrains-mono@5.3.0': {}
 
   '@isomorphic-git/idb-keyval@3.3.2': {}
@@ -7513,7 +7521,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  virtua@0.49.3(patch_hash=30a7a92b94800ec37be8d36546ea98c04a05dcd0637f9fac27a06f016ba2eff4)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  virtua@0.49.3(patch_hash=0b6c110f0e18378ad0ac4d0f8b373726ae1ebf20fd5a281adcd6d8db4e1c5ae6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     optionalDependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

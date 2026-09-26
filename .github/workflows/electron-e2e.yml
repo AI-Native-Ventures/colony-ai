@@ -29,6 +29,11 @@ on:
       - "scripts/reconcile-schema-after-pgschema.sql"
   workflow_dispatch:
 
+concurrency:
+  # A newer push to the same pull request supersedes this run.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

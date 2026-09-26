@@ -58,6 +58,7 @@ import {
 } from "@/features/channels/ui/ChannelPane.helpers";
 import { HuddleStartingView, HuddleTranscriptIntro } from "@/features/huddle";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
+import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
@@ -371,7 +372,9 @@ export const ChannelPane = React.memo(function ChannelPane({
     onOpenMembers,
     onWelcomeAddAgent: onAddAgent ? handleWelcomeAddAgent : undefined,
   });
-  const channelIntro = isHuddleTranscript ? null : standardChannelIntro;
+  const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
+  const channelIntro =
+    isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
   const { mainTimelineEntries, recentMentions, visibleMessages } =
     useChannelPaneMessages({
       activeChannel,
@@ -571,6 +574,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   ) : undefined;
   const threadLayoutProps = getThreadPanelLayout({
     headerLeading: threadHeaderLeading,
+    headerTitleSuffix: activeChannel ? `# ${activeChannel.name}` : undefined,
     isFocusDrawer: useFocusThreadDrawer,
     isSinglePanelView,
     useSplitAuxiliaryPane,
@@ -616,6 +620,9 @@ export const ChannelPane = React.memo(function ChannelPane({
           }
         >
           {isHuddleTranscript ? null : header}
+          {!isHuddleTranscript && activeChannel && hasOpenMessageThread ? (
+            <ChannelWorkspaceTabs />
+          ) : null}
           {isHuddleTranscript && huddleThreadRepliesError ? (
             <div className="px-5 pt-3">
               <ThreadRepliesErrorCard onRetry={onRetryHuddleThreadReplies} />
@@ -759,6 +766,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                     channelType={activeChannel?.channelType ?? null}
                     containerClassName="px-5 pb-0"
                     layoutMode="dock"
+                    workspaceChrome={!isHuddleTranscript}
                     disabled={isComposerDisabled}
                     editTarget={mainEditTarget}
                     autoSubmitDraftKey={autoSendDraftKey}
@@ -791,7 +799,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                                 ? activeChannel.channelType === "dm" &&
                                   directMessageIntro
                                   ? `Message ${directMessageIntro.displayName}`
-                                  : `Message #${activeChannel.name}`
+                                  : `Message #${activeChannel.name}…`
                                 : "Select a channel"
                     }
                     showTopBorder={false}
@@ -811,7 +819,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               </div>
             )}
             {canDropInMainColumn && mainComposerMedia.isDragOver ? (
-              <DropZoneOverlay className="z-50 rounded-2xl bg-primary/20 backdrop-blur-sm" />
+              <DropZoneOverlay className="z-50 rounded-[var(--colony-radius-dialog)] bg-primary/20 backdrop-blur-sm" />
             ) : null}
           </div>
         </section>
@@ -850,6 +858,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                 huddleMemberPubkeys={huddleMemberPubkeys}
                 huddleMemberPubkeysPending={huddleMemberPubkeysPending}
                 isHuddleTranscript={isHuddleTranscript}
+                workspaceChrome={!isHuddleTranscript}
                 isFollowingThread={isFollowingThread}
                 isMessageUnreadById={isMessageUnreadById}
                 isSending={isSending}

@@ -1,0 +1,430 @@
+{
+  "version": 1,
+  "defaults": {
+    "referencePrefs": {
+      "localStorage": {
+        "colony-settings-review-v1": {
+          "version": 1,
+          "businesses": {
+            "Lerato Social": {
+              "mode": "light",
+              "style": "default",
+              "color1": "#895AF6",
+              "color2": "#5A9CF6",
+              "accent": "Blue",
+              "glass": false,
+              "opacity": 65,
+              "prominent": true,
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          },
+          "conversations": {
+            "links": "compact",
+            "threads": "split",
+            "size": "large"
+          }
+        }
+      },
+      "sessionStorage": {}
+    },
+    "appPrefs": {
+      "localStorage": {
+        "buzz-theme": "buzz",
+        "buzz-follow-system": "false",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "true",
+        "buzz.appearance.fontSize": "larger",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz-sidebar-width": "220",
+        "buzz.channels.threadViewMode": "split"
+      },
+      "sessionStorage": {},
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "actions": []
+  },
+  "cases": [
+    {
+      "id": "today-light-1728",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today",
+      "appRoute": "/#/today",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "today-light-1440",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today",
+      "appRoute": "/#/today",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "today-updates-light-1728",
+      "referenceInventoryRoute": "today/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today/updates",
+      "appRoute": "/#/today/updates",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "today-updates-light-1440",
+      "referenceInventoryRoute": "today/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today/updates",
+      "appRoute": "/#/today/updates",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "channel-thread-light-1728",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#thread/stockists",
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "channel-thread-light-1440",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#thread/stockists",
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "today-dark-1728",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/today",
+      "viewport": "1728x1117",
+      "theme": "dark"
+    },
+    {
+      "id": "today-dark-1440",
+      "referenceInventoryRoute": "today",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/today",
+      "viewport": "1440x900",
+      "theme": "dark"
+    },
+    {
+      "id": "today-updates-dark-1728",
+      "referenceInventoryRoute": "today/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today/updates",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/today/updates",
+      "viewport": "1728x1117",
+      "theme": "dark"
+    },
+    {
+      "id": "today-updates-dark-1440",
+      "referenceInventoryRoute": "today/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#today/updates",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/today/updates",
+      "viewport": "1440x900",
+      "theme": "dark"
+    },
+    {
+      "id": "channel-thread-dark-1728",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#thread/stockists",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1728x1117",
+      "theme": "dark"
+    },
+    {
+      "id": "channel-thread-dark-1440",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260925-r16/app/workspace/?embedded=1&revision=20260925-r16#thread/stockists",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "appRoute": "/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50?messageId=mock-general-welcome&thread=mock-general-welcome",
+      "appReadySelector": "[data-testid=message-thread-panel]",
+      "viewport": "1440x900",
+      "theme": "dark"
+    }
+  ]
+}

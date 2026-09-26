@@ -40,7 +40,7 @@ type ChannelMembersBarProps = {
   onAddBotOpenChange?: (open: boolean) => void;
   onManageChannel: () => void;
   onToggleMembers: () => void;
-  variant?: "inline" | "compact";
+  variant?: "inline" | "compact" | "reference";
 };
 
 export function ChannelMembersBar({
@@ -182,7 +182,13 @@ export function ChannelMembersBar({
           toast.error(formatHuddleActionError(e, "start"));
         }
       }}
-      renderMode={variant === "compact" ? "menu-item" : "button"}
+      renderMode={
+        variant === "compact"
+          ? "menu-item"
+          : variant === "reference"
+            ? "labeled-button"
+            : "button"
+      }
       startDisabled={
         !canStartHuddle || isStartingHuddle || huddleMemberPubkeysPending
       }
@@ -225,6 +231,26 @@ export function ChannelMembersBar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {endActions}
+      </div>
+    ) : variant === "reference" ? (
+      <div className="colony-channel-header-actions flex items-center gap-2">
+        {huddleIndicator}
+        <Tooltip disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label="Manage channel"
+              className="h-7 px-2 text-xs font-medium"
+              data-testid="channel-management-trigger"
+              onClick={onManageChannel}
+              type="button"
+              variant="outline"
+            >
+              Settings
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Channel settings</TooltipContent>
+        </Tooltip>
         {endActions}
       </div>
     ) : (

@@ -1,5 +1,5 @@
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
-import { ArrowUp, AtSign, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, Send, Square, X } from "lucide-react";
 import {
   AnimatePresence,
   motion,
@@ -136,6 +136,7 @@ export function ComposerMentionButton({
   onCaptureSelection,
   onOpen,
   onRemove,
+  triggerIcon,
   pulseVersionByPubkey = {},
   shakeVersionByPubkey = {},
   showAgents,
@@ -148,6 +149,7 @@ export function ComposerMentionButton({
   onCaptureSelection: () => void;
   onOpen: () => void;
   onRemove: (pubkey: string) => void;
+  triggerIcon?: React.ReactNode;
   showAgents: boolean;
 }) {
   const visibleAgents = showAgents ? agents.slice(0, VISIBLE_AGENT_LIMIT) : [];
@@ -198,7 +200,9 @@ export function ComposerMentionButton({
                 }}
                 type="button"
               >
-                <AtSign aria-hidden="true" className="h-4 w-4 shrink-0" />
+                {triggerIcon ?? (
+                  <AtSign aria-hidden="true" className="h-4 w-4 shrink-0" />
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent>
@@ -316,12 +320,17 @@ export function ComposerSendButton({
   isSending,
   onFinishVoiceNote,
   sendDisabled,
+  workspaceChrome = false,
 }: {
   isSending: boolean;
   onFinishVoiceNote?: () => void;
   sendDisabled: boolean;
+  workspaceChrome?: boolean;
 }) {
   const isFinishingVoiceNote = onFinishVoiceNote != null;
+  const sendButtonClassName = workspaceChrome
+    ? "inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+    : "inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
   return (
     <button
       aria-label={
@@ -331,7 +340,7 @@ export function ComposerSendButton({
             ? "Sending"
             : "Send message"
       }
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      className={sendButtonClassName}
       data-testid={isFinishingVoiceNote ? "finish-voice-note" : "send-message"}
       disabled={sendDisabled || isSending}
       onClick={onFinishVoiceNote}
@@ -341,6 +350,8 @@ export function ComposerSendButton({
         <Square aria-hidden className="h-3.5 w-3.5 fill-current" />
       ) : isSending ? (
         <SendSpinner />
+      ) : workspaceChrome ? (
+        <Send aria-hidden className="h-3.5 w-3.5" />
       ) : (
         <ArrowUp aria-hidden className="h-4 w-4" />
       )}

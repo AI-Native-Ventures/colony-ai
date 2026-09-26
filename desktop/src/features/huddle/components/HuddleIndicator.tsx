@@ -32,7 +32,7 @@ type ActiveHuddle = {
 type HuddleIndicatorProps = {
   channelId: string;
   className?: string;
-  renderMode?: "button" | "menu-item";
+  renderMode?: "button" | "menu-item" | "labeled-button";
   /** Called when the user clicks the button and no huddle is active (start). */
   onStart?: () => void;
   /** Whether the start action is disabled (e.g., permissions, already starting). */
@@ -282,6 +282,7 @@ export function HuddleIndicator({
       );
     }
 
+    const labeled = renderMode === "labeled-button";
     return (
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
@@ -291,15 +292,19 @@ export function HuddleIndicator({
           >
             <Button
               aria-label="Start huddle"
-              className={className}
+              className={cn(
+                className,
+                labeled && "h-7 gap-1.5 px-2 text-xs font-medium",
+              )}
               data-testid="channel-start-huddle-trigger"
               disabled={startDisabled || isStarting}
               onClick={() => onStart()}
-              size="icon"
+              size={labeled ? "sm" : "icon"}
               type="button"
               variant="outline"
             >
-              <Headphones />
+              <Headphones className={labeled ? "size-3.5" : undefined} />
+              {labeled ? <span>Huddle</span> : null}
             </Button>
           </span>
         </TooltipTrigger>
@@ -354,14 +359,22 @@ export function HuddleIndicator({
       <TooltipTrigger asChild>
         <Button
           aria-label={`Join active huddle (${participantCount} participant${participantCount !== 1 ? "s" : ""})`}
-          className={cn("relative", className)}
+          className={cn(
+            "relative",
+            className,
+            renderMode === "labeled-button" &&
+              "h-7 gap-1.5 px-2 text-xs font-medium",
+          )}
           disabled={isJoining || isStarting}
           onClick={() => void doJoin()}
-          size="icon"
+          size={renderMode === "labeled-button" ? "sm" : "icon"}
           type="button"
           variant="outline"
         >
-          <Headphones />
+          <Headphones
+            className={renderMode === "labeled-button" ? "size-3.5" : undefined}
+          />
+          {renderMode === "labeled-button" ? <span>Huddle</span> : null}
           <span className="absolute inset-0 animate-pulse rounded-lg ring-2 ring-border/70" />
           {/* Participant count badge */}
           {participantCount > 0 && (
