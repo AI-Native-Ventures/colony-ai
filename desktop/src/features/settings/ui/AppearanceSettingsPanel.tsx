@@ -822,20 +822,18 @@ export function AppearanceSettingsPanel({
           aria-label="Appearance controls"
           className="ap-controls-scroll"
         >
-          <section className="ap-section ap-named-themes">
-            <div>
-              <h2>Named themes</h2>
-              <p>Browse 62 palettes. Preview before applying.</p>
-            </div>
-            <button
-              className="ap-text-button"
-              data-testid="appearance-open-themes"
-              onClick={onOpenThemeCatalog}
-              type="button"
-            >
-              Browse themes <ArrowRight aria-hidden="true" className="icon" />
-            </button>
-          </section>
+          <button
+            className="ap-named-themes"
+            data-testid="appearance-open-themes"
+            onClick={onOpenThemeCatalog}
+            type="button"
+          >
+            <span>
+              <strong>Named themes</strong>
+              <small>Browse 62 palettes. Preview before applying.</small>
+            </span>
+            <span>Browse themes →</span>
+          </button>
           <section className="ap-section">
             <h2>Appearance</h2>
             <AppearanceRow title="Colour mode">

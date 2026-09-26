@@ -436,6 +436,24 @@ async function inspectPageGeometry(
   expectedHeight: number,
 ) {
   const geometry = await page.evaluate(() => {
+    function summarizeBackgroundImage(value: string) {
+      const fieldAsset = value.match(/colony-field-(?:light|dark)\.svg/);
+      if (fieldAsset) {
+        return { kind: fieldAsset[0], length: value.length };
+      }
+      if (value === "none") return { kind: "none", length: 0 };
+      if (value.includes("data:image/svg+xml")) {
+        return { kind: "inline-svg", length: value.length };
+      }
+      if (value.startsWith("linear-gradient(")) {
+        return { kind: "gradient", length: value.length };
+      }
+      return {
+        kind: value.length > 160 ? "other-long" : value,
+        length: value.length,
+      };
+    }
+
     const bounds = (element: Element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -474,6 +492,30 @@ async function inspectPageGeometry(
         ".ap-desktop",
         ".ap-live-window",
         ".ap-foot",
+        ".ap-back",
+        ".ap-nav-title",
+        ".ap-search",
+        ".ap-nav-group",
+        ".ap-nav-item",
+        ".ap-nav-person",
+        ".w20-nav-back",
+        ".w20-nav-title",
+        ".w20-search",
+        ".w20-nav-group",
+        ".w20-nav-item",
+        ".w20-nav-person",
+        ".w20-settings-topbar",
+        ".w20-inner-tabs",
+        "body",
+        "#root",
+        "#app",
+        ".w20-settings-sidebar",
+        "[data-sidebar=sidebar]",
+        "[data-buzz-gradient-layer]",
+        ".buzz-theme-gradient-layer",
+        ".buzz-theme-gradient-underlay",
+        ".buzz-theme-gradient-layer-light",
+        ".buzz-theme-gradient-layer-dark",
         ".colony-workspace-topbar",
         ".colony-channel-route-content",
         ".channel-pane",
@@ -521,6 +563,120 @@ async function inspectPageGeometry(
           overflowY: style.overflowY,
           scrollHeight: element.scrollHeight,
           scrollWidth: element.scrollWidth,
+        };
+      }),
+      appearanceSamples: [
+        ".ap-heading",
+        ".ap-controls-scroll",
+        ".d17-browse",
+        ".ap-named-themes",
+        ".ap-section",
+        ".ap-row",
+        ".ap-style-row",
+        ".ap-colours",
+        ".ap-accents",
+        ".ap-preview-label",
+        ".ap-desktop",
+        ".ap-live-window",
+        ".ap-live-body",
+        ".ap-foot",
+      ].map((selector) => ({
+        selector,
+        items: [...document.querySelectorAll(selector)].map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            label:
+              element.querySelector(":scope > h2")?.textContent?.trim() ??
+              element
+                .querySelector(":scope > div > strong, :scope > span > strong")
+                ?.textContent?.trim() ??
+              element
+                .querySelector(":scope > div:first-child > strong")
+                ?.textContent?.trim() ??
+              element.getAttribute("aria-label") ??
+              element.className.toString().split(" ")[0],
+            bounds: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight,
+            padding: style.padding,
+            margin: style.margin,
+            gap: style.gap,
+            borderRadius: style.borderRadius,
+          };
+        }),
+      })),
+      fieldLayers: [document.body, ...document.querySelectorAll("*")]
+        .map((element) => {
+          const style = getComputedStyle(element);
+          if (!style.backgroundImage.includes("colony-field")) return null;
+          const rect = element.getBoundingClientRect();
+          return {
+            element:
+              element.id ||
+              element.getAttribute("data-testid") ||
+              element.className.toString().split(" ")[0] ||
+              element.tagName.toLowerCase(),
+            bounds: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+            backgroundImage: summarizeBackgroundImage(style.backgroundImage),
+            backgroundSize: style.backgroundSize,
+            backgroundPosition: style.backgroundPosition,
+            backgroundRepeat: style.backgroundRepeat,
+            backgroundColor: style.backgroundColor,
+            transform: style.transform,
+            opacity: style.opacity,
+            filter: style.filter,
+            mixBlendMode: style.mixBlendMode,
+          };
+        })
+        .filter((element) => element !== null),
+      backgroundSamples: [
+        "html",
+        "body",
+        "#root",
+        "#app",
+        ".app-frame",
+        ".w20-settings-sidebar",
+        "[data-sidebar=sidebar]",
+        ".w20-settings-shell",
+        "[data-buzz-gradient-layer]",
+        ".buzz-theme-gradient-layer",
+        ".buzz-theme-gradient-underlay",
+        ".buzz-theme-gradient-layer-light",
+        ".buzz-theme-gradient-layer-dark",
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return { selector, count: 0 };
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          selector,
+          count: document.querySelectorAll(selector).length,
+          bounds: {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          },
+          backgroundImage: summarizeBackgroundImage(style.backgroundImage),
+          backgroundSize: style.backgroundSize,
+          backgroundPosition: style.backgroundPosition,
+          backgroundColor: style.backgroundColor,
+          transform: style.transform,
+          opacity: style.opacity,
+          filter: style.filter,
+          mixBlendMode: style.mixBlendMode,
         };
       }),
     };

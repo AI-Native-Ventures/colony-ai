@@ -177,6 +177,8 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
+  const signedInDisplayName =
+    profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => setIsLoaded(true));
@@ -390,17 +392,13 @@ export function SettingsView({
               <ProfileAvatar
                 avatarUrl={profile.data?.avatarUrl ?? null}
                 className="size-8 rounded-squircle"
-                label={
-                  profile.data?.displayName ??
-                  fallbackDisplayName ??
-                  "Signed-in identity"
-                }
+                label={signedInDisplayName}
                 shape="squircle"
                 testId="settings-profile-avatar"
               />
             </button>
             <div>
-              <strong>{fallbackDisplayName ?? "Signed-in identity"}</strong>
+              <strong>{signedInDisplayName}</strong>
               <small>Workspace owner</small>
             </div>
           </div>
