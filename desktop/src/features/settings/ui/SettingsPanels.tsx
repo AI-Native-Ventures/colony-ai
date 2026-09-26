@@ -1045,7 +1045,7 @@ export function renderSettingsSection(
     case "storage":
       return <LocalArchiveSettingsCard />;
     case "archived-records":
-      return <ArchivedRecordsSettingsPanel />;
+      return <ArchivedRecordsSettingsPanel onClose={props.onClose} />;
     case "recovery":
       return <DraftRecoverySettingsPanel />;
     case "app":

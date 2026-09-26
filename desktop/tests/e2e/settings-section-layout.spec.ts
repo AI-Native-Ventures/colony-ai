@@ -78,7 +78,8 @@ test("routes without a data-backed design fall back to Account profile", async (
 
 test("archive follows the r19 title and empty state", async ({ page }) => {
   await installMockBridge(page, { archivedIdentities: [] });
-  await page.goto("/#/settings?section=archived-records");
+  await page.goto("/");
+  await openSettings(page, "archived-records");
 
   const archive = page.getByTestId("settings-archived-records");
   await expect(
@@ -91,6 +92,8 @@ test("archive follows the r19 title and empty state", async ({ page }) => {
   await expect(archive).not.toContainText(
     "Identities archived from community discovery.",
   );
+  await archive.getByTestId("settings-archive-back-to-today").click();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
 });
 
 test("account profile follows the r19 grid and type scale at desktop widths", async ({

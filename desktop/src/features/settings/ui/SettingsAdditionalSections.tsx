@@ -196,7 +196,11 @@ export function AccessibilitySettingsPanel() {
   );
 }
 
-export function ArchivedRecordsSettingsPanel() {
+export function ArchivedRecordsSettingsPanel({
+  onClose,
+}: {
+  onClose?: () => void;
+}) {
   const archivedQuery = useArchivedIdentitiesQuery();
   const unarchiveMutation = useUnarchiveIdentityMutation();
   const identities = archivedQuery.data?.archived ?? [];
@@ -217,7 +221,20 @@ export function ArchivedRecordsSettingsPanel() {
 
   return (
     <section className="min-w-0" data-testid="settings-archived-records">
-      <SettingsSectionHeader title="Archive" />
+      <SettingsSectionHeader
+        title="Archive"
+        action={
+          <Button
+            className="h-8 px-3 text-xs"
+            data-testid="settings-archive-back-to-today"
+            onClick={onClose}
+            size="sm"
+            variant="outline"
+          >
+            Back to Today
+          </Button>
+        }
+      />
       <SettingsOptionGroup title="Archived records">
         {archivedQuery.isLoading ? (
           <SettingsOptionRow>
