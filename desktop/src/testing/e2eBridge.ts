@@ -34,8 +34,11 @@ import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
 import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
+  REFERENCE_HOME_VISUAL_FIXTURE,
+  REFERENCE_SALES_THREAD_ROOT_ID,
   REFERENCE_SELF_NAME,
   referenceChannelSeeds,
+  referenceHomeInboxItems,
   referenceSalesMessages,
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
@@ -4579,6 +4582,17 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   for (const agent of Object.values(REFERENCE_AGENTS)) {
     mockDisplayNames.set(agent.pubkey, agent.name);
     mockAgentPubkeys.add(agent.pubkey);
+    mockProfiles.set(agent.pubkey, {
+      pubkey: agent.pubkey,
+      display_name: agent.name,
+      name: agent.name,
+      avatar_url: null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: true,
+      has_profile_event: true,
+    });
   }
   const channels = referenceChannelSeeds().map((seed) =>
     createMockChannel({
@@ -5057,6 +5071,9 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
       channelId === REFERENCE_CHANNEL_IDS.sales
         ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
         : [];
+    if (channelId === REFERENCE_CHANNEL_IDS.sales) {
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_THREAD_ROOT_ID);
+    }
     mockMessages.set(channelId, referenceSeeded);
     return referenceSeeded;
   }
@@ -8567,6 +8584,25 @@ async function handleGetFeed(
         generated_at: now,
       },
       visual_fixture: visualFixture.today,
+    };
+  }
+
+  if (!isRelayMode(config) && referenceWorkspaceActive) {
+    const now = Math.floor(Date.now() / 1000);
+    const unreadItems = referenceHomeInboxItems();
+    return {
+      feed: {
+        mentions: [],
+        needs_action: unreadItems,
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: unreadItems.length,
+        generated_at: now,
+      },
+      visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
     };
   }
 

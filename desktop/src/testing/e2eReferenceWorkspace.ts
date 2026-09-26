@@ -9,7 +9,7 @@
  * harness compares like with like. It is opt-in through
  * `mock.referenceWorkspace` and never changes the default mock data.
  */
-import type { RelayEvent } from "@/shared/api/types";
+import type { HomeFeedVisualFixture, RelayEvent } from "@/shared/api/types";
 import { normalizeRelayUrl } from "@/shared/lib/normalizeRelayUrl";
 
 export const REFERENCE_SELF_NAME = "Lerato Molefe";
@@ -33,6 +33,12 @@ export const REFERENCE_CHANNEL_IDS = {
 } as const;
 
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
+
+export const REFERENCE_HOME_UNREAD_IDS = [
+  "reference-home-inbox-olive-approval",
+  "reference-home-inbox-cedar-access",
+] as const;
+export const REFERENCE_SALES_THREAD_ROOT_ID = "reference-sales-prospects-root";
 
 export type ReferenceChannelSeed = {
   id: string;
@@ -90,22 +96,162 @@ function todayAt(hours: number, minutes: number): number {
   return Math.floor(date.getTime() / 1000);
 }
 
-/** The reference #Sales discussion (text rows only). */
+/** The frozen r19 Today screen records used by the mock bridge. */
+export const REFERENCE_HOME_VISUAL_FIXTURE: HomeFeedVisualFixture = {
+  agentWork: [
+    {
+      id: "run-mina",
+      agent: "Mina",
+      title: "Prepare October carousel concepts",
+      detail: "Waiting for permission to generate images",
+      status: "permission",
+    },
+    {
+      id: "run-aya",
+      agent: "Aya",
+      title: "Prepare Form & Field proposal",
+      detail: "Waiting for Lerato to choose the scope",
+      status: "question",
+    },
+    {
+      id: "run-theo",
+      agent: "Theo",
+      title: "Reconcile September costs",
+      detail: "Connection expired before external read",
+      status: "failed",
+    },
+    {
+      id: "run-noor",
+      agent: "Noor",
+      title: "Revise Cedar captions",
+      detail: "Paused at the approved budget",
+      status: "budget",
+    },
+  ],
+  businessReviews: [
+    {
+      id: "olive-1",
+      client: "The Olive House",
+      meta: "The Olive House · Agency review · v2",
+      title: "Make room for slow mornings",
+      artTitle: "Make room for slow mornings.",
+      variant: "olive",
+      footer: "THE SPRING EDIT",
+    },
+    {
+      id: "cedar-2",
+      client: "Cedar Café",
+      meta: "Cedar Café · Agency review · v1",
+      title: "See you on the sunny side",
+      artTitle: "See you on the sunny side.",
+      variant: "cedar",
+      footer: "YOUR NEIGHBOURHOOD, BREWED",
+    },
+    {
+      id: "cedar-instagram",
+      client: "Cedar Café",
+      meta: "Cedar Café · @cedarcafe",
+      title: "Renew Instagram access",
+      variant: "instagram",
+    },
+    {
+      id: "northline-linkedin",
+      client: "Northline Interiors",
+      meta: "Northline Interiors · Northline Interiors",
+      title: "Grant publishing access",
+      variant: "linkedin",
+    },
+    {
+      id: "task-access",
+      client: "Cedar Café",
+      meta: "Theo · Client authorization",
+      title: "Restore Cedar Café publishing access",
+      variant: "access",
+    },
+    {
+      id: "bloom-enquiry",
+      client: "Bloom Florist",
+      meta: "Website enquiry · We need consistent Instagram content for our flower studio. Can you help with 8 posts a month?",
+      title: "Bloom Florist",
+      variant: "enquiry",
+    },
+  ],
+  clientApproval: {
+    client: "The Olive House",
+    title: "Meet your everyday favourites",
+    approver: "Nandi",
+    version: 1,
+  },
+  nextDelivery: {
+    title: "Small changes. Softer spaces.",
+    detail: "The Olive House · Thu, 01 Oct · 09:00 SAST",
+  },
+  moneyFollowUp: {
+    client: "Cedar Café",
+    invoice: "LS-027",
+    due: "2026-09-20",
+    amount: "R 3 000",
+  },
+};
+
+/** The two unread review records that drive the reference Inbox badge. */
+export function referenceHomeInboxItems(): Array<{
+  id: string;
+  kind: number;
+  pubkey: string;
+  content: string;
+  created_at: number;
+  channel_id: string | null;
+  channel_name: string;
+  channel_type: null;
+  tags: string[][];
+  category: "needs_action";
+}> {
+  const createdAt = todayAt(10, 12);
+  return [
+    {
+      id: REFERENCE_HOME_UNREAD_IDS[0],
+      kind: 40007,
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      content: "Review the Olive House campaign before approval.",
+      created_at: createdAt,
+      channel_id: null,
+      channel_name: "",
+      channel_type: null,
+      tags: [],
+      category: "needs_action",
+    },
+    {
+      id: REFERENCE_HOME_UNREAD_IDS[1],
+      kind: 40007,
+      pubkey: REFERENCE_AGENTS.theo.pubkey,
+      content: "Restore Cedar Café publishing access.",
+      created_at: createdAt - 60,
+      channel_id: null,
+      channel_name: "",
+      channel_type: null,
+      tags: [],
+      category: "needs_action",
+    },
+  ];
+}
+
+/** The reference #Sales discussion and the context for its side thread. */
 export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const sig = "mocksig".repeat(20).slice(0, 128);
+  const threadRootId = REFERENCE_SALES_THREAD_ROOT_ID;
+  const googleDocumentUrl =
+    "https://docs.google.com/document/d/form-and-field-draft";
   return [
     {
       id: "reference-sales-lerato-0914",
       pubkey: selfPubkey,
       created_at: todayAt(9, 14),
       kind: 9,
-      tags: [
-        ["h", channelId],
-        ["p", REFERENCE_AGENTS.aya.pubkey],
-      ],
+      tags: [["h", channelId]],
       content:
-        "@Aya, let's find independent businesses that need reliable social content. Start with a small, well-qualified list.",
+        "@Aya, let’s find independent businesses that need reliable social content. Start with a small, well-qualified list.",
       sig,
     },
     {
@@ -113,9 +259,107 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
       pubkey: REFERENCE_AGENTS.aya.pubkey,
       created_at: todayAt(9, 42),
       kind: 9,
+      tags: [
+        ["h", channelId],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/independent-brands",
+          "Independent brands needing social support",
+          "Discovery",
+          "Review prospects before outreach.",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ],
+      content:
+        "There are 12 prospects to review. Each profile keeps the source and qualification notes together.\n\n[​](https://example.com/independent-brands)",
+      sig,
+    },
+    {
+      id: threadRootId,
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      created_at: todayAt(9, 42),
+      kind: 9,
       tags: [["h", channelId]],
       content:
-        "There are 12 prospects to review. Each profile keeps the source and qualification notes together.",
+        "# Independent brands needing social support\n\nProspect evidence, qualification and service scope.",
+      sig,
+    },
+    {
+      id: "reference-sales-aya-prospects-reply",
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      created_at: todayAt(9, 43),
+      kind: 9,
+      tags: [
+        ["h", channelId],
+        ["e", threadRootId, "", "root"],
+        ["e", threadRootId, "", "reply"],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/prospects",
+          "Independent brands needing social support",
+          "Discovery",
+          "12 example prospects",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ],
+      content:
+        "Review each prospect’s fit and source evidence. A proposal should follow a conversation about what the business needs.\n\n[​](https://example.com/prospects)",
+      sig,
+    },
+    {
+      id: "reference-sales-aya-form-field-reply",
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      created_at: todayAt(9, 44),
+      kind: 9,
+      tags: [
+        ["h", channelId],
+        ["e", threadRootId, "", "root"],
+        ["e", threadRootId, "", "reply"],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          googleDocumentUrl,
+          "A consistent social presence for Form & Field",
+          "Form & Field",
+          "v1 · draft",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ],
+      content: `[​](${googleDocumentUrl})`,
+      sig,
+    },
+    {
+      id: "reference-sales-lerato-0950",
+      pubkey: selfPubkey,
+      created_at: todayAt(9, 50),
+      kind: 9,
+      tags: [
+        ["h", channelId],
+        [
+          "imeta",
+          "url https://example.invalid/voice-note-r17.wav",
+          "m audio/wav",
+          "filename voice-note-sample.wav",
+          "duration 8",
+          "transcript Please keep the first slide simple. Show the product detail on slide two, and let Nandi approve the final caption before we schedule it.",
+        ],
+      ],
+      content:
+        "[Voice note · Sample audio](https://example.invalid/voice-note-r17.wav)",
       sig,
     },
   ];
@@ -155,6 +399,19 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
         starred.map((id) => [id, { starred: true, updatedAt: now }]),
       ),
     }),
+  );
+  storage.setItem(
+    `buzz-forced-unread.v1:${selfPubkey}`,
+    JSON.stringify({
+      [REFERENCE_CHANNEL_IDS.sales]: {
+        markerAtWhenForced: null,
+        sources: ["manual"],
+      },
+    }),
+  );
+  storage.setItem(
+    `buzz-home-feed-unread.v1:${selfPubkey}`,
+    JSON.stringify([...REFERENCE_HOME_UNREAD_IDS]),
   );
 
   const sections = {
