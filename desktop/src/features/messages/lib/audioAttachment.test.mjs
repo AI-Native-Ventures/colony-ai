@@ -115,7 +115,8 @@ test("packaged MP4 voice notes still resolve to the audio player", () => {
 
 test("formatVoiceNoteDuration formats minutes and seconds", () => {
   assert.equal(formatVoiceNoteDuration(0), "0:00");
-  assert.equal(formatVoiceNoteDuration(65.9), "1:05");
+  assert.equal(formatVoiceNoteDuration(7.649), "0:08");
+  assert.equal(formatVoiceNoteDuration(65.9), "1:06");
 });
 
 test("voice notes have a five-minute recording limit", () => {
