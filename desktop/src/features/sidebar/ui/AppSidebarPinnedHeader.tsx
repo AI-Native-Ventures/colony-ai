@@ -186,7 +186,7 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="workflows">
             <SidebarMenuItem>
               <SidebarMenuButton
-                data-testid="open-work-view"
+                data-testid="open-workflows-view"
                 isActive={selectedView === "workflows"}
                 onClick={onSelectWorkflows}
                 tooltip="Work"

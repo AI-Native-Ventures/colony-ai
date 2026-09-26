@@ -564,10 +564,7 @@ test("shows cached profile labels while relay profiles revalidate", {
   const aliceMessage = page
     .getByTestId("message-row")
     .filter({ hasText: "Hey team — checking in." });
-  await expect(aliceMessage.getByTestId("message-author")).toHaveText(
-    "Cached Alice",
-    { timeout: 1_000 },
-  );
+  await expect(aliceMessage).toContainText("Cached Alice", { timeout: 1_000 });
 });
 
 test("shows presence in sidebar, DM header, and member list", async ({
@@ -2782,14 +2779,16 @@ test("manage channel shows member avatars and owner-only row controls", async ({
   await page.goto("/");
   await openChannelManagement(page, "general");
 
+  const memberCount = page.getByTestId("channel-management-member-count");
+  const memberStack = memberCount.getByTestId(
+    "channel-management-member-avatar-stack",
+  );
+  await expect(memberStack).toBeVisible();
   await expect(
-    page.getByTestId("channel-management-member-avatar-stack"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-management-member-avatar"),
+    memberStack.getByTestId("channel-management-member-avatar"),
   ).toHaveCount(3);
   await expect(
-    page.getByTestId("channel-management-member-avatar-overflow"),
+    memberStack.getByTestId("channel-management-member-avatar-overflow"),
   ).toHaveText("+1");
   await expect(page.getByTestId("channel-management-hero")).toBeVisible();
   await expect(

@@ -39,9 +39,7 @@ test("locks viewport rubber-band outside conversation scrollers", async ({
   await expect(page.getByTestId("message-timeline")).toBeVisible();
 
   await expect(
-    dispatchWheelPrevented(page, '[data-testid="app-top-chrome"]', {
-      deltaY: -120,
-    }),
+    dispatchWheelPrevented(page, "body", { deltaY: -120 }),
   ).resolves.toBe(true);
   await expect(
     dispatchWheelPrevented(page, '[data-testid="sidebar-pinned-header"]', {
@@ -88,9 +86,7 @@ test("locks horizontal viewport pan everywhere", async ({ page }) => {
 
   for (const deltaX of [-120, 120]) {
     await expect(
-      dispatchWheelPrevented(page, '[data-testid="app-top-chrome"]', {
-        deltaX,
-      }),
+      dispatchWheelPrevented(page, "body", { deltaX }),
     ).resolves.toBe(true);
     await expect(
       dispatchWheelPrevented(page, '[data-testid="sidebar-pinned-header"]', {

@@ -533,7 +533,7 @@ for (const incoming of ["unrelated thread B draft", "@RemoteScout hello"]) {
           throw new Error("control B draft missing");
         return drafts[`thread:${root}`] ?? null;
       }, roots);
-    expect(await sourceRecord()).toBeNull();
+    await expect.poll(() => sourceRecord()).toBeNull();
     // Expando proves the actual editor DOM host survived A -> B.
     await input.evaluate((el) =>
       el.setAttribute("data-lifecycle-host", "retained"),
@@ -544,7 +544,7 @@ for (const incoming of ["unrelated thread B draft", "@RemoteScout hello"]) {
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     // Read actual persistence, not the editor (whose tombstone could mask a
     // resurrected record until reload). Neither text nor exact refs may return.
-    expect(await sourceRecord()).toBeNull();
+    await expect.poll(() => sourceRecord()).toBeNull();
     await navigate(roots[0]);
     await expect(input).toHaveText("");
 

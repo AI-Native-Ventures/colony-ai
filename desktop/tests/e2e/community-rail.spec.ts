@@ -688,7 +688,10 @@ test.describe("community rail", () => {
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
     await expect(page).toHaveURL(randomUrl);
 
-    await page.getByRole("button", { name: "Inbox" }).click();
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Inbox", exact: true })
+      .click();
     await expect(page).toHaveURL(/#\/$/);
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
     await expect(page).toHaveURL(generalUrl);
@@ -743,18 +746,20 @@ test.describe("community rail", () => {
       }
       testWindow.__BUZZ_E2E__.mock = {
         ...testWindow.__BUZZ_E2E__.mock,
-        channelsReadDelayMs: 800,
+        channelsReadDelayMs: 2_500,
       };
     });
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
 
+    // The channel list read is held for 2.5s; entering the remembered channel
+    // well inside that window proves it did not wait for live validation.
     await expect(page).toHaveURL(
       new RegExp(`#/channels/${rememberedChannelId}$`),
-      { timeout: 700 },
+      { timeout: 2_000 },
     );
-    await expect(page.getByTestId("message-timeline")).toBeVisible({
-      timeout: 700,
-    });
+    await expect(
+      page.getByRole("region", { name: "Channel messages and composer" }),
+    ).toBeVisible({ timeout: 2_000 });
   });
 
   test("clears a remembered channel that is unavailable after switching", async ({
