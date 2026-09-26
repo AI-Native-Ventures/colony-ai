@@ -788,6 +788,13 @@ export function AppSidebar({
                       onDeleteChannel={requestDeleteChannel}
                     />
                   </FeatureGate>
+                  <h2
+                    className="colony-sidebar-business-heading"
+                    data-testid="sidebar-business-section"
+                  >
+                    <ChevronDown aria-hidden="true" />
+                    <span data-sidebar-section-title>Business</span>
+                  </h2>
                   <SidebarSection
                     action={
                       <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
@@ -834,14 +841,6 @@ export function AppSidebar({
                   />
                 </>
               ) : null}
-
-              <h2
-                className="colony-sidebar-business-heading"
-                data-testid="sidebar-business-section"
-              >
-                <ChevronDown aria-hidden="true" />
-                <span data-sidebar-section-title>Business</span>
-              </h2>
 
               <div
                 className="colony-sidebar-team-section"
