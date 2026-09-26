@@ -215,7 +215,7 @@ export function ProjectHomeWorkspaceSheet({
   const detail = React.useMemo<ProjectHomeWorkspaceDetail | null>(() => {
     if (tab === "issues" && selectedIssueId) {
       return {
-        backLabel: "Back to Tasks",
+        backLabel: "Back to Issues",
         navigation: {
           issueId: selectedIssueId,
           repositoryId: selectedIssueItem?.project.id,

@@ -1128,6 +1128,7 @@ test("updates presence from the profile menu", async ({ page }) => {
 test("renders agent profile ingress subviews from the Playwright mock bridge", async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
     agentMemory: createMockAgentMemoryListing(),
     // The viewer is the agent's verified NIP-OA owner, so archiveActions
