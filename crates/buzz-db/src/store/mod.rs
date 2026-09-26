@@ -32,6 +32,8 @@ pub mod git_repo;
 pub mod moderation;
 /// Monthly table partition management.
 pub mod partition;
+/// Deployment-global payment intents, credit ledger, and subscriptions.
+pub mod payments;
 /// Buzz product-feedback sidecar persistence.
 pub mod product_feedback;
 /// Community-scoped push lease and durable wake-outbox persistence.
