@@ -86,6 +86,12 @@
   --colony-workspace-link-color: #2655a0;
 }
 
+:root:has([data-colony-workspace-route="true"]) body {
+  -webkit-font-smoothing: antialiased;
+  font-variant-ligatures: normal;
+  text-rendering: auto;
+}
+
 :root.dark:has([data-colony-workspace-route="true"]) {
   --colony-workspace-link-color: #9dc1fb;
 }
@@ -732,9 +738,6 @@
 
 .r17-today-attention-copy strong {
   overflow: hidden;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -742,8 +745,6 @@
 .r17-today-attention-copy small {
   overflow: hidden;
   color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
-  line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -794,7 +795,7 @@
 .r17-today-business-heading h2 {
   margin: 0;
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .r17-today-business-heading > span {
@@ -939,15 +940,13 @@
 .r17-today-review-copy small {
   overflow: hidden;
   color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
-  line-height: 1.45;
   text-overflow: ellipsis;
 }
 
 .r17-today-review-copy strong {
   overflow: hidden;
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   text-overflow: ellipsis;
 }
@@ -1007,7 +1006,7 @@
 .r17-today-section-heading h2 {
   margin: 0;
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .r17-today-section-heading > span {
@@ -1026,21 +1025,14 @@
   padding: 1rem 0;
 }
 
-.r17-today-waiting-record strong {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
 .r17-today-waiting-record p {
-  margin: 0.5rem 0 0.3125rem;
-  font-size: var(--text-sm);
+  margin: 0.4375rem 0;
 }
 
 .r17-today-waiting-record small {
   display: block;
   color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
+  margin-top: 0.375rem;
 }
 
 .r17-today-money-record {
@@ -1057,7 +1049,6 @@
   display: block;
   margin-top: 0.5rem;
   color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
 }
 
 .r17-today-money-record > strong {
