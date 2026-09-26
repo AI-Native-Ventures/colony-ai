@@ -40,6 +40,10 @@ export default {
           "calc(var(--buzz-type-rem) * 0.74)",
           { lineHeight: "1.6" },
         ],
+        "today-status": [
+          "calc(var(--buzz-type-rem) * 0.6)",
+          { lineHeight: "1.5" },
+        ],
         "workspace-review-meta": [
           "calc(var(--buzz-type-rem) * 0.73)",
           { lineHeight: "1.5" },

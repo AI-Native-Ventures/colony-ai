@@ -153,7 +153,9 @@ function AttentionRow({
         </strong>
         <small className="text-workspace-attention-meta">{item.detail}</small>
       </span>
-      <span className={`r17-today-status r17-today-status-${item.status}`}>
+      <span
+        className={`r17-today-status r17-today-status-${item.status} text-today-status font-medium`}
+      >
         {item.status}
       </span>
       <ChevronRight aria-hidden="true" className="r17-today-row-chevron" />
