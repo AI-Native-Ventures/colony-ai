@@ -217,6 +217,11 @@ type E2eConfig = {
       agentTextToSpeech: boolean;
       voicePreferences: string[];
     };
+    /** Optional NIP-30 records for visual fixture routes. */
+    customEmojiSets?: Array<{
+      owner: "self" | "community";
+      emojis: Array<{ shortcode: string; url: string }>;
+    }>;
     /** Native picker boundary result for Pocket voice import tests. */
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
     /** Local voice files returned by the native registry in visual fixtures. */
@@ -1153,6 +1158,21 @@ function createMockRelayMembershipEvent(): RelayEvent {
  * `:bufo_joy:` prove a second member's distinct emoji unions in.
  */
 function createMockCustomEmojiSetEvents(): RelayEvent[] {
+  const configuredSets = getConfig()?.mock?.customEmojiSets;
+  if (configuredSets !== undefined) {
+    return configuredSets.map((set) =>
+      createMockEvent(
+        KIND_EMOJI_SET,
+        "",
+        [
+          ["d", CUSTOM_EMOJI_SET_D_TAG],
+          ...set.emojis.map(({ shortcode, url }) => ["emoji", shortcode, url]),
+        ],
+        set.owner === "self" ? MOCK_IDENTITY_PUBKEY : "c".repeat(64),
+      ),
+    );
+  }
+
   return [
     createMockEvent(
       KIND_EMOJI_SET,

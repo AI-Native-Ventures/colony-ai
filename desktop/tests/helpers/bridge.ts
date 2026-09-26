@@ -158,6 +158,11 @@ type MockBridgeOptions = {
     agentTextToSpeech: boolean;
     voicePreferences: string[];
   };
+  /** Optional NIP-30 records for visual fixture routes. */
+  customEmojiSets?: Array<{
+    owner: "self" | "community";
+    emojis: Array<{ shortcode: string; url: string }>;
+  }>;
   /** Native picker boundary result for Pocket voice import tests. */
   pocketVoiceImportResult?: "success" | "cancel" | "invalid";
   /** Local voice files returned by the native registry in visual fixtures. */

@@ -223,7 +223,28 @@
       "referenceInventoryRoute": "settings/emoji",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/emoji",
       "appRoute": "/#/settings?section=custom-emoji",
-      "routeLabel": "settings/emoji"
+      "routeLabel": "settings/emoji",
+      "appMockData": {
+        "customEmojiSets": [
+          {
+            "owner": "self",
+            "emojis": [
+              {
+                "shortcode": "celebrate",
+                "url": "https://example.com/e2e/visual-settings-emoji/celebrate.svg"
+              },
+              {
+                "shortcode": "approved",
+                "url": "https://example.com/e2e/visual-settings-emoji/approved.svg"
+              },
+              {
+                "shortcode": "colony",
+                "url": "https://example.com/e2e/visual-settings-emoji/colony.svg"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "workspace-settings-experiments",

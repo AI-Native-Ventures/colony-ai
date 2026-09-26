@@ -206,6 +206,24 @@ test.describe("visual comparison captures", () => {
             "buzz-communities",
           ),
         });
+        await appPage.route(
+          "https://example.com/e2e/visual-settings-emoji/**",
+          async (route) => {
+            const filename = new URL(route.request().url()).pathname
+              .split("/")
+              .at(-1);
+            const color = entry.theme === "dark" ? "#f4f4f5" : "#27272a";
+            const artwork: Record<string, string> = {
+              "celebrate.svg": `<path d="M16 2 20 11 30 12 22.5 19 25 29 16 23.5 7 29 9.5 19 2 12 12 11Z" fill="${color}"/>`,
+              "approved.svg": `<path d="m5 17 7 7L27 8" fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>`,
+              "colony.svg": `<g fill="${color}"><circle cx="16" cy="7" r="4"/><circle cx="24" cy="12" r="4"/><circle cx="24" cy="21" r="4"/><circle cx="16" cy="25" r="4"/><circle cx="8" cy="21" r="4"/><circle cx="8" cy="12" r="4"/><circle cx="16" cy="16" r="3"/></g>`,
+            };
+            await route.fulfill({
+              contentType: "image/svg+xml",
+              body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${artwork[filename ?? ""] ?? ""}</svg>`,
+            });
+          },
+        );
         if (Array.isArray(moderationReports)) {
           await appPage.route("**/moderation/reports**", (route) =>
             route.fulfill({ json: moderationReports }),

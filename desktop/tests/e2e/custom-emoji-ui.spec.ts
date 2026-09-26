@@ -32,7 +32,7 @@ test("composer renders a custom emoji inline", async ({ page }) => {
   await expect(input.locator("img[data-custom-emoji]")).toHaveCount(1);
 });
 
-test("settings card splits My emoji from read-only Community emoji", async ({
+test("settings card keeps owner emoji removable and community emoji read-only", async ({
   page,
 }) => {
   await page.goto("/");
@@ -44,11 +44,19 @@ test("settings card splits My emoji from read-only Community emoji", async ({
   // The mock identity owns :buzz: (removable); :narf: belongs to another
   // member (read-only, no trash button).
   const card = page.getByTestId("settings-custom-emoji");
-  await expect(card.getByTestId("custom-emoji-mine")).toContainText(":buzz:");
+  await expect(card).toContainText("Shared marks for your business.");
   const mine = card.getByTestId("custom-emoji-mine");
+  await expect(mine.getByRole("heading", { name: "Your emoji" })).toBeVisible();
+  await expect(mine).toContainText("buzz");
   await expect(
     mine.getByRole("button", { name: "Remove :buzz:" }),
   ).toBeVisible();
+  const mineBounds = await mine.boundingBox();
+  const formBounds = await card.locator("form").boundingBox();
+  if (!mineBounds || !formBounds) {
+    throw new Error("Emoji list and upload form should both be visible.");
+  }
+  expect(mineBounds.y).toBeLessThan(formBounds.y);
 
   const community = card.getByTestId("custom-emoji-community");
   await expect(community).toContainText(":narf:");
