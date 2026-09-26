@@ -55,7 +55,7 @@ class ClaimAccountPage extends HookConsumerWidget {
                 autofillHints: const [AutofillHints.email],
                 validator: _validateEmail,
               ),
-              const SizedBox(height: Grid.sm),
+              const SizedBox(height: 16),
               AccountTextField(
                 controller: password,
                 label: 'Password',
