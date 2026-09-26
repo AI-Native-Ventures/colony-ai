@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertCircle, RotateCcw, Send } from "lucide-react";
+import { RotateCcw, Send } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -36,29 +36,6 @@ import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
 import { cn } from "@/shared/lib/cn";
 
-function UnavailableSettings({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <section className="min-w-0" data-testid="settings-unavailable">
-      <SettingsSectionHeader title={title} description={description} />
-      <div className="flex items-start gap-3 rounded-xl border border-dashed border-border/80 bg-muted/20 px-4 py-4">
-        <AlertCircle
-          aria-hidden="true"
-          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-        />
-        <p className="text-sm text-muted-foreground">
-          This setting is not available in this desktop build.
-        </p>
-      </div>
-    </section>
-  );
-}
-
 export function BusinessProfileSettingsPanel() {
   const { activeCommunity } = useCommunities();
   return (
@@ -88,30 +65,16 @@ export function BusinessProfileSettingsPanel() {
           </SettingsOptionRow>
         )}
       </SettingsOptionGroup>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Business name and description editing are not available from this
-        desktop build.
-      </p>
     </section>
   );
 }
 
 export function WorkSettingsPanel() {
-  return (
-    <UnavailableSettings
-      title="Work & approvals"
-      description="Choose how work is assigned and which actions need approval."
-    />
-  );
+  return null;
 }
 
 export function AgentConnectionsSettingsPanel() {
-  return (
-    <UnavailableSettings
-      title="AI connections"
-      description="Manage connected AI providers for your agents."
-    />
-  );
+  return null;
 }
 
 export function HarnessLifecycleSettingsPanel() {
@@ -119,12 +82,7 @@ export function HarnessLifecycleSettingsPanel() {
 }
 
 export function BlocksSettingsPanel() {
-  return (
-    <UnavailableSettings
-      title="Blocks"
-      description="Review installed blocks and the permissions they use."
-    />
-  );
+  return null;
 }
 
 export function AuditSettingsPanel() {
@@ -406,10 +364,5 @@ export function DraftRecoverySettingsPanel() {
 }
 
 export function BusinessConnectionsSettingsPanel() {
-  return (
-    <UnavailableSettings
-      title="Connections"
-      description="Connect the services your business uses with Colony."
-    />
-  );
+  return null;
 }
