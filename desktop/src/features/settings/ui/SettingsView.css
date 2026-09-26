@@ -1,5 +1,15 @@
+@font-face {
+  font-family: Manrope;
+  src: url("@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2")
+    format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 body:has(.w20-settings-shell) {
   background: #f3f1f5;
+  font-family: Manrope, sans-serif;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) {
