@@ -178,8 +178,10 @@ export function AppShell() {
     !isFactoryRoute &&
     !settingsOpen &&
     !isHuddleRoom &&
+    selectedView !== "pins" &&
     location.pathname !== "/today" &&
     !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;
@@ -717,6 +719,7 @@ export function AppShell() {
       <ChannelNavigationProvider channels={channels}>
         <AppShellProvider
           value={{
+            navigationHistory: { canGoBack, canGoForward, goBack, goForward },
             markAllChannelsRead,
             markChannelRead,
             markChannelUnread,
@@ -783,7 +786,9 @@ export function AppShell() {
                 !isHuddleRoom &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
-                  selectedView === "channel")
+                  location.pathname.startsWith("/navigation/") ||
+                  selectedView === "channel" ||
+                  selectedView === "pins")
                   ? "true"
                   : undefined
               }
@@ -841,7 +846,10 @@ export function AppShell() {
                       </React.Suspense>
                     </div>
                   ) : (
-                    <div className="relative flex min-h-0 flex-1 overflow-visible">
+                    <div
+                      className="relative flex min-h-0 flex-1 overflow-visible"
+                      data-colony-workspace-frame-content
+                    >
                       {!isHuddleRoom ? (
                         <AppSidebar
                           activeCommunity={communitiesHook.activeCommunity}
@@ -921,6 +929,9 @@ export function AppShell() {
                           }
                           profile={profileQuery.data}
                           showSidebarCollapseButton={!showAppTopChrome}
+                          suppressTodaySelection={location.pathname.startsWith(
+                            "/navigation/",
+                          )}
                           selfUserStatus={
                             deferredPubkey
                               ? (visibleUserStatus(

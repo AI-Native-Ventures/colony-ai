@@ -38,6 +38,7 @@ export type AppSidebarProps = {
   showSidebarCollapseButton: boolean;
   errorMessage?: string;
   selectedChannelId: string | null;
+  suppressTodaySelection?: boolean;
   selectedView:
     | "today"
     | "home"
@@ -47,7 +48,8 @@ export type AppSidebarProps = {
     | "workflows"
     | "pulse"
     | "projects"
-    | "factory";
+    | "factory"
+    | "pins";
   unreadChannelCounts: ReadonlyMap<string, number>;
   unreadChannelIds: ReadonlySet<string>;
   highPriorityUnreadChannelIds: ReadonlySet<string>;

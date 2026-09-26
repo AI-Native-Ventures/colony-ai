@@ -83,7 +83,7 @@ async function composerDockGeometry(
 async function expectOverlayBottomMask(
   overlay: import("@playwright/test").Locator,
 ) {
-  const hasMask = await overlay.evaluate((element) => {
+  const maskChecks = await overlay.evaluate((element) => {
     const after = getComputedStyle(element, "::after");
     const before = getComputedStyle(element, "::before");
     const composer = element.querySelector<HTMLElement>(
@@ -92,36 +92,50 @@ async function expectOverlayBottomMask(
     const cornerMaskContainer = element.querySelector<HTMLElement>(
       ".composer-overlay-corner-masks",
     );
-    if (!composer || !cornerMaskContainer) return false;
+    if (!composer || !cornerMaskContainer) return null;
 
-    const overlayRect = element.getBoundingClientRect();
+    const maskContainerRect = cornerMaskContainer.getBoundingClientRect();
     const composerRect = composer.getBoundingClientRect();
     const leftMask = getComputedStyle(cornerMaskContainer, "::before");
     const rightMask = getComputedStyle(cornerMaskContainer, "::after");
     const tolerance = 0.5;
 
-    return (
-      after.content !== "none" &&
-      before.content !== "none" &&
-      leftMask.maskImage !== "none" &&
-      rightMask.maskImage !== "none" &&
-      Math.abs(
-        composerRect.left - overlayRect.left - Number.parseFloat(leftMask.left),
-      ) <= tolerance &&
-      Math.abs(
-        overlayRect.right -
-          composerRect.right -
-          Number.parseFloat(rightMask.right),
-      ) <= tolerance &&
-      Math.abs(
-        overlayRect.bottom -
-          composerRect.bottom -
-          Number.parseFloat(leftMask.bottom),
-      ) <= tolerance &&
-      leftMask.bottom === rightMask.bottom
-    );
+    return {
+      overlayBefore: before.content !== "none",
+      overlayAfter: after.content !== "none",
+      leftMask: leftMask.maskImage !== "none",
+      rightMask: rightMask.maskImage !== "none",
+      leftAligned:
+        Math.abs(
+          composerRect.left -
+            maskContainerRect.left -
+            Number.parseFloat(leftMask.left),
+        ) <= tolerance,
+      rightAligned:
+        Math.abs(
+          maskContainerRect.right -
+            composerRect.right -
+            Number.parseFloat(rightMask.right),
+        ) <= tolerance,
+      bottomAligned:
+        Math.abs(
+          maskContainerRect.bottom -
+            composerRect.bottom -
+            Number.parseFloat(leftMask.bottom),
+        ) <= tolerance,
+      bottomsMatch: leftMask.bottom === rightMask.bottom,
+    };
   });
-  expect(hasMask).toBe(true);
+  expect(maskChecks).toEqual({
+    overlayBefore: true,
+    overlayAfter: true,
+    leftMask: true,
+    rightMask: true,
+    leftAligned: true,
+    rightAligned: true,
+    bottomAligned: true,
+    bottomsMatch: true,
+  });
 }
 
 test.describe("composer overlays mask scrolled content", () => {

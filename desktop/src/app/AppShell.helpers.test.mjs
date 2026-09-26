@@ -35,6 +35,13 @@ test("legacy project routes remain separate from the Factory destination", () =>
   );
 });
 
+test("deriveShellRoute identifies the designed channel pins page", () => {
+  assert.deepEqual(deriveShellRoute("/channels/pins/channel-id"), {
+    selectedChannelId: null,
+    selectedView: "pins",
+  });
+});
+
 test("shouldBounceForChannelNotification_allowsTopLevelChannelMessages", () => {
   assert.equal(shouldBounceForChannelNotification([["h", "channel"]]), true);
 });

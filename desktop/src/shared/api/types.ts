@@ -237,9 +237,54 @@ export type HomeFeedMeta = {
   generatedAt: number;
 };
 
+/** Test-only presentation records supplied by the visual E2E bridge. */
+export type HomeFeedVisualFixture = {
+  reviewsEmpty?: boolean;
+  agentWork: Array<{
+    id: string;
+    agent: string;
+    title: string;
+    detail: string;
+    status: "permission" | "question" | "failed" | "budget";
+  }>;
+  businessReviews: Array<{
+    id: string;
+    client: string;
+    meta: string;
+    title: string;
+    variant:
+      | "olive"
+      | "cedar"
+      | "instagram"
+      | "linkedin"
+      | "access"
+      | "enquiry";
+    footer?: string;
+    artTitle?: string;
+  }>;
+  clientApproval: {
+    client: string;
+    title: string;
+    approver: string;
+    version: number;
+  };
+  nextDelivery: {
+    title: string;
+    detail: string;
+  };
+  moneyFollowUp: {
+    client: string;
+    invoice: string;
+    due: string;
+    amount: string;
+  };
+};
+
 export type HomeFeedResponse = {
   feed: HomeFeed;
   meta: HomeFeedMeta;
+  /** Present only when the visual E2E bridge loads its r17 fixture. */
+  visualFixture?: HomeFeedVisualFixture;
 };
 
 export type GetHomeFeedInput = {

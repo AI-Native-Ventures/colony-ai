@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:buzz/features/activity/activity_page.dart';
+import 'package:buzz/features/activity/activity_home_page.dart';
 import 'package:buzz/features/activity/activity_provider.dart';
 import 'package:buzz/features/activity/compose_drafts_provider.dart';
 import 'package:buzz/features/activity/feed_item.dart';
@@ -188,23 +189,40 @@ void main() {
     expect(find.text('No activity yet'), findsOneWidget);
   });
 
-  testWidgets('does not imply a back button for the top-level Activity tab', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildTestable());
-    await tester.pumpAndSettle();
+  testWidgets(
+    'Activity home uses its r19 header and tabs without a back action',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: ActivityHomePage(
+                communityName: 'Lerato Social',
+                currentUser: const UserProfile(
+                  pubkey: 'lerato-pubkey',
+                  displayName: 'Lerato Molefe',
+                ),
+                onOpenItem: (_) {},
+                updatesPageBuilder: (_, _) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    final appBar = tester.widget<FrostedAppBar>(
-      find.byType(FrostedAppBar).last,
-    );
-    expect(appBar.automaticallyImplyLeading, isFalse);
-    expect(appBar.gradient, isNull);
-    expect(appBar.frosted, isTrue);
-    expect(appBar.showBottomDivider, isTrue);
-    expect(appBar.bottomHeight, Grid.xxs);
-    expect(appBar.centerTitle, isFalse);
-    expect(find.byTooltip('Back'), findsNothing);
-  });
+      expect(find.text('Activity'), findsOneWidget);
+      expect(find.text('Mentions, replies and approvals'), findsOneWidget);
+      expect(find.text('For you'), findsOneWidget);
+      expect(find.text('Team updates'), findsOneWidget);
+      expect(find.byType(FrostedAppBar), findsNothing);
+      expect(find.byTooltip('Back'), findsNothing);
+    },
+  );
 
   testWidgets('sizes the Activity app bar for its custom title style', (
     tester,
@@ -546,7 +564,7 @@ void main() {
     // whitespace-only) unchanged, so the sender must resolve through the
     // shared nonblank-name label contract: the row shows the compact npub
     // of the a11ce key instead of a blank author label. Binds the production
-    // seam — the sender resolves through the user cache exactly as the live
+    // seam: the sender resolves through the user cache exactly as the live
     // page does. Keyed remounts keep each ProviderScope (and its user-cache
     // override) fresh between scenarios, so each iteration actually
     // consumes its own blank-name fixture.

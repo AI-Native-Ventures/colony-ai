@@ -555,7 +555,12 @@ export const MessageRow = React.memo(
     );
 
     const authorNode = message.pubkey ? (
-      <MessageAuthorText hoverUnderline>{message.author}</MessageAuthorText>
+      <MessageAuthorText
+        className={message.isAgent ? "colony-agent-message-author" : undefined}
+        hoverUnderline
+      >
+        {message.author}
+      </MessageAuthorText>
     ) : (
       <MessageAuthorText as="h3">{message.author}</MessageAuthorText>
     );

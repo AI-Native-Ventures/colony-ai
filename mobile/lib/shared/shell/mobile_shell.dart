@@ -34,6 +34,7 @@ class MobileShell extends StatelessWidget {
     required this.destination,
     required this.onDestinationSelected,
     required this.child,
+    this.showBrandBar = true,
     this.hasUnreadActivity = false,
     this.overlayBuilder,
     super.key,
@@ -46,6 +47,7 @@ class MobileShell extends StatelessWidget {
   final MobileShellDestination destination;
   final ValueChanged<MobileShellDestination> onDestinationSelected;
   final Widget child;
+  final bool showBrandBar;
   final bool hasUnreadActivity;
   final MobileShellOverlayBuilder? overlayBuilder;
 
@@ -72,27 +74,30 @@ class MobileShell extends StatelessWidget {
           backgroundColor: tokens.canvas,
           body: Column(
             children: [
-              Container(
-                key: const ValueKey('mobile-brand-bar'),
-                height: brandBarHeight,
-                padding: const EdgeInsets.symmetric(horizontal: Grid.fourteen),
-                alignment: Alignment.centerLeft,
-                decoration: BoxDecoration(
-                  color: tokens.canvas,
-                  border: Border(
-                    bottom: BorderSide(color: tokens.brandBarDivider),
+              if (showBrandBar)
+                Container(
+                  key: const ValueKey('mobile-brand-bar'),
+                  height: brandBarHeight,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Grid.fourteen,
+                  ),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    color: tokens.canvas,
+                    border: Border(
+                      bottom: BorderSide(color: tokens.brandBarDivider),
+                    ),
+                  ),
+                  child: Text(
+                    'colony',
+                    style: context.textTheme.titleLarge?.copyWith(
+                      color: tokens.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -1.4,
+                    ),
                   ),
                 ),
-                child: Text(
-                  'colony',
-                  style: context.textTheme.titleLarge?.copyWith(
-                    color: tokens.ink,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -1.4,
-                  ),
-                ),
-              ),
               Expanded(child: child),
             ],
           ),
@@ -100,6 +105,7 @@ class MobileShell extends StatelessWidget {
             destination: destination,
             hasUnreadActivity: hasUnreadActivity,
             onDestinationSelected: onDestinationSelected,
+            bottomInset: bottomInset,
           ),
         ),
         if (overlay != null) Positioned.fill(child: overlay),
@@ -113,11 +119,13 @@ class _MobileBottomNavigation extends StatelessWidget {
     required this.destination,
     required this.hasUnreadActivity,
     required this.onDestinationSelected,
+    required this.bottomInset,
   });
 
   final MobileShellDestination destination;
   final bool hasUnreadActivity;
   final ValueChanged<MobileShellDestination> onDestinationSelected;
+  final double bottomInset;
 
   static const _destinations = [
     (
@@ -146,14 +154,14 @@ class _MobileBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Container(
-      height: MobileShell.navigationBarHeight,
+      height: MobileShell.navigationBarHeight + bottomInset,
       key: const ValueKey('mobile-bottom-navigation'),
       decoration: BoxDecoration(
         color: tokens.paper,
         border: Border(top: BorderSide(color: tokens.line)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
+        padding: EdgeInsets.fromLTRB(Grid.twelve, 0, Grid.twelve, bottomInset),
         child: Row(
           children: [
             for (final item in _destinations)

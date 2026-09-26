@@ -35,7 +35,8 @@ type SidebarSelectedView =
   | "workflows"
   | "pulse"
   | "projects"
-  | "factory";
+  | "factory"
+  | "pins";
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;
@@ -64,6 +65,7 @@ type AppSidebarPrimaryMenuProps = {
   onSelectHome: () => void;
   onSelectFactory: () => void;
   onSelectWorkflows: () => void;
+  suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
 
@@ -125,6 +127,7 @@ export function AppSidebarPinnedHeader({
           >
             <span aria-hidden="true" className="colony-sidebar-brand-mark">
               {communityInitial}
+              <span className="colony-sidebar-brand-mark-dot">·</span>
             </span>
             <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
               {activeCommunityName || "No community"}
@@ -186,6 +189,7 @@ export function AppSidebarPrimaryMenu({
   onSelectHome,
   onSelectFactory,
   onSelectWorkflows,
+  suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
   return (
@@ -199,7 +203,7 @@ export function AppSidebarPrimaryMenu({
           <SidebarMenuItem>
             <SidebarMenuButton
               className="data-[active=true]:font-normal"
-              isActive={selectedView === "today"}
+              isActive={selectedView === "today" && !suppressTodaySelection}
               onClick={onSelectToday}
               tooltip="Today"
               type="button"

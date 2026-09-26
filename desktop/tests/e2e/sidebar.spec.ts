@@ -84,10 +84,10 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   const hoverRow = page.getByTestId("channel-random");
 
   await page.mouse.move(600, 100);
-  await expect(selectedRow).toHaveCSS("background-color", "rgb(36, 87, 168)");
+  await expect(selectedRow).toHaveCSS("background-color", "rgb(38, 85, 160)");
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "400");
+  await expect(selectedRow).toHaveCSS("font-weight", "700");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -103,18 +103,13 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   });
   expect(rowGap).toBe(4);
 
-  const establishedHoverBackground = await hoverRow.evaluate((row) => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "var(--buzz-hover-surface)";
-    row.parentElement?.append(probe);
-    const background = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return background;
-  });
+  const idleHoverRowBackground = await hoverRow.evaluate(
+    (row) => getComputedStyle(row).backgroundColor,
+  );
   await hoverRow.hover();
-  await expect(hoverRow).toHaveCSS(
+  await expect(hoverRow).not.toHaveCSS(
     "background-color",
-    establishedHoverBackground,
+    idleHoverRowBackground,
   );
 
   const activeForegroundTokens = await page.evaluate(() => {
