@@ -37,6 +37,27 @@ const BAR_KEYS = Array.from(
   (_, index) => `voice-note-bar-${index}`,
 );
 
+function workspaceVoiceNoteBarHeight(index: number): number {
+  return 4 + Math.sin(index * 1.4) ** 2 * 22;
+}
+
+function WorkspaceVoiceNotePlayIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.65}
+      viewBox="0 0 24 24"
+    >
+      <path d="m7 3 14 9-14 9Z" />
+    </svg>
+  );
+}
+
 function dotPeaks(count: number): number[] {
   return Array.from({ length: count }, () => 0);
 }
@@ -403,7 +424,11 @@ export function AudioMessageAttachment({
     (active: boolean) =>
       peaks.map((peak, index) => (
         <motion.span
-          animate={{ height: voiceNoteBarHeight(peak) }}
+          animate={{
+            height: hasWorkspaceVoiceNoteLayout
+              ? workspaceVoiceNoteBarHeight(index)
+              : voiceNoteBarHeight(peak),
+          }}
           aria-hidden="true"
           className={cn(
             "w-[3px] shrink-0",
@@ -477,6 +502,8 @@ export function AudioMessageAttachment({
             <AlertCircle aria-hidden="true" />
           ) : pendingPlay ? (
             <Loader2 aria-hidden="true" className="animate-spin" />
+          ) : hasWorkspaceVoiceNoteLayout && !isPlaying ? (
+            <WorkspaceVoiceNotePlayIcon />
           ) : (
             <MorphingPlayPauseIcon isPlaying={isPlaying} />
           )}
