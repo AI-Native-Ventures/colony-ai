@@ -386,14 +386,21 @@ test.describe("visual comparison captures", () => {
           entry.referenceInventoryRoute === "channel/sales" &&
           usesReferenceWorkspace
         ) {
+          const salesTimeline = appPage.getByTestId("message-timeline");
           await expect(
-            appPage.locator('[data-message-id="reference-sales-lerato-0914"]'),
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0914"]',
+            ),
           ).toBeVisible();
           await expect(
-            appPage.locator('[data-message-id="reference-sales-aya-0942"]'),
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-aya-0942"]',
+            ),
           ).toBeVisible();
           await expect(
-            appPage.locator('[data-message-id="reference-sales-lerato-0950"]'),
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            ),
           ).toBeVisible();
           await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
             "2",
