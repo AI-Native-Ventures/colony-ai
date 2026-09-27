@@ -360,7 +360,7 @@ test("keeps the composer and global automatic mention settings synchronized", as
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await page.getByTestId("settings-group-agents-group").click();
   const settingsToggle = page
     .getByTestId("settings-automatic-agent-mentions")
     .getByRole("switch", { name: "Automatically mention agents" });
