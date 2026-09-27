@@ -49,7 +49,8 @@ type UserAvatarProps = {
   initialsLabel?: string;
   size?: UserAvatarSize;
   accent?: boolean;
-  shape?: "circle" | "squircle";
+  fallbackVariant?: "color" | "muted";
+  shape?: "circle" | "squircle" | "square";
   className?: string;
   fallbackDelayMs?: number;
   imageDraggable?: boolean;
@@ -62,6 +63,7 @@ export function UserAvatar({
   initialsLabel,
   size = "md",
   accent = false,
+  fallbackVariant = "color",
   shape,
   className,
   fallbackDelayMs = 200,
@@ -70,7 +72,10 @@ export function UserAvatar({
 }: UserAvatarProps) {
   const initials = getInitials(initialsLabel ?? displayName);
   const resolvedShape = shape ?? "circle";
-  const shapedAvatarUrl = avatarSourceUrlForShape(avatarUrl, resolvedShape);
+  const shapedAvatarUrl = avatarSourceUrlForShape(
+    avatarUrl,
+    resolvedShape === "circle" ? "circle" : "squircle",
+  );
   // Animated avatars show their static poster frame until hovered, then play
   // the animation.
   const animated = parseAnimatedAvatarUrl(shapedAvatarUrl);
@@ -81,7 +86,11 @@ export function UserAvatar({
       ? rewriteRelayUrl(shapedAvatarUrl)
       : null;
   const radiusClass =
-    resolvedShape === "squircle" ? "rounded-squircle" : "rounded-full";
+    resolvedShape === "square"
+      ? "rounded-md"
+      : resolvedShape === "squircle"
+        ? "rounded-squircle"
+        : "rounded-full";
 
   return (
     <Avatar
@@ -111,9 +120,11 @@ export function UserAvatar({
       <AvatarFallback
         className={cn(
           "font-semibold",
-          accent
-            ? "bg-primary text-primary-foreground"
-            : fallbackColorClass(displayName),
+          fallbackVariant === "muted"
+            ? "bg-muted text-muted-foreground"
+            : accent
+              ? "bg-primary text-primary-foreground"
+              : fallbackColorClass(displayName),
         )}
         data-testid={testId ? `${testId}-fallback` : undefined}
         delayMs={fallbackDelayMs}

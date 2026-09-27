@@ -689,7 +689,7 @@ export const ChannelPane = React.memo(function ChannelPane({
             }
           >
             {isHuddleTranscript ? null : header}
-            {workspaceChrome && activeChannel && hasOpenMessageThread ? (
+            {workspaceChrome && activeChannel?.channelType === "stream" ? (
               <ChannelWorkspaceTabs />
             ) : null}
             {isHuddleTranscript && huddleThreadRepliesError ? (
@@ -701,6 +701,9 @@ export const ChannelPane = React.memo(function ChannelPane({
               <MessageTimeline
                 ref={messageTimelineRef}
                 channelId={activeChannel?.id}
+                activeThreadRootId={
+                  workspaceChrome ? (threadHeadMessage?.id ?? null) : null
+                }
                 channelIntro={channelIntro}
                 directMessageIntro={directMessageIntro}
                 scrollContainerRef={timelineScrollRef}
@@ -715,9 +718,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                   isHuddleTranscript ||
                   (workspaceChrome && hasOpenMessageThread)
                 }
-                compactThreadSummaryAvatars={
-                  workspaceChrome && hasOpenMessageThread
-                }
+                compactThreadSummaryAvatars
                 hideAgentAccessBadges={isHuddleTranscript}
                 pinnedIntro={
                   isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined

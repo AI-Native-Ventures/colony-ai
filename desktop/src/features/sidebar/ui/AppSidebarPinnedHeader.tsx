@@ -1,4 +1,11 @@
-import { ArrowLeft, Bot, Folders, House, Inbox } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  BriefcaseBusiness,
+  Folders,
+  House,
+  Inbox,
+} from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
@@ -58,6 +65,7 @@ type AppSidebarPrimaryMenuProps = {
   onSelectToday: () => void;
   onSelectAgents: () => void;
   onSelectHome: () => void;
+  onSelectWorkflows: () => void;
   onSelectFactory: () => void;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
@@ -181,6 +189,7 @@ export function AppSidebarPrimaryMenu({
   onSelectToday,
   onSelectAgents,
   onSelectHome,
+  onSelectWorkflows,
   onSelectFactory,
   suppressTodaySelection = false,
   selectedView,
@@ -195,7 +204,7 @@ export function AppSidebarPrimaryMenu({
         <SidebarMenu className="sidebar-primary-menu pb-2">
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               isActive={selectedView === "today" && !suppressTodaySelection}
               onClick={onSelectToday}
               tooltip="Today"
@@ -207,7 +216,7 @@ export function AppSidebarPrimaryMenu({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               isActive={selectedView === "home"}
               onClick={onSelectHome}
               tooltip="Inbox"
@@ -218,16 +227,31 @@ export function AppSidebarPrimaryMenu({
             </SidebarMenuButton>
             {homeBadgeCount > 0 ? (
               <SidebarMenuBadge
-                className="right-2 rounded-full bg-primary/15 px-1.5 text-2xs text-primary peer-data-[active=true]/menu-button:bg-sidebar-active-foreground/20 peer-data-[active=true]/menu-button:text-sidebar-active-foreground"
+                className="right-2 h-auto min-w-0 rounded-none bg-transparent px-0 py-0 text-2xs font-normal text-sidebar-foreground"
                 data-testid="sidebar-home-count"
               >
                 {Math.min(homeBadgeCount, 99)}
               </SidebarMenuBadge>
             ) : null}
           </SidebarMenuItem>
+          <FeatureGate feature="workflows">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="text-xs"
+                data-testid="open-workflows-pinned-view"
+                isActive={selectedView === "workflows"}
+                onClick={onSelectWorkflows}
+                tooltip="Work"
+                type="button"
+              >
+                <BriefcaseBusiness className="h-4 w-4" />
+                <SidebarMenuLabel>Work</SidebarMenuLabel>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </FeatureGate>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               data-testid="open-agents-view"
               isActive={selectedView === "agents"}
               onClick={onSelectAgents}
@@ -241,6 +265,7 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="projects">
             <SidebarMenuItem>
               <SidebarMenuButton
+                className="text-xs"
                 data-testid="open-factory-view"
                 isActive={selectedView === "factory"}
                 onClick={onSelectFactory}

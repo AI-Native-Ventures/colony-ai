@@ -4,7 +4,6 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   ListTodo,
-  Plus,
   Users,
   Workflow,
 } from "lucide-react";
@@ -394,6 +393,13 @@ export function AppSidebar({
     [],
   );
 
+  const handleCreateChannelInSection = React.useCallback(
+    (sectionId: string) => {
+      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
+    },
+    [assignChannel, onBrowseChannels],
+  );
+
   const handleCreateSectionConfirm = React.useCallback(
     (value: SectionDialogValue) => {
       const section = createSection(value.name, value.icon);
@@ -528,13 +534,6 @@ export function AppSidebar({
     openCreateDialog("stream");
   }, [onCreateChannelOpenChange, openCreateDialog]);
 
-  const handleCreateChannelInSection = React.useCallback(
-    (sectionId: string) => {
-      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
-    },
-    [assignChannel, onBrowseChannels],
-  );
-
   return (
     <Sidebar
       className="!z-[100] !border-r-0"
@@ -621,6 +620,7 @@ export function AppSidebar({
                     onSelectToday={onSelectToday}
                     onSelectAgents={onSelectAgents}
                     onSelectHome={onSelectHome}
+                    onSelectWorkflows={onSelectWorkflows}
                     onSelectFactory={onSelectFactory}
                     suppressTodaySelection={suppressTodaySelection}
                     selectedView={selectedView}
@@ -810,7 +810,12 @@ export function AppSidebar({
                                 onClick={() => onBrowseChannels()}
                                 type="button"
                               >
-                                <Plus className="h-4 w-4" />
+                                <span
+                                  aria-hidden="true"
+                                  className="text-sm font-normal leading-none"
+                                >
+                                  +
+                                </span>
                                 <span className="truncate">
                                   Browse channels
                                 </span>
@@ -858,18 +863,20 @@ export function AppSidebar({
                         <span data-sidebar-section-title>Business</span>
                       </h2>
                       <SidebarMenu data-testid="sidebar-business-destinations">
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            data-testid="sidebar-business-clients"
-                            isActive={selectedView === "clients"}
-                            onClick={onSelectClients}
-                            tooltip="Clients"
-                            type="button"
-                          >
-                            <BriefcaseBusiness aria-hidden="true" />
-                            <SidebarMenuLabel>Clients</SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
+                        {onSelectClients ? (
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              data-testid="sidebar-business-clients"
+                              isActive={selectedView === "clients"}
+                              onClick={onSelectClients}
+                              tooltip="Clients"
+                              type="button"
+                            >
+                              <BriefcaseBusiness aria-hidden="true" />
+                              <SidebarMenuLabel>Clients</SidebarMenuLabel>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ) : null}
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             data-testid="sidebar-business-work"
@@ -964,7 +971,6 @@ export function AppSidebar({
                       </SidebarMenu>
                     </>
                   ) : null}
-
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
                     <div className="px-3 py-2 text-sm text-destructive">
