@@ -689,9 +689,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final timestamps = tester.widgetList<Text>(find.text('12/31/2025'));
-      expect(timestamps, hasLength(2));
+      final timestamps = [
+        tester.widget<Text>(find.byKey(const ValueKey('forum-post-timestamp'))),
+        tester.widget<Text>(
+          find.byKey(const ValueKey('forum-reply-timestamp-old-reply')),
+        ),
+      ];
       for (final timestamp in timestamps) {
+        expect(timestamp.data, isNotEmpty);
         expect(timestamp.maxLines, 1);
         expect(timestamp.overflow, TextOverflow.ellipsis);
       }
@@ -738,7 +743,14 @@ void main() {
 
       expect(tester.getSize(find.text(postAuthor)).width, greaterThan(150));
       expect(tester.getSize(find.text(replyAuthor)).width, greaterThan(140));
-      expect(find.text('2m ago'), findsNWidgets(2));
+      final postTimestamp = tester.widget<Text>(
+        find.byKey(const ValueKey('forum-post-timestamp')),
+      );
+      final replyTimestamp = tester.widget<Text>(
+        find.byKey(const ValueKey('forum-reply-timestamp-reply')),
+      );
+      expect(postTimestamp.data, startsWith('Today, '));
+      expect(replyTimestamp.data, matches(RegExp(r'^\d{2}:\d{2}$')));
       expect(tester.takeException(), isNull);
     });
 

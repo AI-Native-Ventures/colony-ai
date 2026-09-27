@@ -23,7 +23,10 @@ void main() {
           )
           .first,
     );
-    expect(verticalSpacing.padding, const EdgeInsets.fromLTRB(0, 43, 0, 0));
+    expect(
+      verticalSpacing.padding,
+      const EdgeInsets.symmetric(vertical: Grid.xs),
+    );
     expect(
       conversationMessageVerticalPadding(
         showAuthor: true,

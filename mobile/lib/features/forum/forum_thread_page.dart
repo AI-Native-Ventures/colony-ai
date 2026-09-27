@@ -485,6 +485,7 @@ class _OriginalPost extends ConsumerWidget {
                       constraints: const BoxConstraints(maxWidth: Grid.xxl),
                       child: Text(
                         _formatNoteDateTime(post.createdAt),
+                        key: const ValueKey('forum-post-timestamp'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.mobileTypography.identityStatus.copyWith(
@@ -627,6 +628,7 @@ class _ReplyRow extends ConsumerWidget {
                             isUtc: true,
                           ).toLocal(),
                         ),
+                        key: ValueKey('forum-reply-timestamp-${reply.eventId}'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.mobileTypography.identityStatus.copyWith(

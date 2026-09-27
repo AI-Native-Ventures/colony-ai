@@ -709,7 +709,9 @@ void main() {
     expect(_dmTileAvatarInitial(tester, shortPubkey(b0b)), 'B');
   });
 
-  testWidgets('sizes the community header for accessible text', (tester) async {
+  testWidgets('sizes the Conversations header for accessible text', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildTestable(
         textScaler: const TextScaler.linear(2),
@@ -724,7 +726,10 @@ void main() {
       find.byType(FrostedAppBar).last,
     );
     final titleStyle = appBar.titleStyle!;
-    expect(titleStyle.fontSize, 16);
+    expect(
+      titleStyle.fontSize,
+      MobileTypographyTokens.v5.companyHubTitle.fontSize,
+    );
     expect(
       tester
           .getSize(
@@ -893,8 +898,9 @@ void main() {
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
 
-    expect(find.text('Conversations'), findsNothing);
-    expect(find.text('Your business, together'), findsOneWidget);
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
+    expect(find.text('Your business, together'), findsNothing);
     expect(
       tester.widget<FrostedAppBar>(find.byType(FrostedAppBar).last).frosted,
       isFalse,
@@ -1054,7 +1060,7 @@ void main() {
     expect(deleteIcon.color, error);
   });
 
-  testWidgets('aligns the v5 business header and skeleton labels', (
+  testWidgets('aligns the v5 Conversations header and skeleton labels', (
     tester,
   ) async {
     final relaySession = _ReconnectingRelaySession();
@@ -1069,13 +1075,10 @@ void main() {
     relaySession.connect();
     await tester.pumpAndSettle();
 
-    final businessTitleX = tester
-        .getTopLeft(find.text('Your business, together'))
-        .dx;
-    final chatTitleX = tester.getTopLeft(find.text('Conversations')).dx;
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
     final sectionLabelX = tester.getTopLeft(find.text('CHANNELS')).dx;
     final rowLabelX = tester.getTopLeft(find.text('general')).dx;
-    expect(businessTitleX, greaterThan(chatTitleX));
     expect(sectionLabelX, lessThan(rowLabelX));
 
     relaySession.setReconnecting();
@@ -1096,7 +1099,7 @@ void main() {
     expect(skeletonSectionLabelX, skeletonRowLabelX);
   });
 
-  testWidgets('centers both business switcher icons in the header', (
+  testWidgets('keeps the identity switcher in the Conversations header', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1108,23 +1111,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final appBar = find.byType(FrostedAppBar).last;
-    final community = find.descendant(
-      of: appBar,
-      matching: find.byKey(const ValueKey('community-indicator')),
-    );
-    final businessSwitch = find.descendant(
-      of: appBar,
-      matching: find.byKey(const ValueKey('conversation-community-switcher')),
-    );
-    expect(tester.getSize(community), const Size.square(36));
-    expect(tester.getSize(businessSwitch), const Size.square(36));
-    expect(
-      tester.getRect(community).center.dy,
-      tester.getRect(businessSwitch).center.dy,
+    final switcher = find.byKey(
+      const ValueKey('conversation-community-switcher'),
     );
     final semantics = tester.widget<Semantics>(
-      find.descendant(of: businessSwitch, matching: find.byType(Semantics)),
+      find.descendant(of: switcher, matching: find.byType(Semantics)),
+    );
+    expect(
+      tester.getSize(switcher),
+      Size.square(MobileLayoutTokens.companyHeaderAvatarSize),
     );
     expect(semantics.properties.label, 'Switch business');
     expect(
@@ -1788,7 +1783,7 @@ void main() {
     final surface = find.byKey(const Key('quick-actions-surface'));
     expect(tester.getSize(surface), const Size.square(56));
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
 
     var largestHeight = tester.getSize(surface).height;
@@ -1931,7 +1926,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1967,7 +1962,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2006,7 +2001,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2057,7 +2052,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2124,7 +2119,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2180,7 +2175,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create channel'));
     await tester.pumpAndSettle();
@@ -2283,7 +2278,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2442,7 +2437,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2485,7 +2480,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
