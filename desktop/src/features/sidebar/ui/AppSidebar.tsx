@@ -6,7 +6,6 @@ import {
   ChevronDown,
   FileText,
   KanbanSquare,
-  Plus,
   Search,
   Users,
 } from "lucide-react";
