@@ -406,6 +406,12 @@ test.describe("visual comparison captures", () => {
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
           );
+          const activeTabUnderline = await channelTabs
+            .locator('[aria-current="page"]')
+            .evaluate(
+              (element) => getComputedStyle(element, "::after").backgroundColor,
+            );
+          expect(activeTabUnderline).toBe("rgb(146, 115, 159)");
           if (!entry.appRoute.includes("?thread=")) {
             await expect(
               appPage.locator(".colony-channel-description"),
