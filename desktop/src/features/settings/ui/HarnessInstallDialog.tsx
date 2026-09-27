@@ -1,4 +1,3 @@
-import * as React from "react";
 import { X } from "lucide-react";
 
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
