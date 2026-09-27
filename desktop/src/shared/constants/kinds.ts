@@ -175,6 +175,23 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
   KIND_MONEY_FOLLOW_UP,
 ] as const;
 
+// Company records (docs/company-records.md). Goals are community-wide; asks
+// live in channel threads. Heads are relay-signed. Kind 47032 (ask create)
+// joins the thread timeline kinds together with its card renderer.
+export const KIND_GOAL_HEAD = 30642;
+export const KIND_ASK_HEAD = 30643;
+export const KIND_GOAL_ACTION = 47031;
+export const KIND_ASK_ACTION = 47032;
+export const KIND_ASK_RESPONSE = 47033;
+
+export const COMPANY_RECORD_EVENT_KINDS = [
+  KIND_GOAL_HEAD,
+  KIND_ASK_HEAD,
+  KIND_GOAL_ACTION,
+  KIND_ASK_ACTION,
+  KIND_ASK_RESPONSE,
+] as const;
+
 // Human-visible "new content" message kinds. Used as the unread trigger set
 // (sidebar badges, catch-up queries) and as the Home-feed mention query.
 // Reactions, edits, diffs, deletions, and system messages are deliberately

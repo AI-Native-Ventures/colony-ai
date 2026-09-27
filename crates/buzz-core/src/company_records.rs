@@ -1,0 +1,1588 @@
+//! Shared typed content and validation for Colony company records.
+//!
+//! Company records (goals and asks) are brokered like business records: a
+//! member signs a command, the relay validates it and emits a relay-signed
+//! replaceable head. Goals are community-wide (no `h` tag); asks live in a
+//! channel thread. See `docs/company-records.md` for the full contract.
+//!
+//! This module holds the pure parts of the contract: typed content that
+//! rejects unknown fields, per-action payload rules, the goal-tree cycle
+//! check, ask response rules and the ask authority decision. The relay
+//! supplies everything that needs I/O (current heads, roles, agent status).
+
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use uuid::Uuid;
+
+/// Current company-record JSON schema version.
+pub const COMPANY_RECORD_SCHEMA_VERSION: u8 = 1;
+
+/// Longest goal or ask title, in characters.
+pub const MAX_TITLE_CHARS: usize = 180;
+/// Longest goal done condition, in characters.
+pub const MAX_DONE_CONDITION_CHARS: usize = 1000;
+/// Longest progress evidence note, in characters.
+pub const MAX_EVIDENCE_CHARS: usize = 2000;
+/// Longest ask body, in characters.
+pub const MAX_ASK_BODY_CHARS: usize = 4000;
+/// Longest ask answer, in characters.
+pub const MAX_ANSWER_CHARS: usize = 4000;
+/// Longest reason attached to a decision, status change or cancellation.
+pub const MAX_REASON_CHARS: usize = 1000;
+/// Longest target unit label, in characters.
+pub const MAX_UNIT_CHARS: usize = 24;
+/// Maximum goal-tree depth walked when checking for cycles.
+pub const MAX_GOAL_DEPTH: usize = 64;
+
+/// Errors returned while parsing or validating a company-record command.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum CompanyRecordError {
+    /// The event kind does not have a member-authored company command schema.
+    #[error("unsupported company command kind")]
+    UnsupportedKind,
+    /// The JSON content does not match the kind's typed schema.
+    #[error("invalid company record content")]
+    InvalidContent,
+    /// The record uses a schema version the relay does not understand.
+    #[error("unsupported company record schema version")]
+    UnsupportedSchemaVersion,
+    /// The d-tag is not in the expected namespace for this record.
+    #[error("company record d-tag does not match its namespace")]
+    DTagMismatch,
+    /// A field breaks a contract rule; the message names the field and rule.
+    #[error("invalid company record: {0}")]
+    Invalid(&'static str),
+}
+
+/// Member-authored company command content parsed by the relay broker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "record", rename_all = "snake_case")]
+pub enum CompanyCommand {
+    /// Goal mutation (kind 47031).
+    GoalAction(GoalAction),
+    /// Ask create or cancel (kind 47032).
+    AskAction(AskAction),
+    /// Ask resolution (kind 47033).
+    AskResponse(AskResponse),
+}
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+/// Lifecycle status of a goal head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalStatus {
+    /// Being worked on.
+    Active,
+    /// Behind plan; still open.
+    OffPace,
+    /// Explicitly marked achieved by someone with authority.
+    Achieved,
+    /// Hidden from active lists; history kept; restorable.
+    Archived,
+    /// Removed; a minimal head keeps references readable.
+    Deleted,
+}
+
+/// A goal mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalActionKind {
+    /// Create a goal that has no head.
+    Create,
+    /// Replace the goal's editable fields.
+    Update,
+    /// Record progress with evidence.
+    Progress,
+    /// Move between active, off pace and achieved.
+    SetStatus,
+    /// Archive the goal (sub-goals stay active).
+    Archive,
+    /// Restore an archived goal to active.
+    Restore,
+    /// Delete the goal when nothing depends on it.
+    Delete,
+}
+
+/// Optional numeric target for a goal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GoalTarget {
+    /// Target value as a decimal string, e.g. `"12"` or `"2.5"`.
+    pub value: String,
+    /// Unit label, e.g. `"clients"`.
+    pub unit: String,
+}
+
+/// Editable goal fields supplied by a member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GoalRecord {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable goal UUID; equals the command's `goalId`.
+    pub goal_id: Uuid,
+    /// Parent goal for a sub-goal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_goal_id: Option<Uuid>,
+    /// Goal title.
+    pub title: String,
+    /// Pubkey of the person or employee who owns the goal.
+    pub owner_pubkey: String,
+    /// Optional due date, `YYYY-MM-DD`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+    /// Plain-language condition that means the goal is done.
+    pub done_condition: String,
+    /// Optional numeric target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<GoalTarget>,
+    /// Channels where the goal is discussed.
+    #[serde(default)]
+    pub linked_channel_ids: Vec<Uuid>,
+}
+
+/// Progress recorded against a goal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GoalProgress {
+    /// Current value as a decimal string; required when the goal has a target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
+    /// What shows the progress, in plain words.
+    pub evidence: String,
+    /// Event ids or `buzz://` links that back the evidence.
+    #[serde(default)]
+    pub evidence_refs: Vec<String>,
+}
+
+/// Member request to change a goal (kind 47031).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GoalAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable goal UUID.
+    pub goal_id: Uuid,
+    /// Requested mutation.
+    pub action: GoalActionKind,
+    /// Exact current head event id; omitted only on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Goal fields for create and update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<GoalRecord>,
+    /// Progress for the progress action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<GoalProgress>,
+    /// Target status for set_status: active, off_pace or achieved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<GoalStatus>,
+    /// Required for set_status, archive and delete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Progress as stored on the head, with who recorded it and when.
+// No deny_unknown_fields: serde does not support it together with flatten.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordedGoalProgress {
+    /// The member-supplied progress.
+    #[serde(flatten)]
+    pub progress: GoalProgress,
+    /// Who recorded it.
+    pub recorded_by_pubkey: String,
+    /// When it was recorded (RFC 3339).
+    pub recorded_at: String,
+}
+
+/// Relay-authored canonical goal head (kind 30642).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GoalHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable goal UUID.
+    pub goal_id: Uuid,
+    /// Lifecycle status.
+    pub status: GoalStatus,
+    /// Title, kept on deleted heads so references can say what was deleted.
+    pub title: String,
+    /// Current goal fields; absent on a deleted head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<GoalRecord>,
+    /// Latest recorded progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<RecordedGoalProgress>,
+    /// Event id of the member action that produced this head.
+    pub source_action_event_id: String,
+}
+
+// ── Asks ─────────────────────────────────────────────────────────────────────
+
+/// Kind of answer an ask needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskType {
+    /// Approve, reject or request a revision.
+    Approval,
+    /// Free-text answer.
+    Question,
+    /// Pick one option.
+    Choice,
+    /// Confirm every checklist item.
+    Checklist,
+    /// Pass or fail with a reason.
+    Verdict,
+}
+
+/// What an ask decides; controls who may resolve it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskCategory {
+    /// Ordinary team decision.
+    General,
+    /// Spending money.
+    Money,
+    /// Hiring.
+    Hire,
+    /// Tool use or consent.
+    Tool,
+    /// Secret or credential handling.
+    Secret,
+}
+
+impl AskCategory {
+    /// Categories that only community owners and admins may resolve.
+    pub const fn requires_authority(self) -> bool {
+        !matches!(self, AskCategory::General)
+    }
+}
+
+/// One choice option or checklist item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskOption {
+    /// Stable id within the ask, `[a-z0-9_-]`, 1 to 32 characters.
+    pub id: String,
+    /// Label shown to people, 1 to 180 characters.
+    pub label: String,
+}
+
+/// Record the ask is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AskSubjectKind {
+    /// A goal (`buzz://goal/<id>`).
+    Goal,
+    /// A workflow run.
+    WorkflowRun,
+    /// A work item.
+    WorkItem,
+}
+
+/// Optional link from an ask to the record it is about.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskSubject {
+    /// Kind of record.
+    pub kind: AskSubjectKind,
+    /// Record id (UUID for goals and work items, run id for workflow runs).
+    pub id: String,
+}
+
+/// Ask fields supplied by the asker on create.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskRecord {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable ask UUID; equals the command's `askId`.
+    pub ask_id: Uuid,
+    /// Kind of answer needed.
+    #[serde(rename = "type")]
+    pub ask_type: AskType,
+    /// What the ask decides.
+    pub category: AskCategory,
+    /// Short question or decision.
+    pub title: String,
+    /// Optional markdown detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// Root event of the thread the card belongs to.
+    pub thread_root_event_id: String,
+    /// Optional person or employee the ask is addressed to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addressee_pubkey: Option<String>,
+    /// Optional deadline (RFC 3339). Overdue is derived, never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decide_by: Option<String>,
+    /// Options for a choice ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<AskOption>>,
+    /// Items for a checklist ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<AskOption>>,
+    /// Optional record the ask is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<AskSubject>,
+}
+
+/// Ask create or cancel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskActionKind {
+    /// Post a new ask into a thread.
+    Create,
+    /// Withdraw an open ask.
+    Cancel,
+}
+
+/// Member request to create or cancel an ask (kind 47032).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable ask UUID.
+    pub ask_id: Uuid,
+    /// Create or cancel.
+    pub action: AskActionKind,
+    /// Exact current head; required on cancel, omitted on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Ask fields on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<AskRecord>,
+    /// Required on cancel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// How an ask was resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskOutcome {
+    /// Approval granted.
+    Approved,
+    /// Approval refused.
+    Rejected,
+    /// Approval sent back with changes requested.
+    RevisionRequested,
+    /// Question answered.
+    Answered,
+    /// Choice made.
+    Chosen,
+    /// Checklist confirmed.
+    Confirmed,
+    /// Verdict: passes.
+    Pass,
+    /// Verdict: fails.
+    Fail,
+}
+
+/// Member resolution of an ask (kind 47033).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskResponse {
+    /// Schema version.
+    pub schema_version: u8,
+    /// The ask being resolved.
+    pub ask_id: Uuid,
+    /// Exact current head event id.
+    pub expected_head_event_id: String,
+    /// Resolution outcome; must fit the ask's type.
+    pub outcome: AskOutcome,
+    /// Reason for approval decisions and verdicts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Answer to a question.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// Chosen option id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_id: Option<String>,
+    /// Every checklist item id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_item_ids: Option<Vec<String>>,
+}
+
+/// Lifecycle status of an ask head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskStatus {
+    /// Waiting for an answer (may be overdue).
+    Open,
+    /// Answered or decided.
+    Resolved,
+    /// Withdrawn by the asker or an admin.
+    Cancelled,
+}
+
+/// Resolution stored on the head.
+// No deny_unknown_fields: serde does not support it together with flatten.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskResolution {
+    /// Outcome and payload exactly as submitted.
+    #[serde(flatten)]
+    pub response: AskResolutionPayload,
+    /// Who resolved it.
+    pub resolved_by_pubkey: String,
+    /// When (RFC 3339).
+    pub resolved_at: String,
+    /// The kind 47033 event.
+    pub response_event_id: String,
+}
+
+/// Outcome and payload fields copied from the response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskResolutionPayload {
+    /// Outcome.
+    pub outcome: AskOutcome,
+    /// Reason, when the outcome needs one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Answer, for questions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// Chosen option, for choices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_id: Option<String>,
+    /// Confirmed items, for checklists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_item_ids: Option<Vec<String>>,
+}
+
+/// Cancellation stored on the head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskCancellation {
+    /// Who cancelled.
+    pub cancelled_by_pubkey: String,
+    /// When (RFC 3339).
+    pub cancelled_at: String,
+    /// Why.
+    pub reason: String,
+}
+
+/// Relay-authored canonical ask head (kind 30643).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable ask UUID.
+    pub ask_id: Uuid,
+    /// Lifecycle status.
+    pub status: AskStatus,
+    /// Who asked.
+    pub asker_pubkey: String,
+    /// When the ask was created (RFC 3339).
+    pub created_at: String,
+    /// The ask as created.
+    pub ask: AskRecord,
+    /// Present once resolved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<AskResolution>,
+    /// Present once cancelled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancellation: Option<AskCancellation>,
+    /// Event id of the member action or response that produced this head.
+    pub source_action_event_id: String,
+}
+
+// ── Coordinates ──────────────────────────────────────────────────────────────
+
+/// d-tag of a goal command or head.
+pub fn goal_d_tag(community_id: Uuid, goal_id: Uuid) -> String {
+    format!("company:{community_id}:goal:{goal_id}")
+}
+
+/// d-tag of an ask command or head.
+pub fn ask_d_tag(channel_id: Uuid, ask_id: Uuid) -> String {
+    format!("channel:{channel_id}:ask:{ask_id}")
+}
+
+/// Checks a goal command's d-tag against its community and goal id.
+pub fn validate_goal_d_tag(
+    d_tag: &str,
+    community_id: Uuid,
+    goal_id: Uuid,
+) -> Result<(), CompanyRecordError> {
+    if d_tag == goal_d_tag(community_id, goal_id) {
+        Ok(())
+    } else {
+        Err(CompanyRecordError::DTagMismatch)
+    }
+}
+
+/// Checks an ask command's d-tag against its channel and ask id.
+pub fn validate_ask_d_tag(
+    d_tag: &str,
+    channel_id: Uuid,
+    ask_id: Uuid,
+) -> Result<(), CompanyRecordError> {
+    if d_tag == ask_d_tag(channel_id, ask_id) {
+        Ok(())
+    } else {
+        Err(CompanyRecordError::DTagMismatch)
+    }
+}
+
+// ── Parsing ──────────────────────────────────────────────────────────────────
+
+/// Parses a member-authored company command and checks its schema version.
+pub fn parse_company_command(
+    kind: u32,
+    content: &str,
+) -> Result<CompanyCommand, CompanyRecordError> {
+    let command = match kind {
+        crate::kind::KIND_GOAL_ACTION => {
+            serde_json::from_str::<GoalAction>(content).map(CompanyCommand::GoalAction)
+        }
+        crate::kind::KIND_ASK_ACTION => {
+            serde_json::from_str::<AskAction>(content).map(CompanyCommand::AskAction)
+        }
+        crate::kind::KIND_ASK_RESPONSE => {
+            serde_json::from_str::<AskResponse>(content).map(CompanyCommand::AskResponse)
+        }
+        _ => return Err(CompanyRecordError::UnsupportedKind),
+    }
+    .map_err(|_| CompanyRecordError::InvalidContent)?;
+
+    let schema_version = match &command {
+        CompanyCommand::GoalAction(value) => value.schema_version,
+        CompanyCommand::AskAction(value) => value.schema_version,
+        CompanyCommand::AskResponse(value) => value.schema_version,
+    };
+    if schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    Ok(command)
+}
+
+// ── Field rules ──────────────────────────────────────────────────────────────
+
+fn char_len(value: &str) -> usize {
+    value.chars().count()
+}
+
+fn require_text(value: &str, max: usize, rule: &'static str) -> Result<(), CompanyRecordError> {
+    let len = char_len(value.trim());
+    if len == 0 || char_len(value) > max {
+        return Err(CompanyRecordError::Invalid(rule));
+    }
+    Ok(())
+}
+
+/// Returns `true` for a 64-character lowercase hex event id or pubkey.
+pub fn is_hex_id(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Returns `true` for a non-negative decimal string such as `12` or `2.50`.
+pub fn is_decimal(value: &str) -> bool {
+    if value.is_empty() || value.len() > 30 {
+        return false;
+    }
+    let mut parts = value.splitn(2, '.');
+    let whole = parts.next().unwrap_or_default();
+    let fraction = parts.next();
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    digits(whole) && fraction.is_none_or(digits)
+}
+
+fn is_option_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 32
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+}
+
+fn is_rfc3339(value: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(value).is_ok()
+}
+
+fn is_date(value: &str) -> bool {
+    value.len() == 10 && chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
+}
+
+fn validate_expected_head(expected: Option<&str>, create: bool) -> Result<(), CompanyRecordError> {
+    match (create, expected) {
+        (true, None) => Ok(()),
+        (true, Some(_)) => Err(CompanyRecordError::Invalid(
+            "expectedHeadEventId must be omitted on create",
+        )),
+        (false, Some(id)) if is_hex_id(id) => Ok(()),
+        (false, _) => Err(CompanyRecordError::Invalid(
+            "expectedHeadEventId must name the current head",
+        )),
+    }
+}
+
+/// Validates a goal's editable fields.
+pub fn validate_goal_record(goal: &GoalRecord) -> Result<(), CompanyRecordError> {
+    if goal.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    require_text(
+        &goal.title,
+        MAX_TITLE_CHARS,
+        "title is required, 180 characters at most",
+    )?;
+    require_text(
+        &goal.done_condition,
+        MAX_DONE_CONDITION_CHARS,
+        "doneCondition is required, 1000 characters at most",
+    )?;
+    if !is_hex_id(&goal.owner_pubkey) {
+        return Err(CompanyRecordError::Invalid("ownerPubkey must be a pubkey"));
+    }
+    if goal.parent_goal_id == Some(goal.goal_id) {
+        return Err(CompanyRecordError::Invalid(
+            "a goal cannot be its own parent",
+        ));
+    }
+    if let Some(due) = &goal.due_date {
+        if !is_date(due) {
+            return Err(CompanyRecordError::Invalid("dueDate must be YYYY-MM-DD"));
+        }
+    }
+    if let Some(target) = &goal.target {
+        if !is_decimal(&target.value) {
+            return Err(CompanyRecordError::Invalid(
+                "target value must be a decimal number",
+            ));
+        }
+        require_text(
+            &target.unit,
+            MAX_UNIT_CHARS,
+            "target unit is required, 24 characters at most",
+        )?;
+    }
+    let unique: BTreeSet<_> = goal.linked_channel_ids.iter().collect();
+    if unique.len() != goal.linked_channel_ids.len() || goal.linked_channel_ids.len() > 50 {
+        return Err(CompanyRecordError::Invalid(
+            "linkedChannelIds must be unique, 50 at most",
+        ));
+    }
+    Ok(())
+}
+
+/// Validates recorded progress; `has_target` is whether the goal has a target.
+pub fn validate_goal_progress(
+    progress: &GoalProgress,
+    has_target: bool,
+) -> Result<(), CompanyRecordError> {
+    require_text(
+        &progress.evidence,
+        MAX_EVIDENCE_CHARS,
+        "progress needs evidence, 2000 characters at most",
+    )?;
+    match (&progress.current, has_target) {
+        (Some(value), true) if is_decimal(value) => {}
+        (None, false) => {}
+        (_, true) => {
+            return Err(CompanyRecordError::Invalid(
+                "progress current must be a decimal number for a goal with a target",
+            ))
+        }
+        (Some(_), false) => {
+            return Err(CompanyRecordError::Invalid(
+                "progress current is only allowed when the goal has a target",
+            ))
+        }
+    }
+    if progress.evidence_refs.len() > 20
+        || progress
+            .evidence_refs
+            .iter()
+            .any(|r| !(is_hex_id(r) || (r.starts_with("buzz://") && r.len() <= 512)))
+    {
+        return Err(CompanyRecordError::Invalid(
+            "evidenceRefs must be event ids or buzz:// links, 20 at most",
+        ));
+    }
+    Ok(())
+}
+
+/// Validates a goal action's shape: which payload each action carries.
+///
+/// Rules that need the current head (target presence for progress, parent
+/// existence, cycles, dependents on delete, authority) are checked by the
+/// relay with [`goal_parent_creates_cycle`] and the stored heads.
+pub fn validate_goal_action(action: &GoalAction) -> Result<(), CompanyRecordError> {
+    use GoalActionKind as A;
+    validate_expected_head(
+        action.expected_head_event_id.as_deref(),
+        action.action == A::Create,
+    )?;
+    let payload_ok = match action.action {
+        A::Create | A::Update => {
+            action.goal.is_some()
+                && action.progress.is_none()
+                && action.status.is_none()
+                && action.reason.is_none()
+        }
+        A::Progress => {
+            action.goal.is_none()
+                && action.progress.is_some()
+                && action.status.is_none()
+                && action.reason.is_none()
+        }
+        A::SetStatus => {
+            action.goal.is_none()
+                && action.progress.is_none()
+                && action.status.is_some()
+                && action.reason.is_some()
+        }
+        A::Archive | A::Delete => {
+            action.goal.is_none()
+                && action.progress.is_none()
+                && action.status.is_none()
+                && action.reason.is_some()
+        }
+        A::Restore => {
+            action.goal.is_none()
+                && action.progress.is_none()
+                && action.status.is_none()
+                && action.reason.is_none()
+        }
+    };
+    if !payload_ok {
+        return Err(CompanyRecordError::Invalid(
+            "payload does not match the goal action",
+        ));
+    }
+    if let Some(goal) = &action.goal {
+        if goal.goal_id != action.goal_id {
+            return Err(CompanyRecordError::Invalid("goal.goalId must equal goalId"));
+        }
+        validate_goal_record(goal)?;
+    }
+    if let Some(status) = action.status {
+        if !matches!(
+            status,
+            GoalStatus::Active | GoalStatus::OffPace | GoalStatus::Achieved
+        ) {
+            return Err(CompanyRecordError::Invalid(
+                "set_status only moves between active, off_pace and achieved",
+            ));
+        }
+    }
+    if let Some(reason) = &action.reason {
+        require_text(
+            reason,
+            MAX_REASON_CHARS,
+            "reason is required, 1000 characters at most",
+        )?;
+    }
+    Ok(())
+}
+
+/// Returns `true` when making `new_parent` the parent of `goal_id` would
+/// create a cycle, or when the chain is deeper than [`MAX_GOAL_DEPTH`].
+///
+/// `parent_of` returns the current parent of a goal from stored heads.
+pub fn goal_parent_creates_cycle(
+    goal_id: Uuid,
+    new_parent: Uuid,
+    parent_of: impl Fn(Uuid) -> Option<Uuid>,
+) -> bool {
+    let mut cursor = Some(new_parent);
+    for _ in 0..MAX_GOAL_DEPTH {
+        match cursor {
+            None => return false,
+            Some(id) if id == goal_id => return true,
+            Some(id) => cursor = parent_of(id),
+        }
+    }
+    true
+}
+
+/// Validates an ask as created.
+///
+/// `addressee_is_agent` comes from the relay's account record; an agent may
+/// only be asked questions and verdicts.
+pub fn validate_ask_record(
+    ask: &AskRecord,
+    addressee_is_agent: bool,
+) -> Result<(), CompanyRecordError> {
+    if ask.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    require_text(
+        &ask.title,
+        MAX_TITLE_CHARS,
+        "title is required, 180 characters at most",
+    )?;
+    if let Some(body) = &ask.body {
+        if char_len(body) > MAX_ASK_BODY_CHARS {
+            return Err(CompanyRecordError::Invalid(
+                "body is 4000 characters at most",
+            ));
+        }
+    }
+    if !is_hex_id(&ask.thread_root_event_id) {
+        return Err(CompanyRecordError::Invalid(
+            "threadRootEventId must be an event id",
+        ));
+    }
+    if let Some(addressee) = &ask.addressee_pubkey {
+        if !is_hex_id(addressee) {
+            return Err(CompanyRecordError::Invalid(
+                "addresseePubkey must be a pubkey",
+            ));
+        }
+        if addressee_is_agent && !matches!(ask.ask_type, AskType::Question | AskType::Verdict) {
+            return Err(CompanyRecordError::Invalid(
+                "an agent can only be asked a question or a verdict",
+            ));
+        }
+    }
+    if let Some(deadline) = &ask.decide_by {
+        if !is_rfc3339(deadline) {
+            return Err(CompanyRecordError::Invalid(
+                "decideBy must be an RFC 3339 timestamp",
+            ));
+        }
+    }
+    let check_list = |list: &Vec<AskOption>, min: usize, max: usize, rule: &'static str| {
+        let ids: BTreeSet<_> = list.iter().map(|o| o.id.as_str()).collect();
+        let ok = list.len() >= min
+            && list.len() <= max
+            && ids.len() == list.len()
+            && list.iter().all(|o| {
+                is_option_id(&o.id)
+                    && !o.label.trim().is_empty()
+                    && char_len(&o.label) <= MAX_TITLE_CHARS
+            });
+        if ok {
+            Ok(())
+        } else {
+            Err(CompanyRecordError::Invalid(rule))
+        }
+    };
+    match ask.ask_type {
+        AskType::Choice => {
+            if ask.items.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "a choice ask has options, not items",
+                ));
+            }
+            let options = ask.options.as_ref().ok_or(CompanyRecordError::Invalid(
+                "a choice ask needs 2 to 8 options",
+            ))?;
+            check_list(
+                options,
+                2,
+                8,
+                "a choice ask needs 2 to 8 options with unique ids",
+            )?;
+        }
+        AskType::Checklist => {
+            if ask.options.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "a checklist ask has items, not options",
+                ));
+            }
+            let items = ask.items.as_ref().ok_or(CompanyRecordError::Invalid(
+                "a checklist ask needs 1 to 20 items",
+            ))?;
+            check_list(
+                items,
+                1,
+                20,
+                "a checklist ask needs 1 to 20 items with unique ids",
+            )?;
+        }
+        AskType::Approval | AskType::Question | AskType::Verdict => {
+            if ask.options.is_some() || ask.items.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "only choice and checklist asks carry options or items",
+                ));
+            }
+        }
+    }
+    if let Some(subject) = &ask.subject {
+        let ok = match subject.kind {
+            AskSubjectKind::Goal | AskSubjectKind::WorkItem => Uuid::parse_str(&subject.id).is_ok(),
+            AskSubjectKind::WorkflowRun => !subject.id.is_empty() && subject.id.len() <= 64,
+        };
+        if !ok {
+            return Err(CompanyRecordError::Invalid(
+                "subject id does not match its kind",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Validates an ask action's shape.
+pub fn validate_ask_action(
+    action: &AskAction,
+    addressee_is_agent: bool,
+) -> Result<(), CompanyRecordError> {
+    validate_expected_head(
+        action.expected_head_event_id.as_deref(),
+        action.action == AskActionKind::Create,
+    )?;
+    match action.action {
+        AskActionKind::Create => {
+            let ask = action
+                .ask
+                .as_ref()
+                .ok_or(CompanyRecordError::Invalid("create needs the ask"))?;
+            if action.reason.is_some() {
+                return Err(CompanyRecordError::Invalid("create does not take a reason"));
+            }
+            if ask.ask_id != action.ask_id {
+                return Err(CompanyRecordError::Invalid("ask.askId must equal askId"));
+            }
+            validate_ask_record(ask, addressee_is_agent)
+        }
+        AskActionKind::Cancel => {
+            if action.ask.is_some() {
+                return Err(CompanyRecordError::Invalid("cancel does not carry the ask"));
+            }
+            let reason = action
+                .reason
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("cancel needs a reason"))?;
+            require_text(
+                reason,
+                MAX_REASON_CHARS,
+                "reason is required, 1000 characters at most",
+            )
+        }
+    }
+}
+
+/// Validates a response against the ask it resolves.
+pub fn validate_ask_response(
+    ask: &AskRecord,
+    response: &AskResponse,
+) -> Result<(), CompanyRecordError> {
+    use AskOutcome as O;
+    if !is_hex_id(&response.expected_head_event_id) {
+        return Err(CompanyRecordError::Invalid(
+            "expectedHeadEventId must name the current head",
+        ));
+    }
+    let (reason, answer, option, checked) = (
+        response.reason.as_deref(),
+        response.answer.as_deref(),
+        response.option_id.as_deref(),
+        response.checked_item_ids.as_ref(),
+    );
+    match ask.ask_type {
+        AskType::Approval | AskType::Verdict => {
+            let allowed = match ask.ask_type {
+                AskType::Approval => matches!(
+                    response.outcome,
+                    O::Approved | O::Rejected | O::RevisionRequested
+                ),
+                _ => matches!(response.outcome, O::Pass | O::Fail),
+            };
+            if !allowed {
+                return Err(CompanyRecordError::Invalid(
+                    "outcome does not fit the ask type",
+                ));
+            }
+            if answer.is_some() || option.is_some() || checked.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "only a reason goes with this outcome",
+                ));
+            }
+            require_text(
+                reason.unwrap_or_default(),
+                MAX_REASON_CHARS,
+                "a reason is required, 1000 characters at most",
+            )
+        }
+        AskType::Question => {
+            if response.outcome != O::Answered
+                || reason.is_some()
+                || option.is_some()
+                || checked.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "a question is resolved with an answer",
+                ));
+            }
+            require_text(
+                answer.unwrap_or_default(),
+                MAX_ANSWER_CHARS,
+                "an answer is required, 4000 characters at most",
+            )
+        }
+        AskType::Choice => {
+            if response.outcome != O::Chosen
+                || reason.is_some()
+                || answer.is_some()
+                || checked.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "a choice is resolved with one option",
+                ));
+            }
+            let valid = option.is_some_and(|id| {
+                ask.options
+                    .as_ref()
+                    .is_some_and(|opts| opts.iter().any(|o| o.id == id))
+            });
+            if valid {
+                Ok(())
+            } else {
+                Err(CompanyRecordError::Invalid(
+                    "optionId must be one of the ask's options",
+                ))
+            }
+        }
+        AskType::Checklist => {
+            if response.outcome != O::Confirmed
+                || reason.is_some()
+                || answer.is_some()
+                || option.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "a checklist is resolved by confirming every item",
+                ));
+            }
+            let expected: BTreeSet<&str> = ask
+                .items
+                .as_ref()
+                .map(|items| items.iter().map(|i| i.id.as_str()).collect())
+                .unwrap_or_default();
+            let given: Vec<&str> = checked
+                .map(|ids| ids.iter().map(String::as_str).collect())
+                .unwrap_or_default();
+            let given_set: BTreeSet<&str> = given.iter().copied().collect();
+            if given_set.len() == given.len() && given_set == expected {
+                Ok(())
+            } else {
+                Err(CompanyRecordError::Invalid(
+                    "every checklist item must be confirmed exactly once",
+                ))
+            }
+        }
+    }
+}
+
+/// Community role of a would-be resolver, from the relay's member records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommunityRole {
+    /// Community owner.
+    Owner,
+    /// Community admin.
+    Admin,
+    /// Ordinary member.
+    Member,
+}
+
+/// Facts about the signer that the relay looks up before authorising.
+#[derive(Debug, Clone, Copy)]
+pub struct AskResolver<'a> {
+    /// Signer pubkey.
+    pub pubkey: &'a str,
+    /// Whether the signer is a managed agent (from `users.agent_owner_pubkey`).
+    pub is_agent: bool,
+    /// Community role, if the signer is a community member.
+    pub community_role: Option<CommunityRole>,
+    /// Whether the signer is a member of the ask's channel.
+    pub is_channel_member: bool,
+}
+
+/// Returns why `resolver` may not resolve `ask`, or `None` when allowed.
+///
+/// Owner decision D2: owners and admins resolve money, hire, tool and secret
+/// asks and agents never may; an addressed general ask is resolved by its
+/// addressee (agents only for questions and verdicts); an unaddressed general
+/// ask by any human member of the channel.
+pub fn ask_resolution_denied_reason(
+    ask: &AskRecord,
+    resolver: AskResolver<'_>,
+) -> Option<&'static str> {
+    if !resolver.is_channel_member && resolver.community_role.is_none() {
+        return Some("Only members of this conversation can answer");
+    }
+    if ask.category.requires_authority() {
+        if resolver.is_agent {
+            return Some("Agents cannot decide spending, hires, tools or secrets");
+        }
+        return match resolver.community_role {
+            Some(CommunityRole::Owner | CommunityRole::Admin) => None,
+            _ => Some("Only company owners and admins can decide this"),
+        };
+    }
+    match &ask.addressee_pubkey {
+        Some(addressee) if addressee != resolver.pubkey => {
+            Some("This ask is addressed to someone else")
+        }
+        Some(_)
+            if resolver.is_agent
+                && !matches!(ask.ask_type, AskType::Question | AskType::Verdict) =>
+        {
+            Some("Agents can only answer questions and verdicts")
+        }
+        Some(_) => None,
+        None if resolver.is_agent => {
+            Some("Only people can answer an ask that is not addressed to anyone")
+        }
+        None if !resolver.is_channel_member => Some("Only members of this conversation can answer"),
+        None => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PK_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const PK_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const EV: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+    fn goal(id: u128) -> GoalRecord {
+        GoalRecord {
+            schema_version: 1,
+            goal_id: Uuid::from_u128(id),
+            parent_goal_id: None,
+            title: "Make every client's October plan ready on time".into(),
+            owner_pubkey: PK_A.into(),
+            due_date: Some("2026-10-31".into()),
+            done_condition: "Every active client has an approved October plan".into(),
+            target: None,
+            linked_channel_ids: vec![],
+        }
+    }
+
+    fn goal_action(action: GoalActionKind) -> GoalAction {
+        GoalAction {
+            schema_version: 1,
+            goal_id: Uuid::from_u128(1),
+            action,
+            expected_head_event_id: (action != GoalActionKind::Create).then(|| EV.into()),
+            goal: None,
+            progress: None,
+            status: None,
+            reason: None,
+        }
+    }
+
+    fn ask(ask_type: AskType) -> AskRecord {
+        AskRecord {
+            schema_version: 1,
+            ask_id: Uuid::from_u128(9),
+            ask_type,
+            category: AskCategory::General,
+            title: "Choose the campaign direction".into(),
+            body: None,
+            thread_root_event_id: EV.into(),
+            addressee_pubkey: None,
+            decide_by: None,
+            options: None,
+            items: None,
+            subject: None,
+        }
+    }
+
+    fn opts(ids: &[&str]) -> Vec<AskOption> {
+        ids.iter()
+            .map(|id| AskOption {
+                id: (*id).into(),
+                label: format!("Option {id}"),
+            })
+            .collect()
+    }
+
+    fn response(outcome: AskOutcome) -> AskResponse {
+        AskResponse {
+            schema_version: 1,
+            ask_id: Uuid::from_u128(9),
+            expected_head_event_id: EV.into(),
+            outcome,
+            reason: None,
+            answer: None,
+            option_id: None,
+            checked_item_ids: None,
+        }
+    }
+
+    fn human(role: Option<CommunityRole>, member: bool) -> AskResolver<'static> {
+        AskResolver {
+            pubkey: PK_B,
+            is_agent: false,
+            community_role: role,
+            is_channel_member: member,
+        }
+    }
+
+    #[test]
+    fn d_tags_are_namespaced_and_checked() {
+        let community = Uuid::from_u128(5);
+        let channel = Uuid::from_u128(6);
+        let id = Uuid::from_u128(7);
+        assert_eq!(
+            goal_d_tag(community, id),
+            format!("company:{community}:goal:{id}")
+        );
+        assert_eq!(
+            ask_d_tag(channel, id),
+            format!("channel:{channel}:ask:{id}")
+        );
+        assert!(validate_goal_d_tag(&goal_d_tag(community, id), community, id).is_ok());
+        assert_eq!(
+            validate_goal_d_tag(&goal_d_tag(community, id), Uuid::from_u128(8), id),
+            Err(CompanyRecordError::DTagMismatch)
+        );
+        assert_eq!(
+            validate_ask_d_tag(&ask_d_tag(channel, id), channel, Uuid::from_u128(8)),
+            Err(CompanyRecordError::DTagMismatch)
+        );
+    }
+
+    #[test]
+    fn parse_rejects_unknown_fields_and_versions() {
+        let mut action = goal_action(GoalActionKind::Create);
+        action.goal = Some(goal(1));
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(matches!(
+            parse_company_command(crate::kind::KIND_GOAL_ACTION, &json),
+            Ok(CompanyCommand::GoalAction(_))
+        ));
+        let with_extra = json.replacen('{', "{\"future\":1,", 1);
+        assert_eq!(
+            parse_company_command(crate::kind::KIND_GOAL_ACTION, &with_extra),
+            Err(CompanyRecordError::InvalidContent)
+        );
+        let v2 = json.replace("\"schemaVersion\":1", "\"schemaVersion\":2");
+        assert_eq!(
+            parse_company_command(crate::kind::KIND_GOAL_ACTION, &v2),
+            Err(CompanyRecordError::UnsupportedSchemaVersion)
+        );
+        assert_eq!(
+            parse_company_command(crate::kind::KIND_WORK_ITEM_ACTION, &json),
+            Err(CompanyRecordError::UnsupportedKind)
+        );
+    }
+
+    #[test]
+    fn goal_actions_carry_exactly_their_payload() {
+        let mut create = goal_action(GoalActionKind::Create);
+        create.goal = Some(goal(1));
+        assert!(validate_goal_action(&create).is_ok());
+
+        let mut create_with_head = create.clone();
+        create_with_head.expected_head_event_id = Some(EV.into());
+        assert!(validate_goal_action(&create_with_head).is_err());
+
+        let mut update_without_head = goal_action(GoalActionKind::Update);
+        update_without_head.expected_head_event_id = None;
+        update_without_head.goal = Some(goal(1));
+        assert!(validate_goal_action(&update_without_head).is_err());
+
+        let mut archive = goal_action(GoalActionKind::Archive);
+        assert!(
+            validate_goal_action(&archive).is_err(),
+            "archive needs a reason"
+        );
+        archive.reason = Some("Client paused the retainer".into());
+        assert!(validate_goal_action(&archive).is_ok());
+
+        let mut status = goal_action(GoalActionKind::SetStatus);
+        status.reason = Some("Confirmed with the client".into());
+        status.status = Some(GoalStatus::Archived);
+        assert!(
+            validate_goal_action(&status).is_err(),
+            "archive has its own action"
+        );
+        status.status = Some(GoalStatus::Achieved);
+        assert!(validate_goal_action(&status).is_ok());
+
+        let mut mismatched = create.clone();
+        mismatched.goal = Some(goal(2));
+        assert!(validate_goal_action(&mismatched).is_err());
+    }
+
+    #[test]
+    fn goal_fields_are_validated() {
+        let mut g = goal(1);
+        assert!(validate_goal_record(&g).is_ok());
+        g.title = "   ".into();
+        assert!(validate_goal_record(&g).is_err());
+        g = goal(1);
+        g.title = "x".repeat(181);
+        assert!(validate_goal_record(&g).is_err());
+        g = goal(1);
+        g.due_date = Some("2026-02-30".into());
+        assert!(validate_goal_record(&g).is_err());
+        g = goal(1);
+        g.parent_goal_id = Some(g.goal_id);
+        assert!(validate_goal_record(&g).is_err());
+        g = goal(1);
+        g.target = Some(GoalTarget {
+            value: "12".into(),
+            unit: String::new(),
+        });
+        assert!(validate_goal_record(&g).is_err(), "a target needs a unit");
+        g.target = Some(GoalTarget {
+            value: "1.2.3".into(),
+            unit: "clients".into(),
+        });
+        assert!(validate_goal_record(&g).is_err());
+        g.target = Some(GoalTarget {
+            value: "12.5".into(),
+            unit: "clients".into(),
+        });
+        assert!(validate_goal_record(&g).is_ok());
+    }
+
+    #[test]
+    fn progress_needs_evidence_and_a_value_only_with_a_target() {
+        let p = |current: Option<&str>, evidence: &str| GoalProgress {
+            current: current.map(Into::into),
+            evidence: evidence.into(),
+            evidence_refs: vec![],
+        };
+        assert!(validate_goal_progress(&p(Some("4"), "4 of 12 plans approved"), true).is_ok());
+        assert!(validate_goal_progress(&p(None, "4 of 12 plans approved"), true).is_err());
+        assert!(validate_goal_progress(&p(Some("4"), ""), true).is_err());
+        assert!(validate_goal_progress(&p(None, "Brief agreed"), false).is_ok());
+        assert!(validate_goal_progress(&p(Some("4"), "Brief agreed"), false).is_err());
+        let mut with_refs = p(None, "Brief agreed");
+        with_refs.evidence_refs = vec![EV.into(), "buzz://message?channel=x&id=y".into()];
+        assert!(validate_goal_progress(&with_refs, false).is_ok());
+        with_refs.evidence_refs.push("https://example.com".into());
+        assert!(validate_goal_progress(&with_refs, false).is_err());
+    }
+
+    #[test]
+    fn cycles_are_detected_through_the_parent_chain() {
+        // 1 <- 2 <- 3 (3's parent is 2, 2's parent is 1)
+        let parents = |id: Uuid| match id.as_u128() {
+            3 => Some(Uuid::from_u128(2)),
+            2 => Some(Uuid::from_u128(1)),
+            _ => None,
+        };
+        assert!(goal_parent_creates_cycle(
+            Uuid::from_u128(1),
+            Uuid::from_u128(3),
+            parents
+        ));
+        assert!(!goal_parent_creates_cycle(
+            Uuid::from_u128(4),
+            Uuid::from_u128(3),
+            parents
+        ));
+        // A corrupt self-referencing chain never loops forever.
+        assert!(goal_parent_creates_cycle(
+            Uuid::from_u128(9),
+            Uuid::from_u128(8),
+            |_| Some(Uuid::from_u128(8))
+        ));
+    }
+
+    #[test]
+    fn asks_validate_their_type_specific_fields() {
+        assert!(validate_ask_record(&ask(AskType::Question), false).is_ok());
+
+        let mut choice = ask(AskType::Choice);
+        assert!(
+            validate_ask_record(&choice, false).is_err(),
+            "choice needs options"
+        );
+        choice.options = Some(opts(&["a"]));
+        assert!(
+            validate_ask_record(&choice, false).is_err(),
+            "at least two options"
+        );
+        choice.options = Some(opts(&["a", "a"]));
+        assert!(validate_ask_record(&choice, false).is_err(), "unique ids");
+        choice.options = Some(opts(&["a", "b", "c"]));
+        assert!(validate_ask_record(&choice, false).is_ok());
+
+        let mut checklist = ask(AskType::Checklist);
+        checklist.items = Some(opts(&["brief", "assets"]));
+        assert!(validate_ask_record(&checklist, false).is_ok());
+        checklist.options = Some(opts(&["x", "y"]));
+        assert!(validate_ask_record(&checklist, false).is_err());
+
+        let mut approval = ask(AskType::Approval);
+        approval.options = Some(opts(&["a", "b"]));
+        assert!(validate_ask_record(&approval, false).is_err());
+
+        let mut timed = ask(AskType::Question);
+        timed.decide_by = Some("tomorrow".into());
+        assert!(validate_ask_record(&timed, false).is_err());
+        timed.decide_by = Some("2026-09-28T14:00:00Z".into());
+        assert!(validate_ask_record(&timed, false).is_ok());
+    }
+
+    #[test]
+    fn agents_can_only_be_asked_questions_and_verdicts() {
+        let mut approval = ask(AskType::Approval);
+        approval.addressee_pubkey = Some(PK_A.into());
+        assert!(validate_ask_record(&approval, true).is_err());
+        assert!(validate_ask_record(&approval, false).is_ok());
+        let mut question = ask(AskType::Question);
+        question.addressee_pubkey = Some(PK_A.into());
+        assert!(validate_ask_record(&question, true).is_ok());
+    }
+
+    #[test]
+    fn ask_actions_carry_exactly_their_payload() {
+        let create = AskAction {
+            schema_version: 1,
+            ask_id: Uuid::from_u128(9),
+            action: AskActionKind::Create,
+            expected_head_event_id: None,
+            ask: Some(ask(AskType::Question)),
+            reason: None,
+        };
+        assert!(validate_ask_action(&create, false).is_ok());
+        let mut cancel = AskAction {
+            action: AskActionKind::Cancel,
+            expected_head_event_id: Some(EV.into()),
+            ask: None,
+            reason: None,
+            ..create.clone()
+        };
+        assert!(
+            validate_ask_action(&cancel, false).is_err(),
+            "cancel needs a reason"
+        );
+        cancel.reason = Some("Decided in the huddle".into());
+        assert!(validate_ask_action(&cancel, false).is_ok());
+        let mut mismatched = create;
+        mismatched.ask_id = Uuid::from_u128(10);
+        assert!(validate_ask_action(&mismatched, false).is_err());
+    }
+
+    #[test]
+    fn responses_must_fit_the_ask_type() {
+        let approval = ask(AskType::Approval);
+        let mut r = response(AskOutcome::Approved);
+        assert!(
+            validate_ask_response(&approval, &r).is_err(),
+            "approval needs a reason"
+        );
+        r.reason = Some("Within budget".into());
+        assert!(validate_ask_response(&approval, &r).is_ok());
+        r.outcome = AskOutcome::Pass;
+        assert!(validate_ask_response(&approval, &r).is_err());
+
+        let question = ask(AskType::Question);
+        let mut a = response(AskOutcome::Answered);
+        assert!(validate_ask_response(&question, &a).is_err());
+        a.answer = Some("The engagement brief first".into());
+        assert!(validate_ask_response(&question, &a).is_ok());
+
+        let mut choice = ask(AskType::Choice);
+        choice.options = Some(opts(&["warm", "bold"]));
+        let mut c = response(AskOutcome::Chosen);
+        c.option_id = Some("loud".into());
+        assert!(validate_ask_response(&choice, &c).is_err());
+        c.option_id = Some("bold".into());
+        assert!(validate_ask_response(&choice, &c).is_ok());
+
+        let mut checklist = ask(AskType::Checklist);
+        checklist.items = Some(opts(&["brief", "assets", "dates"]));
+        let mut k = response(AskOutcome::Confirmed);
+        k.checked_item_ids = Some(vec!["brief".into(), "assets".into()]);
+        assert!(validate_ask_response(&checklist, &k).is_err(), "every item");
+        k.checked_item_ids = Some(vec![
+            "brief".into(),
+            "assets".into(),
+            "dates".into(),
+            "dates".into(),
+        ]);
+        assert!(
+            validate_ask_response(&checklist, &k).is_err(),
+            "exactly once"
+        );
+        k.checked_item_ids = Some(vec!["dates".into(), "brief".into(), "assets".into()]);
+        assert!(validate_ask_response(&checklist, &k).is_ok());
+
+        let verdict = ask(AskType::Verdict);
+        let mut v = response(AskOutcome::Fail);
+        v.reason = Some("Missing the end card".into());
+        assert!(validate_ask_response(&verdict, &v).is_ok());
+        v.answer = Some("extra".into());
+        assert!(validate_ask_response(&verdict, &v).is_err());
+    }
+
+    #[test]
+    fn authority_follows_owner_decision_d2() {
+        let mut money = ask(AskType::Approval);
+        money.category = AskCategory::Money;
+        assert!(
+            ask_resolution_denied_reason(&money, human(Some(CommunityRole::Member), true))
+                .is_some()
+        );
+        assert!(
+            ask_resolution_denied_reason(&money, human(Some(CommunityRole::Admin), true)).is_none()
+        );
+        assert!(
+            ask_resolution_denied_reason(&money, human(Some(CommunityRole::Owner), false))
+                .is_none()
+        );
+        let agent_owner = AskResolver {
+            is_agent: true,
+            ..human(Some(CommunityRole::Owner), true)
+        };
+        assert_eq!(
+            ask_resolution_denied_reason(&money, agent_owner),
+            Some("Agents cannot decide spending, hires, tools or secrets")
+        );
+
+        let mut addressed = ask(AskType::Question);
+        addressed.addressee_pubkey = Some(PK_A.into());
+        assert!(
+            ask_resolution_denied_reason(&addressed, human(Some(CommunityRole::Owner), true))
+                .is_some()
+        );
+        let addressee = AskResolver {
+            pubkey: PK_A,
+            ..human(Some(CommunityRole::Member), true)
+        };
+        assert!(ask_resolution_denied_reason(&addressed, addressee).is_none());
+        let agent_addressee = AskResolver {
+            is_agent: true,
+            ..addressee
+        };
+        assert!(ask_resolution_denied_reason(&addressed, agent_addressee).is_none());
+
+        let open = ask(AskType::Approval);
+        assert!(
+            ask_resolution_denied_reason(&open, human(Some(CommunityRole::Member), true)).is_none()
+        );
+        assert!(ask_resolution_denied_reason(&open, human(None, false)).is_some());
+        let agent = AskResolver {
+            is_agent: true,
+            ..human(Some(CommunityRole::Member), true)
+        };
+        assert!(ask_resolution_denied_reason(&open, agent).is_some());
+    }
+
+    #[test]
+    fn decimals_and_ids() {
+        assert!(is_decimal("0") && is_decimal("12") && is_decimal("2.50"));
+        assert!(
+            !is_decimal("")
+                && !is_decimal("-1")
+                && !is_decimal("1.")
+                && !is_decimal(".5")
+                && !is_decimal("1e3")
+        );
+        assert!(is_hex_id(EV) && !is_hex_id(&EV.to_uppercase()) && !is_hex_id("abc"));
+    }
+}

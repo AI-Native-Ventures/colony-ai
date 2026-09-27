@@ -12,6 +12,8 @@ pub mod close;
 pub mod command_executor;
 /// Relay-operator community provisioning HTTP support.
 pub mod community_provisioning;
+/// Nostr-first broker for company records (goals and asks).
+pub mod company_records;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.
