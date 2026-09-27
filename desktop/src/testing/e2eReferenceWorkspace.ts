@@ -38,8 +38,8 @@ export const REFERENCE_HOME_UNREAD_IDS = [
   "reference-home-inbox-olive-approval",
   "reference-home-inbox-cedar-access",
 ] as const;
-// Offscreen unread thread activity reproduces the reference sidebar dot. The
-// forced channel marker keeps this captured timeline free of a New divider.
+// Offscreen unread thread activity reproduces the reference sidebar dot while
+// the read marker keeps visible top-level messages free of a New divider.
 export const REFERENCE_SALES_UNREAD_ROOT_ID = "reference-sales-unread-root";
 export const REFERENCE_SALES_UNREAD_REPLY_ID = "reference-sales-unread-reply";
 export const REFERENCE_SALES_VOICE_NOTE_ID = "reference-sales-lerato-0950";
@@ -367,13 +367,11 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
       ),
     }),
   );
+  storage.setItem(`buzz-forced-unread.v1:${selfPubkey}`, JSON.stringify({}));
   storage.setItem(
-    `buzz-forced-unread.v1:${selfPubkey}`,
+    `buzz.channel-read-state.v2:${selfPubkey}`,
     JSON.stringify({
-      [REFERENCE_CHANNEL_IDS.sales]: {
-        markerAtWhenForced: null,
-        sources: ["manual"],
-      },
+      [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
     }),
   );
   storage.setItem(
