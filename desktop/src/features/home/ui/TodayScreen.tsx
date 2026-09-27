@@ -3,10 +3,7 @@ import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useHomeFeedQuery } from "@/features/home/hooks";
-import {
-  type NeedsMeData,
-  useNeedsMeQuery,
-} from "@/features/home/needsMeHooks";
+import { useNeedsMeQuery } from "@/features/home/needsMeHooks";
 import { useApprovalMutation } from "@/features/workflows/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { getThreadReference } from "@/features/messages/lib/threading";
@@ -20,6 +17,7 @@ import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { normalizePubkey } from "@/shared/lib/pubkey";
+import { buildNeedsMeItems } from "@/features/home/needsMeOrdering";
 
 function formatActivityTime(createdAt: number) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -43,42 +41,6 @@ function movingForwardItems(
       return true;
     })
     .sort((first, second) => second.createdAt - first.createdAt);
-}
-
-function needsMeItems(data: NeedsMeData | undefined) {
-  if (!data) return [];
-  const items: Array<
-    | { kind: "ask"; record: AskHeadRecord; deadline: number | null }
-    | {
-        kind: "workflow_approval";
-        record: PendingWorkflowApproval;
-        deadline: number | null;
-      }
-  > = [
-    ...data.asks.map((record) => ({
-      kind: "ask" as const,
-      record,
-      deadline: record.head.ask.decideBy
-        ? Date.parse(record.head.ask.decideBy)
-        : null,
-    })),
-    ...data.workflowApprovals.map((record) => ({
-      kind: "workflow_approval" as const,
-      record,
-      deadline: Date.parse(record.approval.expiresAt),
-    })),
-  ];
-  return items.sort((first, second) => {
-    const firstDeadline =
-      first.deadline !== null && Number.isFinite(first.deadline)
-        ? first.deadline
-        : Number.POSITIVE_INFINITY;
-    const secondDeadline =
-      second.deadline !== null && Number.isFinite(second.deadline)
-        ? second.deadline
-        : Number.POSITIVE_INFINITY;
-    return firstDeadline - secondDeadline;
-  });
 }
 
 function deadlineLabel(deadline: string | null | undefined) {
@@ -351,7 +313,7 @@ export function TodayScreen({
     ),
   ];
   const needItems = React.useMemo(
-    () => needsMeItems(needsMe.data),
+    () => buildNeedsMeItems(needsMe.data),
     [needsMe.data],
   );
   const forwardItems = React.useMemo(
