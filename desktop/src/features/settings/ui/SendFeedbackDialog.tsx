@@ -176,7 +176,7 @@ export function SendFeedbackDialog({
           </div>
         ) : (
           <form
-            className={`flex min-h-0 flex-1 flex-col gap-0 px-[25px] ${errorMessage ? "pt-6" : "pt-11"}`}
+            className={`flex min-h-0 flex-1 flex-col gap-0 px-[25px] ${errorMessage ? "pt-6" : "pt-[46px]"}`}
             onSubmit={(event) => {
               event.preventDefault();
               void submitFeedback();
@@ -219,7 +219,7 @@ export function SendFeedbackDialog({
             </label>
 
             <label
-              className="mt-[19px] flex flex-col gap-2 text-xs"
+              className="mt-[22px] flex flex-col gap-2 text-xs"
               htmlFor="feedback-message"
             >
               <span>What would you like us to know?</span>
@@ -235,7 +235,7 @@ export function SendFeedbackDialog({
               />
             </label>
 
-            <div className="mt-[19px] space-y-[1.0625rem]">
+            <div className="mt-[21px] space-y-[1.1875rem]">
               <label
                 className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground"
                 htmlFor="feedback-include-logs"
@@ -276,7 +276,7 @@ export function SendFeedbackDialog({
             </div>
 
             <div
-              className={`${showDiagnostics ? "mt-[40px]" : "mt-[25px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
+              className={`${showDiagnostics ? "mt-[40px]" : "mt-[26px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
             >
               <Button
                 className="rounded-md border-input bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"

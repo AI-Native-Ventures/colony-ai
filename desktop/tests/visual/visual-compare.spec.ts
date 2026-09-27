@@ -1448,7 +1448,7 @@ async function performActions(
         if (action.value === undefined) {
           throw new Error("File visual actions need a fixture name.");
         }
-        await locator.setInputFiles(visualInputFile(action.value), {
+        await locator.setInputFiles(await visualInputFile(action.value), {
           timeout: options.timeout,
         });
       } else if (action.type === "waitFor") {
@@ -1463,12 +1463,11 @@ async function performActions(
   }
 }
 
-function visualInputFile(name: string) {
+async function visualInputFile(name: string) {
   if (name === "avatar.png") {
-    const width = 32;
-    const height = 32;
-    const pixels = new Uint8Array(width * height * 4).fill(255);
-    const buffer = Buffer.from(UPNG.encode([pixels.buffer], width, height, 0));
+    const buffer = await readFile(
+      new URL("./fixtures/w20-avatar.png", import.meta.url),
+    );
     return { name, mimeType: "image/png", buffer };
   }
   if (name === "unsupported.txt") {

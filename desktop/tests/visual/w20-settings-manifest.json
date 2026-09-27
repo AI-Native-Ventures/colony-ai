@@ -449,8 +449,10 @@
       "routeLabel": "Avatar editor profile",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-profile]"
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 465
       },
       "actions": [
         {
@@ -741,8 +743,10 @@
         }
       ],
       "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-profile]"
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 517
       }
     },
     {
@@ -769,8 +773,10 @@
         }
       ],
       "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-profile]"
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 465
       }
     },
     {
@@ -780,7 +786,7 @@
       "routeLabel": "Sign out confirmation",
       "appPrefs": {
         "localStorage": {
-          "buzz-drafts.v2:ws://127.0.0.1:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+          "buzz-drafts.v2:ws://localhost:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
             "channel:engineering": {
               "content": "A draft to review before leaving",
               "selectionStart": 0,
@@ -966,7 +972,7 @@
       "referenceCanvas": true,
       "clip": {
         "referenceSelector": ".surface",
-        "appSelector": "[data-testid=voice-library]"
+        "appSelector": "[data-testid=settings-voice]"
       }
     },
     {
