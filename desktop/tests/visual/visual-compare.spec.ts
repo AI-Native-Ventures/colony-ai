@@ -432,38 +432,20 @@ test.describe("visual comparison captures", () => {
               appPage.getByText(unavailableDestination, { exact: true }),
             ).toHaveCount(0);
           }
-          const businessDestinations = appPage.getByTestId(
-            "sidebar-business-destinations",
+          await expect(
+            appPage.getByTestId("sidebar-nav-business-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          await expect(
+            appPage.getByTestId("sidebar-nav-library-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          const channelActions = appPage.getByTestId(
+            "section-actions-channels",
           );
-          for (const destination of ["Discovery", "Leads", "Pipeline"]) {
-            await expect(
-              businessDestinations.getByRole("link", {
-                name: destination,
-                exact: true,
-              }),
-            ).toBeVisible();
-          }
-          const clientsDestination = appPage.getByTestId(
-            "sidebar-business-clients",
-          );
-          await expect(clientsDestination).toBeVisible();
-          await expect(clientsDestination).toContainText("Clients");
-          const browseChannels = appPage.getByTestId("sidebar-browse-channels");
-          await expect(browseChannels).toHaveCount(1);
-          await expect(browseChannels).toContainText("+Browse channels");
-          const browseChannelsBounds = await browseChannels.boundingBox();
-          const forumsBounds = await appPage
-            .getByTestId("forum-list-section-label")
-            .boundingBox();
-          expect(browseChannelsBounds).not.toBeNull();
-          expect(forumsBounds).not.toBeNull();
-          expect(browseChannelsBounds?.y).toBeLessThan(forumsBounds?.y ?? 0);
-          const browseToForumsGap =
-            (forumsBounds?.y ?? 0) -
-            ((browseChannelsBounds?.y ?? 0) +
-              (browseChannelsBounds?.height ?? 0));
-          expect(browseToForumsGap).toBeGreaterThan(4);
-          expect(browseToForumsGap).toBeLessThan(24);
+          await channelActions.click();
+          await expect(
+            appPage.getByRole("menuitem", { name: /^Browse channels/ }),
+          ).toBeVisible();
+          await appPage.keyboard.press("Escape");
           const channelTabs = appPage.getByTestId("channel-view-tabs");
           await expect(
             appPage.getByText("Open design review map", { exact: true }),
