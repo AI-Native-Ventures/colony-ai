@@ -32,12 +32,12 @@ export function HarnessInstallDialog({
   return (
     <AlertDialog onOpenChange={onOpenChange} open={open}>
       <SettingsAlertDialogContent
-        className="flex w-[33.75rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-[0_24px_80px_#30203824] dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
+        className="flex w-[33.75rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-[0_24px_80px_#30203824] [-webkit-font-smoothing:auto] [-moz-osx-font-smoothing:auto] dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
         data-testid={`harness-install-${isInstalling ? "progress" : "confirmation"}-${runtime.id}`}
       >
         <div className="flex items-center justify-between border-b border-[#eae7eb] px-[25px] py-[22px] dark:border-[#3c3544]">
           <AlertDialogHeader className="space-y-0">
-            <AlertDialogTitle className="text-base font-semibold tracking-normal">
+            <AlertDialogTitle className="text-lg font-semibold tracking-normal">
               {isInstalling ? "Installing" : "Install"}
             </AlertDialogTitle>
           </AlertDialogHeader>
@@ -103,9 +103,11 @@ export function HarnessInstallDialog({
                   </dd>
                 </div>
               </dl>
-              <div className="my-[18px] space-y-1 rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[18px] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
+              <div className="my-[18px] rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[18px] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
                 <p className="font-semibold">Authentication is separate</p>
-                <p>After installation, sign in with a supported provider.</p>
+                <p className="mt-[5px]">
+                  After installation, sign in with a supported provider.
+                </p>
               </div>
             </div>
             <AlertDialogFooter className="flex-row justify-end gap-2 border-t border-[#eae7eb] px-[25px] py-[18px] dark:border-[#3c3544]">
