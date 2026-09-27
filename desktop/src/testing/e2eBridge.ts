@@ -16000,32 +16000,40 @@ export function maybeInstallE2eTauriMocks() {
         const results: UnreadCatchUpChannelResult[] =
           request.request.channels.map((channel) => {
             const events = getMockMessageStore(channel.id);
-            const observedEvents =
+            const unreadReplies =
               referenceWorkspaceActive &&
               channel.id === REFERENCE_CHANNEL_IDS.sales
-                ? events
-                    .filter(
-                      (event) =>
-                        event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
-                        getThreadReferenceFromTags(event.tags).parentEventId !==
-                          null,
-                    )
-                    .map((event) => ({
-                      id: event.id,
-                      createdAt: event.created_at,
-                      rootId: getThreadReferenceFromTags(event.tags)
-                        .rootEventId,
-                      highPriority: true,
-                      countsTowardBadge: true,
-                      countsTowardAppBadge: false,
-                    }))
+                ? events.filter(
+                    (event) =>
+                      event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                      getThreadReferenceFromTags(event.tags).parentEventId !==
+                        null,
+                  )
                 : [];
+            const observedEvents = unreadReplies.map((event) => ({
+              id: event.id,
+              createdAt: event.created_at,
+              rootId: getThreadReferenceFromTags(event.tags).rootEventId,
+              highPriority: true,
+              countsTowardBadge: true,
+              countsTowardAppBadge: false,
+            }));
+            const activityRows = unreadReplies.map((event) => ({
+              id: event.id,
+              kind: event.kind,
+              pubkey: event.pubkey,
+              content: event.content,
+              createdAt: event.created_at,
+              channelId: channel.id,
+              channelName: "Sales",
+              tags: [...event.tags],
+            }));
             return {
               status: "success",
               channelId: channel.id,
               observedEvents,
               maxTrigger: 0,
-              activityRows: [],
+              activityRows,
               discovered: {
                 participated: [],
                 authored: events
