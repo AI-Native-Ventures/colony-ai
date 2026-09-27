@@ -103,11 +103,9 @@ export function HarnessInstallDialog({
                   </dd>
                 </div>
               </dl>
-              <div className="my-[18px] space-y-1 rounded-[7px] border border-[#dce7f6] bg-[#f2f6fc] px-[18px] py-[15px] text-xs leading-[18px] dark:border-[#394b68] dark:bg-[#253144]">
+              <div className="my-[18px] space-y-1 rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[18px] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
                 <p className="font-semibold">Authentication is separate</p>
-                <p className="text-[#5d6c84] dark:text-[#a9b8d0]">
-                  After installation, sign in with a supported provider.
-                </p>
+                <p>After installation, sign in with a supported provider.</p>
               </div>
             </div>
             <AlertDialogFooter className="flex-row justify-end gap-2 border-t border-[#eae7eb] px-[25px] py-[18px] dark:border-[#3c3544]">
