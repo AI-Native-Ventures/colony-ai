@@ -364,7 +364,3 @@ export function DraftRecoverySettingsPanel() {
     </section>
   );
 }
-
-export function BusinessConnectionsSettingsPanel() {
-  return null;
-}

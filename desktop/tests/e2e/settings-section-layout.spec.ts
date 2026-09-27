@@ -90,13 +90,23 @@ test("routes without a data-backed design fall back to Account profile", async (
   page,
 }) => {
   await installMockBridge(page);
-  await page.goto("/#/settings?section=compute");
+  for (const section of [
+    "compute",
+    "compute-hosts",
+    "blocks",
+    "business-defaults",
+    "business-connections",
+    "ai-connections",
+    "provider-connections",
+  ]) {
+    await page.goto(`/#/settings?section=${section}`);
 
-  await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
-  await expect(page.getByTestId("settings-panel-compute")).toHaveCount(0);
-  await expect(page.getByTestId("settings-history-back")).toBeDisabled();
-  await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
+    await expect(page.getByTestId("settings-view")).toBeVisible();
+    await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
+    await expect(page.getByTestId(`settings-panel-${section}`)).toHaveCount(0);
+    await expect(page.getByTestId("settings-history-back")).toBeDisabled();
+    await expect(page.getByTestId("settings-history-forward")).toBeDisabled();
+  }
 });
 
 test("archive follows the r19 title and empty state", async ({ page }) => {
