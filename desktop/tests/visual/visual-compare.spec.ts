@@ -366,6 +366,10 @@ test.describe("visual comparison captures", () => {
           usesReferenceWorkspace &&
           entry.referenceInventoryRoute === "today"
         ) {
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
           await expect(appPage.locator(".r17-today-page h1")).toHaveText(
             "Today",
           );
@@ -385,6 +389,9 @@ test.describe("visual comparison captures", () => {
             "2",
           );
           await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
+          await expect(
             appPage.locator(".r17-today-left .r17-today-attention-row"),
           ).toHaveCount(4);
           await expect(
@@ -396,6 +403,10 @@ test.describe("visual comparison captures", () => {
           usesReferenceWorkspace
         ) {
           const workspaceTopBar = appPage.locator(".colony-channel-topbar");
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
           await expect(
             workspaceTopBar.getByTestId("channel-work-area-trigger"),
           ).toHaveText("Work area");
@@ -432,6 +443,9 @@ test.describe("visual comparison captures", () => {
           expect(browseToForumsGap).toBeGreaterThan(4);
           expect(browseToForumsGap).toBeLessThan(24);
           const channelTabs = appPage.getByTestId("channel-view-tabs");
+          await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
           );
@@ -510,6 +524,8 @@ test.describe("visual comparison captures", () => {
           const leratoMessage = appPage.locator(
             '[data-message-id="reference-sales-lerato-0914"]',
           );
+          const isThreadScene = entry.appRoute.includes("?thread=");
+          const timelineAvatarSize = isThreadScene ? "26px" : "31px";
           await expect(
             leratoMessage.getByTestId("message-timestamp"),
           ).toHaveText("09:14");
@@ -520,8 +536,8 @@ test.describe("visual comparison captures", () => {
           await expect(leratoAvatar).toHaveClass(
             /colony-workspace-human-message-avatar/,
           );
-          await expect(leratoAvatar).toHaveCSS("width", "33px");
-          await expect(leratoAvatar).toHaveCSS("height", "33px");
+          await expect(leratoAvatar).toHaveCSS("width", timelineAvatarSize);
+          await expect(leratoAvatar).toHaveCSS("height", timelineAvatarSize);
           await expect(
             leratoMessage.getByTestId("message-avatar-fallback"),
           ).toHaveCSS(
@@ -539,7 +555,7 @@ test.describe("visual comparison captures", () => {
           await expect(ayaAvatar).toHaveClass(
             /colony-workspace-agent-message-avatar/,
           );
-          await expect(ayaAvatar).toHaveCSS("width", "33px");
+          await expect(ayaAvatar).toHaveCSS("width", timelineAvatarSize);
           await expect(
             ayaMessage.getByTestId("message-avatar-fallback"),
           ).toHaveCSS(
@@ -553,6 +569,17 @@ test.describe("visual comparison captures", () => {
           await expect(
             ayaMessage.locator("[data-link-preview-row-symbol]").locator("svg"),
           ).toHaveClass(/lucide-compass/);
+          const channelComposerToolbar = appPage
+            .getByTestId("message-composer-toolbar")
+            .first();
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-left",
+            "11px",
+          );
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-right",
+            "11px",
+          );
           await expect(
             appPage.locator('[data-testid="message-unread-divider"]'),
           ).toHaveCount(0);
@@ -562,6 +589,23 @@ test.describe("visual comparison captures", () => {
           if (entry.appRoute.includes("?thread=")) {
             const threadPanel = appPage.getByTestId("message-thread-panel");
             await expect(threadPanel).toBeVisible();
+            const threadRootMessage = threadPanel.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            );
+            await expect(
+              threadRootMessage.getByTestId("message-avatar"),
+            ).toHaveCSS("width", "25px");
+            const threadComposerToolbar = threadPanel.getByTestId(
+              "message-composer-toolbar",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-left",
+              "11px",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-right",
+              "11px",
+            );
             const activeThreadRoot = appPage.locator(
               '[data-active-thread-root="true"] [data-testid="message-row"]',
             );

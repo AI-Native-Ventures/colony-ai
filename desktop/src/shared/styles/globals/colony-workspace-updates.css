@@ -576,7 +576,7 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"]
     [data-testid="message-row"] {
-    column-gap: 0.75rem;
+    column-gap: 0.875rem;
     margin-block-end: 0.828125rem;
     padding-block: 0;
   }
@@ -584,10 +584,10 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"]
     [data-testid="message-avatar"] {
-    margin-inline-start: 0.25rem;
+    margin-inline-start: 0.1875rem;
     margin-top: 0.0625rem;
-    width: 2.0625rem;
-    height: 2.0625rem;
+    width: 1.9375rem;
+    height: 1.9375rem;
     border-radius: 0.625rem;
     box-shadow: none;
   }
@@ -595,14 +595,14 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"]
     [data-testid="message-avatar"].rounded-squircle {
-    width: 2.0625rem;
-    height: 2.0625rem;
+    width: 1.9375rem;
+    height: 1.9375rem;
   }
 
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-thread-panel"]
     [data-testid="message-row"] {
-    column-gap: 0.75rem;
+    column-gap: 0.5625rem;
     margin-block-end: 1.46875rem;
     padding-block: 0 0.0625rem;
     padding-inline-start: 0.8125rem;
@@ -611,10 +611,24 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-thread-panel"]
     [data-testid="message-avatar"] {
-    width: 2.0625rem;
-    height: 2.0625rem;
-    border-radius: 0.625rem;
+    width: 1.5625rem;
+    height: 1.5625rem;
+    border-radius: 0.4375rem;
     box-shadow: none;
+  }
+
+  :root:has([data-testid="message-thread-panel"])
+    [data-testid="message-timeline"]
+    [data-testid="message-row"] {
+    column-gap: 0.5625rem;
+  }
+
+  :root:has([data-testid="message-thread-panel"])
+    [data-testid="message-timeline"]
+    [data-testid="message-avatar"] {
+    margin-inline-start: 0.25rem;
+    width: 1.625rem;
+    height: 1.625rem;
   }
 
   :root:has([data-testid="channel-view-tabs"])

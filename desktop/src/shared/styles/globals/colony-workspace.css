@@ -158,6 +158,10 @@
   text-rendering: auto;
 }
 
+:root:has([data-colony-workspace-route="true"]) [data-sidebar="content"] {
+  scrollbar-gutter: auto;
+}
+
 :root.dark:has([data-colony-workspace-route="true"]) {
   --colony-workspace-link-color: #9dc1fb;
 }
