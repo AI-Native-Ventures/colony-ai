@@ -1126,6 +1126,26 @@ mod postgres_tests {
         sign_command(keys, KIND_ASK_RESPONSE, channel_id, &d_tag, response, None)
     }
 
+    fn sign_response_with_agent_claim(
+        keys: &Keys,
+        channel_id: Uuid,
+        response: &AskResponse,
+        claimed_agent_pubkey: &str,
+    ) -> Event {
+        let d_tag = buzz_core::company_records::ask_d_tag(channel_id, response.ask_id);
+        EventBuilder::new(
+            Kind::Custom(KIND_ASK_RESPONSE as u16),
+            serde_json::to_string(response).expect("serialize response"),
+        )
+        .tags([
+            Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag"),
+            Tag::parse(["d", d_tag.as_str()]).expect("d tag"),
+            Tag::parse(["agent", claimed_agent_pubkey]).expect("agent claim tag"),
+        ])
+        .sign_with_keys(keys)
+        .expect("sign response with client agent claim")
+    }
+
     fn sign_cancel(
         keys: &Keys,
         channel_id: Uuid,
@@ -1363,6 +1383,23 @@ mod postgres_tests {
                 .accepted
         );
 
+        let (_, head) = create_ask(
+            &fixture,
+            &owner,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let (_, denied) = response_for(&fixture, &outside, &head, AskType::Question).await;
+        assert!(matches!(
+            denied,
+            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
+        ));
+
         let addressed = ask_record(
             Uuid::new_v4(),
             &fixture.root.id.to_hex(),
@@ -1424,7 +1461,7 @@ mod postgres_tests {
         );
         assert!(matches!(
             handle(&fixture.tenant, &fixture.state, create_event.clone(), auth(&owner)).await,
-            Err(IngestError::Rejected(message)) if message.contains("Agents can only be asked questions and verdicts")
+            Err(IngestError::Rejected(message)) if message.contains("an agent can only be asked a question or a verdict")
         ));
         assert!(fixture
             .state
@@ -1471,6 +1508,208 @@ mod postgres_tests {
             .await
             .expect("check nonmember command")
             .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn relay_enforces_cancel_authority_and_exact_head() {
+        let fixture = fixture().await;
+        let asker = Keys::generate();
+        let other_member = Keys::generate();
+        let admin = Keys::generate();
+        let outside = Keys::generate();
+        add_actor(&fixture, &asker, Some("member"), false, true).await;
+        add_actor(&fixture, &other_member, Some("member"), false, true).await;
+        add_actor(&fixture, &admin, Some("admin"), false, true).await;
+        add_actor(&fixture, &outside, Some("member"), false, false).await;
+
+        let (_, head) = create_ask(
+            &fixture,
+            &asker,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let current = parse_head(&head.event).expect("parse ask head");
+
+        let stale_head_id = "0".repeat(64);
+        let stale_event = sign_cancel(
+            &other_member,
+            fixture.channel_id,
+            current.ask_id,
+            &stale_head_id,
+        );
+        assert!(matches!(
+            handle(
+                &fixture.tenant,
+                &fixture.state,
+                stale_event.clone(),
+                auth(&other_member),
+            )
+            .await,
+            Err(IngestError::Rejected(message)) if message.contains("current head is")
+        ));
+        assert!(
+            fixture
+                .state
+                .db
+                .get_event_by_id_for_event_write(
+                    fixture.tenant.community(),
+                    &stale_event.id.to_bytes(),
+                )
+                .await
+                .expect("check stale cancel was not stored")
+                .is_none()
+        );
+
+        let unauthorized_event = sign_cancel(
+            &other_member,
+            fixture.channel_id,
+            current.ask_id,
+            &head.event.id.to_hex(),
+        );
+        assert!(matches!(
+            handle(
+                &fixture.tenant,
+                &fixture.state,
+                unauthorized_event.clone(),
+                auth(&other_member),
+            )
+            .await,
+            Err(IngestError::AuthFailed(message)) if message.contains("only the asker or a company owner or admin")
+        ));
+        assert!(fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(
+                fixture.tenant.community(),
+                &unauthorized_event.id.to_bytes(),
+            )
+            .await
+            .expect("check unauthorized cancel was not stored")
+            .is_none());
+
+        let owner_cancel = sign_cancel(
+            &fixture.owner,
+            fixture.channel_id,
+            current.ask_id,
+            &head.event.id.to_hex(),
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            owner_cancel,
+            auth(&fixture.owner),
+        )
+        .await
+        .expect("company owner cancels ask");
+
+        let (_, admin_head) = create_ask(
+            &fixture,
+            &asker,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let admin_ask = parse_head(&admin_head.event).expect("parse admin ask");
+        let admin_cancel = sign_cancel(
+            &admin,
+            fixture.channel_id,
+            admin_ask.ask_id,
+            &admin_head.event.id.to_hex(),
+        );
+        handle(&fixture.tenant, &fixture.state, admin_cancel, auth(&admin))
+            .await
+            .expect("company admin cancels ask");
+
+        let (_, asker_head) = create_ask(
+            &fixture,
+            &asker,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let asker_ask = parse_head(&asker_head.event).expect("parse asker ask");
+        let asker_cancel = sign_cancel(
+            &asker,
+            fixture.channel_id,
+            asker_ask.ask_id,
+            &asker_head.event.id.to_hex(),
+        );
+        handle(&fixture.tenant, &fixture.state, asker_cancel, auth(&asker))
+            .await
+            .expect("asker cancels own ask");
+
+        let (_, outside_head) = create_ask(
+            &fixture,
+            &asker,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let outside_ask = parse_head(&outside_head.event).expect("parse outside ask");
+        let outside_cancel = sign_cancel(
+            &outside,
+            fixture.channel_id,
+            outside_ask.ask_id,
+            &outside_head.event.id.to_hex(),
+        );
+        assert!(matches!(
+            handle(
+                &fixture.tenant,
+                &fixture.state,
+                outside_cancel,
+                auth(&outside),
+            )
+            .await,
+            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn client_agent_tag_does_not_override_authoritative_human_identity() {
+        let fixture = fixture().await;
+        let human = Keys::generate();
+        let claimed_agent = Keys::generate();
+        add_actor(&fixture, &human, Some("member"), false, true).await;
+        let (_, head) = create_ask(
+            &fixture,
+            &fixture.owner,
+            ask_record(
+                Uuid::new_v4(),
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::General,
+            ),
+        )
+        .await;
+        let current = parse_head(&head.event).expect("parse ask head");
+        let response = response(current.ask_id, &head.event.id.to_hex(), AskType::Question);
+        let event = sign_response_with_agent_claim(
+            &human,
+            fixture.channel_id,
+            &response,
+            &claimed_agent.public_key().to_hex(),
+        );
+        let result = handle(&fixture.tenant, &fixture.state, event, auth(&human)).await;
+        assert!(result.expect("human record remains authoritative").accepted);
     }
 
     #[tokio::test]
