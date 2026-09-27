@@ -25,9 +25,10 @@ use super::ingest::{IngestAuth, IngestError, IngestResult, ThreadMetadataOwned};
 use crate::state::AppState;
 
 #[cfg(test)]
-static ASK_PERSIST_TEST_HOOK: std::sync::OnceLock<
-    std::sync::Mutex<Option<(String, Arc<tokio::sync::Barrier>)>>,
-> = std::sync::OnceLock::new();
+type AskPersistTestHook = std::sync::Mutex<Option<(String, Arc<tokio::sync::Barrier>)>>;
+
+#[cfg(test)]
+static ASK_PERSIST_TEST_HOOK: std::sync::OnceLock<AskPersistTestHook> = std::sync::OnceLock::new();
 
 /// Handles the ask commands in kinds 47032 and 47033.
 pub async fn handle(
