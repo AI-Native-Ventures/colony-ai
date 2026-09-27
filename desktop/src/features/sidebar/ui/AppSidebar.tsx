@@ -1,6 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { ChevronDown, Plus, Users } from "lucide-react";
+import { ChevronDown, Users } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -518,13 +518,6 @@ export function AppSidebar({
     openCreateDialog("stream");
   }, [onCreateChannelOpenChange, openCreateDialog]);
 
-  const handleCreateChannelInSection = React.useCallback(
-    (sectionId: string) => {
-      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
-    },
-    [assignChannel, onBrowseChannels],
-  );
-
   return (
     <Sidebar
       className="!z-[100] !border-r-0"
@@ -892,11 +885,34 @@ export function AppSidebar({
                       />
                     </>
                   ) : null}
-
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
                     <div className="px-3 py-2 text-sm text-destructive">
                       {errorMessage}
+                    </div>
+                  ) : null}
+                  {onBrowseChannels ? (
+                    <div
+                      className="colony-sidebar-browse-channels"
+                      data-testid="sidebar-browse-channels"
+                    >
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            className="text-xs"
+                            onClick={() => onBrowseChannels()}
+                            type="button"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="text-sm font-normal leading-none"
+                            >
+                              +
+                            </span>
+                            <span className="truncate">Browse channels</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
                     </div>
                   ) : null}
                 </>

@@ -275,8 +275,6 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
-    const isAuthorAgent =
-      message.isAgent === true || profilePopoverRole === "bot";
     const agentMentionPubkeysByName = React.useMemo(() => {
       if (!mentionPubkeysByName) {
         return undefined;
@@ -467,9 +465,7 @@ export const MessageRow = React.memo(
 
     const isThreadReplyLayout = layoutVariant === "thread-reply";
     const guideBleedRem = isThreadReplyLayout ? 0.25 : 0;
-    const avatarButtonRadiusClass = isAuthorAgent
-      ? "rounded-[30%]"
-      : "rounded-full";
+    const avatarButtonRadiusClass = "rounded-md";
 
     const showRespondToIndicator =
       message.respondTo === "anyone" || message.respondTo === "allowlist";
@@ -479,9 +475,10 @@ export const MessageRow = React.memo(
         <UserAvatar
           accent={message.accent}
           avatarUrl={message.avatarUrl ?? null}
-          className="shrink-0"
+          className="h-7 w-7 shrink-0 rounded-md text-2xs"
           displayName={message.author}
-          shape={isAuthorAgent ? "squircle" : "circle"}
+          fallbackVariant="muted"
+          shape="square"
           testId="message-avatar"
         />
         {showRespondToIndicator &&
