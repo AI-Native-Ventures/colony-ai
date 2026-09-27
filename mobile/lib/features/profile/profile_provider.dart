@@ -144,6 +144,9 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
   Future<void> updateAvatarUrl(String avatarUrl) =>
       _publishProfilePatch({'picture': avatarUrl.trim()});
 
+  /// Removes the current user's profile photo while preserving other metadata.
+  Future<void> clearAvatar() => _publishProfilePatch({'picture': null});
+
   Future<void> _publishProfilePatch(Map<String, dynamic> patch) {
     final context = _currentWriteContext();
     final previous = _patchQueue;
@@ -196,6 +199,7 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
         ..remove('display_name')
         ..remove('name');
     }
+    if (patch['picture'] == null) nextMetadata.remove('picture');
     final relay = SignedEventRelay(session: session, nsec: context.config.nsec);
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final currentCreatedAt = currentHead?.createdAt ?? 0;
@@ -384,7 +388,7 @@ class PresenceNotifier extends AsyncNotifier<String> {
   }
 
   /// Publish a kind:20001 presence event. Returns the requested status
-  /// optimistically — failures are silently absorbed and the next heartbeat
+  /// optimistically. Failures are silently absorbed and the next heartbeat
   /// will retry.
   Future<String> _setPresence(String status) async {
     final sessionState = ref.read(relaySessionProvider);

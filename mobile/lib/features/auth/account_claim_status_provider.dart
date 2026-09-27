@@ -4,6 +4,19 @@ import '../../shared/community/community_provider.dart';
 import 'account_api.dart';
 import 'account_auth_types.dart';
 
+/// Loads the current identity's account fields for profile settings.
+final accountProfileProvider = FutureProvider<AccountProfile?>((ref) async {
+  final community = await ref.watch(activeCommunityProvider.future);
+  final nsec = community?.nsec;
+  if (nsec == null || nsec.isEmpty) return null;
+  try {
+    return await ref.watch(accountApiProvider).me(nsec: nsec);
+  } on AccountAuthFailure catch (failure) {
+    if (failure.kind == AccountAuthFailureKind.accountMissing) return null;
+    rethrow;
+  }
+});
+
 /// Checks whether the active identity is already linked to an account.
 final accountLinkStatusProvider =
     AsyncNotifierProvider<AccountLinkStatusNotifier, AccountLinkState>(

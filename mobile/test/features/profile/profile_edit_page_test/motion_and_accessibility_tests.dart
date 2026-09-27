@@ -475,7 +475,8 @@ void runProfileEditMotionAndAccessibilityTests() {
         .toList();
     expect(
       nativeControls.any(
-        (params) => params['icon'] == 'shutter' && params['label'] == 'Record',
+        (params) =>
+            params['icon'] == 'shutter' && params['label'] == 'Start recording',
       ),
       isTrue,
     );

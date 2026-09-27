@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../animated_avatar.dart';
 import '../community/community_provider.dart';
 import '../emoji/emoji_avatar.dart';
+import '../emoji/emoji_glyph.dart';
 import '../emoji/native_emoji_glyph.dart';
 import '../push/push_presentation_cache.dart';
 import '../relay/relay.dart';
@@ -24,6 +26,8 @@ class AvatarImage extends StatelessWidget {
   final Color? backgroundColor;
   final Widget fallback;
   final bool isAgent;
+  @visibleForTesting
+  final EmojiGlyphBuilder? emojiBuilder;
 
   const AvatarImage({
     super.key,
@@ -32,6 +36,7 @@ class AvatarImage extends StatelessWidget {
     required this.fallback,
     this.backgroundColor,
     this.isAgent = false,
+    this.emojiBuilder,
   });
 
   @override
@@ -43,6 +48,7 @@ class AvatarImage extends StatelessWidget {
       child: AvatarImageContent(
         imageUrl: animatedAvatar?.posterUrl ?? imageUrl,
         fallback: fallback,
+        emojiBuilder: emojiBuilder,
       ),
     );
     if (!isAgent) {
@@ -66,12 +72,15 @@ class AvatarImageContent extends ConsumerStatefulWidget {
   final String? imageUrl;
   final Widget fallback;
   final BoxFit fit;
+  @visibleForTesting
+  final EmojiGlyphBuilder? emojiBuilder;
 
   const AvatarImageContent({
     super.key,
     required this.imageUrl,
     required this.fallback,
     this.fit = BoxFit.cover,
+    this.emojiBuilder,
   });
 
   @override
@@ -102,11 +111,13 @@ class _AvatarImageContentState extends ConsumerState<AvatarImageContent> {
           builder: (_, constraints) {
             final glyphSize = constraints.biggest.shortestSide * 258 / 512;
             return Center(
-              child: NativeEmojiGlyph(
-                emoji: emoji,
-                size: glyphSize,
-                opticalBoxSize: glyphSize,
-              ),
+              child:
+                  widget.emojiBuilder?.call(emoji, glyphSize) ??
+                  NativeEmojiGlyph(
+                    emoji: emoji,
+                    size: glyphSize,
+                    opticalBoxSize: glyphSize,
+                  ),
             );
           },
         ),
