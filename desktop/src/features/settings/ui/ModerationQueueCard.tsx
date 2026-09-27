@@ -520,26 +520,26 @@ function QueueTab({
           );
         }}
       >
-        <h3 className="settings-moderation-failure__title text-base font-semibold text-foreground">
+        <h3 className="settings-moderation-failure__title text-sm font-semibold leading-[1.5] text-foreground">
           Moderation failed
         </h3>
         <div className="settings-moderation-failure__reported">
-          <p className="settings-moderation-failure__reported-title text-base font-semibold text-foreground">
+          <p className="settings-moderation-failure__reported-title text-sm font-semibold leading-[1.5] text-foreground">
             Reported message
           </p>
-          <p className="settings-moderation-failure__reported-detail text-sm text-muted-foreground">
+          <p className="settings-moderation-failure__reported-detail text-xs leading-[1.5] text-muted-foreground">
             {channel ? `# ${channel.name} · ` : ""}Reported by a member
           </p>
         </div>
         <div className="settings-moderation-failure__field">
           <label
-            className="settings-moderation-failure__label text-sm text-foreground"
+            className="settings-moderation-failure__label text-xs leading-[1.5] text-foreground"
             htmlFor="moderation-action-reason"
           >
             Reason for action
           </label>
           <Textarea
-            className="min-h-0 resize-y rounded-md border-input bg-background px-3 py-2.5 text-sm leading-[1.7]"
+            className="settings-moderation-failure__control min-h-0 resize-y rounded-[6px] border-input bg-background px-3 py-2.5 text-sm leading-[1.7]"
             data-testid="moderation-action-reason"
             id="moderation-action-reason"
             onChange={(event) =>
@@ -553,13 +553,13 @@ function QueueTab({
         </div>
         <div className="settings-moderation-failure__field">
           <label
-            className="settings-moderation-failure__label text-sm text-foreground"
+            className="settings-moderation-failure__label text-xs leading-[1.5] text-foreground"
             htmlFor="moderation-action-select"
           >
             Action
           </label>
           <select
-            className="h-[38px] w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+            className="settings-moderation-failure__control h-[43px] w-full rounded-[6px] border border-input bg-background px-3 py-[10px] text-sm leading-[1.5] text-foreground"
             data-testid="moderation-action-select"
             id="moderation-action-select"
             onChange={(event) =>
@@ -586,16 +586,16 @@ function QueueTab({
           data-testid="moderation-action-failed"
           role="alert"
         >
-          <p className="settings-moderation-failure__notice-title text-sm font-semibold">
+          <p className="settings-moderation-failure__notice-title text-xs font-semibold leading-[1.5]">
             Moderation action failed
           </p>
-          <p className="settings-moderation-failure__notice-detail text-sm">
+          <p className="settings-moderation-failure__notice-detail text-xs leading-[1.5]">
             The content remains unchanged. Retry after checking your
             permissions.
           </p>
         </div>
         <Button
-          className="mt-0 h-[34px] rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-sm font-semibold text-[#925369] hover:bg-[#a04f6415] dark:text-[#dcacb8]"
+          className="mt-0 h-auto min-h-[34px] rounded-[6px] border-[#a04f6440] bg-[#a04f6408] px-[13px] py-2 text-xs font-semibold leading-[1.5] text-[#a04f64] hover:bg-[#a04f6415] dark:text-[#dcacb8]"
           data-testid="moderation-confirm-action"
           disabled={pendingTargetKey !== null}
           type="submit"

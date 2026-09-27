@@ -1123,6 +1123,7 @@
       "appRoute": "/#/settings?section=moderation",
       "routeLabel": "Moderation save failed",
       "appReadySelector": "[data-testid=settings-moderation]",
+      "clearAppFocus": true,
       "appMockData": {
         "channelNamesById": {
           "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50": "campaign-studio"
@@ -1176,10 +1177,11 @@
           "value": "Repeated unsolicited advertising"
         }
       ],
-      "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
-      }
+        "referenceSelector": ".narrow",
+        "appSelector": "[data-testid=moderation-action-form]"
+      },
+      "referenceCanvas": true
     },
     {
       "id": "desktop-15-form",

@@ -2289,9 +2289,11 @@ body:has(.w20-settings-shell) {
 }
 
 .settings-moderation-failure {
-  max-width: 750px;
+  max-width: 880px;
   margin-bottom: 26px;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid #eae7eb;
+  background-color: #fffefd;
+  color: #282532;
   padding-bottom: 26px;
 }
 
@@ -2301,12 +2303,13 @@ body:has(.w20-settings-shell) {
 }
 
 .settings-moderation-failure__reported {
-  border-bottom: 1px solid hsl(var(--border));
-  padding: 18px 0;
+  border-bottom: 1px solid #eae7eb;
+  padding: 18px 0 20px;
 }
 
 .settings-moderation-failure__reported-detail {
   margin-top: 4px;
+  color: #79747f;
   line-height: 1.5;
 }
 
@@ -2328,16 +2331,59 @@ body:has(.w20-settings-shell) {
 
 .settings-moderation-failure__notice-detail {
   margin-top: 5px;
+  line-height: 1.65;
 }
 
 .settings-moderation-failure__confirm {
   margin-top: 22px;
 }
 
+.settings-moderation-failure__title,
+.settings-moderation-failure__reported-title,
+.settings-moderation-failure__label {
+  color: #282532;
+}
+
+.settings-moderation-failure textarea.settings-moderation-failure__control,
+.settings-moderation-failure select.settings-moderation-failure__control {
+  border-color: #eae7eb;
+  background-color: #fffefd;
+  color: #282532;
+}
+
+.dark .settings-moderation-failure {
+  border-color: #3c3544;
+  background-color: #26232d;
+  color: #e6e1ec;
+}
+
+.dark .settings-moderation-failure__reported {
+  border-color: #3c3544;
+}
+
+.dark .settings-moderation-failure__title,
+.dark .settings-moderation-failure__reported-title,
+.dark .settings-moderation-failure__label {
+  color: #e6e1ec;
+}
+
+.dark
+  .settings-moderation-failure
+  textarea.settings-moderation-failure__control,
+.dark .settings-moderation-failure select.settings-moderation-failure__control {
+  border-color: #3c3544;
+  background-color: #26232d;
+  color: #e6e1ec;
+}
+
 .dark .settings-moderation-failure__notice {
   border-color: #63414e;
   background: #402b34;
   color: #dcacb8;
+}
+
+.dark .settings-moderation-failure__reported-detail {
+  color: #a9a1b4;
 }
 
 @media (prefers-reduced-motion: reduce) {

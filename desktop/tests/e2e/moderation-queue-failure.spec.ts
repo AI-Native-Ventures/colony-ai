@@ -55,6 +55,19 @@ test("failed enforcement keeps the report open and shows the designed failure", 
 
   const actionForm = page.getByTestId("moderation-action-form");
   await expect(actionForm).toBeVisible();
+  await expect(actionForm).toHaveCSS("max-width", "880px");
+  await expect(page.getByTestId("moderation-action-reason")).toHaveCSS(
+    "border-radius",
+    "6px",
+  );
+  await expect(page.getByTestId("moderation-action-select")).toHaveCSS(
+    "border-radius",
+    "6px",
+  );
+  await expect(page.getByTestId("moderation-confirm-action")).toHaveCSS(
+    "border-radius",
+    "6px",
+  );
   await expect(
     actionForm.getByRole("heading", { name: "Moderation failed" }),
   ).toBeVisible();

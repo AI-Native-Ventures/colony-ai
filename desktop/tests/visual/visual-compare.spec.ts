@@ -55,6 +55,7 @@ type VisualCase = {
   referenceCanvas?: boolean;
   appReadySelector?: string;
   appPostActionReadySelector?: string;
+  clearAppFocus?: boolean;
 };
 
 type VisualManifest = {
@@ -284,6 +285,12 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appPostActionReadySelector ?? entry.appReadySelector,
         );
+        if (entry.clearAppFocus) {
+          await appPage.evaluate(() => {
+            const activeElement = document.activeElement;
+            if (activeElement instanceof HTMLElement) activeElement.blur();
+          });
+        }
         const referenceGeometry = await inspectPageGeometry(
           referencePage,
           width,
@@ -294,6 +301,10 @@ test.describe("visual comparison captures", () => {
         const clip = await resolveClip(entry.clip, referencePage, appPage);
         const caseDir = path.join(outputRoot, entry.id);
         await mkdir(caseDir, { recursive: true });
+        await writeFile(
+          path.join(caseDir, "geometry.json"),
+          `${JSON.stringify({ referenceGeometry, appGeometry, clip }, null, 2)}\n`,
+        );
         const referenceBuffer = await referencePage.screenshot({
           path: path.join(caseDir, "reference.png"),
           ...(clip ? { clip: clip.reference } : {}),
@@ -658,6 +669,32 @@ async function inspectPageGeometry(
         ".thread-pane",
         ".channel-header",
         ".tabs",
+        ".narrow",
+        ".narrow .row",
+        ".narrow .row strong",
+        ".narrow .row p",
+        ".narrow > h3",
+        ".narrow .field",
+        ".narrow .field label",
+        ".narrow .field textarea",
+        ".narrow .field select",
+        ".narrow .notice",
+        ".narrow .btn",
+        "[data-testid=moderation-action-form]",
+        "[data-testid=moderation-action-reason]",
+        "[data-testid=moderation-action-select]",
+        "[data-testid=moderation-action-failed]",
+        "[data-testid=moderation-confirm-action]",
+        ".settings-moderation-failure__title",
+        ".settings-moderation-failure__reported",
+        ".settings-moderation-failure__reported-title",
+        ".settings-moderation-failure__reported-detail",
+        ".settings-moderation-failure__field",
+        ".settings-moderation-failure__label",
+        ".settings-moderation-failure__notice",
+        ".settings-moderation-failure__notice-title",
+        ".settings-moderation-failure__notice-detail",
+        ".settings-moderation-failure__confirm",
         ".message-list",
         ".channel-composer",
         ".channel-composer .composer",
