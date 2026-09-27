@@ -88,6 +88,14 @@ export async function selectSettingsSection(
   section: SettingsSection,
 ) {
   const route = sectionRoute[section];
-  await page.getByTestId(`settings-group-${route.group}`).click();
-  await page.getByTestId(`settings-inner-${route.section}`).click();
+  const groupButton = page.getByTestId(`settings-group-${route.group}`);
+  await groupButton.click();
+  await expect(groupButton).toHaveAttribute("aria-pressed", "true");
+
+  const sectionTab = page.getByTestId(`settings-inner-${route.section}`);
+  await sectionTab.click();
+  await expect(sectionTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByTestId(`settings-panel-${route.section}`),
+  ).toBeVisible();
 }

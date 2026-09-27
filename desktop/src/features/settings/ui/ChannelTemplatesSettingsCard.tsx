@@ -57,7 +57,10 @@ export function ChannelTemplatesSettingsCard() {
         <h1 className="text-2xl font-semibold tracking-tight">
           Channel templates
         </h1>
-        <p className="text-sm font-normal text-muted-foreground/70">
+        <p
+          className="text-sm font-normal text-muted-foreground/70"
+          data-settings-subcopy
+        >
           Reusable starting points for teams and client work.
         </p>
       </div>

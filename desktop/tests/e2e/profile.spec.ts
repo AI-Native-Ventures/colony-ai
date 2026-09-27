@@ -1612,7 +1612,7 @@ test("restored Inbox deep link hides the back arrow", async ({ page }) => {
 
   // A reload keeps the `agentSession` URL param but drops the in-memory
   // return target, so the restored panel hides the back arrow and close is
-  // the only affordance — never a blind history pop.
+  // the only affordance - never a blind history pop.
   await page.reload();
   await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
   await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
@@ -1708,7 +1708,7 @@ test("declared owner sees runtime tab without a relay-agent record", async ({
   ).toHaveCount(0);
   await expect(panel.getByText("Harness log", { exact: true })).toHaveCount(0);
 
-  // No relay/managed runtime record means no write or management affordance —
+  // No relay/managed runtime record means no write or management affordance -
   // only the truthful NIP-OA profile signal is rendered in Runtime.
   await expect(panel.getByText("Model")).toHaveCount(0);
   await expect(
@@ -1759,7 +1759,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
     "16aaadcf39011edbd887e4abefe5837170621db277e234f3f6c220d38ba75ecf";
   await installMockBridge(page, {
     // Seeded as an agent (kind:0 NIP-OA owner) but NOT as a managed agent and
-    // NOT in the relay-agents registry — exactly the bug scenario.
+    // NOT in the relay-agents registry - exactly the bug scenario.
     searchProfiles: [
       { pubkey: ednaPubkey, displayName: "Edna", isAgent: true },
     ],
@@ -1796,7 +1796,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
   await messageRow.locator("button").first().click();
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-  // The bot indicator only renders when isBot resolves true — the assertion
+  // The bot indicator only renders when isBot resolves true - the assertion
   // that the OA-owner signal now drives agent framing.
   await expect(page.getByTestId("profile-bot-indicator")).toBeVisible();
 });
@@ -2346,11 +2346,24 @@ test("settings subtitles share the Appearance secondary color", async ({
     "updates",
   ]) {
     await selectSettingsSection(page, section);
+    if (section === "profile") {
+      const accountProfile = page.getByTestId("settings-profile");
+      await expect(
+        accountProfile.getByRole("heading", {
+          name: "Your account",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        accountProfile.locator("[data-settings-subcopy]:visible"),
+      ).toHaveCount(0);
+      continue;
+    }
     const subtitles =
       section === "appearance"
         ? appearancePanel.locator(".ap-heading p:visible")
         : settingsView.locator("[data-settings-subcopy]:visible");
-    await expect(subtitles.first()).toBeVisible();
+    await expect(subtitles.first(), `${section} subtitle`).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).color),
     );
