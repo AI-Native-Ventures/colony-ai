@@ -320,7 +320,7 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
 }
 
 export function TodayScreen({
-  showUpdatesAction = true,
+  showUpdatesAction = false,
 }: {
   showUpdatesAction?: boolean;
 }) {
