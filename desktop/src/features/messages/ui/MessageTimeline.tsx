@@ -181,7 +181,7 @@ const MessageTimelineBase = React.forwardRef<
     hasComposerOverlay = true,
     hideDayDividers = false,
     alwaysShowMessageIdentity = false,
-    compactThreadSummaryAvatars = false,
+    compactThreadSummaryAvatars = true,
     hideAgentAccessBadges = false,
     pinnedIntro,
     hasOlderMessages = true,

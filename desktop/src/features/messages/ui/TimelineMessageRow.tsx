@@ -95,7 +95,7 @@ type MessageRowItemProps = {
 export function MessageRowItem({
   channelId,
   currentPubkey,
-  compactThreadSummaryAvatars = false,
+  compactThreadSummaryAvatars = true,
   entry,
   followThreadById,
   footer,

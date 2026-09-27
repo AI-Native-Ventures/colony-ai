@@ -165,7 +165,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   historyExhausted = false,
   hideDayDividers = false,
   alwaysShowMessageIdentity = false,
-  compactThreadSummaryAvatars = false,
+  compactThreadSummaryAvatars = true,
   hideAgentAccessBadges = false,
   useVirtualizer = false,
   onStartReached,
