@@ -21,6 +21,7 @@ class TodayPage extends HookConsumerWidget {
     required this.updatesPageBuilder,
     required this.onOpenReview,
     required this.onOpenUpdate,
+    this.onOpenActivity,
     this.communityIconUrl,
     this.initialSection = TodaySection.forYou,
     this.initiallyPublished = false,
@@ -36,6 +37,7 @@ class TodayPage extends HookConsumerWidget {
   final TodayUpdatesPageBuilder updatesPageBuilder;
   final ValueChanged<String> onOpenReview;
   final ValueChanged<String> onOpenUpdate;
+  final ValueChanged<BuildContext>? onOpenActivity;
   final TodaySection initialSection;
   final bool initiallyPublished;
   final DateTime? now;
@@ -81,6 +83,7 @@ class TodayPage extends HookConsumerWidget {
                     teamUpdate: teamUpdate,
                     onOpenReview: onOpenReview,
                     onOpenUpdate: onOpenUpdate,
+                    onOpenActivity: onOpenActivity,
                     bottomPadding: mediaPadding.bottom,
                   ),
           ),
@@ -260,6 +263,7 @@ class _TodayForYou extends StatelessWidget {
     required this.teamUpdate,
     required this.onOpenReview,
     required this.onOpenUpdate,
+    required this.onOpenActivity,
     required this.bottomPadding,
   });
 
@@ -269,6 +273,7 @@ class _TodayForYou extends StatelessWidget {
   final AsyncValue<TodayTeamUpdate?> teamUpdate;
   final ValueChanged<String> onOpenReview;
   final ValueChanged<String> onOpenUpdate;
+  final ValueChanged<BuildContext>? onOpenActivity;
   final double bottomPadding;
 
   @override
@@ -300,7 +305,14 @@ class _TodayForYou extends StatelessWidget {
           ),
         ),
         const SizedBox(height: Grid.lg - 14),
-        const _SectionLabel('Needs your review'),
+        Row(
+          children: [
+            const _SectionLabel('Needs your review'),
+            const Spacer(),
+            if (onOpenActivity != null)
+              _ActivityShortcut(onTap: () => onOpenActivity!(context)),
+          ],
+        ),
         const SizedBox(height: Grid.xxs),
         reviewItems.when(
           loading: () => const SizedBox.shrink(),
@@ -328,6 +340,44 @@ class _TodayForYou extends StatelessWidget {
               : _TeamUpdateRow(item: item, onTap: () => onOpenUpdate(item.id)),
         ),
       ],
+    );
+  }
+}
+
+class _ActivityShortcut extends StatelessWidget {
+  const _ActivityShortcut({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Semantics(
+      button: true,
+      label: 'Activity',
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Grid.xxs),
+                child: Text(
+                  'Activity',
+                  style: context.mobileTypography.companyEntryDescription
+                      .copyWith(
+                        color: tokens.action,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

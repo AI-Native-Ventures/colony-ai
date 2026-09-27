@@ -11,6 +11,9 @@ class Grid {
   /// Twelve spacing - 12 pixels
   static const double twelve = 12.0;
 
+  /// Ten spacing for compact mobile controls.
+  static const double ten = 10.0;
+
   /// Small layout gap - 14 pixels.
   static const double fourteen = 14.0;
 

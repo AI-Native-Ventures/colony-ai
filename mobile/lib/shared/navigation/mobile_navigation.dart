@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'mobile_route.dart';
+import 'mobile_route_context.dart';
 import 'mobile_route_scope.dart';
 import 'mobile_routes.dart';
 
@@ -25,6 +26,18 @@ abstract final class MobileNavigation {
         MobileRoutes.updates,
         const NoMobileRouteArguments(),
       );
+
+  /// Opens Activity above the Today tab's retained navigation stack.
+  static Future<void> openActivity(
+    BuildContext context,
+    MobileShellRouteContext routeContext,
+  ) async {
+    await push<MobileShellRouteContext, void>(
+      context,
+      MobileRoutes.activity,
+      routeContext,
+    );
+  }
 
   static Future<void> openUpdateNote(BuildContext context, String noteId) =>
       push<String, void>(context, MobileRoutes.updateNote, noteId);

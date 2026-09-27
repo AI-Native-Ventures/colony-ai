@@ -14,10 +14,83 @@ const bodyExtraSmallTextStyle = TextStyle(
 
 const buttonTextStyle = TextStyle(
   fontFamily: _fontFamily,
-  fontSize: 11,
-  fontWeight: FontWeight.w500,
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
   height: 1.2,
   letterSpacing: 0,
+);
+
+const companyHubTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 20,
+  fontWeight: FontWeight.w700,
+  height: 1.3,
+  letterSpacing: -0.6,
+);
+
+const companyHubSubtitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w400,
+  height: 1.4,
+);
+
+const companySectionTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w800,
+  height: 1.3,
+  letterSpacing: 0.8,
+);
+
+const companyEntryTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+);
+
+const companyEntryDescriptionTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 9,
+  fontWeight: FontWeight.w400,
+  height: 1.2,
+);
+
+const identityInitialsTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 12,
+  fontWeight: FontWeight.w800,
+  height: 1,
+);
+
+const identityNameTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
+  height: 1.35,
+);
+
+const identityDetailsTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w400,
+  height: 1.4,
+);
+
+const identityStatusTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 8,
+  fontWeight: FontWeight.w500,
+  height: 1.35,
+);
+
+const brandWordmarkTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 22,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+  letterSpacing: -1.4,
 );
 
 const textTheme = TextTheme(
