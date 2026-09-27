@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { installMockBridge } from "../helpers/bridge";
 
 const ISSUE_COMMENTS = [
@@ -12,7 +14,7 @@ const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 
 async function openBuzzProject(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
     .locator(

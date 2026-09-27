@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/theme/theme.dart';
+import '../../shared/animated_avatar.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/profile/user_profile.dart';
 
@@ -23,29 +24,32 @@ class SmallAvatar extends StatelessWidget {
     final avatarUrl = profile?.avatarUrl;
     final initial =
         profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
-    final isAgent = profile?.ownerPubkey != null;
+    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
+    final tokens = context.mobileTokens;
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: isAgent ? BoxShape.rectangle : BoxShape.circle,
-        borderRadius: isAgent ? BorderRadius.circular(size * 0.3) : null,
+        borderRadius: BorderRadius.circular(size * 0.3),
         border: Border.all(color: context.colors.surface, width: 1.5),
       ),
-      child: AvatarImage(
-        imageUrl: avatarUrl,
-        radius: (size - 2) / 2,
-        backgroundColor: context.colors.primaryContainer,
-        fallback: Text(
-          initial,
-          style: TextStyle(
-            fontSize: size * 0.4,
-            fontWeight: FontWeight.w600,
-            color: context.colors.onPrimaryContainer,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.3),
+        child: ColoredBox(
+          color: animatedAvatar == null ? tokens.soft : Colors.transparent,
+          child: AvatarImageContent(
+            imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
+            fallback: Text(
+              initial,
+              style: context.mobileTypography.metadata.copyWith(
+                fontSize: size * 0.4,
+                fontWeight: FontWeight.w700,
+                color: tokens.ink,
+              ),
+            ),
           ),
         ),
-        isAgent: isAgent,
       ),
     );
   }

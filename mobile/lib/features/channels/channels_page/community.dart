@@ -422,9 +422,7 @@ Future<void> _confirmRemoveCommunity(
 }
 
 class _CommunityIndicator extends ConsumerWidget {
-  final VoidCallback onTap;
-
-  const _CommunityIndicator({required this.onTap});
+  const _CommunityIndicator();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -432,12 +430,44 @@ class _CommunityIndicator extends ConsumerWidget {
 
     final activeCommunity = activeAsync.value;
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: _CommunityAvatar(
-        name: activeCommunity?.name,
-        relayUrl: activeCommunity?.relayUrl,
+    final iconUrl = activeCommunity?.relayUrl == null
+        ? null
+        : ref.watch(communityIconProvider(activeCommunity!.relayUrl)).value;
+    final name = activeCommunity?.name.trim();
+    return ClipRRect(
+      key: const ValueKey('community-indicator'),
+      borderRadius: BorderRadius.circular(10),
+      child: ColoredBox(
+        color: const Color(0xFFE4ECDF),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: iconUrl == null
+              ? Center(
+                  child: Text(
+                    _chatInitials(name).toLowerCase(),
+                    style: const TextStyle(
+                      color: Color(0xFF6E8864),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              : Image.network(
+                  iconUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Center(
+                    child: Text(
+                      _chatInitials(name).toLowerCase(),
+                      style: const TextStyle(
+                        color: Color(0xFF6E8864),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
       ),
     );
   }
@@ -445,27 +475,104 @@ class _CommunityIndicator extends ConsumerWidget {
 
 class _CommunityHeaderTitle extends ConsumerWidget {
   final TextStyle? style;
-  final VoidCallback onTap;
 
-  const _CommunityHeaderTitle({required this.onTap, this.style});
+  const _CommunityHeaderTitle({this.style});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = ref.watch(activeCommunityProvider).value?.name;
-    final title = name?.trim();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final name = ref.watch(activeCommunityProvider).value?.name.trim();
+    final title = name == null || name.isEmpty ? 'Business' : name;
+    return SizedBox.expand(
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: Grid.xxs),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
+              Text(
+                'Your business, together',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF8B8590),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessSwitchButton extends ConsumerWidget {
+  const _BusinessSwitchButton({
+    super.key,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(profileProvider).value;
+    final initials = profile == null
+        ? '?'
+        : _chatInitials(profile.displayName, fallback: profile.initial);
+    return Semantics(
+      button: true,
+      label: 'Switch business',
       onTap: onTap,
-      child: SizedBox.expand(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(left: Grid.xxs),
-            child: Text(
-              title == null || title.isEmpty ? 'Community' : title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: style,
+      customSemanticsActions: {
+        CustomSemanticsAction(label: 'Open Settings'): onLongPress,
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: ColoredBox(
+            color: const Color(0xFFE8E2EC),
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: profile?.avatarUrl == null
+                  ? Center(
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          color: Color(0xFF76657D),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    )
+                  : Image.network(
+                      profile!.avatarUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Color(0xFF76657D),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
             ),
           ),
         ),
@@ -488,10 +595,7 @@ class _CommunityAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trimmedName = name?.trim();
-    final initial = trimmedName != null && trimmedName.isNotEmpty
-        ? trimmedName.substring(0, 1).toUpperCase()
-        : '?';
+    final initials = _chatInitials(name);
     final relay = relayUrl;
     final iconUrl = relay == null
         ? null
@@ -502,7 +606,7 @@ class _CommunityAvatar extends ConsumerWidget {
       radius: size / 2,
       backgroundColor: context.colors.primaryContainer,
       fallback: Text(
-        initial,
+        initials,
         style: context.textTheme.labelMedium?.copyWith(
           color: context.colors.onPrimaryContainer,
           fontWeight: FontWeight.w600,

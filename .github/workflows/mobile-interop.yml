@@ -8,6 +8,8 @@ on:
   pull_request:
     branches:
       - develop
+      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
+      - codex/phase2-integration
     paths:
       - ".github/workflows/mobile-interop.yml"
       - "mobile/test/shared/relay/relay_live_interop_test.dart"

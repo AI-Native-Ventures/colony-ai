@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../shared/theme/theme.dart';
+import 'conversation_styles.dart';
 
 /// In-flow date label. The active date gains a glass capsule when it sticks.
 class DayDivider extends StatelessWidget {
@@ -28,11 +29,41 @@ class DayDivider extends StatelessWidget {
             : const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
         opacity: isSticky ? 0 : 1,
-        child: Text(
-          label,
-          style: context.textTheme.labelSmall?.copyWith(
-            color: context.colors.onSurfaceVariant.withValues(alpha: 0.72),
-            fontWeight: FontWeight.w500,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Divider(
+                  color: context.mobileTokens.line,
+                  height: 1,
+                  thickness: 1,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                flex: 3,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: conversationDateTextStyle.copyWith(
+                    color: context.mobileTokens.muted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: Divider(
+                  color: context.mobileTokens.line,
+                  height: 1,
+                  thickness: 1,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -44,7 +75,7 @@ class DayDivider extends StatelessWidget {
     final activeTimestamp = stickyDayTimestamp;
     final timestamp = dayTimestamp;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Grid.xxs + Grid.quarter),
+      padding: const EdgeInsets.fromLTRB(0, 43, 0, 0),
       child: Center(
         child: activeTimestamp == null || timestamp == null
             ? _buildOpacity(context, isSticky: false)

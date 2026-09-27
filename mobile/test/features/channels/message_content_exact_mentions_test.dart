@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:buzz/features/channels/conversation_styles.dart';
 import 'package:buzz/features/channels/message_content.dart';
 import '../../helpers/widget_helpers.dart';
 
 void main() {
   for (final tagged in [false, true]) {
     testWidgets(
-      'qualified chips preserve authority and narrow layout: $tagged',
+      'qualified mentions preserve authority and narrow layout: $tagged',
       (tester) async {
         tester.view.physicalSize = const Size(320, 640);
         tester.view.devicePixelRatio = 1;
@@ -31,13 +32,23 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Scout'), findsNothing);
-        final qualified = find.text('Scout (bbbbbbbb…bbbb)');
+        final qualified = find.byKey(ValueKey('message-mention-$second'));
         if (tagged) {
+          expect(qualified, findsOneWidget);
+          final mentionText = tester.widget<Text>(
+            find.descendant(of: qualified, matching: find.byType(Text)),
+          );
+          expect(mentionText.data, startsWith('@Scout'));
+          expect(
+            mentionText.style?.color,
+            conversationAccentColor(tester.element(qualified)),
+          );
+          expect(mentionText.style?.backgroundColor, isNull);
           await tester.tap(qualified);
           expect(tapped, second);
           expect(
-            find.bySemanticsLabel(RegExp('Scout.*$second')),
-            findsOneWidget,
+            tester.widget<Semantics>(qualified).properties.label,
+            contains('Scout'),
           );
         } else {
           expect(qualified, findsNothing);

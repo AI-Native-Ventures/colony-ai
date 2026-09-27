@@ -464,54 +464,44 @@ class _AttachmentTrigger extends StatelessWidget {
 
     return SizedBox.square(
       dimension: 36,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.black.withValues(alpha: 0.04),
-            width: 1,
-          ),
-        ),
-        child: IconButton(
-          tooltip: switch (surface) {
-            _AttachmentSurface.closed =>
-              formattingOpen ? 'Close formatting' : 'Add attachment',
-            _AttachmentSurface.menu => 'Close attachments',
-            _AttachmentSurface.camera ||
-            _AttachmentSurface.photos => 'Back to attachment options',
-          },
-          onPressed: () => _runComposerAction(() => onTap(context)),
-          padding: EdgeInsets.zero,
-          visualDensity: VisualDensity.compact,
-          icon: AnimatedRotation(
+      child: IconButton(
+        tooltip: switch (surface) {
+          _AttachmentSurface.closed =>
+            formattingOpen ? 'Close formatting' : 'Add attachment',
+          _AttachmentSurface.menu => 'Close attachments',
+          _AttachmentSurface.camera ||
+          _AttachmentSurface.photos => 'Back to attachment options',
+        },
+        onPressed: () => _runComposerAction(() => onTap(context)),
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        icon: AnimatedRotation(
+          duration: duration,
+          curve: Curves.easeOutBack,
+          turns: surface == _AttachmentSurface.menu || formattingOpen
+              ? 0.125
+              : 0,
+          child: AnimatedSwitcher(
             duration: duration,
-            curve: Curves.easeOutBack,
-            turns: surface == _AttachmentSurface.menu || formattingOpen
-                ? 0.125
-                : 0,
-            child: AnimatedSwitcher(
-              duration: duration,
-              switchInCurve: Curves.easeOutBack,
-              switchOutCurve: Curves.easeInOutCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.92, end: 1).animate(animation),
-                  child: child,
-                ),
+            switchInCurve: Curves.easeOutBack,
+            switchOutCurve: Curves.easeInOutCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.92, end: 1).animate(animation),
+                child: child,
               ),
-              child: Icon(
-                switch (surface) {
-                  _AttachmentSurface.camera => LucideIcons.camera,
-                  _AttachmentSurface.photos => LucideIcons.images,
-                  _AttachmentSurface.closed ||
-                  _AttachmentSurface.menu => LucideIcons.plus,
-                },
-                key: ValueKey('attachment-trigger-${surface.name}'),
-                size: 20,
-                color: context.colors.onSurfaceVariant,
-              ),
+            ),
+            child: Icon(
+              switch (surface) {
+                _AttachmentSurface.camera => LucideIcons.camera,
+                _AttachmentSurface.photos => LucideIcons.images,
+                _AttachmentSurface.closed ||
+                _AttachmentSurface.menu => LucideIcons.plus,
+              },
+              key: ValueKey('attachment-trigger-${surface.name}'),
+              size: 20,
+              color: context.colors.onSurfaceVariant,
             ),
           ),
         ),

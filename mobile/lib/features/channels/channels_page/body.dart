@@ -8,10 +8,11 @@ class _ChannelsBody extends StatelessWidget {
   final bool showConnectionSkeleton;
   final String? currentPubkey;
   final double topSectionHeight;
-  final bool usesPinnedGradient;
   final ScrollController scrollController;
   final Future<void> Function() onRefresh;
   final Future<void> Function(Channel channel) onSelectChannel;
+  final VoidCallback onOpenQuickActions;
+  final MobileRouteRegistry? routeRegistry;
 
   const _ChannelsBody({
     required this.channels,
@@ -21,10 +22,11 @@ class _ChannelsBody extends StatelessWidget {
     required this.showConnectionSkeleton,
     required this.currentPubkey,
     required this.topSectionHeight,
-    required this.usesPinnedGradient,
     required this.scrollController,
     required this.onRefresh,
     required this.onSelectChannel,
+    required this.onOpenQuickActions,
+    required this.routeRegistry,
   });
 
   @override
@@ -51,26 +53,21 @@ class _ChannelsBody extends StatelessWidget {
               hitTestBehavior: HitTestBehavior.translucent,
               slivers: [
                 SliverToBoxAdapter(child: SizedBox(height: barHeight)),
-                if (usesPinnedGradient)
-                  _SliverChannelsList(
+                DecoratedSliver(
+                  decoration: BoxDecoration(
+                    color: _chatPaper(context),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(Radii.dialog),
+                    ),
+                  ),
+                  sliver: _SliverChannelsList(
                     channels: loadedChannels,
                     currentPubkey: currentPubkey,
                     onSelectChannel: onSelectChannel,
-                  )
-                else
-                  DecoratedSliver(
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(Radii.dialog),
-                      ),
-                    ),
-                    sliver: _SliverChannelsList(
-                      channels: loadedChannels,
-                      currentPubkey: currentPubkey,
-                      onSelectChannel: onSelectChannel,
-                    ),
+                    onOpenQuickActions: onOpenQuickActions,
+                    routeRegistry: routeRegistry,
                   ),
+                ),
               ],
             ),
           );
@@ -88,19 +85,260 @@ class _ChannelsBody extends StatelessWidget {
   }
 }
 
+class _ChatListToolbar extends StatelessWidget {
+  const _ChatListToolbar({
+    required this.searchController,
+    required this.activeFilter,
+    required this.unreadConversationCount,
+    required this.onFilterChanged,
+  });
+
+  final TextEditingController searchController;
+  final _ChatFilter activeFilter;
+  final int unreadConversationCount;
+  final ValueChanged<_ChatFilter> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final paper = _chatPaper(context);
+    final filters = [
+      (filter: _ChatFilter.all, label: 'All'),
+      (filter: _ChatFilter.unread, label: 'Unread $unreadConversationCount'),
+      (filter: _ChatFilter.direct, label: 'Direct'),
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(color: paper),
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              if (_isChatDark(context))
+                Positioned.fill(
+                  child: const CustomPaint(painter: _DarkChatHeaderWash()),
+                ),
+              if (!_isChatDark(context))
+                Positioned.fill(
+                  child: Stack(
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.65, -1),
+                            radius: 1.4,
+                            colors: [
+                              const Color(0x88F4DFED),
+                              const Color(0x00F4DFED),
+                            ],
+                          ),
+                        ),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0.65, -0.8),
+                            radius: 1.4,
+                            colors: [
+                              const Color(0x66E0E9FA),
+                              const Color(0x00E0E9FA),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 25, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Chats',
+                      style: context.textTheme.headlineSmall?.copyWith(
+                        color: _chatInk(context),
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -1.1,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 17),
+                    Container(
+                      key: const ValueKey('channels-search-field'),
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _chatPaper(context),
+                        border: Border.all(color: _chatLine(context)),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            LucideIcons.search,
+                            size: 17,
+                            color: _chatMuted(context),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: TextField(
+                              controller: searchController,
+                              cursorColor: _chatBlue(context),
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: _chatInk(context),
+                                fontSize: 13,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Find a conversation',
+                                hintStyle: context.textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: _chatMuted(context),
+                                      fontSize: 13,
+                                    ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final entry in filters)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 5),
+                    child: TextButton(
+                      onPressed: () => onFilterChanged(entry.filter),
+                      style: TextButton.styleFrom(
+                        minimumSize: Size.zero,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 8,
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        backgroundColor: activeFilter == entry.filter
+                            ? _chatSoft(context)
+                            : Colors.transparent,
+                        foregroundColor: activeFilter == entry.filter
+                            ? _chatInk(context)
+                            : _chatMuted(context),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                      ),
+                      child: Text(
+                        entry.label,
+                        style: context.textTheme.labelMedium?.copyWith(
+                          fontSize: 12,
+                          fontWeight: activeFilter == entry.filter
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+const _darkChatHeaderWashColors = [
+  Color(0x78F4DFED),
+  Color(0x6BF4DFED),
+  Color(0x64E0E9FA),
+];
+
+class _DarkChatHeaderWash extends CustomPainter {
+  const _DarkChatHeaderWash();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas.saveLayer(bounds, Paint());
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: _darkChatHeaderWashColors,
+          stops: [0, 0.5, 1],
+        ).createShader(bounds),
+    );
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white,
+            Color(0xF2FFFFFF),
+            Color(0xBFFFFFFF),
+            Color(0x8CFFFFFF),
+            Colors.transparent,
+            Colors.transparent,
+          ],
+          stops: [0, 0.14, 0.32, 0.48, 0.64, 1],
+        ).createShader(bounds),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _DarkChatHeaderWash oldDelegate) => false;
+}
+
 class _SliverChannelsList extends HookConsumerWidget {
   final List<Channel> channels;
   final String? currentPubkey;
   final Future<void> Function(Channel channel) onSelectChannel;
+  final VoidCallback onOpenQuickActions;
+  final MobileRouteRegistry? routeRegistry;
 
   const _SliverChannelsList({
     required this.channels,
     required this.currentPubkey,
     required this.onSelectChannel,
+    required this.onOpenQuickActions,
+    required this.routeRegistry,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final searchController = useTextEditingController();
+    final searchQuery = useState('');
+    final activeFilter = useState(_ChatFilter.all);
+    useEffect(() {
+      void syncSearch() => searchQuery.value = searchController.text;
+      searchController.addListener(syncSearch);
+      return () => searchController.removeListener(syncSearch);
+    }, [searchController]);
+
     final readState = ref.watch(readStateProvider);
     final sectionsState = ref.watch(channelSectionsProvider);
     final mutesState = ref.watch(channelMutesProvider);
@@ -116,14 +354,6 @@ class _SliverChannelsList extends HookConsumerWidget {
     final visibleChannels = channels
         .where((channel) => channel.isMember && !channel.isArchived)
         .toList();
-    final streamChannels = visibleChannels
-        .where((channel) => channel.isStream)
-        .toList();
-    final dmChannels = sortDmChannelsByDisplayLabel(
-      visibleChannels.where((channel) => channel.isDm),
-      currentPubkey: currentPubkey,
-    );
-
     final starredExpanded = useState(true);
     final channelsExpanded = useState(true);
     final dmsExpanded = useState(true);
@@ -174,6 +404,30 @@ class _SliverChannelsList extends HookConsumerWidget {
             readState.effectiveTimestamp(channelId) != null)
           channelId,
     };
+    final query = searchQuery.value.trim().toLowerCase();
+    final displayedChannels = visibleChannels.where((channel) {
+      if (activeFilter.value == _ChatFilter.unread &&
+          !unreadChannelIds.contains(channel.id)) {
+        return false;
+      }
+      if (activeFilter.value == _ChatFilter.direct && !channel.isDm) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      final name = channel.isDm
+          ? resolveDmChannelDisplayLabel(channel, currentPubkey: currentPubkey)
+          : channel.name;
+      return '$name ${channel.lastMessageContent ?? ''}'.toLowerCase().contains(
+        query,
+      );
+    }).toList();
+    final displayedConversations = displayedChannels
+        .where((channel) => !channel.isDm)
+        .toList();
+    final displayedDms = sortDmChannelsByDisplayLabel(
+      displayedChannels.where((channel) => channel.isDm),
+      currentPubkey: currentPubkey,
+    );
     // Build sorted user-defined sections and compute which stream channels
     // belong to each section. Channels not assigned to any valid section fall
     // through to the built-in "Channels" list.
@@ -188,11 +442,13 @@ class _SliverChannelsList extends HookConsumerWidget {
     // Starred is exclusive: a starred channel lives only in the Starred section,
     // not in its custom section or the default Channels list.
     final starredStreamChannels = sortChannelsForList(
-      streamChannels.where((c) => starredChannelIds.contains(c.id)).toList(),
+      displayedConversations
+          .where((c) => starredChannelIds.contains(c.id))
+          .toList(),
       sortState.sortModeFor('starred'),
     );
     final ungroupedStreamChannels = sortChannelsForList(
-      streamChannels
+      displayedConversations
           .where(
             (c) =>
                 !assignedChannelIds.contains(c.id) &&
@@ -205,8 +461,8 @@ class _SliverChannelsList extends HookConsumerWidget {
     // from channel names); Recent mode reorders by last message time.
     final sortedDmChannels =
         sortState.sortModeFor('dms') == ChannelSortMode.recent
-        ? sortChannelsForList(dmChannels, ChannelSortMode.recent)
-        : dmChannels;
+        ? sortChannelsForList(displayedDms, ChannelSortMode.recent)
+        : displayedDms;
 
     final liveSectionIds = [for (final s in userSections) s.id];
     void setSortMode(String groupKey, ChannelSortMode mode) {
@@ -229,18 +485,27 @@ class _SliverChannelsList extends HookConsumerWidget {
 
     return SliverPadding(
       padding: EdgeInsets.only(
-        top: Grid.xxs,
+        top: 0,
         bottom: MediaQuery.paddingOf(context).bottom,
       ),
       sliver: SliverList.list(
         children: [
-          if (visibleChannels.isEmpty)
+          _ChatListToolbar(
+            searchController: searchController,
+            activeFilter: activeFilter.value,
+            unreadConversationCount: unreadChannelIds.length,
+            onFilterChanged: (filter) => activeFilter.value = filter,
+          ),
+          if (visibleChannels.isEmpty &&
+              query.isEmpty &&
+              activeFilter.value == _ChatFilter.all)
             const _EmptyState()
+          else if (displayedChannels.isEmpty)
+            const SizedBox.shrink()
           else ...[
-            // Starred channels (exclusive — pinned above all sections).
-            if (starredStreamChannels.isNotEmpty)
+            if (activeFilter.value != _ChatFilter.direct)
               _ChannelSection(
-                title: 'Starred',
+                title: 'PINNED',
                 icon: LucideIcons.star,
                 showTopDivider: false,
                 expanded: starredExpanded.value,
@@ -253,13 +518,17 @@ class _SliverChannelsList extends HookConsumerWidget {
                 sortMode: sortState.sortModeFor('starred'),
                 onSortModeChange: (mode) => setSortMode('starred', mode),
                 onSelectChannel: onSelectChannel,
+                simpleStyle: true,
+                onAdd: onOpenQuickActions,
               ),
-            // User-defined sections for stream channels, in user-defined order.
-            for (final section in userSections)
+            for (final section
+                in activeFilter.value == _ChatFilter.direct
+                    ? const <ChannelSection>[]
+                    : userSections)
               _CustomChannelSection(
                 section: section,
                 channels: sortChannelsForList(
-                  streamChannels
+                  displayedConversations
                       .where(
                         (c) =>
                             sectionAssignments[c.id] == section.id &&
@@ -350,26 +619,29 @@ class _SliverChannelsList extends HookConsumerWidget {
                   }
                 },
               ),
+            if (activeFilter.value != _ChatFilter.direct)
+              _ChannelSection(
+                title: 'CHANNELS',
+                icon: LucideIcons.hash,
+                showTopDivider: false,
+                expanded: channelsExpanded.value,
+                onToggle: () =>
+                    channelsExpanded.value = !channelsExpanded.value,
+                channels: ungroupedStreamChannels,
+                unreadChannelIds: unreadChannelIds,
+                mutedChannelIds: mutedChannelIds,
+                currentPubkey: currentPubkey,
+                emptyLabel: '',
+                sortMode: sortState.sortModeFor('channels'),
+                onSortModeChange: (mode) => setSortMode('channels', mode),
+                onSelectChannel: onSelectChannel,
+                simpleStyle: true,
+                expandedTrailingPadding: 0,
+              ),
             _ChannelSection(
-              title: 'Channels',
-              icon: LucideIcons.hash,
-              showTopDivider:
-                  starredStreamChannels.isNotEmpty || userSections.isNotEmpty,
-              expanded: channelsExpanded.value,
-              onToggle: () => channelsExpanded.value = !channelsExpanded.value,
-              channels: ungroupedStreamChannels,
-              unreadChannelIds: unreadChannelIds,
-              mutedChannelIds: mutedChannelIds,
-              currentPubkey: currentPubkey,
-              emptyLabel: 'No stream channels yet',
-              sortMode: sortState.sortModeFor('channels'),
-              onSortModeChange: (mode) => setSortMode('channels', mode),
-              onSelectChannel: onSelectChannel,
-            ),
-            _ChannelSection(
-              title: 'DMs',
+              title: 'DIRECT MESSAGES',
               icon: LucideIcons.messagesSquare,
-              showTopDivider: true,
+              showTopDivider: false,
               expanded: dmsExpanded.value,
               onToggle: () => dmsExpanded.value = !dmsExpanded.value,
               channels: sortedDmChannels,
@@ -380,6 +652,8 @@ class _SliverChannelsList extends HookConsumerWidget {
               sortMode: sortState.sortModeFor('dms'),
               onSortModeChange: (mode) => setSortMode('dms', mode),
               onSelectChannel: onSelectChannel,
+              simpleStyle: true,
+              simpleHeaderTopPadding: 5,
             ),
           ],
         ],

@@ -15,6 +15,7 @@ export default {
         "update-body": "calc(var(--buzz-type-rem) * 0.89)",
         "update-meta": "calc(var(--buzz-type-rem) * 0.72)",
         badge: "calc(var(--buzz-type-rem) * 0.625)", // 10px at 16px type rem
+        "factory-indicator": "calc(var(--buzz-type-rem) * 0.5625)", // 9px Factory count indicator
         compact: "var(--colony-text-compact)", // 13px at 16px type rem
         field: "var(--colony-text-field)", // 14.4px at 16px type rem
         label: "var(--colony-text-label)", // 12.64px at 16px type rem

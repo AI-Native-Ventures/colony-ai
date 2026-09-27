@@ -157,9 +157,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -170,9 +168,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -185,9 +181,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -198,9 +192,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
 
