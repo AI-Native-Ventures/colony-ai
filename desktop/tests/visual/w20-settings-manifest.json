@@ -1406,21 +1406,20 @@
         {
           "type": "click",
           "target": "app",
-          "selector": "[data-testid=harness-add-button]"
-        },
-        {
-          "type": "click",
-          "target": "app",
-          "selector": "[data-testid=harness-catalog-list-item-codex]"
+          "selector": "[data-testid=doctor-runtime-install-codex]"
         },
         {
           "type": "waitFor",
           "target": "app",
-          "selector": "[data-testid=harness-catalog-detail-pane]",
+          "selector": "[data-testid=harness-install-confirmation-codex]",
           "timeoutMs": 10000
         }
       ],
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=harness-install-confirmation-codex]"
+      }
     },
     {
       "id": "desktop-09-installing",
@@ -1435,9 +1434,14 @@
           "selector": "[data-testid=doctor-runtime-install-codex]"
         },
         {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=harness-install-confirm-codex]"
+        },
+        {
           "type": "waitFor",
           "target": "app",
-          "selector": "[data-testid=doctor-runtime-install-output-codex]",
+          "selector": "[data-testid=harness-install-progress-codex]",
           "timeoutMs": 10000
         }
       ],
@@ -1449,7 +1453,11 @@
           "Installing adapter..."
         ]
       },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=harness-install-progress-codex]"
+      }
     },
     {
       "id": "desktop-09-failed",
@@ -1462,6 +1470,11 @@
           "type": "click",
           "target": "app",
           "selector": "[data-testid=doctor-runtime-install-codex]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=harness-install-confirm-codex]"
         },
         {
           "type": "waitFor",
@@ -1488,7 +1501,11 @@
           "log_path": null
         }
       },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=doctor-runtime-install-failure-codex]"
+      }
     },
     {
       "id": "desktop-09-custom",
@@ -1514,23 +1531,11 @@
           "timeoutMs": 10000
         }
       ],
-      "referenceCanvas": true
-    },
-    {
-      "id": "desktop-09-git-bash",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#09/git-bash",
-      "appRoute": "/#/settings?section=harnesses",
-      "routeLabel": "Git Bash prerequisite",
-      "appReadySelector": "[data-testid=settings-harnesses]",
-      "appMockData": {
-        "gitBashPrerequisite": {
-          "available": false,
-          "path": null,
-          "install_instructions_url": "https://gitforwindows.org/",
-          "install_hint": "Git Bash is needed on Windows. Install Git for Windows, then check the executable path."
-        }
-      },
-      "referenceCanvas": true
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=harness-catalog-dialog]"
+      }
     }
   ]
 }

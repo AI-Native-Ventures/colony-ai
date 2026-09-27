@@ -343,6 +343,10 @@ test.describe("your harnesses split", () => {
       );
 
     await page.getByTestId("doctor-runtime-install-codex").click();
+    const confirmation = page.getByTestId("harness-install-confirmation-codex");
+    await expect(confirmation).toBeVisible();
+    expect(await installCalls()).toBe(0);
+    await confirmation.getByTestId("harness-install-confirm-codex").click();
     const dialog = page.getByTestId("doctor-runtime-install-failure-codex");
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Codex could not be installed.");

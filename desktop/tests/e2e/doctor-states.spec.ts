@@ -1,10 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { openSettings } from "../helpers/settings";
 
 const SHOTS = "test-results/screenshots-doctor";
+
+async function confirmHarnessInstall(page: Page, runtimeId: string) {
+  const dialog = page.getByTestId(`harness-install-confirmation-${runtimeId}`);
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId(`harness-install-confirm-${runtimeId}`).click();
+}
 
 // ── Shared catalog fixture data ───────────────────────────────────────────────
 
@@ -493,6 +499,7 @@ test.describe("Doctor panel state screenshots", () => {
     await expect(installButton).toBeEnabled();
     await expect(installButton).toHaveText("Install");
     await installButton.click();
+    await confirmHarnessInstall(page, "codex");
     const loading = page.getByTestId("doctor-runtime-loading-codex");
     await expect(loading).toBeVisible();
     await expect(loading).toContainText("Codex installing");
@@ -509,8 +516,9 @@ test.describe("Doctor panel state screenshots", () => {
     await waitForAnimations(page);
     await row.screenshot({ path: `${SHOTS}/05-retry-after-failure.png` });
 
-    // Install again — the install command exits 0, but verification fails.
-    await installButton.click();
+    // Retry from the designed failure dialog. The install command exits 0,
+    // but verification fails.
+    await page.getByTestId("doctor-runtime-install-retry-codex").click();
     await expect(loading).toBeVisible();
     await expect(installButton).toHaveCount(0);
 
@@ -569,6 +577,7 @@ test.describe("Doctor panel state screenshots", () => {
     const installButton = page.getByTestId("doctor-runtime-install-codex");
     await expect(installButton).toBeEnabled();
     await installButton.click();
+    await confirmHarnessInstall(page, "codex");
     await expect(page.getByTestId("doctor-runtime-ready-codex")).toBeVisible({
       timeout: 5_000,
     });
@@ -940,7 +949,10 @@ test.describe("Doctor panel state screenshots", () => {
 
     // Start both installs before either settles.
     await claudeInstallButton.click();
+    await confirmHarnessInstall(page, "claude");
+    await page.getByTestId("harness-install-close-claude").click();
     await codexInstallButton.click();
+    await confirmHarnessInstall(page, "codex");
 
     // Codex settles first (shorter delay): Ready chip appears, no error on
     // codex. The catalog refresh triggered by codex's success immediately
@@ -1019,6 +1031,7 @@ test.describe("Doctor panel state screenshots", () => {
     const installButton = page.getByTestId("doctor-runtime-install-codex");
     await expect(installButton).toBeEnabled();
     await installButton.click();
+    await confirmHarnessInstall(page, "codex");
 
     // The bridge emits the attempt-start clear and the first line synchronously
     // with the install invocation — before React commits the pending state — so

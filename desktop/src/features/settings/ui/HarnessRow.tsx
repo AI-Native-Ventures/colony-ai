@@ -36,6 +36,7 @@ import {
 import { Spinner } from "@/shared/ui/spinner";
 
 import { CustomHarnessForm } from "./CustomHarnessForm";
+import { HarnessInstallDialog } from "./HarnessInstallDialog";
 import {
   adapterUpdateWarning,
   entryStatusLabel,
@@ -309,6 +310,10 @@ export function HarnessRow({
     string | null
   >(null);
   const [isUpdateWarningOpen, setIsUpdateWarningOpen] = React.useState(false);
+  const [isInstallConfirmationOpen, setIsInstallConfirmationOpen] =
+    React.useState(false);
+  const [installProgressDismissed, setInstallProgressDismissed] =
+    React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
@@ -345,6 +350,7 @@ export function HarnessRow({
   );
 
   function handleInstall() {
+    setInstallProgressDismissed(false);
     setInstallResult(null);
     installMutation.mutate(runtime.id, {
       onSuccess: (result) => {
@@ -453,7 +459,7 @@ export function HarnessRow({
                 setIsUpdateWarningOpen(true);
                 return;
               }
-              handleInstall();
+              setIsInstallConfirmationOpen(true);
             }}
             runtime={runtime}
           />
@@ -568,6 +574,26 @@ export function HarnessRow({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <HarnessInstallDialog
+        installOutputLine={installOutputLine}
+        onConfirm={() => {
+          setIsInstallConfirmationOpen(false);
+          handleInstall();
+        }}
+        onOpenChange={(open) => {
+          if (isInstalling) {
+            setInstallProgressDismissed(!open);
+          } else {
+            setIsInstallConfirmationOpen(open);
+          }
+        }}
+        open={
+          isInstallConfirmationOpen ||
+          (isInstalling && !installProgressDismissed)
+        }
+        runtime={runtime}
+        stage={isInstalling ? "installing" : "confirm"}
+      />
       <AlertDialog
         onOpenChange={(open) => {
           if (!open) setInstallResult(null);
