@@ -92,6 +92,7 @@ export default defineConfig({
         "**/relay-reconnect-affordance.spec.ts",
         "**/workflows.spec.ts",
         "**/factory.spec.ts",
+        "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
         "**/workflow-local-controls.spec.ts",
         "**/workflow-title-stability.spec.ts",

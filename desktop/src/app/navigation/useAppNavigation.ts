@@ -144,6 +144,82 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goGoals = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/goals" }, behavior),
+    [commitNavigation],
+  );
+
+  const goGoal = React.useCallback(
+    (
+      goalId: string,
+      behavior?: NavigationBehavior & { entityNavigationId?: string },
+    ) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId",
+          params: { goalId },
+          state: behavior?.entityNavigationId
+            ? { entityNavigationId: behavior.entityNavigationId }
+            : undefined,
+        },
+        {
+          ...behavior,
+          force: Boolean(behavior?.entityNavigationId),
+        },
+      ),
+    [commitNavigation],
+  );
+
+  const goNewGoal = React.useCallback(
+    (parentGoalId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/new",
+          search: { parent: parentGoalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goEditGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/edit",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goShareGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/share",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalReference = React.useCallback(
+    (returnTo: {
+      pathname: string;
+      search: Record<string, unknown>;
+      state: Record<string, unknown>;
+    }) =>
+      commitNavigation({
+        to: "/goals/reference",
+        state: { goalReferenceReturnTo: returnTo },
+      }),
+    [commitNavigation],
+  );
+
   const goFactory = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -492,6 +568,12 @@ export function useAppNavigation() {
     goEditWorkflow,
     goForumPost,
     goHome,
+    goGoal,
+    goGoalReference,
+    goGoals,
+    goNewGoal,
+    goEditGoal,
+    goShareGoal,
     goToday,
     goNewMessage,
     goNewWorkflow,

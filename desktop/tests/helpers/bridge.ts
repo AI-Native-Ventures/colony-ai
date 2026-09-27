@@ -177,6 +177,10 @@ type MockBridgeOptions = {
   factoryLocalRepositories?: Array<{ name: string; path: string }>;
   /** Relay NIP-11 identity used to sign authoritative repository state. */
   relaySelf?: string | null;
+  /** Relay-signed company goal events for goals UI E2E coverage. */
+  goalEvents?: RelayEvent[];
+  /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+  goalRelayPrivateKey?: string;
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

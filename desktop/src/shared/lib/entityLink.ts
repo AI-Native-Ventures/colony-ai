@@ -7,6 +7,7 @@
  *   buzz://project?owner=<owner-pubkey>&d=<project-dtag>[&tab=<tab>]
  *   buzz://pr?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://issue?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
+ *   buzz://goal/<goal-uuid>
  *
  * `owner` + `d` identify the NIP-34 repository coordinate
  * (`30617:<owner>:<d>`) or the NIP-MP project coordinate
@@ -45,6 +46,7 @@ export function isEntityLinkTab(value: unknown): value is EntityLinkTab {
 export type ParsedEntityLink =
   | { type: "pr"; id: string; owner: string; dtag: string }
   | { type: "issue"; id: string; owner: string; dtag: string }
+  | { type: "goal"; id: string }
   | {
       type: "repo";
       owner: string;
@@ -59,6 +61,8 @@ export type EntityLinkParseResult =
   | { ok: false; reason: string };
 
 const HEX64_RE = /^[a-fA-F0-9]{64}$/;
+const GOAL_ID_RE =
+  /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
 const GIT_OBJECT_ID_RE = /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/;
 const DTAG_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -89,6 +93,14 @@ function checkEventId(id: string): void {
   if (!HEX64_RE.test(id)) {
     throw new Error("entityLink: id must be a 64-char hex event id");
   }
+}
+
+/** Build a link to a company goal in the active community. */
+export function buildGoalLink(goalId: string): string {
+  if (!GOAL_ID_RE.test(goalId)) {
+    throw new Error("entityLink: goal id must be a UUID");
+  }
+  return `buzz://goal/${goalId.toLowerCase()}`;
 }
 
 function tabSuffix(tab: EntityLinkTab | undefined): string {
@@ -165,7 +177,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
     href.startsWith("buzz://pr?") ||
     href.startsWith("buzz://issue?") ||
     href.startsWith("buzz://repo?") ||
-    href.startsWith("buzz://project?")
+    href.startsWith("buzz://project?") ||
+    href.startsWith("buzz://goal/")
   );
 }
 
@@ -201,9 +214,28 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     host !== "pr" &&
     host !== "issue" &&
     host !== "repo" &&
-    host !== "project"
+    host !== "project" &&
+    host !== "goal"
   ) {
     return { ok: false, reason: "wrong-host" };
+  }
+  if (host === "goal") {
+    const match = /^\/([0-9a-fA-F-]+)$/.exec(parsed.pathname);
+    if (
+      !match ||
+      !GOAL_ID_RE.test(match[1]) ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port
+    ) {
+      return { ok: false, reason: "invalid-goal-id" };
+    }
+    return {
+      ok: true,
+      value: { type: "goal", id: match[1].toLowerCase() },
+    };
   }
   const isCoordinateHost = host === "repo" || host === "project";
 
@@ -304,7 +336,12 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
  * project cards and breaks for repos claimed by an explicit project with a
  * different d-tag.
  */
-export function entityLinkProjectRouteId(link: ParsedEntityLink): string {
+type ProjectEntityLink = Extract<
+  ParsedEntityLink,
+  { type: "repo" | "project" | "pr" | "issue" }
+>;
+
+export function entityLinkProjectRouteId(link: ProjectEntityLink): string {
   const kind = link.type === "project" ? 30621 : 30617;
   return `${kind}:${link.owner}:${link.dtag}`;
 }
