@@ -451,7 +451,14 @@
       "clip": {
         "referenceSelector": ".surface",
         "appSelector": "[data-testid=settings-profile]"
-      }
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        }
+      ]
     },
     {
       "id": "desktop-06-choose",
@@ -459,6 +466,11 @@
       "appRoute": "/#/settings?section=profile",
       "routeLabel": "Avatar editor choice",
       "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
         {
           "type": "click",
           "target": "app",
@@ -485,6 +497,11 @@
         {
           "type": "click",
           "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
           "selector": "[data-testid=profile-avatar-edit]"
         },
         {
@@ -508,6 +525,11 @@
         {
           "type": "click",
           "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
           "selector": "[data-testid=profile-avatar-edit]"
         },
         {
@@ -528,6 +550,11 @@
         "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
         {
           "type": "click",
           "target": "app",
@@ -560,6 +587,11 @@
         {
           "type": "click",
           "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
           "selector": "[data-testid=profile-avatar-edit]"
         },
         {
@@ -589,6 +621,11 @@
         "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
         {
           "type": "click",
           "target": "app",
@@ -634,6 +671,11 @@
         {
           "type": "click",
           "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
           "selector": "[data-testid=profile-avatar-edit]"
         },
         {
@@ -666,6 +708,11 @@
       "routeLabel": "Avatar update accepted",
       "referenceCanvas": true,
       "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
         {
           "type": "click",
           "target": "app",
@@ -705,6 +752,11 @@
       "routeLabel": "Avatar edit cancelled",
       "referenceCanvas": true,
       "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
         {
           "type": "click",
           "target": "app",
