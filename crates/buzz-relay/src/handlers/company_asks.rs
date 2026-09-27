@@ -754,7 +754,6 @@ const _: () = assert!(KIND_ASK_RESPONSE == 47_033);
 #[cfg(test)]
 mod unit_tests {
     use super::*;
-    use crate::handlers::company_records;
 
     fn event_with_tags(tags: Vec<Tag>) -> Event {
         EventBuilder::new(Kind::Custom(KIND_ASK_ACTION as u16), "{}")
@@ -814,6 +813,7 @@ mod unit_tests {
 #[cfg(test)]
 mod postgres_tests {
     use super::*;
+    use crate::handlers::company_records;
 
     use buzz_core::company_records::{
         AskCategory, AskOption, AskType, COMPANY_RECORD_SCHEMA_VERSION,
