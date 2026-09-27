@@ -13,6 +13,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
 
   const sidebar = page.getByTestId("app-sidebar");
   await expect(sidebar).toHaveAttribute("data-colony-full-app-shell", "true");
+  await expect(page.getByTestId("app-top-chrome")).toBeHidden();
   await expect(page.getByTestId("sidebar-business-switcher")).toBeVisible();
   await expect(page.getByTestId("open-search")).toContainText("Find anything");
   await expect(page.getByTestId("sidebar-activity-button")).toContainText(
@@ -39,6 +40,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(conversations.getByTestId("forum-list")).toBeVisible();
   await expect(conversations.getByTestId("dm-list")).toBeVisible();
   await expect(page.getByTestId("open-workflows-view")).toBeVisible();
+  await expect(page.getByTestId("sidebar-company-work")).toBeVisible();
   await expect(page.getByTestId("open-factory-view")).toBeVisible();
   await expect(page.getByTestId("sidebar-software-factory-toggle")).toHaveCount(
     0,
@@ -50,7 +52,6 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   for (const label of [
     "Team",
     "Goals",
-    "Work",
     "Discovery",
     "Clients",
     "Social media",
@@ -63,6 +64,35 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
       sidebar.getByRole("button", { name: label, exact: true }),
     ).toHaveCount(0);
   }
+});
+
+test("Company Work and Business Clients open their existing routes", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByTestId("sidebar-company-work").click();
+  await expect(page).toHaveURL(/#\/work$/);
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+
+  await page.getByTestId("sidebar-activity-button").click();
+  await page.getByTestId("sidebar-nav-business-toggle").click();
+  const clients = page.getByTestId("sidebar-business-clients");
+  await expect(clients).toBeVisible();
+  await clients.click();
+  await expect(page).toHaveURL(/#\/clients$/);
+  await expect(
+    page.getByRole("heading", { name: "Clients", exact: true }),
+  ).toBeVisible();
+
+  await page.goto("/#/clients");
+  await expect(page.getByTestId("sidebar-nav-business-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(page.getByTestId("sidebar-business-clients")).toBeVisible();
 });
 
 test("navigation groups collapse independently with the keyboard", async ({
