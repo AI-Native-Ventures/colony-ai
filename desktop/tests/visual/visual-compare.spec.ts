@@ -396,6 +396,12 @@ test.describe("visual comparison captures", () => {
           expect(browseChannelsBounds).not.toBeNull();
           expect(forumsBounds).not.toBeNull();
           expect(browseChannelsBounds?.y).toBeLessThan(forumsBounds?.y ?? 0);
+          const browseToForumsGap =
+            (forumsBounds?.y ?? 0) -
+            ((browseChannelsBounds?.y ?? 0) +
+              (browseChannelsBounds?.height ?? 0));
+          expect(browseToForumsGap).toBeGreaterThan(4);
+          expect(browseToForumsGap).toBeLessThan(24);
           const channelTabs = appPage.getByTestId("channel-view-tabs");
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
@@ -470,9 +476,18 @@ test.describe("visual comparison captures", () => {
           await expect(leratoMessage.getByTestId("message-avatar")).toHaveClass(
             /rounded-md/,
           );
+          const leratoAvatar = leratoMessage.getByTestId("message-avatar");
+          await expect(leratoAvatar).toHaveClass(
+            /colony-workspace-human-message-avatar/,
+          );
+          await expect(leratoAvatar).toHaveCSS("width", "33px");
+          await expect(leratoAvatar).toHaveCSS("height", "33px");
           await expect(
             leratoMessage.getByTestId("message-avatar-fallback"),
-          ).toHaveClass(/bg-muted/);
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(69, 58, 74)" : "rgb(236, 229, 237)",
+          );
           await expect(leratoMessage).toContainText("@Aya,");
           const ayaMessage = appPage.locator(
             '[data-message-id="reference-sales-aya-0942"]',
@@ -480,6 +495,17 @@ test.describe("visual comparison captures", () => {
           await expect(
             ayaMessage.getByTestId("message-agent-owner"),
           ).toContainText("Agent");
+          const ayaAvatar = ayaMessage.getByTestId("message-avatar");
+          await expect(ayaAvatar).toHaveClass(
+            /colony-workspace-agent-message-avatar/,
+          );
+          await expect(ayaAvatar).toHaveCSS("width", "33px");
+          await expect(
+            ayaMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(41, 57, 77)" : "rgb(227, 235, 244)",
+          );
           await expect(ayaMessage).not.toContainText("owner unavailable");
           await expect(ayaMessage).toContainText(
             "Independent brands needing social support",

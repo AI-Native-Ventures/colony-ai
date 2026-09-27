@@ -475,7 +475,12 @@ export const MessageRow = React.memo(
         <UserAvatar
           accent={message.accent}
           avatarUrl={message.avatarUrl ?? null}
-          className="h-7 w-7 shrink-0 rounded-md text-2xs"
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-md text-2xs",
+            message.isAgent
+              ? "colony-workspace-agent-message-avatar"
+              : "colony-workspace-human-message-avatar",
+          )}
           displayName={message.author}
           fallbackVariant="muted"
           shape="square"
