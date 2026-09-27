@@ -3912,16 +3912,32 @@ mod postgres_tests {
         .expect("load converted invoice")
         .expect("one converted invoice head");
         assert_eq!(invoice_head.channel_id, Some(client_id));
-        let receipt = current_head::<buzz_core::business_records::ProposalConversionReceipt>(
-            &fixture.state,
-            fixture.tenant.community(),
-            KIND_PROPOSAL_CONVERSION_RECEIPT,
-            &acceptance_d,
+        let receipt_event_id = hex::decode(&receipt_id).expect("receipt id is lowercase hex");
+        let receipt = fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(fixture.tenant.community(), &receipt_event_id)
+            .await
+            .expect("load conversion receipt by event id")
+            .expect("one conversion receipt");
+        assert_eq!(
+            receipt.event.kind.as_u16() as u32,
+            KIND_PROPOSAL_CONVERSION_RECEIPT
+        );
+        let receipt_content: buzz_core::business_records::ProposalConversionReceipt =
+            parse_content(&receipt.event).expect("parse conversion receipt");
+        assert_eq!(receipt_content.conversion_id, conversion_id);
+        let receipt_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM events \
+             WHERE community_id = $1 AND kind = $2 AND tags @> $3",
         )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(KIND_PROPOSAL_CONVERSION_RECEIPT as i32)
+        .bind(serde_json::json!([["d", &acceptance_d]]))
+        .fetch_one(&fixture.pool)
         .await
-        .expect("load conversion receipt")
-        .expect("one conversion receipt");
-        assert_eq!(receipt.event.id.to_hex(), receipt_id);
+        .expect("count conversion receipts");
+        assert_eq!(receipt_count, 1);
 
         let conflicting = ProposalAcceptance {
             work_item_id: Uuid::new_v4(),
