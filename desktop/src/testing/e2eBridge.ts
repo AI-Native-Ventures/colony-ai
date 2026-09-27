@@ -35,10 +35,13 @@ import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
   REFERENCE_HOME_VISUAL_FIXTURE,
-  REFERENCE_SALES_THREAD_ROOT_ID,
+  REFERENCE_SALES_UNREAD_REPLY_ID,
+  REFERENCE_SALES_UNREAD_ROOT_ID,
+  REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
   referenceChannelSeeds,
   referenceHomeInboxItems,
+  referenceSalesLastMessageAt,
   referenceSalesMessages,
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
@@ -4604,7 +4607,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       topic: null,
       purpose: null,
       last_message_at:
-        seed.id === REFERENCE_CHANNEL_IDS.sales ? isoMinutesAgo(30) : null,
+        seed.id === REFERENCE_CHANNEL_IDS.sales
+          ? referenceSalesLastMessageAt()
+          : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -5072,7 +5077,7 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
         ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
         : [];
     if (channelId === REFERENCE_CHANNEL_IDS.sales) {
-      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_THREAD_ROOT_ID);
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_UNREAD_ROOT_ID);
     }
     mockMessages.set(channelId, referenceSeeded);
     return referenceSeeded;
@@ -6317,7 +6322,13 @@ async function handleGetChannelWindow(
       // Exhaustion probe mirrors the relay's limit+1: more rows past the cursor
       // than the page cap means another page exists. next_cursor is the last
       // retained row.
-      const hasMore = afterCursor.length > cap;
+      const referenceViewportHasOlderHistory =
+        referenceWorkspaceActive &&
+        args.cursor == null &&
+        args.channelId === REFERENCE_CHANNEL_IDS.sales &&
+        REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY;
+      const hasMore =
+        afterCursor.length > cap || referenceViewportHasOlderHistory;
       const lastRow = rows[rows.length - 1];
       const nextCursor =
         hasMore && lastRow
@@ -15987,25 +15998,49 @@ export function maybeInstallE2eTauriMocks() {
           };
         };
         const results: UnreadCatchUpChannelResult[] =
-          request.request.channels.map((channel) => ({
-            status: "success",
-            channelId: channel.id,
-            observedEvents: [],
-            maxTrigger: 0,
-            activityRows: [],
-            discovered: {
-              participated: [],
-              authored: getMockMessageStore(channel.id)
-                .filter(
-                  (event) =>
-                    event.pubkey === request.request.selfPubkey &&
-                    getThreadReferenceFromTags(event.tags).parentEventId ===
-                      null,
-                )
-                .map((event) => event.id),
-              mentioned: [],
-            },
-          }));
+          request.request.channels.map((channel) => {
+            const events = getMockMessageStore(channel.id);
+            const activityRows =
+              referenceWorkspaceActive &&
+              channel.id === REFERENCE_CHANNEL_IDS.sales
+                ? events
+                    .filter(
+                      (event) =>
+                        event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                        getThreadReferenceFromTags(event.tags).parentEventId !==
+                          null,
+                    )
+                    .map((event) => ({
+                      id: event.id,
+                      kind: event.kind,
+                      pubkey: event.pubkey,
+                      content: event.content,
+                      createdAt: event.created_at,
+                      channelId: channel.id,
+                      channelName: "Sales",
+                      tags: [...event.tags],
+                    }))
+                : [];
+            return {
+              status: "success",
+              channelId: channel.id,
+              observedEvents: [],
+              maxTrigger: 0,
+              activityRows,
+              discovered: {
+                participated: [],
+                authored: events
+                  .filter(
+                    (event) =>
+                      event.pubkey === request.request.selfPubkey &&
+                      getThreadReferenceFromTags(event.tags).parentEventId ===
+                        null,
+                  )
+                  .map((event) => event.id),
+                mentioned: [],
+              },
+            };
+          });
         // Keep this mock aligned with the complete Rust serde shape pinned by
         // `serialized_response_matches_the_typescript_contract`.
         return { channels: results };

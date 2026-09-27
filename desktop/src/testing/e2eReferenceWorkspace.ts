@@ -38,7 +38,11 @@ export const REFERENCE_HOME_UNREAD_IDS = [
   "reference-home-inbox-olive-approval",
   "reference-home-inbox-cedar-access",
 ] as const;
-export const REFERENCE_SALES_THREAD_ROOT_ID = "reference-sales-prospects-root";
+export const REFERENCE_SALES_UNREAD_ROOT_ID = "reference-sales-unread-root";
+export const REFERENCE_SALES_UNREAD_REPLY_ID = "reference-sales-unread-reply";
+export const REFERENCE_SALES_VOICE_NOTE_ID = "reference-sales-lerato-0950";
+// The Sales capture opens within a channel that has earlier history above the viewport.
+export const REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY = true;
 
 export type ReferenceChannelSeed = {
   id: string;
@@ -94,6 +98,10 @@ function todayAt(hours: number, minutes: number): number {
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
   return Math.floor(date.getTime() / 1000);
+}
+
+export function referenceSalesLastMessageAt(): string {
+  return new Date(todayAt(9, 50) * 1_000).toISOString();
 }
 
 /** The frozen r19 Today screen records used by the mock bridge. */
@@ -240,9 +248,7 @@ export function referenceHomeInboxItems(): Array<{
 export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const sig = "mocksig".repeat(20).slice(0, 128);
-  const threadRootId = REFERENCE_SALES_THREAD_ROOT_ID;
-  const googleDocumentUrl =
-    "https://docs.google.com/document/d/form-and-field-draft";
+  const unreadRootId = REFERENCE_SALES_UNREAD_ROOT_ID;
   return [
     {
       id: "reference-sales-lerato-0914",
@@ -280,66 +286,25 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
       sig,
     },
     {
-      id: threadRootId,
+      id: unreadRootId,
       pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 42),
+      created_at: todayAt(8, 50),
       kind: 9,
       tags: [["h", channelId]],
-      content:
-        "# Independent brands needing social support\n\nProspect evidence, qualification and service scope.",
+      content: "Earlier Sales discussion",
       sig,
     },
     {
-      id: "reference-sales-aya-prospects-reply",
+      id: REFERENCE_SALES_UNREAD_REPLY_ID,
       pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 43),
+      created_at: todayAt(9, 52),
       kind: 9,
       tags: [
         ["h", channelId],
-        ["e", threadRootId, "", "root"],
-        ["e", threadRootId, "", "reply"],
-        [
-          "link-preview",
-          "snapshot",
-          "1",
-          "https://example.com/prospects",
-          "Independent brands needing social support",
-          "Discovery",
-          "12 example prospects",
-          "",
-          "",
-          "",
-          "",
-        ],
+        ["e", unreadRootId, "", "root"],
+        ["e", unreadRootId, "", "reply"],
       ],
-      content:
-        "Review each prospect’s fit and source evidence. A proposal should follow a conversation about what the business needs.\n\n[​](https://example.com/prospects)",
-      sig,
-    },
-    {
-      id: "reference-sales-aya-form-field-reply",
-      pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 44),
-      kind: 9,
-      tags: [
-        ["h", channelId],
-        ["e", threadRootId, "", "root"],
-        ["e", threadRootId, "", "reply"],
-        [
-          "link-preview",
-          "snapshot",
-          "1",
-          googleDocumentUrl,
-          "A consistent social presence for Form & Field",
-          "Form & Field",
-          "v1 · draft",
-          "",
-          "",
-          "",
-          "",
-        ],
-      ],
-      content: `[​](${googleDocumentUrl})`,
+      content: "The updated shortlist is ready to review.",
       sig,
     },
     {
@@ -400,15 +365,7 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
       ),
     }),
   );
-  storage.setItem(
-    `buzz-forced-unread.v1:${selfPubkey}`,
-    JSON.stringify({
-      [REFERENCE_CHANNEL_IDS.sales]: {
-        markerAtWhenForced: null,
-        sources: ["manual"],
-      },
-    }),
-  );
+  storage.setItem(`buzz-forced-unread.v1:${selfPubkey}`, JSON.stringify({}));
   storage.setItem(
     `buzz-home-feed-unread.v1:${selfPubkey}`,
     JSON.stringify([...REFERENCE_HOME_UNREAD_IDS]),
@@ -427,4 +384,19 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
     ? `buzz-channel-sections.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
     : `buzz-channel-sections.v1:${selfPubkey}`;
   storage.setItem(sectionsKey, JSON.stringify(sections));
+
+  const sortKey = relayUrl
+    ? `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
+    : `buzz-channel-sort.v1:${selfPubkey}`;
+  storage.setItem(
+    sortKey,
+    JSON.stringify({
+      version: 1,
+      groups: {
+        starred: "recent",
+        channels: "recent",
+        "section:reference-client-work": "recent",
+      },
+    }),
+  );
 }

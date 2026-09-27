@@ -206,6 +206,21 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          entry.appRoute.includes("?thread=")
+        ) {
+          const voiceNote = referencePage
+            .locator(".message")
+            .filter({ hasText: "09:50" });
+          await voiceNote
+            .getByRole("button", { name: "Reply in thread" })
+            .click({ force: true });
+          const referenceThread = referencePage.locator(".thread-pane");
+          await expect(referenceThread).toBeVisible();
+          await expect(referenceThread).toContainText("09:50");
+          await expect(referenceThread).toContainText("Voice note");
+        }
         if (entry.referenceCanvas) {
           await fitReferenceCanvas(referencePage, width, height);
         }
@@ -225,29 +240,33 @@ test.describe("visual comparison captures", () => {
         });
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
+        const usesReferenceWorkspace =
+          entry.appMockData?.referenceWorkspace === true;
         if (manifestFixture) {
-          // Manifests with their own fixture (w07 agents) seed only that data.
+          // Manifests with their own fixture seed only that data.
           await installMockBridge(
             appPage,
             entry.appMockData ?? manifestFixture.appMockData,
           );
         } else {
-          await appPage.addInitScript(
-            ({ pubkey }) => {
-              localStorage.setItem(
-                `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
-                JSON.stringify({
-                  version: 1,
-                  groups: {
-                    dms: "recent",
-                    starred: "recent",
-                    "section:client-work": "recent",
-                  },
-                }),
-              );
-            },
-            { pubkey: r17Fixture.identity.pubkey },
-          );
+          if (!usesReferenceWorkspace) {
+            await appPage.addInitScript(
+              ({ pubkey }) => {
+                localStorage.setItem(
+                  `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+                  JSON.stringify({
+                    version: 1,
+                    groups: {
+                      dms: "recent",
+                      starred: "recent",
+                      "section:client-work": "recent",
+                    },
+                  }),
+                );
+              },
+              { pubkey: r17Fixture.identity.pubkey },
+            );
+          }
           const visualFixture = {
             ...r17Fixture,
             today: {
@@ -257,10 +276,12 @@ test.describe("visual comparison captures", () => {
                 : {}),
             },
           };
-          await installMockBridge(appPage, {
-            ...(entry.appMockData ?? {}),
-            visualFixture,
-          });
+          await installMockBridge(
+            appPage,
+            usesReferenceWorkspace
+              ? (entry.appMockData ?? {})
+              : { ...(entry.appMockData ?? {}), visualFixture },
+          );
         }
         if (entry.referenceInventoryRoute === "navigation/history") {
           const channelUrl = new URL(
@@ -342,8 +363,28 @@ test.describe("visual comparison captures", () => {
             .toEqual(["Following", "Following"]);
         }
         if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "today"
+        ) {
+          await expect(appPage.locator(".r17-today-page h1")).toHaveText(
+            "Today",
+          );
+          await expect(appPage.locator(".r17-today-page")).toContainText(
+            "Wednesday, 23 September",
+          );
+          await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
+            "2",
+          );
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-attention-row"),
+          ).toHaveCount(4);
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-review-row"),
+          ).toHaveCount(6);
+        }
+        if (
           entry.referenceInventoryRoute === "channel/sales" &&
-          entry.appMockData?.referenceWorkspace === true
+          usesReferenceWorkspace
         ) {
           await expect(
             appPage.locator('[data-message-id="reference-sales-lerato-0914"]'),
@@ -352,8 +393,73 @@ test.describe("visual comparison captures", () => {
             appPage.locator('[data-message-id="reference-sales-aya-0942"]'),
           ).toBeVisible();
           await expect(
-            appPage.locator('[data-testid="message-thread-panel"]'),
+            appPage.locator('[data-message-id="reference-sales-lerato-0950"]'),
+          ).toBeVisible();
+          await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
+            "2",
+          );
+          await expect(
+            appPage.getByTestId("channel-unread-dot-Sales"),
+          ).toBeVisible();
+          const leratoMessage = appPage.locator(
+            '[data-message-id="reference-sales-lerato-0914"]',
+          );
+          await expect(
+            leratoMessage.getByTestId("message-timestamp"),
+          ).toHaveText("09:14");
+          await expect(leratoMessage.getByTestId("message-avatar")).toHaveClass(
+            /rounded-md/,
+          );
+          await expect(
+            leratoMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveClass(/bg-muted/);
+          await expect(leratoMessage).toContainText("@Aya,");
+          const ayaMessage = appPage.locator(
+            '[data-message-id="reference-sales-aya-0942"]',
+          );
+          await expect(
+            ayaMessage.getByTestId("message-agent-owner"),
+          ).toContainText("Agent");
+          await expect(ayaMessage).not.toContainText("owner unavailable");
+          await expect(ayaMessage).toContainText(
+            "Independent brands needing social support",
+          );
+          await expect(
+            ayaMessage.locator("[data-link-preview-row-symbol]").locator("svg"),
+          ).toHaveClass(/lucide-compass/);
+          await expect(
+            appPage.locator('[data-testid="message-unread-divider"]'),
           ).toHaveCount(0);
+          await expect(
+            appPage.locator('[data-testid="message-unread-pill"]'),
+          ).toHaveCount(0);
+          if (entry.appRoute.includes("?thread=")) {
+            const threadPanel = appPage.getByTestId("message-thread-panel");
+            await expect(threadPanel).toBeVisible();
+            await expect(
+              threadPanel.locator(
+                '[data-message-id="reference-sales-lerato-0950"]',
+              ),
+            ).toBeVisible();
+            await expect(threadPanel).toContainText("Voice note");
+            await expect(
+              threadPanel.getByRole("checkbox", {
+                name: "Also send to #Sales",
+              }),
+            ).not.toBeChecked();
+            await expect(
+              threadPanel.locator(
+                '[data-message-id="reference-sales-unread-reply"]',
+              ),
+            ).toHaveCount(0);
+          } else {
+            await expect(
+              appPage.locator('[data-testid="message-thread-panel"]'),
+            ).toHaveCount(0);
+            await expect(
+              appPage.locator('[data-testid="message-channel-intro"]'),
+            ).toHaveCount(0);
+          }
         } else if (entry.referenceInventoryRoute === "channel/sales") {
           const crossPostControl = appPage.getByRole("checkbox", {
             name: "Also send to #Sales",
