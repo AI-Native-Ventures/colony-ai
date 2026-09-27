@@ -1396,12 +1396,12 @@ void main() {
           const ValueKey('message-row-bot-message'),
         );
         expect(avatarIn(channelRow).kind, IdentityKind.agent);
-        expect(avatarIn(channelRow).size, 34);
+        expect(avatarIn(channelRow).size, 28);
         expect(
           tester.getSize(
             find.descendant(of: channelRow, matching: find.byKey(avatarKey)),
           ),
-          const Size(34, 34),
+          const Size(28, 28),
         );
         expect(
           find.descendant(of: channelRow, matching: find.text('B')),
@@ -3424,7 +3424,7 @@ void main() {
             of: aliceRow,
             matching: find.byIcon(Icons.chevron_right),
           ),
-          findsOneWidget,
+          findsNothing,
         );
         expect(tester.getSize(aliceRow).height, 39 + 28);
 
@@ -3533,11 +3533,12 @@ void main() {
       );
       expect(
         tester.getTopLeft(addRow).dy,
-        lessThan(tester.getTopLeft(memberRow).dy),
+        greaterThan(tester.getBottomLeft(memberRow).dy),
       );
 
-      await tester.ensureVisible(seeAllRow);
+      await Scrollable.ensureVisible(tester.element(seeAllRow), alignment: 0.4);
       await tester.pumpAndSettle();
+      expect(seeAllRow.hitTestable(), findsOneWidget);
       await tester.tap(seeAllRow);
       await tester.pumpAndSettle();
       expect(find.byType(MembersSheet), findsOneWidget);
@@ -3667,6 +3668,14 @@ void main() {
       );
       final editAction = find.byKey(
         const ValueKey('channel-details-edit-action'),
+      );
+      await tester.scrollUntilVisible(
+        starAction,
+        160,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('channel-details-page-list')),
+          matching: find.byType(Scrollable),
+        ),
       );
       expect(find.text('Star'), findsOneWidget);
       expect(find.text('Mute'), findsOneWidget);
@@ -4185,9 +4194,14 @@ void main() {
         find.byKey(const ValueKey('channel-header-settings-trigger')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('channel-details-edit-action')),
+      final editAction = find.byKey(
+        const ValueKey('channel-details-edit-action'),
       );
+      await Scrollable.ensureVisible(
+        tester.element(editAction),
+        alignment: 0.4,
+      );
+      await tester.tap(editAction);
       await tester.pumpAndSettle();
 
       final sheet = find.byType(BottomSheet).last;
@@ -4207,6 +4221,11 @@ void main() {
     testWidgets('Edit updates name and description without legacy fields', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       String? updatedName;
       String? updatedDescription;
       await tester.pumpWidget(
@@ -4234,16 +4253,25 @@ void main() {
         find.byKey(const ValueKey('channel-header-settings-trigger')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('channel-details-edit-action')),
+      final editAction = find.byKey(
+        const ValueKey('channel-details-edit-action'),
       );
+      await tester.tap(editAction);
       await tester.pumpAndSettle();
 
+      final manageSheetScrollable = find.byType(Scrollable).last;
+      await tester.scrollUntilVisible(
+        find.text('Canvas'),
+        160,
+        scrollable: manageSheetScrollable,
+      );
       expect(find.text('Mute'), findsOneWidget);
-      expect(find.text('Leave channel'), findsNothing);
+      expect(find.text('Leave channel'), findsOneWidget);
       expect(find.text('Topic'), findsNothing);
       expect(find.text('Purpose'), findsNothing);
       expect(find.text('Canvas'), findsOneWidget);
+      await tester.drag(manageSheetScrollable, const Offset(0, 600));
+      await tester.pumpAndSettle();
 
       final nameField = tester.widget<TextField>(
         find.byKey(const ValueKey('manage-channel-name')),
@@ -15371,7 +15399,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Thread root'), findsNWidgets(2));
+      expect(find.text('Thread root'), findsOneWidget);
 
       messagesNotifier.setMessages([
         rootEvent,

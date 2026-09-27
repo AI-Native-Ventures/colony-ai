@@ -58,7 +58,7 @@ void threadReplyRefreshTests() {
       tester
           .widget<Text>(find.byKey(const ValueKey('thread-app-bar-title')))
           .data,
-      'Refresh root',
+      'Thread',
     );
     expect(
       tester

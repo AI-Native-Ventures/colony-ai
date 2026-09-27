@@ -5,6 +5,7 @@ import '../../shared/theme/theme.dart';
 
 const conversationAvatarSize = 28.0;
 const conversationAvatarGap = 10.0;
+const conversationSystemMessageTopPadding = Grid.sm + Grid.fourteen;
 
 final conversationBodyTextStyle = MobileTypographyTokens.v5.conversation;
 

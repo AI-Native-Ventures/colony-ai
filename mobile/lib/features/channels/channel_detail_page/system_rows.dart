@@ -121,12 +121,12 @@ class _SystemMessageRow extends HookConsumerWidget {
         child: Padding(
           padding: EdgeInsets.only(
             top: isHuddleEvent
-                ? 33
+                ? conversationSystemMessageTopPadding
                 : usesMessageStyleLayout
                 ? Grid.sm
                 : Grid.xxs,
             bottom: isHuddleEvent
-                ? Grid.eighteen / 2
+                ? Grid.fourteen
                 : usesMessageStyleLayout
                 ? 0
                 : Grid.xxs,
