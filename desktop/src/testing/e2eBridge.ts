@@ -17085,11 +17085,17 @@ export function maybeInstallE2eTauriMocks() {
                         null,
                   )
                 : [];
-            const observedEvents = unreadReplies.map((event) => ({
+            const sidebarFixtureEvents = referenceWorkspaceActive
+              ? events.filter((event) => event.id.startsWith("c1-"))
+              : [];
+            const observedEvents = [
+              ...unreadReplies,
+              ...sidebarFixtureEvents,
+            ].map((event) => ({
               id: event.id,
               createdAt: event.created_at,
               rootId: getThreadReferenceFromTags(event.tags).rootEventId,
-              highPriority: true,
+              highPriority: unreadReplies.includes(event),
               countsTowardBadge: true,
               countsTowardAppBadge: false,
             }));
