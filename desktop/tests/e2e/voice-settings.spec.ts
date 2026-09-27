@@ -281,6 +281,13 @@ test.describe("Pocket voice settings", () => {
     await expect(page.getByTestId("voice-library")).toContainText(
       "Voice library",
     );
+    await expect(page.getByTestId("settings-inner-voice")).toBeHidden();
+    await expect(
+      page.getByRole("tab", { name: "Voice & audio" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByRole("tab", { name: "Notifications" }),
+    ).toHaveAttribute("aria-selected", "false");
     await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
       "Studio narration",
     );
@@ -314,5 +321,12 @@ test.describe("Pocket voice settings", () => {
       { command: "preview_pocket_voice", payload: { voiceKey: key } },
       { command: "delete_pocket_voice", payload: { voiceKey: key } },
     ]);
+
+    await page.getByRole("tab", { name: "Voice & audio" }).click();
+    await expect(page.getByTestId("settings-voice")).toContainText(
+      "Audio devices",
+    );
+    await page.getByRole("tab", { name: "Notifications" }).click();
+    await expect(page.getByTestId("settings-notifications")).toBeVisible();
   });
 });

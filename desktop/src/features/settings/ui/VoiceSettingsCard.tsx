@@ -47,7 +47,11 @@ type TtsVoiceMutation = {
   registry: VoiceRegistryEntry[];
 };
 
-export function VoiceSettingsCard() {
+export function VoiceSettingsCard({
+  onSectionChange,
+}: {
+  onSectionChange?: (section: "notifications" | "voice") => void;
+}) {
   const {
     audioDevices,
     selectedDeviceId,
@@ -328,15 +332,46 @@ export function VoiceSettingsCard() {
   if (showLibrary) {
     return (
       <>
-        <section className="min-w-0" data-testid="settings-voice">
-          <div
-            className="flex items-start justify-between gap-4"
-            data-testid="voice-library"
-          >
-            <h2 className="text-xl font-semibold tracking-tight">
-              Voice library
-            </h2>
-            <span className="text-xs text-muted-foreground">This device</span>
+        <section
+          className="min-w-0"
+          data-testid="settings-voice"
+          data-voice-library-route
+        >
+          <div data-testid="voice-library-route">
+            <SettingsSectionHeader
+              action={
+                <span className="text-xs text-muted-foreground">
+                  This device
+                </span>
+              }
+              title={<span data-testid="voice-library">Voice library</span>}
+            />
+            <div
+              aria-label="Voice library sections"
+              className="w20-inner-tabs w20-voice-library-tabs"
+              role="tablist"
+            >
+              <button
+                aria-selected="true"
+                className="w20-inner-tab is-active"
+                data-testid="voice-library-tab-audio"
+                onClick={() => setShowLibrary(false)}
+                role="tab"
+                type="button"
+              >
+                Voice &amp; audio
+              </button>
+              <button
+                aria-selected="false"
+                className="w20-inner-tab"
+                data-testid="voice-library-tab-notifications"
+                onClick={() => onSectionChange?.("notifications")}
+                role="tab"
+                type="button"
+              >
+                Notifications
+              </button>
+            </div>
           </div>
 
           {error && !importFailure ? (

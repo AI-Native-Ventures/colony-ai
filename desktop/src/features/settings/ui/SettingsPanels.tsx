@@ -1012,7 +1012,13 @@ export function renderSettingsSection(
         />
       );
     case "voice":
-      return <VoiceSettingsCard />;
+      return (
+        <VoiceSettingsCard
+          onSectionChange={(nextSection) =>
+            props.onSectionChange?.(nextSection)
+          }
+        />
+      );
     case "experimental":
       return <ExperimentalFeaturesCard />;
     case "agents":

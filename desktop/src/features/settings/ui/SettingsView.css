@@ -623,6 +623,10 @@ body:has(.w20-settings-shell) {
   background: #211e26;
 }
 
+.w20-settings-surface:has([data-voice-library-route]) > .w20-inner-tabs {
+  display: none;
+}
+
 .dark .w20-inner-tab {
   color: #a39aa9;
 }
@@ -674,10 +678,28 @@ body:has(.w20-settings-shell) {
   padding-left: 44px;
 }
 
+.w20-route-scroll:has([data-voice-library-route]) {
+  padding: 18px 38px 32px;
+}
+
 .w20-route-content:has([data-testid="settings-harnesses"]) {
   max-width: 880px;
   margin-right: auto;
   margin-left: 0;
+}
+
+.w20-route-content:has([data-voice-library-route]) {
+  max-width: none;
+  gap: 0;
+}
+
+[data-testid="voice-library-route"] .w20-r19-page-heading {
+  margin-bottom: 20px;
+}
+
+[data-testid="voice-library-route"] .w20-voice-library-tabs {
+  margin-right: -38px;
+  margin-left: -38px;
 }
 
 [data-testid="settings-harnesses"] [data-slot="settings-section-header"] {
