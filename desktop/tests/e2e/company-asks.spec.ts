@@ -1,11 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 
 import type { RelayEvent } from "../../src/shared/api/types";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const ASK_ID = "7245ba1a-e078-42ef-b896-00be34a94f11";
+const CAPTURE_ASK_MATRIX = process.env.CAPTURE_ASK_MATRIX === "1";
 
 function initialAskHeadContent(input: {
   addresseePubkey: string;
@@ -36,7 +40,7 @@ function initialAskHeadContent(input: {
   });
 }
 
-test("Today opens an ask thread and keeps a rejected answer for retry", async ({
+test("Today opens an ask page and keeps a rejected answer for retry", async ({
   page,
 }) => {
   const relaySecret = generateSecretKey();
@@ -162,6 +166,10 @@ test("Today opens an ask thread and keeps a rejected answer for retry", async ({
   await todayAsk.focus();
   await expect(todayAsk).toBeFocused();
   await page.keyboard.press("Enter");
+  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+  await expect(page.getByTestId("ask-thread-root")).toContainText(
+    "Launch checklist",
+  );
   await expect(page.getByTestId("ask-card")).toBeVisible();
   const reason = page.getByLabel("Reason or requested changes");
   await reason.fill("The checklist is complete.");
@@ -180,9 +188,282 @@ test("Today opens an ask thread and keeps a rejected answer for retry", async ({
     "Approved by You",
   );
 
-  await page.goBack();
+  await page.getByRole("link", { name: "Back to discussion" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page).toHaveURL(
+    new RegExp(`[?&]messageId=${seedContext.rootId}`),
+  );
+  await expect(page.getByTestId("message-thread-head")).toContainText(
+    "Launch checklist",
+  );
+  await expect(page.getByTestId("ask-resolved")).toContainText(
+    "Approved by You",
+  );
+  await page.getByTestId("ask-detail-link").click();
+  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+  await page.getByRole("link", { name: "Needs me" }).click();
   await expect(page.getByRole("region", { name: "Needs me" })).toBeVisible();
   await expect(page.getByTestId(`today-ask-${ASK_ID}`)).toHaveCount(0);
+});
+
+test("Needs me opens each ask type, records a response, and returns to its thread", async ({
+  page,
+}) => {
+  if (CAPTURE_ASK_MATRIX) test.setTimeout(120_000);
+  const relaySecret = generateSecretKey();
+  const relaySelf = getPublicKey(relaySecret);
+  await installMockBridge(page, {
+    relaySelf,
+    companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
+    relayRequiresMembership: true,
+  });
+  await page.goto("/#/today");
+  await page.waitForFunction(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: unknown;
+      __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
+      __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: unknown;
+    };
+    return (
+      typeof testWindow.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function" &&
+      typeof testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function" &&
+      typeof testWindow.__BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__ === "function"
+    );
+  });
+
+  const askFixtures = [
+    {
+      askId: "10000000-0000-4000-8000-000000000001",
+      type: "approval",
+      category: "money",
+      title: "Increase Olive Studio’s October allowance by USD 120",
+      threadTitle: "Campaign direction",
+      context:
+        "Current allowance USD 180. Proposed allowance USD 300. Does not launch ads or publish content.",
+    },
+    {
+      askId: "10000000-0000-4000-8000-000000000002",
+      type: "question",
+      category: "general",
+      title: "Which client requirement should we prioritise?",
+      threadTitle: "Campaign direction",
+      context:
+        "We can keep the launch date or add another round of creative exploration.",
+    },
+    {
+      askId: "10000000-0000-4000-8000-000000000003",
+      type: "choice",
+      category: "general",
+      title: "Choose the campaign direction",
+      threadTitle: "Campaign direction",
+      context: "Select one direction for the next draft.",
+      options: [
+        { id: "customer-stories", label: "Customer stories" },
+        { id: "studio-process", label: "Studio process" },
+        { id: "product-education", label: "Product education" },
+      ],
+    },
+    {
+      askId: "10000000-0000-4000-8000-000000000004",
+      type: "checklist",
+      category: "general",
+      title: "Confirm the client brief is ready",
+      threadTitle: "Campaign direction",
+      context: "Confirm these requirements before production begins.",
+      items: [
+        { id: "tone", label: "Tone matches the client brief" },
+        { id: "dates", label: "Dates are confirmed" },
+        { id: "owner", label: "Owner is assigned" },
+      ],
+    },
+    {
+      askId: "10000000-0000-4000-8000-000000000005",
+      type: "verdict",
+      category: "general",
+      title: "Does the revised plan meet the done condition?",
+      threadTitle: "Campaign direction",
+      context: "Review the three concepts, calendar and rationale.",
+    },
+  ];
+
+  const seededAsks = await page.evaluate(
+    async ({ askerPubkey, asks }) => {
+      type TestWindow = Window & {
+        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+          command: string,
+          payload?: unknown,
+        ) => Promise<unknown>;
+        __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
+          channelName: string;
+          content: string;
+          kind?: number;
+          parentEventId?: string | null;
+          pubkey?: string;
+          extraTags?: string[][];
+        }) => RelayEvent;
+        __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: (head: {
+          channelId: string;
+          askId: string;
+          threadRootEventId: string;
+          content: string;
+        }) => RelayEvent;
+      };
+      const testWindow = window as TestWindow;
+      const invoke = testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+      const emit = testWindow.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+      const publishHead = testWindow.__BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__;
+      if (!invoke || !emit || !publishHead) {
+        throw new Error("The mock relay ask test seam is unavailable.");
+      }
+      const identity = (await invoke("get_identity", {})) as { pubkey: string };
+      const now = Math.floor(Date.now() / 1_000);
+      const seeded: Array<{
+        askId: string;
+        type: string;
+        threadTitle: string;
+        context: string;
+        rootId: string;
+      }> = [];
+      for (const askFixture of asks) {
+        const root = emit({
+          channelName: "general",
+          content: `# ${askFixture.threadTitle}\n${askFixture.context}`,
+          pubkey: askerPubkey,
+        });
+        const channelId = root.tags.find((tag) => tag[0] === "h")?.[1];
+        if (!channelId)
+          throw new Error("The seeded thread has no channel tag.");
+        const ask = {
+          schemaVersion: 1,
+          askId: askFixture.askId,
+          type: askFixture.type,
+          category: askFixture.category,
+          title: askFixture.title,
+          threadRootEventId: root.id,
+          addresseePubkey: identity.pubkey,
+          decideBy: new Date((now + 3_600) * 1_000).toISOString(),
+          ...(askFixture.options ? { options: askFixture.options } : {}),
+          ...(askFixture.items ? { items: askFixture.items } : {}),
+        };
+        const content = JSON.stringify({
+          schemaVersion: 1,
+          askId: askFixture.askId,
+          status: "open",
+          askerPubkey,
+          createdAt: new Date(now * 1_000).toISOString(),
+          ask,
+          resolution: null,
+          cancellation: null,
+          sourceActionEventId: "b".repeat(64),
+        });
+        publishHead({
+          channelId,
+          askId: askFixture.askId,
+          threadRootEventId: root.id,
+          content,
+        });
+        emit({
+          channelName: "general",
+          content: JSON.stringify({
+            schemaVersion: 1,
+            askId: askFixture.askId,
+            action: "create",
+            ask,
+          }),
+          kind: 47032,
+          parentEventId: root.id,
+          pubkey: askerPubkey,
+          extraTags: [["d", `channel:${channelId}:ask:${askFixture.askId}`]],
+        });
+        seeded.push({
+          askId: askFixture.askId,
+          type: askFixture.type,
+          threadTitle: askFixture.threadTitle,
+          context: askFixture.context,
+          rootId: root.id,
+        });
+      }
+      return seeded;
+    },
+    { askerPubkey: TEST_IDENTITIES.alice.pubkey, asks: askFixtures },
+  );
+
+  for (const ask of seededAsks) {
+    await page.goto("/#/today");
+    const row = page.getByTestId(`today-ask-${ask.askId}`);
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+    await expect(page.getByTestId("ask-thread-title")).toHaveText(
+      `Decision in ${ask.threadTitle}`,
+    );
+    await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
+      `Decision in ${ask.threadTitle}`,
+    );
+    await expect(page.getByTestId("ask-thread-root")).toBeVisible();
+    await expect(page.getByTestId("ask-card")).toBeVisible();
+
+    if (CAPTURE_ASK_MATRIX) {
+      const outputDirectory = resolve(
+        process.cwd(),
+        "../output/asks-v7-comparison/app",
+      );
+      mkdirSync(outputDirectory, { recursive: true });
+      for (const [width, height] of [
+        [1728, 1117],
+        [1440, 900],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        for (const theme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme: theme });
+          await page.waitForFunction(
+            (shouldBeDark) =>
+              document.documentElement.classList.contains("dark") ===
+              shouldBeDark,
+            theme === "dark",
+          );
+          await waitForAnimations(page);
+          await page.screenshot({
+            path: resolve(
+              outputDirectory,
+              `ask-${ask.askId.slice(-1)}-${width}x${height}-${theme}.png`,
+            ),
+          });
+        }
+      }
+      await page.emulateMedia({ colorScheme: "light" });
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+
+    if (ask.type === "approval") {
+      await page
+        .getByLabel("Reason or requested changes")
+        .fill("The launch plan is ready.");
+    } else if (ask.type === "question") {
+      await page.getByLabel("Your answer").fill("Prioritise the launch date.");
+    } else if (ask.type === "choice") {
+      await page
+        .getByLabel("Choose a direction")
+        .selectOption("customer-stories");
+    } else if (ask.type === "checklist") {
+      await page.getByLabel("Tone matches the client brief").check();
+      await page.getByLabel("Dates are confirmed").check();
+      await page.getByLabel("Owner is assigned").check();
+    } else {
+      await page
+        .getByLabel("Reason and evidence checked")
+        .fill("All checks passed.");
+    }
+    await page.getByRole("button", { name: "Record response" }).click();
+    await expect(page.getByTestId("ask-resolved")).toBeVisible();
+    await page.getByRole("link", { name: "Back to discussion" }).click();
+    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`[?&]messageId=${ask.rootId}`));
+    await expect(page.getByTestId("message-thread-head")).toContainText(
+      ask.threadTitle,
+    );
+    await expect(page.getByTestId("ask-resolved")).toBeVisible();
+  }
 });
 
 test("Needs me approves and denies addressed workflow approvals", async ({

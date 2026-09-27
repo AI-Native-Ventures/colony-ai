@@ -159,6 +159,8 @@ test.describe("company asks live relay journey", () => {
     const todayRow = page.getByTestId(`today-ask-${askId}`);
     await expect(todayRow).toBeVisible();
     await todayRow.click();
+    await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+    await expect(page.getByTestId("ask-thread-root")).toContainText(threadText);
     await expect(page.getByTestId("ask-card")).toBeVisible();
     await page.getByLabel("Reason or requested changes").fill("Approved.");
     await page.getByRole("button", { name: "Record response" }).click();
@@ -166,6 +168,16 @@ test.describe("company asks live relay journey", () => {
       "Approved by You",
     );
     await expect(todayRow).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Back to discussion" }).click();
+    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`[?&]messageId=${root.id}`));
+    await expect(page.getByTestId("message-thread-head")).toContainText(
+      threadText,
+    );
+    await expect(page.getByTestId("ask-resolved")).toContainText(
+      "Approved by You",
+    );
 
     await page.goto("/#/today");
     await page.reload();

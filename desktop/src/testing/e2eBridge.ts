@@ -5769,6 +5769,9 @@ function emitMockHistory(
         : []),
     ])
     .filter((event) => {
+      if (filter.ids && !filter.ids.includes(event.id)) {
+        return false;
+      }
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
         return false;
       }

@@ -19,9 +19,10 @@ export const ASK_HEAD_REFETCH_INTERVAL_MS = 30_000;
 export function useAskHeadQuery(
   channelId: string | null,
   askId: string | null,
+  enabled = true,
 ) {
   const relaySelfQuery = useRelaySelfQuery(
-    channelId !== null && askId !== null,
+    enabled && channelId !== null && askId !== null,
   );
   const relaySelfPubkey = relaySelfQuery.data ?? null;
   const queryClient = useQueryClient();
@@ -40,7 +41,11 @@ export function useAskHeadQuery(
       }
       return fetchAskHead(channelId, askId, relaySelfPubkey);
     },
-    enabled: channelId !== null && askId !== null && relaySelfPubkey !== null,
+    enabled:
+      enabled &&
+      channelId !== null &&
+      askId !== null &&
+      relaySelfPubkey !== null,
     refetchInterval,
   });
   const [liveState, setLiveState] = React.useState<
@@ -48,7 +53,7 @@ export function useAskHeadQuery(
   >("connecting");
 
   React.useEffect(() => {
-    if (!channelId || !askId || !relaySelfPubkey) {
+    if (!enabled || !channelId || !askId || !relaySelfPubkey) {
       setLiveState("unavailable");
       return;
     }
@@ -85,10 +90,12 @@ export function useAskHeadQuery(
       active = false;
       if (dispose) void dispose();
     };
-  }, [askId, channelId, queryClient, queryKey, relaySelfPubkey]);
+  }, [askId, channelId, enabled, queryClient, queryKey, relaySelfPubkey]);
 
   return { query, relaySelfQuery, liveState };
 }
+
+export type AskHeadQueryState = ReturnType<typeof useAskHeadQuery>;
 
 export function useAskHeadsQuery(channelIds: readonly string[]) {
   const relaySelfQuery = useRelaySelfQuery(channelIds.length > 0);

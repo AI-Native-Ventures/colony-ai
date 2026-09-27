@@ -303,7 +303,7 @@ export function TodayScreen({
     enabled: needsMeProfilePubkeys.length > 0,
   });
   const needsMeProfiles = needsMeProfilesQuery.data?.profiles;
-  const { goChannel, goHome, goPulse } = useAppNavigation();
+  const { goAskDetail, goChannel, goHome, goPulse } = useAppNavigation();
   const needsMeErrors = [
     ...new Set(
       [
@@ -336,14 +336,9 @@ export function TodayScreen({
 
   const openAsk = React.useCallback(
     (record: AskHeadRecord) => {
-      const threadRootId = record.head.ask.threadRootEventId;
-      void goChannel(record.channelId, {
-        messageId: threadRootId,
-        threadRootId,
-        thread: threadRootId,
-      });
+      void goAskDetail(record.channelId, record.head.askId);
     },
-    [goChannel],
+    [goAskDetail],
   );
 
   const channelName = React.useCallback(

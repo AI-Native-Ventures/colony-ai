@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useChannelMembersQuery } from "@/features/channels/hooks";
@@ -12,6 +13,7 @@ import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import { useAskHeadQuery } from "../hooks";
+import type { AskHeadQueryState } from "../hooks";
 import type {
   AskHead,
   AskHeadRecord,
@@ -412,16 +414,22 @@ export function AskCard({
   channelId,
   currentPubkey,
   profiles,
+  queryState,
+  showDetailLink = true,
 }: {
   askId: string;
   channelId: string | null;
   currentPubkey?: string;
   profiles?: UserProfileLookup;
+  queryState?: AskHeadQueryState;
+  showDetailLink?: boolean;
 }) {
-  const { query, relaySelfQuery, liveState } = useAskHeadQuery(
+  const localQueryState = useAskHeadQuery(
     channelId,
     askId,
+    queryState === undefined,
   );
+  const { query, relaySelfQuery, liveState } = queryState ?? localQueryState;
   const membersQuery = useChannelMembersQuery(channelId, Boolean(channelId));
   const membershipQuery = useMyRelayMembershipQuery();
   const agentsQuery = useRelayAgentsQuery({ enabled: Boolean(channelId) });
@@ -642,6 +650,16 @@ export function AskCard({
           Live updates are unavailable. The ask will refresh when the relay
           reconnects.
         </p>
+      ) : null}
+      {showDetailLink && channelId ? (
+        <Link
+          className="colony-ask-detail-link"
+          data-testid="ask-detail-link"
+          params={{ askId, channelId }}
+          to="/asks/$channelId/$askId"
+        >
+          Open decision
+        </Link>
       ) : null}
     </section>
   );
