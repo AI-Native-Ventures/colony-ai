@@ -23,7 +23,7 @@ export function ChannelTemplatePickerScreen() {
 
   return (
     <main
-      className="flex h-full min-h-0 flex-col"
+      className="flex h-full min-h-0 flex-col bg-background dark:bg-[#26232d]"
       data-testid="channel-template-picker"
     >
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-6">
