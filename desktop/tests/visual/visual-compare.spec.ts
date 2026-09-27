@@ -1303,7 +1303,7 @@ async function inspectPageGeometry(
       sidebarRows: Array.from(
         document.querySelectorAll<HTMLElement>(
           [
-            ".full-sidebar nav > .nav-link",
+            ".full-sidebar .nav-link",
             ".full-sidebar .group-toggle",
             ".full-sidebar .conversation-heading",
             ".full-sidebar .conversation-link",

@@ -173,13 +173,13 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     throw new Error("Sidebar search or primary navigation geometry is missing");
   }
   expect(
-    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 13),
+    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 10),
   ).toBeLessThanOrEqual(1);
   expect(
     pinnedHeaderBox.y +
       pinnedHeaderBox.height -
       (searchBox.y + searchBox.height),
-  ).toBe(13);
+  ).toBe(10);
   for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
     expect(Math.abs(rowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
     // Linux CI reserves a classic scrollbar gutter while macOS uses an

@@ -1035,6 +1035,19 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   :is(
+    [data-testid="stream-list-section-label"],
+    [data-testid="forum-list-section-label"],
+    [data-testid="dm-list-section-label"]
+  ) {
+  height: 2.025rem;
+  min-height: 2.025rem;
+  margin-top: 0.1875rem;
+  color: var(--colony-sidebar-muted-foreground);
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  :is(
     [data-testid="section-actions-channels"],
     [data-testid="section-actions-forums"],
     [data-testid="section-actions-dms"]
@@ -1144,7 +1157,7 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   .sidebar-software-factory-group {
-  margin-top: 0.125rem;
+  margin-top: 0.75rem;
 }
 
 :root:has([data-colony-full-app-shell="true"])
