@@ -369,6 +369,15 @@ test.describe("visual comparison captures", () => {
           await expect(appPage.locator(".r17-today-page h1")).toHaveText(
             "Today",
           );
+          await expect(appPage.getByTestId("open-search")).toContainText(
+            "Find anything",
+          );
+          await expect(appPage.getByTestId("sidebar-profile-name")).toHaveText(
+            "Lerato Molefe",
+          );
+          await expect(
+            appPage.getByTestId("sidebar-profile-user-status"),
+          ).toHaveText("Set a status");
           await expect(appPage.locator(".r17-today-page")).toContainText(
             "Wednesday, 23 September",
           );
@@ -386,6 +395,26 @@ test.describe("visual comparison captures", () => {
           entry.referenceInventoryRoute === "channel/sales" &&
           usesReferenceWorkspace
         ) {
+          const workspaceTopBar = appPage.locator(".colony-channel-topbar");
+          await expect(
+            workspaceTopBar.getByTestId("channel-work-area-trigger"),
+          ).toHaveText("Work area");
+          await expect(workspaceTopBar.locator("svg.lucide-globe")).toHaveCount(
+            1,
+          );
+          for (const unavailableDestination of [
+            "Website",
+            "Social",
+            "Clients",
+            "Discovery",
+            "Pipeline",
+            "Leads",
+            "Money",
+          ]) {
+            await expect(
+              appPage.getByText(unavailableDestination, { exact: true }),
+            ).toHaveCount(0);
+          }
           const browseChannels = appPage.getByTestId("sidebar-browse-channels");
           await expect(browseChannels).toHaveCount(1);
           await expect(browseChannels).toContainText("+Browse channels");
