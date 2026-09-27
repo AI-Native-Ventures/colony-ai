@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/test";
 import UPNG from "upng-js";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings, selectSettingsSection } from "../helpers/settings";
+import {
+  openAvatarProfileContext,
+  openSettings,
+  selectSettingsSection,
+} from "../helpers/settings";
 
 test("settings keep key export and import out of the account panels", async ({
   page,
@@ -30,6 +34,7 @@ test("avatar crop retries a failed profile update without losing the image", asy
   });
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
 
   const width = 32;

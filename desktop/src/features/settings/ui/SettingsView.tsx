@@ -198,6 +198,7 @@ export function SettingsView({
   const profile = useProfileQuery();
   const updateProfile = useUpdateProfileMutation();
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
+  const [avatarEditorContext, setAvatarEditorContext] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
   const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
     theme.selectedThemeName as SyntaxThemeName,
@@ -295,11 +296,13 @@ export function SettingsView({
   }, [search]);
 
   function chooseGroup(group: SettingsGroupDescriptor) {
+    setAvatarEditorContext(false);
     onSectionChange(loadRememberedSection(group, remembered));
     setSearch("");
   }
 
   function chooseSection(next: SettingsSection) {
+    setAvatarEditorContext(false);
     onSectionChange(canonicalSettingsSection(next));
     setSearch("");
   }
@@ -443,7 +446,17 @@ export function SettingsView({
         </SidebarContent>
 
         <SidebarFooter className="w20-nav-footer">
-          <div className="w20-nav-person">
+          <button
+            aria-label="Open profile avatar settings"
+            className="w20-nav-person w20-nav-person-action"
+            data-testid="settings-profile-avatar-context"
+            onClick={() => {
+              chooseSection("profile");
+              setAvatarSaved(false);
+              setAvatarEditorContext(true);
+            }}
+            type="button"
+          >
             <div className="w20-nav-person-avatar">
               <ProfileAvatar
                 avatarUrl={profile.data?.avatarUrl ?? null}
@@ -457,7 +470,7 @@ export function SettingsView({
               <strong>{signedInDisplayName}</strong>
               <small>Workspace owner</small>
             </div>
-          </div>
+          </button>
         </SidebarFooter>
       </Sidebar>
 
@@ -517,7 +530,7 @@ export function SettingsView({
           className="w20-settings-surface"
           data-testid="settings-content-surface"
         >
-          {activeGroup.id === "account" ? null : (
+          {activeGroup.id === "account" && avatarEditorContext ? null : (
             <div
               aria-label={`${activeGroup.label} settings sections`}
               className="w20-inner-tabs"
@@ -564,6 +577,9 @@ export function SettingsView({
                   "w20-route-content-theme",
                 activeSection === "channel-templates" &&
                   "w20-route-content-templates",
+                activeSection === "profile" &&
+                  avatarEditorContext &&
+                  "w20-route-content-avatar",
               )}
               data-testid={`settings-panel-${activeSection}`}
             >
@@ -590,6 +606,7 @@ export function SettingsView({
               ) : (
                 renderSettingsSection(activeSection, {
                   currentPubkey,
+                  avatarEditorContext,
                   avatarSaved,
                   fallbackDisplayName,
                   onEditAvatar: () => {

@@ -125,7 +125,11 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   await page.addInitScript(() => {
     localStorage.setItem("buzz-sidebar-width", "238");
   });
-  await installMockBridge(page);
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    relayRole: "owner",
+    userStatus: "Available",
+  });
   await page.goto("/");
   await openSettings(page, "profile");
 
@@ -133,6 +137,31 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     .getByTestId("settings-profile")
     .getByRole("heading", { name: "Your account", exact: true });
   await expect(profileTitle).toBeVisible();
+  const profileCard = page.getByTestId("settings-account-profile-card");
+  await expect(
+    profileCard.getByRole("heading", { name: "Your profile", exact: true }),
+  ).toBeVisible();
+  await expect(profileCard.getByLabel("Name")).toHaveValue(/\S/);
+  await expect(profileCard.getByLabel("Email address")).toHaveValue(/.+@.+/);
+  await expect(profileCard.getByLabel("Status")).toHaveValue("Available");
+  await expect(profileCard.getByLabel("Timezone")).toHaveValue(/\S/);
+  const businessCard = page.getByTestId("settings-account-business-card");
+  await expect(
+    businessCard.getByRole("heading", { name: "This business", exact: true }),
+  ).toBeVisible();
+  await expect(businessCard.getByText("Owner", { exact: true })).toBeVisible();
+  await expect(
+    businessCard.getByRole("button", { name: "Business settings" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".w20-account-card-title")
+        .evaluateAll((elements) =>
+          elements.map((element) => getComputedStyle(element).fontSize),
+        ),
+    )
+    .toEqual(["16px", "16px"]);
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
@@ -217,11 +246,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
           width: firstProfileFieldRect.width,
           height: firstProfileFieldRect.height,
         },
-        nameInput: bounds('[data-testid="account-profile-name"]'),
+        nameInput: bounds('[data-testid="profile-display-name"]'),
       };
     });
     const expectCoordinate = (actual: number, expectedValue: number) => {
-      expect(Math.abs(actual - expectedValue)).toBeLessThan(1);
+      expect(
+        Math.abs(actual - expectedValue),
+        `Expected ${expectedValue}px, received ${actual}px`,
+      ).toBeLessThan(1);
     };
     expectCoordinate(geometry.fieldLayer.x, expected.fieldLayer.x);
     expectCoordinate(geometry.fieldLayer.y, expected.fieldLayer.y);

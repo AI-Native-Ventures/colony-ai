@@ -77,6 +77,7 @@ import {
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
 import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
+import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
@@ -305,6 +306,7 @@ export type SettingsSectionDescriptor = {
 export type SettingsPanelProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
+  avatarEditorContext?: boolean;
   avatarSaved?: boolean;
   onClose?: () => void;
   onSectionChange?: (section: SettingsSection) => void;
@@ -968,18 +970,27 @@ export function renderSettingsSection(
 ): React.ReactNode {
   switch (section) {
     case "profile":
+      if (props.avatarEditorContext) {
+        return (
+          <AvatarEditorProfileContext
+            avatarSaved={props.avatarSaved ?? false}
+            fallbackDisplayName={props.fallbackDisplayName}
+            onEditAvatar={props.onEditAvatar ?? (() => undefined)}
+            onSectionChange={props.onSectionChange ?? (() => undefined)}
+          />
+        );
+      }
       return (
         <AccountProfileSettingsPanel
-          avatarSaved={props.avatarSaved}
           fallbackDisplayName={props.fallbackDisplayName}
-          onEditAvatar={props.onEditAvatar ?? (() => undefined)}
+          onClose={props.onClose ?? (() => undefined)}
           onSectionChange={props.onSectionChange ?? (() => undefined)}
         />
       );
     case "security":
       return (
         <AccountSecuritySettingsPanel
-          onSectionChange={props.onSectionChange ?? (() => undefined)}
+          onClose={props.onClose ?? (() => undefined)}
           onOpenDraftRecovery={props.onOpenDraftRecovery}
         />
       );

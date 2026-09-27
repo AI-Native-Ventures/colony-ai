@@ -248,6 +248,8 @@ type E2eConfig = {
     accountLinked?: boolean;
     /** Linked account address returned by the mocked account API. */
     accountEmail?: string;
+    /** Current user status event returned by the mocked relay. */
+    userStatus?: string;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -5164,8 +5166,18 @@ function recordMockMessage(channelId: string, event: RelayEvent) {
   touchMockChannel(channel);
 }
 
-function resetMockUserStatuses() {
+function resetMockUserStatuses(config: E2eConfig | undefined) {
   mockUserStatuses.length = 0;
+  const text = config?.mock?.userStatus?.trim();
+  if (!text) return;
+  mockUserStatuses.push(
+    createMockEvent(
+      KIND_USER_STATUS,
+      text,
+      [["d", "general"]],
+      getMockMemberPubkey(config),
+    ),
+  );
 }
 
 // Mocked Rust-side pending deep-link queue (see desktop/src-tauri/src/deep_link.rs).
@@ -11657,7 +11669,7 @@ export function maybeInstallE2eTauriMocks() {
   seedMockSearchProfiles(config);
   resetMockWorkflows();
   resetMockMesh();
-  resetMockUserStatuses();
+  resetMockUserStatuses(config);
   resetMockPersonaCatalogEvents(config);
   resetMockObservedUnread();
   resetMockTeamCatalogEvents(config);

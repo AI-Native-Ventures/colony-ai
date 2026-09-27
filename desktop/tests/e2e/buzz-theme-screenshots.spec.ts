@@ -978,7 +978,7 @@ test("settings content uses the same inset surface as the main app", async ({
 
   const topChromeBox = await settingsTopTitle.boundingBox();
   const settingsHeadingBox = await page
-    .getByRole("heading", { level: 1, name: "Your profile" })
+    .getByRole("heading", { level: 1, name: "Your account" })
     .boundingBox();
   expect(topChromeBox).not.toBeNull();
   expect(settingsHeadingBox).not.toBeNull();

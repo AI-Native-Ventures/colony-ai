@@ -8,6 +8,7 @@ import {
 } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import {
+  openAvatarProfileContext,
   openProfileMenu,
   openSettings,
   selectSettingsSection,
@@ -448,7 +449,7 @@ test("updates the relay-backed profile from settings", async ({ page }) => {
   await expect(
     page.getByTestId("settings-profile").getByRole("heading", {
       exact: true,
-      name: "Your profile",
+      name: "Your account",
     }),
   ).toBeVisible();
   const nameInput = page.getByTestId("profile-display-name");
@@ -460,6 +461,7 @@ test("updates the relay-backed profile from settings", async ({ page }) => {
     "",
   );
 
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await expect(page.getByTestId("profile-avatar-dialog")).toBeVisible();
   await page.getByTestId("avatar-option-star").click();
@@ -477,7 +479,7 @@ test("updates the relay-backed profile from settings", async ({ page }) => {
     displayName,
   );
   await expect(
-    page.getByTestId("account-profile-avatar-image"),
+    page.getByTestId("settings-profile-avatar-image"),
   ).toHaveAttribute("src", /^data:image\/svg\+xml/);
 });
 
@@ -511,6 +513,7 @@ test("shows the designed status after a profile photo update", async ({
   await page.goto("/");
 
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByTestId("avatar-option-flower").click();
   await waitForAvatarEditorToClose(page);
@@ -522,6 +525,7 @@ test("shows the designed status after a profile photo update", async ({
 test("shows the account photo row and its avatar action", async ({ page }) => {
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
 
   const details = page.getByTestId("settings-account-profile-card");
   await expect(
@@ -546,6 +550,7 @@ test("offers the frozen avatar presets, upload, and camera choices", async ({
 }) => {
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
 
   const options = page.getByTestId("avatar-options");
@@ -570,6 +575,7 @@ test("validates image types in the designed avatar upload state", async ({
 }) => {
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByTestId("avatar-upload-open").click();
 
@@ -607,6 +613,7 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
   await page.goto("/");
 
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByTestId("avatar-upload-open").click();
   await page.getByTestId("avatar-file-input").setInputFiles({
@@ -643,7 +650,7 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
       expect.arrayContaining(["upload_media_bytes_raw", "update_profile"]),
     );
   await expect(
-    page.getByTestId("account-profile-avatar-image"),
+    page.getByTestId("settings-profile-avatar-image"),
   ).toHaveAttribute("src", uploadedAvatarUrl);
 });
 
@@ -1810,7 +1817,7 @@ test("renders the nine settings groups with one internal account bar", async ({
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your profile" }),
+    page.getByRole("heading", { name: "Your account" }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute(
     "aria-selected",
@@ -2079,7 +2086,7 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your profile" }),
+    page.getByRole("heading", { name: "Your account" }),
   ).toBeVisible();
   await page.getByTestId("settings-group-appearance-group").click();
 

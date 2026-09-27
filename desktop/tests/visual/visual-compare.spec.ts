@@ -267,6 +267,12 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        if (entry.id.startsWith("desktop-06-")) {
+          await appPage.getByTestId("settings-profile-avatar-context").click();
+          await appPage.getByTestId("profile-avatar-edit").waitFor({
+            state: "visible",
+          });
+        }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
           referencePage,

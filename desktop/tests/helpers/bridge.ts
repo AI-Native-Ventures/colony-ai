@@ -153,6 +153,8 @@ type MockBridgeOptions = {
   accountLinked?: boolean;
   /** Linked account address returned by the mocked account API. */
   accountEmail?: string;
+  /** Current user status event returned by the mocked relay. */
+  userStatus?: string;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;

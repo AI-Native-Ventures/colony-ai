@@ -132,6 +132,11 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account",
       "appRoute": "/#/settings?section=profile",
       "routeLabel": "Account profile settings",
+      "appMockData": {
+        "relayRequiresMembership": true,
+        "relayRole": "owner",
+        "userStatus": "Available"
+      },
       "appReadySelector": "[data-testid=settings-profile][data-ready=true]"
     },
     {

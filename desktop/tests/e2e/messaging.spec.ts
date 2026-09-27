@@ -5,7 +5,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
-import { openSettings } from "../helpers/settings";
+import { openAvatarProfileContext, openSettings } from "../helpers/settings";
 
 const LINK_PREVIEW_IMAGE = readFileSync(
   new URL("../fixtures/github-pr-5629-og.png", import.meta.url),
@@ -2786,6 +2786,7 @@ test("shows your avatar on your own message when profile avatar is set", async (
 
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByTestId("profile-avatar-url").fill(avatarUrl);
   await page.getByTestId("profile-avatar-done").click();

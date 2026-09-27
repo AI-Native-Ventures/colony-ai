@@ -1,19 +1,17 @@
-import type { SettingsSection } from "./SettingsPanels";
 import { AccountSettingsHeader } from "./AccountSettingsHeader";
 import { SignOutSection } from "./SignOutSection";
 
 export function AccountSecuritySettingsPanel({
+  onClose,
   onOpenDraftRecovery,
-  onSectionChange,
 }: {
+  onClose: () => void;
   onOpenDraftRecovery?: () => void;
-  onSectionChange: (section: SettingsSection) => void;
 }) {
   return (
     <section className="min-w-0" data-testid="settings-account-security">
       <AccountSettingsHeader
-        onSectionChange={onSectionChange}
-        section="security"
+        onBackToToday={onClose}
         title="Sign-in & devices"
       />
 

@@ -78,6 +78,11 @@ export async function openSettings(page: Page, section?: SettingsSection) {
   }
 }
 
+export async function openAvatarProfileContext(page: Page) {
+  await page.getByTestId("settings-profile-avatar-context").click();
+  await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
+}
+
 export async function selectSettingsSection(
   page: Page,
   section: SettingsSection,

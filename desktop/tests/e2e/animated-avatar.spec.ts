@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { installFakeCamera } from "../helpers/fakeCamera";
-import { openSettings } from "../helpers/settings";
+import { openAvatarProfileContext, openSettings } from "../helpers/settings";
 
 // The review editor (preview + framing + poster strip + backdrop panel) is
 // taller than the default 720px viewport — raise it so the whole editor remains visible.
@@ -26,6 +26,7 @@ async function openAnimatedTab(
   });
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByRole("tab", { name: "Animated" }).click();
   await expect(page.getByTestId("profile-avatar-animated")).toBeVisible();
