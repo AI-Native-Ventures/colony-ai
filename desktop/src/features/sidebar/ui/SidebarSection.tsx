@@ -91,7 +91,10 @@ function UnreadDotBadge({
 }) {
   return (
     <span
-      className={cn("h-2 w-2 shrink-0 rounded-full bg-primary", className)}
+      className={cn(
+        "h-[5px] w-[5px] shrink-0 rounded-full bg-[#ad7fa7]",
+        className,
+      )}
       data-testid={`channel-unread-dot-${channelName}`}
     >
       <span className="sr-only">unread</span>

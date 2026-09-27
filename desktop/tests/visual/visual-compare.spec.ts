@@ -426,12 +426,21 @@ test.describe("visual comparison captures", () => {
               '[data-message-id="reference-sales-lerato-0950"]',
             ),
           ).toBeVisible();
-          await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
-            "2",
+          const inboxCount = appPage.getByTestId("sidebar-home-count");
+          await expect(inboxCount).toHaveText("2");
+          await expect(inboxCount).toHaveCSS(
+            "background-color",
+            "rgba(0, 0, 0, 0)",
           );
-          await expect(
-            appPage.getByTestId("channel-unread-dot-Sales"),
-          ).toBeVisible();
+          const salesUnreadDot = appPage.getByTestId(
+            "channel-unread-dot-Sales",
+          );
+          await expect(salesUnreadDot).toBeVisible();
+          await expect(salesUnreadDot).toHaveCSS("width", "5px");
+          await expect(salesUnreadDot).toHaveCSS(
+            "background-color",
+            "rgb(173, 127, 167)",
+          );
           const clientChannelTops = await Promise.all(
             ["The Olive House", "Cedar Café", "Northline Interiors"].map(
               (name) =>
