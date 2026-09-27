@@ -847,6 +847,10 @@ body:has(.w20-settings-shell) {
   background-color: #26232d;
 }
 
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-settings-surface {
+  box-shadow: none;
+}
+
 .w20-avatar-profile-context .w20-account-profile-header {
   align-items: flex-start;
   margin-bottom: 38px;
@@ -998,21 +1002,31 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-avatar-profile-context .w20-account-photo-row {
-  padding-bottom: 21px;
+  padding-bottom: 20px;
+}
+
+.w20-avatar-profile-context .w20-account-page-title {
+  font-size: calc(var(--buzz-type-rem) * 1.75);
+  letter-spacing: -0.055em;
 }
 
 .w20-avatar-profile-context .w20-account-profile-form {
-  padding-top: 24px;
+  padding-top: 22px;
 }
 
 .w20-avatar-profile-context .w20-account-field {
   gap: 5px;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
 }
 
 .w20-avatar-profile-context .w20-account-field-label {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   line-height: 1.5;
+}
+
+.w20-avatar-profile-context [data-testid="account-profile-avatar-fallback"] {
+  font-size: var(--text-xs);
+  font-weight: 600;
 }
 
 .w20-avatar-profile-context .w20-account-control {
@@ -1024,7 +1038,7 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-avatar-profile-context .w20-account-profile-divider {
-  margin-top: 47px;
+  margin-top: 45px;
 }
 
 .w20-account-email-link {
