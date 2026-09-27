@@ -38,8 +38,6 @@ export const REFERENCE_HOME_UNREAD_IDS = [
   "reference-home-inbox-olive-approval",
   "reference-home-inbox-cedar-access",
 ] as const;
-export const REFERENCE_SALES_UNREAD_ROOT_ID = "reference-sales-unread-root";
-export const REFERENCE_SALES_UNREAD_REPLY_ID = "reference-sales-unread-reply";
 export const REFERENCE_SALES_VOICE_NOTE_ID = "reference-sales-lerato-0950";
 // The Sales capture opens within a channel that has earlier history above the viewport.
 export const REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY = true;
@@ -248,7 +246,6 @@ export function referenceHomeInboxItems(): Array<{
 export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const sig = "mocksig".repeat(20).slice(0, 128);
-  const unreadRootId = REFERENCE_SALES_UNREAD_ROOT_ID;
   return [
     {
       id: "reference-sales-lerato-0914",
@@ -283,28 +280,6 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
       ],
       content:
         "There are 12 prospects to review. Each profile keeps the source and qualification notes together.\n\n[​](https://example.com/independent-brands)",
-      sig,
-    },
-    {
-      id: unreadRootId,
-      pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(8, 50),
-      kind: 9,
-      tags: [["h", channelId]],
-      content: "Earlier Sales discussion",
-      sig,
-    },
-    {
-      id: REFERENCE_SALES_UNREAD_REPLY_ID,
-      pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 52),
-      kind: 9,
-      tags: [
-        ["h", channelId],
-        ["e", unreadRootId, "", "root"],
-        ["e", unreadRootId, "", "reply"],
-      ],
-      content: "The updated shortlist is ready to review.",
       sig,
     },
     {
@@ -365,7 +340,15 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
       ),
     }),
   );
-  storage.setItem(`buzz-forced-unread.v1:${selfPubkey}`, JSON.stringify({}));
+  storage.setItem(
+    `buzz-forced-unread.v1:${selfPubkey}`,
+    JSON.stringify({
+      [REFERENCE_CHANNEL_IDS.sales]: {
+        markerAtWhenForced: null,
+        sources: ["manual"],
+      },
+    }),
+  );
   storage.setItem(
     `buzz-home-feed-unread.v1:${selfPubkey}`,
     JSON.stringify([...REFERENCE_HOME_UNREAD_IDS]),

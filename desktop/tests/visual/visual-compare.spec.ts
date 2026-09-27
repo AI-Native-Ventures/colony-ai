@@ -448,10 +448,8 @@ test.describe("visual comparison captures", () => {
               }),
             ).not.toBeChecked();
             await expect(
-              threadPanel.locator(
-                '[data-message-id="reference-sales-unread-reply"]',
-              ),
-            ).toHaveCount(0);
+              threadPanel.locator('[data-testid="message-row"]'),
+            ).toHaveCount(1);
           } else {
             await expect(
               appPage.locator('[data-testid="message-thread-panel"]'),
