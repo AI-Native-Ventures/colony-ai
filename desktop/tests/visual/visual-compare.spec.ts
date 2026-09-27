@@ -1300,6 +1300,46 @@ async function inspectPageGeometry(
           element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
         order: getComputedStyle(element).order,
       })),
+      sidebarRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          [
+            ".full-sidebar nav > .nav-link",
+            ".full-sidebar .group-toggle",
+            ".full-sidebar .conversation-heading",
+            ".full-sidebar .conversation-link",
+            ".full-sidebar .nav-utility",
+            ".full-sidebar .sidebar-bottom",
+            ".app-sidebar-full-shell .sidebar-navigation-group-toggle",
+            '.app-sidebar-full-shell [data-testid$="-section-label"]',
+            '.app-sidebar-full-shell [data-sidebar="menu-button"]',
+            '.app-sidebar-full-shell [data-testid="sidebar-profile-card"]',
+            '.app-sidebar-full-shell [data-sidebar="footer"]',
+          ].join(","),
+        ),
+      )
+        .filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            getComputedStyle(element).display !== "none",
+        )
+        .map((element) => {
+          const style = getComputedStyle(element);
+          return {
+            className: element.className.toString(),
+            testId: element.dataset.testid ?? null,
+            text:
+              element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ??
+              "",
+            bounds: bounds(element),
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight,
+            color: style.color,
+            backgroundColor: style.backgroundColor,
+            padding: style.padding,
+            margin: style.margin,
+          };
+        }),
       channelTabPaint: Array.from(
         document.querySelectorAll<HTMLElement>(
           '[data-testid="channel-view-tabs"] > span',
