@@ -89,21 +89,21 @@ export function HarnessInstallDialog({
                 Install {runtime.label} on this device. Colony will show the
                 package source and version before running the installer.
               </AlertDialogDescription>
-              <dl className="text-sm">
+              <dl className="mt-3 text-sm">
                 <div className="space-y-1 border-b border-[#eae7eb] py-[18px] dark:border-[#3c3544]">
-                  <dt className="font-semibold">Source</dt>
-                  <dd className="text-xs text-[#79747f] dark:text-[#a9a1b4]">
+                  <dt className="font-semibold leading-[21px]">Source</dt>
+                  <dd className="text-xs leading-[18px] text-[#79747f] dark:text-[#a9a1b4]">
                     Official package registry
                   </dd>
                 </div>
                 <div className="space-y-1 py-[18px]">
-                  <dt className="font-semibold">Version</dt>
-                  <dd className="text-xs text-[#79747f] dark:text-[#a9a1b4]">
+                  <dt className="font-semibold leading-[21px]">Version</dt>
+                  <dd className="text-xs leading-[18px] text-[#79747f] dark:text-[#a9a1b4]">
                     Latest supported version from runtime
                   </dd>
                 </div>
               </dl>
-              <div className="my-[18px] space-y-1 rounded-[7px] border border-[#dce7f6] bg-[#f2f6fc] px-[18px] py-[15px] text-xs dark:border-[#394b68] dark:bg-[#253144]">
+              <div className="my-[18px] space-y-1 rounded-[7px] border border-[#dce7f6] bg-[#f2f6fc] px-[18px] py-[15px] text-xs leading-[18px] dark:border-[#394b68] dark:bg-[#253144]">
                 <p className="font-semibold">Authentication is separate</p>
                 <p className="text-[#5d6c84] dark:text-[#a9b8d0]">
                   After installation, sign in with a supported provider.
