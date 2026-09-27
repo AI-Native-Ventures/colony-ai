@@ -213,19 +213,27 @@ export function ChannelBrowserDialog({
         ? joinedChannels
         : matchingChannels;
 
+  // The directory historically enters this dialog in alphabetical order.
+  // Keep that as the tie order for Recent and relevance sorting even though
+  // channel queries now preserve their authored order for sidebar groups.
+  const alphabetizedVisibleChannels = React.useMemo(
+    () => sortChannelsForSidebar(visibleChannels, "alpha"),
+    [visibleChannels],
+  );
+
   const isSearching = deferredQuery.length > 0;
 
   const orderedVisibleChannels = React.useMemo(() => {
     const sorted =
       sort === "members"
-        ? [...visibleChannels].sort(
+        ? [...alphabetizedVisibleChannels].sort(
             (a, b) =>
               b.memberCount - a.memberCount ||
               a.name.localeCompare(b.name, undefined, {
                 sensitivity: "base",
               }),
           )
-        : sortChannelsForSidebar(visibleChannels, sort);
+        : sortChannelsForSidebar(alphabetizedVisibleChannels, sort);
 
     if (!isSearching) return sorted;
 
@@ -234,7 +242,7 @@ export function ChannelBrowserDialog({
         (matchScoreById.get(a.id) ?? Number.POSITIVE_INFINITY) -
         (matchScoreById.get(b.id) ?? Number.POSITIVE_INFINITY),
     );
-  }, [isSearching, matchScoreById, sort, visibleChannels]);
+  }, [alphabetizedVisibleChannels, isSearching, matchScoreById, sort]);
 
   const selectedSortLabel =
     CHANNEL_SORT_OPTIONS.find((option) => option.value === sort)?.label ??
@@ -521,9 +529,11 @@ export function ChannelBrowserDialog({
                                 currentNormalizedQuery,
                               ) !== null),
                         );
+                        const alphabetizedCurrentQueryChannels =
+                          sortChannelsForSidebar(currentQueryChannels, "alpha");
                         const sortedCurrentQueryChannels =
                           sort === "members"
-                            ? currentQueryChannels.sort(
+                            ? alphabetizedCurrentQueryChannels.sort(
                                 (a, b) =>
                                   b.memberCount - a.memberCount ||
                                   a.name.localeCompare(b.name, undefined, {
@@ -531,7 +541,7 @@ export function ChannelBrowserDialog({
                                   }),
                               )
                             : sortChannelsForSidebar(
-                                currentQueryChannels,
+                                alphabetizedCurrentQueryChannels,
                                 sort,
                               );
                         if (currentNormalizedQuery.length > 0) {

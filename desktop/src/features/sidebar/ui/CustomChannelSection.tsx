@@ -681,6 +681,7 @@ export function CustomChannelSection({
                       label={`Add channel to ${section.name}`}
                       onClick={onCreateChannel}
                       testId={`section-actions-${section.id}-quick-create`}
+                      visibilityClassName="pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100"
                     />
                     <SectionActionsMenu
                       sectionLabel={section.name}

@@ -1,4 +1,4 @@
-import { Bell, Hash, PanelLeft, Search, Users } from "lucide-react";
+import { Bell, Globe, Hash, PanelLeft, Search, Users } from "lucide-react";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
 import { toggleTerminalPanel } from "@/features/terminal/terminalPanelStore";
 import type { ChannelMember } from "@/shared/api/types";
@@ -42,6 +42,10 @@ export function ChannelWorkspaceTopBar({
             <PanelLeft aria-hidden="true" />
             Work area
           </Button>
+          <Globe
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
           <ChannelMemberAvatarStack
             currentPubkey={currentPubkey}
             members={members}

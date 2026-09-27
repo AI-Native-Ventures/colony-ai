@@ -79,6 +79,10 @@ const channelTypeOrder = {
   dm: 2,
 } as const;
 
+/**
+ * Keeps the server-authored order inside each channel type. Sidebar groups
+ * apply the user's saved sort mode after this data normalization step.
+ */
 export function sortChannels(channels: Channel[]) {
   const uniqueChannels = new Map<string, Channel>();
 
@@ -94,7 +98,7 @@ export function sortChannels(channels: Channel[]) {
       return typeOrder;
     }
 
-    return left.name.localeCompare(right.name);
+    return 0;
   });
 }
 

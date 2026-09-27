@@ -705,6 +705,10 @@ export function ChannelScreen({
     channelContentWidthPx > 0 &&
     channelContentWidthPx < 760;
   const referenceThreadPresentation = Boolean(effectiveOpenThreadHeadId);
+  const referenceWorkspaceChannel =
+    !isHuddleTranscript &&
+    activeChannel?.channelType === "stream" &&
+    window.innerWidth >= 1440;
   const channelHeaderChromeRef = useMeasuredCssVariable({
     targetRef: mainInsetRef,
     ...channelContentTopPaddingMeasurement,
@@ -750,7 +754,7 @@ export function ChannelScreen({
         activeChannelTitle={activeChannelTitle}
         referenceThreadPresentation={referenceThreadPresentation}
         actionsVariant={
-          referenceThreadPresentation
+          referenceThreadPresentation || referenceWorkspaceChannel
             ? "reference"
             : shouldCompactHeaderActions
               ? "compact"
@@ -776,6 +780,7 @@ export function ChannelScreen({
       activeChannelEphemeralDisplay,
       activeChannelTitle,
       referenceThreadPresentation,
+      referenceWorkspaceChannel,
       shouldCompactHeaderActions,
       activeDmAvatarUrl,
       activeDmHeaderParticipants,
