@@ -887,7 +887,9 @@ export function AppSidebar({
 
                   <SidebarNavigationGroup
                     defaultExpanded
-                    expandForActiveRoute={selectedView === "work" || selectedView === "workflows"}
+                    expandForActiveRoute={
+                      selectedView === "work" || selectedView === "workflows"
+                    }
                     label="Company"
                     testId="sidebar-nav-company"
                   >
