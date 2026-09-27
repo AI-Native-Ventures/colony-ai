@@ -694,16 +694,16 @@ class _ChannelMemberPreviewRow extends StatelessWidget {
     final identityKind = member.isBot
         ? IdentityKind.agent
         : IdentityKind.person;
-    final onTap = () => onMemberTap(context, member.pubkey);
+    void openMemberProfile() => onMemberTap(context, member.pubkey);
     return Semantics(
       container: true,
       button: true,
       label: '$label, $roleLabel, ${member.isBot ? 'AI agent' : 'Person'}',
-      onTap: onTap,
+      onTap: openMemberProfile,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: openMemberProfile,
           child: ExcludeSemantics(
             child: IdentityRow(
               name: label,
