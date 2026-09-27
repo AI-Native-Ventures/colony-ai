@@ -1,3 +1,11 @@
+// Large-batch tests sign and verify up to 1026 events in pure Dart, in the
+// worker isolate the production export uses. That work is CPU-bound and
+// scales with host load: at a load average of 82 on a 10-core laptop one
+// channel test exceeded the default 30 seconds. Retry backoff is already
+// injected, so this budget only covers real signing and verification.
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:async';
 import 'dart:isolate';
 
