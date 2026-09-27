@@ -110,8 +110,11 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     "background-color",
     "var(--buzz-hover-surface)",
   );
-  const activeSurface =
-    mode === "light" ? "rgb(38, 85, 160)" : "rgb(157, 193, 251)";
+  const activeSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--sidebar-row-subtle-active-surface)",
+  );
   const search = page.getByTestId("open-search");
   const pinnedHeader = page.getByTestId("sidebar-pinned-header");
   const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
@@ -780,6 +783,11 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
     "background-color",
     "var(--w20-appearance-accent)",
   );
+  const prominentForeground = await resolveSidebarColor(
+    page,
+    "color",
+    "hsl(var(--primary-foreground))",
+  );
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   const subtleTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
@@ -808,7 +816,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
     return { color: styles.color, fontWeight: styles.fontWeight };
   });
   expect(prominentTextStyle).toEqual({
-    color: "rgb(255, 255, 255)",
+    color: prominentForeground,
     fontWeight: subtleTextStyle.fontWeight,
   });
 
@@ -841,7 +849,11 @@ test("prominent channel and direct-message rows share one flat active state", as
 
   const channelRow = page.getByTestId("channel-general");
   const directMessageRow = page.getByTestId("channel-alice-tyler");
-  const activeSurface = "rgb(38, 85, 160)";
+  const activeSurface = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--w20-appearance-accent, #2655a0)",
+  );
 
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
   await expect(channelRow).toHaveCSS("box-shadow", "none");

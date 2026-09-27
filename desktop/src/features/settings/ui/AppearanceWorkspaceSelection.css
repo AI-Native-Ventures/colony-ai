@@ -12,15 +12,21 @@
   color: hsl(var(--colony-sidebar-foreground));
 }
 
+:root.dark[data-buzz-sidebar]:not([data-prominent-active-tab]):has(
+    [data-colony-workspace-route="true"]
+  )
+  [data-testid="app-sidebar"]
+  [data-sidebar="menu-button"][data-active="true"] {
+  background-color: var(--sidebar-row-subtle-active-surface);
+  color: hsl(var(--colony-sidebar-foreground));
+}
+
 :root[data-buzz-sidebar][data-prominent-active-tab]:has(
     [data-colony-workspace-route="true"]
   )
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
-  background-color: var(
-    --w20-appearance-accent,
-    color-mix(in srgb, hsl(var(--primary)) 65%, #000)
-  );
+  background-color: var(--w20-appearance-accent, #2655a0);
   color: hsl(var(--primary-foreground));
 }
 
@@ -29,9 +35,6 @@
   )
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
-  background-color: var(
-    --w20-appearance-accent,
-    color-mix(in srgb, hsl(var(--primary)) 50%, #fff)
-  );
+  background-color: var(--w20-appearance-accent, #9dc1fb);
   color: #211e26;
 }
