@@ -34,9 +34,18 @@ import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
 import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
+  REFERENCE_HOME_VISUAL_FIXTURE,
+  REFERENCE_SALES_UNREAD_REPLY_ID,
+  REFERENCE_SALES_UNREAD_ROOT_ID,
+  REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
   referenceChannelSeeds,
+  referenceHomeInboxItems,
+  referenceSalesLastMessageAt,
   referenceSalesMessages,
+  referenceOliveHouseMessages,
+  referenceBusinessRecordEvents,
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
 export { mockSearchHitMatches };
@@ -76,6 +85,9 @@ import {
   KIND_ASK_RESPONSE,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
+  KIND_CLIENT_ACTION,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
   KIND_GIT_ISSUE,
@@ -98,6 +110,7 @@ import {
   KIND_TEXT_NOTE,
   KIND_TEAM_CATALOG,
   KIND_USER_STATUS,
+  KIND_WORK_ITEM_ACTION,
 } from "@/shared/constants/kinds";
 import type {
   RawAcpAuthMethodsResult,
@@ -330,6 +343,13 @@ type E2eConfig = {
     accountLinked?: boolean;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Override the current member role in reference client channels. */
+    referenceWorkspaceRole?: "owner" | "admin" | "member";
+    /** Override record statuses to exercise reference workspace boundaries. */
+    referenceWorkspaceClientStatus?: string;
+    referenceWorkspaceWorkStatus?: string;
+    /** Seed the r19 work-reference card in The Olive House client channel. */
+    referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -1257,6 +1277,13 @@ type MockSocket = {
   subscriptions: Map<string, MockSubscription>;
 };
 
+const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
+  KIND_CLIENT_ACTION,
+  KIND_WORK_ITEM_ACTION,
+  KIND_DELIVERABLE_VERSION,
+  KIND_DELIVERABLE_APPROVAL,
+]);
+
 function createMockRelayMembershipEvent(): RelayEvent {
   return createMockEvent(
     13534,
@@ -1386,6 +1413,10 @@ async function writeClipboardFlavors({
 declare global {
   interface Window {
     __BUZZ_E2E__?: E2eConfig;
+    __BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__?: {
+      channelId: string;
+      label: string;
+    };
     /** The in-page relay is synthetic unless a relay-mode test opts in. */
     __BUZZ_E2E_USES_REAL_RELAY__?: boolean;
     /** Last payload written through the native clipboard command. */
@@ -1524,6 +1555,11 @@ declare global {
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
     __BUZZ_E2E_FAIL_PROJECT_EVENT_ACK_KINDS__?: number[];
+    /** Reject business commands once to exercise conflict and permission UI. */
+    __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /**
      * Extra project events appended to the mock store on first access.
      * Use to seed standalone repositories (kind 30617) or other project-scoped
@@ -4705,7 +4741,12 @@ let referenceWorkspaceActive = false;
  */
 function applyReferenceWorkspace(config: E2eConfig): void {
   referenceWorkspaceActive = true;
+  window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__ = {
+    channelId: REFERENCE_CHANNEL_IDS.sales,
+    label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  };
   const self = getMockMemberPubkey(config);
+  const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);
   const selfProfile = mockProfiles.get(self);
   if (selfProfile) {
@@ -4717,18 +4758,36 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   for (const agent of Object.values(REFERENCE_AGENTS)) {
     mockDisplayNames.set(agent.pubkey, agent.name);
     mockAgentPubkeys.add(agent.pubkey);
+    mockProfiles.set(agent.pubkey, {
+      pubkey: agent.pubkey,
+      display_name: agent.name,
+      name: agent.name,
+      avatar_url: null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: true,
+      has_profile_event: true,
+    });
   }
   const channels = referenceChannelSeeds().map((seed) =>
     createMockChannel({
       id: seed.id,
       name: seed.name,
       channel_type: "stream",
-      visibility: "open",
+      visibility:
+        seed.id === REFERENCE_CHANNEL_IDS.oliveHouse ||
+        seed.id === REFERENCE_CHANNEL_IDS.cedarCafe ||
+        seed.id === REFERENCE_CHANNEL_IDS.northline
+          ? "private"
+          : "open",
       description: seed.description,
       topic: null,
       purpose: null,
       last_message_at:
-        seed.id === REFERENCE_CHANNEL_IDS.sales ? isoMinutesAgo(30) : null,
+        seed.id === REFERENCE_CHANNEL_IDS.sales
+          ? referenceSalesLastMessageAt()
+          : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -4741,7 +4800,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       created_minutes_ago: 1440,
       updated_minutes_ago: 30,
       members: [
-        createMockMember(self, "owner", 1440),
+        createMockMember(self, selfRole, 1440),
         ...seed.agentMembers.map((pubkey) =>
           createMockMember(pubkey, "member", 1200),
         ),
@@ -4749,6 +4808,24 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  for (const event of referenceBusinessRecordEvents(self, {
+    clientStatus: config.mock?.referenceWorkspaceClientStatus,
+    workStatus: config.mock?.referenceWorkspaceWorkStatus,
+    workShare: config.mock?.referenceWorkspaceWorkShare,
+  })) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  for (const event of referenceOliveHouseMessages(self)) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
   seedReferenceSidebarStorage(self);
 }
 let directPanelRoot: Root | null = null;
@@ -5219,6 +5296,9 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
       channelId === REFERENCE_CHANNEL_IDS.sales
         ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
         : [];
+    if (channelId === REFERENCE_CHANNEL_IDS.sales) {
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_UNREAD_ROOT_ID);
+    }
     mockMessages.set(channelId, referenceSeeded);
     return referenceSeeded;
   }
@@ -5655,6 +5735,24 @@ function emitMockHistory(
     .flatMap((channelId) => getMockMessageStore(channelId))
     .filter((event) => {
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
+        return false;
+      }
+      const dTags = filter["#d"];
+      if (
+        dTags &&
+        !dTags.some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      const addressTags = filter["#a"];
+      if (
+        addressTags &&
+        !addressTags.some((addressTag) =>
+          event.tags.some((tag) => tag[0] === "a" && tag[1] === addressTag),
+        )
+      ) {
         return false;
       }
       if (filter.since !== undefined && event.created_at < filter.since) {
@@ -6636,7 +6734,13 @@ async function handleGetChannelWindow(
       // Exhaustion probe mirrors the relay's limit+1: more rows past the cursor
       // than the page cap means another page exists. next_cursor is the last
       // retained row.
-      const hasMore = afterCursor.length > cap;
+      const referenceViewportHasOlderHistory =
+        referenceWorkspaceActive &&
+        args.cursor == null &&
+        args.channelId === REFERENCE_CHANNEL_IDS.sales &&
+        REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY;
+      const hasMore =
+        afterCursor.length > cap || referenceViewportHasOlderHistory;
       const lastRow = rows[rows.length - 1];
       const nextCursor =
         hasMore && lastRow
@@ -8903,6 +9007,25 @@ async function handleGetFeed(
         generated_at: now,
       },
       visual_fixture: visualFixture.today,
+    };
+  }
+
+  if (!isRelayMode(config) && referenceWorkspaceActive) {
+    const now = Math.floor(Date.now() / 1000);
+    const unreadItems = referenceHomeInboxItems();
+    return {
+      feed: {
+        mentions: [],
+        needs_action: unreadItems,
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: unreadItems.length,
+        generated_at: now,
+      },
+      visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
     };
   }
 
@@ -11971,6 +12094,21 @@ function sendToMockSocket(args: {
 
   if (type === "EVENT") {
     const event = rest[0] as RelayEvent;
+    if (
+      referenceWorkspaceActive &&
+      REFERENCE_BUSINESS_COMMAND_KINDS.has(event.kind)
+    ) {
+      const rejections =
+        window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ ?? [];
+      const rejectionIndex = rejections.findIndex(
+        (candidate) => candidate.kind === event.kind,
+      );
+      if (rejectionIndex >= 0) {
+        const [rejection] = rejections.splice(rejectionIndex, 1);
+        sendWsText(socket.handler, ["OK", event.id, false, rejection.reason]);
+        return;
+      }
+    }
 
     if (event.kind === KIND_ASK_RESPONSE) {
       acceptMockAskResponse(socket, event, getConfig());
@@ -16358,25 +16496,56 @@ export function maybeInstallE2eTauriMocks() {
           };
         };
         const results: UnreadCatchUpChannelResult[] =
-          request.request.channels.map((channel) => ({
-            status: "success",
-            channelId: channel.id,
-            observedEvents: [],
-            maxTrigger: 0,
-            activityRows: [],
-            discovered: {
-              participated: [],
-              authored: getMockMessageStore(channel.id)
-                .filter(
-                  (event) =>
-                    event.pubkey === request.request.selfPubkey &&
-                    getThreadReferenceFromTags(event.tags).parentEventId ===
-                      null,
-                )
-                .map((event) => event.id),
-              mentioned: [],
-            },
-          }));
+          request.request.channels.map((channel) => {
+            const events = getMockMessageStore(channel.id);
+            const unreadReplies =
+              referenceWorkspaceActive &&
+              channel.id === REFERENCE_CHANNEL_IDS.sales
+                ? events.filter(
+                    (event) =>
+                      event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                      getThreadReferenceFromTags(event.tags).parentEventId !==
+                        null,
+                  )
+                : [];
+            const observedEvents = unreadReplies.map((event) => ({
+              id: event.id,
+              createdAt: event.created_at,
+              rootId: getThreadReferenceFromTags(event.tags).rootEventId,
+              highPriority: true,
+              countsTowardBadge: true,
+              countsTowardAppBadge: false,
+            }));
+            const activityRows = unreadReplies.map((event) => ({
+              id: event.id,
+              kind: event.kind,
+              pubkey: event.pubkey,
+              content: event.content,
+              createdAt: event.created_at,
+              channelId: channel.id,
+              channelName: "Sales",
+              tags: [...event.tags],
+            }));
+            return {
+              status: "success",
+              channelId: channel.id,
+              observedEvents,
+              maxTrigger: 0,
+              activityRows,
+              discovered: {
+                participated: [],
+                authored: events
+                  .filter(
+                    (event) =>
+                      event.pubkey === request.request.selfPubkey &&
+                      getThreadReferenceFromTags(event.tags).parentEventId ===
+                        null,
+                  )
+                  .map((event) => event.id),
+                mentioned: [],
+              },
+            };
+          });
         // Keep this mock aligned with the complete Rust serde shape pinned by
         // `serialized_response_matches_the_typescript_contract`.
         return { channels: results };

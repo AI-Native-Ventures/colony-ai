@@ -1,0 +1,67 @@
+name: CI cache warm
+
+# Pull requests can restore caches from their base branch, but CI only runs on
+# push for main and release. PRs into codex/phase2-integration therefore never
+# found a Hermit toolchain cache: each Mobile, Android runtime and Android
+# interop job primed Flutter from scratch (~14 minutes) and raced its sibling
+# jobs to save the same key inside its own PR scope. Seeding the integration
+# branch scope after each merge gives every PR a warm restore.
+on:
+  push:
+    branches: [codex/phase2-integration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cache-warm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-toolchain:
+    name: Mobile toolchain cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      # Same key as the Mobile, Android runtime and Android interop jobs.
+      - name: Compute Hermit cache key
+        id: hermit-bin-hash
+        run: |
+          hash="$(find ./bin ! -type d | sort | xargs openssl sha256 | openssl sha256 -r | cut -d' ' -f1)"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - name: Restore Hermit package cache
+        id: hermit-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/hermit/pkg
+          key: ${{ runner.os }}-hermit-cache-${{ steps.hermit-bin-hash.outputs.hash }}
+          restore-keys: ${{ runner.os }}-hermit-cache-
+      - name: Prime Flutter SDK
+        run: flutter --version
+      - name: Save Hermit package cache
+        if: steps.hermit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/hermit/pkg
+          key: ${{ runner.os }}-hermit-cache-${{ steps.hermit-bin-hash.outputs.hash }}
+
+      - name: Check pub cache
+        id: pub-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('mobile/pubspec.lock') }}
+          lookup-only: true
+      - name: Install mobile dependencies
+        if: steps.pub-cache.outputs.cache-hit != 'true'
+        run: cd mobile && flutter pub get
+      - name: Save pub cache
+        if: steps.pub-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('mobile/pubspec.lock') }}

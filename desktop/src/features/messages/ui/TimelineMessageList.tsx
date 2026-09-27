@@ -45,6 +45,7 @@ export type TimelineVirtualizerApi = {
 };
 
 type TimelineMessageListProps = {
+  activeThreadRootId?: string | null;
   channelId?: string | null;
   channelName?: string;
   channelType?: ChannelType | null;
@@ -108,7 +109,7 @@ type TimelineMessageListProps = {
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
-  /** Adjust thread summaries for compact workspace timeline avatars. */
+  /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
   /** Hide agent access-policy badges in the purpose-built Huddle chat. */
   hideAgentAccessBadges?: boolean;
@@ -127,6 +128,7 @@ type TimelineMessageListProps = {
 };
 
 export const TimelineMessageList = React.memo(function TimelineMessageList({
+  activeThreadRootId = null,
   channelId,
   channelName,
   channelType,
@@ -165,7 +167,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   historyExhausted = false,
   hideDayDividers = false,
   alwaysShowMessageIdentity = false,
-  compactThreadSummaryAvatars = false,
+  compactThreadSummaryAvatars = true,
   hideAgentAccessBadges = false,
   useVirtualizer = false,
   onStartReached,
@@ -249,6 +251,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
         case "message":
           return (
             <MessageRowItem
+              activeThreadRootId={activeThreadRootId}
               channelId={channelId}
               currentPubkey={currentPubkey}
               compactThreadSummaryAvatars={compactThreadSummaryAvatars}
@@ -293,6 +296,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
     },
     [
       channelId,
+      activeThreadRootId,
       alwaysShowMessageIdentity,
       compactThreadSummaryAvatars,
       currentPubkey,

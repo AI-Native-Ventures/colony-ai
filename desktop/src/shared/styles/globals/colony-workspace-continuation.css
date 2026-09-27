@@ -361,6 +361,56 @@
   line-height: 1.3;
 }
 
+@media (min-width: 1440px) {
+  :root:has([data-testid="channel-view-tabs"]):not(
+      :has([data-testid="message-thread-panel"])
+    )
+    [data-testid="chat-header"] {
+    display: flex;
+    height: auto;
+    min-height: 4.1875rem;
+    align-items: center;
+    box-sizing: border-box;
+    padding: 17px 23px 10px;
+  }
+
+  :root:has([data-testid="channel-view-tabs"]):not(
+      :has([data-testid="message-thread-panel"])
+    )
+    [data-testid="chat-header"]
+    > div {
+    width: 100%;
+    height: auto;
+    min-height: 2.5rem;
+  }
+
+  :root:has([data-testid="channel-view-tabs"]):not(
+      :has([data-testid="message-thread-panel"])
+    )
+    [data-testid="chat-header"]
+    .group\/title {
+    align-items: flex-start;
+  }
+
+  :root:has([data-testid="channel-view-tabs"]):not(
+      :has([data-testid="message-thread-panel"])
+    )
+    [data-testid="chat-title"] {
+    font-size: var(--colony-text-channel-header);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  :root:has([data-testid="channel-view-tabs"]):not(
+      :has([data-testid="message-thread-panel"])
+    )
+    .colony-channel-description {
+    display: block;
+    margin-top: 3px;
+    line-height: 1.5;
+  }
+}
+
 :root:has([data-colony-workspace-route="true"]) .colony-voice-note-card {
   column-gap: 0.625rem;
   row-gap: 0.5rem;
@@ -1121,7 +1171,11 @@ button.colony-needs-me-row:hover {
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
-  [data-testid$="-quick-create"] {
+  :is(
+    [data-testid="section-actions-channels-quick-create"],
+    [data-testid="section-actions-forums-quick-create"],
+    [data-testid="section-actions-dms-quick-create"]
+  ) {
   opacity: 1;
 }
 
@@ -1310,13 +1364,14 @@ button.colony-needs-me-row:hover {
   height: 2.4375rem;
   min-height: 2.4375rem;
   margin-top: 0;
-  gap: 0.5rem;
+  gap: 0.5625rem;
+  padding-inline: 0.6875rem;
 }
 
 .colony-reference-composer-tools {
   margin-left: 0;
   min-height: 1.5rem;
-  gap: 0.5rem;
+  gap: 0.5625rem;
   padding-block: 0;
 }
 

@@ -163,7 +163,7 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch();
+          const response = await route.fetch({ timeout: 30_000 });
           const stylesheet = await response.text();
           const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
             .map((selector) => `${selector} { display: none !important; }`)
@@ -206,6 +206,21 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          entry.appRoute.includes("?thread=")
+        ) {
+          const voiceNote = referencePage
+            .locator(".message")
+            .filter({ hasText: "09:50" });
+          await voiceNote
+            .getByRole("button", { name: "Reply in thread" })
+            .click({ force: true });
+          const referenceThread = referencePage.locator(".thread-pane");
+          await expect(referenceThread).toBeVisible();
+          await expect(referenceThread).toContainText("09:50");
+          await expect(referenceThread).toContainText("Voice note");
+        }
         if (entry.referenceCanvas) {
           await fitReferenceCanvas(referencePage, width, height);
         }
@@ -225,29 +240,33 @@ test.describe("visual comparison captures", () => {
         });
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
+        const usesReferenceWorkspace =
+          entry.appMockData?.referenceWorkspace === true;
         if (manifestFixture) {
-          // Manifests with their own fixture (w07 agents) seed only that data.
+          // Manifests with their own fixture seed only that data.
           await installMockBridge(
             appPage,
             entry.appMockData ?? manifestFixture.appMockData,
           );
         } else {
-          await appPage.addInitScript(
-            ({ pubkey }) => {
-              localStorage.setItem(
-                `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
-                JSON.stringify({
-                  version: 1,
-                  groups: {
-                    dms: "recent",
-                    starred: "recent",
-                    "section:client-work": "recent",
-                  },
-                }),
-              );
-            },
-            { pubkey: r17Fixture.identity.pubkey },
-          );
+          if (!usesReferenceWorkspace) {
+            await appPage.addInitScript(
+              ({ pubkey }) => {
+                localStorage.setItem(
+                  `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+                  JSON.stringify({
+                    version: 1,
+                    groups: {
+                      dms: "recent",
+                      starred: "recent",
+                      "section:client-work": "recent",
+                    },
+                  }),
+                );
+              },
+              { pubkey: r17Fixture.identity.pubkey },
+            );
+          }
           const visualFixture = {
             ...r17Fixture,
             today: {
@@ -257,10 +276,12 @@ test.describe("visual comparison captures", () => {
                 : {}),
             },
           };
-          await installMockBridge(appPage, {
-            ...(entry.appMockData ?? {}),
-            visualFixture,
-          });
+          await installMockBridge(
+            appPage,
+            usesReferenceWorkspace
+              ? (entry.appMockData ?? {})
+              : { ...(entry.appMockData ?? {}), visualFixture },
+          );
         }
         if (entry.referenceInventoryRoute === "navigation/history") {
           const channelUrl = new URL(
@@ -341,7 +362,295 @@ test.describe("visual comparison captures", () => {
             .poll(() => followButtons.allTextContents())
             .toEqual(["Following", "Following"]);
         }
-        if (entry.referenceInventoryRoute === "channel/sales") {
+        if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "today"
+        ) {
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
+          await expect(appPage.locator(".r17-today-page h1")).toHaveText(
+            "Today",
+          );
+          await expect(appPage.getByTestId("open-search")).toContainText(
+            "Find anything",
+          );
+          await expect(appPage.getByTestId("sidebar-profile-name")).toHaveText(
+            "Lerato Molefe",
+          );
+          await expect(
+            appPage.getByTestId("sidebar-profile-user-status"),
+          ).toHaveText("Set a status");
+          await expect(appPage.locator(".r17-today-page")).toContainText(
+            "Wednesday, 23 September",
+          );
+          await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
+            "2",
+          );
+          await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-attention-row"),
+          ).toHaveCount(4);
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-review-row"),
+          ).toHaveCount(6);
+        }
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          usesReferenceWorkspace
+        ) {
+          const workspaceTopBar = appPage.locator(".colony-channel-topbar");
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
+          await expect(
+            workspaceTopBar.getByTestId("channel-work-area-trigger"),
+          ).toHaveText("Work area");
+          await expect(workspaceTopBar.locator("svg.lucide-globe")).toHaveCount(
+            1,
+          );
+          for (const unavailableDestination of [
+            "Website",
+            "Social",
+            "Discovery",
+            "Pipeline",
+            "Leads",
+            "Money",
+          ]) {
+            await expect(
+              appPage.getByText(unavailableDestination, { exact: true }),
+            ).toHaveCount(0);
+          }
+          const clientsDestination = appPage.getByTestId(
+            "sidebar-business-clients",
+          );
+          await expect(clientsDestination).toBeVisible();
+          await expect(clientsDestination).toContainText("Clients");
+          const browseChannels = appPage.getByTestId("sidebar-browse-channels");
+          await expect(browseChannels).toHaveCount(1);
+          await expect(browseChannels).toContainText("+Browse channels");
+          const browseChannelsBounds = await browseChannels.boundingBox();
+          const forumsBounds = await appPage
+            .getByTestId("forum-list-section-label")
+            .boundingBox();
+          expect(browseChannelsBounds).not.toBeNull();
+          expect(forumsBounds).not.toBeNull();
+          expect(browseChannelsBounds?.y).toBeLessThan(forumsBounds?.y ?? 0);
+          const browseToForumsGap =
+            (forumsBounds?.y ?? 0) -
+            ((browseChannelsBounds?.y ?? 0) +
+              (browseChannelsBounds?.height ?? 0));
+          expect(browseToForumsGap).toBeGreaterThan(4);
+          expect(browseToForumsGap).toBeLessThan(24);
+          const channelTabs = appPage.getByTestId("channel-view-tabs");
+          await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
+          await expect(channelTabs).toHaveText(
+            "DiscussionWorkKnowledgeCanvasFiles",
+          );
+          await expect(channelTabs).toHaveCSS("height", "45px");
+          const huddleButton = appPage.getByTestId(
+            "channel-start-huddle-trigger",
+          );
+          await expect(huddleButton).toHaveText("Huddle");
+          await expect(huddleButton.locator("svg")).toHaveCount(0);
+          const activeTabUnderline = await channelTabs
+            .locator('[aria-current="page"]')
+            .evaluate(
+              (element) => getComputedStyle(element, "::after").backgroundColor,
+            );
+          expect(activeTabUnderline).toBe(
+            entry.theme === "dark" ? "rgb(157, 193, 251)" : "rgb(38, 85, 160)",
+          );
+          if (!entry.appRoute.includes("?thread=")) {
+            await expect(
+              appPage.locator(".colony-channel-description"),
+            ).toHaveText("From first hello to lasting partnerships.");
+          }
+          const salesTimeline = appPage.getByTestId("message-timeline");
+          await expect(
+            salesTimeline.getByTestId("message-timeline-day-divider"),
+          ).toHaveText("Today");
+          const salesDayGroup = salesTimeline.getByTestId(
+            "message-timeline-day-group",
+          );
+          await expect(salesDayGroup).toHaveAttribute(
+            "data-day-label",
+            "Today",
+          );
+          expect(
+            await salesDayGroup.evaluate(
+              (element) => getComputedStyle(element, "::before").height,
+            ),
+          ).toBe("1px");
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0914"]',
+            ),
+          ).toBeVisible();
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-aya-0942"]',
+            ),
+          ).toBeVisible();
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            ),
+          ).toBeVisible();
+          const inboxCount = appPage.getByTestId("sidebar-home-count");
+          await expect(inboxCount).toHaveText("2");
+          await expect(inboxCount).toHaveCSS(
+            "background-color",
+            "rgba(0, 0, 0, 0)",
+          );
+          const salesUnreadDot = appPage.getByTestId(
+            "channel-unread-dot-Sales",
+          );
+          await expect(salesUnreadDot).toBeVisible();
+          await expect(salesUnreadDot).toHaveCSS("width", "5px");
+          await expect(salesUnreadDot).toHaveCSS(
+            "background-color",
+            "rgb(173, 127, 167)",
+          );
+          const clientChannelTops = await Promise.all(
+            ["The Olive House", "Cedar Café", "Northline Interiors"].map(
+              (name) =>
+                appPage
+                  .getByTestId(`channel-${name}`)
+                  .evaluate((element) => element.getBoundingClientRect().top),
+            ),
+          );
+          expect(clientChannelTops[0]).toBeLessThan(clientChannelTops[1]);
+          expect(clientChannelTops[1]).toBeLessThan(clientChannelTops[2]);
+          const leratoMessage = appPage.locator(
+            '[data-message-id="reference-sales-lerato-0914"]',
+          );
+          const isThreadScene = entry.appRoute.includes("?thread=");
+          const timelineAvatarSize = isThreadScene ? "26px" : "31px";
+          await expect(
+            leratoMessage.getByTestId("message-timestamp"),
+          ).toHaveText("09:14");
+          await expect(leratoMessage.getByTestId("message-avatar")).toHaveClass(
+            /rounded-md/,
+          );
+          const leratoAvatar = leratoMessage.getByTestId("message-avatar");
+          await expect(leratoAvatar).toHaveClass(
+            /colony-workspace-human-message-avatar/,
+          );
+          await expect(leratoAvatar).toHaveCSS("width", timelineAvatarSize);
+          await expect(leratoAvatar).toHaveCSS("height", timelineAvatarSize);
+          await expect(
+            leratoMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(69, 58, 74)" : "rgb(236, 229, 237)",
+          );
+          await expect(leratoMessage).toContainText("@Aya,");
+          const ayaMessage = appPage.locator(
+            '[data-message-id="reference-sales-aya-0942"]',
+          );
+          await expect(
+            ayaMessage.getByTestId("message-agent-owner"),
+          ).toContainText("Agent");
+          const ayaAvatar = ayaMessage.getByTestId("message-avatar");
+          await expect(ayaAvatar).toHaveClass(
+            /colony-workspace-agent-message-avatar/,
+          );
+          await expect(ayaAvatar).toHaveCSS("width", timelineAvatarSize);
+          await expect(
+            ayaMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(41, 57, 77)" : "rgb(227, 235, 244)",
+          );
+          await expect(ayaMessage).not.toContainText("owner unavailable");
+          await expect(ayaMessage).toContainText(
+            "Independent brands needing social support",
+          );
+          await expect(
+            ayaMessage.locator("[data-link-preview-row-symbol]").locator("svg"),
+          ).toHaveClass(/lucide-compass/);
+          const channelComposerToolbar = appPage
+            .getByTestId("message-composer-toolbar")
+            .first();
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-left",
+            "11px",
+          );
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-right",
+            "11px",
+          );
+          await expect(
+            appPage.locator('[data-testid="message-unread-divider"]'),
+          ).toHaveCount(0);
+          await expect(
+            appPage.locator('[data-testid="message-unread-pill"]'),
+          ).toHaveCount(0);
+          if (entry.appRoute.includes("?thread=")) {
+            const threadPanel = appPage.getByTestId("message-thread-panel");
+            await expect(threadPanel).toBeVisible();
+            const threadRootMessage = threadPanel.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            );
+            await expect(
+              threadRootMessage.getByTestId("message-avatar"),
+            ).toHaveCSS("width", "25px");
+            const threadComposerToolbar = threadPanel.getByTestId(
+              "message-composer-toolbar",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-left",
+              "11px",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-right",
+              "11px",
+            );
+            const activeThreadRoot = appPage.locator(
+              '[data-active-thread-root="true"] [data-testid="message-row"]',
+            );
+            await expect(activeThreadRoot).toHaveAttribute(
+              "data-message-id",
+              "reference-sales-lerato-0950",
+            );
+            expect(
+              await activeThreadRoot.evaluate(
+                (element) => getComputedStyle(element).boxShadow,
+              ),
+            ).not.toBe("none");
+            await expect(
+              threadPanel.getByTestId("message-thread-replies-empty-divider"),
+            ).toBeVisible();
+            await expect(
+              threadPanel.locator(
+                '[data-message-id="reference-sales-lerato-0950"]',
+              ),
+            ).toBeVisible();
+            await expect(threadPanel).toContainText("Voice note");
+            await expect(
+              threadPanel.getByRole("checkbox", {
+                name: "Also send to #Sales",
+              }),
+            ).not.toBeChecked();
+            await expect(
+              threadPanel.locator('[data-testid="message-row"]'),
+            ).toHaveCount(1);
+          } else {
+            await expect(
+              appPage.locator('[data-testid="message-thread-panel"]'),
+            ).toHaveCount(0);
+            await expect(
+              appPage.locator('[data-testid="message-channel-intro"]'),
+            ).toHaveCount(0);
+          }
+        } else if (entry.referenceInventoryRoute === "channel/sales") {
           const crossPostControl = appPage.getByRole("checkbox", {
             name: "Also send to #Sales",
           });
@@ -381,6 +690,30 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        await referencePage.mouse.move(width - 1, height - 1);
+        await appPage.mouse.move(width - 1, height - 1);
+        await referencePage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        await appPage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "channel/sales"
+        ) {
+          await expect(
+            appPage.getByTestId(
+              "section-actions-reference-client-work-quick-create",
+            ),
+          ).toHaveCSS("opacity", "0");
+        }
+        await waitForAnimations(referencePage);
+        await waitForAnimations(appPage);
         const referenceGeometry = await inspectPageGeometry(
           referencePage,
           width,

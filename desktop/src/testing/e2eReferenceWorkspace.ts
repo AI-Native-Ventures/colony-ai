@@ -9,7 +9,20 @@
  * harness compares like with like. It is opt-in through
  * `mock.referenceWorkspace` and never changes the default mock data.
  */
-import type { RelayEvent } from "@/shared/api/types";
+import type { HomeFeedVisualFixture, RelayEvent } from "@/shared/api/types";
+import {
+  BUSINESS_RECORD_SCHEMA_VERSION,
+  buildDeliverableApprovalTemplate,
+  buildDeliverableVersionTemplate,
+  computeDeliverableDigests,
+} from "@/features/clients/lib/businessRecords";
+import {
+  KIND_CLIENT_HEAD,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_DELIVERABLE_VERSION,
+  KIND_STREAM_MESSAGE,
+  KIND_WORK_ITEM_HEAD,
+} from "@/shared/constants/kinds";
 import { normalizeRelayUrl } from "@/shared/lib/normalizeRelayUrl";
 
 export const REFERENCE_SELF_NAME = "Lerato Molefe";
@@ -33,6 +46,289 @@ export const REFERENCE_CHANNEL_IDS = {
 } as const;
 
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
+const REFERENCE_EVENT_SIGNATURE = "mocksig".repeat(20).slice(0, 128);
+const REFERENCE_RECORD_TIME = Math.floor(
+  new Date("2026-09-23T09:00:00.000Z").getTime() / 1_000,
+);
+
+function referenceEventId(index: number): string {
+  return `${"e".repeat(56)}${index.toString(16).padStart(8, "0")}`;
+}
+
+/** Synthetic business heads used only by the existing visual E2E fixture. */
+export function referenceBusinessRecordEvents(
+  selfPubkey: string,
+  overrides: {
+    clientStatus?: string;
+    workStatus?: string;
+    workShare?: boolean;
+  } = {},
+): RelayEvent[] {
+  const entries = [
+    {
+      channelId: REFERENCE_CHANNEL_IDS.oliveHouse,
+      partyId: "a1a17000-0000-4000-8000-000000000001",
+      clientId: REFERENCE_CHANNEL_IDS.oliveHouse,
+      displayName: "The Olive House",
+      clientStatus: "active",
+      workItemId: "b1b17000-0000-4000-8000-000000000001",
+      title: "Produce the spring content campaign",
+      assignedPubkeys: [REFERENCE_AGENTS.mina.pubkey],
+      status: "review",
+    },
+    {
+      channelId: REFERENCE_CHANNEL_IDS.cedarCafe,
+      partyId: "a1a17000-0000-4000-8000-000000000002",
+      clientId: REFERENCE_CHANNEL_IDS.cedarCafe,
+      displayName: "Cedar Café",
+      clientStatus: "active",
+      workItemId: "b1b17000-0000-4000-8000-000000000002",
+      title: "Restore Cedar Café publishing access",
+      assignedPubkeys: [REFERENCE_AGENTS.theo.pubkey],
+      status: "blocked",
+    },
+    {
+      channelId: REFERENCE_CHANNEL_IDS.northline,
+      partyId: "a1a17000-0000-4000-8000-000000000003",
+      clientId: REFERENCE_CHANNEL_IDS.northline,
+      displayName: "Northline Interiors",
+      clientStatus: "onboarding",
+      workItemId: "b1b17000-0000-4000-8000-000000000003",
+      title: "Complete Northline onboarding",
+      assignedPubkeys: [REFERENCE_AGENTS.aya.pubkey],
+      status: "active",
+    },
+  ] as const;
+
+  const events: RelayEvent[] = [];
+  let index = 1;
+  for (const entry of entries) {
+    const clientSourceId = referenceEventId(index++);
+    events.push({
+      id: referenceEventId(index++),
+      pubkey: selfPubkey,
+      created_at: REFERENCE_RECORD_TIME,
+      kind: KIND_CLIENT_HEAD,
+      tags: [
+        ["h", entry.clientId],
+        ["d", `client:${entry.clientId}:client:${entry.clientId}`],
+      ],
+      content: JSON.stringify({
+        schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
+        clientId: entry.clientId,
+        partyId: entry.partyId,
+        displayName: entry.displayName,
+        approverPubkeys: [selfPubkey.toLowerCase()],
+        status: overrides.clientStatus ?? entry.clientStatus,
+        sourceActionEventId: clientSourceId,
+      }),
+      sig: REFERENCE_EVENT_SIGNATURE,
+    });
+
+    const deliverableSeeds =
+      entry.clientId === REFERENCE_CHANNEL_IDS.oliveHouse
+        ? [
+            {
+              deliverableId: "c1c17000-0000-4000-8000-000000000001",
+              title: "Make room for slow mornings",
+              content:
+                "A little space. A favourite cup. A slower start. Meet the pieces that make an ordinary morning feel like yours. Explore our spring edit at the link in our bio.",
+              version: 2,
+              previousContent: "First draft by Mina",
+              previousDecision: "changes_requested" as const,
+              previousNote:
+                "Let the first slide breathe. Keep the product detail on slide two.",
+            },
+            {
+              deliverableId: "c1c17000-0000-4000-8000-000000000002",
+              title: "Meet your everyday favourites",
+              content:
+                "Pieces you reach for, again and again. Discover our spring edit.",
+              version: 1,
+            },
+            {
+              deliverableId: "c1c17000-0000-4000-8000-000000000003",
+              title: "Small changes. Softer spaces.",
+              content:
+                "A new texture. A warmer corner. Small changes can make a space your own.",
+              version: 1,
+              approvalDecision: "approved" as const,
+            },
+            {
+              deliverableId: "c1c17000-0000-4000-8000-000000000004",
+              title: "An invitation to slow down",
+              content:
+                "A quieter weekend starts at home. Discover the spring edit.",
+              version: 1,
+              approvalDecision: "approved" as const,
+            },
+          ]
+        : [];
+    const deliverables = deliverableSeeds.map((seed) => {
+      let previousVersionEventId: string | null = null;
+      if (seed.previousContent && seed.previousDecision && seed.previousNote) {
+        const previousBody = {
+          title: seed.title,
+          content: seed.previousContent,
+        };
+        const previousDigests = computeDeliverableDigests(previousBody, []);
+        const previousTemplate = buildDeliverableVersionTemplate({
+          clientId: entry.clientId,
+          workItemId: entry.workItemId,
+          deliverableId: seed.deliverableId,
+          version: 1,
+          previousVersionEventId: null,
+          mediaDigests: [],
+          body: previousBody,
+        });
+        previousVersionEventId = referenceEventId(index++);
+        events.push({
+          id: previousVersionEventId,
+          pubkey: REFERENCE_AGENTS.mina.pubkey,
+          created_at: REFERENCE_RECORD_TIME + 400,
+          kind: KIND_DELIVERABLE_VERSION,
+          tags: previousTemplate.tags,
+          content: previousTemplate.content,
+          sig: REFERENCE_EVENT_SIGNATURE,
+        });
+
+        const previousApproval = buildDeliverableApprovalTemplate({
+          schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
+          clientId: entry.clientId,
+          workItemId: entry.workItemId,
+          deliverableId: seed.deliverableId,
+          versionEventId: previousVersionEventId,
+          contentDigest: previousDigests.contentDigest,
+          mediaDigest: previousDigests.mediaDigest,
+          decision: seed.previousDecision,
+          note: seed.previousNote,
+        });
+        events.push({
+          id: referenceEventId(index++),
+          pubkey: selfPubkey,
+          created_at: REFERENCE_RECORD_TIME + 500,
+          kind: KIND_DELIVERABLE_APPROVAL,
+          tags: previousApproval.tags,
+          content: previousApproval.content,
+          sig: REFERENCE_EVENT_SIGNATURE,
+        });
+      }
+
+      const body = { title: seed.title, content: seed.content };
+      const digests = computeDeliverableDigests(body, []);
+      const template = buildDeliverableVersionTemplate({
+        clientId: entry.clientId,
+        workItemId: entry.workItemId,
+        deliverableId: seed.deliverableId,
+        version: seed.version,
+        previousVersionEventId,
+        mediaDigests: [],
+        body,
+      });
+      const versionEventId = referenceEventId(index++);
+      events.push({
+        id: versionEventId,
+        pubkey: REFERENCE_AGENTS.mina.pubkey,
+        created_at: REFERENCE_RECORD_TIME + 600,
+        kind: KIND_DELIVERABLE_VERSION,
+        tags: template.tags,
+        content: template.content,
+        sig: REFERENCE_EVENT_SIGNATURE,
+      });
+
+      if (seed.approvalDecision) {
+        const approval = buildDeliverableApprovalTemplate({
+          schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
+          clientId: entry.clientId,
+          workItemId: entry.workItemId,
+          deliverableId: seed.deliverableId,
+          versionEventId,
+          contentDigest: digests.contentDigest,
+          mediaDigest: digests.mediaDigest,
+          decision: seed.approvalDecision,
+          note: null,
+        });
+        events.push({
+          id: referenceEventId(index++),
+          pubkey: selfPubkey,
+          created_at: REFERENCE_RECORD_TIME + 1_200,
+          kind: KIND_DELIVERABLE_APPROVAL,
+          tags: approval.tags,
+          content: approval.content,
+          sig: REFERENCE_EVENT_SIGNATURE,
+        });
+      }
+
+      return {
+        deliverableId: seed.deliverableId,
+        versionEventId,
+        contentDigest: digests.contentDigest,
+        mediaDigest: digests.mediaDigest,
+        versionDigest: digests.versionDigest,
+      };
+    });
+
+    const workSourceId = referenceEventId(index++);
+    const workDTag = `client:${entry.clientId}:work:${entry.workItemId}`;
+    events.push({
+      id: referenceEventId(index++),
+      pubkey: selfPubkey,
+      created_at: REFERENCE_RECORD_TIME + 300,
+      kind: KIND_WORK_ITEM_HEAD,
+      tags: [
+        ["h", entry.channelId],
+        ["d", workDTag],
+      ],
+      content: JSON.stringify({
+        schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
+        clientId: entry.clientId,
+        workItemId: entry.workItemId,
+        title: entry.title,
+        status: overrides.workStatus ?? entry.status,
+        assignedPubkeys: [...entry.assignedPubkeys],
+        approverPubkeys: [selfPubkey.toLowerCase()],
+        deliverables,
+        sourceEventId: workSourceId,
+      }),
+      sig: REFERENCE_EVENT_SIGNATURE,
+    });
+    if (
+      overrides.workShare &&
+      entry.clientId === REFERENCE_CHANNEL_IDS.oliveHouse
+    ) {
+      events.push({
+        id: referenceEventId(index++),
+        pubkey: selfPubkey,
+        created_at: REFERENCE_RECORD_TIME + 1_800,
+        kind: KIND_STREAM_MESSAGE,
+        tags: [
+          ["h", entry.clientId],
+          ["p", selfPubkey.toLowerCase()],
+          [
+            "a",
+            `${KIND_WORK_ITEM_HEAD}:${selfPubkey.toLowerCase()}:${workDTag}`,
+          ],
+        ],
+        content: "",
+        sig: REFERENCE_EVENT_SIGNATURE,
+      });
+    }
+  }
+  return events;
+}
+
+export const REFERENCE_HOME_UNREAD_IDS = [
+  "reference-home-inbox-olive-approval",
+  "reference-home-inbox-cedar-access",
+] as const;
+// Offscreen unread thread activity reproduces the reference sidebar dot while
+// the read marker keeps visible top-level messages free of a New divider.
+export const REFERENCE_SALES_UNREAD_ROOT_ID = "reference-sales-unread-root";
+export const REFERENCE_SALES_UNREAD_REPLY_ID = "reference-sales-unread-reply";
+export const REFERENCE_SALES_VOICE_NOTE_ID = "reference-sales-lerato-0950";
+export const REFERENCE_SALES_WINDOW_START_DAY_LABEL = "Today";
+// The Sales capture opens within a channel that has earlier history above the viewport.
+export const REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY = true;
 
 export type ReferenceChannelSeed = {
   id: string;
@@ -90,22 +386,186 @@ function todayAt(hours: number, minutes: number): number {
   return Math.floor(date.getTime() / 1000);
 }
 
-/** The reference #Sales discussion (text rows only). */
+export function referenceSalesLastMessageAt(): string {
+  return new Date((todayAt(9, 50) + 1) * 1_000).toISOString();
+}
+
+/** The frozen r19 Today screen records used by the mock bridge. */
+export const REFERENCE_HOME_VISUAL_FIXTURE: HomeFeedVisualFixture = {
+  agentWork: [
+    {
+      id: "run-mina",
+      agent: "Mina",
+      title: "Prepare October carousel concepts",
+      detail: "Waiting for permission to generate images",
+      status: "permission",
+    },
+    {
+      id: "run-aya",
+      agent: "Aya",
+      title: "Prepare Form & Field proposal",
+      detail: "Waiting for Lerato to choose the scope",
+      status: "question",
+    },
+    {
+      id: "run-theo",
+      agent: "Theo",
+      title: "Reconcile September costs",
+      detail: "Connection expired before external read",
+      status: "failed",
+    },
+    {
+      id: "run-noor",
+      agent: "Noor",
+      title: "Revise Cedar captions",
+      detail: "Paused at the approved budget",
+      status: "budget",
+    },
+  ],
+  businessReviews: [
+    {
+      id: "olive-1",
+      client: "The Olive House",
+      meta: "The Olive House · Agency review · v2",
+      title: "Make room for slow mornings",
+      artTitle: "Make room for slow mornings.",
+      variant: "olive",
+      footer: "THE SPRING EDIT",
+    },
+    {
+      id: "cedar-2",
+      client: "Cedar Café",
+      meta: "Cedar Café · Agency review · v1",
+      title: "See you on the sunny side",
+      artTitle: "See you on the sunny side.",
+      variant: "cedar",
+      footer: "YOUR NEIGHBOURHOOD, BREWED",
+    },
+    {
+      id: "cedar-instagram",
+      client: "Cedar Café",
+      meta: "Cedar Café · @cedarcafe",
+      title: "Renew Instagram access",
+      variant: "instagram",
+    },
+    {
+      id: "northline-linkedin",
+      client: "Northline Interiors",
+      meta: "Northline Interiors · Northline Interiors",
+      title: "Grant publishing access",
+      variant: "linkedin",
+    },
+    {
+      id: "task-access",
+      client: "Cedar Café",
+      meta: "Theo · Client authorization",
+      title: "Restore Cedar Café publishing access",
+      variant: "access",
+    },
+    {
+      id: "bloom-enquiry",
+      client: "Bloom Florist",
+      meta: "Website enquiry · We need consistent Instagram content for our flower studio. Can you help with 8 posts a month?",
+      title: "Bloom Florist",
+      variant: "enquiry",
+    },
+  ],
+  clientApproval: {
+    client: "The Olive House",
+    title: "Meet your everyday favourites",
+    approver: "Nandi",
+    version: 1,
+  },
+  nextDelivery: {
+    title: "Small changes. Softer spaces.",
+    detail: "The Olive House · Thu, 01 Oct · 09:00 SAST",
+  },
+  moneyFollowUp: {
+    client: "Cedar Café",
+    invoice: "LS-027",
+    due: "2026-09-20",
+    amount: "R 3 000",
+  },
+};
+
+/** The two unread review records that drive the reference Inbox badge. */
+export function referenceHomeInboxItems(): Array<{
+  id: string;
+  kind: number;
+  pubkey: string;
+  content: string;
+  created_at: number;
+  channel_id: string | null;
+  channel_name: string;
+  channel_type: null;
+  tags: string[][];
+  category: "needs_action";
+}> {
+  const createdAt = todayAt(10, 12);
+  return [
+    {
+      id: REFERENCE_HOME_UNREAD_IDS[0],
+      kind: 40007,
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      content: "Review the Olive House campaign before approval.",
+      created_at: createdAt,
+      channel_id: null,
+      channel_name: "",
+      channel_type: null,
+      tags: [],
+      category: "needs_action",
+    },
+    {
+      id: REFERENCE_HOME_UNREAD_IDS[1],
+      kind: 40007,
+      pubkey: REFERENCE_AGENTS.theo.pubkey,
+      content: "Restore Cedar Café publishing access.",
+      created_at: createdAt - 60,
+      channel_id: null,
+      channel_name: "",
+      channel_type: null,
+      tags: [],
+      category: "needs_action",
+    },
+  ];
+}
+
+/** The reference #Sales discussion and the context for its side thread. */
 export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const sig = "mocksig".repeat(20).slice(0, 128);
+  const unreadRootId = REFERENCE_SALES_UNREAD_ROOT_ID;
   return [
+    {
+      id: unreadRootId,
+      pubkey: selfPubkey,
+      created_at: todayAt(8, 50),
+      kind: 9,
+      tags: [["h", channelId]],
+      content: "Earlier Sales discussion",
+      sig,
+    },
+    {
+      id: REFERENCE_SALES_UNREAD_REPLY_ID,
+      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      created_at: todayAt(9, 50) + 2,
+      kind: 9,
+      tags: [
+        ["h", channelId],
+        ["e", unreadRootId, "", "root"],
+        ["e", unreadRootId, "", "reply"],
+      ],
+      content: "The updated shortlist is ready to review.",
+      sig,
+    },
     {
       id: "reference-sales-lerato-0914",
       pubkey: selfPubkey,
       created_at: todayAt(9, 14),
       kind: 9,
-      tags: [
-        ["h", channelId],
-        ["p", REFERENCE_AGENTS.aya.pubkey],
-      ],
+      tags: [["h", channelId]],
       content:
-        "@Aya, let's find independent businesses that need reliable social content. Start with a small, well-qualified list.",
+        "@Aya, let’s find independent businesses that need reliable social content. Start with a small, well-qualified list.",
       sig,
     },
     {
@@ -113,9 +573,72 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
       pubkey: REFERENCE_AGENTS.aya.pubkey,
       created_at: todayAt(9, 42),
       kind: 9,
+      tags: [
+        ["h", channelId],
+        [
+          "link-preview",
+          "snapshot",
+          "1",
+          "https://example.com/independent-brands",
+          "Independent brands needing social support",
+          "Discovery",
+          "Review prospects before outreach.",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ],
+      content:
+        "There are 12 prospects to review. Each profile keeps the source and qualification notes together.\n\n[​](https://example.com/independent-brands)",
+      sig,
+    },
+    {
+      id: "reference-sales-lerato-0950",
+      pubkey: selfPubkey,
+      created_at: todayAt(9, 50),
+      kind: 9,
+      tags: [
+        ["h", channelId],
+        [
+          "imeta",
+          "url https://example.invalid/voice-note-r17.wav",
+          "m audio/wav",
+          "filename voice-note-sample.wav",
+          "duration 8",
+          "transcript Please keep the first slide simple. Show the product detail on slide two, and let Nandi approve the final caption before we schedule it.",
+        ],
+      ],
+      content:
+        "[Voice note · Sample audio](https://example.invalid/voice-note-r17.wav)",
+      sig,
+    },
+  ];
+}
+
+/** Existing #Olive House discussion shown before the W11 work-share event. */
+export function referenceOliveHouseMessages(selfPubkey: string): RelayEvent[] {
+  const channelId = REFERENCE_CHANNEL_IDS.oliveHouse;
+  const sig = REFERENCE_EVENT_SIGNATURE;
+  return [
+    {
+      id: "reference-olive-lerato-0920",
+      pubkey: selfPubkey,
+      created_at: todayAt(9, 20),
+      kind: KIND_STREAM_MESSAGE,
       tags: [["h", channelId]],
       content:
-        "There are 12 prospects to review. Each profile keeps the source and qualification notes together.",
+        "Let’s keep a slower spring focused. Share the content here before we ask Nandi to approve.",
+      sig,
+    },
+    {
+      id: "reference-olive-mina-0942",
+      pubkey: REFERENCE_AGENTS.mina.pubkey,
+      created_at: todayAt(9, 42),
+      kind: KIND_STREAM_MESSAGE,
+      tags: [["h", channelId]],
+      content:
+        "The Olive House’s next post is ready. The preview, caption and scheduled date stay together through every revision.",
       sig,
     },
   ];
@@ -156,6 +679,17 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
       ),
     }),
   );
+  storage.setItem(`buzz-forced-unread.v1:${selfPubkey}`, JSON.stringify({}));
+  storage.setItem(
+    `buzz.channel-read-state.v2:${selfPubkey}`,
+    JSON.stringify({
+      [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
+    }),
+  );
+  storage.setItem(
+    `buzz-home-feed-unread.v1:${selfPubkey}`,
+    JSON.stringify([...REFERENCE_HOME_UNREAD_IDS]),
+  );
 
   const sections = {
     version: 1,
@@ -170,4 +704,21 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
     ? `buzz-channel-sections.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
     : `buzz-channel-sections.v1:${selfPubkey}`;
   storage.setItem(sectionsKey, JSON.stringify(sections));
+
+  const sortKey = relayUrl
+    ? `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
+    : `buzz-channel-sort.v1:${selfPubkey}`;
+  const sortPreferences = JSON.stringify({
+    version: 1,
+    groups: {
+      starred: "recent",
+      channels: "recent",
+      "section:reference-client-work": "recent",
+    },
+  });
+  storage.setItem(sortKey, sortPreferences);
+  if (!relayUrl) {
+    const defaultRelaySortKey = `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl("ws://localhost:3000"))}`;
+    storage.setItem(defaultRelaySortKey, sortPreferences);
+  }
 }
