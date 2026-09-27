@@ -656,7 +656,11 @@ const MessageTimelineBase = React.forwardRef<
           </p>
         </div>
       ) : referenceWindowDayLabel ? (
-        <div className="pb-2 pt-3">
+        <div
+          className="relative flex flex-col py-3 before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
+          data-day-label={referenceWindowDayLabel}
+          data-testid="message-timeline-day-group"
+        >
           <DayDivider label={referenceWindowDayLabel} sticky={false} />
         </div>
       ) : null,

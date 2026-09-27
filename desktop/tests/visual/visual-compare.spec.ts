@@ -399,6 +399,18 @@ test.describe("visual comparison captures", () => {
           await expect(
             salesTimeline.getByTestId("message-timeline-day-divider"),
           ).toHaveText("Today");
+          const salesDayGroup = salesTimeline.getByTestId(
+            "message-timeline-day-group",
+          );
+          await expect(salesDayGroup).toHaveAttribute(
+            "data-day-label",
+            "Today",
+          );
+          expect(
+            await salesDayGroup.evaluate(
+              (element) => getComputedStyle(element, "::before").height,
+            ),
+          ).toBe("1px");
           await expect(
             salesTimeline.locator(
               '[data-message-id="reference-sales-lerato-0914"]',
