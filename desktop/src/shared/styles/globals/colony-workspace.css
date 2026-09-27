@@ -550,7 +550,9 @@
   right: 18px;
 }
 
-:root:has([data-colony-workspace-route="true"])
+:root:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-sidebar="group-label"] {
   min-height: 1.75rem;
@@ -558,10 +560,14 @@
   font-size: 0.6875rem;
 }
 
-:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-sidebar="group-label"],
-:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid$="-section-label"]
   > [data-sidebar-section-title] {

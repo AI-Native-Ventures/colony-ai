@@ -48,7 +48,7 @@ async function openProjectRepository(
   const target = await page.evaluate((id) => {
     const url = new URL(window.location.href);
     url.searchParams.set("repositoryId", id);
-    return `${url.pathname}${url.search}`;
+    return `${url.pathname}${url.search}${url.hash}`;
   }, repositoryId);
   await page.goto(target, { waitUntil: "domcontentloaded" });
 }

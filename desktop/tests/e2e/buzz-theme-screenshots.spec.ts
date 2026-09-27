@@ -1417,20 +1417,14 @@ test("prominent channel and direct-message rows share one flat active state", as
   const activeSurface = "rgb(38, 85, 160)";
 
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
-  await expect(channelRow).toHaveCSS(
-    "box-shadow",
-    "0px 1px 3px rgba(48, 32, 56, 0.0196)",
-  );
+  await expect(channelRow).toHaveCSS("box-shadow", "none");
   await channelRow.hover();
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
 
   await directMessageRow.click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
-  await expect(directMessageRow).toHaveCSS(
-    "box-shadow",
-    "0px 1px 3px rgba(48, 32, 56, 0.0196)",
-  );
+  await expect(directMessageRow).toHaveCSS("box-shadow", "none");
   await directMessageRow.hover();
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
@@ -1469,7 +1463,7 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     await expect(activeRow).toHaveCSS(
       "box-shadow",
-      "0px 1px 3px rgba(48, 32, 56, 0.0196)",
+      "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
     );
     await expect(activeRow).toHaveCSS("font-weight", "650");
     await activeRow.hover();

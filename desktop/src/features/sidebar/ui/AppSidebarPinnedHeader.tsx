@@ -239,11 +239,16 @@ export function AppSidebarPrimaryMenu({
             className="text-xs data-[active=true]:font-normal"
             data-testid="sidebar-activity-button"
             isActive={selectedView === "home"}
-            onClick={(event) => {
-              const button = event.currentTarget;
+            onClick={() => {
               onSelectHome();
               window.requestAnimationFrame(() => {
-                if (button.isConnected) button.focus({ preventScroll: true });
+                window.requestAnimationFrame(() => {
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      '[data-testid="sidebar-activity-button"]',
+                    )
+                    ?.focus({ preventScroll: true });
+                });
               });
             }}
             tooltip="Activity"
