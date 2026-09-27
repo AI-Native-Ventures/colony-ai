@@ -22,6 +22,8 @@ on:
     branches:
       - feat/phase3-auth
       - develop
+      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
+      - codex/phase2-integration
     paths:
       - ".github/workflows/colony-android-runtime.yml"
       - "scripts/android-runtime-proof.sh"
