@@ -37,6 +37,12 @@ type VisualCase = {
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
+  audioInputDevices?: Array<{
+    deviceId: string;
+    groupId: string;
+    kind: "audioinput";
+    label: string;
+  }>;
   viewport: "1728x1117" | "1440x900";
   theme: "light" | "dark";
   actions: VisualAction[];
@@ -197,6 +203,20 @@ test.describe("visual comparison captures", () => {
         const appPage = await appContext.newPage();
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
+        if (entry.audioInputDevices) {
+          await appPage.addInitScript((devices) => {
+            const mediaDevices = navigator.mediaDevices;
+            if (!mediaDevices) return;
+            Object.defineProperty(mediaDevices, "enumerateDevices", {
+              configurable: true,
+              value: async () =>
+                devices.map((device) => ({
+                  ...device,
+                  toJSON: () => ({}),
+                })),
+            });
+          }, entry.audioInputDevices);
+        }
         const mockData = { ...(entry.appMockData ?? {}) };
         const moderationReports = mockData.moderationReports;
         delete mockData.moderationReports;

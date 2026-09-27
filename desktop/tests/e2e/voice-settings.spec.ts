@@ -28,7 +28,9 @@ test.describe("Pocket voice settings", () => {
         ],
       });
     });
-    await installMockBridge(page);
+    await installMockBridge(page, {
+      audioOutputDevices: [{ name: "USB headset output", is_default: false }],
+    });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await openSettings(page, "voice");
 
@@ -45,9 +47,11 @@ test.describe("Pocket voice settings", () => {
     await expect(microphone).toContainText("Desk microphone");
     await microphone.selectOption("mic-device-fixture");
     await expect(microphone).toHaveValue("mic-device-fixture");
-    await expect(page.getByTestId("voice-output-select")).toHaveValue(
-      "system-default",
-    );
+    const output = page.getByTestId("voice-output-select");
+    await expect(output).toHaveValue("system-default");
+    await expect(output).toContainText("USB headset output");
+    await output.selectOption("USB headset output");
+    await expect(output).toHaveValue("USB headset output");
     await expect(
       page.getByText("Read agent replies aloud", { exact: true }),
     ).toBeVisible();
@@ -79,11 +83,19 @@ test.describe("Pocket voice settings", () => {
     const savedCommands = await page.evaluate(() =>
       (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
         .filter((entry) =>
-          ["set_pocket_voice", "set_tts_enabled"].includes(entry.command),
+          [
+            "set_audio_output_device",
+            "set_pocket_voice",
+            "set_tts_enabled",
+          ].includes(entry.command),
         )
         .map((entry) => ({ command: entry.command, payload: entry.payload })),
     );
     expect(savedCommands).toEqual([
+      {
+        command: "set_audio_output_device",
+        payload: { name: "USB headset output" },
+      },
       {
         command: "set_pocket_voice",
         payload: { voiceKey: "pocket:eve" },

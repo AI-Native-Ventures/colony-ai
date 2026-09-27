@@ -217,6 +217,10 @@ type E2eConfig = {
       agentTextToSpeech: boolean;
       voicePreferences: string[];
     };
+    /** Audio output records returned only by the mocked desktop host. */
+    audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+    /** Selected output device returned only by the mocked desktop host. */
+    selectedAudioOutputDevice?: string;
     /** Optional NIP-30 records for visual fixture routes. */
     customEmojiSets?: Array<{
       owner: "self" | "community";
@@ -12462,6 +12466,17 @@ export function maybeInstallE2eTauriMocks() {
         persistMockHuddle();
         await emitMockHuddleState();
         return;
+      }
+      case "list_audio_output_devices":
+        return activeConfig?.mock?.audioOutputDevices ?? [];
+      case "get_audio_output_device":
+        return activeConfig?.mock?.selectedAudioOutputDevice ?? "";
+      case "set_audio_output_device": {
+        const { name } = payload as { name: string };
+        if (activeConfig?.mock) {
+          activeConfig.mock.selectedAudioOutputDevice = name;
+        }
+        return null;
       }
       case "get_model_status":
         return { stt: "ready", tts: "ready" };

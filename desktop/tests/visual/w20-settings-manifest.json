@@ -375,7 +375,23 @@
       "referenceInventoryRoute": "settings/voice",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/voice",
       "appRoute": "/#/settings?section=voice",
-      "routeLabel": "settings/voice"
+      "routeLabel": "settings/voice",
+      "audioInputDevices": [
+        {
+          "deviceId": "macbook-microphone-example",
+          "groupId": "macbook-audio-example",
+          "kind": "audioinput",
+          "label": "MacBook microphone · example"
+        }
+      ],
+      "appMockData": {
+        "audioOutputDevices": [
+          {
+            "name": "MacBook speakers · example",
+            "is_default": false
+          }
+        ]
+      }
     },
     {
       "id": "workspace-settings-themes",

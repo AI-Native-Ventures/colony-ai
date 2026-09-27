@@ -158,6 +158,10 @@ type MockBridgeOptions = {
     agentTextToSpeech: boolean;
     voicePreferences: string[];
   };
+  /** Audio output records returned only by the mocked desktop host. */
+  audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+  /** Selected output device returned only by the mocked desktop host. */
+  selectedAudioOutputDevice?: string;
   /** Optional NIP-30 records for visual fixture routes. */
   customEmojiSets?: Array<{
     owner: "self" | "community";
