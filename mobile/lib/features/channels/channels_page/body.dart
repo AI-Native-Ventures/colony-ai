@@ -137,7 +137,7 @@ class _ChatListToolbar extends StatelessWidget {
               children: [
                 Icon(
                   LucideIcons.search,
-                  size: Grid.sm,
+                  size: Grid.md,
                   color: context.mobileTokens.muted,
                 ),
                 const SizedBox(width: Grid.half),
@@ -188,10 +188,10 @@ class _ChatListToolbar extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       backgroundColor: activeFilter == entry.filter
-                          ? context.mobileTokens.actionSoft
+                          ? context.mobileTokens.action
                           : context.mobileTokens.paper,
                       foregroundColor: activeFilter == entry.filter
-                          ? context.mobileTokens.onActionSoft
+                          ? context.mobileTokens.onAction
                           : context.mobileTokens.muted,
                       side: BorderSide(color: context.mobileTokens.line),
                       shape: RoundedRectangleBorder(

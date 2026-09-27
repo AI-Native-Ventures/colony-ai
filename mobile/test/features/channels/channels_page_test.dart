@@ -26,6 +26,7 @@ import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/community/community_icon_provider.dart';
 import 'package:buzz/shared/identity/identity_components.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -51,6 +52,7 @@ void main() {
     bool includeShell = false,
     bool captureShell = false,
     Brightness brightness = Brightness.light,
+    Map<String, String> presenceByPubkey = const {},
   }) {
     final channelsPage = ChannelsPage(
       settingsPageBuilder: _buildSettingsPage,
@@ -102,6 +104,9 @@ void main() {
         // different identity (the page reads its pubkey from profileProvider).
         profileProvider.overrideWith(() => profile ?? _FakeProfileNotifier()),
         presenceProvider.overrideWith(() => _FakePresenceNotifier()),
+        presenceCacheProvider.overrideWith(
+          () => _FakePresenceCacheNotifier(presenceByPubkey),
+        ),
         communityIconProvider.overrideWith((ref, relayUrl) async {
           onCommunityIconLoad?.call(relayUrl);
           return communityIcons[relayUrl];
@@ -447,6 +452,7 @@ void main() {
     await tester.pumpWidget(
       buildTestable(
         brightness: Brightness.dark,
+        presenceByPubkey: const {'maya': 'online'},
         profile: _FakeProfileNotifier(
           pubkey: 'aabb',
           displayName: 'Lerato Molefe',
@@ -482,6 +488,7 @@ void main() {
     );
     expect(mayaAvatar.kind, IdentityKind.person);
     expect(mayaAvatar.tone, IdentityAvatarTone.peach);
+    expect(mayaAvatar.isOnline, isTrue);
     final mayaInitial = tester.widget<Text>(
       find.descendant(
         of: find.byKey(const ValueKey('conversation-avatar-dm-maya')),
@@ -500,6 +507,10 @@ void main() {
       (badge.decoration! as BoxDecoration).color,
       AppTheme.dark().extension<AppColors>()!.plum,
     );
+    expect(
+      (badge.decoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(Radii.xs),
+    );
   });
 
   testWidgets('matches the v5 gap between search and conversation filters', (
@@ -507,6 +518,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildTestable(
+        brightness: Brightness.dark,
         overrides: [channelsProvider.overrideWith(() => _FakeNotifier([]))],
       ),
     );
@@ -517,6 +529,27 @@ void main() {
     );
     final allFilter = tester.getRect(find.widgetWithText(TextButton, 'All'));
     expect(allFilter.top - search.bottom, 16);
+    final selectedFilter = tester.widget<TextButton>(
+      find.byKey(const ValueKey('conversation-filter-all')),
+    );
+    final filterTokens = tester
+        .element(find.byKey(const ValueKey('conversation-filter-all')))
+        .mobileTokens;
+    expect(
+      selectedFilter.style?.backgroundColor?.resolve({}),
+      filterTokens.action,
+    );
+    expect(
+      selectedFilter.style?.foregroundColor?.resolve({}),
+      filterTokens.onAction,
+    );
+    expect(tester.widget<Icon>(find.byIcon(LucideIcons.search)).size, Grid.md);
+    final appBarFinder = find.byType(FrostedAppBar);
+    final appBar = tester.widget<FrostedAppBar>(appBarFinder);
+    expect(
+      appBar.gradient,
+      tester.element(appBarFinder).appColors.companyWashGradient,
+    );
   });
 
   testWidgets('shows the v5 recent conversation list when data loads', (
@@ -595,6 +628,14 @@ void main() {
     expect(find.text(shortPubkey(a11ce)), findsOneWidget);
     expect(_dmTileAvatarInitial(tester, shortPubkey(a11ce)), 'A');
     expect(_dmTileAvatarInitial(tester, 'Alice'), 'A');
+    expect(
+      tester
+          .widget<IdentityAvatar>(
+            find.byKey(const ValueKey('conversation-avatar-dm-unnamed')),
+          )
+          .isOnline,
+      isFalse,
+    );
     final groupTile = _dmTileFor('${shortPubkey(a11ce)}, ${shortPubkey(b0b)}');
     expect(
       find.descendant(of: groupTile, matching: find.byType(AvatarImageContent)),
@@ -3076,6 +3117,15 @@ class _FixtureChannelSortNotifier extends ChannelSortNotifier {
 class _FakePresenceNotifier extends PresenceNotifier {
   @override
   Future<String> build() async => 'online';
+}
+
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this.initial);
+
+  final Map<String, String> initial;
+
+  @override
+  Map<String, String> build() => initial;
 }
 
 class _FakeReadStateNotifier extends ReadStateNotifier {

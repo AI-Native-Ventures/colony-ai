@@ -32,6 +32,8 @@ import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
+import 'package:buzz/shared/identity/identity_components.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme.dart';
 
@@ -220,6 +222,72 @@ void main() {
       find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Today header has no divider and uses live presence only', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey('today-header'));
+    final headerDecoration = tester.widget<Container>(header).decoration!;
+    expect((headerDecoration as BoxDecoration).border, isNull);
+    final avatar = find.descendant(
+      of: header,
+      matching: find.byType(IdentityAvatar),
+    );
+    expect(tester.widget<IdentityAvatar>(avatar).isOnline, isFalse);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs, null, {_leratoKey: 'online'}),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IdentityAvatar>(
+            find.descendant(
+              of: find.byKey(const ValueKey('today-header')),
+              matching: find.byType(IdentityAvatar),
+            ),
+          )
+          .isOnline,
+      isTrue,
+    );
+  });
+
+  testWidgets('Activity plus opens the existing team update composer', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+
+    final compose = find.byKey(const ValueKey('activity-new-team-update'));
+    expect(compose, findsOneWidget);
+    await tester.tap(compose);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Write an update'), findsOneWidget);
+    expect(find.text('Publish update'), findsOneWidget);
   });
 
   testWidgets('Today opens Team updates from the header action', (
@@ -774,6 +842,7 @@ Future<void> _pumpVisualFrame(
 List<Override> _providerOverrides([
   SharedPreferences? prefs,
   List<UserNote>? notes,
+  Map<String, String> presenceStatuses = const {},
 ]) => [
   ..._baseOverrides(prefs),
   activityProvider.overrideWith(() => _ProofActivityNotifier(_feed)),
@@ -781,6 +850,9 @@ List<Override> _providerOverrides([
   globalNotesProvider.overrideWith((_) async => notes ?? _notes),
   profileProvider.overrideWith(() => _ProofProfileNotifier(_lerato)),
   userCacheProvider.overrideWith(() => _ProofUserCacheNotifier(_users)),
+  presenceCacheProvider.overrideWith(
+    () => _ProofPresenceCacheNotifier(presenceStatuses),
+  ),
 ];
 
 List<Override> _baseOverrides(SharedPreferences? prefs) => [
@@ -802,6 +874,9 @@ Widget _visualHome(_VisualRoute route) {
         (context, routeContext) => route == _VisualRoute.activity
             ? ActivityHomePage(
                 onOpenItem: (_) {},
+                onComposeUpdate: (composeContext) => unawaited(
+                  MobileNavigation.openUpdateCompose(composeContext),
+                ),
                 updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
                 tabReselection: routeContext.tabReselection,
               )
@@ -810,6 +885,7 @@ Widget _visualHome(_VisualRoute route) {
                 profileName: _lerato.displayName,
                 profileInitials: _lerato.initials,
                 profileAvatarUrl: _lerato.avatarUrl,
+                profilePubkey: _lerato.pubkey,
                 reviewItems: AsyncValue.data([
                   TodayReviewItem(
                     id: _review.id,
@@ -862,11 +938,17 @@ Widget _visualHome(_VisualRoute route) {
         MobileRoutes.activity,
         (_, routeContext) => ActivityHomePage(
           onOpenItem: (_) {},
+          onComposeUpdate: (composeContext) =>
+              unawaited(MobileNavigation.openUpdateCompose(composeContext)),
           updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
           tabReselection: routeContext.tabReselection,
         ),
       )
       .register(MobileRoutes.business, (_, _) => const SizedBox.shrink())
+      .register(
+        MobileRoutes.updateCompose,
+        (_, _) => TeamUpdateComposePage(onPublish: _noPublish),
+      )
       .register(
         MobileRoutes.updates,
         (_, _) => TeamUpdatesPage(
@@ -914,6 +996,15 @@ class _ProofUserCacheNotifier extends UserCacheNotifier {
   final Map<String, UserProfile> users;
   @override
   Map<String, UserProfile> build() => users;
+}
+
+class _ProofPresenceCacheNotifier extends PresenceCacheNotifier {
+  _ProofPresenceCacheNotifier(this.statuses);
+
+  final Map<String, String> statuses;
+
+  @override
+  Map<String, String> build() => statuses;
 }
 
 class _ProofRelayConfigNotifier extends RelayConfigNotifier {

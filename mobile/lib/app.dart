@@ -41,6 +41,8 @@ import 'features/pulse/team_updates_page.dart';
 import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
+import 'features/channels/deliverable_approval_page.dart';
+import 'features/channels/deliverable_review_provider.dart';
 import 'features/channels/deep_link_dispatcher.dart';
 import 'features/channels/compose_bar.dart';
 import 'features/channels/message_content.dart';
@@ -199,6 +201,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             profileName: profile?.displayName,
             profileInitials: profile?.initials,
             profileAvatarUrl: profile?.avatarUrl,
+            profilePubkey: profile?.pubkey,
             reviewItems: reviewItems,
             movingItems: movingItems,
             teamUpdate: teamUpdate,
@@ -229,6 +232,12 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     .register(MobileRoutes.activity, (context, routeContext) {
       return ActivityHomePage(
         tabReselection: routeContext.tabReselection,
+        onComposeUpdate: (composeContext) async {
+          final published = await MobileNavigation.openUpdateCompose(
+            composeContext,
+          );
+          if (published == true) ref.invalidate(globalNotesProvider);
+        },
         updatesPageBuilder: (_, published) =>
             TeamUpdatesPage(initiallyPublished: published),
         onOpenItem: (item) => Navigator.of(context).push(
@@ -478,7 +487,11 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         memberCount: arguments.memberCount,
         presentation: _forumPresentation(),
       );
-    });
+    })
+    .register(
+      ChannelDeliverableRoutes.review,
+      (context, request) => DeliverableApprovalPage(request: request),
+    );
 
 final _currentDeviceName = switch (defaultTargetPlatform) {
   TargetPlatform.iOS => 'This iPhone',

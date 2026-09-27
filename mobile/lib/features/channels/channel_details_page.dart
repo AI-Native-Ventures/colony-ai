@@ -267,7 +267,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
         bottomDividerOpacity: 1,
         horizontalInset: Grid.xs - Grid.half,
         titleContentHeight: MobileLayoutTokens.appBarHeight,
-        titleStyle: context.mobileTypography.identityName.copyWith(
+        titleStyle: context.mobileTypography.companyHubTitle.copyWith(
           color: context.mobileTokens.ink,
         ),
         title: Column(
@@ -279,7 +279,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
               key: const ValueKey('channel-details-collapsed-title'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: context.mobileTypography.identityName.copyWith(
+              style: context.mobileTypography.companyHubTitle.copyWith(
                 color: context.mobileTokens.ink,
               ),
             ),

@@ -53,7 +53,7 @@ import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
-import 'package:buzz/features/profile/presence_cache_provider.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/identity/identity_components.dart';
@@ -733,6 +733,38 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
+    testWidgets('channel info uses the shared title and dark wash tokens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: _testChannel,
+          brightness: Brightness.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('channel-info-action')));
+      await tester.pumpAndSettle();
+
+      final titleFinder = find.byKey(const ValueKey('channel-details-name'));
+      final title = tester.widget<Text>(titleFinder);
+      final context = tester.element(titleFinder);
+      expect(
+        title.style,
+        context.mobileTypography.companyHubTitle.copyWith(
+          color: context.mobileTokens.ink,
+        ),
+      );
+      final hero = tester.widget<Container>(
+        find.byKey(const ValueKey('channel-details-hero')),
+      );
+      expect(
+        (hero.decoration! as BoxDecoration).gradient,
+        context.appColors.companyWashGradient,
+      );
+    });
+
     testWidgets('captures v5 conversation routes at both sizes and themes', (
       tester,
     ) async {

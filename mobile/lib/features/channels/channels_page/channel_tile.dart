@@ -149,7 +149,7 @@ class _ChannelTile extends ConsumerWidget {
                     ),
                     decoration: BoxDecoration(
                       color: context.appColors.plum,
-                      borderRadius: BorderRadius.circular(Radii.tapTarget),
+                      borderRadius: BorderRadius.circular(Radii.xs),
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -226,6 +226,11 @@ class _ConversationAvatar extends ConsumerWidget {
         1 => appColors.sageAvatarGradient,
         _ => appColors.agentAvatarGradient,
       };
+      final channelForeground = switch (channelTone % 3) {
+        0 => appColors.identityPersonForeground,
+        1 => appColors.identitySageForeground,
+        _ => appColors.identityAgentForeground,
+      };
       return DecoratedBox(
         key: ValueKey('conversation-avatar-${channel.id}'),
         decoration: BoxDecoration(
@@ -239,12 +244,12 @@ class _ConversationAvatar extends ConsumerWidget {
                 ? Icon(
                     LucideIcons.fileText,
                     size: Grid.sm,
-                    color: appColors.plum,
+                    color: channelForeground,
                   )
                 : Text(
                     '#',
                     style: context.mobileTypography.conversation.copyWith(
-                      color: context.appColors.plum,
+                      color: channelForeground,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -293,6 +298,16 @@ class _ConversationAvatar extends ConsumerWidget {
     if (otherPubkey != null && profile == null) {
       ref.read(userCacheProvider.notifier).preload([otherPubkey]);
     }
+    if (otherPubkey != null) {
+      ref.read(presenceCacheProvider.notifier).track([otherPubkey]);
+    }
+    final isOnline =
+        otherPubkey != null &&
+        ref.watch(
+          presenceCacheProvider.select(
+            (presence) => presence[otherPubkey] == 'online',
+          ),
+        );
     final fallbackInitial =
         profile?.initials ??
         dmAvatarInitial(channel, currentPubkey: currentPubkey);
@@ -303,6 +318,7 @@ class _ConversationAvatar extends ConsumerWidget {
       kind: isAgent ? IdentityKind.agent : IdentityKind.person,
       imageUrl: profile?.avatarUrl,
       size: size,
+      isOnline: isOnline,
       semanticLabel: resolveDmChannelDisplayLabel(
         channel,
         currentPubkey: currentPubkey,
