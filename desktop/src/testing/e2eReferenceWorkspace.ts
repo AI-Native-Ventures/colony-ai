@@ -396,15 +396,17 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
   const sortKey = relayUrl
     ? `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
     : `buzz-channel-sort.v1:${selfPubkey}`;
-  storage.setItem(
-    sortKey,
-    JSON.stringify({
-      version: 1,
-      groups: {
-        starred: "recent",
-        channels: "recent",
-        "section:reference-client-work": "recent",
-      },
-    }),
-  );
+  const sortPreferences = JSON.stringify({
+    version: 1,
+    groups: {
+      starred: "recent",
+      channels: "recent",
+      "section:reference-client-work": "recent",
+    },
+  });
+  storage.setItem(sortKey, sortPreferences);
+  if (!relayUrl) {
+    const defaultRelaySortKey = `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl("ws://localhost:3000"))}`;
+    storage.setItem(defaultRelaySortKey, sortPreferences);
+  }
 }

@@ -408,6 +408,16 @@ test.describe("visual comparison captures", () => {
           await expect(
             appPage.getByTestId("channel-unread-dot-Sales"),
           ).toBeVisible();
+          const clientChannelTops = await Promise.all(
+            ["The Olive House", "Cedar Café", "Northline Interiors"].map(
+              (name) =>
+                appPage
+                  .getByTestId(`channel-${name}`)
+                  .evaluate((element) => element.getBoundingClientRect().top),
+            ),
+          );
+          expect(clientChannelTops[0]).toBeLessThan(clientChannelTops[1]);
+          expect(clientChannelTops[1]).toBeLessThan(clientChannelTops[2]);
           const leratoMessage = appPage.locator(
             '[data-message-id="reference-sales-lerato-0914"]',
           );
@@ -508,6 +518,30 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appReadySelector,
         );
+        await referencePage.mouse.move(width - 1, height - 1);
+        await appPage.mouse.move(width - 1, height - 1);
+        await referencePage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        await appPage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "channel/sales"
+        ) {
+          await expect(
+            appPage.getByTestId(
+              "section-actions-reference-client-work-quick-create",
+            ),
+          ).toHaveCSS("opacity", "0");
+        }
+        await waitForAnimations(referencePage);
+        await waitForAnimations(appPage);
         const referenceGeometry = await inspectPageGeometry(
           referencePage,
           width,
