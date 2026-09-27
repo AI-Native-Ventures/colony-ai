@@ -1039,8 +1039,6 @@
     [data-testid="forum-list-section-label"],
     [data-testid="dm-list-section-label"]
   ) {
-  height: 2.025rem;
-  min-height: 2.025rem;
   margin-top: 0.1875rem;
   color: var(--colony-sidebar-muted-foreground);
 }
@@ -1152,6 +1150,18 @@
   [data-sidebar="group-label"] {
   height: 1.5625rem;
   min-height: 1.5625rem;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  .sidebar-navigation-group-content
+  :is(
+    [data-testid="stream-list-section-label"],
+    [data-testid="forum-list-section-label"],
+    [data-testid="dm-list-section-label"]
+  ) {
+  height: 2.025rem;
+  min-height: 2.025rem;
 }
 
 :root:has([data-colony-full-app-shell="true"])
