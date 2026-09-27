@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/identity/identity_components.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/modal_presentation.dart';
@@ -12,6 +13,7 @@ import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/utils/string_utils.dart';
 import '../../shared/profile/user_profile.dart';
 import 'forum_models.dart';
+import 'forum_post_content.dart';
 import 'forum_presentation.dart';
 
 /// Card displaying a forum post preview in the posts list.
@@ -87,27 +89,18 @@ class ForumPostCard extends HookConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final isAgent =
+        profile?.isAgent == true || agentMentionPubkeys.contains(pk);
     final summary = post.threadSummary;
-    final contentParts = _splitForumPostContent(post.content);
-    final latestParticipant = summary?.participants.firstOrNull?.toLowerCase();
-    final latestProfile = latestParticipant == null
-        ? null
-        : ref.watch(
-            userCacheProvider.select((cache) => cache[latestParticipant]),
-          );
-    final footerAuthor = latestProfile?.label ?? displayName;
-    final footerTimestamp = summary?.lastReplyAt ?? post.createdAt;
-    final footerTime = _forumDayLabel(footerTimestamp);
+    final contentParts = parseForumPostContent(post.content);
     final contentSpec = ForumMessageContentSpec(
       content: contentParts.body,
       mentionNames: mentionNames,
       agentMentionPubkeys: agentMentionPubkeys,
       tags: post.tags,
       maxLines: 3,
-      baseStyle: messageBodyTextStyle.copyWith(
+      baseStyle: context.mobileTypography.metadata.copyWith(
         color: context.mobileTokens.muted,
-        fontSize: 12,
-        height: 1.5,
       ),
       onMentionTap: presentation == null
           ? null
@@ -125,41 +118,71 @@ class ForumPostCard extends HookConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          padding: const EdgeInsets.all(Grid.xs),
           decoration: BoxDecoration(
             color: context.mobileTokens.paper,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(Radii.companyCard),
             border: Border.all(color: context.mobileTokens.line),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'TEAM NOTE',
-                style: context.textTheme.labelSmall?.copyWith(
-                  color: context.mobileTokens.muted,
-                  fontSize: 10,
-                  letterSpacing: 0.35,
-                ),
+              Row(
+                children: [
+                  IdentityAvatar(
+                    initials:
+                        profile?.initials ??
+                        (post.pubkey.isNotEmpty
+                            ? post.pubkey[0].toUpperCase()
+                            : '?'),
+                    kind:
+                        profile?.isAgent == true ||
+                            agentMentionPubkeys.contains(pk)
+                        ? IdentityKind.agent
+                        : IdentityKind.person,
+                    imageUrl: profile?.avatarUrl,
+                    size: Grid.xs + Grid.twelve,
+                    excludeSemantics: true,
+                  ),
+                  const SizedBox(width: Grid.xxs),
+                  Expanded(
+                    child: Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.mobileTypography.identityName.copyWith(
+                        color: context.mobileTokens.ink,
+                      ),
+                    ),
+                  ),
+                  if (isAgent) ...[
+                    const SizedBox(width: Grid.half),
+                    const IdentityAgentBadge(),
+                  ],
+                  Text(
+                    formatRelativeTime(post.createdAt),
+                    style: context.mobileTypography.identityStatus.copyWith(
+                      color: context.mobileTokens.muted,
+                    ),
+                  ),
+                ],
               ),
               if (contentParts.title.isNotEmpty) ...[
-                const SizedBox(height: 7),
+                const SizedBox(height: Grid.xxs),
                 Text(
                   contentParts.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: context.textTheme.titleSmall?.copyWith(
+                  style: context.mobileTypography.conversation.copyWith(
                     color: context.mobileTokens.ink,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.4,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
               if (contentParts.body.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: Grid.half),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 62),
+                  constraints: const BoxConstraints(maxHeight: Grid.xxl),
                   child: IgnorePointer(
                     child:
                         presentation?.messageContentBuilder(
@@ -176,18 +199,64 @@ class ForumPostCard extends HookConsumerWidget {
                 ),
               ],
               const SizedBox(height: Grid.xxs),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'} · $footerAuthor · $footerTime',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textTheme.labelSmall?.copyWith(
-                    color: context.mobileTokens.action,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final replySummary = Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.mobileTypography.metadata.copyWith(
+                            color: context.mobileTokens.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                  final openNote = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Open note',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.mobileTypography.identityName.copyWith(
+                            color: context.appColors.plum,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Grid.half),
+                      Icon(
+                        LucideIcons.arrowUpRight,
+                        size: Grid.xs,
+                        color: context.appColors.plum,
+                      ),
+                    ],
+                  );
+                  if (constraints.maxWidth < Grid.xxl * 4) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        replySummary,
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: openNote,
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: replySummary),
+                      const SizedBox(width: Grid.xs),
+                      openNote,
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -273,34 +342,6 @@ class ForumPostCard extends HookConsumerWidget {
       ),
     );
   }
-}
-
-({String title, String body}) _splitForumPostContent(String content) {
-  final normalized = content.trim();
-  final firstLineBreak = normalized.indexOf('\n');
-  if (firstLineBreak < 0) return (title: '', body: normalized);
-  return (
-    title: normalized.substring(0, firstLineBreak).trim(),
-    body: normalized.substring(firstLineBreak + 1).trim(),
-  );
-}
-
-String _forumDayLabel(int timestamp) {
-  final date = DateTime.fromMillisecondsSinceEpoch(
-    timestamp * 1000,
-    isUtc: true,
-  ).toLocal();
-  final now = DateTime.now();
-  if (date.year == now.year && date.month == now.month && date.day == now.day) {
-    return 'Today';
-  }
-  final yesterday = now.subtract(const Duration(days: 1));
-  if (date.year == yesterday.year &&
-      date.month == yesterday.month &&
-      date.day == yesterday.day) {
-    return 'Yesterday';
-  }
-  return '${date.month}/${date.day}';
 }
 
 Map<String, String> _buildMentionNames(

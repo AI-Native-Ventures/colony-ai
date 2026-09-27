@@ -14,6 +14,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/auth/auth.dart';
 import '../../shared/community/community_icon_provider.dart';
+import '../../shared/identity/identity_components.dart';
 import '../../shared/navigation/mobile_route.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
@@ -65,7 +66,7 @@ part 'channels_page/quick_actions_launcher.dart';
 
 enum _QuickAction { createChannel, newDm, browseChannels }
 
-enum _ChatFilter { all, unread, direct }
+enum _ChatFilter { all, unread, channels, forums, direct }
 
 final _channelQuickActionsOpenProvider =
     NotifierProvider<_ChannelQuickActionsOpen, bool>(
@@ -81,39 +82,11 @@ class _ChannelQuickActionsOpen extends Notifier<bool> {
   void close() => state = false;
 }
 
-const _r17ChatInk = Color(0xFF292632);
-const _r17ChatMuted = Color(0xFF8B8590);
-const _r17ChatLine = Color(0xFFEEEBEE);
-const _r17ChatSoft = Color(0xFFF6F4F6);
-const _r17ChatBlue = Color(0xFF345C99);
-const _r17UnreadBadgeBlue = Color(0xFF486AAB);
-const _r17ChatDarkPaper = Color(0xFF25222C);
-const _r17ChatDarkInk = Color(0xFFEEE8F0);
-const _r17ChatDarkMuted = Color(0xFFAAA1B1);
-const _r17ChatDarkLine = Color(0xFF3A3342);
-const _r17ChatDarkSoft = Color(0xFF312B38);
-const _r17ChatDarkBlue = Color(0xFFA1BCE9);
+Color _chatInk(BuildContext context) => context.mobileTokens.ink;
 
-bool _isChatDark(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark;
+Color _chatMuted(BuildContext context) => context.mobileTokens.muted;
 
-Color _chatInk(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkInk : _r17ChatInk;
-
-Color _chatMuted(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkMuted : _r17ChatMuted;
-
-Color _chatLine(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkLine : _r17ChatLine;
-
-Color _chatSoft(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkSoft : _r17ChatSoft;
-
-Color _chatBlue(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkBlue : _r17ChatBlue;
-
-Color _chatPaper(BuildContext context) =>
-    _isChatDark(context) ? _r17ChatDarkPaper : const Color(0xFFFFFEFD);
+Color _chatPaper(BuildContext context) => context.mobileTokens.canvas;
 
 String _chatInitials(String? displayName, {String fallback = '?'}) {
   final words = (displayName ?? '')
@@ -243,20 +216,17 @@ class ChannelsPage extends HookConsumerWidget {
         .watch(profileProvider)
         .whenData((value) => value?.pubkey)
         .value;
-    final headerTitleStyle = context.textTheme.titleSmall?.copyWith(
-      fontWeight: FontWeight.w700,
+    final headerTitleStyle = context.mobileTypography.companyHubTitle.copyWith(
       color: _chatInk(context),
     );
-    final headerSubtitleStyle = context.textTheme.bodySmall?.copyWith(
-      color: const Color(0xFF8B8590),
-      fontSize: 11,
-    );
+    final headerSubtitleStyle = context.mobileTypography.companyHubSubtitle
+        .copyWith(color: _chatMuted(context));
     final textScaler = MediaQuery.textScalerOf(context);
     final communityTitleHeight =
-        textScaler.scale(headerTitleStyle?.fontSize ?? 14) *
-            (headerTitleStyle?.height ?? 1.2) +
-        textScaler.scale(headerSubtitleStyle?.fontSize ?? 11) *
-            (headerSubtitleStyle?.height ?? 1.2);
+        textScaler.scale(headerTitleStyle.fontSize ?? 14) *
+            (headerTitleStyle.height ?? 1.2) +
+        textScaler.scale(headerSubtitleStyle.fontSize ?? 11) *
+            (headerSubtitleStyle.height ?? 1.2);
     final topSectionHeight = frostedAppBarHeight(
       context,
       titleStyle: headerTitleStyle,
@@ -312,8 +282,12 @@ class ChannelsPage extends HookConsumerWidget {
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              ChannelDetailPage(channel: channel, routeRegistry: routeRegistry),
+          builder: (_) => ChannelDetailPage(
+            channel: channel,
+            routeRegistry: routeRegistry,
+            openQuickActions: () =>
+                ChannelQuickActionsLauncher.openFromHome(ref),
+          ),
         ),
       );
     }
@@ -384,18 +358,43 @@ class ChannelsPage extends HookConsumerWidget {
       backgroundColor: _chatPaper(context),
       appBar: FrostedAppBar(
         horizontalInset: _kTopSectionInset,
+        gradient: context.appColors.companyWashGradient,
         frosted: false,
         showBottomDivider: true,
-        leading: const _CommunityIndicator(),
+        leading: _BusinessSwitchButton(
+          key: const ValueKey('conversation-community-switcher'),
+          onTap: openCommunitySwitcher,
+          onLongPress: openSettings,
+        ),
         centerTitle: false,
         titleStyle: headerTitleStyle,
         titleContentHeight: communityTitleHeight,
-        title: _CommunityHeaderTitle(style: headerTitleStyle),
+        title: Padding(
+          padding: const EdgeInsets.only(left: Grid.xxs),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Conversations', style: headerTitleStyle),
+              Text(
+                'Where your company comes together',
+                style: headerSubtitleStyle,
+              ),
+            ],
+          ),
+        ),
         actions: [
-          _BusinessSwitchButton(
-            key: const ValueKey('switch-business-button'),
-            onTap: openCommunitySwitcher,
-            onLongPress: openSettings,
+          IconButton(
+            key: const ValueKey('channels-quick-actions'),
+            tooltip: 'Quick actions',
+            onPressed: openQuickActions,
+            style: IconButton.styleFrom(
+              foregroundColor: context.appColors.plum,
+              backgroundColor: context.mobileTokens.paper,
+              side: BorderSide(color: context.mobileTokens.line),
+              shape: const CircleBorder(),
+            ),
+            icon: const Icon(LucideIcons.plus),
           ),
         ],
         bottomHeight: _kTopSectionBottomPadding,

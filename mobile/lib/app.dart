@@ -528,6 +528,7 @@ ForumPresentationFactories _forumPresentation() => ForumPresentationFactories(
   ),
   openProfile: showUserProfileSheet,
   currentUserName: (ref) => ref.watch(profileProvider).value?.displayName,
+  openQuickActions: (ref) => ChannelQuickActionsLauncher.openFromHome(ref),
 );
 
 /// Builds the production page for a team update note route.

@@ -8,7 +8,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { decode, npubEncode, nsecEncode } from "nostr-tools/nip19";
-import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
+import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools/pure";
 import { parse as yamlParse } from "yaml";
 import {
   mergeMockCustomHarnesses,
@@ -106,6 +106,8 @@ import {
   KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_GOAL_ACTION,
+  KIND_GOAL_HEAD,
   KIND_GIT_ISSUE,
   KIND_GIT_PATCH,
   KIND_GIT_PR_UPDATE,
@@ -642,6 +644,10 @@ type E2eConfig = {
     // equals this is treated as a moderation DM (composer disabled). Absent →
     // fail open (no mod-DM detection), matching the Rust command's contract.
     relaySelf?: string | null;
+    /** Relay-signed company goal events for goals UI E2E coverage. */
+    goalEvents?: RelayEvent[];
+    /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+    goalRelayPrivateKey?: string;
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
@@ -1567,6 +1573,8 @@ declare global {
     }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
+    /** Goal action kinds rejected once to exercise goal retry states. */
+    __BUZZ_E2E_REJECT_GOAL_ACTIONS__?: string[];
     /** Makes the mock relay reject project announcements as an unknown kind. */
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
@@ -5026,17 +5034,24 @@ function getRelayCommunityUrl(config: E2eConfig | undefined): string | null {
   }
 }
 
+let appliedRelayWsUrl: string | null = null;
+
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
-  return (
-    getRelayCommunityUrl(config)?.replace(/^ws/, "http") ??
-    config?.relayHttpUrl ??
-    DEFAULT_RELAY_HTTP_URL
-  );
+  const activeRelayWsUrl = appliedRelayWsUrl ?? getRelayCommunityUrl(config);
+  if (activeRelayWsUrl) {
+    return activeRelayWsUrl
+      .replace(/^wss:/i, "https:")
+      .replace(/^ws:/i, "http:");
+  }
+  return config?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
 }
 
 function getRelayWsUrl(config: E2eConfig | undefined): string {
   return (
-    getRelayCommunityUrl(config) ?? config?.relayWsUrl ?? DEFAULT_RELAY_WS_URL
+    appliedRelayWsUrl ??
+    getRelayCommunityUrl(config) ??
+    config?.relayWsUrl ??
+    DEFAULT_RELAY_WS_URL
   );
 }
 
@@ -7692,6 +7707,7 @@ function mulberry32(seed: number) {
 }
 
 let mockProjectEventStore: RelayEvent[] | null = null;
+let mockGoalEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
 let mockFactoryRuns: FactoryRun[] = [];
 let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
@@ -7967,8 +7983,257 @@ function getMockProjectEventStore(): RelayEvent[] {
   return mockProjectEventStore;
 }
 
+function getMockGoalEventStore(): RelayEvent[] {
+  if (!mockGoalEventStore) {
+    const persisted = window.localStorage.getItem("buzz-e2e-goal-events-v1");
+    if (persisted) {
+      try {
+        const value: unknown = JSON.parse(persisted);
+        mockGoalEventStore = Array.isArray(value)
+          ? (value as RelayEvent[])
+          : structuredClone(getConfig()?.mock?.goalEvents ?? []);
+      } catch {
+        mockGoalEventStore = structuredClone(
+          getConfig()?.mock?.goalEvents ?? [],
+        );
+      }
+    } else {
+      mockGoalEventStore = structuredClone(getConfig()?.mock?.goalEvents ?? []);
+    }
+  }
+  return mockGoalEventStore;
+}
+
+function persistMockGoalEventStore(): void {
+  window.localStorage.setItem(
+    "buzz-e2e-goal-events-v1",
+    JSON.stringify(getMockGoalEventStore()),
+  );
+}
+
+function mockGoalHeadByDTag(dTag: string): RelayEvent | undefined {
+  return getMockGoalEventStore().find(
+    (event) =>
+      event.kind === KIND_GOAL_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function brokerMockGoalAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event)) return "invalid: goal action signature is invalid.";
+  if (event.tags.length !== 1 || event.tags[0]?.[0] !== "d") {
+    return "invalid: company goal action must have one d tag.";
+  }
+  const dTag = event.tags[0][1];
+  const coordinate = /^company:goal:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (!coordinate) return "invalid: company goal d tag is malformed.";
+
+  let action: {
+    schemaVersion?: number;
+    goalId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    goal?: Record<string, unknown>;
+    progress?: Record<string, unknown>;
+    status?: string;
+    reason?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return "invalid: goal action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.goalId?.toLowerCase() !== coordinate[1].toLowerCase()
+  ) {
+    return "invalid: goal action does not match its d tag.";
+  }
+  const rejectedActionIndex =
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.indexOf(action.action ?? "") ?? -1;
+  if (rejectedActionIndex >= 0) {
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.splice(rejectedActionIndex, 1);
+    return "conflict: mock goal action rejected.";
+  }
+
+  const existingEvent = mockGoalHeadByDTag(dTag);
+  let existing: Record<string, unknown> | null = null;
+  if (existingEvent) {
+    try {
+      existing = JSON.parse(existingEvent.content);
+    } catch {
+      return "error: stored mock goal head is invalid.";
+    }
+  }
+  if (action.action === "create") {
+    if (existingEvent) return "conflict: goal already exists.";
+    if (!action.goal) return "invalid: goal fields are required.";
+  } else {
+    if (!existingEvent || !existing) return "conflict: goal does not exist.";
+    if (action.expectedHeadEventId !== existingEvent.id) {
+      return `conflict: goal changed; current head is ${existingEvent.id}`;
+    }
+  }
+
+  const currentGoal = existing?.goal as Record<string, unknown> | undefined;
+  const currentStatus =
+    typeof existing?.status === "string" ? existing.status : "active";
+  let nextGoal = currentGoal;
+  let nextProgress = existing?.progress;
+  let nextStatus = currentStatus;
+  switch (action.action) {
+    case "create":
+    case "update":
+      nextGoal = action.goal;
+      break;
+    case "progress":
+      if (!action.progress || typeof action.progress.evidence !== "string") {
+        return "invalid: progress evidence is required.";
+      }
+      if (
+        action.status !== undefined &&
+        !["active", "off_pace", "achieved"].includes(action.status)
+      ) {
+        return "invalid: progress status is not supported.";
+      }
+      nextProgress = {
+        ...action.progress,
+        recordedByPubkey: event.pubkey,
+        recordedAt: new Date().toISOString(),
+      };
+      if (action.status) nextStatus = action.status;
+      break;
+    case "set_status":
+      if (!action.status || !action.reason) {
+        return "invalid: status and reason are required.";
+      }
+      nextStatus = action.status;
+      break;
+    case "archive":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      nextStatus = "archived";
+      break;
+    case "restore":
+      nextStatus = "active";
+      break;
+    case "delete":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      if (
+        getMockGoalEventStore().some((candidate) => {
+          if (candidate.kind !== KIND_GOAL_HEAD) return false;
+          try {
+            const candidateContent = JSON.parse(candidate.content) as {
+              status?: string;
+              goal?: { parentGoalId?: string };
+            };
+            return (
+              candidateContent.status !== "deleted" &&
+              candidateContent.goal?.parentGoalId === action.goalId
+            );
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return "conflict: goal has non-deleted sub-goals.";
+      }
+      nextGoal = undefined;
+      nextProgress = undefined;
+      nextStatus = "deleted";
+      break;
+    default:
+      return "invalid: unsupported goal action.";
+  }
+
+  const privateKey = getConfig()?.mock?.goalRelayPrivateKey;
+  if (!privateKey)
+    return "error: mock goal relay signing key is not configured.";
+  const relayPubkey = getPublicKey(hexToBytes(privateKey));
+  const configuredRelayPubkey = getConfig()?.mock?.relaySelf;
+  if (
+    configuredRelayPubkey &&
+    configuredRelayPubkey.toLowerCase() !== relayPubkey.toLowerCase()
+  ) {
+    return "error: mock goal relay key does not match relay self.";
+  }
+
+  const content = {
+    schemaVersion: 1,
+    goalId: action.goalId,
+    status: nextStatus,
+    title:
+      typeof nextGoal?.title === "string"
+        ? nextGoal.title
+        : typeof existing?.title === "string"
+          ? existing.title
+          : "",
+    ...(nextGoal ? { goal: nextGoal } : {}),
+    ...(nextProgress ? { progress: nextProgress } : {}),
+    sourceActionEventId: event.id,
+  };
+  const head = finalizeEvent(
+    {
+      kind: KIND_GOAL_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (existingEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    hexToBytes(privateKey),
+  );
+  const store = getMockGoalEventStore();
+  store.push(event);
+  if (existingEvent) {
+    const index = store.findIndex(
+      (candidate) => candidate.id === existingEvent.id,
+    );
+    if (index >= 0) store.splice(index, 1);
+  }
+  store.push(head);
+  persistMockGoalEventStore();
+  return null;
+}
+
+function filterMockGoalEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids ? new Set(filter.ids) : null;
+  return getMockGoalEventStore()
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.has(event.id)) return false;
+      if (
+        filter["#d"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        right.created_at - left.created_at || left.id.localeCompare(right.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 /** Project-scoped publishes (PR/issue comments, NIP-34 status events) carry
- * a repo-address `a` tag instead of a channel `h` tag — store them with the
+ * a repo-address `a` tag instead of a channel `h` tag. Store them with the
  * seeded project events so refetches see them. */
 function isMockProjectScopedEvent(event: RelayEvent): boolean {
   const hasRepoAddressTag = event.tags.some(
@@ -12587,6 +12852,18 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (
+      filter.kinds?.some(
+        (kind) => kind === KIND_GOAL_ACTION || kind === KIND_GOAL_HEAD,
+      )
+    ) {
+      for (const event of filterMockGoalEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_PERSONA)) {
       const authors = filter.authors?.map((author) => author.toLowerCase());
       const sourceIds = filter["#d"];
@@ -12895,6 +13172,24 @@ function sendToMockSocket(args: {
 
       recordMockUserStatus(event);
       emitMockGlobalEvent(event);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (event.kind === KIND_GOAL_ACTION) {
+      const error = brokerMockGoalAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const goalEvents = getMockGoalEventStore();
+      const actionEvent = goalEvents.find(
+        (candidate) => candidate.id === event.id,
+      );
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
+      if (actionEvent) emitMockGlobalEvent(actionEvent);
+      if (headEvent) emitMockGlobalEvent(headEvent);
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }
@@ -14702,9 +14997,17 @@ export function maybeInstallE2eTauriMocks() {
       case "apply_workspace": {
         const applyDelayMs = activeConfig?.mock?.applyCommunityDelayMs ?? 0;
         if (applyDelayMs > 0) {
-          return new Promise((resolve) =>
+          await new Promise((resolve) =>
             window.setTimeout(resolve, applyDelayMs),
           );
+        }
+        const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        if (
+          isRelayMode(activeConfig) &&
+          typeof relayUrl === "string" &&
+          relayUrl.trim().length > 0
+        ) {
+          appliedRelayWsUrl = relayUrl;
         }
         return;
       }

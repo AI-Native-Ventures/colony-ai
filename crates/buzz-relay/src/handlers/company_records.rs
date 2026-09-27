@@ -1,37 +1,50 @@
-//! Nostr-first broker for company record asks.
+//! Nostr-first broker for community-wide company goals.
 //!
-//! Ask commands are scoped to a channel thread and produce relay-signed kind
-//! 30643 heads. Goal commands remain owned by the parallel goals lane.
+//! Goal commands and relay-signed heads have a company d-tag and no channel
+//! coordinate. Goal-tree changes serialize under one community-scoped lock.
 
 use std::sync::Arc;
 
 use chrono::{SecondsFormat, Utc};
-use nostr::{Event, EventBuilder, Kind, Tag};
+use nostr::Event;
 use uuid::Uuid;
 
 use buzz_core::company_records::{
-    ask_resolution_denied_reason, parse_company_command, validate_ask_action, validate_ask_d_tag,
-    validate_ask_response, AskAction, AskActionKind, AskCancellation, AskHead, AskRecord,
-    AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, CommunityRole,
-    CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
+    goal_d_tag, goal_parent_creates_cycle, parse_company_command, validate_goal_action,
+    validate_goal_d_tag, validate_goal_progress, CompanyCommand, GoalAction, GoalActionKind,
+    GoalHead, GoalRecord, GoalStatus, RecordedGoalProgress, COMPANY_RECORD_SCHEMA_VERSION,
+    MAX_GOAL_DEPTH,
 };
-use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE};
+use buzz_core::kind::{KIND_GOAL_ACTION, KIND_GOAL_HEAD};
 use buzz_core::tenant::TenantContext;
 use buzz_core::StoredEvent;
+use buzz_datastore_tracing::datastore_span;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
 use buzz_db::EventQuery;
 
-use super::ingest::{IngestAuth, IngestError, IngestResult, ThreadMetadataOwned};
+use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
-#[cfg(test)]
-type AskPersistTestHook = std::sync::Mutex<Option<(String, Arc<tokio::sync::Barrier>)>>;
+const MAX_CURRENT_GOAL_HEADS: i64 = 10_000;
 
-#[cfg(test)]
-static ASK_PERSIST_TEST_HOOK: std::sync::OnceLock<AskPersistTestHook> = std::sync::OnceLock::new();
-
-/// Handles the ask commands in kinds 47032 and 47033.
+/// Dispatches company ask and goal commands to their record handlers.
 pub async fn handle(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: Event,
+    auth: IngestAuth,
+) -> Result<IngestResult, IngestError> {
+    match u32::from(event.kind.as_u16()) {
+        buzz_core::kind::KIND_ASK_ACTION | buzz_core::kind::KIND_ASK_RESPONSE => {
+            super::company_asks::handle(tenant, state, event, auth).await
+        }
+        _ => handle_goal_action(tenant, state, event, auth).await,
+    }
+}
+
+/// Handles a member-signed company goal action (kind 47031).
+#[datastore_span(name = "company_goal_action", system = "postgresql")]
+async fn handle_goal_action(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,
@@ -40,314 +53,186 @@ pub async fn handle(
     let kind = u32::from(event.kind.as_u16());
     let command = parse_company_command(kind, &event.content)
         .map_err(|error| invalid(format!("company command: {error}")))?;
-
-    match command {
-        CompanyCommand::AskAction(action) => {
-            handle_ask_action(tenant, state, event, auth, action).await
-        }
-        CompanyCommand::AskResponse(response) => {
-            handle_ask_response(tenant, state, event, auth, response).await
-        }
-        CompanyCommand::GoalAction(_) => Err(IngestError::Rejected(
-            "restricted: goal commands are not enabled on this relay yet".into(),
-        )),
-    }
-}
-
-async fn handle_ask_action(
-    tenant: &TenantContext,
-    state: &Arc<AppState>,
-    event: Event,
-    auth: IngestAuth,
-    action: AskAction,
-) -> Result<IngestResult, IngestError> {
-    let (channel_id, d_tag) = command_coordinates(&event)?;
-    validate_ask_d_tag(&d_tag, channel_id, action.ask_id)
-        .map_err(|error| invalid(format!("ask d-tag: {error}")))?;
-    require_token_channel_scope(&auth, channel_id)?;
-    load_channel(state, tenant, channel_id).await?;
-
-    if let Some(replay) = replay_existing_command(state, tenant, &event, channel_id).await? {
-        return Ok(replay);
-    }
-
-    let actor = actor_facts(tenant, state, &auth, channel_id).await?;
-    if !actor.is_channel_member {
-        return Err(forbidden("only channel members can change an ask"));
-    }
-    match action.action {
-        AskActionKind::Create => {
-            let ask = action
-                .ask
-                .as_ref()
-                .ok_or_else(|| invalid("create needs the ask"))?;
-            if !actor.is_channel_member {
-                return Err(forbidden("only channel members can create an ask"));
-            }
-            let addressee_is_agent = match ask.addressee_pubkey.as_deref() {
-                Some(pubkey) => is_managed_agent(state, tenant, pubkey).await?,
-                None => false,
-            };
-            validate_ask_action(&action, addressee_is_agent)
-                .map_err(|error| invalid(format!("ask action: {error}")))?;
-
-            let thread_meta = super::ingest::resolve_nip10_thread_meta(
-                tenant.community(),
-                &event,
-                channel_id,
-                state,
-            )
-            .await
-            .map_err(|message| invalid(format!("ask thread: {message}")))?
-            .ok_or_else(|| invalid("ask create must reference an existing thread"))?;
-            validate_thread_root(ask, &thread_meta)?;
-
-            let current = current_ask_head(state, tenant, channel_id, &d_tag).await?;
-            if let Some(current) = current {
-                return Err(conflict(format!(
-                    "ask already exists; current head is {}",
-                    current.event.id
-                )));
-            }
-
-            let now = now_rfc3339();
-            let head = AskHead {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id: action.ask_id,
-                status: AskStatus::Open,
-                asker_pubkey: auth.pubkey().to_hex(),
-                created_at: now,
-                ask: ask.clone(),
-                resolution: None,
-                cancellation: None,
-                source_action_event_id: event.id.to_hex(),
-            };
-            let head_event = relay_ask_head_event(&head, channel_id, &d_tag, None, state)?;
-
-            persist_ask_command(
-                tenant,
-                state,
-                AskCommandWrite {
-                    command: event,
-                    channel_id,
-                    d_tag: &d_tag,
-                    head: head_event,
-                    previous_head: None,
-                    thread_meta: Some(thread_meta),
-                },
-            )
-            .await
-        }
-        AskActionKind::Cancel => {
-            validate_ask_action(&action, false)
-                .map_err(|error| invalid(format!("ask action: {error}")))?;
-            let current = current_ask_head(state, tenant, channel_id, &d_tag)
-                .await?
-                .ok_or_else(|| conflict("ask does not exist; current head is missing"))?;
-            let mut head = parse_head(&current.event)?;
-            ensure_head_identity(&head, action.ask_id)?;
-            ensure_expected_head(action.expected_head_event_id.as_deref(), &current)?;
-            ensure_open(&head, &current)?;
-
-            let is_asker = head.asker_pubkey == auth.pubkey().to_hex();
-            if !is_asker && !actor.is_community_admin() {
-                return Err(forbidden(
-                    "only the asker or a company owner or admin can cancel this ask",
-                ));
-            }
-
-            head.status = AskStatus::Cancelled;
-            head.cancellation = Some(AskCancellation {
-                cancelled_by_pubkey: auth.pubkey().to_hex(),
-                cancelled_at: now_rfc3339(),
-                reason: action
-                    .reason
-                    .as_ref()
-                    .map_or_else(String::new, Clone::clone),
-            });
-            head.resolution = None;
-            head.source_action_event_id = event.id.to_hex();
-            let head_event =
-                relay_ask_head_event(&head, channel_id, &d_tag, Some(&current), state)?;
-            persist_ask_command(
-                tenant,
-                state,
-                AskCommandWrite {
-                    command: event,
-                    channel_id,
-                    d_tag: &d_tag,
-                    head: head_event,
-                    previous_head: Some(current),
-                    thread_meta: None,
-                },
-            )
-            .await
-        }
-    }
-}
-
-async fn handle_ask_response(
-    tenant: &TenantContext,
-    state: &Arc<AppState>,
-    event: Event,
-    auth: IngestAuth,
-    response: AskResponse,
-) -> Result<IngestResult, IngestError> {
-    let (channel_id, d_tag) = command_coordinates(&event)?;
-    validate_ask_d_tag(&d_tag, channel_id, response.ask_id)
-        .map_err(|error| invalid(format!("ask d-tag: {error}")))?;
-    require_token_channel_scope(&auth, channel_id)?;
-    load_channel(state, tenant, channel_id).await?;
-
-    if let Some(replay) = replay_existing_command(state, tenant, &event, channel_id).await? {
-        return Ok(replay);
-    }
-
-    let actor = actor_facts(tenant, state, &auth, channel_id).await?;
-    if !actor.is_channel_member {
-        return Err(forbidden("only channel members can answer an ask"));
-    }
-
-    let current = current_ask_head(state, tenant, channel_id, &d_tag)
-        .await?
-        .ok_or_else(|| conflict("ask does not exist; current head is missing"))?;
-    let mut head = parse_head(&current.event)?;
-    ensure_head_identity(&head, response.ask_id)?;
-    ensure_expected_head(Some(response.expected_head_event_id.as_str()), &current)?;
-    ensure_open(&head, &current)?;
-    validate_ask_response(&head.ask, &response)
-        .map_err(|error| invalid(format!("ask response: {error}")))?;
-
-    let resolver = AskResolver {
-        pubkey: &actor.pubkey,
-        is_agent: actor.is_agent,
-        community_role: actor.community_role,
-        is_channel_member: actor.is_channel_member,
+    let CompanyCommand::GoalAction(action) = command else {
+        return Err(IngestError::Rejected(
+            "restricted: this company-record action is not enabled on this relay".into(),
+        ));
     };
-    if let Some(reason) = ask_resolution_denied_reason(&head.ask, resolver) {
-        return Err(forbidden(reason));
+
+    validate_goal_action(&action).map_err(|error| invalid(format!("goal action: {error}")))?;
+    let d_tag = goal_command_d_tag(&event, action.goal_id)?;
+
+    if auth.channel_ids().is_some() {
+        return Err(forbidden(
+            "channel-scoped authentication cannot write company goals",
+        ));
     }
 
-    let response_event_id = event.id.to_hex();
-    head.status = AskStatus::Resolved;
-    head.resolution = Some(AskResolution {
-        response: AskResolutionPayload {
-            outcome: response.outcome,
-            reason: response.reason,
-            answer: response.answer,
-            option_id: response.option_id,
-            checked_item_ids: response.checked_item_ids,
-        },
-        resolved_by_pubkey: auth.pubkey().to_hex(),
-        resolved_at: now_rfc3339(),
-        response_event_id,
-    });
-    head.cancellation = None;
-    head.source_action_event_id = event.id.to_hex();
-    let head_event = relay_ask_head_event(&head, channel_id, &d_tag, Some(&current), state)?;
-    persist_ask_command(
-        tenant,
-        state,
-        AskCommandWrite {
-            command: event,
-            channel_id,
-            d_tag: &d_tag,
-            head: head_event,
-            previous_head: Some(current),
-            thread_meta: None,
-        },
-    )
-    .await
-}
-
-struct AskCommandWrite<'a> {
-    command: Event,
-    channel_id: Uuid,
-    d_tag: &'a str,
-    head: Event,
-    previous_head: Option<StoredEvent>,
-    thread_meta: Option<ThreadMetadataOwned>,
-}
-
-async fn persist_ask_command(
-    tenant: &TenantContext,
-    state: &Arc<AppState>,
-    write: AskCommandWrite<'_>,
-) -> Result<IngestResult, IngestError> {
-    let AskCommandWrite {
-        command,
-        channel_id,
-        d_tag,
-        head,
-        previous_head,
-        thread_meta,
-    } = write;
-    before_ask_persist_for_test(d_tag).await;
+    let community_id = tenant.community();
+    let actor_pubkey = auth.pubkey().to_hex();
     let mut tx = state
         .db
         .begin_event_write_transaction()
         .await
         .map_err(internal)?;
     buzz_deletion::store(&state.db)
-        .guard_transaction(&mut tx, tenant.community())
+        .guard_transaction(&mut tx, community_id)
         .await
         .map_err(|error| {
             IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
         })?;
 
-    let expected_head_id = previous_head
-        .as_ref()
-        .map(|stored| stored.event.id.to_bytes().to_vec());
-    let locked_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
-        &mut tx,
-        tenant.community(),
-        KIND_ASK_HEAD,
-        &state.relay_keypair.public_key().to_bytes(),
-        d_tag,
+    let role = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM relay_members WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
     )
+    .bind(community_id.as_uuid())
+    .bind(&actor_pubkey)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?
+    .ok_or_else(|| forbidden("actor is not a member of this community"))?;
+
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("company-goal-tree:{}", community_id.as_uuid()))
+        .execute(&mut *tx)
+        .await
+        .map_err(internal)?;
+
+    let command_id = event.id.to_bytes();
+    let already_stored = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM events WHERE community_id = $1 AND id = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(command_id.as_slice())
+    .fetch_one(&mut *tx)
     .await
     .map_err(internal)?;
-    if locked_head_id.as_deref() != expected_head_id.as_deref() {
-        tx.rollback().await.map_err(internal)?;
-        let current = locked_head_id
-            .as_deref()
-            .map(hex::encode)
-            .unwrap_or_else(|| "missing".to_owned());
-        return Err(conflict(format!(
-            "ask head changed before the command committed; current head is {current}"
-        )));
-    }
-
-    let (stored_command, inserted) = match thread_meta.as_ref() {
-        Some(meta) => buzz_db::event::insert_event_with_thread_metadata_in_transaction(
-            &mut tx,
-            tenant.community(),
-            &command,
-            Some(channel_id),
-            Some(meta.as_params()),
-        )
-        .await
-        .map_err(internal)?,
-        None => buzz_db::event::insert_event_in_transaction(
-            &mut tx,
-            tenant.community(),
-            &command,
-            Some(channel_id),
-        )
-        .await
-        .map_err(internal)?,
-    };
-    if !inserted {
+    if already_stored {
         tx.rollback().await.map_err(internal)?;
         return Ok(IngestResult {
-            event_id: command.id.to_hex(),
+            event_id: event.id.to_hex(),
             accepted: true,
             message: "duplicate: already processed".into(),
         });
     }
 
-    let mut stored_events = vec![(stored_command, command.pubkey.to_hex())];
-    let precondition = expected_head_id.as_deref().map_or(
+    let expected_head = action.expected_head_event_id.as_deref();
+    let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        &mut tx,
+        community_id,
+        KIND_GOAL_HEAD,
+        &state.relay_keypair.public_key().to_bytes(),
+        &d_tag,
+    )
+    .await
+    .map_err(internal)?;
+    match (action.action, expected_head, current_head_id.as_deref()) {
+        (GoalActionKind::Create, None, None) => {}
+        (GoalActionKind::Create, _, Some(_)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("goal already exists"));
+        }
+        (_, Some(expected), Some(actual)) if expected == hex::encode(actual) => {}
+        (_, Some(_), Some(actual)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(format!(
+                "goal changed; current head is {}",
+                hex::encode(actual)
+            )));
+        }
+        (_, _, None) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("goal does not exist"));
+        }
+        _ => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(invalid(
+                "expectedHeadEventId does not match the goal action",
+            ));
+        }
+    }
+
+    let current_stored = current_goal_head(state, community_id, &d_tag).await?;
+    if current_stored
+        .as_ref()
+        .map(|head| head.event.id.to_bytes().to_vec())
+        != current_head_id
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: goal head changed while its transaction lock was held".into(),
+        ));
+    }
+    let current = current_stored.as_ref().map(parse_goal_head).transpose()?;
+    if current
+        .as_ref()
+        .is_some_and(|head| head.goal_id != action.goal_id)
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: stored goal head does not match its d-tag".into(),
+        ));
+    }
+
+    authorize_action(&role, &actor_pubkey, &action, current.as_ref())?;
+
+    if let Some(record) = action.goal.as_ref() {
+        validate_parent_and_cycle(
+            ParentCycleContext {
+                tenant,
+                state,
+                role: &role,
+                actor_pubkey: &actor_pubkey,
+                action_kind: action.action,
+                goal_id: action.goal_id,
+                current: current.as_ref(),
+            },
+            record,
+        )
+        .await?;
+    }
+
+    if action.action == GoalActionKind::Progress {
+        let has_target = current
+            .as_ref()
+            .and_then(|head| head.goal.as_ref())
+            .is_some_and(|goal| goal.target.is_some());
+        let progress = action
+            .progress
+            .as_ref()
+            .ok_or_else(|| invalid("progress payload is required"))?;
+        validate_goal_progress(progress, has_target)
+            .map_err(|error| invalid(format!("goal progress: {error}")))?;
+    }
+
+    if action.action == GoalActionKind::Delete {
+        ensure_no_live_subgoals(tenant, state, action.goal_id).await?;
+    }
+
+    let head = next_goal_head(&event, &action, current.as_ref(), &actor_pubkey)?;
+    let previous_event = current_stored.as_ref();
+    let head_event = super::business_records::relay_global_head_event(
+        KIND_GOAL_HEAD,
+        &d_tag,
+        &head,
+        previous_event,
+        state,
+    )?;
+
+    let (stored_action, inserted) =
+        buzz_db::event::insert_event_in_transaction(&mut tx, community_id, &event, None)
+            .await
+            .map_err(internal)?;
+    if !inserted {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(IngestResult {
+            event_id: event.id.to_hex(),
+            accepted: true,
+            message: "duplicate: already processed".into(),
+        });
+    }
+
+    let precondition = current_head_id.as_deref().map_or(
         ParameterizedReplacePrecondition::CreateOnly,
         ParameterizedReplacePrecondition::ExpectedRevision,
     );
@@ -355,146 +240,358 @@ async fn persist_ask_command(
         .db
         .replace_parameterized_event_in_transaction(
             &mut tx,
-            tenant.community(),
-            &head,
-            d_tag,
-            Some(channel_id),
+            community_id,
+            &head_event,
+            &d_tag,
+            None,
             precondition,
         )
         .await
         .map_err(internal)?;
-    match replaced.status {
-        ParameterizedReplaceStatus::Inserted => {
-            stored_events.push((replaced.event, state.relay_keypair.public_key().to_hex()));
-        }
-        ParameterizedReplaceStatus::Duplicate => {}
-        ParameterizedReplaceStatus::RevisionMismatch
-        | ParameterizedReplaceStatus::RevisionMissing
-        | ParameterizedReplaceStatus::Superseded
-        | ParameterizedReplaceStatus::ReplayOnlyMiss => {
-            tx.rollback().await.map_err(internal)?;
-            return Err(conflict(
-                "ask head changed before the command committed; refresh the current head and retry",
-            ));
-        }
+    if replaced.status != ParameterizedReplaceStatus::Inserted {
+        tx.rollback().await.map_err(internal)?;
+        return Err(conflict("goal changed before the action committed"));
     }
-    tx.commit().await.map_err(internal)?;
 
-    for (stored, actor) in stored_events {
-        super::event::dispatch_persistent_event(
-            tenant,
-            state,
-            &stored,
-            u32::from(stored.event.kind.as_u16()),
-            &actor,
-            None,
-        )
-        .await;
-    }
+    tx.commit().await.map_err(internal)?;
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &stored_action,
+        KIND_GOAL_ACTION,
+        &actor_pubkey,
+        None,
+    )
+    .await;
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &replaced.event,
+        KIND_GOAL_HEAD,
+        &state.relay_keypair.public_key().to_hex(),
+        None,
+    )
+    .await;
 
     Ok(IngestResult {
-        event_id: command.id.to_hex(),
+        event_id: event.id.to_hex(),
         accepted: true,
         message: String::new(),
     })
 }
 
-#[derive(Clone)]
-struct ActorFacts {
-    pubkey: String,
-    is_agent: bool,
-    community_role: Option<CommunityRole>,
-    is_channel_member: bool,
+fn goal_command_d_tag(event: &Event, goal_id: Uuid) -> Result<String, IngestError> {
+    let d_tags = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "d")
+        .collect::<Vec<_>>();
+    let auth_tag_count = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "auth")
+        .count();
+    if d_tags.len() != 1
+        || auth_tag_count > 1
+        || event.tags.iter().any(|tag| {
+            let kind = tag.kind().to_string();
+            kind != "d" && kind != "auth"
+        })
+    {
+        return Err(invalid(
+            "goal commands require one d tag, no h tag, and no unsupported tags",
+        ));
+    }
+    let d_tag = d_tags[0]
+        .content()
+        .ok_or_else(|| invalid("goal command d tag must have a value"))?;
+    validate_goal_d_tag(d_tag, goal_id)
+        .map_err(|error| invalid(format!("goal command d tag: {error}")))?;
+    Ok(d_tag.to_owned())
 }
 
-impl ActorFacts {
-    fn is_community_admin(&self) -> bool {
-        matches!(
-            self.community_role,
-            Some(CommunityRole::Owner | CommunityRole::Admin)
-        )
+fn authorize_action(
+    role: &str,
+    actor_pubkey: &str,
+    action: &GoalAction,
+    current: Option<&GoalHead>,
+) -> Result<(), IngestError> {
+    if action.action == GoalActionKind::Create {
+        if action
+            .goal
+            .as_ref()
+            .is_some_and(|goal| goal.parent_goal_id.is_none())
+            && !is_admin(role)
+        {
+            return Err(forbidden(
+                "only a community owner or admin can create a root goal",
+            ));
+        }
+        return Ok(());
+    }
+
+    let head = current.ok_or_else(|| conflict("goal does not exist"))?;
+    if head.status == GoalStatus::Deleted || head.goal.is_none() {
+        return Err(conflict("deleted goals cannot be changed"));
+    }
+
+    match action.action {
+        GoalActionKind::Update
+        | GoalActionKind::Progress
+        | GoalActionKind::SetStatus
+        | GoalActionKind::Archive => authorize_goal_owner_or_admin(role, actor_pubkey, head),
+        GoalActionKind::Restore | GoalActionKind::Delete => {
+            if is_admin(role) {
+                Ok(())
+            } else {
+                Err(forbidden(
+                    "only a community owner or admin can restore or delete a goal",
+                ))
+            }
+        }
+        GoalActionKind::Create => Ok(()),
     }
 }
 
-async fn actor_facts(
-    tenant: &TenantContext,
-    state: &AppState,
-    auth: &IngestAuth,
-    channel_id: Uuid,
-) -> Result<ActorFacts, IngestError> {
-    let pubkey = auth.pubkey().to_hex();
-    let identity = state
-        .db
-        .get_agent_channel_policy(tenant.community(), &auth.pubkey().to_bytes())
-        .await
-        .map_err(internal)?;
-    let is_agent = identity.is_some_and(|(_, owner_pubkey)| owner_pubkey.is_some());
-    let channel_role = state
-        .db
-        .get_member_role(tenant.community(), channel_id, &auth.pubkey().to_bytes())
-        .await
-        .map_err(internal)?;
-    let community_member = state
-        .db
-        .get_relay_member(tenant.community(), &pubkey)
-        .await
-        .map_err(internal)?;
-    let community_role = community_member
-        .as_ref()
-        .and_then(|member| match member.role.as_str() {
-            "owner" => Some(CommunityRole::Owner),
-            "admin" => Some(CommunityRole::Admin),
-            "member" => Some(CommunityRole::Member),
-            _ => None,
-        });
-
-    Ok(ActorFacts {
-        pubkey,
-        is_agent,
-        community_role,
-        is_channel_member: channel_role.is_some(),
-    })
-}
-
-async fn is_managed_agent(
-    state: &AppState,
-    tenant: &TenantContext,
-    pubkey_hex: &str,
-) -> Result<bool, IngestError> {
-    let pubkey = nostr::PublicKey::from_hex(pubkey_hex)
-        .map_err(|_| invalid("addressee must be a public key"))?;
-    let identity = state
-        .db
-        .get_agent_channel_policy(tenant.community(), &pubkey.to_bytes())
-        .await
-        .map_err(internal)?;
-    Ok(identity.is_some_and(|(_, owner_pubkey)| owner_pubkey.is_some()))
-}
-
-async fn load_channel(
-    state: &AppState,
-    tenant: &TenantContext,
-    channel_id: Uuid,
+fn authorize_goal_owner_or_admin(
+    role: &str,
+    actor_pubkey: &str,
+    head: &GoalHead,
 ) -> Result<(), IngestError> {
-    state
-        .db
-        .get_channel_for_event_write(tenant.community(), channel_id)
-        .await
-        .map(|_| ())
-        .map_err(internal)
+    if is_admin(role)
+        || head
+            .goal
+            .as_ref()
+            .is_some_and(|goal| goal.owner_pubkey == actor_pubkey)
+    {
+        Ok(())
+    } else {
+        Err(forbidden(
+            "only a community owner, admin, or goal owner can change this goal",
+        ))
+    }
 }
 
-async fn current_ask_head(
-    state: &AppState,
+struct ParentCycleContext<'a> {
+    tenant: &'a TenantContext,
+    state: &'a AppState,
+    role: &'a str,
+    actor_pubkey: &'a str,
+    action_kind: GoalActionKind,
+    goal_id: Uuid,
+    current: Option<&'a GoalHead>,
+}
+
+async fn validate_parent_and_cycle(
+    context: ParentCycleContext<'_>,
+    record: &GoalRecord,
+) -> Result<(), IngestError> {
+    let ParentCycleContext {
+        tenant,
+        state,
+        role,
+        actor_pubkey,
+        action_kind,
+        goal_id,
+        current,
+    } = context;
+    let Some(parent_id) = record.parent_goal_id else {
+        return Ok(());
+    };
+    let parent_tag = goal_d_tag(parent_id);
+    let parent_stored = current_goal_head(state, tenant.community(), &parent_tag)
+        .await?
+        .ok_or_else(|| invalid("parent goal does not exist in this community"))?;
+    let parent = parse_goal_head(&parent_stored)?;
+    let parent_goal = parent
+        .goal
+        .as_ref()
+        .filter(|_| parent.status != GoalStatus::Deleted)
+        .ok_or_else(|| invalid("parent goal has been deleted"))?;
+
+    if action_kind == GoalActionKind::Create
+        && !is_admin(role)
+        && parent_goal.owner_pubkey != actor_pubkey
+    {
+        return Err(forbidden(
+            "only an owner, admin, or parent goal owner can create a sub-goal",
+        ));
+    }
+
+    let old_parent = current
+        .and_then(|head| head.goal.as_ref())
+        .and_then(|goal| goal.parent_goal_id);
+    if action_kind == GoalActionKind::Update && old_parent == Some(parent_id) {
+        return Ok(());
+    }
+
+    let mut parent_by_goal = std::collections::BTreeMap::new();
+    let mut cursor = Some(parent_id);
+    for _ in 0..MAX_GOAL_DEPTH {
+        let Some(ancestor_id) = cursor else {
+            break;
+        };
+        if ancestor_id == goal_id {
+            parent_by_goal.insert(ancestor_id, None);
+            cursor = None;
+            break;
+        }
+        let ancestor_tag = goal_d_tag(ancestor_id);
+        let ancestor_stored = current_goal_head(state, tenant.community(), &ancestor_tag)
+            .await?
+            .ok_or_else(|| invalid("goal hierarchy contains a missing parent"))?;
+        let ancestor = parse_goal_head(&ancestor_stored)?;
+        let parent = ancestor
+            .goal
+            .as_ref()
+            .filter(|_| ancestor.status != GoalStatus::Deleted)
+            .ok_or_else(|| invalid("goal hierarchy contains a deleted parent"))?
+            .parent_goal_id;
+        parent_by_goal.insert(ancestor_id, parent);
+        cursor = parent;
+    }
+    if cursor.is_some() {
+        return Err(invalid("goal hierarchy exceeds the supported depth"));
+    }
+
+    if goal_parent_creates_cycle(goal_id, parent_id, |id| {
+        parent_by_goal.get(&id).copied().flatten()
+    }) {
+        return Err(invalid("goal parent change would create a cycle"));
+    }
+    Ok(())
+}
+
+async fn ensure_no_live_subgoals(
     tenant: &TenantContext,
-    channel_id: Uuid,
+    state: &AppState,
+    goal_id: Uuid,
+) -> Result<(), IngestError> {
+    let heads = current_goal_heads(state, tenant.community()).await?;
+    let dependents = heads
+        .into_iter()
+        .filter(|head| {
+            head.status != GoalStatus::Deleted
+                && head
+                    .goal
+                    .as_ref()
+                    .is_some_and(|goal| goal.parent_goal_id == Some(goal_id))
+        })
+        .map(|head| format!("{} ({})", head.title, head.goal_id))
+        .collect::<Vec<_>>();
+    if dependents.is_empty() {
+        Ok(())
+    } else {
+        Err(conflict(format!(
+            "goal has non-deleted sub-goals: {}",
+            dependents.join(", ")
+        )))
+    }
+}
+
+fn next_goal_head(
+    event: &Event,
+    action: &GoalAction,
+    current: Option<&GoalHead>,
+    actor_pubkey: &str,
+) -> Result<GoalHead, IngestError> {
+    let source_action_event_id = event.id.to_hex();
+    let next = match action.action {
+        GoalActionKind::Create => {
+            let goal = action
+                .goal
+                .clone()
+                .ok_or_else(|| invalid("goal payload is required"))?;
+            GoalHead {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                goal_id: action.goal_id,
+                status: GoalStatus::Active,
+                title: goal.title.clone(),
+                goal: Some(goal),
+                progress: None,
+                source_action_event_id,
+            }
+        }
+        GoalActionKind::Delete => {
+            let previous = current.ok_or_else(|| conflict("goal does not exist"))?;
+            GoalHead {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                goal_id: action.goal_id,
+                status: GoalStatus::Deleted,
+                title: previous.title.clone(),
+                goal: None,
+                progress: None,
+                source_action_event_id,
+            }
+        }
+        _ => {
+            let mut head = current
+                .cloned()
+                .ok_or_else(|| conflict("goal does not exist"))?;
+            head.source_action_event_id = source_action_event_id;
+            match action.action {
+                GoalActionKind::Update => {
+                    let goal = action
+                        .goal
+                        .clone()
+                        .ok_or_else(|| invalid("goal payload is required"))?;
+                    head.title = goal.title.clone();
+                    head.goal = Some(goal);
+                }
+                GoalActionKind::Progress => {
+                    let progress = action
+                        .progress
+                        .clone()
+                        .ok_or_else(|| invalid("progress payload is required"))?;
+                    head.progress = Some(RecordedGoalProgress {
+                        progress,
+                        recorded_by_pubkey: actor_pubkey.to_owned(),
+                        recorded_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+                    });
+                    if let Some(status) = action.status {
+                        head.status = status;
+                    }
+                }
+                GoalActionKind::SetStatus => {
+                    head.status = action.status.ok_or_else(|| invalid("status is required"))?;
+                }
+                GoalActionKind::Archive => head.status = GoalStatus::Archived,
+                GoalActionKind::Restore => {
+                    if head.status != GoalStatus::Archived {
+                        return Err(conflict("only archived goals can be restored"));
+                    }
+                    head.status = GoalStatus::Active;
+                }
+                GoalActionKind::Create | GoalActionKind::Delete => {
+                    return Err(invalid("unexpected goal action transition"));
+                }
+            }
+            head
+        }
+    };
+
+    if action.action == GoalActionKind::Progress {
+        let has_target = next.goal.as_ref().is_some_and(|goal| goal.target.is_some());
+        let progress = action
+            .progress
+            .as_ref()
+            .ok_or_else(|| invalid("progress payload is required"))?;
+        validate_goal_progress(progress, has_target)
+            .map_err(|error| invalid(format!("goal progress: {error}")))?;
+    }
+    Ok(next)
+}
+
+async fn current_goal_head(
+    state: &AppState,
+    community_id: buzz_core::tenant::CommunityId,
     d_tag: &str,
 ) -> Result<Option<StoredEvent>, IngestError> {
-    let mut query = EventQuery::for_community(tenant.community());
-    query.channel_id = Some(channel_id);
-    query.kinds = Some(vec![KIND_ASK_HEAD as i32]);
+    let mut query = EventQuery::for_community(community_id);
+    query.kinds = Some(vec![KIND_GOAL_HEAD as i32]);
     query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
     query.d_tag = Some(d_tag.to_owned());
+    query.global_only = true;
     query.limit = Some(2);
     let mut rows = state
         .db
@@ -503,344 +600,92 @@ async fn current_ask_head(
         .map_err(internal)?;
     if rows.len() > 1 {
         return Err(IngestError::Internal(
-            "error: duplicate ask head coordinate".into(),
+            "error: duplicate company goal head coordinate".into(),
         ));
     }
-    Ok(rows.pop())
-}
-
-#[cfg(test)]
-fn install_ask_persist_test_barrier(
-    d_tag: String,
-    barrier: Arc<tokio::sync::Barrier>,
-) -> AskPersistTestHookGuard {
-    let slot = ASK_PERSIST_TEST_HOOK.get_or_init(|| std::sync::Mutex::new(None));
-    if let Ok(mut slot) = slot.lock() {
-        *slot = Some((d_tag, barrier));
+    let head = rows.pop();
+    if let Some(head) = &head {
+        let parsed = parse_goal_head(head)?;
+        validate_goal_d_tag(d_tag, parsed.goal_id)
+            .map_err(|error| internal(format!("stored goal d tag: {error}")))?;
     }
-    AskPersistTestHookGuard
+    Ok(head)
 }
 
-#[cfg(test)]
-async fn before_ask_persist_for_test(d_tag: &str) {
-    let barrier = ASK_PERSIST_TEST_HOOK
-        .get_or_init(|| std::sync::Mutex::new(None))
-        .lock()
-        .ok()
-        .and_then(|slot| {
-            slot.as_ref()
-                .filter(|(expected, _)| expected == d_tag)
-                .map(|(_, barrier)| Arc::clone(barrier))
-        });
-    if let Some(barrier) = barrier {
-        barrier.wait().await;
-    }
-}
-
-#[cfg(not(test))]
-async fn before_ask_persist_for_test(_: &str) {}
-
-#[cfg(test)]
-struct AskPersistTestHookGuard;
-
-#[cfg(test)]
-impl Drop for AskPersistTestHookGuard {
-    fn drop(&mut self) {
-        if let Some(slot) = ASK_PERSIST_TEST_HOOK.get() {
-            if let Ok(mut slot) = slot.lock() {
-                *slot = None;
-            }
-        }
-    }
-}
-
-async fn replay_existing_command(
+async fn current_goal_heads(
     state: &AppState,
-    tenant: &TenantContext,
-    event: &Event,
-    channel_id: Uuid,
-) -> Result<Option<IngestResult>, IngestError> {
-    let existing = state
+    community_id: buzz_core::tenant::CommunityId,
+) -> Result<Vec<GoalHead>, IngestError> {
+    let mut query = EventQuery::for_community(community_id);
+    query.kinds = Some(vec![KIND_GOAL_HEAD as i32]);
+    query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
+    query.global_only = true;
+    query.limit = Some(MAX_CURRENT_GOAL_HEADS + 1);
+    let rows = state
         .db
-        .get_event_by_id_for_event_write(tenant.community(), &event.id.to_bytes())
+        .query_events_for_event_write(&query)
         .await
         .map_err(internal)?;
-    let Some(existing) = existing else {
-        return Ok(None);
-    };
-    if existing.event.pubkey != event.pubkey || existing.channel_id != Some(channel_id) {
-        return Err(forbidden(
-            "command replay must match its original author and channel",
-        ));
+    if rows.len() as i64 > MAX_CURRENT_GOAL_HEADS {
+        return Err(IngestError::Internal(format!(
+            "error: goal tree exceeds the supported {} current goals",
+            MAX_CURRENT_GOAL_HEADS
+        )));
     }
-    Ok(Some(IngestResult {
-        event_id: event.id.to_hex(),
-        accepted: true,
-        message: "duplicate: already processed".into(),
-    }))
+    rows.iter().map(parse_goal_head).collect()
 }
 
-fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
-    let h_tags = event
-        .tags
-        .iter()
-        .filter(|tag| tag.kind().to_string() == "h")
-        .collect::<Vec<_>>();
-    let d_tags = event
-        .tags
-        .iter()
-        .filter(|tag| tag.kind().to_string() == "d")
-        .collect::<Vec<_>>();
-    if h_tags.len() != 1 || d_tags.len() != 1 {
-        return Err(invalid(
-            "ask command requires exactly one h tag and one d tag",
-        ));
-    }
-    let h_parts = h_tags[0].as_slice();
-    let d_parts = d_tags[0].as_slice();
-    if h_parts.len() != 2 || d_parts.len() != 2 {
-        return Err(invalid(
-            "ask h and d tags must each have exactly two values",
-        ));
-    }
-    let channel_id = Uuid::parse_str(h_parts[1].as_str())
-        .map_err(|_| invalid("ask h tag must contain a channel UUID"))?;
-    if channel_id.to_string() != h_parts[1] {
-        return Err(invalid(
-            "ask h tag channel UUID must be canonical lowercase",
-        ));
-    }
-    Ok((channel_id, d_parts[1].to_owned()))
+fn parse_goal_head(event: &StoredEvent) -> Result<GoalHead, IngestError> {
+    let head = serde_json::from_str::<GoalHead>(&event.event.content).map_err(|_| {
+        IngestError::Internal("error: stored company goal head content is invalid".into())
+    })?;
+    Ok(head)
 }
 
-fn validate_thread_root(
-    ask: &AskRecord,
-    thread_meta: &ThreadMetadataOwned,
-) -> Result<(), IngestError> {
-    let resolved_root = hex::encode(&thread_meta.root_event_id);
-    if ask.thread_root_event_id != resolved_root {
-        return Err(invalid(
-            "ask threadRootEventId must match the referenced thread root",
-        ));
-    }
-    Ok(())
-}
-
-fn parse_head(event: &Event) -> Result<AskHead, IngestError> {
-    serde_json::from_str(&event.content)
-        .map_err(|_| IngestError::Internal("error: stored ask head content is invalid".into()))
-}
-
-fn ensure_head_identity(head: &AskHead, ask_id: Uuid) -> Result<(), IngestError> {
-    if head.ask_id != ask_id || head.ask.ask_id != ask_id {
-        return Err(IngestError::Internal(
-            "error: ask head coordinate does not match its content".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn ensure_expected_head(
-    expected_head_id: Option<&str>,
-    current: &StoredEvent,
-) -> Result<(), IngestError> {
-    let current_head_id = current.event.id.to_hex();
-    if expected_head_id == Some(current_head_id.as_str()) {
-        Ok(())
-    } else {
-        Err(conflict(format!(
-            "expected head does not match the current ask; current head is {}",
-            current.event.id
-        )))
-    }
-}
-
-fn ensure_open(head: &AskHead, current: &StoredEvent) -> Result<(), IngestError> {
-    match head.status {
-        AskStatus::Open => Ok(()),
-        AskStatus::Resolved => {
-            let detail = head.resolution.as_ref().map_or_else(
-                || "already resolved".to_owned(),
-                |resolution| {
-                    format!(
-                        "resolved by {} at {}",
-                        resolution.resolved_by_pubkey, resolution.resolved_at
-                    )
-                },
-            );
-            Err(conflict(format!(
-                "ask is {detail}; current head is {}",
-                current.event.id
-            )))
-        }
-        AskStatus::Cancelled => {
-            let detail = head.cancellation.as_ref().map_or_else(
-                || "cancelled".to_owned(),
-                |cancellation| {
-                    format!(
-                        "cancelled by {} at {}",
-                        cancellation.cancelled_by_pubkey, cancellation.cancelled_at
-                    )
-                },
-            );
-            Err(conflict(format!(
-                "ask is {detail}; current head is {}",
-                current.event.id
-            )))
-        }
-    }
-}
-
-fn relay_ask_head_event(
-    head: &AskHead,
-    channel_id: Uuid,
-    d_tag: &str,
-    previous: Option<&StoredEvent>,
-    state: &AppState,
-) -> Result<Event, IngestError> {
-    let content = serde_json::to_string(head).map_err(internal)?;
-    let now = nostr::Timestamp::now().as_secs();
-    let created_at = previous.map_or(now, |stored| {
-        now.max(stored.event.created_at.as_secs().saturating_add(1))
-    });
-    let channel_tag = Tag::parse(["h", channel_id.to_string().as_str()])
-        .map_err(|error| internal(format!("ask h tag: {error}")))?;
-    let d_tag =
-        Tag::parse(["d", d_tag]).map_err(|error| internal(format!("ask d tag: {error}")))?;
-    let root_tag = Tag::parse(["e", head.ask.thread_root_event_id.as_str(), "", "root"])
-        .map_err(|error| internal(format!("ask thread root tag: {error}")))?;
-    EventBuilder::new(Kind::Custom(KIND_ASK_HEAD as u16), content)
-        .tags([channel_tag, d_tag, root_tag])
-        .custom_created_at(nostr::Timestamp::from_secs(created_at))
-        .sign_with_keys(&state.relay_keypair)
-        .map_err(internal)
-}
-
-fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<(), IngestError> {
-    if auth
-        .channel_ids()
-        .is_some_and(|channel_ids| !channel_ids.contains(&channel_id))
-    {
-        return Err(IngestError::AuthFailed(
-            "restricted: token is not scoped to this channel".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn now_rfc3339() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+fn is_admin(role: &str) -> bool {
+    matches!(role, "owner" | "admin")
 }
 
 fn invalid(message: impl Into<String>) -> IngestError {
     IngestError::Rejected(format!("invalid: {}", message.into()))
 }
 
-fn conflict(message: impl Into<String>) -> IngestError {
-    IngestError::Rejected(format!("conflict: {}", message.into()))
+fn forbidden(message: impl Into<String>) -> IngestError {
+    IngestError::Rejected(format!("restricted: {}", message.into()))
 }
 
-fn forbidden(message: impl Into<String>) -> IngestError {
-    IngestError::AuthFailed(format!("forbidden: {}", message.into()))
+fn conflict(message: impl Into<String>) -> IngestError {
+    IngestError::Rejected(format!("conflict: {}", message.into()))
 }
 
 fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
 }
 
-const _: () = assert!(KIND_ASK_ACTION == 47_032);
-const _: () = assert!(KIND_ASK_RESPONSE == 47_033);
-
 #[cfg(test)]
-mod unit_tests {
-    use super::*;
-
-    fn event_with_tags(tags: Vec<Tag>) -> Event {
-        EventBuilder::new(Kind::Custom(KIND_ASK_ACTION as u16), "{}")
-            .tags(tags)
-            .sign_with_keys(&nostr::Keys::generate())
-            .expect("sign test event")
-    }
-
-    #[test]
-    fn command_coordinates_require_one_canonical_channel_and_d_tag() {
-        let channel_id = Uuid::from_u128(1);
-        let ask_id = Uuid::from_u128(2);
-        let channel = channel_id.to_string();
-        let d_tag = format!("channel:{channel}:ask:{ask_id}");
-        let event = event_with_tags(vec![
-            Tag::parse(["h", channel.as_str()]).expect("h tag"),
-            Tag::parse(["d", d_tag.as_str()]).expect("d tag"),
-        ]);
-        assert_eq!(
-            command_coordinates(&event).expect("ask coordinates"),
-            (channel_id, d_tag)
-        );
-
-        let duplicate_h = event_with_tags(vec![
-            Tag::parse(["h", channel.as_str()]).expect("h tag"),
-            Tag::parse(["h", channel.as_str()]).expect("second h tag"),
-            Tag::parse(["d", "some-d-tag"]).expect("d tag"),
-        ]);
-        assert!(matches!(
-            command_coordinates(&duplicate_h),
-            Err(IngestError::Rejected(message)) if message.contains("exactly one h tag")
-        ));
-    }
-
-    #[test]
-    fn stale_and_terminal_head_rejections_include_current_head_context() {
-        let keys = nostr::Keys::generate();
-        let event = EventBuilder::new(Kind::Custom(KIND_ASK_HEAD as u16), "{}")
-            .sign_with_keys(&keys)
-            .expect("sign head event");
-        let stored = StoredEvent::with_received_at(
-            event.clone(),
-            chrono::Utc::now(),
-            Some(Uuid::from_u128(4)),
-            true,
-        );
-        let stale = ensure_expected_head(Some(&"0".repeat(64)), &stored)
-            .expect_err("stale head must conflict");
-        let current_id = event.id.to_hex();
-        assert!(matches!(
-            stale,
-            IngestError::Rejected(message) if message.contains(&current_id)
-        ));
-    }
-}
-
-#[cfg(test)]
-mod postgres_tests {
-    use super::*;
-
-    use buzz_core::company_records::{
-        AskCategory, AskOption, AskType, COMPANY_RECORD_SCHEMA_VERSION,
-    };
-    use buzz_core::kind::KIND_STREAM_MESSAGE;
-    use buzz_core::tenant::CommunityId;
-    use buzz_db::channel::{ChannelType, ChannelVisibility};
-    use buzz_db::channel_members::MemberRole;
-    use nostr::Keys;
-    use serde::Serialize;
+mod tests {
     use std::time::Duration;
 
-    static ASK_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
+    use buzz_core::company_records::{GoalProgress, GoalTarget, COMPANY_RECORD_SCHEMA_VERSION};
+    use buzz_core::tenant::CommunityId;
+    use nostr::{EventBuilder, Kind, Tag};
+    use tokio::sync::Mutex;
+
+    use super::*;
+
+    static COMPANY_RECORDS_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> =
         std::sync::OnceLock::new();
 
     struct Fixture {
+        pool: sqlx::PgPool,
         state: Arc<AppState>,
         tenant: TenantContext,
-        _pool: sqlx::PgPool,
         _serial_guard: tokio::sync::MutexGuard<'static, ()>,
-        owner: Keys,
-        channel_id: Uuid,
-        root: Event,
     }
 
     async fn fixture() -> Fixture {
-        let serial_guard = ASK_DB_TEST_LOCK
-            .get_or_init(|| tokio::sync::Mutex::new(()))
+        let serial_guard = COMPANY_RECORDS_DB_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
             .lock()
             .await;
         let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
@@ -853,365 +698,165 @@ mod postgres_tests {
             Duration::from_secs(10),
         )
         .await;
-        let community_uuid = Uuid::new_v4();
-        let host = format!("ask-records-{}.test", community_uuid.simple());
+        let community_id = Uuid::new_v4();
+        let host = format!("company-goals-{}.test", community_id.simple());
         sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
-            .bind(community_uuid)
+            .bind(community_id)
             .bind(&host)
             .execute(&pool)
             .await
             .expect("insert test community");
-        let tenant = TenantContext::resolved(CommunityId::from_uuid(community_uuid), host);
-        let owner = Keys::generate();
-        state
-            .db
-            .ensure_user(tenant.community(), &owner.public_key().to_bytes())
-            .await
-            .expect("ensure owner identity");
-        state
-            .db
-            .add_relay_member(
-                tenant.community(),
-                &owner.public_key().to_hex(),
-                "owner",
-                None,
-            )
-            .await
-            .expect("add community owner");
-        let channel = state
-            .db
-            .create_channel(
-                tenant.community(),
-                &format!("asks-{}", Uuid::new_v4().simple()),
-                ChannelType::Stream,
-                ChannelVisibility::Private,
-                None,
-                &owner.public_key().to_bytes(),
-                None,
-            )
-            .await
-            .expect("create private stream");
-        let root = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "Ask thread")
-            .tags([Tag::parse(["h", channel.id.to_string().as_str()]).expect("h tag")])
-            .sign_with_keys(&owner)
-            .expect("sign thread root");
-        state
-            .db
-            .insert_event(tenant.community(), &root, Some(channel.id))
-            .await
-            .expect("store thread root");
         Fixture {
+            pool,
             state,
-            tenant,
-            _pool: pool,
+            tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
             _serial_guard: serial_guard,
-            owner,
-            channel_id: channel.id,
-            root,
         }
     }
 
-    async fn add_actor(
-        fixture: &Fixture,
-        keys: &Keys,
-        relay_role: Option<&str>,
-        is_agent: bool,
-        channel_member: bool,
-    ) {
-        let pubkey = keys.public_key().to_bytes();
+    async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
         fixture
             .state
             .db
-            .ensure_user(fixture.tenant.community(), &pubkey)
+            .add_relay_member(
+                fixture.tenant.community(),
+                &keys.public_key().to_hex(),
+                role,
+                None,
+            )
             .await
-            .expect("ensure actor identity");
-        if let Some(role) = relay_role {
-            fixture
-                .state
-                .db
-                .add_relay_member(
-                    fixture.tenant.community(),
-                    &keys.public_key().to_hex(),
-                    role,
-                    Some(&fixture.owner.public_key().to_hex()),
-                )
-                .await
-                .expect("add relay member");
-        }
-        if is_agent {
-            fixture
-                .state
-                .db
-                .set_agent_owner(
-                    fixture.tenant.community(),
-                    &pubkey,
-                    &fixture.owner.public_key().to_bytes(),
-                )
-                .await
-                .expect("bind managed agent owner");
-        }
-        if channel_member
-            && fixture
-                .state
-                .db
-                .get_member_role(fixture.tenant.community(), fixture.channel_id, &pubkey)
-                .await
-                .expect("read channel membership")
-                .is_none()
-        {
-            fixture
-                .state
-                .db
-                .add_member(
-                    fixture.tenant.community(),
-                    fixture.channel_id,
-                    &pubkey,
-                    MemberRole::Member,
-                    Some(&fixture.owner.public_key().to_bytes()),
-                )
-                .await
-                .expect("add channel member");
-        }
+            .expect("add relay member");
     }
 
-    fn auth(keys: &Keys) -> IngestAuth {
+    fn auth(keys: &nostr::Keys) -> IngestAuth {
         IngestAuth::Http {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
-            auth_method: super::super::ingest::HttpAuthMethod::DevPubkey,
+            auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
         }
     }
 
-    fn ask_record(
-        ask_id: Uuid,
-        thread_root_event_id: &str,
-        ask_type: AskType,
-        category: AskCategory,
-    ) -> AskRecord {
-        let (options, items) = match ask_type {
-            AskType::Choice => (
-                Some(vec![
-                    AskOption {
-                        id: "one".into(),
-                        label: "One".into(),
-                    },
-                    AskOption {
-                        id: "two".into(),
-                        label: "Two".into(),
-                    },
-                ]),
-                None,
-            ),
-            AskType::Checklist => (
-                None,
-                Some(vec![AskOption {
-                    id: "brief".into(),
-                    label: "Brief".into(),
-                }]),
-            ),
-            _ => (None, None),
-        };
-        AskRecord {
+    fn goal_record(goal_id: Uuid, owner: &nostr::Keys, parent_goal_id: Option<Uuid>) -> GoalRecord {
+        GoalRecord {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            ask_id,
-            ask_type,
-            category,
-            title: "Review the launch plan".into(),
-            body: None,
-            thread_root_event_id: thread_root_event_id.into(),
-            addressee_pubkey: None,
-            decide_by: None,
-            options,
-            items,
-            subject: None,
+            goal_id,
+            parent_goal_id,
+            title: format!("Goal {goal_id}"),
+            owner_pubkey: owner.public_key().to_hex(),
+            due_date: Some("2026-10-01".into()),
+            done_condition: "The agreed result is complete and reviewed".into(),
+            target: Some(GoalTarget {
+                value: "4".into(),
+                unit: "approved plans".into(),
+            }),
+            linked_channel_ids: Vec::new(),
         }
     }
 
-    fn sign_command<T: Serialize>(
-        keys: &Keys,
-        kind: u32,
-        channel_id: Uuid,
-        d_tag: &str,
-        content: &T,
-        thread_root: Option<&str>,
-    ) -> Event {
-        let mut tags = vec![
-            Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag"),
-            Tag::parse(["d", d_tag]).expect("d tag"),
-        ];
-        if let Some(root_id) = thread_root {
-            tags.push(Tag::parse(["e", root_id, "", "root"]).expect("root e tag"));
-            tags.push(Tag::parse(["e", root_id, "", "reply"]).expect("reply e tag"));
-        }
-        EventBuilder::new(
-            Kind::Custom(kind as u16),
-            serde_json::to_string(content).expect("serialize command"),
-        )
-        .tags(tags)
-        .sign_with_keys(keys)
-        .expect("sign command")
-    }
-
-    async fn create_ask(
-        fixture: &Fixture,
-        keys: &Keys,
-        mut ask: AskRecord,
-    ) -> (Event, StoredEvent) {
-        ask.thread_root_event_id = fixture.root.id.to_hex();
-        let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, ask.ask_id);
-        let action = AskAction {
+    fn action(
+        goal_id: Uuid,
+        action: GoalActionKind,
+        expected_head_event_id: Option<String>,
+        goal: Option<GoalRecord>,
+    ) -> GoalAction {
+        GoalAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            ask_id: ask.ask_id,
-            action: AskActionKind::Create,
-            expected_head_event_id: None,
-            ask: Some(ask),
+            goal_id,
+            action,
+            expected_head_event_id,
+            goal,
+            progress: None,
+            status: None,
             reason: None,
-        };
-        let event = sign_command(
-            keys,
-            KIND_ASK_ACTION,
-            fixture.channel_id,
-            &d_tag,
-            &action,
-            Some(&fixture.root.id.to_hex()),
-        );
-        handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys))
-            .await
-            .expect("create ask through production handler");
-        let head = current_ask_head(&fixture.state, &fixture.tenant, fixture.channel_id, &d_tag)
-            .await
-            .expect("load ask head")
-            .expect("ask head was created");
-        (event, head)
-    }
-
-    fn response(ask_id: Uuid, expected_head_event_id: &str, ask_type: AskType) -> AskResponse {
-        match ask_type {
-            AskType::Approval => AskResponse {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id,
-                expected_head_event_id: expected_head_event_id.into(),
-                outcome: buzz_core::company_records::AskOutcome::Approved,
-                reason: Some("Approved for this release".into()),
-                answer: None,
-                option_id: None,
-                checked_item_ids: None,
-            },
-            AskType::Question => AskResponse {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id,
-                expected_head_event_id: expected_head_event_id.into(),
-                outcome: buzz_core::company_records::AskOutcome::Answered,
-                reason: None,
-                answer: Some("The brief is ready".into()),
-                option_id: None,
-                checked_item_ids: None,
-            },
-            AskType::Choice => AskResponse {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id,
-                expected_head_event_id: expected_head_event_id.into(),
-                outcome: buzz_core::company_records::AskOutcome::Chosen,
-                reason: None,
-                answer: None,
-                option_id: Some("one".into()),
-                checked_item_ids: None,
-            },
-            AskType::Checklist => AskResponse {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id,
-                expected_head_event_id: expected_head_event_id.into(),
-                outcome: buzz_core::company_records::AskOutcome::Confirmed,
-                reason: None,
-                answer: None,
-                option_id: None,
-                checked_item_ids: Some(vec!["brief".into()]),
-            },
-            AskType::Verdict => AskResponse {
-                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-                ask_id,
-                expected_head_event_id: expected_head_event_id.into(),
-                outcome: buzz_core::company_records::AskOutcome::Pass,
-                reason: Some("The work meets the done condition".into()),
-                answer: None,
-                option_id: None,
-                checked_item_ids: None,
-            },
         }
     }
 
-    fn sign_response(keys: &Keys, channel_id: Uuid, response: &AskResponse) -> Event {
-        let d_tag = buzz_core::company_records::ask_d_tag(channel_id, response.ask_id);
-        sign_command(keys, KIND_ASK_RESPONSE, channel_id, &d_tag, response, None)
+    fn signed_action(keys: &nostr::Keys, action: &GoalAction) -> Event {
+        buzz_sdk::company_records::build_goal_action(action)
+            .expect("build goal action")
+            .sign_with_keys(keys)
+            .expect("sign goal action")
     }
 
-    fn sign_response_with_agent_claim(
-        keys: &Keys,
-        channel_id: Uuid,
-        response: &AskResponse,
-        claimed_agent_pubkey: &str,
-    ) -> Event {
-        let d_tag = buzz_core::company_records::ask_d_tag(channel_id, response.ask_id);
-        EventBuilder::new(
-            Kind::Custom(KIND_ASK_RESPONSE as u16),
-            serde_json::to_string(response).expect("serialize response"),
-        )
-        .tags([
-            Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag"),
-            Tag::parse(["d", d_tag.as_str()]).expect("d tag"),
-            Tag::parse(["agent", claimed_agent_pubkey]).expect("agent claim tag"),
-        ])
-        .sign_with_keys(keys)
-        .expect("sign response with client agent claim")
+    fn signed_raw_action(keys: &nostr::Keys, action: &GoalAction, with_h_tag: bool) -> Event {
+        let content = serde_json::to_string(action).expect("serialize goal action");
+        let d_tag = goal_d_tag(action.goal_id);
+        let mut tags = vec![Tag::parse(["d", d_tag.as_str()]).expect("d tag")];
+        if with_h_tag {
+            tags.push(Tag::parse(["h", Uuid::new_v4().to_string().as_str()]).expect("h tag"));
+        }
+        EventBuilder::new(Kind::Custom(KIND_GOAL_ACTION as u16), content)
+            .tags(tags)
+            .sign_with_keys(keys)
+            .expect("sign raw goal action")
     }
 
-    fn sign_cancel(
-        keys: &Keys,
-        channel_id: Uuid,
-        ask_id: Uuid,
-        expected_head_event_id: &str,
-    ) -> Event {
-        let d_tag = buzz_core::company_records::ask_d_tag(channel_id, ask_id);
-        let action = AskAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            ask_id,
-            action: AskActionKind::Cancel,
-            expected_head_event_id: Some(expected_head_event_id.into()),
-            ask: None,
-            reason: Some("The request is no longer needed".into()),
-        };
-        sign_command(keys, KIND_ASK_ACTION, channel_id, &d_tag, &action, None)
-    }
-
-    async fn response_for(
+    async fn send(
         fixture: &Fixture,
-        keys: &Keys,
-        head: &StoredEvent,
-        ask_type: AskType,
-    ) -> (Event, Result<IngestResult, IngestError>) {
-        let head_content = parse_head(&head.event).expect("parse current head");
-        let response = response(head_content.ask_id, &head.event.id.to_hex(), ask_type);
-        let event = sign_response(keys, fixture.channel_id, &response);
-        let result = handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys)).await;
-        (event, result)
+        keys: &nostr::Keys,
+        action: &GoalAction,
+    ) -> Result<IngestResult, IngestError> {
+        let event = signed_action(keys, action);
+        handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
+    }
+
+    async fn current_head(fixture: &Fixture, goal_id: Uuid) -> StoredEvent {
+        current_goal_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            &goal_d_tag(goal_id),
+        )
+        .await
+        .expect("query current goal head")
+        .expect("goal head exists")
+    }
+
+    async fn parsed_head(fixture: &Fixture, goal_id: Uuid) -> GoalHead {
+        parse_goal_head(&current_head(fixture, goal_id).await).expect("parse goal head")
+    }
+
+    fn rejection(result: Result<IngestResult, IngestError>) -> String {
+        match result {
+            Err(IngestError::Rejected(message)) => message,
+            _ => panic!("expected a rejected company goal action"),
+        }
+    }
+
+    fn expected_head_id(event: &StoredEvent) -> String {
+        event.event.id.to_hex()
     }
 
     #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn create_reply_counts_overdue_stays_open_and_terminal_commands_are_not_thread_items() {
+    async fn root_goals_require_admin_and_emit_global_relay_signed_heads() {
         let fixture = fixture().await;
-        let mut overdue = ask_record(
-            Uuid::new_v4(),
-            &fixture.root.id.to_hex(),
-            AskType::Question,
-            AskCategory::General,
+        let owner = nostr::Keys::generate();
+        let member = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        add_member(&fixture, &member, "member").await;
+        let goal_id = Uuid::new_v4();
+        let create = action(
+            goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(goal_id, &owner, None)),
         );
-        overdue.decide_by = Some("2020-01-01T00:00:00Z".into());
-        let (create_event, head_event) = create_ask(&fixture, &fixture.owner, overdue).await;
-        let head = parse_head(&head_event.event).expect("parse ask head");
-        assert_eq!(head.status, AskStatus::Open);
-        assert!(head.resolution.is_none());
-        assert_eq!(head.ask.decide_by.as_deref(), Some("2020-01-01T00:00:00Z"));
+
+        let err = rejection(send(&fixture, &member, &create).await);
+        assert!(err.contains("root goal"), "{err}");
+        let command_event = signed_action(&owner, &create);
+        let command_id = command_event.id.to_hex();
+        let created = handle(
+            &fixture.tenant,
+            &fixture.state,
+            command_event.clone(),
+            auth(&owner),
+        )
+        .await
+        .expect("create goal");
+        assert!(created.accepted);
+
+        let head_event = current_head(&fixture, goal_id).await;
+        assert_eq!(head_event.event.kind.as_u16() as u32, KIND_GOAL_HEAD);
         assert_eq!(
             head_event.event.pubkey,
             fixture.state.relay_keypair.public_key()
@@ -1220,731 +865,671 @@ mod postgres_tests {
             .event
             .tags
             .iter()
-            .any(|tag| tag.kind().to_string() == "e"));
-        let create_meta = fixture
-            .state
-            .db
-            .get_thread_metadata_by_event(fixture.tenant.community(), &create_event.id.to_bytes())
-            .await
-            .expect("load create metadata")
-            .expect("create event has thread metadata");
-        assert_eq!(create_meta.depth, 1);
-        let root_meta = fixture
-            .state
-            .db
-            .get_thread_metadata_by_event(fixture.tenant.community(), &fixture.root.id.to_bytes())
-            .await
-            .expect("load root metadata")
-            .expect("root metadata exists");
-        assert_eq!(root_meta.reply_count, 1);
-        assert_eq!(root_meta.descendant_count, 1);
-
-        let cancel_event = sign_cancel(
-            &fixture.owner,
-            fixture.channel_id,
-            head.ask_id,
-            &head_event.event.id.to_hex(),
-        );
-        handle(
-            &fixture.tenant,
-            &fixture.state,
-            cancel_event.clone(),
-            auth(&fixture.owner),
-        )
-        .await
-        .expect("asker cancels ask");
-        assert!(fixture
-            .state
-            .db
-            .get_thread_metadata_by_event(fixture.tenant.community(), &cancel_event.id.to_bytes(),)
-            .await
-            .expect("load cancellation metadata")
-            .is_none());
-        let cancelled = current_ask_head(
-            &fixture.state,
-            &fixture.tenant,
-            fixture.channel_id,
-            &buzz_core::company_records::ask_d_tag(fixture.channel_id, head.ask_id),
-        )
-        .await
-        .expect("load cancelled head")
-        .expect("cancelled head exists");
+            .all(|tag| tag.kind().to_string() != "h"));
+        assert_eq!(head_event.event.tags.len(), 1);
         assert_eq!(
-            parse_head(&cancelled.event)
-                .expect("parse cancelled")
-                .status,
-            AskStatus::Cancelled
+            head_event
+                .event
+                .tags
+                .iter()
+                .next()
+                .expect("d tag")
+                .kind()
+                .to_string(),
+            "d"
         );
+        let head = parse_goal_head(&head_event).expect("parse relay-signed head");
+        assert_eq!(head.status, GoalStatus::Active);
+        assert_eq!(head.goal_id, goal_id);
+        assert!(head.goal.is_some());
 
-        let (_, resolved_head) = create_ask(
-            &fixture,
-            &fixture.owner,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
-            ),
-        )
-        .await;
-        let (response_event, result) =
-            response_for(&fixture, &fixture.owner, &resolved_head, AskType::Question).await;
-        result.expect("member answers question");
-        assert!(
-            fixture
-                .state
-                .db
-                .get_thread_metadata_by_event(
-                    fixture.tenant.community(),
-                    &response_event.id.to_bytes(),
-                )
-                .await
-                .expect("load response metadata")
-                .is_none()
-        );
-        let root_meta = fixture
-            .state
-            .db
-            .get_thread_metadata_by_event(fixture.tenant.community(), &fixture.root.id.to_bytes())
-            .await
-            .expect("reload root metadata")
-            .expect("root metadata remains");
-        assert_eq!(root_meta.reply_count, 2);
-    }
-
-    #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn relay_enforces_category_addressee_agent_and_channel_authority() {
-        let fixture = fixture().await;
-        let owner = fixture.owner.clone();
-        let admin = Keys::generate();
-        let member = Keys::generate();
-        let other_member = Keys::generate();
-        let agent = Keys::generate();
-        let outside = Keys::generate();
-        add_actor(&fixture, &admin, Some("admin"), false, true).await;
-        add_actor(&fixture, &member, Some("member"), false, true).await;
-        add_actor(&fixture, &other_member, Some("member"), false, true).await;
-        add_actor(&fixture, &agent, Some("member"), true, true).await;
-        add_actor(&fixture, &outside, Some("member"), false, false).await;
-
-        for category in [
-            AskCategory::Money,
-            AskCategory::Hire,
-            AskCategory::Tool,
-            AskCategory::Secret,
-        ] {
-            for (resolver, expected_reason) in [
-                (
-                    &member,
-                    Some("Only company owners and admins can decide this"),
-                ),
-                (&owner, None),
-                (&admin, None),
-                (
-                    &agent,
-                    Some("Agents cannot decide spending, hires, tools or secrets"),
-                ),
-            ] {
-                let ask = ask_record(
-                    Uuid::new_v4(),
-                    &fixture.root.id.to_hex(),
-                    AskType::Approval,
-                    category,
-                );
-                let (_, head) = create_ask(&fixture, &owner, ask).await;
-                let (response_event, result) =
-                    response_for(&fixture, resolver, &head, AskType::Approval).await;
-                match expected_reason {
-                    Some(reason) => {
-                        assert!(matches!(
-                            result,
-                            Err(IngestError::AuthFailed(message)) if message.contains(reason)
-                        ));
-                        assert!(fixture
-                            .state
-                            .db
-                            .get_event_by_id_for_event_write(
-                                fixture.tenant.community(),
-                                &response_event.id.to_bytes(),
-                            )
-                            .await
-                            .expect("check denied response was not stored")
-                            .is_none());
-                    }
-                    None => {
-                        assert!(
-                            result
-                                .expect("owner or admin resolves protected ask")
-                                .accepted
-                        );
-                    }
-                }
-            }
-        }
-
-        let unaddressed = ask_record(
-            Uuid::new_v4(),
-            &fixture.root.id.to_hex(),
-            AskType::Question,
-            AskCategory::General,
-        );
-        let (_, head) = create_ask(&fixture, &owner, unaddressed).await;
-        let (_, denied) = response_for(&fixture, &agent, &head, AskType::Question).await;
-        assert!(matches!(
-            denied,
-            Err(IngestError::AuthFailed(message)) if message.contains("Only people can answer")
-        ));
-        let (_, accepted) = response_for(&fixture, &member, &head, AskType::Question).await;
-        assert!(
-            accepted
-                .expect("channel human answers unaddressed ask")
-                .accepted
-        );
-
-        let (_, head) = create_ask(
-            &fixture,
-            &owner,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
-            ),
-        )
-        .await;
-        let (_, denied) = response_for(&fixture, &outside, &head, AskType::Question).await;
-        assert!(matches!(
-            denied,
-            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
-        ));
-
-        let addressed = ask_record(
-            Uuid::new_v4(),
-            &fixture.root.id.to_hex(),
-            AskType::Question,
-            AskCategory::General,
-        );
-        let mut addressed = addressed;
-        addressed.addressee_pubkey = Some(other_member.public_key().to_hex());
-        let (_, head) = create_ask(&fixture, &owner, addressed).await;
-        let (_, denied) = response_for(&fixture, &member, &head, AskType::Question).await;
-        assert!(matches!(
-            denied,
-            Err(IngestError::AuthFailed(message)) if message.contains("addressed to someone else")
-        ));
-        let (_, accepted) = response_for(&fixture, &other_member, &head, AskType::Question).await;
-        assert!(accepted.expect("named human addressee answers").accepted);
-
-        for ask_type in [AskType::Question, AskType::Verdict] {
-            let mut addressed = ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                ask_type,
-                AskCategory::General,
-            );
-            addressed.addressee_pubkey = Some(agent.public_key().to_hex());
-            let (_, head) = create_ask(&fixture, &owner, addressed).await;
-            let (_, accepted) = response_for(&fixture, &agent, &head, ask_type).await;
-            assert!(
-                accepted
-                    .expect("agent answers addressed question or verdict")
-                    .accepted
-            );
-        }
-
-        let mut agent_approval = ask_record(
-            Uuid::new_v4(),
-            &fixture.root.id.to_hex(),
-            AskType::Approval,
-            AskCategory::General,
-        );
-        agent_approval.addressee_pubkey = Some(agent.public_key().to_hex());
-        let d_tag =
-            buzz_core::company_records::ask_d_tag(fixture.channel_id, agent_approval.ask_id);
-        let action = AskAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            ask_id: agent_approval.ask_id,
-            action: AskActionKind::Create,
-            expected_head_event_id: None,
-            ask: Some(agent_approval),
-            reason: None,
-        };
-        let create_event = sign_command(
-            &owner,
-            KIND_ASK_ACTION,
-            fixture.channel_id,
-            &d_tag,
-            &action,
-            Some(&fixture.root.id.to_hex()),
-        );
-        assert!(matches!(
-            handle(&fixture.tenant, &fixture.state, create_event.clone(), auth(&owner)).await,
-            Err(IngestError::Rejected(message)) if message.contains("an agent can only be asked a question or a verdict")
-        ));
-        assert!(fixture
+        let command = fixture
             .state
             .db
             .get_event_by_id_for_event_write(
                 fixture.tenant.community(),
-                &create_event.id.to_bytes(),
+                &hex::decode(&created.event_id).expect("event id hex"),
             )
             .await
-            .expect("check rejected ask create")
-            .is_none());
+            .expect("load command")
+            .expect("command was stored");
+        assert_eq!(command.event.kind.as_u16() as u32, KIND_GOAL_ACTION);
+        assert!(command
+            .event
+            .tags
+            .iter()
+            .all(|tag| tag.kind().to_string() != "h"));
+        assert!(command.channel_id.is_none());
 
-        let unmember_ask = ask_record(
-            Uuid::new_v4(),
-            &fixture.root.id.to_hex(),
-            AskType::Question,
-            AskCategory::General,
-        );
-        let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, unmember_ask.ask_id);
-        let action = AskAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            ask_id: unmember_ask.ask_id,
-            action: AskActionKind::Create,
-            expected_head_event_id: None,
-            ask: Some(unmember_ask),
-            reason: None,
-        };
-        let event = sign_command(
-            &outside,
-            KIND_ASK_ACTION,
-            fixture.channel_id,
-            &d_tag,
-            &action,
-            Some(&fixture.root.id.to_hex()),
-        );
-        assert!(matches!(
-            handle(&fixture.tenant, &fixture.state, event.clone(), auth(&outside)).await,
-            Err(IngestError::AuthFailed(message)) if message.contains("channel members")
-        ));
-        assert!(fixture
-            .state
-            .db
-            .get_event_by_id_for_event_write(fixture.tenant.community(), &event.id.to_bytes())
+        assert_eq!(command_id, created.event_id);
+        let duplicate = handle(&fixture.tenant, &fixture.state, command_event, auth(&owner))
             .await
-            .expect("check nonmember command")
-            .is_none());
+            .expect("replay committed action");
+        assert!(duplicate.message.starts_with("duplicate:"));
     }
 
     #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn relay_enforces_cancel_authority_and_exact_head() {
+    async fn parent_must_be_live_and_in_community_and_parent_owner_can_create_subgoal() {
         let fixture = fixture().await;
-        let asker = Keys::generate();
-        let other_member = Keys::generate();
-        let admin = Keys::generate();
-        let outside = Keys::generate();
-        add_actor(&fixture, &asker, Some("member"), false, true).await;
-        add_actor(&fixture, &other_member, Some("member"), false, true).await;
-        add_actor(&fixture, &admin, Some("admin"), false, true).await;
-        add_actor(&fixture, &outside, Some("member"), false, false).await;
+        let admin = nostr::Keys::generate();
+        let parent_owner = nostr::Keys::generate();
+        let stranger = nostr::Keys::generate();
+        add_member(&fixture, &admin, "admin").await;
+        add_member(&fixture, &parent_owner, "member").await;
+        add_member(&fixture, &stranger, "member").await;
 
-        let (_, head) = create_ask(
+        let missing_parent = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+        let create_child = action(
+            child_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(child_id, &parent_owner, Some(missing_parent))),
+        );
+        assert!(rejection(send(&fixture, &admin, &create_child).await).contains("does not exist"));
+
+        let parent_id = Uuid::new_v4();
+        send(
             &fixture,
-            &asker,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
+            &admin,
+            &action(
+                parent_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(parent_id, &parent_owner, None)),
             ),
-        )
-        .await;
-        let current = parse_head(&head.event).expect("parse ask head");
-
-        let stale_head_id = "0".repeat(64);
-        let stale_event = sign_cancel(
-            &other_member,
-            fixture.channel_id,
-            current.ask_id,
-            &stale_head_id,
-        );
-        assert!(matches!(
-            handle(
-                &fixture.tenant,
-                &fixture.state,
-                stale_event.clone(),
-                auth(&other_member),
-            )
-            .await,
-            Err(IngestError::Rejected(message)) if message.contains("current head is")
-        ));
-        assert!(
-            fixture
-                .state
-                .db
-                .get_event_by_id_for_event_write(
-                    fixture.tenant.community(),
-                    &stale_event.id.to_bytes(),
-                )
-                .await
-                .expect("check stale cancel was not stored")
-                .is_none()
-        );
-
-        let unauthorized_event = sign_cancel(
-            &other_member,
-            fixture.channel_id,
-            current.ask_id,
-            &head.event.id.to_hex(),
-        );
-        assert!(matches!(
-            handle(
-                &fixture.tenant,
-                &fixture.state,
-                unauthorized_event.clone(),
-                auth(&other_member),
-            )
-            .await,
-            Err(IngestError::AuthFailed(message)) if message.contains("only the asker or a company owner or admin")
-        ));
-        assert!(fixture
-            .state
-            .db
-            .get_event_by_id_for_event_write(
-                fixture.tenant.community(),
-                &unauthorized_event.id.to_bytes(),
-            )
-            .await
-            .expect("check unauthorized cancel was not stored")
-            .is_none());
-
-        let owner_cancel = sign_cancel(
-            &fixture.owner,
-            fixture.channel_id,
-            current.ask_id,
-            &head.event.id.to_hex(),
-        );
-        handle(
-            &fixture.tenant,
-            &fixture.state,
-            owner_cancel,
-            auth(&fixture.owner),
         )
         .await
-        .expect("company owner cancels ask");
+        .expect("create parent goal");
 
-        let (_, admin_head) = create_ask(
+        let unauthorized_child_id = Uuid::new_v4();
+        let unauthorized_child = action(
+            unauthorized_child_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(
+                unauthorized_child_id,
+                &stranger,
+                Some(parent_id),
+            )),
+        );
+        assert!(
+            rejection(send(&fixture, &stranger, &unauthorized_child).await)
+                .contains("parent goal owner")
+        );
+
+        let child_id = Uuid::new_v4();
+        let child = action(
+            child_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(child_id, &parent_owner, Some(parent_id))),
+        );
+        send(&fixture, &parent_owner, &child)
+            .await
+            .expect("parent owner can create a sub-goal");
+
+        let deleted_parent_id = Uuid::new_v4();
+        send(
             &fixture,
-            &asker,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
-            ),
-        )
-        .await;
-        let admin_ask = parse_head(&admin_head.event).expect("parse admin ask");
-        let admin_cancel = sign_cancel(
             &admin,
-            fixture.channel_id,
-            admin_ask.ask_id,
-            &admin_head.event.id.to_hex(),
-        );
-        handle(&fixture.tenant, &fixture.state, admin_cancel, auth(&admin))
-            .await
-            .expect("company admin cancels ask");
-
-        let (_, asker_head) = create_ask(
-            &fixture,
-            &asker,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
+            &action(
+                deleted_parent_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(deleted_parent_id, &admin, None)),
             ),
         )
-        .await;
-        let asker_ask = parse_head(&asker_head.event).expect("parse asker ask");
-        let asker_cancel = sign_cancel(
-            &asker,
-            fixture.channel_id,
-            asker_ask.ask_id,
-            &asker_head.event.id.to_hex(),
-        );
-        handle(&fixture.tenant, &fixture.state, asker_cancel, auth(&asker))
-            .await
-            .expect("asker cancels own ask");
-
-        let (_, outside_head) = create_ask(
-            &fixture,
-            &asker,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
-            ),
-        )
-        .await;
-        let outside_ask = parse_head(&outside_head.event).expect("parse outside ask");
-        let outside_cancel = sign_cancel(
-            &outside,
-            fixture.channel_id,
-            outside_ask.ask_id,
-            &outside_head.event.id.to_hex(),
-        );
-        assert!(matches!(
-            handle(
-                &fixture.tenant,
-                &fixture.state,
-                outside_cancel,
-                auth(&outside),
+        .await
+        .expect("create deletable parent");
+        let deleted_parent_head = current_head(&fixture, deleted_parent_id).await;
+        let delete_parent = GoalAction {
+            reason: Some("No longer needed".into()),
+            ..action(
+                deleted_parent_id,
+                GoalActionKind::Delete,
+                Some(expected_head_id(&deleted_parent_head)),
+                None,
             )
-            .await,
-            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
-        ));
+        };
+        send(&fixture, &admin, &delete_parent)
+            .await
+            .expect("delete parent");
+        let child_of_deleted_id = Uuid::new_v4();
+        let child_of_deleted = action(
+            child_of_deleted_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(
+                child_of_deleted_id,
+                &admin,
+                Some(deleted_parent_id),
+            )),
+        );
+        assert!(rejection(send(&fixture, &admin, &child_of_deleted).await)
+            .contains("parent goal has been deleted"));
+
+        let other_community_id = Uuid::new_v4();
+        let other_host = format!("other-company-goals-{}.test", other_community_id.simple());
+        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+            .bind(other_community_id)
+            .bind(&other_host)
+            .execute(&fixture.pool)
+            .await
+            .expect("insert second community");
+        let other_tenant =
+            TenantContext::resolved(CommunityId::from_uuid(other_community_id), other_host);
+        fixture
+            .state
+            .db
+            .add_relay_member(
+                other_tenant.community(),
+                &admin.public_key().to_hex(),
+                "owner",
+                None,
+            )
+            .await
+            .expect("add member to second community");
+        let foreign_parent_id = Uuid::new_v4();
+        let foreign_parent = action(
+            foreign_parent_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(foreign_parent_id, &admin, None)),
+        );
+        let foreign_event = signed_action(&admin, &foreign_parent);
+        handle(&other_tenant, &fixture.state, foreign_event, auth(&admin))
+            .await
+            .expect("create goal in second community");
+
+        let shared_goal_id = Uuid::new_v4();
+        let primary_goal = action(
+            shared_goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(shared_goal_id, &admin, None)),
+        );
+        send(&fixture, &admin, &primary_goal)
+            .await
+            .expect("same coordinate is accepted in the first community");
+        let secondary_goal = action(
+            shared_goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(shared_goal_id, &admin, None)),
+        );
+        handle(
+            &other_tenant,
+            &fixture.state,
+            signed_action(&admin, &secondary_goal),
+            auth(&admin),
+        )
+        .await
+        .expect("same coordinate is scoped to the second community");
+        let primary_head = current_head(&fixture, shared_goal_id).await;
+        let secondary_head = current_goal_head(
+            &fixture.state,
+            other_tenant.community(),
+            &goal_d_tag(shared_goal_id),
+        )
+        .await
+        .expect("query secondary community goal")
+        .expect("secondary community goal exists");
+        let primary_head = parse_goal_head(&primary_head).expect("parse first community head");
+        let secondary_head = parse_goal_head(&secondary_head).expect("parse second community head");
+        assert_eq!(primary_head.goal_id, secondary_head.goal_id);
+        assert_eq!(primary_head.status, secondary_head.status);
+        assert_eq!(primary_head.goal, secondary_head.goal);
+
+        let cross_community_child_id = Uuid::new_v4();
+        let cross_community_child = action(
+            cross_community_child_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(
+                cross_community_child_id,
+                &admin,
+                Some(foreign_parent_id),
+            )),
+        );
+        assert!(
+            rejection(send(&fixture, &admin, &cross_community_child).await)
+                .contains("does not exist")
+        );
     }
 
     #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn client_agent_tag_does_not_override_authoritative_human_identity() {
+    async fn goal_owner_can_edit_and_record_evidenced_progress_without_automatic_achievement() {
         let fixture = fixture().await;
-        let human = Keys::generate();
-        let claimed_agent = Keys::generate();
-        add_actor(&fixture, &human, Some("member"), false, true).await;
-        let (_, head) = create_ask(
+        let admin = nostr::Keys::generate();
+        let owner = nostr::Keys::generate();
+        let stranger = nostr::Keys::generate();
+        add_member(&fixture, &admin, "owner").await;
+        add_member(&fixture, &owner, "member").await;
+        add_member(&fixture, &stranger, "member").await;
+        let goal_id = Uuid::new_v4();
+        send(
             &fixture,
-            &fixture.owner,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
+            &admin,
+            &action(
+                goal_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(goal_id, &owner, None)),
             ),
         )
-        .await;
-        let current = parse_head(&head.event).expect("parse ask head");
-        let response = response(current.ask_id, &head.event.id.to_hex(), AskType::Question);
-        let event = sign_response_with_agent_claim(
-            &human,
-            fixture.channel_id,
-            &response,
-            &claimed_agent.public_key().to_hex(),
+        .await
+        .expect("create goal");
+
+        let before_edit = current_head(&fixture, goal_id).await;
+        let mut edited = goal_record(goal_id, &owner, None);
+        edited.title = "Edited by the goal owner".into();
+        let edit = action(
+            goal_id,
+            GoalActionKind::Update,
+            Some(expected_head_id(&before_edit)),
+            Some(edited),
         );
-        let result = handle(&fixture.tenant, &fixture.state, event, auth(&human)).await;
-        assert!(result.expect("human record remains authoritative").accepted);
+        send(&fixture, &owner, &edit)
+            .await
+            .expect("goal owner can edit");
+
+        let before_progress = current_head(&fixture, goal_id).await;
+        let mut progress = action(
+            goal_id,
+            GoalActionKind::Progress,
+            Some(expected_head_id(&before_progress)),
+            None,
+        );
+        progress.progress = Some(GoalProgress {
+            current: Some("4".into()),
+            evidence: "Four plans have written client approval".into(),
+            evidence_refs: Vec::new(),
+        });
+        send(&fixture, &owner, &progress)
+            .await
+            .expect("goal owner can record evidenced progress");
+        let after_progress = parsed_head(&fixture, goal_id).await;
+        assert_eq!(after_progress.status, GoalStatus::Active);
+        assert_eq!(
+            after_progress
+                .progress
+                .as_ref()
+                .unwrap()
+                .progress
+                .current
+                .as_deref(),
+            Some("4")
+        );
+        assert_eq!(
+            after_progress.progress.as_ref().unwrap().recorded_by_pubkey,
+            owner.public_key().to_hex()
+        );
+
+        let explicit_progress = GoalAction {
+            status: Some(GoalStatus::OffPace),
+            progress: Some(GoalProgress {
+                current: Some("4".into()),
+                evidence: "The final plan is awaiting client sign-off".into(),
+                evidence_refs: Vec::new(),
+            }),
+            ..action(
+                goal_id,
+                GoalActionKind::Progress,
+                Some(expected_head_id(&current_head(&fixture, goal_id).await)),
+                None,
+            )
+        };
+        let progress_result = send(&fixture, &owner, &explicit_progress)
+            .await
+            .expect("progress and explicit status share one head update");
+        let selected_status_head = parsed_head(&fixture, goal_id).await;
+        assert_eq!(selected_status_head.status, GoalStatus::OffPace);
+        assert_eq!(
+            selected_status_head
+                .progress
+                .as_ref()
+                .unwrap()
+                .progress
+                .evidence,
+            "The final plan is awaiting client sign-off"
+        );
+        assert_eq!(
+            selected_status_head.source_action_event_id,
+            progress_result.event_id
+        );
+
+        let current_event = current_head(&fixture, goal_id).await;
+        let mut no_evidence = action(
+            goal_id,
+            GoalActionKind::Progress,
+            Some(expected_head_id(&current_event)),
+            None,
+        );
+        no_evidence.progress = Some(GoalProgress {
+            current: Some("5".into()),
+            evidence: " ".into(),
+            evidence_refs: Vec::new(),
+        });
+        let raw = signed_raw_action(&owner, &no_evidence, false);
+        assert!(
+            rejection(handle(&fixture.tenant, &fixture.state, raw, auth(&owner)).await)
+                .contains("progress")
+        );
+
+        let after_failed_progress = current_head(&fixture, goal_id).await;
+        let failed_edit = action(
+            goal_id,
+            GoalActionKind::Update,
+            Some(expected_head_id(&after_failed_progress)),
+            Some(goal_record(goal_id, &stranger, None)),
+        );
+        assert!(rejection(send(&fixture, &stranger, &failed_edit).await).contains("goal owner"));
+
+        let status_action = GoalAction {
+            status: Some(GoalStatus::Achieved),
+            reason: Some("Done condition checked against the approved plans".into()),
+            ..action(
+                goal_id,
+                GoalActionKind::SetStatus,
+                Some(expected_head_id(&after_failed_progress)),
+                None,
+            )
+        };
+        send(&fixture, &owner, &status_action)
+            .await
+            .expect("goal owner can explicitly mark achieved");
+        assert_eq!(
+            parsed_head(&fixture, goal_id).await.status,
+            GoalStatus::Achieved
+        );
     }
 
     #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn relay_rejects_wrong_type_payloads_with_reason_and_keeps_ask_open() {
+    async fn goal_tree_lock_serializes_cycle_races_and_exact_head_edits() {
         let fixture = fixture().await;
-        for ask_type in [
-            AskType::Approval,
-            AskType::Question,
-            AskType::Choice,
-            AskType::Checklist,
-            AskType::Verdict,
-        ] {
-            let (_, head) = create_ask(
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        let goal_a = Uuid::new_v4();
+        let goal_b = Uuid::new_v4();
+        for goal_id in [goal_a, goal_b] {
+            send(
                 &fixture,
-                &fixture.owner,
-                ask_record(
-                    Uuid::new_v4(),
-                    &fixture.root.id.to_hex(),
-                    ask_type,
-                    AskCategory::General,
+                &owner,
+                &action(
+                    goal_id,
+                    GoalActionKind::Create,
+                    None,
+                    Some(goal_record(goal_id, &owner, None)),
                 ),
             )
-            .await;
-            let current = parse_head(&head.event).expect("parse current ask");
-            let mut wrong = response(current.ask_id, &head.event.id.to_hex(), ask_type);
-            wrong.outcome = match ask_type {
-                AskType::Approval => buzz_core::company_records::AskOutcome::Answered,
-                AskType::Question => buzz_core::company_records::AskOutcome::Approved,
-                AskType::Choice => buzz_core::company_records::AskOutcome::Chosen,
-                AskType::Checklist => buzz_core::company_records::AskOutcome::Confirmed,
-                AskType::Verdict => buzz_core::company_records::AskOutcome::Approved,
-            };
-            if ask_type == AskType::Choice {
-                wrong.option_id = Some("not-an-option".into());
-            }
-            if ask_type == AskType::Checklist {
-                wrong.checked_item_ids = Some(Vec::new());
-            }
-            let response_event = sign_response(&fixture.owner, fixture.channel_id, &wrong);
-            let result = handle(
-                &fixture.tenant,
-                &fixture.state,
-                response_event.clone(),
-                auth(&fixture.owner),
-            )
-            .await;
-            assert!(matches!(
-                result,
-                Err(IngestError::Rejected(message)) if message.starts_with("invalid: ask response:")
-            ));
-            assert!(fixture
-                .state
-                .db
-                .get_event_by_id_for_event_write(
-                    fixture.tenant.community(),
-                    &response_event.id.to_bytes(),
-                )
-                .await
-                .expect("check invalid response missing")
-                .is_none());
-            let current = current_ask_head(
-                &fixture.state,
-                &fixture.tenant,
-                fixture.channel_id,
-                &buzz_core::company_records::ask_d_tag(fixture.channel_id, current.ask_id),
-            )
             .await
-            .expect("reload open ask")
-            .expect("ask remains stored");
-            assert_eq!(
-                parse_head(&current.event).expect("parse head").status,
-                AskStatus::Open
-            );
+            .expect("create cycle-race goal");
         }
-    }
-
-    #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn exact_head_lock_allows_only_one_of_two_concurrent_responses() {
-        let fixture = fixture().await;
-        let first_resolver = Keys::generate();
-        let second_resolver = Keys::generate();
-        add_actor(&fixture, &first_resolver, Some("member"), false, true).await;
-        add_actor(&fixture, &second_resolver, Some("member"), false, true).await;
-        let (_, head) = create_ask(
-            &fixture,
-            &fixture.owner,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
-            ),
-        )
-        .await;
-        let current = parse_head(&head.event).expect("parse ask head");
-        let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, current.ask_id);
-        let barrier = Arc::new(tokio::sync::Barrier::new(2));
-        let hook = install_ask_persist_test_barrier(d_tag, barrier);
-        let first_response = response(current.ask_id, &head.event.id.to_hex(), AskType::Question);
-        let second_response = response(current.ask_id, &head.event.id.to_hex(), AskType::Question);
-        let first_event = sign_response(&first_resolver, fixture.channel_id, &first_response);
-        let second_event = sign_response(&second_resolver, fixture.channel_id, &second_response);
-        let tenant_a = fixture.tenant.clone();
-        let tenant_b = fixture.tenant.clone();
-        let state_a = Arc::clone(&fixture.state);
-        let state_b = Arc::clone(&fixture.state);
-        let task_a = tokio::spawn(async move {
-            handle(&tenant_a, &state_a, first_event, auth(&first_resolver)).await
-        });
-        let task_b = tokio::spawn(async move {
-            handle(&tenant_b, &state_b, second_event, auth(&second_resolver)).await
-        });
-        let result_a = task_a.await.expect("join first resolution");
-        let result_b = task_b.await.expect("join second resolution");
-        drop(hook);
-        let successes = usize::from(result_a.as_ref().is_ok_and(|result| result.accepted))
-            + usize::from(result_b.as_ref().is_ok_and(|result| result.accepted));
-        assert_eq!(successes, 1);
-        let failure = if result_a.is_err() {
+        let head_a = current_head(&fixture, goal_a).await;
+        let head_b = current_head(&fixture, goal_b).await;
+        let update_a = action(
+            goal_a,
+            GoalActionKind::Update,
+            Some(expected_head_id(&head_a)),
+            Some(goal_record(goal_a, &owner, Some(goal_b))),
+        );
+        let update_b = action(
+            goal_b,
+            GoalActionKind::Update,
+            Some(expected_head_id(&head_b)),
+            Some(goal_record(goal_b, &owner, Some(goal_a))),
+        );
+        let (result_a, result_b) = tokio::join!(
+            send(&fixture, &owner, &update_a),
+            send(&fixture, &owner, &update_b),
+        );
+        let result_a_accepted = result_a.is_ok();
+        let result_b_accepted = result_b.is_ok();
+        assert_ne!(result_a_accepted, result_b_accepted);
+        let loser = if !result_a_accepted {
             result_a
         } else {
             result_b
         };
-        assert!(matches!(
-            failure,
-            Err(IngestError::Rejected(message)) if message.contains("current head is")
-        ));
-        let final_head = current_ask_head(
-            &fixture.state,
-            &fixture.tenant,
-            fixture.channel_id,
-            &buzz_core::company_records::ask_d_tag(fixture.channel_id, current.ask_id),
+        assert!(rejection(loser).contains("cycle"));
+
+        let stable_a = parsed_head(&fixture, goal_a).await;
+        let stable_b = parsed_head(&fixture, goal_b).await;
+        assert_eq!(
+            stable_a.goal.as_ref().and_then(|goal| goal.parent_goal_id) == Some(goal_b),
+            result_a_accepted,
+            "the accepted A-to-B edit must be the only persisted edge"
+        );
+        assert_eq!(
+            stable_b.goal.as_ref().and_then(|goal| goal.parent_goal_id) == Some(goal_a),
+            result_b_accepted,
+            "the accepted B-to-A edit must be the only persisted edge"
+        );
+
+        let edit_id = Uuid::new_v4();
+        send(
+            &fixture,
+            &owner,
+            &action(
+                edit_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(edit_id, &owner, None)),
+            ),
         )
         .await
-        .expect("reload resolved ask")
-        .expect("resolved head remains");
-        assert_eq!(
-            parse_head(&final_head.event)
-                .expect("parse final head")
-                .status,
-            AskStatus::Resolved
+        .expect("create exact-head test goal");
+        let original = current_head(&fixture, edit_id).await;
+        let mut first_goal = goal_record(edit_id, &owner, None);
+        first_goal.title = "First competing edit".into();
+        let mut second_goal = goal_record(edit_id, &owner, None);
+        second_goal.title = "Second competing edit".into();
+        let first = action(
+            edit_id,
+            GoalActionKind::Update,
+            Some(expected_head_id(&original)),
+            Some(first_goal),
         );
+        let second = action(
+            edit_id,
+            GoalActionKind::Update,
+            Some(expected_head_id(&original)),
+            Some(second_goal),
+        );
+        let (first_result, second_result) = tokio::join!(
+            send(&fixture, &owner, &first),
+            send(&fixture, &owner, &second),
+        );
+        assert_ne!(first_result.is_ok(), second_result.is_ok());
+        let loser = if first_result.is_err() {
+            first_result
+        } else {
+            second_result
+        };
+        assert!(rejection(loser).contains("current head"));
     }
 
     #[tokio::test]
-    #[ignore = "requires disposable Postgres and Redis"]
-    async fn cancel_and_resolution_share_the_same_exact_head_lock() {
+    async fn archive_restore_and_delete_preserve_children_and_list_delete_dependents() {
         let fixture = fixture().await;
-        let resolver = Keys::generate();
-        add_actor(&fixture, &resolver, Some("member"), false, true).await;
-        let (_, head) = create_ask(
+        let admin = nostr::Keys::generate();
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &admin, "admin").await;
+        add_member(&fixture, &owner, "member").await;
+        let parent_id = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+        send(
             &fixture,
-            &fixture.owner,
-            ask_record(
-                Uuid::new_v4(),
-                &fixture.root.id.to_hex(),
-                AskType::Question,
-                AskCategory::General,
+            &admin,
+            &action(
+                parent_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(parent_id, &owner, None)),
             ),
         )
-        .await;
-        let current = parse_head(&head.event).expect("parse ask head");
-        let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, current.ask_id);
-        let barrier = Arc::new(tokio::sync::Barrier::new(2));
-        let hook = install_ask_persist_test_barrier(d_tag, barrier);
-        let cancel_event = sign_cancel(
-            &fixture.owner,
-            fixture.channel_id,
-            current.ask_id,
-            &head.event.id.to_hex(),
-        );
-        let response = response(current.ask_id, &head.event.id.to_hex(), AskType::Question);
-        let response_event = sign_response(&resolver, fixture.channel_id, &response);
-        let tenant_a = fixture.tenant.clone();
-        let tenant_b = fixture.tenant.clone();
-        let state_a = Arc::clone(&fixture.state);
-        let state_b = Arc::clone(&fixture.state);
-        let asker = fixture.owner.clone();
-        let task_cancel =
-            tokio::spawn(
-                async move { handle(&tenant_a, &state_a, cancel_event, auth(&asker)).await },
-            );
-        let task_response = tokio::spawn(async move {
-            handle(&tenant_b, &state_b, response_event, auth(&resolver)).await
-        });
-        let cancel_result = task_cancel.await.expect("join cancellation");
-        let response_result = task_response.await.expect("join resolution");
-        drop(hook);
-        let successes = usize::from(cancel_result.as_ref().is_ok_and(|result| result.accepted))
-            + usize::from(response_result.as_ref().is_ok_and(|result| result.accepted));
-        assert_eq!(successes, 1);
-        let failure = if cancel_result.is_err() {
-            cancel_result
-        } else {
-            response_result
-        };
-        assert!(matches!(
-            failure,
-            Err(IngestError::Rejected(message)) if message.contains("current head is")
-        ));
-        let final_head = current_ask_head(
-            &fixture.state,
-            &fixture.tenant,
-            fixture.channel_id,
-            &buzz_core::company_records::ask_d_tag(fixture.channel_id, current.ask_id),
+        .await
+        .expect("create parent goal");
+        send(
+            &fixture,
+            &owner,
+            &action(
+                child_id,
+                GoalActionKind::Create,
+                None,
+                Some(goal_record(child_id, &owner, Some(parent_id))),
+            ),
         )
         .await
-        .expect("reload terminal ask")
-        .expect("terminal head remains");
-        assert!(matches!(
-            parse_head(&final_head.event)
-                .expect("parse final head")
-                .status,
-            AskStatus::Resolved | AskStatus::Cancelled
-        ));
+        .expect("create child goal");
+
+        let parent_before_archive = current_head(&fixture, parent_id).await;
+        let archive = GoalAction {
+            reason: None,
+            ..action(
+                parent_id,
+                GoalActionKind::Archive,
+                Some(expected_head_id(&parent_before_archive)),
+                None,
+            )
+        };
+        send(&fixture, &owner, &archive)
+            .await
+            .expect("goal owner can archive");
+        assert_eq!(
+            parsed_head(&fixture, parent_id).await.status,
+            GoalStatus::Archived
+        );
+        assert_eq!(
+            parsed_head(&fixture, child_id).await.status,
+            GoalStatus::Active
+        );
+
+        let parent_before_delete = current_head(&fixture, parent_id).await;
+        let delete_parent = GoalAction {
+            reason: Some("Remove the old direction".into()),
+            ..action(
+                parent_id,
+                GoalActionKind::Delete,
+                Some(expected_head_id(&parent_before_delete)),
+                None,
+            )
+        };
+        let blocked = rejection(send(&fixture, &admin, &delete_parent).await);
+        assert!(blocked.contains(&child_id.to_string()), "{blocked}");
+
+        let restore = GoalAction {
+            ..action(
+                parent_id,
+                GoalActionKind::Restore,
+                Some(expected_head_id(&parent_before_delete)),
+                None,
+            )
+        };
+        assert!(rejection(send(&fixture, &owner, &restore).await).contains("owner or admin"));
+        send(&fixture, &admin, &restore)
+            .await
+            .expect("admin restores goal");
+        assert_eq!(
+            parsed_head(&fixture, parent_id).await.status,
+            GoalStatus::Active
+        );
+
+        let child_before_archive = current_head(&fixture, child_id).await;
+        let archive_child = GoalAction {
+            reason: Some("Keep history but stop tracking".into()),
+            ..action(
+                child_id,
+                GoalActionKind::Archive,
+                Some(expected_head_id(&child_before_archive)),
+                None,
+            )
+        };
+        send(&fixture, &owner, &archive_child)
+            .await
+            .expect("archive child");
+        let parent_before_second_delete = current_head(&fixture, parent_id).await;
+        let delete_parent_again = GoalAction {
+            reason: None,
+            ..action(
+                parent_id,
+                GoalActionKind::Delete,
+                Some(expected_head_id(&parent_before_second_delete)),
+                None,
+            )
+        };
+        assert!(
+            rejection(send(&fixture, &admin, &delete_parent_again).await)
+                .contains(&child_id.to_string())
+        );
+
+        let delete_child = GoalAction {
+            reason: None,
+            ..action(
+                child_id,
+                GoalActionKind::Delete,
+                Some(expected_head_id(&current_head(&fixture, child_id).await)),
+                None,
+            )
+        };
+        send(&fixture, &admin, &delete_child)
+            .await
+            .expect("admin deletes child");
+        let final_parent = current_head(&fixture, parent_id).await;
+        let delete_parent = GoalAction {
+            reason: None,
+            ..action(
+                parent_id,
+                GoalActionKind::Delete,
+                Some(expected_head_id(&final_parent)),
+                None,
+            )
+        };
+        send(&fixture, &admin, &delete_parent)
+            .await
+            .expect("admin deletes parent after child");
+        let deleted = parsed_head(&fixture, parent_id).await;
+        assert_eq!(deleted.status, GoalStatus::Deleted);
+        assert_eq!(deleted.title, format!("Goal {parent_id}"));
+        assert!(deleted.goal.is_none());
+        assert!(deleted.progress.is_none());
+        let deleted_event = current_head(&fixture, parent_id).await;
+        assert!(deleted_event
+            .event
+            .tags
+            .iter()
+            .all(|tag| tag.kind().to_string() != "h"));
+    }
+
+    #[tokio::test]
+    async fn command_coordinate_rejects_channel_tags_and_wrong_community_d_tags() {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        let goal_id = Uuid::new_v4();
+        let create = action(
+            goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(goal_id, &owner, None)),
+        );
+        let event = signed_raw_action(&owner, &create, true);
+        assert!(
+            rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await)
+                .contains("no h tag")
+        );
+
+        let content = serde_json::to_string(&create).expect("serialize goal action");
+        let wrong_goal_id = Uuid::new_v4();
+        let wrong_d = goal_d_tag(wrong_goal_id);
+        let event = EventBuilder::new(Kind::Custom(KIND_GOAL_ACTION as u16), content)
+            .tag(Tag::parse(["d", wrong_d.as_str()]).expect("wrong d tag"))
+            .sign_with_keys(&owner)
+            .expect("sign wrong coordinate");
+        assert!(
+            rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await)
+                .contains("d tag")
+        );
     }
 }

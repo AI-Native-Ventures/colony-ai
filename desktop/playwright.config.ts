@@ -93,6 +93,7 @@ export default defineConfig({
         "**/workflows.spec.ts",
         "**/company-asks.spec.ts",
         "**/factory.spec.ts",
+        "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
         "**/workflow-local-controls.spec.ts",
         "**/workflow-title-stability.spec.ts",
@@ -211,6 +212,7 @@ export default defineConfig({
         "**/team-catalog.spec.ts",
         "**/agents-everywhere.live.spec.ts",
         "**/relay-restart.live.spec.ts",
+        "**/goals.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
       ],
       use: {

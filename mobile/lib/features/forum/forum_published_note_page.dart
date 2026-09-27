@@ -3,13 +3,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/identity/identity_components.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
 import 'forum_presentation.dart';
-
-const _r19ForumPrimary = Color(0xFF45669F);
 
 /// Shows a note immediately after the relay accepts its forum post.
 class ForumPublishedNotePage extends ConsumerWidget {
@@ -42,17 +41,11 @@ class ForumPublishedNotePage extends ConsumerWidget {
     final authorName = displayName == null || displayName.isEmpty
         ? 'You'
         : displayName;
-    final titleStyle = context.mobileTypography.body.copyWith(
+    final titleStyle = context.mobileTypography.companySection.copyWith(
       color: context.mobileTokens.ink,
-      fontSize: 28,
-      fontWeight: FontWeight.w700,
-      height: 1.25,
-      letterSpacing: -0.8,
     );
     final bodyStyle = context.mobileTypography.body.copyWith(
       color: context.mobileTokens.ink,
-      fontSize: 14,
-      height: 1.85,
     );
     final userCache = ref.watch(userCacheProvider);
     final agentMentionPubkeys = agentPubkeysWithProfileOwners(
@@ -79,7 +72,7 @@ class ForumPublishedNotePage extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var index = 0; index < bodySections.length; index++) ...[
-          if (index > 0) const SizedBox(height: 22),
+          if (index > 0) const SizedBox(height: Grid.sm),
           presentation.messageContentBuilder(
             context,
             ForumMessageContentSpec(
@@ -100,7 +93,7 @@ class ForumPublishedNotePage extends ConsumerWidget {
 
     return FrostedScaffold(
       key: ValueKey('forum-published-note:$channelId:$postEventId'),
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: FrostedAppBar(
         leading: IconButton(
           onPressed: backToForum,
@@ -113,20 +106,15 @@ class ForumPublishedNotePage extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              channelName,
-              style: context.mobileTypography.body.copyWith(
+              'Team note',
+              style: context.mobileTypography.companyHubTitle.copyWith(
                 color: context.mobileTokens.ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
               ),
             ),
             Text(
-              'Forum · $memberCount ${memberCount == 1 ? 'member' : 'members'}',
-              style: context.mobileTypography.body.copyWith(
+              channelName,
+              style: context.mobileTypography.companyHubSubtitle.copyWith(
                 color: context.mobileTokens.muted,
-                fontSize: 11,
-                height: 1.25,
               ),
             ),
           ],
@@ -136,44 +124,39 @@ class ForumPublishedNotePage extends ConsumerWidget {
         frostedSurfaceOpacity: 0,
         frostedBlurSigma: 0,
         bottomDividerOpacity: 1,
+        actions: [
+          if (presentation.openQuickActions case final openQuickActions?)
+            IconButton(
+              onPressed: () => openQuickActions(ref),
+              tooltip: 'Quick actions',
+              icon: const Icon(LucideIcons.plus),
+            ),
+        ],
       ),
       body: Column(
         children: [
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(
-                20,
+                MobileLayoutTokens.contentGutter,
                 frostedAppBarHeight(
                       context,
                       titleContentHeight: titleContentHeight,
                     ) +
-                    12,
-                20,
-                20,
+                    Grid.xs,
+                MobileLayoutTokens.contentGutter,
+                MobileLayoutTokens.scrollBottomPadding,
               ),
               children: [
                 Row(
                   children: [
-                    ExcludeSemantics(
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8E2EC),
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Text(
-                          _initials(authorName),
-                          style: context.mobileTypography.body.copyWith(
-                            color: const Color(0xFF76657D),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+                    IdentityAvatar(
+                      initials: _initials(authorName),
+                      kind: IdentityKind.person,
+                      size: MobileLayoutTokens.companyHeaderAvatarSize,
+                      excludeSemantics: true,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Grid.xxs),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,63 +165,37 @@ class ForumPublishedNotePage extends ConsumerWidget {
                             authorName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.mobileTypography.body.copyWith(
-                              color: context.mobileTokens.ink,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: context.mobileTypography.identityName
+                                .copyWith(color: context.mobileTokens.ink),
                           ),
                           Text(
-                            'Just now · Team note',
-                            style: context.mobileTypography.body.copyWith(
-                              color: context.mobileTokens.muted,
-                              fontSize: 10,
-                            ),
+                            'Just now',
+                            style: context.mobileTypography.identityStatus
+                                .copyWith(color: context.mobileTokens.muted),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0x1F80A890),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Posted',
-                        style: context.mobileTypography.body.copyWith(
-                          color: context.mobileTokens.ink,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: Grid.lg),
                 Text(title, style: titleStyle),
-                const SizedBox(height: 24),
+                const SizedBox(height: Grid.xs),
                 bodyContent,
-                const SizedBox(height: 35),
+                const SizedBox(height: Grid.xl),
                 Divider(color: context.mobileTokens.line),
-                const SizedBox(height: 24),
+                const SizedBox(height: Grid.xs),
+                Text(
+                  'Discussion',
+                  style: context.mobileTypography.identityName.copyWith(
+                    color: context.mobileTokens.ink,
+                  ),
+                ),
+                const SizedBox(height: Grid.xxs),
                 Text(
                   'No replies yet',
                   style: context.mobileTypography.body.copyWith(
-                    color: context.mobileTokens.ink,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Your team can join the conversation here.',
-                  style: context.mobileTypography.body.copyWith(
                     color: context.mobileTokens.muted,
-                    fontSize: 12,
                   ),
                 ),
               ],
@@ -251,10 +208,10 @@ class ForumPublishedNotePage extends ConsumerWidget {
             ),
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                MediaQuery.viewPaddingOf(context).bottom + 8,
+                Grid.xs,
+                Grid.xs,
+                Grid.xs,
+                MediaQuery.viewPaddingOf(context).bottom + Grid.half,
               ),
               child: SizedBox(
                 width: double.infinity,
@@ -262,10 +219,10 @@ class ForumPublishedNotePage extends ConsumerWidget {
                 child: FilledButton(
                   onPressed: backToForum,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _r19ForumPrimary,
-                    foregroundColor: Colors.white,
+                    backgroundColor: context.mobileTokens.action,
+                    foregroundColor: context.mobileTokens.onAction,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(Radii.button),
                     ),
                   ),
                   child: Text('Back to $channelName'),

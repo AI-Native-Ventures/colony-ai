@@ -439,6 +439,7 @@ export async function fetchBuzzEntityMetadata(
 ): Promise<LinkPreviewMetadata | null> {
   const parsed = parseEntityLink(href);
   if (!parsed.ok) return null;
+  if (parsed.value.type === "goal") return null;
 
   const { owner, dtag } = parsed.value;
   if (parsed.value.type === "project") {

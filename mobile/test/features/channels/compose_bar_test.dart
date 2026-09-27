@@ -758,7 +758,7 @@ void main() {
       expect(find.byIcon(LucideIcons.aLargeSmall), findsOneWidget);
     });
 
-    testWidgets('uses the R19 rounded rectangle for a full-width composer', (
+    testWidgets('uses the v5 container shape for a full-width composer', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -776,7 +776,7 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(decoration.borderRadius, BorderRadius.circular(14));
+      expect(decoration.borderRadius, BorderRadius.circular(Radii.container));
       expect((decoration.border! as Border).top.width, 1);
     });
 
