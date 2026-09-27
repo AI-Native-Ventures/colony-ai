@@ -279,7 +279,7 @@ client channel and use a d-tag beginning `client:<client-uuid>:`.
 | Invoice head 30641 | `schemaVersion`, `clientId`, `invoiceId`, `proposalId`, `proposalVersionEventId`, `currency`, `lines`, `totalMinor`, `creditedMinor`, `writtenOffMinor`, `collectedMinor`, `outstandingMinor`, `paymentEvidenceCount`, `version`, `currentVersionEventId`, `status`, `dueAt`, `issuedAt`, `sourceEventId` |
 | Invoice version 47026 | `schemaVersion`, `clientId`, `invoiceId`, `version`, `previousVersionEventId`, `proposalVersionEventId`, `expectedHeadEventId`, `action`, `currency`, `lines`, `totalMinor`, `status`, `dueAt`, `voidReason` |
 | Payment evidence 47027 | `schemaVersion`, `clientId`, `invoiceId`, `paymentId`, `provider`, `providerReference`, `amountMinor`, `currency`, `occurredAt`, `evidenceRef`, `expectedInvoiceHeadEventId` |
-| Money adjustment 47028 | `schemaVersion`, `clientId`, `invoiceId`, `adjustmentId`, `adjustmentType`, `amountMinor`, `currency`, `reason`, `evidenceRef`, `expectedInvoiceHeadEventId` |
+| Money adjustment 47028 | `schemaVersion`, `clientId`, `invoiceId`, `adjustmentId`, `adjustmentType`, `amountMinor`, `currency`, `occurredAt`, `reason`, `evidenceRef`, `expectedInvoiceHeadEventId` |
 | Money follow up action 47030 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `action`, `expectedHeadEventId`, `expectedInvoiceHeadEventId`, `dueAt`, `draftContent` |
 | Money follow up head 30645 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `status`, `version`, `currentVersionEventId`, `dueAt`, `draftContent`, `approvalIntentOnly`, `approvedByPubkey`, `approvedAt`, `sourceEventId` |
 
@@ -340,9 +340,11 @@ Payment evidence applies only to an issued invoice, must use the invoice
 currency, and cannot exceed its current outstanding balance. `provider` is
 `manual` or a named provider; provider credentials are never included, and a
 provider reference is required when a named provider is used. `evidenceRef` is
-required for every payment and adjustment. A credit note reduces the invoice
-amount but does not represent a returned payment. A refund records evidence of
-a refund that already happened outside Colony and cannot exceed client credit.
+required for every payment and adjustment. `occurredAt` records when the
+adjustment took effect and is used for period-based reporting. A credit note
+reduces the invoice amount but does not represent a returned payment. A refund
+records evidence of a refund that already happened outside Colony and cannot
+exceed client credit.
 A write-off reduces the outstanding balance without adding collected cash.
 
 Money mutations require a community owner or admin and membership in the

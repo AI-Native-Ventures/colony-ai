@@ -828,6 +828,8 @@ pub struct MoneyAdjustment {
     pub amount_minor: i64,
     /// ISO 4217 currency code.
     pub currency: String,
+    /// Date the credit, refund, or write-off took effect in Unix seconds.
+    pub occurred_at: i64,
     /// Required explanation for the adjustment.
     pub reason: String,
     /// Non-secret reference to the supporting evidence.
@@ -1548,6 +1550,7 @@ mod tests {
             adjustment_type: MoneyAdjustmentType::CreditNote,
             amount_minor: 100,
             currency: "ZAR".into(),
+            occurred_at: 1_800_000_001,
             reason: "Scope reduced".into(),
             evidence_ref: "credit-note:one".into(),
             expected_invoice_head_event_id: "e".repeat(64),
