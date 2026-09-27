@@ -448,7 +448,7 @@
 :root:has([data-colony-workspace-route="true"])
   .colony-channel-view-tabs
   > [aria-current="page"]::after {
-  background: #92739f;
+  background: var(--colony-workspace-link-color);
   border-radius: 2px;
   bottom: -1px;
   content: "";

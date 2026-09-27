@@ -459,7 +459,9 @@ test.describe("visual comparison captures", () => {
             .evaluate(
               (element) => getComputedStyle(element, "::after").backgroundColor,
             );
-          expect(activeTabUnderline).toBe("rgb(146, 115, 159)");
+          expect(activeTabUnderline).toBe(
+            entry.theme === "dark" ? "rgb(157, 193, 251)" : "rgb(38, 85, 160)",
+          );
           if (!entry.appRoute.includes("?thread=")) {
             await expect(
               appPage.locator(".colony-channel-description"),
