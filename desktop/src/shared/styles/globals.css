@@ -19,6 +19,8 @@
 @import "./globals/video-review.css";
 @import "./globals/progress.css";
 @import "./globals/colony-workspace.css";
+@import "./globals/colony-workspace-continuation.css";
+@import "./globals/colony-workspace-updates.css";
 
 @config "../../../tailwind.config.js";
 

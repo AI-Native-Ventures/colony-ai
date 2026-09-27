@@ -99,7 +99,7 @@ class HomePage extends HookConsumerWidget {
       child: MobileShell(
         destination: selected.value,
         hasUnreadActivity: hasUnreadInbox,
-        showBrandBar: selected.value != MobileShellDestination.chats,
+        showBrandBar: selected.value == MobileShellDestination.business,
         overlayBuilder: overlayBuilder,
         onDestinationSelected: (next) {
           if (next == selected.value) {

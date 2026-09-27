@@ -6,6 +6,8 @@ on:
       - feat/phase1-drive
     paths:
       - ".github/workflows/electron-e2e.yml"
+      - ".github/actions/cached-service-images/**"
+      - "docker-compose.yml"
       - "Cargo.lock"
       - "Justfile"
       - "desktop/electron/**"
@@ -146,6 +148,8 @@ jobs:
           echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix redis)/bin" >> "$GITHUB_PATH"
 
+      - name: Restore cached service images
+        uses: ./.github/actions/cached-service-images
       - name: Start isolated relay database services
         if: runner.os == 'Linux'
         shell: bash

@@ -7,6 +7,8 @@ import {
 } from "@/features/agents/hooks";
 import {
   useContactListQuery,
+  useFollowMutation,
+  useUnfollowMutation,
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
 import {
@@ -74,6 +76,26 @@ function TimelineSkeleton() {
   );
 }
 
+function formatUpdateTimestamp(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1_000);
+  const today = new Date();
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  if (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  ) {
+    return `Today · ${time}`;
+  }
+  return `${new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+  }).format(date)} · ${time}`;
+}
+
 export function PulseView({
   currentPubkey,
   layout = "legacy",
@@ -82,6 +104,8 @@ export function PulseView({
   const [searchQuery, setSearchQuery] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const contactListQuery = useContactListQuery(currentPubkey);
+  const followMutation = useFollowMutation(currentPubkey);
+  const unfollowMutation = useUnfollowMutation(currentPubkey);
   const contacts = contactListQuery.data?.contacts ?? [];
   const contactPubkeys = React.useMemo(
     () => contacts.map((c) => c.pubkey),
@@ -198,6 +222,16 @@ export function PulseView({
     contactPubkeySet,
   ]);
 
+  const timelineNotes = React.useMemo(
+    () =>
+      layout === "today-updates"
+        ? [...visibleNotes].sort(
+            (left, right) => left.createdAt - right.createdAt,
+          )
+        : visibleNotes,
+    [layout, visibleNotes],
+  );
+
   const visibleNoteIds = React.useMemo(
     () => visibleNotes.map((note) => note.id),
     [visibleNotes],
@@ -304,27 +338,40 @@ export function PulseView({
       );
     }
 
-    return visibleNotes.length === 0 ? (
+    return timelineNotes.length === 0 ? (
       <EmptyState message={emptyMessages[activeTab]} />
     ) : (
       <VirtualizedList
-        estimateSize={140}
+        estimateSize={layout === "today-updates" ? 160 : 140}
         getItemKey={(note) => note.id}
-        items={visibleNotes}
+        items={timelineNotes}
         renderItem={(note) => (
-          <div className="pb-4">
+          <div
+            className={
+              layout === "today-updates" ? "colony-update-row" : "pb-4"
+            }
+          >
             <NoteCard
               actions={{
                 reply: noteActions.reply,
                 share: noteActions.share,
                 startDm: noteActions.startDm,
                 toggleUpvote: noteActions.toggleUpvote,
+                toggleFollow: (pubkey, isFollowing) =>
+                  isFollowing
+                    ? unfollowMutation.mutateAsync(pubkey)
+                    : followMutation.mutateAsync(pubkey),
               }}
               composerProfiles={mentionProfiles}
               currentUserDisplayName={currentDisplayName}
               currentUserProfile={currentProfile}
               isAgent={agentPubkeySet.has(note.pubkey)}
               isOwnNote={note.pubkey === currentPubkey}
+              isFollowing={contactPubkeySet.has(note.pubkey.toLowerCase())}
+              isFollowPending={
+                followMutation.isPending || unfollowMutation.isPending
+              }
+              layout={layout === "today-updates" ? "today-updates" : "default"}
               isReplySending={noteActions.isReplySending}
               isUpvotePending={noteActions.isUpvotePending(note.id)}
               isUpvoted={noteActions.isUpvoted(note.id)}
@@ -332,6 +379,11 @@ export function PulseView({
               members={pulseMentionMembers}
               note={note}
               profile={profiles[note.pubkey.toLowerCase()] ?? null}
+              timestampLabel={
+                layout === "today-updates"
+                  ? formatUpdateTimestamp(note.createdAt)
+                  : undefined
+              }
             />
           </div>
         )}
@@ -406,41 +458,62 @@ export function PulseView({
                     : "Failed to publish note"}
                 </div>
               )}
-              <ForumComposer
-                autocompleteBelow
-                className="pulse-composer overflow-hidden rounded-2xl border-border/50 bg-background/70 p-2 shadow-none backdrop-blur-xl supports-[backdrop-filter]:bg-background/55"
-                compact
-                header={
-                  <div className="flex min-w-0 items-center gap-2">
-                    <UserAvatar
-                      avatarUrl={currentProfile?.avatarUrl ?? null}
-                      className="!h-7 !w-7 shrink-0"
-                      displayName={currentDisplayName}
-                      shape={
-                        currentProfile?.isAgent === true ? "squircle" : "circle"
-                      }
-                    />
-                    <span className="max-w-32 truncate text-sm font-medium text-foreground">
-                      {currentDisplayName}
-                    </span>
-                  </div>
-                }
-                members={pulseMentionMembers}
-                placeholder={
+              <div
+                className={
                   layout === "today-updates"
-                    ? "Share an update with your team…"
-                    : "What's on your mind?"
+                    ? "colony-update-compose"
+                    : undefined
                 }
-                isSending={publishMutation.isPending}
-                onSubmit={(content, mentionPubkeys, mediaTags) =>
-                  publishMutation.mutateAsync({
-                    content,
-                    mentionPubkeys,
-                    mediaTags,
-                  })
-                }
-                profiles={mentionProfiles}
-              />
+              >
+                {layout === "today-updates" ? (
+                  <UserAvatar
+                    avatarUrl={currentProfile?.avatarUrl ?? null}
+                    className="!h-[2.0625rem] !w-[2.0625rem] shrink-0 colony-today-updates-avatar colony-update-avatar"
+                    displayName={currentDisplayName}
+                    fallbackDelayMs={0}
+                    shape="squircle"
+                  />
+                ) : null}
+                <ForumComposer
+                  autocompleteBelow
+                  className="pulse-composer overflow-hidden rounded-2xl border-border/50 bg-background/70 p-2 shadow-none backdrop-blur-xl supports-[backdrop-filter]:bg-background/55"
+                  compact
+                  header={
+                    layout === "today-updates" ? null : (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <UserAvatar
+                          avatarUrl={currentProfile?.avatarUrl ?? null}
+                          className="!h-7 !w-7 shrink-0"
+                          displayName={currentDisplayName}
+                          shape={
+                            currentProfile?.isAgent === true
+                              ? "squircle"
+                              : "circle"
+                          }
+                        />
+                        <span className="max-w-32 truncate text-sm font-medium text-foreground">
+                          {currentDisplayName}
+                        </span>
+                      </div>
+                    )
+                  }
+                  members={pulseMentionMembers}
+                  placeholder={
+                    layout === "today-updates"
+                      ? "Share an update with your team…"
+                      : "What's on your mind?"
+                  }
+                  isSending={publishMutation.isPending}
+                  onSubmit={(content, mentionPubkeys, mediaTags) =>
+                    publishMutation.mutateAsync({
+                      content,
+                      mentionPubkeys,
+                      mediaTags,
+                    })
+                  }
+                  profiles={mentionProfiles}
+                />
+              </div>
             </div>
           ) : null}
 

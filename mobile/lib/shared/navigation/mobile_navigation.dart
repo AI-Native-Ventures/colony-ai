@@ -25,4 +25,35 @@ abstract final class MobileNavigation {
         MobileRoutes.updates,
         const NoMobileRouteArguments(),
       );
+
+  static Future<void> openUpdateNote(BuildContext context, String noteId) =>
+      push<String, void>(context, MobileRoutes.updateNote, noteId);
+
+  static Future<bool?> openUpdateCompose(BuildContext context) =>
+      push<NoMobileRouteArguments, bool>(
+        context,
+        MobileRoutes.updateCompose,
+        const NoMobileRouteArguments(),
+      );
+
+  static Future<void> openUpdateDraft(BuildContext context) =>
+      push<NoMobileRouteArguments, void>(
+        context,
+        MobileRoutes.updateDraft,
+        const NoMobileRouteArguments(),
+      );
+
+  static Future<void> openUpdateFailed(BuildContext context) =>
+      push<NoMobileRouteArguments, void>(
+        context,
+        MobileRoutes.updateFailed,
+        const NoMobileRouteArguments(),
+      );
+
+  static Future<void> openUpdatePublished(BuildContext context) =>
+      push<NoMobileRouteArguments, void>(
+        context,
+        MobileRoutes.updatePublished,
+        const NoMobileRouteArguments(),
+      );
 }
