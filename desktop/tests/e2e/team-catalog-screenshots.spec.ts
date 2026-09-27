@@ -6,6 +6,7 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { showAgentTemplates } from "../helpers/agentWorkspace";
 
 function ownerPrivateKeyFor(pubkey: string): Uint8Array {
   const privateKey = Object.values(TEST_IDENTITIES).find(
@@ -160,6 +161,7 @@ async function gotoAgentsView(page: import("@playwright/test").Page) {
     timeout: 10_000,
   });
   await page.getByTestId("open-agents-view").click();
+  await showAgentTemplates(page);
 }
 
 async function openTeamCatalog(page: import("@playwright/test").Page) {
@@ -171,8 +173,14 @@ async function openTeamCatalog(page: import("@playwright/test").Page) {
 
 test.describe("team catalog screenshots", () => {
   test.use({ viewport: { width: 1280, height: 900 } });
+  test.beforeEach(() => {
+    test.skip(
+      true,
+      "NEEDS_DESIGN: frozen r17 has no community team catalog browse, add, or share dialog.",
+    );
+  });
 
-  test("01 — catalog browse, add, and added states", async ({ page }) => {
+  test("01  -  catalog browse, add, and added states", async ({ page }) => {
     test.setTimeout(60_000);
     await installMockBridge(page, { teamCatalogEvents: CATALOG_EVENTS });
     await gotoAgentsView(page);
@@ -222,7 +230,7 @@ test.describe("team catalog screenshots", () => {
     });
   });
 
-  test("02 — empty catalog", async ({ page }) => {
+  test("02  -  empty catalog", async ({ page }) => {
     await installMockBridge(page, { teamCatalogEvents: [] });
     await gotoAgentsView(page);
     await openTeamCatalog(page);
@@ -232,7 +240,7 @@ test.describe("team catalog screenshots", () => {
     });
   });
 
-  test("03 — share dialog before and after publishing", async ({ page }) => {
+  test("03  -  share dialog before and after publishing", async ({ page }) => {
     test.setTimeout(60_000);
     await installMockBridge(page, {
       personas: [
@@ -279,7 +287,7 @@ test.describe("team catalog screenshots", () => {
     await page.screenshot({ path: `${SHOTS}/share-published.png` });
   });
 
-  test("04 — both sections populated (agents + teams)", async ({ page }) => {
+  test("04  -  both sections populated (agents + teams)", async ({ page }) => {
     await installMockBridge(page, {
       personaCatalogEvents: PERSONA_CATALOG_EVENTS,
       teamCatalogEvents: CATALOG_EVENTS,

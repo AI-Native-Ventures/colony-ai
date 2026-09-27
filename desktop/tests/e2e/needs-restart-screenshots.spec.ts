@@ -6,7 +6,7 @@
  *   - Agent grid restart actions without a duplicate status badge.
  *   - Profile badge tooltip with itemised before→after diff.
  *   - Runtime-tab banner with full uncapped diff list.
- *   - Side-panel badge visible on the default (Info) tab — not only Runtime.
+ *   - Side-panel badge visible on the default (Info) tab  -  not only Runtime.
  *   - DOM validity: tooltip trigger has no <button> ancestor.
  *   - Generic rendering: unknown field ids, number/array values, masked values.
  */
@@ -14,6 +14,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 import { waitForAnimations } from "../helpers/animations";
 
 const SHOTS = "test-results/restart-diff-screenshots";
@@ -42,7 +43,7 @@ const DIFF_ENTRIES = [
     field: "relay_url",
     change: { kind: "masked" as const, before: "••••", after: "••••" },
   },
-  // Array value — args are atomic; rendered via JSON.stringify (position 6: last visible in tooltip)
+  // Array value  -  args are atomic; rendered via JSON.stringify (position 6: last visible in tooltip)
   {
     field: "agent_args",
     change: {
@@ -51,12 +52,12 @@ const DIFF_ENTRIES = [
       after: ["acp", "--verbose"],
     },
   },
-  // 7th entry — truncated in tooltip (cap is 6); visible in uncapped banner
+  // 7th entry  -  truncated in tooltip (cap is 6); visible in uncapped banner
   {
     field: "parallelism",
     change: { kind: "value" as const, before: 1, after: 4 },
   },
-  // 8th entry — truncated in tooltip; visible in uncapped banner
+  // 8th entry  -  truncated in tooltip; visible in uncapped banner
   {
     field: "args",
     change: { kind: "masked" as const, before: "••••", after: "••••" },
@@ -80,7 +81,7 @@ const PERSONA_AGENT = {
   restartDiff: DIFF_ENTRIES,
 };
 
-/** Running agent with no config drift — restart action must be absent. */
+/** Running agent with no config drift  -  restart action must be absent. */
 const NO_DRIFT_AGENT = {
   pubkey: TEST_IDENTITIES.tyler.pubkey,
   name: "Stable Agent",
@@ -120,13 +121,7 @@ const START_AGENT = {
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("open-agents-view").click();
-  await expect(page.getByTestId("agents-library-personas")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentTemplatesView(page);
 }
 
 const WCAG_AA_NORMAL_TEXT_CONTRAST = 4.5;
@@ -477,7 +472,7 @@ test.describe("restart-diff screenshots", () => {
 
     await gotoAgentsView(page);
 
-    // Open profile panel via the agent card button — opens on Info tab by default
+    // Open profile panel via the agent card button  -  opens on Info tab by default
     const agentButton = page.getByRole("button", {
       name: `${STANDALONE_AGENT.name} agent profile`,
     });
@@ -550,7 +545,7 @@ test.describe("restart-diff screenshots", () => {
     await expect(banner).toBeVisible({ timeout: 5_000 });
     const diffList = banner.getByTestId("restart-diff-list");
     await expect(diffList).toBeVisible();
-    // All 8 entries visible in banner (no cap) — last entry "args" is present.
+    // All 8 entries visible in banner (no cap)  -  last entry "args" is present.
     // exact: true prevents substring collision with "Agent args:" label.
     await expect(diffList.getByText("Args:", { exact: true })).toBeVisible();
 

@@ -3,6 +3,7 @@ import { npubEncode } from "nostr-tools/nip19";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/agent-access-warning";
 
@@ -125,7 +126,7 @@ test("open agent access explains the available access before save", async ({
     .screenshot({ path: `${SHOTS}/selected-people-warning.png` });
 
   // Compact-variant clipboard regression (D1a): the owner hint's compact
-  // PubKey must expand to and copy the viewer's complete canonical npub —
+  // PubKey must expand to and copy the viewer's complete canonical npub.
   // the truncated trigger is only a recognition aid. The real bridge writes
   // the browser clipboard and the poll reads it back.
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -326,7 +327,7 @@ test("persona-backed edit warns before saving open access", async ({
     ],
   });
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByRole("button", { name: "Tyler Agent agent profile" }).click();
   await page.getByTestId("user-profile-edit-agent").click();
 

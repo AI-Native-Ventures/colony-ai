@@ -7,7 +7,7 @@
  *   - Online/Away presence taking precedence over a stopped record's error.
  *
  * ManagedAgentRow (StatusBlock text) is also exercised here even though it is
- * not yet wired into a reachable route in the main app — it will be connected
+ * not yet wired into a reachable route in the main app  -  it will be connected
  * in the follow-up config-bridge PR.  We render it in isolation by navigating
  * to the agents view and letting the mock bridge expose the row through the
  * unified section once that wiring lands; for now we capture the card badges
@@ -17,11 +17,12 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 import { waitForAnimations } from "../helpers/animations";
 
 const SHOTS = "test-results/pr-1653-screenshots";
 
-// Two stopped agents — one with a structured -32002 code, one with a raw string.
+// Two stopped agents  -  one with a structured -32002 code, one with a raw string.
 const MODEL_NOT_FOUND_AGENT = {
   pubkey: TEST_IDENTITIES.alice.pubkey,
   name: "Databricks Agent",
@@ -44,10 +45,7 @@ async function gotoAgentsView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("open-agents-view")).toBeVisible({
     timeout: 10_000,
   });
-  await page.getByTestId("open-agents-view").click();
-  await expect(page.getByTestId("agents-library-personas")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentTemplatesView(page);
 }
 
 // Alice/Bob are Online/Away in the shared bridge, regardless of lifecycle.
@@ -108,7 +106,7 @@ test.describe("agent error state screenshots", () => {
     await expect(errorBadge).toBeVisible({ timeout: 10_000 });
     await expect(errorBadge).toHaveAttribute(
       "title",
-      "The configured model is not available — open agent settings and select a different one from the dropdown.",
+      /The configured model is not available.*open agent settings and select a different one from the dropdown\./,
     );
     await waitForAnimations(page);
 
@@ -123,7 +121,7 @@ test.describe("agent error state screenshots", () => {
 
   // Shot 02: agent card with generic (unclassified) error badge.
   // The badge is present but the tooltip shows the raw exit string, not
-  // structured copy — demonstrating the error is still surfaced for any
+  // structured copy  -  demonstrating the error is still surfaced for any
   // harness exit.
   test("02-generic-error-badge", async ({ page }) => {
     await installMockBridge(page, {
@@ -151,7 +149,7 @@ test.describe("agent error state screenshots", () => {
     });
   });
 
-  // Shot 03: side-by-side — both agents in the same view so the reviewer can
+  // Shot 03: side-by-side  -  both agents in the same view so the reviewer can
   // see error badges on all stopped agents in a real usage context.
   test("03-agents-section-both-errors", async ({ page }) => {
     await installMockBridge(page, {
