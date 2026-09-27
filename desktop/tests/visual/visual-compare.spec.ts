@@ -314,6 +314,20 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appPreActionsReadySelector ?? entry.appReadySelector,
         );
+        if (entry.appMockData?.referenceSidebarShell === true) {
+          for (const [channelName, count] of [
+            ["olive-studio", 2],
+            ["sales", 3],
+            ["Company forum", 1],
+            ["Aya", 1],
+          ] as const) {
+            await expect(
+              appPage.getByTestId(`channel-unread-${channelName}`),
+            ).toHaveText(
+              `${count} unread notification${count === 1 ? "" : "s"}`,
+            );
+          }
+        }
         const activeTurns =
           entry.appActiveTurns ?? manifestFixture?.activeTurns ?? [];
         if (activeTurns.length > 0) {
