@@ -177,6 +177,26 @@ type MockBridgeOptions = {
   factoryLocalRepositories?: Array<{ name: string; path: string }>;
   /** Relay NIP-11 identity used to sign authoritative repository state. */
   relaySelf?: string | null;
+  /** Verified relay-signed ask heads used by company ask E2E coverage. */
+  companyAskHeads?: RelayEvent[];
+  /** Ephemeral test key used to model relay-signed head updates after responses. */
+  companyAskRelayPrivateKeyHex?: string;
+  /** Reject these ask response publishes in order, then accept them. */
+  askResponseErrors?: string[];
+  /** Pending workflow approval rows used by Today E2E coverage. */
+  workflowApprovals?: Array<{
+    workflowId: string;
+    workflowName: string;
+    channelName: string;
+    runId: string;
+    approvalRef: string;
+    stepId: string;
+    stepIndex: number;
+    approverSpec: string;
+    approverPubkey?: string | null | "current";
+    expiresAt: string;
+    createdAt: number;
+  }>;
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

@@ -12,6 +12,7 @@ import {
 import {
   CHANNEL_AUX_EVENT_KINDS,
   CHANNEL_TIMELINE_CONTENT_KINDS,
+  KIND_ASK_ACTION,
   KIND_HUDDLE_ENDED,
   KIND_HUDDLE_STARTED,
 } from "@/shared/constants/kinds";
@@ -83,6 +84,27 @@ function huddleStarted(overrides = {}) {
       ephemeral_channel_id: "8d764100-fd8f-44cf-9c98-6d8fbd739b8c",
     }),
     tags: [["h", CHANNEL_ID]],
+    sig: "sig",
+    ...overrides,
+  };
+}
+
+function askAction(action, overrides = {}) {
+  return {
+    id: HEX64_B,
+    pubkey: PUBKEY_A,
+    kind: KIND_ASK_ACTION,
+    created_at: 1_700_000_001,
+    content: JSON.stringify({
+      schemaVersion: 1,
+      askId: "7f7340ca-005e-4ae9-a11d-b1a1e5f8f83d",
+      action,
+    }),
+    tags: [
+      ["h", CHANNEL_ID],
+      ["d", `channel:${CHANNEL_ID}:ask:7f7340ca-005e-4ae9-a11d-b1a1e5f8f83d`],
+      ...(action === "create" ? [["e", HEX64_A, "", "reply"]] : []),
+    ],
     sig: "sig",
     ...overrides,
   };
@@ -656,6 +678,23 @@ test("huddle ended stays lifecycle-only, not a timeline row", () => {
   assert.equal(isTimelineContentEvent({ kind: KIND_HUDDLE_ENDED }), false);
 });
 
+test("ask create commands render in the timeline but cancels do not", () => {
+  const create = askAction("create");
+  const cancel = askAction("cancel");
+  assert.equal(isTimelineContentEvent(create), true);
+  assert.equal(isTimelineContentEvent(cancel), false);
+  const messages = formatTimelineMessages(
+    [create, cancel],
+    null,
+    undefined,
+    null,
+  );
+  assert.deepEqual(
+    messages.map((message) => message.id),
+    [create.id],
+  );
+});
+
 // Guardrail: the history fetch requests exactly CHANNEL_TIMELINE_CONTENT_KINDS,
 // so that set must stay in lockstep with isTimelineContentEvent. Drift would
 // silently drop a content kind from history (fetched but never rendered) or
@@ -663,7 +702,9 @@ test("huddle ended stays lifecycle-only, not a timeline row", () => {
 test("CHANNEL_TIMELINE_CONTENT_KINDS matches isTimelineContentEvent", () => {
   for (const kind of CHANNEL_TIMELINE_CONTENT_KINDS) {
     assert.ok(
-      isTimelineContentEvent({ kind }),
+      isTimelineContentEvent(
+        kind === KIND_ASK_ACTION ? askAction("create") : { kind },
+      ),
       `content kind ${kind} must be a timeline content event`,
     );
   }

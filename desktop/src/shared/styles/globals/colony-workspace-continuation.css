@@ -728,6 +728,353 @@ button.colony-today-attention-row:hover {
   font-weight: 500;
 }
 
+.colony-ask-card {
+  min-width: 0;
+  margin: 0.75rem 0 0.25rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+  padding: 1.5rem;
+  color: hsl(var(--foreground));
+}
+
+.colony-ask-card > h2 {
+  margin: 0.85rem 0 0.5rem;
+  font-size: var(--text-base);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+}
+
+.colony-ask-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-2xs);
+}
+
+.colony-ask-status {
+  border-radius: 0.3rem;
+  background: hsl(var(--primary) / 0.12);
+  padding: 0.15rem 0.4rem;
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.colony-ask-status-open {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
+.colony-ask-status-resolved {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
+.colony-ask-status-cancelled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-ask-status-overdue {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+.colony-ask-body,
+.colony-ask-denied p,
+.colony-ask-resolution p {
+  margin: 0.5rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.colony-ask-addressed {
+  margin: 1rem 0 1.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+  line-height: 1.65;
+}
+
+.colony-ask-response-form {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.colony-ask-response-form > label,
+.colony-ask-checklist legend {
+  color: hsl(var(--foreground));
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.colony-ask-response-form select,
+.colony-ask-response-form textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.4rem;
+  background: hsl(var(--background));
+  padding: 0.55rem 0.65rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-ask-response-form textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.colony-ask-checklist {
+  display: grid;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.colony-ask-checklist label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0.9rem 0.25rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.colony-ask-checklist input {
+  margin-top: 0.18rem;
+  accent-color: hsl(var(--primary));
+}
+
+.colony-ask-submit-button {
+  justify-self: start;
+  margin-top: 0.25rem;
+}
+
+.colony-ask-submit-error,
+.colony-ask-denied {
+  border-left: 2px solid hsl(var(--destructive));
+  margin: 0.5rem 0 0;
+  padding: 0.35rem 0.65rem;
+  color: hsl(var(--destructive));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-submit-error,
+.colony-ask-submit-error > span {
+  display: block;
+}
+
+.colony-ask-kept-input {
+  margin-top: 0.2rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-ask-denied {
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.colony-ask-resolution {
+  margin-top: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  background: hsl(var(--muted) / 0.25);
+  padding: 0.85rem;
+  font-size: var(--text-sm);
+}
+
+.colony-ask-resolution small,
+.colony-ask-live-status {
+  display: block;
+  margin-top: 0.45rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-live-status {
+  margin-bottom: 0;
+}
+
+.colony-today-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 3rem;
+}
+
+.colony-today-heading,
+.colony-today-needs-me,
+.colony-today-moving-forward {
+  width: min(100%, 72rem);
+}
+
+.colony-today-heading {
+  margin-bottom: 0;
+}
+
+.colony-today-needs-me-heading {
+  margin: 1.75rem 0 1.5rem;
+}
+
+.colony-today-needs-me-heading p,
+.colony-today-moving-forward > h2 {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-needs-me-row {
+  display: flex;
+  width: 100%;
+  min-height: 4.75rem;
+  align-items: center;
+  gap: 1.5rem;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  background: transparent;
+  padding: 1.45rem 0.25rem;
+  color: hsl(var(--foreground));
+  text-align: left;
+}
+
+button.colony-needs-me-row {
+  cursor: pointer;
+}
+
+button.colony-needs-me-row:hover {
+  background: hsl(var(--muted) / 0.3);
+}
+
+.colony-needs-me-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  border-radius: 999px;
+  background: hsl(var(--accent));
+}
+
+.colony-needs-me-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.colony-needs-me-copy strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.colony-needs-me-copy small {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colony-needs-me-type,
+.colony-needs-me-overdue {
+  flex: none;
+  border: 0;
+  border-radius: 0.35rem;
+  background: hsl(var(--primary) / 0.12);
+  padding: 0.3rem 0.5rem;
+  color: hsl(var(--primary));
+  font-size: var(--text-2xs);
+}
+
+.colony-needs-me-overdue {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+.colony-needs-me-chevron {
+  flex: none;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-lg);
+}
+
+.colony-needs-me-workflow-actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.colony-needs-me-copy .colony-needs-me-error {
+  color: hsl(var(--destructive));
+  white-space: normal;
+}
+
+.colony-today-needs-me-empty {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 1.6rem 0.25rem;
+}
+
+.colony-today-needs-me-empty h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-today-needs-me-empty p,
+.colony-today-needs-me-loading {
+  margin: 0.35rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-today-moving-forward {
+  margin: 2.5rem auto 1.5rem;
+}
+
+.colony-today-moving-forward > h2 {
+  margin-bottom: 0.35rem;
+}
+
+@media (max-width: 700px) {
+  .colony-today-scroll {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .colony-needs-me-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .colony-needs-me-dot {
+    margin-top: 0.45rem;
+  }
+
+  .colony-needs-me-copy {
+    flex-basis: calc(100% - 1.5rem);
+  }
+
+  .colony-needs-me-type,
+  .colony-needs-me-overdue {
+    margin-left: 1.35rem;
+  }
+
+  .colony-needs-me-workflow-actions {
+    margin-left: 1.35rem;
+  }
+}
+
 :root.dark:has([data-colony-workspace-route="true"])
   .colony-today-card-heading
   > span {
