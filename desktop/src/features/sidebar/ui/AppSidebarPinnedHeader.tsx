@@ -1,11 +1,4 @@
-import {
-  ArrowLeft,
-  Bot,
-  BriefcaseBusiness,
-  Folders,
-  House,
-  Inbox,
-} from "lucide-react";
+import { ArrowLeft, Bot, Folders, House, Inbox } from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
@@ -33,6 +26,8 @@ type SidebarSelectedView =
   | "messages"
   | "agents"
   | "workflows"
+  | "clients"
+  | "work"
   | "pulse"
   | "projects"
   | "factory"
@@ -64,7 +59,6 @@ type AppSidebarPrimaryMenuProps = {
   onSelectAgents: () => void;
   onSelectHome: () => void;
   onSelectFactory: () => void;
-  onSelectWorkflows: () => void;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
@@ -188,7 +182,6 @@ export function AppSidebarPrimaryMenu({
   onSelectAgents,
   onSelectHome,
   onSelectFactory,
-  onSelectWorkflows,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
@@ -232,20 +225,6 @@ export function AppSidebarPrimaryMenu({
               </SidebarMenuBadge>
             ) : null}
           </SidebarMenuItem>
-          <FeatureGate feature="workflows">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="open-workflows-view"
-                isActive={selectedView === "workflows"}
-                onClick={onSelectWorkflows}
-                tooltip="Work"
-                type="button"
-              >
-                <BriefcaseBusiness className="h-4 w-4" />
-                <SidebarMenuLabel>Work</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
           <SidebarMenuItem>
             <SidebarMenuButton
               className="data-[active=true]:font-normal"

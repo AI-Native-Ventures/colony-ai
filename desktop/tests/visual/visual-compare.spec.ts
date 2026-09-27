@@ -341,7 +341,10 @@ test.describe("visual comparison captures", () => {
             .poll(() => followButtons.allTextContents())
             .toEqual(["Following", "Following"]);
         }
-        if (entry.referenceInventoryRoute === "channel/sales") {
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          !entry.appMockData?.referenceWorkspace
+        ) {
           const crossPostControl = appPage.getByRole("checkbox", {
             name: "Also send to #Sales",
           });

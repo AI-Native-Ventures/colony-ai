@@ -1,6 +1,13 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { ChevronDown, Plus, Users } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  ChevronDown,
+  ListTodo,
+  Plus,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -79,6 +86,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/shared/ui/sidebar";
+import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import { useProtectedVisibleDirectMessages } from "@protected-feature-components";
 
 export function AppSidebar({
@@ -124,6 +132,8 @@ export function AppSidebar({
   onSelectAgents,
   onSelectToday,
   onSelectFactory,
+  onSelectClients,
+  onSelectWork,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -532,7 +542,9 @@ export function AppSidebar({
       data-colony-workspace-route={
         selectedView === "today" ||
         selectedView === "channel" ||
-        selectedView === "pins"
+        selectedView === "pins" ||
+        selectedView === "clients" ||
+        selectedView === "work"
           ? "true"
           : undefined
       }
@@ -610,7 +622,6 @@ export function AppSidebar({
                     onSelectAgents={onSelectAgents}
                     onSelectHome={onSelectHome}
                     onSelectFactory={onSelectFactory}
-                    onSelectWorkflows={onSelectWorkflows}
                     suppressTodaySelection={suppressTodaySelection}
                     selectedView={selectedView}
                   />
@@ -846,6 +857,32 @@ export function AppSidebar({
                         <ChevronDown aria-hidden="true" />
                         <span data-sidebar-section-title>Business</span>
                       </h2>
+                      <SidebarMenu data-testid="sidebar-business-destinations">
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="sidebar-business-clients"
+                            isActive={selectedView === "clients"}
+                            onClick={onSelectClients}
+                            tooltip="Clients"
+                            type="button"
+                          >
+                            <BriefcaseBusiness aria-hidden="true" />
+                            <SidebarMenuLabel>Clients</SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="sidebar-business-work"
+                            isActive={selectedView === "work"}
+                            onClick={onSelectWork}
+                            tooltip="Work"
+                            type="button"
+                          >
+                            <ListTodo aria-hidden="true" />
+                            <SidebarMenuLabel>Work</SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
                       <SidebarSection
                         action={
                           <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
@@ -890,6 +927,41 @@ export function AppSidebar({
                         onMuteChannel={onMuteChannel}
                         onUnmuteChannel={onUnmuteChannel}
                       />
+                      <h2 className="colony-sidebar-business-heading">
+                        <ChevronDown aria-hidden="true" />
+                        <span data-sidebar-section-title>
+                          Build &amp; automate
+                        </span>
+                      </h2>
+                      <SidebarMenu data-testid="sidebar-build-automate-destinations">
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="open-workflows-view"
+                            isActive={selectedView === "workflows"}
+                            onClick={onSelectWorkflows}
+                            tooltip="Workflows"
+                            type="button"
+                          >
+                            <Workflow
+                              aria-hidden="true"
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            />
+                            <SidebarMenuLabel
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            >
+                              Workflows
+                            </SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
                     </>
                   ) : null}
 

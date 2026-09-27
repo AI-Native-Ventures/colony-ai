@@ -4,14 +4,18 @@ import test from "node:test";
 import {
   BUSINESS_RECORD_SCHEMA_VERSION,
   BusinessRecordParseError,
+  buildWorkItemReferenceMessageTemplate,
+  buildWorkItemReferenceTag,
   buildClientActionTemplate,
   buildWorkItemActionTemplate,
   canonicalJson,
   clientDTag,
   computeDeliverableDigests,
   createBusinessRecordService,
+  isBusinessRecordCommandRejection,
   parseClientHead,
   parseWorkItemHead,
+  parseWorkItemReferenceCoordinate,
   workItemDTag,
 } from "./businessRecords.ts";
 import {
@@ -117,6 +121,44 @@ test("work heads reject a route client that differs from the h tag", () => {
   assert.throws(
     () => parseWorkItemHead(wrongClient),
     /outside its client channel/,
+  );
+});
+
+test("work references bind one exact head coordinate and client channel", () => {
+  const record = parseWorkItemHead(workItemHeadEvent());
+  const referenceTag = buildWorkItemReferenceTag(record);
+  const coordinate = `${KIND_WORK_ITEM_HEAD}:${PUBKEY}:${workItemDTag(CLIENT_ID, WORK_ID)}`;
+  assert.deepEqual(referenceTag, ["a", coordinate]);
+  assert.deepEqual(parseWorkItemReferenceCoordinate(coordinate, CLIENT_ID), {
+    authorPubkey: PUBKEY,
+    dTag: workItemDTag(CLIENT_ID, WORK_ID),
+    workItemId: WORK_ID,
+  });
+  assert.equal(parseWorkItemReferenceCoordinate(coordinate, PARTY_ID), null);
+  assert.equal(
+    parseWorkItemReferenceCoordinate(
+      `${KIND_WORK_ITEM_HEAD}:${"cd".repeat(32)}:${workItemDTag(CLIENT_ID, WORK_ID)}`,
+      CLIENT_ID,
+    )?.authorPubkey,
+    "cd".repeat(32),
+  );
+
+  const messageTemplate = buildWorkItemReferenceMessageTemplate(record, PUBKEY);
+  assert.equal(messageTemplate.kind, 9);
+  assert.equal(messageTemplate.content, "");
+  assert.deepEqual(messageTemplate.tags, [
+    ["h", CLIENT_ID],
+    ["p", PUBKEY],
+    ["a", coordinate],
+  ]);
+
+  const wrongAuthor = {
+    ...record,
+    event: { ...record.event, pubkey: "not-hex" },
+  };
+  assert.throws(
+    () => buildWorkItemReferenceTag(wrongAuthor),
+    /32-byte lowercase hex/,
   );
 });
 
@@ -235,6 +277,53 @@ test("directory reads split explicit h scopes at the relay cap", async () => {
     [128, 2],
   );
   assert.ok(calls.every((filter) => filter.limit === filter["#h"].length));
+});
+
+test("shared work reads enforce explicit channel and record bounds", async () => {
+  const calls = [];
+  const relay = {
+    fetchEvents: async (filter) => {
+      calls.push(filter);
+      if (filter.kinds[0] !== KIND_WORK_ITEM_HEAD) return [];
+      if (filter["#d"]) return [workItemHeadEvent()];
+      return filter["#h"].includes(CLIENT_ID) ? [workItemHeadEvent()] : [];
+    },
+    publishEvent: async () => {},
+    subscribeLive: async () => async () => {},
+  };
+  const service = createBusinessRecordService(relay, async () => {
+    throw new Error("signer should not run during a read");
+  });
+  const channelIds = [CLIENT_ID];
+  for (let index = 1; index < 128; index += 1) {
+    channelIds.push(
+      `aaaaaaaa-aaaa-4aaa-8aaa-${index.toString(16).padStart(12, "0")}`,
+    );
+  }
+
+  const records = await service.listWorkItemHeadsForChannels(channelIds);
+  const exact = await service.getWorkItemHead(CLIENT_ID, WORK_ID);
+
+  assert.equal(records.length, 1);
+  assert.equal(exact.value.workItemId, WORK_ID);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((filter) => filter["#h"]?.length),
+    [128, 1],
+  );
+  assert.ok(calls.every((filter) => filter.kinds[0] === KIND_WORK_ITEM_HEAD));
+  assert.ok(
+    calls.every((filter) => filter.limit === 501 || filter.limit === 2),
+  );
+  assert.deepEqual(calls[1]["#d"], [workItemDTag(CLIENT_ID, WORK_ID)]);
+  await assert.rejects(
+    service.listWorkItemHeadsForChannels([
+      ...channelIds,
+      "bbbbbbbb-bbbb-4bbb-8bbb-000000000129",
+    ]),
+    /Too many client channels to load the shared work list/,
+  );
+  assert.equal(calls.length, 2);
 });
 
 test("business submission confirms an uncertain acknowledgement by exact event id", async () => {
@@ -373,6 +462,28 @@ test("a command with a mismatched d coordinate is rejected before signing", asyn
 
   await assert.rejects(service.submit(template), /d tag does not match/);
   assert.equal(signCalled, false);
+});
+
+test("only definitive business command rejections unlock reload", () => {
+  assert.equal(
+    isBusinessRecordCommandRejection(
+      new Error("conflict: work item head changed since it was loaded"),
+    ),
+    true,
+  );
+  assert.equal(
+    isBusinessRecordCommandRejection(
+      new Error("forbidden: only a channel admin can update this record"),
+    ),
+    true,
+  );
+  assert.equal(
+    isBusinessRecordCommandRejection(
+      new Error("relay acknowledgement timed out"),
+    ),
+    false,
+  );
+  assert.equal(isBusinessRecordCommandRejection("conflict: stale head"), false);
 });
 
 test("client live updates use a bounded explicit channel and kind filter", async () => {

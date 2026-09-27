@@ -6,6 +6,7 @@ import {
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_STREAM_MESSAGE,
   KIND_WORK_ITEM_ACTION,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -17,6 +18,7 @@ import type { RelayClient } from "@/shared/api/relayClientSession";
 
 export const BUSINESS_RECORD_SCHEMA_VERSION = 1;
 export const MAX_CLIENT_CHANNELS_TO_SCAN = 4096;
+export const MAX_WORK_CLIENT_CHANNELS = 128;
 export const MAX_CURRENT_WORK_ITEMS = 500;
 export const MAX_DELIVERABLE_EVENTS = 1000;
 export const MAX_BUSINESS_EVENT_BYTES = 1_000_000;
@@ -136,6 +138,13 @@ export class BusinessRecordLimitError extends Error {
     super(message);
     this.name = "BusinessRecordLimitError";
   }
+}
+
+export function isBusinessRecordCommandRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /^(conflict|forbidden|invalid|restricted):/i.test(
+    error.message.trim(),
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -313,6 +322,72 @@ export function workItemDTag(clientId: string, workItemId: string): string {
   assertUuid(clientId, "client id");
   assertUuid(workItemId, "work item id");
   return `client:${clientId.toLowerCase()}:work:${workItemId.toLowerCase()}`;
+}
+
+export function buildWorkItemReferenceTag(
+  record: EventRecord<WorkItemHead>,
+): string[] {
+  const { clientId, workItemId } = record.value;
+  const dTag = workItemDTag(clientId, workItemId);
+  assertHex32(record.event.pubkey, "work item head author");
+  if (
+    record.event.kind !== KIND_WORK_ITEM_HEAD ||
+    readUniqueTag(record.event, "h").toLowerCase() !== clientId.toLowerCase() ||
+    readUniqueTag(record.event, "d") !== dTag
+  ) {
+    throw new BusinessRecordParseError(
+      "work item reference must match its exact client head",
+    );
+  }
+  return [
+    "a",
+    `${KIND_WORK_ITEM_HEAD}:${record.event.pubkey.toLowerCase()}:${dTag}`,
+  ];
+}
+
+export function parseWorkItemReferenceCoordinate(
+  coordinate: string,
+  clientId: string,
+): { authorPubkey: string; dTag: string; workItemId: string } | null {
+  try {
+    assertUuid(clientId, "client channel id");
+  } catch {
+    return null;
+  }
+  const firstSeparator = coordinate.indexOf(":");
+  const secondSeparator = coordinate.indexOf(":", firstSeparator + 1);
+  if (firstSeparator < 1 || secondSeparator < 0) return null;
+  const kind = Number(coordinate.slice(0, firstSeparator));
+  const authorPubkey = coordinate.slice(firstSeparator + 1, secondSeparator);
+  const dTag = coordinate.slice(secondSeparator + 1);
+  if (kind !== KIND_WORK_ITEM_HEAD || !HEX_32_RE.test(authorPubkey))
+    return null;
+  const prefix = `client:${clientId.toLowerCase()}:work:`;
+  if (!dTag.startsWith(prefix)) return null;
+  const workItemId = dTag.slice(prefix.length);
+  try {
+    assertUuid(workItemId, "work item id");
+    if (workItemDTag(clientId, workItemId) !== dTag) return null;
+  } catch {
+    return null;
+  }
+  return { authorPubkey, dTag, workItemId: workItemId.toLowerCase() };
+}
+
+export function buildWorkItemReferenceMessageTemplate(
+  record: EventRecord<WorkItemHead>,
+  senderPubkey: string,
+): BusinessEventTemplate {
+  assertHex32(senderPubkey, "message author");
+  return {
+    kind: KIND_STREAM_MESSAGE,
+    content: "",
+    tags: [
+      ["h", record.value.clientId.toLowerCase()],
+      ["p", senderPubkey.toLowerCase()],
+      buildWorkItemReferenceTag(record),
+    ],
+  };
 }
 
 export function deliverableVersionDTag(
@@ -1052,9 +1127,9 @@ export function createBusinessRecordService(
       const events = await relay.fetchEvents({
         kinds: [KIND_WORK_ITEM_HEAD],
         "#h": [clientId.toLowerCase()],
-        limit: MAX_CURRENT_WORK_ITEMS,
+        limit: MAX_CURRENT_WORK_ITEMS + 1,
       });
-      if (events.length >= MAX_CURRENT_WORK_ITEMS) {
+      if (events.length > MAX_CURRENT_WORK_ITEMS) {
         throw new BusinessRecordLimitError(
           "The client has too many work items to load in one request",
         );
@@ -1070,6 +1145,77 @@ export function createBusinessRecordService(
         );
       }
       return records;
+    },
+
+    async listWorkItemHeadsForChannels(channelIds: readonly string[]) {
+      if (channelIds.length > MAX_WORK_CLIENT_CHANNELS) {
+        throw new BusinessRecordLimitError(
+          "Too many client channels to load the shared work list",
+        );
+      }
+      const normalized = [
+        ...new Set(
+          channelIds.map((id) => {
+            assertUuid(id, "client channel id");
+            return id.toLowerCase();
+          }),
+        ),
+      ];
+      const records: EventRecord<WorkItemHead>[] = [];
+      for (
+        let index = 0;
+        index < normalized.length;
+        index += MAX_EXPLICIT_CHANNEL_VALUES
+      ) {
+        const batch = normalized.slice(
+          index,
+          index + MAX_EXPLICIT_CHANNEL_VALUES,
+        );
+        const events = await relay.fetchEvents({
+          kinds: [KIND_WORK_ITEM_HEAD],
+          "#h": batch,
+          limit: MAX_CURRENT_WORK_ITEMS + 1,
+        });
+        records.push(...events.map(parseWorkItemHead));
+        if (records.length > MAX_CURRENT_WORK_ITEMS) {
+          throw new BusinessRecordLimitError(
+            "The shared work list exceeds the current record limit",
+          );
+        }
+        if (records.some((record) => !batch.includes(record.value.clientId))) {
+          throw new BusinessRecordParseError(
+            "work item query returned another client channel",
+          );
+        }
+      }
+      return records;
+    },
+
+    async getWorkItemHead(clientId: string, workItemId: string) {
+      assertUuid(clientId, "client id");
+      assertUuid(workItemId, "work item id");
+      const events = await relay.fetchEvents({
+        kinds: [KIND_WORK_ITEM_HEAD],
+        "#h": [clientId.toLowerCase()],
+        "#d": [workItemDTag(clientId, workItemId)],
+        limit: 2,
+      });
+      if (events.length > 1) {
+        throw new BusinessRecordParseError(
+          "work item coordinate is not unique",
+        );
+      }
+      if (!events[0]) return null;
+      const record = parseWorkItemHead(events[0]);
+      if (
+        record.value.clientId !== clientId.toLowerCase() ||
+        record.value.workItemId !== workItemId.toLowerCase()
+      ) {
+        throw new BusinessRecordParseError(
+          "work item query returned another record",
+        );
+      }
+      return record;
     },
 
     async listDeliverableEvents(clientId: string, workItemId?: string) {
