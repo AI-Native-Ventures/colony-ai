@@ -466,7 +466,7 @@
           "deviceId": "macbook-microphone-example",
           "groupId": "macbook-audio-example",
           "kind": "audioinput",
-          "label": "MacBook microphone · example"
+          "label": "MacBook microphone \u00b7 example"
         }
       ],
       "appMockData": {
@@ -477,7 +477,7 @@
         },
         "audioOutputDevices": [
           {
-            "name": "MacBook speakers · example",
+            "name": "MacBook speakers \u00b7 example",
             "is_default": false
           }
         ]
@@ -1192,7 +1192,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1227,7 +1227,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1281,7 +1281,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1324,7 +1324,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1369,7 +1369,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1393,7 +1393,8 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#09/discovered",
       "appRoute": "/#/settings?section=harnesses",
       "routeLabel": "Harness list",
-      "appReadySelector": "[data-testid=settings-harnesses]"
+      "appReadySelector": "[data-testid=settings-harnesses]",
+      "referenceCanvas": true
     },
     {
       "id": "desktop-09-install",
@@ -1418,7 +1419,8 @@
           "selector": "[data-testid=harness-catalog-detail-pane]",
           "timeoutMs": 10000
         }
-      ]
+      ],
+      "referenceCanvas": true
     },
     {
       "id": "desktop-09-installing",
@@ -1446,7 +1448,8 @@
           "Verifying package...",
           "Installing adapter..."
         ]
-      }
+      },
+      "referenceCanvas": true
     },
     {
       "id": "desktop-09-failed",
@@ -1484,7 +1487,8 @@
           "failed_restart_count": 0,
           "log_path": null
         }
-      }
+      },
+      "referenceCanvas": true
     },
     {
       "id": "desktop-09-custom",
@@ -1509,7 +1513,8 @@
           "selector": "[data-testid=custom-harness-form]",
           "timeoutMs": 10000
         }
-      ]
+      ],
+      "referenceCanvas": true
     },
     {
       "id": "desktop-09-git-bash",
@@ -1524,7 +1529,8 @@
           "install_instructions_url": "https://gitforwindows.org/",
           "install_hint": "Git Bash is needed on Windows. Install Git for Windows, then check the executable path."
         }
-      }
+      },
+      "referenceCanvas": true
     }
   ]
 }
