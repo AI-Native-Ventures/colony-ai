@@ -43,7 +43,7 @@ export function ChannelTemplatePickerScreen() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {templates.map((template) => (
             <article
-              className="flex flex-col rounded-[9px] border border-border bg-card p-6"
+              className="flex flex-col rounded-[9px] border border-border bg-card p-6 dark:bg-[#26232d]"
               data-testid="channel-template-card"
               key={template.id}
             >
