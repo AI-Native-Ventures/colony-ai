@@ -903,30 +903,6 @@ export function AppSidebar({
                       {errorMessage}
                     </div>
                   ) : null}
-                  {onBrowseChannels ? (
-                    <div
-                      className="colony-sidebar-browse-channels"
-                      data-testid="sidebar-browse-channels"
-                    >
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="text-xs"
-                            onClick={() => onBrowseChannels()}
-                            type="button"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="text-sm font-normal leading-none"
-                            >
-                              +
-                            </span>
-                            <span className="truncate">Browse channels</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </div>
-                  ) : null}
                 </>
               )}
             </div>

@@ -386,6 +386,16 @@ test.describe("visual comparison captures", () => {
           entry.referenceInventoryRoute === "channel/sales" &&
           usesReferenceWorkspace
         ) {
+          const browseChannels = appPage.getByTestId("sidebar-browse-channels");
+          await expect(browseChannels).toHaveCount(1);
+          await expect(browseChannels).toContainText("+Browse channels");
+          const browseChannelsBounds = await browseChannels.boundingBox();
+          const forumsBounds = await appPage
+            .getByTestId("forum-list-section-label")
+            .boundingBox();
+          expect(browseChannelsBounds).not.toBeNull();
+          expect(forumsBounds).not.toBeNull();
+          expect(browseChannelsBounds?.y).toBeLessThan(forumsBounds?.y ?? 0);
           const channelTabs = appPage.getByTestId("channel-view-tabs");
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
