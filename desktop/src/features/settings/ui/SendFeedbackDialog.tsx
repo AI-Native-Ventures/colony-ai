@@ -127,7 +127,7 @@ export function SendFeedbackDialog({
             </div>
             <div className="flex justify-end">
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 data-testid="feedback-done"
                 onClick={() => onOpenChange(false)}
                 type="button"
@@ -165,7 +165,7 @@ export function SendFeedbackDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] disabled:opacity-100 dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] disabled:opacity-100 dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 disabled
                 data-testid="feedback-submit"
                 type="button"
@@ -228,7 +228,7 @@ export function SendFeedbackDialog({
             >
               <span>What would you like us to know?</span>
               <Textarea
-                className="min-h-[7.3125rem] resize-y bg-card text-sm leading-6 dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
+                className="min-h-[7.3125rem] resize-y rounded-[7px] bg-card text-sm leading-6 shadow-none dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
                 data-testid="feedback-message"
                 disabled={isPending}
                 onChange={(event) => {
@@ -241,12 +241,12 @@ export function SendFeedbackDialog({
 
             <div className="mt-[21px] space-y-[1.1875rem]">
               <label
-                className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+                className="flex w-fit cursor-pointer items-center gap-2 text-xs text-foreground"
                 htmlFor="feedback-include-logs"
               >
                 <Checkbox
                   checked={includeLogs}
-                  className="border-input data-[state=checked]:bg-[#285fb5] dark:border-[#5a5264] dark:data-[state=checked]:bg-[#a9bee8]"
+                  className="border-input data-[state=checked]:bg-[#2655a0] dark:border-[#5a5264] dark:data-[state=checked]:bg-[#a9bee8]"
                   data-testid="feedback-include-logs"
                   disabled={isPending}
                   id="feedback-include-logs"
@@ -258,7 +258,7 @@ export function SendFeedbackDialog({
               </label>
               <Button
                 aria-expanded={showDiagnostics}
-                className="h-auto px-0 text-xs text-blue-700 hover:text-blue-800 dark:text-[#a9bee8] dark:hover:text-[#a9bee8]"
+                className="h-auto px-0 text-xs text-[#2655a0] hover:text-[#2655a0] dark:text-[#a9bee8] dark:hover:text-[#a9bee8]"
                 data-testid="feedback-diagnostics-toggle"
                 onClick={() => setShowDiagnostics((visible) => !visible)}
                 type="button"
@@ -293,7 +293,7 @@ export function SendFeedbackDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-md bg-[#285fb5] text-xs text-white hover:bg-[#285fb5] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                 data-testid="feedback-submit"
                 disabled={message.trim().length === 0}
                 type="submit"

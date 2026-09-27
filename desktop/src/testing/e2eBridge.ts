@@ -404,6 +404,12 @@ type E2eConfig = {
     acpRuntimesDelayMs?: number;
     /** When true, the catalog discovery call throws to simulate a failed query. */
     acpRuntimesError?: boolean;
+    gitBashPrerequisite?: {
+      available: boolean;
+      path: string | null;
+      install_instructions_url: string;
+      install_hint: string;
+    } | null;
     /** Reject successive product feedback events, then accept when exhausted. */
     feedbackPublishErrors?: Array<string | null>;
     /** Delay product feedback acknowledgements so the pending UI can be captured. */
@@ -14463,6 +14469,8 @@ export function maybeInstallE2eTauriMocks() {
         return activeConfig?.mock?.relayRequiresMembership ?? false;
       case "discover_acp_providers":
         return handleDiscoverAcpRuntimes(activeConfig);
+      case "discover_git_bash_prerequisite":
+        return activeConfig?.mock?.gitBashPrerequisite ?? null;
       case "save_custom_harness":
         return handleSaveCustomHarness(
           payload as Parameters<typeof handleSaveCustomHarness>[0],
