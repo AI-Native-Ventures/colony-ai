@@ -1192,8 +1192,10 @@ mod tests {
             send(&fixture, &owner, &update_a),
             send(&fixture, &owner, &update_b),
         );
-        assert_ne!(result_a.is_ok(), result_b.is_ok());
-        let loser = if result_a.is_err() {
+        let result_a_accepted = result_a.is_ok();
+        let result_b_accepted = result_b.is_ok();
+        assert_ne!(result_a_accepted, result_b_accepted);
+        let loser = if !result_a_accepted {
             result_a
         } else {
             result_b
@@ -1202,13 +1204,15 @@ mod tests {
 
         let stable_a = parsed_head(&fixture, goal_a).await;
         let stable_b = parsed_head(&fixture, goal_b).await;
-        assert_ne!(
-            stable_a.goal.as_ref().and_then(|goal| goal.parent_goal_id),
-            Some(goal_b)
+        assert_eq!(
+            stable_a.goal.as_ref().and_then(|goal| goal.parent_goal_id) == Some(goal_b),
+            result_a_accepted,
+            "the accepted A-to-B edit must be the only persisted edge"
         );
-        assert_ne!(
-            stable_b.goal.as_ref().and_then(|goal| goal.parent_goal_id),
-            Some(goal_a)
+        assert_eq!(
+            stable_b.goal.as_ref().and_then(|goal| goal.parent_goal_id) == Some(goal_a),
+            result_b_accepted,
+            "the accepted B-to-A edit must be the only persisted edge"
         );
 
         let edit_id = Uuid::new_v4();
