@@ -1,16 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { useLocation } from "@tanstack/react-router";
-import {
-  BriefcaseBusiness,
-  ChevronDown,
-  FileText,
-  KanbanSquare,
-  ListTodo,
-  Search,
-  Users,
-  Workflow,
-} from "lucide-react";
+import { ChevronDown, Users, Workflow } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -90,15 +80,8 @@ import {
   useSidebar,
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
+import { AppSidebarBusinessSection } from "@/features/sidebar/ui/AppSidebarBusinessSection";
 import { useProtectedVisibleDirectMessages } from "@protected-feature-components";
-
-const BUSINESS_DESTINATIONS = [
-  ["/discovery", "Discovery", Search],
-  ["/leads", "Leads", Users],
-  ["/pipeline", "Pipeline", KanbanSquare],
-  ["/sales/proposals", "Proposals", FileText],
-  ["/sales/service", "Services", BriefcaseBusiness],
-] as const;
 
 export function AppSidebar({
   addCommunityPrefill,
@@ -170,7 +153,6 @@ export function AppSidebar({
   onStarChannel,
   onUnstarChannel,
 }: AppSidebarProps) {
-  const location = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
@@ -868,79 +850,11 @@ export function AppSidebar({
                           onDeleteChannel={requestDeleteChannel}
                         />
                       </FeatureGate>
-                      <h2
-                        className="colony-sidebar-business-heading"
-                        data-testid="sidebar-business-section"
-                      >
-                        <ChevronDown aria-hidden="true" />
-                        <span data-sidebar-section-title>Business</span>
-                      </h2>
-                      <SidebarMenu data-testid="sidebar-business-destinations">
-                        {onSelectClients ? (
-                          <SidebarMenuItem>
-                            <SidebarMenuButton
-                              data-testid="sidebar-business-clients"
-                              isActive={selectedView === "clients"}
-                              onClick={onSelectClients}
-                              tooltip="Clients"
-                              type="button"
-                            >
-                              <BriefcaseBusiness aria-hidden="true" />
-                              <SidebarMenuLabel>Clients</SidebarMenuLabel>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ) : null}
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            data-testid="sidebar-business-work"
-                            isActive={selectedView === "work"}
-                            onClick={onSelectWork}
-                            tooltip="Work"
-                            type="button"
-                          >
-                            <ListTodo aria-hidden="true" />
-                            <SidebarMenuLabel>Work</SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        {BUSINESS_DESTINATIONS.map(([href, label, Icon]) => (
-                          <SidebarMenuItem key={href as string}>
-                            <SidebarMenuButton
-                              asChild
-                              isActive={
-                                location.pathname === href ||
-                                (href === "/sales/proposals" &&
-                                  location.pathname.startsWith(
-                                    "/sales/proposal/",
-                                  )) ||
-                                (href === "/leads" &&
-                                  location.pathname.startsWith("/sales/lead/"))
-                              }
-                              tooltip={label}
-                            >
-                              <a
-                                href={`#${href}`}
-                                aria-current={
-                                  selectedView === "business" &&
-                                  (location.pathname === href ||
-                                    (href === "/sales/proposals" &&
-                                      location.pathname.startsWith(
-                                        "/sales/proposal/",
-                                      )) ||
-                                    (href === "/leads" &&
-                                      location.pathname.startsWith(
-                                        "/sales/lead/",
-                                      )))
-                                    ? "page"
-                                    : undefined
-                                }
-                              >
-                                <Icon aria-hidden="true" />
-                                <SidebarMenuLabel>{label}</SidebarMenuLabel>
-                              </a>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                      </SidebarMenu>
+                      <AppSidebarBusinessSection
+                        onSelectClients={onSelectClients}
+                        onSelectWork={onSelectWork}
+                        selectedView={selectedView}
+                      />
                       <SidebarSection
                         action={
                           <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
