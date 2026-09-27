@@ -72,6 +72,8 @@ abstract final class EventKind {
   static const moneyAdjustment = 47028;
   static const reconciliation = 47029;
   static const moneyFollowUp = 47030;
+  static const prospectHead = 30644;
+  static const prospectAction = 47034;
 
   /// Company records (docs/company-records.md): relay-signed goal and ask
   /// heads plus the member commands that produce them.
@@ -136,6 +138,8 @@ abstract final class EventKind {
     moneyAdjustment,
     reconciliation,
     moneyFollowUp,
+    prospectHead,
+    prospectAction,
   ];
   static const streamMessageV2 = 40002;
   static const channelThreadSummary = 39005;

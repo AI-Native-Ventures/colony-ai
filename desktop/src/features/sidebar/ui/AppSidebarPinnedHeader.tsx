@@ -37,6 +37,7 @@ type SidebarSelectedView =
   | "work"
   | "pulse"
   | "projects"
+  | "business"
   | "factory"
   | "pins";
 
