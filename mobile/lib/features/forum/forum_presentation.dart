@@ -37,6 +37,9 @@ typedef ForumMessageContentBuilder =
 /// Opens a profile from a forum author or mention.
 typedef ForumProfileOpener = void Function(BuildContext context, String pubkey);
 
+/// Opens the app-composed quick actions surface from a forum screen.
+typedef ForumQuickActionsOpener = void Function(WidgetRef ref);
+
 /// The message details needed by the app-composed message renderer.
 @immutable
 class ForumMessageContentSpec {
@@ -82,6 +85,7 @@ class ForumPresentationFactories {
     required this.messageContentBuilder,
     required this.openProfile,
     this.currentUserName,
+    this.openQuickActions,
   });
 
   /// Builds the channels feature's production composer.
@@ -95,4 +99,7 @@ class ForumPresentationFactories {
 
   /// Reads the signed-in author's current display name at the app boundary.
   final String? Function(WidgetRef ref)? currentUserName;
+
+  /// Opens the shared quick actions control when the app shell provides it.
+  final ForumQuickActionsOpener? openQuickActions;
 }

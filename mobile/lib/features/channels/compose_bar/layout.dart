@@ -281,8 +281,10 @@ class _ComposeBarLayout extends HookWidget {
       animation: Listenable.merge([expansionAnimation, recordingTransition]),
       child: content,
       builder: (context, child) {
-        final collapsedRadius = fillWidth ? 14.0 : Radii.dialog + Grid.quarter;
-        final expandedRadius = fillWidth ? 14.0 : Radii.dialog;
+        final collapsedRadius = fillWidth
+            ? Radii.container
+            : Radii.dialog + Grid.quarter;
+        final expandedRadius = fillWidth ? Radii.container : Radii.dialog;
         final restingRadius = hasVoiceNoteAttachment
             ? collapsedRadius
             : lerpDouble(

@@ -55,20 +55,25 @@ class _ChannelTile extends ConsumerWidget {
         : authorName != null && authorName.isNotEmpty
         ? '$authorName: '
         : '';
-    final mutedColor = _chatMuted(context);
+    final mutedColor = context.mobileTokens.muted;
     final time = _channelListTime(channel);
 
     return InkWell(
       key: ValueKey('conversation-row-${channel.id}'),
-      borderRadius: BorderRadius.circular(Radii.md),
       onTap: onTap,
       onLongPress: () => _showChannelActions(context, ref),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: MobileLayoutTokens.contentGutter,
+          vertical: Grid.xs,
+        ),
         child: Row(
           children: [
             _ConversationAvatar(channel: channel, currentPubkey: currentPubkey),
-            const SizedBox(width: 12),
+            const SizedBox(width: Grid.xs),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,11 +88,10 @@ class _ChannelTile extends ConsumerWidget {
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: context.textTheme.bodyMedium?.copyWith(
-                            color: isMuted ? mutedColor : _chatInk(context),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            height: 1.25,
+                          style: context.mobileTypography.identityName.copyWith(
+                            color: isMuted
+                                ? mutedColor
+                                : context.mobileTokens.ink,
                           ),
                         ),
                       ),
@@ -101,7 +105,7 @@ class _ChannelTile extends ConsumerWidget {
                           message: 'Muted',
                           child: Icon(
                             LucideIcons.bellOff,
-                            size: 12,
+                            size: Grid.xs,
                             color: mutedColor,
                           ),
                         ),
@@ -109,22 +113,20 @@ class _ChannelTile extends ConsumerWidget {
                     ],
                   ),
                   if (preview.isNotEmpty) ...[
-                    const SizedBox(height: 5),
+                    const SizedBox(height: Grid.quarter),
                     Text(
                       '$prefix$preview',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: context.textTheme.bodySmall?.copyWith(
+                      style: context.mobileTypography.metadata.copyWith(
                         color: mutedColor,
-                        fontSize: 12,
-                        height: 1.3,
                       ),
                     ),
                   ],
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Grid.half),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -132,32 +134,29 @@ class _ChannelTile extends ConsumerWidget {
                 if (time.isNotEmpty)
                   Text(
                     time,
-                    style: context.textTheme.labelSmall?.copyWith(
+                    style: context.mobileTypography.identityStatus.copyWith(
                       color: mutedColor,
-                      fontSize: 10,
                     ),
                   ),
                 if (unreadCount > 0) ...[
-                  const SizedBox(height: 7),
+                  const SizedBox(height: Grid.half),
                   Container(
                     key: ValueKey('channel-unread-badge-${channel.id}'),
-                    constraints: const BoxConstraints(minWidth: 24),
+                    constraints: const BoxConstraints(minWidth: Grid.lg),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
+                      horizontal: Grid.half,
+                      vertical: Grid.quarter,
                     ),
                     decoration: BoxDecoration(
-                      color: _r17UnreadBadgeBlue,
-                      borderRadius: BorderRadius.circular(7),
+                      color: context.appColors.plum,
+                      borderRadius: BorderRadius.circular(Radii.tapTarget),
                     ),
                     alignment: Alignment.center,
                     child: Text(
                       unreadCount == 99 ? '99+' : '$unreadCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
+                      style: context.mobileTypography.identityStatus.copyWith(
+                        color: context.mobileTokens.onAction,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -191,9 +190,10 @@ String _channelListTime(Channel channel) {
     isUtc: true,
   ).toLocal();
   final now = DateTime.now();
-  if (date.year == now.year && date.month == now.month && date.day == now.day) {
-    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
+  final elapsed = now.difference(date);
+  if (elapsed.isNegative || elapsed.inSeconds < 60) return 'now';
+  if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m';
+  if (elapsed.inHours < 24) return '${elapsed.inHours}h';
   final yesterday = now.subtract(const Duration(days: 1));
   if (date.year == yesterday.year &&
       date.month == yesterday.month &&
@@ -214,18 +214,41 @@ class _ConversationAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final size = MobileLayoutTokens.companyHeaderAvatarSize;
     if (!channel.isDm) {
-      return Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
+      final appColors = context.appColors;
+      final channelTone = channel.name.toLowerCase().runes.fold<int>(
+        0,
+        (sum, rune) => sum + rune,
+      );
+      final backgroundGradient = switch (channelTone % 3) {
+        0 => appColors.personAvatarGradient,
+        1 => appColors.sageAvatarGradient,
+        _ => appColors.agentAvatarGradient,
+      };
+      return DecoratedBox(
+        key: ValueKey('conversation-avatar-${channel.id}'),
         decoration: BoxDecoration(
-          border: Border.all(color: _chatLine(context)),
-          borderRadius: BorderRadius.circular(12),
+          gradient: backgroundGradient,
+          borderRadius: BorderRadius.circular(Radii.button),
         ),
-        child: Text(
-          '#',
-          style: TextStyle(color: _chatMuted(context), fontSize: 21, height: 1),
+        child: SizedBox.square(
+          dimension: size,
+          child: Center(
+            child: channel.isForum
+                ? Icon(
+                    LucideIcons.fileText,
+                    size: Grid.sm,
+                    color: appColors.plum,
+                  )
+                : Text(
+                    '#',
+                    style: context.mobileTypography.conversation.copyWith(
+                      color: context.appColors.plum,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+          ),
         ),
       );
     }
@@ -241,19 +264,21 @@ class _ConversationAvatar extends ConsumerWidget {
               .map((pubkey) => pubkey.toLowerCase())
               .toList();
     if (visiblePubkeys.length > 1) {
-      return Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
+      return DecoratedBox(
+        key: ValueKey('conversation-avatar-${channel.id}'),
         decoration: BoxDecoration(
-          color: _chatSoft(context),
-          borderRadius: BorderRadius.circular(11),
+          color: context.mobileTokens.actionSoft,
+          borderRadius: BorderRadius.circular(Radii.button),
         ),
-        child: Text(
-          '${visiblePubkeys.length}',
-          style: context.textTheme.labelSmall?.copyWith(
-            color: _chatInk(context),
-            fontWeight: FontWeight.w700,
+        child: SizedBox.square(
+          dimension: size,
+          child: Center(
+            child: Text(
+              '${visiblePubkeys.length}',
+              style: context.mobileTypography.identityName.copyWith(
+                color: context.mobileTokens.onActionSoft,
+              ),
+            ),
           ),
         ),
       );
@@ -268,36 +293,21 @@ class _ConversationAvatar extends ConsumerWidget {
     if (otherPubkey != null && profile == null) {
       ref.read(userCacheProvider.notifier).preload([otherPubkey]);
     }
-    final fallbackInitial = profile?.displayName?.trim().isNotEmpty == true
-        ? _chatInitials(profile!.displayName)
-        : dmAvatarInitial(channel, currentPubkey: currentPubkey);
-    final displayName = resolveDmChannelDisplayLabel(
-      channel,
-      currentPubkey: currentPubkey,
-    ).trim().toLowerCase();
-    final isMaya = displayName == 'maya ndlovu';
-    return ClipRRect(
+    final fallbackInitial =
+        profile?.initials ??
+        dmAvatarInitial(channel, currentPubkey: currentPubkey);
+    final isAgent = profile?.isAgent == true || profile?.ownerPubkey != null;
+    return IdentityAvatar(
       key: ValueKey('conversation-avatar-${channel.id}'),
-      borderRadius: BorderRadius.circular(11),
-      child: ColoredBox(
-        key: ValueKey('conversation-avatar-surface-${channel.id}'),
-        color: isMaya ? const Color(0xFFF4E6DF) : _chatSoft(context),
-        child: SizedBox(
-          width: 38,
-          height: 38,
-          child: AvatarImageContent(
-            imageUrl: profile?.avatarUrl,
-            fallback: Text(
-              fallbackInitial,
-              style: context.textTheme.labelMedium?.copyWith(
-                color: isMaya ? const Color(0xFF98715E) : _chatInk(context),
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-              ),
-            ),
-          ),
-        ),
+      initials: fallbackInitial,
+      kind: isAgent ? IdentityKind.agent : IdentityKind.person,
+      imageUrl: profile?.avatarUrl,
+      size: size,
+      semanticLabel: resolveDmChannelDisplayLabel(
+        channel,
+        currentPubkey: currentPubkey,
       ),
+      excludeSemantics: true,
     );
   }
 }

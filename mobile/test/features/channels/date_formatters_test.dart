@@ -125,6 +125,24 @@ void main() {
     });
   });
 
+  group('formatConversationDayHeading', () {
+    final now = DateTime(2026, 9, 28, 14, 30);
+
+    test('shows the full current date for today', () {
+      expect(
+        formatConversationDayHeading(_ts(DateTime(2026, 9, 28, 8)), now: now),
+        'Today · 28 September',
+      );
+    });
+
+    test('keeps the existing relative label for yesterday', () {
+      expect(
+        formatConversationDayHeading(_ts(DateTime(2026, 9, 27, 18)), now: now),
+        'Yesterday',
+      );
+    });
+  });
+
   group('formatThreadSummaryLastReplyTime', () {
     const now = 2_000_000;
 

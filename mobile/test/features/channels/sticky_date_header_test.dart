@@ -24,31 +24,27 @@ void main() {
         expect(find.byType(UiKitView), findsNothing);
         expect(find.byType(BackdropFilter), findsNothing);
         expect(find.text('Yesterday'), findsOneWidget);
-        final dateRow = find
-            .descendant(
-              of: find.byType(StickyDateHeader),
-              matching: find.byType(Row),
-            )
-            .first;
+        final dateLabel = find.descendant(
+          of: find.byType(StickyDateHeader),
+          matching: find.byType(Text),
+        );
         expect(
-          tester.getSize(dateRow).width,
+          tester.getSize(dateLabel).width,
           lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
         );
-        expect(
-          tester.getSize(dateRow).height,
-          StickyDateHeader.heightOf(
-            tester.element(find.byType(StickyDateHeader)),
-          ),
+        final stickyHeight = StickyDateHeader.heightOf(
+          tester.element(find.byType(StickyDateHeader)),
         );
+        expect(
+          tester.getSize(find.byType(StickyDateHeader)).height,
+          stickyHeight,
+        );
+        expect(tester.getSize(dateLabel).height, lessThan(stickyHeight));
         expect(
           find.byKey(const ValueKey('sticky-date-header-clip')),
           findsNothing,
         );
-        final initialSurfaceTop = tester.getTopLeft(dateRow).dy;
-        final stickyHeight = StickyDateHeader.heightOf(
-          tester.element(find.byType(StickyDateHeader)),
-        );
-
+        final initialSurfaceTop = tester.getTopLeft(dateLabel).dy;
         state.value = StickyDateHeaderState(
           label: 'Yesterday',
           translateY: -(stickyHeight + 5) / 2,
@@ -63,9 +59,9 @@ void main() {
           closeTo(0.5, 0.001),
         );
         expect(
-          tester.getTopLeft(dateRow).dy,
+          tester.getTopLeft(dateLabel).dy,
           closeTo(initialSurfaceTop, 0.01),
-          reason: 'Native glass must not cross the app-bar compositing edge.',
+          reason: 'The date label stays in place while the sticky row fades.',
         );
 
         state.value = StickyDateHeaderState(
@@ -103,7 +99,7 @@ void main() {
           findsNothing,
         );
         expect(
-          tester.getSize(dateRow).width,
+          tester.getSize(dateLabel).width,
           lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
         );
       } finally {
@@ -134,13 +130,11 @@ void main() {
         find.byKey(const ValueKey('sticky-date-header-clip')),
         findsNothing,
       );
-      final dateRow = find
-          .descendant(
-            of: find.byType(StickyDateHeader),
-            matching: find.byType(Row),
-          )
-          .first;
-      final initialSurfaceTop = tester.getTopLeft(dateRow).dy;
+      final dateLabel = find.descendant(
+        of: find.byType(StickyDateHeader),
+        matching: find.byType(Text),
+      );
+      final initialSurfaceTop = tester.getTopLeft(dateLabel).dy;
       final stickyHeight = StickyDateHeader.heightOf(
         tester.element(find.byType(StickyDateHeader)),
       );
@@ -159,12 +153,12 @@ void main() {
         closeTo(0.5, 0.001),
       );
       expect(
-        tester.getTopLeft(dateRow).dy,
+        tester.getTopLeft(dateLabel).dy,
         closeTo(initialSurfaceTop, 0.01),
         reason: 'Android uses the same stationary date handoff as iOS.',
       );
       expect(
-        tester.getSize(dateRow).width,
+        tester.getSize(dateLabel).width,
         lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
       );
     } finally {

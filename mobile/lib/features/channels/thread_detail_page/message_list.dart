@@ -128,6 +128,14 @@ class _ThreadMessageList extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          DayDivider(
+                            key: ValueKey('thread-head-day-divider-${head.id}'),
+                            label: formatConversationDayHeading(
+                              head.createdAt,
+                              now: dayHeadingNow,
+                            ),
+                            dayTimestamp: head.createdAt,
+                          ),
                           _ThreadMessage(
                             message: head,
                             channelNames: channelNames,

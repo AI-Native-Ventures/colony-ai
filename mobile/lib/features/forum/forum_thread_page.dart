@@ -1,14 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
-import '../../shared/widgets/avatar_image.dart';
+import '../../shared/identity/identity_components.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
@@ -17,8 +19,11 @@ import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/utils/string_utils.dart';
 import '../../shared/profile/user_profile.dart';
 import 'forum_models.dart';
+import 'forum_post_content.dart';
 import 'forum_presentation.dart';
 import 'forum_provider.dart';
+
+final _forumClockTimeFormat = DateFormat('HH:mm');
 
 /// Full-screen page showing a forum post and its replies.
 class ForumThreadPage extends HookConsumerWidget {
@@ -46,7 +51,6 @@ class ForumThreadPage extends HookConsumerWidget {
     final threadAsync = ref.watch(
       forumThreadProvider((channelId: channelId, eventId: postEventId)),
     );
-
     // Periodic refresh (every 10s, matching desktop).
     useEffect(() {
       final timer = Stream.periodic(const Duration(seconds: 10)).listen((_) {
@@ -57,32 +61,50 @@ class ForumThreadPage extends HookConsumerWidget {
       return timer.cancel;
     }, [channelId, postEventId]);
 
-    final isOwnPost =
-        threadAsync
-            .whenData(
-              (t) =>
-                  currentPubkey != null &&
-                  t.post.pubkey.toLowerCase() == currentPubkey!.toLowerCase(),
-            )
-            .value ??
-        false;
-
     return FrostedScaffold(
+      backgroundColor: context.mobileTokens.canvas,
       appBar: FrostedAppBar(
-        title: const Text('Thread'),
+        titleContentHeight: MobileLayoutTokens.appBarHeight,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Team note',
+              style: context.mobileTypography.companyHubTitle.copyWith(
+                color: context.mobileTokens.ink,
+              ),
+            ),
+            Text(
+              channelName.isEmpty ? 'Forum' : channelName,
+              style: context.mobileTypography.companyHubSubtitle.copyWith(
+                color: context.mobileTokens.muted,
+              ),
+            ),
+          ],
+        ),
+        horizontalInset: Grid.gutter,
+        iconColor: context.mobileTokens.ink,
+        frostedSurfaceOpacity: 0,
+        frostedBlurSigma: 0,
+        bottomDividerOpacity: 1,
         actions: [
-          if (isOwnPost)
+          if (presentation?.openQuickActions case final openQuickActions?)
             IconButton(
-              onPressed: () =>
-                  _showPostActions(context, ref, threadAsync.value!),
-              tooltip: 'Post actions',
-              icon: const Icon(LucideIcons.ellipsis),
+              onPressed: () => openQuickActions(ref),
+              tooltip: 'Quick actions',
+              icon: const Icon(LucideIcons.plus),
             ),
         ],
       ),
       body: threadAsync.when(
         loading: () => Padding(
-          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          padding: EdgeInsets.only(
+            top: frostedAppBarHeight(
+              context,
+              titleContentHeight: MobileLayoutTokens.appBarHeight,
+            ),
+          ),
           child: const Center(
             child: BuzzLoadingIndicator(
               size: 44,
@@ -91,7 +113,12 @@ class ForumThreadPage extends HookConsumerWidget {
           ),
         ),
         error: (e, _) => Padding(
-          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          padding: EdgeInsets.only(
+            top: frostedAppBarHeight(
+              context,
+              titleContentHeight: MobileLayoutTokens.appBarHeight,
+            ),
+          ),
           child: Center(
             child: Text(
               'Failed to load thread',
@@ -109,6 +136,7 @@ class ForumThreadPage extends HookConsumerWidget {
           isMember: isMember,
           isArchived: isArchived,
           presentation: presentation,
+          onPostActions: () => _showPostActions(context, ref, thread),
         ),
       ),
     );
@@ -207,6 +235,7 @@ class _ThreadContent extends HookConsumerWidget {
   final bool isMember;
   final bool isArchived;
   final ForumPresentationFactories? presentation;
+  final VoidCallback onPostActions;
 
   const _ThreadContent({
     required this.thread,
@@ -216,6 +245,7 @@ class _ThreadContent extends HookConsumerWidget {
     required this.isMember,
     required this.isArchived,
     required this.presentation,
+    required this.onPostActions,
   });
 
   @override
@@ -254,34 +284,48 @@ class _ThreadContent extends HookConsumerWidget {
         Expanded(
           child: ListView(
             padding: EdgeInsets.only(
-              top: frostedAppBarHeight(context),
+              top:
+                  frostedAppBarHeight(
+                    context,
+                    titleContentHeight: MobileLayoutTokens.appBarHeight,
+                  ) -
+                  Grid.xs,
               bottom: Grid.xs,
             ),
             children: [
-              _OriginalPost(
-                post: post,
-                channelId: channelId,
-                presentation: presentation,
-              ),
+              if (currentPubkey != null &&
+                  post.pubkey.toLowerCase() == currentPubkey!.toLowerCase())
+                Semantics(
+                  customSemanticsActions: {
+                    CustomSemanticsAction(label: 'Post actions'): onPostActions,
+                  },
+                  child: GestureDetector(
+                    onLongPress: onPostActions,
+                    child: _OriginalPost(
+                      post: post,
+                      channelId: channelId,
+                      presentation: presentation,
+                    ),
+                  ),
+                )
+              else
+                _OriginalPost(
+                  post: post,
+                  channelId: channelId,
+                  presentation: presentation,
+                ),
 
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: Grid.gutter,
-                  vertical: Grid.xxs,
+                  vertical: Grid.xs,
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      LucideIcons.messageSquare,
-                      size: 16,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: Grid.half),
                     Text(
-                      '${replies.length} ${replies.length == 1 ? 'reply' : 'replies'}',
-                      style: context.textTheme.labelMedium?.copyWith(
-                        color: context.colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                      'Discussion',
+                      style: context.mobileTypography.identityName.copyWith(
+                        color: context.mobileTokens.ink,
                       ),
                     ),
                   ],
@@ -293,9 +337,9 @@ class _ThreadContent extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.all(Grid.sm),
                   child: Text(
-                    'No replies yet. Be the first to respond.',
-                    style: context.textTheme.bodyMedium?.copyWith(
-                      color: context.colors.onSurfaceVariant,
+                    'No replies yet',
+                    style: context.mobileTypography.body.copyWith(
+                      color: context.mobileTokens.muted,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -350,6 +394,7 @@ class _OriginalPost extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final contentParts = parseForumPostContent(post.content);
     final pk = post.pubkey.toLowerCase();
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
@@ -370,19 +415,28 @@ class _OriginalPost extends ConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final isAgent =
+        profile?.isAgent == true || agentMentionPubkeys.contains(pk);
     final contentSpec = ForumMessageContentSpec(
-      content: post.content,
+      content: contentParts.body,
       mentionNames: mentionNames,
       agentMentionPubkeys: agentMentionPubkeys,
       tags: post.tags,
-      baseStyle: messageBodyTextStyle.copyWith(color: context.colors.onSurface),
+      baseStyle: context.mobileTypography.body.copyWith(
+        color: context.mobileTokens.ink,
+      ),
       onMentionTap: presentation == null
           ? null
           : (pubkey) => presentation!.openProfile(context, pubkey),
     );
 
     return Padding(
-      padding: const EdgeInsets.all(Grid.xs),
+      padding: const EdgeInsets.fromLTRB(
+        MobileLayoutTokens.contentGutter,
+        Grid.half,
+        MobileLayoutTokens.contentGutter,
+        Grid.xs,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -396,8 +450,8 @@ class _OriginalPost extends ConsumerWidget {
                   key: ValueKey('forum-original-avatar-${post.eventId}'),
                   profile: profile,
                   pubkey: post.pubkey,
-                  radius: 16,
-                  isAgent: agentMentionPubkeys.contains(pk),
+                  size: Grid.lg,
+                  isAgent: isAgent,
                 ),
               ),
               const SizedBox(width: Grid.xxs),
@@ -415,20 +469,27 @@ class _OriginalPost extends ConsumerWidget {
                         child: Text(
                           displayName,
                           maxLines: 1,
-                          style: messageUsernameTextStyle,
+                          style: context.mobileTypography.identityName.copyWith(
+                            color: context.mobileTokens.ink,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
+                    if (isAgent) ...[
+                      const SizedBox(width: Grid.half),
+                      const IdentityAgentBadge(),
+                    ],
                     const SizedBox(width: Grid.xxs),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: Grid.xxl),
                       child: Text(
-                        formatRelativeTime(post.createdAt),
+                        _formatNoteDateTime(post.createdAt),
+                        key: const ValueKey('forum-post-timestamp'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: messageTimestampTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant,
+                        style: context.mobileTypography.identityStatus.copyWith(
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ),
@@ -437,9 +498,20 @@ class _OriginalPost extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: Grid.xxs),
-          presentation?.messageContentBuilder(context, contentSpec) ??
-              Text(post.content, style: contentSpec.baseStyle),
+          if (contentParts.title.isNotEmpty) ...[
+            const SizedBox(height: Grid.xs),
+            Text(
+              contentParts.title,
+              style: context.textTheme.headlineSmall?.copyWith(
+                color: context.mobileTokens.ink,
+              ),
+            ),
+          ],
+          if (contentParts.body.isNotEmpty) ...[
+            const SizedBox(height: Grid.xxs),
+            presentation?.messageContentBuilder(context, contentSpec) ??
+                Text(contentParts.body, style: contentSpec.baseStyle),
+          ],
         ],
       ),
     );
@@ -483,12 +555,16 @@ class _ReplyRow extends ConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final isAgent =
+        profile?.isAgent == true || agentMentionPubkeys.contains(pk);
     final contentSpec = ForumMessageContentSpec(
       content: reply.content,
       mentionNames: mentionNames,
       agentMentionPubkeys: agentMentionPubkeys,
       tags: reply.tags,
-      baseStyle: messageBodyTextStyle.copyWith(color: context.colors.onSurface),
+      baseStyle: context.mobileTypography.body.copyWith(
+        color: context.mobileTokens.ink,
+      ),
       onMentionTap: presentation == null
           ? null
           : (pubkey) => presentation!.openProfile(context, pubkey),
@@ -512,8 +588,8 @@ class _ReplyRow extends ConsumerWidget {
                   key: ValueKey('forum-reply-avatar-${reply.eventId}'),
                   profile: profile,
                   pubkey: reply.pubkey,
-                  radius: 12,
-                  isAgent: agentMentionPubkeys.contains(pk),
+                  size: Grid.lg,
+                  isAgent: isAgent,
                 ),
               ),
               const SizedBox(width: Grid.xxs),
@@ -532,19 +608,31 @@ class _ReplyRow extends ConsumerWidget {
                           displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: messageUsernameTextStyle,
+                          style: context.mobileTypography.identityName.copyWith(
+                            color: context.mobileTokens.ink,
+                          ),
                         ),
                       ),
                     ),
+                    if (isAgent) ...[
+                      const SizedBox(width: Grid.half),
+                      const IdentityAgentBadge(),
+                    ],
                     const SizedBox(width: Grid.xxs),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: Grid.xxl),
                       child: Text(
-                        formatRelativeTime(reply.createdAt),
+                        _forumClockTimeFormat.format(
+                          DateTime.fromMillisecondsSinceEpoch(
+                            reply.createdAt * 1000,
+                            isUtc: true,
+                          ).toLocal(),
+                        ),
+                        key: ValueKey('forum-reply-timestamp-${reply.eventId}'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: messageTimestampTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant,
+                        style: context.mobileTypography.identityStatus.copyWith(
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ),
@@ -559,7 +647,7 @@ class _ReplyRow extends ConsumerWidget {
                   icon: Icon(
                     LucideIcons.ellipsis,
                     size: 16,
-                    color: context.colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                   padding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
@@ -568,7 +656,7 @@ class _ReplyRow extends ConsumerWidget {
             ],
           ),
           Padding(
-            padding: const EdgeInsets.only(left: 32, top: Grid.half),
+            padding: EdgeInsets.only(left: Grid.lg + Grid.xxs, top: Grid.half),
             child:
                 presentation?.messageContentBuilder(context, contentSpec) ??
                 Text(reply.content, style: contentSpec.baseStyle),
@@ -662,39 +750,42 @@ class _ReplyRow extends ConsumerWidget {
   }
 }
 
+String _formatNoteDateTime(int unixSeconds) {
+  final date = DateTime.fromMillisecondsSinceEpoch(
+    unixSeconds * 1000,
+    isUtc: true,
+  ).toLocal();
+  final now = DateTime.now();
+  final isToday =
+      date.year == now.year && date.month == now.month && date.day == now.day;
+  if (isToday) return 'Today, ${_forumClockTimeFormat.format(date)}';
+  return formatRelativeTime(unixSeconds);
+}
+
 class _Avatar extends StatelessWidget {
   final UserProfile? profile;
   final String pubkey;
-  final double radius;
+  final double size;
   final bool isAgent;
 
   const _Avatar({
     super.key,
     required this.profile,
     required this.pubkey,
-    required this.radius,
+    required this.size,
     required this.isAgent,
   });
 
   @override
   Widget build(BuildContext context) {
-    final initial =
-        profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
-    final avatarUrl = profile?.avatarUrl;
-
-    return AvatarImage(
-      imageUrl: avatarUrl,
-      radius: radius,
-      backgroundColor: context.colors.primaryContainer,
-      fallback: Text(
-        initial,
-        style: TextStyle(
-          fontSize: radius * 0.75,
-          fontWeight: FontWeight.w600,
-          color: context.colors.onPrimaryContainer,
-        ),
-      ),
-      isAgent: isAgent,
+    return IdentityAvatar(
+      initials:
+          profile?.initials ??
+          (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?'),
+      kind: isAgent ? IdentityKind.agent : IdentityKind.person,
+      imageUrl: profile?.avatarUrl,
+      size: size,
+      excludeSemantics: true,
     );
   }
 }
