@@ -6,6 +6,7 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { showAgentTemplates } from "../helpers/agentWorkspace";
 
 function ownerPrivateKeyFor(pubkey: string): Uint8Array {
   const privateKey = Object.values(TEST_IDENTITIES).find(
@@ -160,6 +161,7 @@ async function gotoAgentsView(page: import("@playwright/test").Page) {
     timeout: 10_000,
   });
   await page.getByTestId("open-agents-view").click();
+  await showAgentTemplates(page);
 }
 
 async function openTeamCatalog(page: import("@playwright/test").Page) {

@@ -26,6 +26,7 @@ import { TeamShareDialog } from "./TeamShareDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
 import { AgentTeamsReviewView } from "./AgentTeamsReviewView";
+import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useManagedAgentActions } from "./useManagedAgentActions";
 import { usePersonaActions } from "./usePersonaActions";
@@ -109,9 +110,14 @@ export function AgentsView({
 
   function setAiDefaultsDialogOpen(open: boolean) {
     if (!open) {
+      // Return focus to whichever trigger is on screen. The directory header
+      // has the inline button; the Templates header only has the actions
+      // menu, where the inline ref is null (and `null?.offsetParent !== null`
+      // would wrongly pick it and drop focus to the page).
+      const inlineTrigger = fullAiDefaultsTriggerRef.current;
       aiDefaultsTriggerRef.current =
-        fullAiDefaultsTriggerRef.current?.offsetParent !== null
-          ? fullAiDefaultsTriggerRef.current
+        inlineTrigger && inlineTrigger.offsetParent !== null
+          ? inlineTrigger
           : compactActionsTriggerRef.current;
     }
     setIsAiDefaultsOpen(open);
@@ -282,6 +288,7 @@ export function AgentsView({
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button
                       className="h-7 px-2.5 text-xs"
+                      data-testid="agent-defaults-button"
                       onClick={(event) => openAiDefaults(event.currentTarget)}
                       ref={fullAiDefaultsTriggerRef}
                       size="sm"
@@ -289,7 +296,9 @@ export function AgentsView({
                       variant="outline"
                     >
                       <Sun aria-hidden="true" className="size-3.5" />
-                      Agent defaults
+                      {hasSavedAgentDefaults
+                        ? "Agent defaults"
+                        : "Set agent defaults"}
                     </Button>
                     <Button
                       className="h-7 px-2.5 text-xs"
@@ -388,7 +397,9 @@ export function AgentsView({
                       ? undefined
                       : `${agents.managedAgents.length} agents`
                   }
-                  title={view === "teams" ? "Agent teams" : "Your team"}
+                  title={
+                    view === "teams" ? "Agent teams" : "Templates & snapshots"
+                  }
                 />
               )}
               {view === "directory" ? (
@@ -570,6 +581,35 @@ export function AgentsView({
                       void personas.handleSetActive(persona, false, "library");
                     }}
                     onDeletePersona={personas.openDelete}
+                  />
+
+                  {/* Team templates keep create, import, share, catalog,
+                      duplicate and delete until the company-layer design
+                      (r21) gives teams their own home. */}
+                  <TeamsSection
+                    error={
+                      teamActions.teamsQuery.error instanceof Error
+                        ? teamActions.teamsQuery.error
+                        : null
+                    }
+                    isLoading={teamActions.teamsQuery.isLoading}
+                    isPending={
+                      teamActions.createTeamMutation.isPending ||
+                      teamActions.updateTeamMutation.isPending ||
+                      teamActions.deleteTeamMutation.isPending
+                    }
+                    onCreate={teamActions.openCreateDialog}
+                    onDelete={teamActions.setTeamToDelete}
+                    onDuplicate={teamActions.openDuplicateDialog}
+                    onEdit={teamActions.openEditDialog}
+                    onAddToChannel={teamActions.setTeamToAddToChannel}
+                    onDiscover={() => openCommunityCatalog("teams")}
+                    onShare={teamActions.openShare}
+                    onImport={() => {
+                      teamImportInputRef.current?.click();
+                    }}
+                    personas={personas.libraryPersonas}
+                    teams={teamActions.teams}
                   />
                 </div>
               ) : null}
