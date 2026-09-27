@@ -12,7 +12,7 @@
 - Implemented the client directory and supported client detail from relay Party, Client, channel membership, and work records. Client creation, contact and brief editing, archive, and restore are not exposed without their required contracts and recovery states.
 - Implemented shared work list, board, detail, create, status and assignee edits, immutable deliverable versions, feedback history, review, approval, and changes requested. Work records stay in their exact client channel; archived client or work records are visible without mutation controls.
 - Implemented the r19 work-detail share action and client-channel work-reference card. The reference resolves the latest work head from the exact client channel and coordinate, then opens the same client-scoped work route. Sharing uses a standard kind 9 event with h, p, and a tags and does not copy record fields into message content.
-- Focused validation passed: 15 adapter, live-scope, and shared-fixture unit tests; the W11 Playwright spec with 11 cases; existing navigation and Workflows specs with 48 passed and one explicit skip; `pnpm build:e2e`; `pnpm exec tsc --noEmit`; Biome; `pnpm check:px-text`; and all 28 visual comparison cases. The visual matrix covers the W11 routes and chat reference at both target viewports in light and dark modes, plus the existing Sales baselines. Screenshots and exact pixel-difference metrics are in `/tmp/w11-visual-full-final-rebased-2026-09-27`. Side-by-side review confirmed that r19 fields without W00 support remain omitted. This proves the local UI and shared mock fixture, not a connected live relay.
+- Focused validation passed: 15 adapter, live-scope, and shared-fixture unit tests; the W11 Playwright spec with 11 cases; existing navigation and Workflows specs with 48 passed and one explicit skip; `pnpm build:e2e`; `pnpm exec tsc --noEmit`; Biome; `pnpm check:px-text`; and all 28 visual comparison cases. The visual matrix covers the W11 routes and chat reference at both target viewports in light and dark modes, plus the existing Sales baselines. Screenshots and exact pixel-difference metrics are in `/tmp/w11-visual-final-2026-09-27`. Side-by-side review confirmed that r19 fields without W00 support remain omitted. This proves the local UI and shared mock fixture, not a connected live relay.
 
 **Tech Stack:** React 19, TanStack Router, React Query, NIP-29 relay events, Tauri IPC, TypeScript, Tailwind, Playwright.
 
@@ -20,7 +20,7 @@
 
 ## File map
 
-- Add desktop/src/features/clients/lib/businessRecords.ts for typed head parsing, explicit kind and h-tag queries, action building, publication, and current-version resolution.
+- Add desktop/src/features/clients/lib/businessRecords.ts for typed head parsing, explicit kind and h-tag queries, action building, publication, and current-version resolution. Keep shared errors, coordinate builders, and digest functions in businessRecordErrors.ts, businessRecordCoordinates.ts, and businessRecordDigests.ts, re-exporting the stable API from businessRecords.ts.
 - Add desktop/src/features/clients/lib/businessRecords.test.mjs for production-path tests of scope validation, coordinate parsing, stale-head conflicts, and digest handling.
 - Add desktop/src/features/clients/useBusinessRecords.ts for channel-scoped queries and live refresh. Fence responses by relay, identity, client channel, and subscription generation.
 - Add client directory, client overview, work list, work detail, deliverable, and business-reference UI under desktop/src/features/clients/ui/.

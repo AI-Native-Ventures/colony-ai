@@ -9,6 +9,7 @@ import {
 } from "@/features/clients/ui/ClientWorkspace";
 import { CreateWorkDialog } from "@/features/clients/ui/CreateWorkDialog";
 import type { WorkItemHead } from "@/features/clients/lib/businessRecords";
+import { truncateNpub } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 
 type WorkRecord = {
@@ -20,10 +21,6 @@ type WorkRecord = {
 
 const BASE_STATUSES = ["active", "review", "blocked", "paused", "complete"];
 const MAX_OWNER_PROFILES = 256;
-
-function shortKey(pubkey: string): string {
-  return `${pubkey.slice(0, 8)}…${pubkey.slice(-6)}`;
-}
 
 export function WorkScreen({ initialClientId }: { initialClientId?: string }) {
   const workQuery = useAllWorkItemHeadsQuery();
@@ -65,7 +62,7 @@ export function WorkScreen({ initialClientId }: { initialClientId?: string }) {
               const normalized = pubkey.toLowerCase();
               return (
                 profiles?.[normalized]?.displayName?.trim() ||
-                shortKey(normalized)
+                truncateNpub(normalized)
               );
             })
             .join(", ") || "Unassigned",

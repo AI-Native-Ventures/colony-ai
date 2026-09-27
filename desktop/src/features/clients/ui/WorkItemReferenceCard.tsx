@@ -6,11 +6,8 @@ import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/busines
 import { WorkItemReferenceContext } from "@/features/clients/ui/WorkItemReferenceContext";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
+import { truncateNpub } from "@/shared/lib/pubkey";
 import type { TimelineMessage } from "@/features/messages/types";
-
-function shortKey(pubkey: string): string {
-  return `${pubkey.slice(0, 8)}…${pubkey.slice(-6)}`;
-}
 
 export function WorkItemReferenceCard({
   channelId,
@@ -58,7 +55,7 @@ export function WorkItemReferenceCard({
     .map((pubkey) => {
       const normalized = pubkey.toLowerCase();
       return (
-        profiles?.[normalized]?.displayName?.trim() || shortKey(normalized)
+        profiles?.[normalized]?.displayName?.trim() || truncateNpub(normalized)
       );
     })
     .join(", ");

@@ -32,20 +32,14 @@ import {
   RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
 import { signRelayEvent } from "@/shared/api/tauri";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
-import { Input } from "@/shared/ui/input";
-import { Textarea } from "@/shared/ui/textarea";
 import { toast } from "sonner";
+import { WorkDetailDialogs } from "@/features/clients/ui/WorkDetailDialogs";
 
 const WORK_STATUS_LABELS: Record<string, string> = {
   active: "In progress",
@@ -59,10 +53,6 @@ const MAX_DELIVERABLE_PREVIEW_CHARS = 12_000;
 
 function displayStatus(status: string): string {
   return WORK_STATUS_LABELS[status] ?? status;
-}
-
-function shortKey(pubkey: string): string {
-  return `${pubkey.slice(0, 8)}…${pubkey.slice(-6)}`;
 }
 
 function jsonBodyParts(body: unknown): { title: string; content: string } {
@@ -758,7 +748,7 @@ export function WorkDetailScreen({
                   .map(
                     (pubkey) =>
                       memberByPubkey.get(pubkey.toLowerCase())?.displayName ??
-                      shortKey(pubkey),
+                      truncateNpub(pubkey),
                   )
                   .join(", ") || "No owner assigned"}
               </RecordField>
@@ -767,7 +757,7 @@ export function WorkDetailScreen({
                   .map(
                     (pubkey) =>
                       memberByPubkey.get(pubkey.toLowerCase())?.displayName ??
-                      shortKey(pubkey),
+                      truncateNpub(pubkey),
                   )
                   .join(", ") || "No reviewer assigned"}
               </RecordField>
@@ -829,7 +819,7 @@ export function WorkDetailScreen({
                         <div className="min-w-0">
                           <h3 className="text-base font-semibold">
                             {body?.title ||
-                              `Deliverable ${shortKey(pointer.deliverableId)}`}
+                              `Deliverable ${truncatePubkey(pointer.deliverableId)}`}
                           </h3>
                           <p className="mt-1 text-sm text-muted-foreground">
                             {versionRecord
@@ -914,7 +904,7 @@ export function WorkDetailScreen({
                             {memberByPubkey.get(
                               currentApproval.event.pubkey.toLowerCase(),
                             )?.displayName ??
-                              shortKey(currentApproval.event.pubkey)}{" "}
+                              truncateNpub(currentApproval.event.pubkey)}{" "}
                             · {eventTime(currentApproval.event.created_at)}
                           </p>
                           <p className="mt-1 whitespace-pre-wrap">
@@ -1080,309 +1070,40 @@ export function WorkDetailScreen({
         </aside>
       </div>
 
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open && !submitMutation.isPending) setEditOpen(false);
-        }}
-        open={editOpen}
-      >
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Edit work</DialogTitle>
-          </DialogHeader>
-          <form className="flex flex-col gap-5" onSubmit={saveWorkDetails}>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="edit-work-title">
-                Work title
-              </label>
-              <Input
-                autoFocus
-                disabled={!isAdmin || !clientIsActive || editingDisabled}
-                id="edit-work-title"
-                maxLength={180}
-                onChange={(event) => setEditTitle(event.target.value)}
-                required
-                value={editTitle}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="edit-work-status">
-                Status
-              </label>
-              <select
-                className="h-9 rounded-lg border border-input/40 bg-background px-3 text-sm"
-                disabled={!isAdmin || !clientIsActive || editingDisabled}
-                id="edit-work-status"
-                onChange={(event) => setEditStatus(event.target.value)}
-                value={editStatus}
-              >
-                {[
-                  ["active", "In progress"],
-                  ["review", "Needs review"],
-                  ["blocked", "Blocked"],
-                  ["paused", "Paused"],
-                ].map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <MemberPicker
-              disabled={!isAdmin || !clientIsActive || editingDisabled}
-              label="Assigned to"
-              members={members}
-              onChange={setEditAssignees}
-              selected={editAssignees}
-            />
-            <MemberPicker
-              disabled={!isAdmin || !clientIsActive || editingDisabled}
-              label="Client reviewers"
-              members={members}
-              onChange={setEditApprovers}
-              selected={editApprovers}
-            />
-            <DialogActions
-              disabled={submitMutation.isPending}
-              onCancel={() => setEditOpen(false)}
-              submitLabel={submitMutation.isError ? "Retry" : "Save changes"}
-            />
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open && !submitMutation.isPending) setVersionDraft(null);
-        }}
-        open={Boolean(versionDraft)}
-      >
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>
-              {versionDraft?.deliverableId
-                ? "New deliverable version"
-                : "Add deliverable"}
-            </DialogTitle>
-          </DialogHeader>
-          {versionDraft?.deliverableId &&
-          !versions.some(
-            (record) =>
-              record.event.id ===
-              head.deliverables.find(
-                (pointer) =>
-                  pointer.deliverableId === versionDraft.deliverableId,
-              )?.versionEventId,
-          ) ? (
-            <RecordMessage kind="error">
-              The current deliverable version is unavailable. Reload the record
-              before editing.
-            </RecordMessage>
-          ) : null}
-          <form
-            className="flex flex-col gap-5"
-            onSubmit={saveDeliverableVersion}
-          >
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium"
-                htmlFor="deliverable-title"
-              >
-                Deliverable title
-              </label>
-              <Input
-                autoFocus
-                disabled={editingDisabled}
-                id="deliverable-title"
-                maxLength={180}
-                onChange={(event) => setVersionTitle(event.target.value)}
-                required
-                value={versionTitle}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium"
-                htmlFor="deliverable-content"
-              >
-                Content
-              </label>
-              <Textarea
-                disabled={editingDisabled}
-                id="deliverable-content"
-                maxLength={120_000}
-                onChange={(event) => setVersionContent(event.target.value)}
-                required
-                rows={7}
-                value={versionContent}
-              />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              This creates an immutable version. Attachments are unavailable for
-              this record type.
-            </p>
-            <DialogActions
-              disabled={submitMutation.isPending}
-              onCancel={() => setVersionDraft(null)}
-              submitLabel={submitMutation.isError ? "Retry" : "Save version"}
-            />
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open && !submitMutation.isPending) setApprovalDraft(null);
-        }}
-        open={Boolean(approvalDraft)}
-      >
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>
-              {approvalDraft?.decision === "approved"
-                ? "Approve this version?"
-                : "Request changes"}
-            </DialogTitle>
-          </DialogHeader>
-          {approvalDraft ? (
-            <form className="flex flex-col gap-5" onSubmit={recordApproval}>
-              <p className="text-sm text-muted-foreground">
-                {clientHead.displayName} ·{" "}
-                {jsonBodyParts(approvalDraft.version.value.body).title ||
-                  `Deliverable ${shortKey(approvalDraft.pointer.deliverableId)}`}{" "}
-                · Version {approvalDraft.version.value.version}
-              </p>
-              {approvalDraft.decision === "changes_requested" ? (
-                <div className="grid gap-2">
-                  <label
-                    className="text-sm font-medium"
-                    htmlFor="deliverable-feedback"
-                  >
-                    What needs to change?
-                  </label>
-                  <Textarea
-                    autoFocus
-                    disabled={editingDisabled}
-                    id="deliverable-feedback"
-                    maxLength={4_000}
-                    onChange={(event) => setApprovalNote(event.target.value)}
-                    required
-                    rows={5}
-                    value={approvalNote}
-                  />
-                </div>
-              ) : (
-                <p className="text-sm">
-                  This records approval for the exact current version. A later
-                  version needs a new review.
-                </p>
-              )}
-              <DialogActions
-                disabled={
-                  submitMutation.isPending ||
-                  (approvalDraft.decision === "changes_requested" &&
-                    !approvalNote.trim())
-                }
-                onCancel={() => setApprovalDraft(null)}
-                submitLabel={
-                  submitMutation.isError
-                    ? "Retry"
-                    : approvalDraft.decision === "approved"
-                      ? `Approve version ${approvalDraft.version.value.version}`
-                      : "Request changes"
-                }
-              />
-            </form>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <WorkDetailDialogs
+        approvalDraft={approvalDraft}
+        approvalNote={approvalNote}
+        clientDisplayName={clientHead.displayName}
+        clientIsActive={clientIsActive}
+        editApprovers={editApprovers}
+        editAssignees={editAssignees}
+        editOpen={editOpen}
+        editStatus={editStatus}
+        editTitle={editTitle}
+        isAdmin={isAdmin}
+        isSubmitting={submitMutation.isPending}
+        hasSubmitError={submitMutation.isError}
+        editingDisabled={editingDisabled}
+        head={head}
+        members={members}
+        onApprovalNoteChange={setApprovalNote}
+        onEditApproversChange={setEditApprovers}
+        onEditAssigneesChange={setEditAssignees}
+        onEditOpenChange={setEditOpen}
+        onEditStatusChange={setEditStatus}
+        onEditTitleChange={setEditTitle}
+        onRecordApproval={recordApproval}
+        onSaveDeliverableVersion={saveDeliverableVersion}
+        onSaveWorkDetails={saveWorkDetails}
+        onVersionContentChange={setVersionContent}
+        onVersionDraftChange={setVersionDraft}
+        onVersionTitleChange={setVersionTitle}
+        onApprovalDraftChange={setApprovalDraft}
+        versionContent={versionContent}
+        versionDraft={versionDraft}
+        versionTitle={versionTitle}
+        versions={versions}
+      />
     </ClientWorkspace>
-  );
-}
-
-function MemberPicker({
-  disabled,
-  label,
-  members,
-  onChange,
-  selected,
-}: {
-  disabled: boolean;
-  label: string;
-  members: readonly {
-    pubkey: string;
-    displayName: string | null;
-    role: string;
-  }[];
-  onChange: (pubkeys: string[]) => void;
-  selected: readonly string[];
-}) {
-  const selectedKeys = new Set(selected.map((pubkey) => pubkey.toLowerCase()));
-  return (
-    <fieldset className="grid gap-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{label}</legend>
-      {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No channel members are available.
-        </p>
-      ) : null}
-      <div className="max-h-48 overflow-auto rounded-lg border border-border/70 px-3">
-        {members.map((member) => {
-          const key = member.pubkey.toLowerCase();
-          return (
-            <label
-              className="flex items-center justify-between gap-3 border-b border-border/60 py-2 last:border-0"
-              key={key}
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-sm">
-                  {member.displayName || shortKey(key)}
-                </span>
-                <span className="block text-xs capitalize text-muted-foreground">
-                  {member.role}
-                </span>
-              </span>
-              <input
-                aria-label={`${label}: ${member.displayName || shortKey(key)}`}
-                checked={selectedKeys.has(key)}
-                onChange={(event) => {
-                  const next = new Set(selectedKeys);
-                  if (event.target.checked) next.add(key);
-                  else next.delete(key);
-                  onChange([...next].sort());
-                }}
-                type="checkbox"
-              />
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-function DialogActions({
-  disabled,
-  onCancel,
-  submitLabel,
-}: {
-  disabled: boolean;
-  onCancel: () => void;
-  submitLabel: string;
-}) {
-  return (
-    <div className="flex justify-end gap-2">
-      <Button
-        disabled={disabled}
-        onClick={onCancel}
-        type="button"
-        variant="outline"
-      >
-        Cancel
-      </Button>
-      <Button disabled={disabled} type="submit">
-        {submitLabel}
-      </Button>
-    </div>
   );
 }

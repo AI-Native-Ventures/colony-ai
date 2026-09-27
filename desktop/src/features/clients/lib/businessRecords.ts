@@ -1,12 +1,10 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 
 import {
   KIND_CLIENT_ACTION,
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
-  KIND_STREAM_MESSAGE,
   KIND_WORK_ITEM_ACTION,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -15,6 +13,34 @@ import type { RelayEvent } from "@/shared/api/types";
 import { MAX_EXPLICIT_CHANNEL_VALUES } from "@/shared/api/relayClientShared";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayClient } from "@/shared/api/relayClientSession";
+import {
+  BusinessRecordLimitError,
+  BusinessRecordParseError,
+} from "./businessRecordErrors";
+import {
+  clientDTag,
+  deliverableApprovalDTag,
+  deliverableVersionDTag,
+  workItemDTag,
+} from "./businessRecordCoordinates";
+import {
+  computeDeliverableContentDigest,
+  computeDeliverableDigests,
+} from "./businessRecordDigests";
+export {
+  buildWorkItemReferenceMessageTemplate,
+  buildWorkItemReferenceTag,
+  clientDTag,
+  deliverableApprovalDTag,
+  deliverableVersionDTag,
+  parseWorkItemReferenceCoordinate,
+  workItemDTag,
+} from "./businessRecordCoordinates";
+export {
+  canonicalJson,
+  computeDeliverableDigests,
+  MAX_DELIVERABLE_BODY_BYTES,
+} from "./businessRecordDigests";
 
 export const BUSINESS_RECORD_SCHEMA_VERSION = 1;
 export const MAX_CLIENT_CHANNELS_TO_SCAN = 4096;
@@ -22,7 +48,6 @@ export const MAX_WORK_CLIENT_CHANNELS = 128;
 export const MAX_CURRENT_WORK_ITEMS = 500;
 export const MAX_DELIVERABLE_EVENTS = 1000;
 export const MAX_BUSINESS_EVENT_BYTES = 1_000_000;
-export const MAX_DELIVERABLE_BODY_BYTES = 500_000;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -126,19 +151,10 @@ export type EventRecord<T> = {
   value: T;
 };
 
-export class BusinessRecordParseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BusinessRecordParseError";
-  }
-}
-
-export class BusinessRecordLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BusinessRecordLimitError";
-  }
-}
+export {
+  BusinessRecordLimitError,
+  BusinessRecordParseError,
+} from "./businessRecordErrors";
 
 export function isBusinessRecordCommandRejection(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -312,118 +328,6 @@ function assertHex32(value: string, label: string): void {
   }
 }
 
-export function clientDTag(clientId: string): string {
-  assertUuid(clientId, "client id");
-  const normalized = clientId.toLowerCase();
-  return `client:${normalized}:client:${normalized}`;
-}
-
-export function workItemDTag(clientId: string, workItemId: string): string {
-  assertUuid(clientId, "client id");
-  assertUuid(workItemId, "work item id");
-  return `client:${clientId.toLowerCase()}:work:${workItemId.toLowerCase()}`;
-}
-
-export function buildWorkItemReferenceTag(
-  record: EventRecord<WorkItemHead>,
-): string[] {
-  const { clientId, workItemId } = record.value;
-  const dTag = workItemDTag(clientId, workItemId);
-  assertHex32(record.event.pubkey, "work item head author");
-  if (
-    record.event.kind !== KIND_WORK_ITEM_HEAD ||
-    readUniqueTag(record.event, "h").toLowerCase() !== clientId.toLowerCase() ||
-    readUniqueTag(record.event, "d") !== dTag
-  ) {
-    throw new BusinessRecordParseError(
-      "work item reference must match its exact client head",
-    );
-  }
-  return [
-    "a",
-    `${KIND_WORK_ITEM_HEAD}:${record.event.pubkey.toLowerCase()}:${dTag}`,
-  ];
-}
-
-export function parseWorkItemReferenceCoordinate(
-  coordinate: string,
-  clientId: string,
-): { authorPubkey: string; dTag: string; workItemId: string } | null {
-  try {
-    assertUuid(clientId, "client channel id");
-  } catch {
-    return null;
-  }
-  const firstSeparator = coordinate.indexOf(":");
-  const secondSeparator = coordinate.indexOf(":", firstSeparator + 1);
-  if (firstSeparator < 1 || secondSeparator < 0) return null;
-  const kind = Number(coordinate.slice(0, firstSeparator));
-  const authorPubkey = coordinate.slice(firstSeparator + 1, secondSeparator);
-  const dTag = coordinate.slice(secondSeparator + 1);
-  if (kind !== KIND_WORK_ITEM_HEAD || !HEX_32_RE.test(authorPubkey))
-    return null;
-  const prefix = `client:${clientId.toLowerCase()}:work:`;
-  if (!dTag.startsWith(prefix)) return null;
-  const workItemId = dTag.slice(prefix.length);
-  try {
-    assertUuid(workItemId, "work item id");
-    if (workItemDTag(clientId, workItemId) !== dTag) return null;
-  } catch {
-    return null;
-  }
-  return { authorPubkey, dTag, workItemId: workItemId.toLowerCase() };
-}
-
-export function buildWorkItemReferenceMessageTemplate(
-  record: EventRecord<WorkItemHead>,
-  senderPubkey: string,
-): BusinessEventTemplate {
-  assertHex32(senderPubkey, "message author");
-  return {
-    kind: KIND_STREAM_MESSAGE,
-    content: "",
-    tags: [
-      ["h", record.value.clientId.toLowerCase()],
-      ["p", senderPubkey.toLowerCase()],
-      buildWorkItemReferenceTag(record),
-    ],
-  };
-}
-
-export function deliverableVersionDTag(
-  clientId: string,
-  deliverableId: string,
-  version: number,
-): string {
-  assertUuid(clientId, "client id");
-  assertUuid(deliverableId, "deliverable id");
-  if (!Number.isInteger(version) || version < 1) {
-    throw new Error("deliverable version must be a positive integer");
-  }
-  return (
-    "client:" +
-    clientId.toLowerCase() +
-    ":deliverable:" +
-    deliverableId.toLowerCase() +
-    ":version:" +
-    version
-  );
-}
-
-export function deliverableApprovalDTag(
-  clientId: string,
-  versionEventId: string,
-): string {
-  assertUuid(clientId, "client id");
-  assertHex32(versionEventId, "version event id");
-  return (
-    "client:" +
-    clientId.toLowerCase() +
-    ":deliverable-approval:" +
-    versionEventId
-  );
-}
-
 export function parseClientHead(event: RelayEvent): EventRecord<ClientHead> {
   if (event.kind !== KIND_CLIENT_HEAD) {
     throw new BusinessRecordParseError("event is not a client head");
@@ -563,13 +467,7 @@ export function parseDeliverableVersion(
       "deliverable media digests are not sorted and unique",
     );
   }
-  const canonicalBody = canonicalJson(record.body);
-  if (utf8ToBytes(canonicalBody).byteLength > MAX_DELIVERABLE_BODY_BYTES) {
-    throw new BusinessRecordLimitError(
-      "deliverable body exceeds the content limit",
-    );
-  }
-  const bodyDigest = digestHex(utf8ToBytes(canonicalBody));
+  const bodyDigest = computeDeliverableContentDigest(record.body);
   const contentDigest = readDigest(
     record,
     "contentDigest",
@@ -658,70 +556,6 @@ export function parseDeliverableApproval(
       decision,
       note,
     },
-  };
-}
-
-export function canonicalJson(value: unknown): string {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isSafeInteger(value)) {
-      throw new Error(
-        "deliverable bodies support only safe integer JSON numbers",
-      );
-    }
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (isRecord(value)) {
-    const entries = Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
-    return `{${entries.join(",")}}`;
-  }
-  throw new Error("deliverable body must contain JSON values");
-}
-
-function digestHex(bytes: Uint8Array): string {
-  return bytesToHex(sha256(bytes));
-}
-
-export function computeDeliverableDigests(
-  body: unknown,
-  mediaDigests: readonly string[],
-) {
-  const sortedMediaDigests = [
-    ...new Set(mediaDigests.map((item) => item.toLowerCase())),
-  ].sort();
-  for (const digest of sortedMediaDigests) {
-    assertHex32(digest, "media digest");
-  }
-  const contentBytes = utf8ToBytes(canonicalJson(body));
-  if (contentBytes.byteLength > MAX_DELIVERABLE_BODY_BYTES) {
-    throw new BusinessRecordLimitError(
-      "deliverable body exceeds the content limit",
-    );
-  }
-  const contentDigest = digestHex(contentBytes);
-  const mediaDigest = digestHex(
-    utf8ToBytes(JSON.stringify(sortedMediaDigests)),
-  );
-  const combined = new Uint8Array([
-    ...hexToBytes(contentDigest),
-    ...hexToBytes(mediaDigest),
-  ]);
-  return {
-    contentDigest,
-    mediaDigest,
-    sortedMediaDigests,
-    versionDigest: digestHex(combined),
   };
 }
 
