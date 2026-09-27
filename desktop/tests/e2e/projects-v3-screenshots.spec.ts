@@ -155,6 +155,7 @@ test("sidebar project add flow browses before creating", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("sidebar-project-buzz")).toHaveCount(0);
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
 

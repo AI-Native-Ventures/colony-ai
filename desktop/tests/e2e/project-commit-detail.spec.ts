@@ -21,6 +21,7 @@ async function enableProjectsFeature(page: import("@playwright/test").Page) {
 }
 
 async function openCreateProjectDialog(page: import("@playwright/test").Page) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   await page.getByTestId("projects-overview-create-project").click();
 }
@@ -29,6 +30,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");
