@@ -1,6 +1,6 @@
 part of 'channel_actions_sheet.dart';
 
-const _channelMemberPreviewLimit = 5;
+const _channelMemberPreviewLimit = 3;
 const _channelDetailsHeaderFrostScrollDistance = Grid.xxl;
 const _channelDetailsHeaderFrostMaxBlurSigma = 20.0;
 const _channelDetailsSectionPadding = Grid.twelve;
@@ -242,6 +242,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
               )
             : null,
         iconColor: context.mobileTokens.ink,
+        gradient: context.appColors.companyWashGradient,
         actions: openQuickActions == null
             ? const []
             : [
@@ -305,6 +306,146 @@ class ChannelDetailsPage extends HookConsumerWidget {
         ),
         children: [
           _ChannelDetailsHero(channel: resolvedChannel),
+          Column(
+            key: const ValueKey('channel-details-members-card'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Grid.gutter,
+                  _channelDetailsSectionPadding,
+                  Grid.gutter,
+                  Grid.xxs,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'In this conversation',
+                        style: context.textTheme.labelMedium?.copyWith(
+                          color: context.colors.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      key: const ValueKey('channel-details-members-row'),
+                      onPressed: openMembers,
+                      style: TextButton.styleFrom(
+                        minimumSize: Size.zero,
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: context.appColors.plum,
+                      ),
+                      child: Text(
+                        'See all',
+                        style: context.mobileTypography.identityDetails,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
+                child: Column(
+                  children: [
+                    if (membersAsync.isLoading && members.isEmpty)
+                      const AppListRow(
+                        icon: LucideIcons.loaderCircle,
+                        title: 'Loading members…',
+                        trailing: BuzzLoadingIndicator(
+                          size: 20,
+                          semanticLabel: 'Loading members',
+                        ),
+                      )
+                    else if (membersAsync.hasError && members.isEmpty)
+                      const AppListRow(
+                        icon: LucideIcons.triangleAlert,
+                        title: 'Members unavailable',
+                      )
+                    else
+                      for (final member in previewMembers)
+                        _ChannelMemberPreviewRow(
+                          key: ValueKey(
+                            'channel-details-member-${member.pubkey}',
+                          ),
+                          member: member,
+                          currentPubkey: resolvedCurrentPubkey,
+                          onMemberTap: onMemberTap,
+                          displayName: userCache[member.pubkey.toLowerCase()]
+                              ?.displayName,
+                          avatarUrl:
+                              userCache[member.pubkey.toLowerCase()]?.avatarUrl,
+                        ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          AppListCard(
+            key: const ValueKey('channel-details-channel-card'),
+            verticalPadding: _channelDetailsSectionPadding,
+            children: [
+              if (canAddMembers)
+                AppListRowRaw(
+                  key: const ValueKey('channel-details-add-members-row'),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: context.colors.surfaceContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      LucideIcons.plus,
+                      color: context.colors.onSurfaceVariant,
+                    ),
+                  ),
+                  title: Text(
+                    'Add members',
+                    style: context.textTheme.bodyLarge,
+                  ),
+                  trailing: const _ChannelDetailsChevron(),
+                  onTap: openAddMembers,
+                  verticalPadding: Grid.xxs,
+                ),
+              AppListRow(
+                icon: LucideIcons.folderInput,
+                title: 'Move to section…',
+                trailing: const _ChannelDetailsChevron(),
+                onTap: () async {
+                  await _showMoveSectionSheet(
+                    context,
+                    ref,
+                    channel: resolvedChannel,
+                    sectionId: currentSectionId,
+                  );
+                },
+              ),
+              AppListRow(
+                icon: LucideIcons.copy,
+                title: 'Copy channel name',
+                onTap: () {
+                  copyToClipboard(
+                    context,
+                    resolvedChannel.name,
+                    message: 'Channel name copied to clipboard',
+                  );
+                },
+              ),
+              AppListRow(
+                icon: LucideIcons.hash,
+                title: 'Copy channel ID',
+                onTap: () {
+                  copyToClipboard(
+                    context,
+                    resolvedChannel.id,
+                    message: 'Channel ID copied to clipboard',
+                  );
+                },
+              ),
+            ],
+          ),
           Padding(
             key: const ValueKey('channel-details-actions'),
             padding: const EdgeInsets.fromLTRB(
@@ -354,116 +495,6 @@ class ChannelDetailsPage extends HookConsumerWidget {
                 ],
               ),
             ),
-          ),
-          AppListCard(
-            key: const ValueKey('channel-details-members-card'),
-            label: 'In this conversation',
-            dividerIndent: Grid.xs + 40 + Grid.xs,
-            verticalPadding: _channelDetailsSectionPadding,
-            children: [
-              if (canAddMembers)
-                AppListRowRaw(
-                  key: const ValueKey('channel-details-add-members-row'),
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceContainer,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      LucideIcons.plus,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                  ),
-                  title: Text(
-                    'Add members',
-                    style: context.textTheme.bodyLarge,
-                  ),
-                  trailing: const _ChannelDetailsChevron(),
-                  onTap: openAddMembers,
-                  verticalPadding: Grid.xxs,
-                ),
-              if (membersAsync.isLoading && members.isEmpty)
-                const AppListRow(
-                  icon: LucideIcons.loaderCircle,
-                  title: 'Loading members…',
-                  trailing: BuzzLoadingIndicator(
-                    size: 20,
-                    semanticLabel: 'Loading members',
-                  ),
-                )
-              else if (membersAsync.hasError && members.isEmpty)
-                const AppListRow(
-                  icon: LucideIcons.triangleAlert,
-                  title: 'Members unavailable',
-                )
-              else ...[
-                for (final member in previewMembers)
-                  _ChannelMemberPreviewRow(
-                    key: ValueKey('channel-details-member-${member.pubkey}'),
-                    member: member,
-                    currentPubkey: resolvedCurrentPubkey,
-                    onMemberTap: onMemberTap,
-                    displayName:
-                        userCache[member.pubkey.toLowerCase()]?.displayName,
-                    avatarUrl:
-                        userCache[member.pubkey.toLowerCase()]?.avatarUrl,
-                  ),
-                AppListRowRaw(
-                  key: const ValueKey('channel-details-members-row'),
-                  leading: const SizedBox(
-                    width: Grid.eighteen,
-                    height: MobileLayoutTokens.minimumRowHeight,
-                  ),
-                  title: Text('See all', style: context.textTheme.bodyLarge),
-                  trailing: const _ChannelDetailsChevron(),
-                  onTap: openMembers,
-                  verticalPadding: Grid.xxs,
-                ),
-              ],
-            ],
-          ),
-          AppListCard(
-            key: const ValueKey('channel-details-channel-card'),
-            verticalPadding: _channelDetailsSectionPadding,
-            children: [
-              AppListRow(
-                icon: LucideIcons.folderInput,
-                title: 'Move to section…',
-                trailing: const _ChannelDetailsChevron(),
-                onTap: () async {
-                  await _showMoveSectionSheet(
-                    context,
-                    ref,
-                    channel: resolvedChannel,
-                    sectionId: currentSectionId,
-                  );
-                },
-              ),
-              AppListRow(
-                icon: LucideIcons.copy,
-                title: 'Copy channel name',
-                onTap: () {
-                  copyToClipboard(
-                    context,
-                    resolvedChannel.name,
-                    message: 'Channel name copied to clipboard',
-                  );
-                },
-              ),
-              AppListRow(
-                icon: LucideIcons.hash,
-                title: 'Copy channel ID',
-                onTap: () {
-                  copyToClipboard(
-                    context,
-                    resolvedChannel.id,
-                    message: 'Channel ID copied to clipboard',
-                  );
-                },
-              ),
-            ],
           ),
           if (resolvedChannel.isMember ||
               canJoin ||
@@ -660,13 +691,30 @@ class _ChannelMemberPreviewRow extends StatelessWidget {
         ? _channelMemberInitials(label, fallback: pubkeyInitial)
         : pubkeyInitial;
     final roleLabel = _channelMemberRoleLabel(member.role);
-    return IdentityRow(
-      name: label,
-      details: roleLabel,
-      initials: initials,
-      kind: member.isBot ? IdentityKind.agent : IdentityKind.person,
-      imageUrl: avatarUrl,
-      onTap: () => onMemberTap(context, member.pubkey),
+    final identityKind = member.isBot
+        ? IdentityKind.agent
+        : IdentityKind.person;
+    final onTap = () => onMemberTap(context, member.pubkey);
+    return Semantics(
+      container: true,
+      button: true,
+      label: '$label, $roleLabel, ${member.isBot ? 'AI agent' : 'Person'}',
+      onTap: onTap,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: ExcludeSemantics(
+            child: IdentityRow(
+              name: label,
+              details: roleLabel,
+              initials: initials,
+              kind: identityKind,
+              imageUrl: avatarUrl,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

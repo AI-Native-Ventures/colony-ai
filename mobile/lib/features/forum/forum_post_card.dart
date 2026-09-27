@@ -141,7 +141,7 @@ class ForumPostCard extends HookConsumerWidget {
                         ? IdentityKind.agent
                         : IdentityKind.person,
                     imageUrl: profile?.avatarUrl,
-                    size: Grid.lg,
+                    size: Grid.xs + Grid.twelve,
                     excludeSemantics: true,
                   ),
                   const SizedBox(width: Grid.xxs),
@@ -199,19 +199,10 @@ class ForumPostCard extends HookConsumerWidget {
                 ),
               ],
               const SizedBox(height: Grid.xxs),
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                runSpacing: Grid.xxs,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final replySummary = Row(
                     children: [
-                      Icon(
-                        LucideIcons.messageSquare,
-                        size: Grid.xs,
-                        color: context.mobileTokens.muted,
-                      ),
-                      const SizedBox(width: Grid.half),
                       Flexible(
                         child: Text(
                           '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'}',
@@ -219,12 +210,13 @@ class ForumPostCard extends HookConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: context.mobileTypography.metadata.copyWith(
                             color: context.mobileTokens.muted,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
                     ],
-                  ),
-                  Row(
+                  );
+                  final openNote = Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
@@ -244,8 +236,27 @@ class ForumPostCard extends HookConsumerWidget {
                         color: context.appColors.plum,
                       ),
                     ],
-                  ),
-                ],
+                  );
+                  if (constraints.maxWidth < Grid.xxl * 4) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        replySummary,
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: openNote,
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: replySummary),
+                      const SizedBox(width: Grid.xs),
+                      openNote,
+                    ],
+                  );
+                },
               ),
             ],
           ),

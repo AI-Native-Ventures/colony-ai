@@ -135,46 +135,47 @@ class _DeliverableArtwork extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     final colors = context.appColors;
+    final artworkSurface = Theme.of(context).brightness == Brightness.dark
+        ? colors.warning
+        : tokens.warning;
+    final stillLifeOlive = Color.alphaBlend(
+      colors.identitySageForeground.withValues(alpha: 0.45),
+      artworkSurface,
+    );
     return SizedBox(
       height: MobileLayoutTokens.minimumRowHeight + Grid.lg,
       child: ClipRect(
         child: Stack(
           children: [
-            Positioned.fill(child: ColoredBox(color: tokens.warning)),
+            Positioned.fill(child: ColoredBox(color: artworkSurface)),
             Positioned(
-              right: -Grid.xs,
-              bottom: -Grid.xl,
+              right: Grid.xs,
+              bottom: -Grid.half,
               child: Transform.rotate(
-                angle: -0.314,
+                angle: -0.2,
                 child: Container(
-                  width: Grid.xxl + Grid.xxxl,
-                  height: Grid.xxl + Grid.xxxl,
+                  width: Grid.xxl,
+                  height: Grid.xxxl + Grid.xs,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.vertical(
-                      top: Radius.elliptical(Grid.xxl, Grid.xxl),
+                      top: Radius.elliptical(Grid.xl, Grid.xl),
                     ),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [colors.apricot, colors.identitySageForeground],
-                    ),
+                    color: colors.apricot,
                   ),
                 ),
               ),
             ),
             Positioned(
-              right: Grid.xs,
-              bottom: -Grid.xxs,
+              right: Grid.xxs,
+              bottom: Grid.xs,
               child: Transform.rotate(
-                angle: 0.349,
+                angle: 0.16,
                 child: Container(
-                  width: Grid.xxl,
-                  height: Grid.xxl + Grid.lg,
+                  width: Grid.xl + Grid.xs,
+                  height: Grid.sm,
                   decoration: BoxDecoration(
-                    color: tokens.success,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.elliptical(Grid.xxl, Grid.xxl),
-                    ),
+                    color: stillLifeOlive,
+                    borderRadius: BorderRadius.circular(Radii.full),
                   ),
                 ),
               ),
@@ -188,25 +189,31 @@ class _DeliverableArtwork extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        data.brand,
-                        style: context.mobileTypography.identityStatus.copyWith(
-                          color: colors.identitySageForeground,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w700,
+                  SizedBox(
+                    width: Grid.xxl * 2 + Grid.xs,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data.brand,
+                          style: context.mobileTypography.identityStatus
+                              .copyWith(
+                                color: colors.identityPersonForeground,
+                                letterSpacing: 1.1,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
-                      ),
-                      const SizedBox(height: Grid.xxs),
-                      Text(
-                        data.coverTitle,
-                        maxLines: 2,
-                        style: context.mobileTypography.companyHubTitle
-                            .copyWith(color: colors.identitySageForeground),
-                      ),
-                    ],
+                        const SizedBox(height: Grid.xxs),
+                        Text(
+                          data.coverTitle,
+                          maxLines: 2,
+                          style: context.mobileTypography.conversation.copyWith(
+                            color: colors.identityPersonForeground,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (data.coverFooter.trim().isNotEmpty)
                     Positioned(

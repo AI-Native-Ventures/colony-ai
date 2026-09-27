@@ -24,7 +24,6 @@ import 'forum_presentation.dart';
 import 'forum_provider.dart';
 
 final _forumClockTimeFormat = DateFormat('HH:mm');
-final _forumNoteDateFormat = DateFormat('d MMMM');
 
 /// Full-screen page showing a forum post and its replies.
 class ForumThreadPage extends HookConsumerWidget {
@@ -285,10 +284,12 @@ class _ThreadContent extends HookConsumerWidget {
         Expanded(
           child: ListView(
             padding: EdgeInsets.only(
-              top: frostedAppBarHeight(
-                context,
-                titleContentHeight: MobileLayoutTokens.appBarHeight,
-              ),
+              top:
+                  frostedAppBarHeight(
+                    context,
+                    titleContentHeight: MobileLayoutTokens.appBarHeight,
+                  ) -
+                  Grid.xs,
               bottom: Grid.xs,
             ),
             children: [
@@ -432,7 +433,7 @@ class _OriginalPost extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         MobileLayoutTokens.contentGutter,
-        Grid.xs,
+        Grid.half,
         MobileLayoutTokens.contentGutter,
         Grid.xs,
       ),
@@ -500,7 +501,7 @@ class _OriginalPost extends ConsumerWidget {
             const SizedBox(height: Grid.xs),
             Text(
               contentParts.title,
-              style: context.mobileTypography.companyHubTitle.copyWith(
+              style: context.textTheme.headlineSmall?.copyWith(
                 color: context.mobileTokens.ink,
               ),
             ),
@@ -755,8 +756,8 @@ String _formatNoteDateTime(int unixSeconds) {
   final now = DateTime.now();
   final isToday =
       date.year == now.year && date.month == now.month && date.day == now.day;
-  final dateLabel = isToday ? 'Today' : _forumNoteDateFormat.format(date);
-  return '$dateLabel, ${_forumClockTimeFormat.format(date)}';
+  if (isToday) return 'Today, ${_forumClockTimeFormat.format(date)}';
+  return formatRelativeTime(unixSeconds);
 }
 
 class _Avatar extends StatelessWidget {

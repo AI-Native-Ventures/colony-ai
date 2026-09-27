@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../shared/identity/identity_components.dart';
 import '../../shared/theme/theme.dart';
 
-const conversationAvatarSize = 34.0;
+const conversationAvatarSize = 28.0;
 const conversationAvatarGap = 10.0;
 
 final conversationBodyTextStyle = MobileTypographyTokens.v5.conversation;

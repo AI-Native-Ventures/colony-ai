@@ -271,6 +271,10 @@ void main() {
       );
       expect(find.text('3 replies'), findsOneWidget);
       expect(find.text('Open note'), findsOneWidget);
+      expect(
+        tester.getRect(find.text('3 replies')).right,
+        lessThan(tester.getRect(find.text('Open note')).left),
+      );
       final avatar = tester.widget<IdentityAvatar>(find.byType(IdentityAvatar));
       expect(avatar.initials, 'A');
       expect(avatar.kind, IdentityKind.person);

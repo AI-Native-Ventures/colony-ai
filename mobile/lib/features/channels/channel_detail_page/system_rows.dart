@@ -571,14 +571,12 @@ class _ThreadSummaryRow extends ConsumerWidget {
     final userCache = ref.watch(userCacheProvider);
     final knownAgents = ref.watch(agentMentionPubkeysProvider(channelId));
     final participants = summary.participantPubkeys.take(2).toList();
-    final title = message.content.trim().split('\n').first.trim();
     final replyLabel =
         '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}';
-    final threadLabel = title.isEmpty ? replyLabel : '$title · $replyLabel';
 
     return Semantics(
       button: true,
-      label: 'Open thread: $threadLabel',
+      label: 'Open thread: $replyLabel',
       child: ExcludeSemantics(
         child: Material(
           color: Colors.transparent,
@@ -662,22 +660,6 @@ class _ThreadSummaryRow extends ConsumerWidget {
                       child: Text.rich(
                         TextSpan(
                           children: [
-                            if (title.isNotEmpty)
-                              TextSpan(
-                                text: title,
-                                style: context.mobileTypography.identityName
-                                    .copyWith(
-                                      color: context.mobileTokens.onActionSoft,
-                                    ),
-                              ),
-                            if (title.isNotEmpty)
-                              TextSpan(
-                                text: ' · ',
-                                style: context.mobileTypography.metadata
-                                    .copyWith(
-                                      color: context.mobileTokens.onActionSoft,
-                                    ),
-                              ),
                             TextSpan(
                               text: replyLabel,
                               style: context.mobileTypography.metadata.copyWith(

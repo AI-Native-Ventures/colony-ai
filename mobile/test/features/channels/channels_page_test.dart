@@ -21,6 +21,7 @@ import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
+import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/community/community_icon_provider.dart';
@@ -357,14 +358,38 @@ void main() {
                   ),
                 ),
               ),
+              userCacheProvider.overrideWith(
+                () => _FakeUserCacheNotifier(const {
+                  'mina': UserProfile(
+                    pubkey: 'mina',
+                    displayName: 'Mina',
+                    ownerPubkey: 'aabb',
+                  ),
+                  'aya': UserProfile(
+                    pubkey: 'aya',
+                    displayName: 'Aya',
+                    ownerPubkey: 'aabb',
+                  ),
+                }),
+              ),
             ],
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('ls'), findsOneWidget);
+        expect(find.text('Conversations'), findsOneWidget);
         expect(find.text('LM'), findsOneWidget);
         expect(_dmTileAvatarInitial(tester, 'Mina'), 'M');
         expect(_dmTileAvatarInitial(tester, 'Aya'), 'A');
+        for (final channelId in ['fixture-mina', 'fixture-aya']) {
+          expect(
+            tester
+                .widget<IdentityAvatar>(
+                  find.byKey(ValueKey('conversation-avatar-$channelId')),
+                )
+                .kind,
+            IdentityKind.agent,
+          );
+        }
         await expectLater(
           find.byKey(const ValueKey('channels-fullscreen-capture')),
           matchesGoldenFile('channels.png'),
@@ -3023,6 +3048,21 @@ class _FakeProfileNotifier extends ProfileNotifier {
   @override
   Future<UserProfile?> build() async =>
       UserProfile(pubkey: pubkey, displayName: displayName);
+}
+
+class _FakeUserCacheNotifier extends UserCacheNotifier {
+  _FakeUserCacheNotifier(this._users);
+
+  final Map<String, UserProfile> _users;
+
+  @override
+  Map<String, UserProfile> build() => _users;
+
+  @override
+  UserProfile? get(String pubkey) => _users[pubkey.toLowerCase()];
+
+  @override
+  Future<bool> preload(List<String> pubkeys) async => true;
 }
 
 class _FixtureChannelSortNotifier extends ChannelSortNotifier {

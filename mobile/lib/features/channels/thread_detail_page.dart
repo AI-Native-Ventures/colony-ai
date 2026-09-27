@@ -870,14 +870,9 @@ class ThreadDetailPage extends HookConsumerWidget {
             ? textScaler.scale(subtitleStyle.fontSize ?? 10) *
                   (subtitleStyle.height ?? 1)
             : 0);
-    final deliverableTitle = threadHeadPresentation?.deliverable?.title;
-    final rootTitle = threadHead.content.trim().split('\n').first.trim();
-    final contextTitle = liveDeletionHidesHead
-        ? null
-        : deliverableTitle ?? rootTitle;
-    final threadTitle = contextTitle?.trim().isNotEmpty == true
-        ? contextTitle!
-        : 'Thread';
+    // A thread topic is not part of the relay contract yet. Keep the title
+    // generic instead of presenting message or attachment content as a topic.
+    const threadTitle = 'Thread';
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;

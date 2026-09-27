@@ -247,6 +247,7 @@ Widget _buildTestable({
   _FakeTypingNotifier? huddleTypingNotifier,
   MobileRouteRegistry? routeRegistry,
   ForumPostsResponse? forumPostsResponse,
+  ForumThreadResponse? forumThreadResponse,
   Map<String, ChannelMessagePresentation> messagePresentations = const {},
   DateTime? conversationDayNow,
   MediaUploadService? mediaUploadService,
@@ -342,6 +343,11 @@ Widget _buildTestable({
         forumPostsProvider(
           _channelId,
         ).overrideWith((ref) async => forumPostsResponse),
+      if (forumThreadResponse case final threadResponse?)
+        forumThreadProvider((
+          channelId: _channelId,
+          eventId: threadResponse.post.eventId,
+        )).overrideWith((ref) async => threadResponse),
       if (mediaUploadService != null)
         mediaUploadServiceProvider.overrideWithValue(mediaUploadService),
       if (huddleMembersNotifier != null)
@@ -509,6 +515,7 @@ ForumPresentationFactories _forumCapturePresentation() =>
       ),
       openProfile: (context, pubkey) {},
       currentUserName: (_) => 'Lerato Molefe',
+      openQuickActions: (_) {},
     );
 
 MobileRouteRegistry _forumCaptureRoutes() {
@@ -764,27 +771,57 @@ void main() {
         content:
             'I’m exploring a more personal direction with Noluthando. '
             'We have three concepts ready to discuss.',
-        createdAt: timestamp(9, 24),
+        createdAt: timestamp(9, 23),
       );
-      final campaignReplyOne = _textMsg(
-        id: 'v5-campaign-reply-one',
+      final threadRoot = _textMsg(
+        id: 'v5-thread-root',
+        pubkey: 'mina',
+        content:
+            'Customer stories feel like the right direction. Here’s the first '
+            'concept, with a quieter, more personal tone.',
+        createdAt: timestamp(9, 23),
+      );
+      final campaignSummaryReplyOne = _textMsg(
+        id: 'v5-campaign-summary-reply-one',
         pubkey: 'noluthando',
         content:
             'This is much closer to the client’s voice. Let’s keep the '
             'captions warm and straightforward.',
-        createdAt: timestamp(9, 27),
+        createdAt: timestamp(9, 23),
         extraTags: const [
           ['e', 'v5-campaign-direction', '', 'reply'],
           ['p', 'mina'],
         ],
       );
-      final campaignReplyTwo = _textMsg(
-        id: 'v5-campaign-reply-two',
+      final campaignSummaryReplyTwo = _textMsg(
+        id: 'v5-campaign-summary-reply-two',
         pubkey: 'mina',
         content: 'Lerato, would you take a look before we schedule anything?',
-        createdAt: timestamp(9, 29),
+        createdAt: timestamp(9, 23),
         extraTags: const [
           ['e', 'v5-campaign-direction', '', 'reply'],
+          ['p', 'self'],
+        ],
+      );
+      final threadReplyOne = _textMsg(
+        id: 'v5-thread-reply-one',
+        pubkey: 'noluthando',
+        content:
+            'This is much closer to the client’s voice. Let’s keep the '
+            'captions warm and straightforward.',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-thread-root', '', 'reply'],
+          ['p', 'mina'],
+        ],
+      );
+      final threadReplyTwo = _textMsg(
+        id: 'v5-thread-reply-two',
+        pubkey: 'mina',
+        content: 'Lerato, would you take a look before we schedule anything?',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-thread-root', '', 'reply'],
           ['p', 'self'],
         ],
       );
@@ -794,7 +831,7 @@ void main() {
         content:
             'The first visual is ready. It feels softer, with more space for '
             'the story.',
-        createdAt: timestamp(9, 25),
+        createdAt: timestamp(9, 23),
       );
       final marketingMessage = _textMsg(
         id: 'v5-marketing-message',
@@ -867,11 +904,11 @@ void main() {
       );
       final members = [
         for (final member in [
-          ('self', 'owner', 'Lerato Molefe'),
           ('mina', 'bot', 'Mina'),
-          ('aya', 'bot', 'Aya'),
           ('noluthando', 'member', 'Noluthando'),
           ('sam', 'member', 'Sam Patel'),
+          ('self', 'owner', 'Lerato'),
+          ('aya', 'bot', 'Aya'),
           ('thabo', 'member', 'Thabo'),
         ])
           ChannelMember(
@@ -882,7 +919,7 @@ void main() {
           ),
       ];
       final users = const {
-        'self': UserProfile(pubkey: 'self', displayName: 'Lerato Molefe'),
+        'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
         'mina': UserProfile(
           pubkey: 'mina',
           displayName: 'Mina',
@@ -902,9 +939,9 @@ void main() {
       };
       const creativePreview = DeliverablePreviewData(
         title: 'Olive Studio · October plan',
-        detail: 'Instagram carousel · 4 slides',
+        detail: 'Open the concepts and leave feedback',
         brand: 'OLIVE STUDIO',
-        coverTitle: 'A slower kind of morning.',
+        coverTitle: 'A slower\nkind of morning.',
         coverFooter: '',
         reviewStatus: '',
         versionLabel: '',
@@ -913,7 +950,7 @@ void main() {
         title: 'October content plan · v2',
         detail: '3 concepts · Ready for review',
         brand: 'OLIVE STUDIO',
-        coverTitle: 'A slower kind of morning.',
+        coverTitle: 'A slower\nkind of morning.',
         coverFooter: '',
         reviewStatus: '',
         versionLabel: '',
@@ -935,11 +972,14 @@ void main() {
               messages: [
                 engagement,
                 campaignRoot,
-                campaignReplyOne,
-                campaignReplyTwo,
+                campaignSummaryReplyOne,
+                campaignSummaryReplyTwo,
                 creativeMessage,
               ],
               presentations: const {
+                'v5-campaign-direction': ChannelMessagePresentation(
+                  threadReplyCount: 4,
+                ),
                 'v5-olive-creative': ChannelMessagePresentation(
                   deliverable: creativePreview,
                 ),
@@ -949,13 +989,14 @@ void main() {
             (
               name: 'thread',
               channel: olive,
-              messages: [campaignRoot, campaignReplyOne, campaignReplyTwo],
+              messages: [threadRoot, threadReplyOne, threadReplyTwo],
               presentations: const {
-                'v5-campaign-direction': ChannelMessagePresentation(
+                'v5-thread-root': ChannelMessagePresentation(
                   deliverable: threadPreview,
+                  threadReplyCount: 4,
                 ),
               },
-              threadRootId: 'v5-campaign-direction',
+              threadRootId: 'v5-thread-root',
             ),
             (
               name: 'conversation-marketing',
@@ -1012,15 +1053,13 @@ void main() {
               _buildTestable(
                 messages: route.messages,
                 users: users,
+                openQuickActions: () {},
                 members: route.channel.isDm ? const [] : members,
                 knownAgentPubkeys: const {'mina', 'aya'},
                 threadReplies: route.threadRootId == null
                     ? const {}
                     : {
-                        route.threadRootId!: [
-                          campaignReplyOne,
-                          campaignReplyTwo,
-                        ],
+                        route.threadRootId!: [threadReplyOne, threadReplyTwo],
                       },
                 channel: route.channel,
                 initialThreadRootId: route.threadRootId,
@@ -1052,6 +1091,24 @@ void main() {
               expect(find.text('Thread in #olive-studio'), findsOneWidget);
               expect(find.byType(DeliverablePreviewCard), findsOneWidget);
               expect(find.text('October content plan · v2'), findsOneWidget);
+              expect(
+                find.text(
+                  'Customer stories feel like the right direction. Here’s the first concept, with a quieter, more personal tone.',
+                ),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const ValueKey('thread-app-bar-title')),
+                findsOneWidget,
+              );
+              expect(
+                tester
+                    .widget<Text>(
+                      find.byKey(const ValueKey('thread-app-bar-title')),
+                    )
+                    .data,
+                'Thread',
+              );
               expect(find.text('Today · 28 September'), findsOneWidget);
               expect(find.text('Reply to the thread...'), findsOneWidget);
             } else if (route.name == 'conversation-marketing') {
@@ -1075,7 +1132,11 @@ void main() {
               );
               expect(find.text('Message the team...'), findsOneWidget);
             } else if (route.name == 'dm-mina') {
-              expect(find.text('Mina'), findsOneWidget);
+              expect(find.text('Mina'), findsNWidgets(2));
+              expect(
+                find.byKey(const ValueKey('dm-header-name')),
+                findsOneWidget,
+              );
               expect(find.text('Direct message · AI agent'), findsOneWidget);
               expect(
                 find.text(
@@ -1086,7 +1147,11 @@ void main() {
               expect(find.text('Message the team...'), findsOneWidget);
               expect(find.byTooltip('View members'), findsNothing);
             } else {
-              expect(find.text('Aya'), findsOneWidget);
+              expect(find.text('Aya'), findsNWidgets(2));
+              expect(
+                find.byKey(const ValueKey('dm-header-name')),
+                findsOneWidget,
+              );
               expect(find.text('Direct message · AI agent'), findsOneWidget);
               expect(
                 find.text(
@@ -1122,6 +1187,179 @@ void main() {
             await tester.pumpWidget(const SizedBox.shrink());
             await tester.pumpAndSettle();
           }
+        }
+      }
+      tester.view.resetPadding();
+      tester.view.resetViewPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    testWidgets('captures v5 forum and note routes at both sizes and themes', (
+      tester,
+    ) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_M2B_FORUM');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+
+      final today = DateTime.now();
+      int timestamp(int hour, int minute) =>
+          DateTime(
+            today.year,
+            today.month,
+            today.day,
+            hour,
+            minute,
+          ).millisecondsSinceEpoch ~/
+          1000;
+      final summary = ForumThreadSummary(
+        replyCount: 4,
+        descendantCount: 4,
+        lastReplyAt: timestamp(9, 23),
+        participants: const ['mina'],
+      );
+      ForumPost notePost({required int createdAt}) => ForumPost(
+        eventId: 'v5-team-update-note',
+        pubkey: 'noluthando',
+        content:
+            'September wins, and what we learned\n\n'
+            'Two client renewals, a sharper creative direction and much less '
+            'chasing for feedback.\n\n'
+            'The biggest change: keeping the discussion beside the work. '
+            'Let’s carry that into October.',
+        kind: EventKind.forumPost,
+        createdAt: createdAt,
+        channelId: _channelId,
+        tags: const [
+          ['h', _channelId],
+        ],
+        threadSummary: summary,
+      );
+      final post = notePost(
+        createdAt:
+            DateTime.now()
+                .subtract(const Duration(hours: 1))
+                .millisecondsSinceEpoch ~/
+            1000,
+      );
+      final reply = ThreadReply(
+        eventId: 'v5-team-update-note-reply',
+        pubkey: 'mina',
+        content:
+            'I’ll include a clear done condition on every brief. It made this '
+            'week’s review much easier.',
+        kind: EventKind.forumComment,
+        createdAt: timestamp(9, 23),
+        channelId: _channelId,
+        tags: const [
+          ['h', _channelId],
+          ['e', 'v5-team-update-note', '', 'root'],
+          ['e', 'v5-team-update-note', '', 'reply'],
+        ],
+        parentEventId: post.eventId,
+        rootEventId: post.eventId,
+        depth: 0,
+      );
+      final thread = ForumThreadResponse(
+        post: notePost(createdAt: timestamp(8, 30)),
+        replies: [reply],
+        totalReplies: 4,
+      );
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+      const captureKey = ValueKey('m2b-forum-fullscreen-capture');
+
+      for (final size in captureSizes.entries) {
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
+          output.createSync(recursive: true);
+          final previousComparator = goldenFileComparator;
+          goldenFileComparator = LocalFileComparator(
+            Uri.file('${output.path}/capture_test.dart'),
+          );
+          await tester.pumpWidget(
+            _buildTestable(
+              messages: const [],
+              users: const {
+                'noluthando': UserProfile(
+                  pubkey: 'noluthando',
+                  displayName: 'Noluthando',
+                ),
+                'mina': UserProfile(
+                  pubkey: 'mina',
+                  displayName: 'Mina',
+                  ownerPubkey: 'self',
+                ),
+              },
+              knownAgentPubkeys: const {'mina'},
+              channel: forumChannel,
+              routeRegistry: _forumCaptureRoutes(),
+              forumPostsResponse: ForumPostsResponse(posts: [post]),
+              forumThreadResponse: thread,
+              brightness: brightness,
+              captureKey: captureKey,
+              routeInNavigationStack: true,
+              profileDisplayName: 'Lerato Molefe',
+              disableAnimations: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Team updates'), findsOneWidget);
+          expect(find.text('Forum · Company-wide'), findsOneWidget);
+          expect(
+            find.text('September wins, and what we learned'),
+            findsOneWidget,
+          );
+          expect(find.text('4 replies'), findsOneWidget);
+          await expectLater(
+            find.byKey(captureKey),
+            matchesGoldenFile('forum.png'),
+          );
+
+          await tester.tap(find.text('September wins, and what we learned'));
+          await tester.pumpAndSettle();
+          expect(find.text('Team note'), findsOneWidget);
+          expect(find.text('Today, 08:30'), findsOneWidget);
+          expect(find.text('Discussion'), findsOneWidget);
+          expect(
+            find.textContaining('I’ll include a clear done condition'),
+            findsOneWidget,
+          );
+          await expectLater(
+            find.byKey(captureKey),
+            matchesGoldenFile('note.png'),
+          );
+
+          goldenFileComparator = previousComparator;
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
         }
       }
       tester.view.resetPadding();
@@ -3445,7 +3683,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('previews five members before an icon-free See all row', (
+    testWidgets('previews three members with See all in the section heading', (
       tester,
     ) async {
       // Valid fixture keys whose npub encodings were verified against the
@@ -3503,7 +3741,7 @@ void main() {
         return key is ValueKey<String> &&
             key.value.startsWith('channel-details-member-');
       });
-      expect(previews, findsNWidgets(5));
+      expect(previews, findsNWidgets(3));
       expect(find.text('See all'), findsOneWidget);
       final seeAllRow = find.byKey(
         const ValueKey('channel-details-members-row'),
@@ -3511,7 +3749,7 @@ void main() {
       expect(seeAllRow, findsOneWidget);
       expect(
         tester.widget<Text>(find.text('See all')).style,
-        Theme.of(tester.element(seeAllRow)).textTheme.bodyLarge,
+        MobileTypographyTokens.v5.identityDetails,
       );
       expect(
         find.descendant(of: seeAllRow, matching: find.text('7 members')),
@@ -3524,19 +3762,11 @@ void main() {
         ),
         findsNothing,
       );
-      final firstMemberRow = previews.first;
-      final firstMemberTitle = find.descendant(
-        of: firstMemberRow,
-        matching: find.text('You'),
-      );
       expect(
         tester.getTopLeft(find.text('See all')).dx,
-        closeTo(tester.getTopLeft(firstMemberTitle).dx, 0.1),
+        greaterThan(tester.getTopLeft(find.text('In this conversation')).dx),
       );
-      expect(
-        tester.getSize(seeAllRow).height,
-        MobileLayoutTokens.minimumRowHeight + (Grid.xxs * 2),
-      );
+      expect(tester.getSize(seeAllRow).height, lessThan(36));
 
       // Identity display in the preview rows: unnamed members keep distinct
       // hex-keyed avatar initials (the compact-npub label would render `N`
@@ -3563,7 +3793,7 @@ void main() {
       );
       expect(_previewRowAvatarInitial(tester, 'self'), 'Y');
 
-      await tester.ensureVisible(seeAllRow);
+      await Scrollable.ensureVisible(tester.element(seeAllRow), alignment: 0.5);
       await tester.pumpAndSettle();
       await tester.tap(seeAllRow);
       await tester.pumpAndSettle();
@@ -4710,7 +4940,7 @@ void main() {
       },
     );
 
-    testWidgets('uses larger participant avatars in reply summaries', (
+    testWidgets('reply summaries use counts without inferring a thread title', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -4745,7 +4975,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(findRichText('Thread head · 2 replies'), findsOneWidget);
+      expect(findRichText('2 replies'), findsOneWidget);
+      expect(findRichText('Thread head · 2 replies'), findsNothing);
       expect(find.byIcon(LucideIcons.chevronRight), findsNothing);
       final replyAvatars = find.descendant(
         of: find.byKey(const ValueKey('thread-summary-root')),
@@ -11017,9 +11248,13 @@ void main() {
       expect(find.text('General discussion'), findsOneWidget);
       expect(find.text('In this conversation'), findsOneWidget);
       expect(find.text('See all'), findsOneWidget);
-      expect(find.text('Star'), findsOneWidget);
-      expect(find.text('Mute'), findsOneWidget);
-      expect(find.text('Edit'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('channel-details-members-card')),
+          matching: find.byType(AppListCard),
+        ),
+        findsNothing,
+      );
       expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.byTooltip('Quick actions'), findsOneWidget);
 
@@ -11048,14 +11283,16 @@ void main() {
       expect(detailsAppBar.frostedBlurSigma, 20);
       expect(detailsAppBar.showBottomDivider, isTrue);
       expect(detailsAppBar.bottomDividerOpacity, 1);
-      expect(
-        tester
-            .widget<AppListCard>(
-              find.byKey(const ValueKey('channel-details-members-card')),
-            )
-            .verticalPadding,
-        Grid.twelve,
+      await Scrollable.ensureVisible(
+        tester.element(
+          find.byKey(const ValueKey('channel-details-star-action')),
+        ),
+        alignment: 0.5,
       );
+      await tester.pumpAndSettle();
+      expect(find.text('Star'), findsOneWidget);
+      expect(find.text('Mute'), findsOneWidget);
+      expect(find.text('Edit'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
@@ -11925,12 +12162,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(DayDivider), findsOneWidget);
+      expect(find.byType(DayDivider), findsNWidgets(2));
       expect(
         find.descendant(
-          of: find.byType(DayDivider),
-          matching: find.text(formatConversationDayHeading(nextDayCreatedAt)),
+          of: find.byType(DayDivider).first,
+          matching: find.text(formatConversationDayHeading(rootCreatedAt)),
         ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(formatConversationDayHeading(nextDayCreatedAt)),
         findsOneWidget,
       );
       // The list runs top-down (head first), so tail spacing lives on the list

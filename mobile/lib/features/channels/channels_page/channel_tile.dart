@@ -68,7 +68,7 @@ class _ChannelTile extends ConsumerWidget {
         ),
         padding: const EdgeInsets.symmetric(
           horizontal: MobileLayoutTokens.contentGutter,
-          vertical: Grid.sm,
+          vertical: Grid.xs,
         ),
         child: Row(
           children: [

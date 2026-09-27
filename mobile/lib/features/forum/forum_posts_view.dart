@@ -105,7 +105,7 @@ class ForumPostsView extends HookConsumerWidget {
               ),
               itemCount: entries.length,
               separatorBuilder: (_, index) => SizedBox(
-                height: entries[index].heading == null ? Grid.xxs : Grid.half,
+                height: entries[index].heading == null ? Grid.xxs : Grid.xs,
               ),
               itemBuilder: (context, index) {
                 final entry = entries[index];

@@ -601,7 +601,7 @@ class ChannelDetailPage extends HookConsumerWidget {
 
     return FrostedScaffold(
       backgroundColor: resolvedChannel.isForum
-          ? mobileTokens.paper
+          ? mobileTokens.canvas
           : conversationSurfaceColor(context),
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
@@ -618,6 +618,7 @@ class ChannelDetailPage extends HookConsumerWidget {
               )
             : null,
         iconColor: mobileTokens.ink,
+        gradient: context.appColors.companyWashGradient,
         titleContentHeight: resolvedChannel.isForum
             ? MobileLayoutTokens.appBarHeight
             : appBarTitleContentHeight,
