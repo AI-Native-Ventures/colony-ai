@@ -561,10 +561,19 @@ test("shows cached profile labels while relay profiles revalidate", {
 
   await page.goto("/");
   await page.getByTestId("channel-general").click();
+  await waitForMockLiveSubscription(page, "general");
+  await page.evaluate((pubkey) => {
+    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content: "Profile label cache check",
+      kind: 40002,
+      pubkey,
+    });
+  }, TEST_IDENTITIES.alice.pubkey);
 
   const aliceMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team - checking in." });
+    .filter({ hasText: "Profile label cache check" });
   // beforeEach holds get_users_batch for 10 s for this tag, so relay
   // revalidation cannot supply the label inside this window: "Cached Alice"
   // can only come from the persisted cache. A 1 s budget also had to cover
@@ -1317,9 +1326,11 @@ test("opens a sent direct message without waiting for a channel-list refresh", a
   });
 
   await page.getByTestId("send-message").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("charlie", {
-    timeout: 1_000,
-  });
+  await expect(
+    page
+      .locator(".colony-workspace-topbar-title")
+      .getByText("charlie", { exact: true }),
+  ).toBeVisible({ timeout: 1_000 });
   await expect(page.getByTestId("message-timeline")).toContainText(message);
   expect(commandCount(await readCommandLog(page), "get_channels")).toBe(
     baselineChannelsReads,
@@ -1722,10 +1733,10 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
 
   await expect(page.getByTestId(`channel-${channelName}`)).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId(`channel-unread-${channelName}`)).toHaveCount(
-    0,
+  await expect(page.getByTestId(`channel-unread-${channelName}`)).toHaveText(
+    "1",
   );
   await expect(
     page.getByTestId(`channel-ephemeral-${channelName}`),
@@ -2550,9 +2561,9 @@ test("sidebar shows unread indicator for newly active channels", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
@@ -2583,9 +2594,9 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
 
   await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-watercooler")).toHaveText("1");
 
   await page.getByTestId("channel-watercooler").click();
   await expect(page.getByTestId("chat-title")).toHaveText("watercooler");

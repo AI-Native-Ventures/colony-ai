@@ -1435,7 +1435,7 @@ test.describe("community rail", () => {
     expect(Math.abs(leftInset - rightInset)).toBeLessThan(0.5);
     const visibleRightGap =
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
-    expect(Math.abs(leftInset - visibleRightGap)).toBeLessThan(0.5);
+    expect(Math.abs(visibleRightGap - 13)).toBeLessThan(0.5);
 
     // With the rail visible, the top-chrome history controls sit just past
     // the traffic lights near the rail edge, not

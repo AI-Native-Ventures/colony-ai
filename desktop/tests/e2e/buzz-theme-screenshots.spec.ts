@@ -195,7 +195,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   );
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "700",
+    "650",
   );
   await expect(
     page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
@@ -233,11 +233,11 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   );
   expect(channelForeground).toBe(directMessageForeground);
   await expect(activityButton).toHaveCSS("color", sidebarForeground);
-  await expect(hoverChannelLabel).toHaveCSS("opacity", "0.8");
+  await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
   await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
   await expect(firstDmButton).toHaveCSS("opacity", "1");
-  await expect(firstDmLabel).toHaveCSS("opacity", "0.8");
-  await expect(activityLabel).toHaveCSS("opacity", "0.8");
+  await expect(firstDmLabel).toHaveCSS("opacity", "1");
+  await expect(activityLabel).toHaveCSS("opacity", "1");
   await expect(activityIcon).toHaveCSS("opacity", "0.8");
   await firstDmItem.hover();
   await expect(closeDmButton).toBeVisible();
@@ -1438,7 +1438,7 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     await expect(activeRow).toHaveCSS("box-shadow", "none");
-    await expect(activeRow).toHaveCSS("font-weight", "700");
+    await expect(activeRow).toHaveCSS("font-weight", "650");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     const inactiveRow = page.getByTestId("channel-random");

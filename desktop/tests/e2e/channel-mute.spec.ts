@@ -111,7 +111,7 @@ test.describe("channel muting", () => {
     );
   });
 
-  test("03 — muted channel with a top-level @mention is emphasized", async ({
+  test("03 - muted channel with a top-level @mention shows its unread count", async ({
     page,
   }) => {
     await seedMuteState(page, ENGINEERING_CHANNEL_ID);
@@ -151,7 +151,10 @@ test.describe("channel muting", () => {
 
     await expect(page.getByTestId("channel-engineering")).toHaveCSS(
       "font-weight",
-      "700",
+      "450",
+    );
+    await expect(page.getByTestId("channel-unread-engineering")).toHaveText(
+      "1",
     );
     await expect(
       page.getByTestId("channel-unread-dot-engineering"),

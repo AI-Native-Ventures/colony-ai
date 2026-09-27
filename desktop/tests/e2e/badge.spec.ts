@@ -115,7 +115,7 @@ test("Activity keeps its selected highlight and agent route remains reachable", 
 
   const activity = page.getByTestId("sidebar-activity-button");
   await expect(activity).toHaveAttribute("data-active", "true");
-  await expect(activity).toHaveCSS("font-weight", "400");
+  await expect(activity).toHaveCSS("font-weight", "650");
   await expect(
     page
       .getByTestId("app-sidebar")
@@ -144,7 +144,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     await expect(row).toHaveAttribute("data-active", "false");
     await expect(row.locator("[data-sidebar=menu-label]")).toHaveCSS(
       "opacity",
-      "0.8",
+      "1",
     );
     await expect(row.locator("svg")).toHaveCSS("opacity", "0.8");
   }
@@ -170,7 +170,7 @@ test("hovering a channel keeps its text color", async ({ page }) => {
   await expect(channel).toHaveCSS("color", initialColor);
 });
 
-test("direct-message rows become prominent only when unread", async ({
+test("direct-message rows show unread counts without changing text weight", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -185,7 +185,7 @@ test("direct-message rows become prominent only when unread", async ({
 
   const label = directMessage.locator("[data-sidebar-row-label]");
   await expect(directMessage).toHaveCSS("opacity", "1");
-  await expect(label).toHaveCSS("opacity", "0.8");
+  await expect(label).toHaveCSS("opacity", "1");
   await page.evaluate((pubkey) => {
     window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
       channelName: "alice-tyler",
@@ -196,10 +196,11 @@ test("direct-message rows become prominent only when unread", async ({
   }, TEST_IDENTITIES.alice.pubkey);
 
   await expect(label).toHaveCSS("opacity", "1");
-  await expect(directMessage).toHaveCSS("font-weight", "700");
+  await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveText("1");
+  await expect(directMessage).toHaveCSS("font-weight", "450");
 });
 
-test("light mode reserves full opacity for unread text and avatars", async ({
+test("light mode keeps conversation labels fully visible with unread counts", async ({
   page,
 }) => {
   await page.goto("/");
@@ -215,13 +216,13 @@ test("light mode reserves full opacity for unread text and avatars", async ({
   await expect(inbox).toHaveCSS("opacity", "1");
   await expect(inbox.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
   await expect(inbox.locator("svg")).toHaveCSS("opacity", "0.8");
   await expect(directMessage).toHaveCSS("opacity", "1");
   await expect(directMessage.locator("[data-sidebar-row-label]")).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
 
   await page.evaluate((pubkey) => {
@@ -237,10 +238,11 @@ test("light mode reserves full opacity for unread text and avatars", async ({
     "opacity",
     "1",
   );
-  await expect(directMessage).toHaveCSS("font-weight", "700");
+  await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveText("1");
+  await expect(directMessage).toHaveCSS("font-weight", "450");
 });
 
-test("dark mode keeps selected labels regular and channel-level unread labels bold", async ({
+test("dark mode keeps selected rows semibold and unread rows regular", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -253,7 +255,7 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
     .getByTestId("sidebar-primary-menu")
     .getByTestId("sidebar-activity-button");
   await expect(inbox).toHaveAttribute("data-active", "true");
-  await expect(inbox).toHaveCSS("font-weight", "400");
+  await expect(inbox).toHaveCSS("font-weight", "650");
   await expect(page.getByTestId("sidebar-activity-button")).toHaveCSS(
     "opacity",
     "1",
@@ -262,7 +264,7 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
     page
       .getByTestId("sidebar-activity-button")
       .locator("[data-sidebar=menu-label]"),
-  ).toHaveCSS("opacity", "0.8");
+  ).toHaveCSS("opacity", "1");
   await expect(
     page.getByTestId("sidebar-activity-button").locator("svg"),
   ).toHaveCSS("opacity", "0.8");
@@ -271,7 +273,7 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
   await expect(inbox).toHaveCSS("opacity", "1");
   await expect(inbox.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
   await waitForMockLiveSubscription(page, "random");
   await page.evaluate((pubkey) => {
@@ -287,7 +289,7 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
   const engineeringLabel = page
     .getByTestId("channel-engineering")
     .locator("[data-sidebar-row-label]");
-  await expect(engineeringLabel).toHaveCSS("opacity", "0.8");
+  await expect(engineeringLabel).toHaveCSS("opacity", "1");
   await expect(
     page.getByTestId("channel-engineering").locator("svg"),
   ).toHaveCSS("opacity", "0.8");
@@ -295,7 +297,8 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
     "opacity",
     "1",
   );
-  await expect(unreadChannel).toHaveCSS("font-weight", "700");
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expect(unreadChannel).toHaveCSS("font-weight", "450");
   await waitForAnimations(page);
   await page.screenshot({
     path: `${SHOTS}/sidebar-dark-unread.png`,
@@ -517,9 +520,7 @@ test("thread-only activity in an offscreen DM stays primary", async ({
   });
 });
 
-test("regular message bolds inactive channel without numeric badge", async ({
-  page,
-}) => {
+test("regular message shows its channel unread count", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -539,12 +540,12 @@ test("regular message bolds inactive channel without numeric badge", async ({
   );
 
   const unreadChannel = page.getByTestId("channel-random");
-  await expect(unreadChannel).toHaveCSS("font-weight", "700");
+  await expect(unreadChannel).toHaveCSS("font-weight", "450");
   await expect(unreadChannel.locator("[data-sidebar-row-label]")).toHaveCSS(
     "opacity",
     "1",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
   await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
   await waitForBadgeState(page, withDotOnlyBadge(baselineBadge));
 
@@ -557,13 +558,11 @@ test("regular message bolds inactive channel without numeric badge", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "400",
+    "450",
   );
 });
 
-test("top-level @mention bolds its channel without a trailing numeral", async ({
-  page,
-}) => {
+test("top-level @mention shows the channel unread count", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -593,14 +592,14 @@ test("top-level @mention bolds its channel without a trailing numeral", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("2");
   await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 2));
 });
 
-test("@mention inside a thread bolds the room and keeps hover-to-preview", async ({
+test("@mention inside a thread shows the unread dot and hover preview", async ({
   page,
 }) => {
   await page.goto("/");
@@ -638,7 +637,7 @@ test("@mention inside a thread bolds the room and keeps hover-to-preview", async
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();
@@ -713,9 +712,7 @@ test("interested thread reply shows the channel preview dot without incrementing
   await waitForBadgeState(page, baselineBadge);
 });
 
-test("broadcast reply bolds its channel without a trailing numeral", async ({
-  page,
-}) => {
+test("broadcast reply shows its channel unread count", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -740,9 +737,9 @@ test("broadcast reply bolds its channel without a trailing numeral", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
 });
 
@@ -773,22 +770,24 @@ test("mark-as-read via context menu clears channel unread indicator", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
 
   await page.getByTestId("channel-random").click({ button: "right" });
   await page.getByText("Mark as read").click();
 
-  await expect(page.getByTestId("channel-random")).not.toHaveCSS(
+  await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await waitForBadgeState(page, baselineBadge);
 });
 
-test("mark-as-unread via context menu bolds the channel", async ({ page }) => {
+test("mark-as-unread via context menu shows the unread dot", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -801,14 +800,14 @@ test("mark-as-unread via context menu bolds the channel", async ({ page }) => {
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
-  await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
 });
 
-test("marking a message unread bolds its channel after leaving", async ({
+test("marking a message unread keeps its unread signal after leaving", async ({
   page,
 }) => {
   await page.goto("/");
@@ -842,7 +841,7 @@ test("marking a message unread bolds its channel after leaving", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "650",
   );
   await waitForAnimations(page);
   await page.screenshot({
@@ -853,9 +852,11 @@ test("marking a message unread bolds its channel after leaving", async ({
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
-  await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-random")).toHaveAccessibleName(
+    /unread/,
+  );
 });
 
 test("remote read-state rollback is ignored while local mark-unread still increments badge", async ({
@@ -955,15 +956,16 @@ test("remote read-state rollback is ignored while local mark-unread still increm
 
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
 
-  // Local mark-unread remains an in-session affordance and should still bold
-  // the channel immediately without publishing a lower read timestamp.
+  // Local mark-unread remains an in-session affordance and should still expose
+  // its unread signal without publishing a lower read timestamp.
   await page.getByTestId("channel-random").click({ button: "right" });
   await page.getByText("Mark unread").click();
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "700",
+    "450",
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+  await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
 
   // Step 3: remote advance clears the local forced-unread dot.

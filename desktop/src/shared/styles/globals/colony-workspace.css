@@ -826,6 +826,12 @@
 
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
+  [data-sidebar-row-label]:not(.sidebar-muted-content) {
+  opacity: 1;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
   :is(
     [data-testid="stream-list"],
     [data-testid="forum-list"],
