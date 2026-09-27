@@ -1,5 +1,5 @@
 use buzz_core::company_records::{
-    GoalAction, GoalActionKind, GoalHead, GoalProgress, GoalRecord, GoalStatus,
+    goal_d_tag, GoalAction, GoalActionKind, GoalHead, GoalProgress, GoalRecord, GoalStatus,
     COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::KIND_GOAL_HEAD;
@@ -196,12 +196,30 @@ async fn cmd_get(client: &BuzzClient, goal_id: &str) -> Result<(), CliError> {
 }
 
 async fn query_goal_events(client: &BuzzClient) -> Result<Vec<Value>, CliError> {
-    client
+    let nip11_raw = client.get_public("/").await.map_err(|error| {
+        CliError::Other(format!("failed to fetch relay info document: {error}"))
+    })?;
+    let nip11: Value = serde_json::from_str(&nip11_raw).map_err(|error| {
+        CliError::Other(format!("relay info document is not valid JSON: {error}"))
+    })?;
+    let relay_self = nip11
+        .get("self")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CliError::Other("relay info document missing 'self' field".into()))?;
+    let relay_self = normalize_relay_self_hex(relay_self)?;
+    let events = client
         .query_all_bounded(
-            serde_json::json!({ "kinds": [KIND_GOAL_HEAD] }),
+            serde_json::json!({
+                "kinds": [KIND_GOAL_HEAD],
+                "authors": [relay_self]
+            }),
             GOAL_QUERY_BOUND,
         )
-        .await
+        .await?;
+    for event in &events {
+        verify_goal_head_event(event, &relay_self)?;
+    }
+    Ok(events)
 }
 
 async fn current_goal_event(
@@ -258,6 +276,64 @@ fn parse_goal_head(event: &Value) -> Result<GoalHead, CliError> {
         .ok_or_else(|| CliError::Other("goal head event has no string content".into()))?;
     serde_json::from_str(content)
         .map_err(|error| CliError::Other(format!("goal head content is invalid: {error}")))
+}
+
+fn normalize_relay_self_hex(self_hex: &str) -> Result<String, CliError> {
+    if self_hex.len() != 64
+        || !self_hex
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(CliError::Other(
+            "relay 'self' field is not a valid 64-hex pubkey".into(),
+        ));
+    }
+    Ok(self_hex.to_ascii_lowercase())
+}
+
+fn verify_goal_head_event(event: &Value, relay_self: &str) -> Result<(), CliError> {
+    let signed_event: nostr::Event = serde_json::from_value(event.clone())
+        .map_err(|error| CliError::Other(format!("goal head event is malformed: {error}")))?;
+    if signed_event.kind != nostr::Kind::Custom(KIND_GOAL_HEAD as u16) {
+        return Err(CliError::Other(format!(
+            "goal head event has wrong kind: {}",
+            signed_event.kind.as_u16()
+        )));
+    }
+    if signed_event.pubkey.to_hex() != relay_self {
+        return Err(CliError::Other(
+            "goal head author does not match the relay self key".into(),
+        ));
+    }
+    signed_event
+        .verify()
+        .map_err(|error| CliError::Other(format!("goal head signature is invalid: {error}")))?;
+
+    let d_tags = signed_event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "d")
+        .collect::<Vec<_>>();
+    if d_tags.len() != 1
+        || signed_event
+            .tags
+            .iter()
+            .any(|tag| tag.kind().to_string() != "d")
+    {
+        return Err(CliError::Other(
+            "goal head must have exactly one d tag and no other tags".into(),
+        ));
+    }
+
+    let head = parse_goal_head(event)?;
+    let community_id = community_id_from_event(event, head.goal_id)?;
+    let expected_d_tag = goal_d_tag(community_id, head.goal_id);
+    if d_tags[0].content() != Some(expected_d_tag.as_str()) {
+        return Err(CliError::Other(
+            "goal head d-tag does not match its content".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn event_id(event: &Value) -> Result<String, CliError> {
@@ -326,5 +402,43 @@ mod tests {
             Uuid::from_u128(1)
         );
         assert!(community_id_from_event(&event, Uuid::from_u128(3)).is_err());
+    }
+
+    #[test]
+    fn goal_head_verification_requires_relay_author_and_valid_signature() {
+        let relay_keys = nostr::Keys::generate();
+        let other_keys = nostr::Keys::generate();
+        let community_id = Uuid::from_u128(1);
+        let goal_id = Uuid::from_u128(2);
+        let head = GoalHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            goal_id,
+            status: GoalStatus::Active,
+            title: "Targeted outcome".into(),
+            goal: None,
+            progress: None,
+            source_action_event_id: "0".repeat(64),
+        };
+        let content = serde_json::to_string(&head).expect("serialize goal head");
+        let d_tag = goal_d_tag(community_id, goal_id);
+        let sign = |keys: &nostr::Keys| {
+            nostr::EventBuilder::new(nostr::Kind::Custom(KIND_GOAL_HEAD as u16), content.clone())
+                .tag(nostr::Tag::parse(["d", d_tag.as_str()]).expect("d tag"))
+                .sign_with_keys(keys)
+                .expect("sign goal head")
+        };
+
+        let valid = sign(&relay_keys);
+        let valid_json = serde_json::to_value(&valid).expect("serialize event");
+        verify_goal_head_event(&valid_json, &relay_keys.public_key().to_hex())
+            .expect("relay-signed head is valid");
+        assert!(verify_goal_head_event(&valid_json, &other_keys.public_key().to_hex()).is_err());
+
+        let mut tampered = valid_json;
+        tampered["content"] = Value::String("{}".into());
+        assert!(verify_goal_head_event(&tampered, &relay_keys.public_key().to_hex()).is_err());
+
+        let wrong_author = serde_json::to_value(sign(&other_keys)).expect("serialize event");
+        assert!(verify_goal_head_event(&wrong_author, &relay_keys.public_key().to_hex()).is_err());
     }
 }
