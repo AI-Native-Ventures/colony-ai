@@ -34,7 +34,7 @@ export function ChannelTemplatePickerScreen() {
           </span>
         ) : null}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-11 pb-10 pt-9.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-11 pb-10 pt-[43px]">
         <div className="pb-[30px]">
           <h1 className="text-settings-title font-semibold text-foreground">
             Create from a template
@@ -47,7 +47,7 @@ export function ChannelTemplatePickerScreen() {
               data-testid="channel-template-card"
               key={template.id}
             >
-              <h2 className="mb-4 text-base font-semibold text-foreground">
+              <h2 className="mb-[19px] text-base font-semibold text-foreground">
                 {template.name}
               </h2>
               {template.description ? (
