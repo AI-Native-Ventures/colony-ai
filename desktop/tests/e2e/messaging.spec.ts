@@ -2781,15 +2781,45 @@ test("shows your avatar on your own message when profile avatar is set", async (
   page,
 }) => {
   const message = `Avatar message ${Date.now()}`;
-  const avatarUrl =
-    'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Crect width="16" height="16" rx="4" fill="%2300a36c"/%3E%3C/svg%3E';
+  const avatarUrl = "https://mock.relay/media/avatar-message.png";
+  const avatarImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
+    "base64",
+  );
 
+  await installMockBridge(page, {
+    uploadDescriptors: [
+      {
+        filename: "avatar-message.png",
+        sha256: "c".repeat(64),
+        size: 553432,
+        type: "image/png",
+        uploaded: 1_779_900_000,
+        url: avatarUrl,
+      },
+    ],
+  });
+  await page.route("**/media/avatar-message.png", (route) =>
+    route.fulfill({ body: avatarImage, contentType: "image/png" }),
+  );
   await page.goto("/");
   await openSettings(page, "profile");
   await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-url").fill(avatarUrl);
-  await page.getByTestId("profile-avatar-done").click();
+  await page.getByTestId("avatar-upload-open").click();
+  await page.getByTestId("avatar-file-input").setInputFiles({
+    buffer: avatarImage,
+    mimeType: "image/png",
+    name: "avatar-message.png",
+  });
+  await expect(page.getByTestId("avatar-crop-preview")).toBeVisible();
+  await page.getByTestId("avatar-save").click();
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
+  );
+  await expect(
+    page.getByTestId("account-profile-avatar-image"),
+  ).toHaveAttribute("src", avatarUrl);
   await page.getByTestId("settings-back-to-app").click();
 
   await page.getByTestId("channel-general").click();
