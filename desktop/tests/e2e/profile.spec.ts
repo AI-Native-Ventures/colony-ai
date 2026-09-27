@@ -597,6 +597,10 @@ test("validates image types in the designed avatar upload state", async ({
 
 test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
   const uploadedAvatarUrl = "https://mock.relay/media/avatar-profile.png";
+  const uploadedAvatarImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
+    "base64",
+  );
   await installMockBridge(page, {
     uploadDescriptors: [
       {
@@ -610,6 +614,9 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
     ],
     uploadDelayMs: 500,
   });
+  await page.route("**/media/avatar-profile.png", (route) =>
+    route.fulfill({ body: uploadedAvatarImage, contentType: "image/png" }),
+  );
   await page.goto("/");
 
   await openSettings(page, "profile");
@@ -617,10 +624,7 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
   await page.getByTestId("profile-avatar-edit").click();
   await page.getByTestId("avatar-upload-open").click();
   await page.getByTestId("avatar-file-input").setInputFiles({
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
-      "base64",
-    ),
+    buffer: uploadedAvatarImage,
     mimeType: "image/png",
     name: "avatar-profile.png",
   });
@@ -650,7 +654,7 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
       expect.arrayContaining(["upload_media_bytes_raw", "update_profile"]),
     );
   await expect(
-    page.getByTestId("settings-profile-avatar-image"),
+    page.getByTestId("account-profile-avatar-image"),
   ).toHaveAttribute("src", uploadedAvatarUrl);
 });
 
