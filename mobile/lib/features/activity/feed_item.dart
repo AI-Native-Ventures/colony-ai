@@ -61,6 +61,10 @@ class FeedItem {
         return 'Forum reply';
       case 46010:
         return 'Approval requested';
+      case 46011:
+        return 'Approval granted';
+      case 46012:
+        return 'Approval denied';
       case 43001:
         return 'Job requested';
       case 43002:

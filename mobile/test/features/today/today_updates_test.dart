@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -198,19 +199,47 @@ void main() {
     await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
-    expect(find.text('Mentions, replies and approvals'), findsOneWidget);
+    expect(find.text('The company, moving together'), findsOneWidget);
+    expect(find.text('Updates'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('activity-back-to-today')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
     );
 
-    await tester.binding.handlePopRoute();
+    await tester.tap(find.byKey(const ValueKey('activity-back-to-today')));
     await tester.pumpAndSettle();
-    expect(find.text('Good morning, Lerato.'), findsOneWidget);
+    expect(
+      find.text('Morning, Lerato.\nLet’s make it happen.'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Today opens Team updates from the header action', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('today-action-Open updates')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('From your team.'), findsOneWidget);
+    expect(find.text('A little focus.\nA strong finish.'), findsOneWidget);
   });
 
   testWidgets('Today tabs open live updates and activity rows keep their id', (
@@ -224,8 +253,6 @@ void main() {
           theme: AppTheme.light(),
           home: Scaffold(
             body: ActivityHomePage(
-              communityName: _community.name,
-              currentUser: _lerato,
               updatesPageBuilder: (_, _) => const Text('Team updates stream'),
               onOpenItem: (item) => opened = item,
             ),
@@ -249,7 +276,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: _providerOverrides(),
-        child: _proofApp(_visualHome(_VisualRoute.activity)),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
       ),
     );
     await tester.pumpAndSettle();
@@ -362,11 +389,18 @@ void main() {
             body: TodayPage(
               communityName: _community.name,
               profileName: _lerato.displayName,
+              profileInitials: _lerato.initials,
+              profileAvatarUrl: _lerato.avatarUrl,
               reviewItems: const AsyncData([]),
+              movingItems: const AsyncData([]),
               teamUpdate: const AsyncData(null),
-              updatesPageBuilder: (_, _) => const SizedBox.shrink(),
+              overviewMetrics: const [],
+              onOpenUpdates: (_) {},
               onOpenReview: (_) {},
+              onOpenProgress: (_) {},
               onOpenUpdate: (_) {},
+              onOpenActivity: (_) {},
+              onRetryActivity: _noRetry,
               now: DateTime(2026, 9, 24),
             ),
           ),
@@ -374,11 +408,78 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Good morning, Lerato.'), findsOneWidget);
-    expect(find.text('NEEDS YOUR REVIEW'), findsOneWidget);
-    expect(find.text('YOUR TEAM'), findsOneWidget);
+    expect(
+      find.text('Morning, Lerato.\nLet’s make it happen.'),
+      findsOneWidget,
+    );
+    expect(find.text('Needs your eye'), findsOneWidget);
+    expect(find.text('Moving forward'), findsNothing);
     expect(find.text('September journal'), findsNothing);
     expect(find.text('A little focus. A strong finish.'), findsNothing);
+    expect(find.text('agents working'), findsNothing);
+    expect(find.text('plans approved'), findsNothing);
+  });
+
+  testWidgets('Today opens a progress row by its real activity id', (
+    tester,
+  ) async {
+    String? openedId;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: TodayPage(
+              communityName: _community.name,
+              profileName: _lerato.displayName,
+              reviewItems: const AsyncData([]),
+              movingItems: const AsyncData([
+                TodayProgressItem(
+                  id: 'job-progress-record',
+                  title: 'Progress update',
+                  subtitle: 'Scout · Olive Studio prospects',
+                  initials: 'S',
+                  isAgent: true,
+                ),
+              ]),
+              teamUpdate: const AsyncData(null),
+              overviewMetrics: const [],
+              onOpenUpdates: (_) {},
+              onOpenReview: (_) {},
+              onOpenProgress: (id) => openedId = id,
+              onOpenUpdate: (_) {},
+              onOpenActivity: (_) {},
+              onRetryActivity: _noRetry,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Scout · Olive Studio prospects'));
+
+    expect(openedId, 'job-progress-record');
+  });
+
+  testWidgets('Today shows only supplied overview figures and progress rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(),
+        child: _proofApp(_visualHome(_VisualRoute.today)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('needs your eye'), findsOneWidget);
+    expect(find.text('Moving forward'), findsOneWidget);
+    expect(find.text('Research completed'), findsOneWidget);
+    expect(find.text('Scout · Olive Studio prospects'), findsOneWidget);
+    expect(find.text('agents working'), findsNothing);
+    expect(find.text('plans approved'), findsNothing);
+    expect(find.text('asks'), findsNothing);
   });
 
   testWidgets('composer publishes through its relay action and clears draft', (
@@ -511,8 +612,9 @@ void main() {
             SharedPreferences.setMockInitialValues(_draftPrefs());
             final prefs = await SharedPreferences.getInstance();
             if (captureScreenshots) {
-              goldenFileComparator = LocalFileComparator(
+              goldenFileComparator = _CaptureFileComparator(
                 Uri.file('${output.path}/golden_test.dart'),
+                output.path,
               );
               tester.view.viewPadding = const FakeViewPadding(
                 top: 46,
@@ -579,10 +681,35 @@ void main() {
                 ),
               ),
             );
-            await tester.pumpAndSettle();
+            await _pumpVisualFrame(
+              tester,
+              captureScreenshots: captureScreenshots,
+            );
             if (route == _VisualRoute.activity) {
-              await tester.tap(find.text('Activity'));
-              await tester.pumpAndSettle();
+              expect(find.text('Updates'), findsOneWidget);
+              expect(find.text('The company, moving together'), findsOneWidget);
+              expect(
+                find.byKey(const ValueKey('activity-back-to-today')),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsOneWidget,
+              );
+              expect(find.text('Company'), findsOneWidget);
+              debugPrint(
+                'VISUAL_LAYOUT activity header=${tester.getRect(find.text('Updates'))} navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))} company=${tester.getRect(find.text('Company'))}',
+              );
+            }
+            if (route == _VisualRoute.updatesFeed ||
+                route == _VisualRoute.published) {
+              await tester.tap(
+                find.byKey(const ValueKey('today-action-Open updates')),
+              );
+              await _pumpVisualFrame(
+                tester,
+                captureScreenshots: captureScreenshots,
+              );
             }
 
             if (route == _VisualRoute.draft) {
@@ -619,6 +746,31 @@ void main() {
   }
 }
 
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+Future<void> _pumpVisualFrame(
+  WidgetTester tester, {
+  required bool captureScreenshots,
+}) async {
+  if (captureScreenshots) {
+    await tester.pump(const Duration(seconds: 1));
+  } else {
+    await tester.pumpAndSettle();
+  }
+}
+
 List<Override> _providerOverrides([
   SharedPreferences? prefs,
   List<UserNote>? notes,
@@ -644,57 +796,83 @@ Map<String, Object> _draftPrefs() => {
 };
 
 Widget _visualHome(_VisualRoute route) {
-  final initialSection = switch (route) {
-    _VisualRoute.updatesFeed || _VisualRoute.published => TodaySection.updates,
-    _ => TodaySection.forYou,
-  };
   final routes = MobileRouteRegistry.empty()
       .register(
         MobileRoutes.today,
-        (_, routeContext) => TodayPage(
-          communityName: _community.name,
-          profileName: _lerato.displayName,
-          reviewItems: AsyncValue.data([
-            TodayReviewItem(
-              id: _review.id,
-              title: _review.displayContent,
-              subtitle: 'Olive Studio · Maya requested your review',
-              initials: _maya.initials,
-            ),
-          ]),
-          teamUpdate: AsyncValue.data(
-            TodayTeamUpdate(
-              id: _rootNote.id,
-              title: 'A little focus. A strong finish.',
-              subtitle: 'Maya shared an update · 10:20',
-              initials: _maya.initials,
-            ),
-          ),
-          updatesPageBuilder: (_, published) => TeamUpdatesPage(
-            initiallyPublished: route == _VisualRoute.published || published,
-          ),
-          onOpenReview: (_) {},
-          onOpenUpdate: (_) {},
-          onOpenActivity: (context) =>
-              MobileNavigation.openActivity(context, routeContext),
-          initialSection: initialSection,
-          initiallyPublished: route == _VisualRoute.published,
-          now: DateTime(2026, 9, 24),
-        ),
+        (context, routeContext) => route == _VisualRoute.activity
+            ? ActivityHomePage(
+                onOpenItem: (_) {},
+                updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
+                tabReselection: routeContext.tabReselection,
+              )
+            : TodayPage(
+                communityName: _community.name,
+                profileName: _lerato.displayName,
+                profileInitials: _lerato.initials,
+                profileAvatarUrl: _lerato.avatarUrl,
+                reviewItems: AsyncValue.data([
+                  TodayReviewItem(
+                    id: _review.id,
+                    requesterName: 'Mina',
+                    title: 'A fresh direction for Olive.',
+                    subtitle:
+                        'The October content plan is ready for your approval.',
+                    initials: 'M',
+                    requesterIsAgent: true,
+                  ),
+                ]),
+                movingItems: AsyncValue.data([
+                  TodayProgressItem(
+                    id: _researchActivity.id,
+                    title: 'Research completed',
+                    subtitle: 'Scout · Olive Studio prospects',
+                    initials: _scout.initials,
+                    isAgent: true,
+                  ),
+                ]),
+                teamUpdate: AsyncValue.data(
+                  TodayTeamUpdate(
+                    id: _rootNote.id,
+                    title: 'A little focus. A strong finish.',
+                    subtitle: 'Maya shared an update · 10:20',
+                    initials: _maya.initials,
+                  ),
+                ),
+                overviewMetrics: [
+                  TodayOverviewMetric(
+                    value: '1',
+                    label: 'needs your eye',
+                    onTap: () {},
+                  ),
+                ],
+                onOpenUpdates: (updatesContext) =>
+                    unawaited(MobileNavigation.openUpdates(updatesContext)),
+                onOpenReview: (_) {},
+                onOpenProgress: (_) {},
+                onOpenUpdate: (_) {},
+                onOpenActivity: (activityContext) => unawaited(
+                  MobileNavigation.openActivity(activityContext, routeContext),
+                ),
+                onRetryActivity: _noRetry,
+                now: DateTime(2026, 9, 28),
+              ),
       )
       .register(MobileRoutes.chats, (_, _) => const SizedBox.shrink())
       .register(
         MobileRoutes.activity,
         (_, routeContext) => ActivityHomePage(
-          communityName: _community.name,
-          currentUser: _lerato,
           onOpenItem: (_) {},
           updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
           tabReselection: routeContext.tabReselection,
         ),
       )
       .register(MobileRoutes.business, (_, _) => const SizedBox.shrink())
-      .register(MobileRoutes.updates, (_, _) => const TeamUpdatesPage());
+      .register(
+        MobileRoutes.updates,
+        (_, _) => TeamUpdatesPage(
+          initiallyPublished: route == _VisualRoute.published,
+        ),
+      );
   return HomePage(
     routeRegistry: routes,
     settingsPageBuilder: (_) => const SizedBox.shrink(),
@@ -714,6 +892,7 @@ Widget _proofApp(Widget child, {Brightness brightness = Brightness.light}) =>
     );
 
 Future<void> _noPublish(String _) async {}
+Future<void> _noRetry() async {}
 void _noReview() {}
 
 class _ProofActivityNotifier extends ActivityNotifier {
