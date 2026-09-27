@@ -269,9 +269,12 @@ test("canceling section create does not affect the next global create", async ({
   await seedCustomSection(page);
   await page.goto("/");
 
-  await page
-    .getByTestId(`section-actions-${CUSTOM_SECTION.id}-quick-create`)
-    .click();
+  const sectionCreate = page.getByTestId(
+    `section-actions-${CUSTOM_SECTION.id}-quick-create`,
+  );
+  await sectionCreate.focus();
+  await expect(sectionCreate).toBeFocused();
+  await page.keyboard.press("Enter");
   // Gate on the dialog mounting before dismissing it. Escape sent before mount
   // is dropped (no handler yet), and not.toBeVisible() then passes vacuously
   // against a dialog that hasn't rendered — so the dialog opens *after* the
@@ -298,9 +301,12 @@ test("failed section create retry still assigns to the section", async ({
   await seedCustomSection(page);
   await page.goto("/");
 
-  await page
-    .getByTestId(`section-actions-${CUSTOM_SECTION.id}-quick-create`)
-    .click();
+  const sectionCreate = page.getByTestId(
+    `section-actions-${CUSTOM_SECTION.id}-quick-create`,
+  );
+  await sectionCreate.focus();
+  await expect(sectionCreate).toBeFocused();
+  await page.keyboard.press("Enter");
   const channelName = `section-retry-${Date.now()}`;
   await page.getByTestId("channel-browser-search").fill(channelName);
   await page.getByTestId("channel-browser-create-row").click();
