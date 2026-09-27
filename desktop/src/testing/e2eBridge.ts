@@ -97,6 +97,7 @@ import {
 } from "@/shared/api/customEmoji";
 import {
   KIND_AGENT_OBSERVER_FRAME,
+  KIND_ASK_ACTION,
   KIND_ASK_HEAD,
   KIND_ASK_RESPONSE,
   KIND_CHANNEL_THREAD_SUMMARY,
@@ -7028,6 +7029,7 @@ const TIMELINE_KINDS = new Set([
   43004,
   43005,
   43006,
+  KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
 ]);
 

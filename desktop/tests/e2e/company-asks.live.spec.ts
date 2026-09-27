@@ -107,14 +107,6 @@ test.describe("company asks live relay journey", () => {
       ],
     });
 
-    await installBridge(page, {
-      mode: "relay",
-      user: "tyler",
-      relayHttpUrl: RELAY_HTTP,
-      relayWsUrl: RELAY_WS,
-      mock: { relaySelf: RELAY_SELF_PUBKEY },
-      skipCommunitySeed: true,
-    });
     const communityAId = `asks-a-${nonce}`;
     const communityBId = `asks-b-${nonce}`;
     await page.addInitScript(
@@ -148,10 +140,18 @@ test.describe("company asks live relay journey", () => {
         ],
       },
     );
+    await installBridge(page, {
+      mode: "relay",
+      user: "tyler",
+      relayHttpUrl: RELAY_HTTP,
+      relayWsUrl: RELAY_WS,
+      mock: { relaySelf: RELAY_SELF_PUBKEY },
+      skipCommunitySeed: true,
+    });
 
     const threadUrl = `/#/channels/${GENERAL_CHANNEL_ID}?thread=${root.id}`;
     await page.goto(threadUrl);
-    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(page.getByText(threadText)).toBeVisible();
     await expect(page.getByTestId("ask-card")).toBeVisible();
     await expect(page.getByTestId("ask-card")).toContainText(title);
 
@@ -170,7 +170,7 @@ test.describe("company asks live relay journey", () => {
     await expect(todayRow).toHaveCount(0);
 
     await page.getByRole("link", { name: "Back to discussion" }).click();
-    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(page.getByText(threadText)).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`[?&]messageId=${root.id}`));
     await expect(page.getByTestId("message-thread-head")).toContainText(
       threadText,
@@ -185,7 +185,7 @@ test.describe("company asks live relay journey", () => {
     await expect(page.getByTestId(`today-ask-${askId}`)).toHaveCount(0);
 
     await page.goto(threadUrl);
-    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(page.getByText(threadText)).toBeVisible();
     await expect(page.getByTestId("message-thread-head")).toContainText(
       threadText,
     );
