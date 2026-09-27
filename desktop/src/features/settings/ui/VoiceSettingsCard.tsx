@@ -402,40 +402,47 @@ export function VoiceSettingsCard({
           ) : null}
 
           {localVoices.length > 0 ? (
-            <div className="mt-8 border-t border-border/60">
-              <h3 className="py-4 text-sm font-semibold">Saved voices</h3>
+            <div className="mt-6 mb-[26px] border-b border-border/60 pb-[26px] voice-library-list">
+              <h3 className="mb-3 text-sm font-semibold leading-[1.5]">
+                Saved voices
+              </h3>
               {localVoices.map((voice) => (
                 <div
-                  className="flex min-h-20 items-center gap-4 border-b border-border/60 py-4"
+                  className="flex items-center gap-[15px] py-[18px]"
                   data-testid={`voice-library-row-${voice.key}`}
                   key={voice.key}
                 >
-                  <Mic
-                    aria-hidden="true"
-                    className="h-4 w-4 shrink-0 text-muted-foreground"
-                  />
+                  <span className="grid size-10 shrink-0 place-items-center">
+                    <Mic
+                      aria-hidden="true"
+                      className="h-4 w-4 text-muted-foreground"
+                    />
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{voice.displayName}</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm font-semibold leading-[1.5]">
+                      {voice.displayName}
+                    </p>
+                    <p className="mt-1 text-xs leading-[1.65] text-[#79747f] dark:text-[#a39aa9]">
                       {voice.referenceFile ?? "Local file"} · Local file
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2.5">
                     <Button
+                      className="rounded-[6px] px-[13.5px] text-xs"
                       data-testid={`voice-library-preview-${voice.key}`}
                       disabled={previewing || busy}
                       onClick={() => void previewVoice(voice.key)}
-                      size="sm"
+                      size="default"
                       variant="outline"
                     >
-                      <Play className="h-4 w-4" />
                       {previewingVoiceKey === voice.key ? "Playing" : "Preview"}
                     </Button>
                     <Button
+                      className="rounded-[6px] px-[13.5px] text-xs"
                       data-testid={`voice-library-remove-${voice.key}`}
                       disabled={busy}
                       onClick={() => setDeleteCandidate(voice)}
-                      size="sm"
+                      size="default"
                       variant="outline"
                     >
                       Remove
@@ -447,13 +454,12 @@ export function VoiceSettingsCard({
           ) : null}
 
           <Button
-            className="mt-5 bg-[#315fae] text-white hover:bg-[#284f94]"
+            className="h-9 min-w-[120px] rounded-[6px] bg-[#315fae] px-3 text-xs text-white hover:bg-[#284f94]"
             data-testid="voice-library-import"
             disabled={busy || !hasLoaded}
             onClick={() => void importPocketVoice()}
-            size="sm"
+            size="default"
           >
-            <Upload className="h-4 w-4" />
             Import voice file
           </Button>
         </section>

@@ -281,6 +281,11 @@ test.describe("Pocket voice settings", () => {
     await expect(page.getByTestId("voice-library")).toContainText(
       "Voice library",
     );
+    await expect(page.getByTestId("settings-history-back")).toBeHidden();
+    await expect(page.getByTestId("settings-history-forward")).toBeHidden();
+    await expect(page.getByTestId("settings-top-chrome")).toContainText(
+      "Preferences",
+    );
     await expect(page.getByTestId("settings-inner-voice")).toBeHidden();
     await expect(
       page.getByRole("tab", { name: "Voice & audio" }),
