@@ -1417,14 +1417,20 @@ test("prominent channel and direct-message rows share one flat active state", as
   const activeSurface = "rgb(38, 85, 160)";
 
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
-  await expect(channelRow).toHaveCSS("box-shadow", "none");
+  await expect(channelRow).toHaveCSS(
+    "box-shadow",
+    "0px 1px 3px rgba(48, 32, 56, 0.0196)",
+  );
   await channelRow.hover();
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
 
   await directMessageRow.click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
-  await expect(directMessageRow).toHaveCSS("box-shadow", "none");
+  await expect(directMessageRow).toHaveCSS(
+    "box-shadow",
+    "0px 1px 3px rgba(48, 32, 56, 0.0196)",
+  );
   await directMessageRow.hover();
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
@@ -1432,13 +1438,13 @@ test("prominent channel and direct-message rows share one flat active state", as
 for (const { activeSurface, hoverSurface, mode, theme } of [
   {
     activeSurface: "rgba(255, 255, 255, 0.56)",
-    hoverSurface: "rgba(255, 255, 255, 0.33)",
+    hoverSurface: "rgba(255, 255, 255, 0.31)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
     activeSurface: "rgba(255, 255, 255, 0.075)",
-    hoverSurface: "rgba(255, 255, 255, 0.33)",
+    hoverSurface: "rgba(255, 255, 255, 0.075)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
@@ -1461,7 +1467,10 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
-    await expect(activeRow).toHaveCSS("box-shadow", "none");
+    await expect(activeRow).toHaveCSS(
+      "box-shadow",
+      "0px 1px 3px rgba(48, 32, 56, 0.0196)",
+    );
     await expect(activeRow).toHaveCSS("font-weight", "650");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", activeSurface);

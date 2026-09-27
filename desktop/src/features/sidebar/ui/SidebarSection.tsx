@@ -354,7 +354,7 @@ export function ChannelMenuButton({
       ) : null}
       {showsUnreadCount ? (
         <UnreadCountBadge channelName={channel.name} count={unreadCount} />
-      ) : hasUnread ? (
+      ) : hasUnread || hasThreadUnread ? (
         <UnreadDotBadge channelName={channel.name} className="ml-auto" />
       ) : null}
     </SidebarMenuButton>

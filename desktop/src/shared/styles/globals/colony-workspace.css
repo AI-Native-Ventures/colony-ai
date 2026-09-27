@@ -328,7 +328,9 @@
   padding-block: 0;
 }
 
-:root:has([data-colony-workspace-route="true"])
+:root:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-sidebar="group-label"] {
   height: 1.5rem;
@@ -909,7 +911,7 @@
   [data-sidebar="menu-button"][data-active="true"] {
   position: relative;
   background: rgb(255 255 255 / 56%);
-  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.035);
+  box-shadow: 0 1px 3px #30203805;
   color: hsl(var(--colony-sidebar-foreground));
   font-weight: 650;
 }
@@ -918,7 +920,6 @@
   .app-sidebar-full-shell
   [data-sidebar="menu-button"][data-active="true"] {
   background: rgb(255 255 255 / 7.4%);
-  box-shadow: none;
   color: hsl(var(--colony-sidebar-foreground));
 }
 

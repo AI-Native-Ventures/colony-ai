@@ -629,7 +629,8 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(nestedChannel).toHaveAttribute("data-active", "true");
   await expect(projectRow).toHaveAttribute("data-active", "false");
-  await expect(page.getByTestId("sidebar-projects-section")).toBeHidden();
+  await expect(page.getByTestId("sidebar-projects-section")).toBeVisible();
+  await expect(nestedChannel).toBeVisible();
   await page.getByTestId("open-factory-view").click();
   await expect(page).toHaveURL(/#\/factory$/);
   await expect(
