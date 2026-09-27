@@ -47,12 +47,25 @@ test("Today opens an ask thread and keeps a rejected answer for retry", async ({
     askResponseErrors: ["Temporary relay write failure"],
   });
   await page.goto("/#/today");
+  await page.waitForFunction(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: unknown;
+      __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
+      __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: unknown;
+    };
+    return (
+      typeof testWindow.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function" &&
+      typeof testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function" &&
+      typeof testWindow.__BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__ === "function"
+    );
+  });
 
   const seedContext = await page.evaluate(async (askerPubkey) => {
     type TestWindow = Window & {
-      __TAURI_INTERNALS__?: {
-        invoke: (command: string, payload?: unknown) => Promise<unknown>;
-      };
+      __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+        command: string,
+        payload?: unknown,
+      ) => Promise<unknown>;
       __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
         channelName: string;
         content: string;
@@ -64,7 +77,7 @@ test("Today opens an ask thread and keeps a rejected answer for retry", async ({
       }) => RelayEvent;
     };
     const testWindow = window as TestWindow;
-    const invoke = testWindow.__TAURI_INTERNALS__?.invoke;
+    const invoke = testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
     const emit = testWindow.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
     if (!invoke || !emit) {
       throw new Error("The mock relay ask test seam is unavailable.");
