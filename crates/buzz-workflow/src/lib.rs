@@ -329,13 +329,15 @@ impl WorkflowEngine {
                     if let Some(run) = self
                         .db
                         .complete_workflow_agent_wait(
-                            community_id,
-                            channel_id,
-                            &request_event_id,
-                            &event.event.pubkey.to_bytes(),
-                            event.event.id.as_bytes(),
-                            &event.event.content,
-                            Utc::now(),
+                            buzz_db::workflow::CompleteWorkflowAgentWaitParams {
+                                community_id,
+                                channel_id,
+                                request_event_id: &request_event_id,
+                                agent_pubkey: &event.event.pubkey.to_bytes(),
+                                reply_event_id: event.event.id.as_bytes(),
+                                reply_text: &event.event.content,
+                                now: Utc::now(),
+                            },
                         )
                         .await
                         .map_err(WorkflowError::from)?

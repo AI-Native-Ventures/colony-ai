@@ -339,6 +339,24 @@ pub struct CreateWorkflowAgentWaitParams<'a> {
     pub trace_entry: &'a serde_json::Value,
 }
 
+/// Values used to complete a persisted agent reply wait and resume its run.
+pub struct CompleteWorkflowAgentWaitParams<'a> {
+    /// Community that owns the workflow and run.
+    pub community_id: CommunityId,
+    /// Channel containing the request thread.
+    pub channel_id: Uuid,
+    /// Event ID bytes of the request thread root.
+    pub request_event_id: &'a [u8],
+    /// Pubkey bytes of the assigned agent.
+    pub agent_pubkey: &'a [u8],
+    /// Event ID bytes of the agent reply.
+    pub reply_event_id: &'a [u8],
+    /// Text of the agent reply, capped before it is stored in the trace.
+    pub reply_text: &'a str,
+    /// Current time used to reject replies received after the deadline.
+    pub now: DateTime<Utc>,
+}
+
 /// A winning scheduled workflow fire claim.
 ///
 /// The primary identity is `(workflow_id, scheduled_for)`. `community_id` is
@@ -1560,14 +1578,17 @@ pub async fn get_pending_workflow_agent_wait(
 /// Atomically claim an agent reply, record it in the trace, and resume the run.
 pub async fn complete_workflow_agent_wait(
     pool: &PgPool,
-    community_id: CommunityId,
-    channel_id: Uuid,
-    request_event_id: &[u8],
-    agent_pubkey: &[u8],
-    reply_event_id: &[u8],
-    reply_text: &str,
-    now: DateTime<Utc>,
+    params: CompleteWorkflowAgentWaitParams<'_>,
 ) -> Result<Option<WorkflowRunRecord>> {
+    let CompleteWorkflowAgentWaitParams {
+        community_id,
+        channel_id,
+        request_event_id,
+        agent_pubkey,
+        reply_event_id,
+        reply_text,
+        now,
+    } = params;
     if request_event_id.len() != 32 || agent_pubkey.len() != 32 || reply_event_id.len() != 32 {
         return Err(DbError::InvalidData(
             "agent wait event ids and pubkey must be 32 bytes".to_string(),
@@ -2126,25 +2147,9 @@ impl Db {
     #[datastore_span(name = "complete_workflow_agent_wait", system = "postgresql")]
     pub async fn complete_workflow_agent_wait(
         &self,
-        community_id: CommunityId,
-        channel_id: Uuid,
-        request_event_id: &[u8],
-        agent_pubkey: &[u8],
-        reply_event_id: &[u8],
-        reply_text: &str,
-        now: DateTime<Utc>,
+        params: CompleteWorkflowAgentWaitParams<'_>,
     ) -> Result<Option<WorkflowRunRecord>> {
-        crate::workflow::complete_workflow_agent_wait(
-            &self.pool,
-            community_id,
-            channel_id,
-            request_event_id,
-            agent_pubkey,
-            reply_event_id,
-            reply_text,
-            now,
-        )
-        .await
+        crate::workflow::complete_workflow_agent_wait(&self.pool, params).await
     }
 
     /// Fail an agent wait when its request could not be published.
@@ -3374,13 +3379,15 @@ mod postgres_tests {
 
         let run = complete_workflow_agent_wait(
             &pool,
-            community,
-            channel_id,
-            &request_id,
-            &agent,
-            &reply_id,
-            "The report is ready",
-            Utc::now(),
+            CompleteWorkflowAgentWaitParams {
+                community_id: community,
+                channel_id,
+                request_event_id: &request_id,
+                agent_pubkey: &agent,
+                reply_event_id: &reply_id,
+                reply_text: "The report is ready",
+                now: Utc::now(),
+            },
         )
         .await
         .expect("complete wait")

@@ -690,23 +690,43 @@ fn resolve_send_message_channel(
     Ok(trigger_channel.trim().to_string())
 }
 
+/// Inputs for dispatching one resolved workflow action.
+pub struct ActionDispatchParams<'a> {
+    /// Workflow step being dispatched.
+    pub step: &'a Step,
+    /// Zero-based step index.
+    pub step_index: usize,
+    /// Completed execution trace before this step.
+    pub prior_trace: &'a [JsonValue],
+    /// Resolved action definition.
+    pub action: &'a ActionDef,
+    /// Workflow engine used to access persistence and the action sink.
+    pub engine: &'a WorkflowEngine,
+    /// Community that owns the workflow run.
+    pub community_id: CommunityId,
+    /// Workflow run being executed.
+    pub run_id: Uuid,
+    /// Trigger context captured when the run started.
+    pub trigger_ctx: &'a TriggerContext,
+}
+
 /// Dispatch a resolved action and return its output.
 ///
-/// For MVP, most actions log their intent and return a success output.
-/// Real event emission is wired in WF-07/08 (relay integration).
-///
-/// `RequestApproval` returns `StepResult::Suspended` — the caller must
-/// persist state and stop the execution loop.
+/// `RequestApproval` and `AskAgent` return suspended results. The caller must
+/// persist the corresponding wait and stop the execution loop.
 pub async fn dispatch_action(
-    step: &Step,
-    step_index: usize,
-    prior_trace: &[JsonValue],
-    action: &ActionDef,
-    engine: &WorkflowEngine,
-    community_id: CommunityId,
-    run_id: Uuid,
-    trigger_ctx: &TriggerContext,
+    params: ActionDispatchParams<'_>,
 ) -> Result<StepResult, WorkflowError> {
+    let ActionDispatchParams {
+        step,
+        step_index,
+        prior_trace,
+        action,
+        engine,
+        community_id,
+        run_id,
+        trigger_ctx,
+    } = params;
     use ActionDef::*;
 
     let step_id = &step.id;
@@ -903,15 +923,17 @@ pub async fn dispatch_action(
                     engine
                         .action_sink()?
                         .request_approval(
-                            community_id,
-                            run_id,
-                            step_id,
-                            step_index,
-                            from,
-                            message,
-                            timeout_secs,
-                            &serde_json::Value::Array(prior_trace.to_vec()),
-                            &token,
+                            crate::action_sink::ApprovalRequestParams {
+                                community_id,
+                                run_id,
+                                step_id,
+                                step_index,
+                                approver_spec: from,
+                                message,
+                                timeout_secs,
+                                prior_trace: &serde_json::Value::Array(prior_trace.to_vec()),
+                                approval_token: &token,
+                            },
                         )
                         .await?;
 
@@ -942,16 +964,18 @@ pub async fn dispatch_action(
                     let event_id = engine
                         .action_sink()?
                         .ask_agent(
-                            community_id,
-                            run_id,
-                            step_id,
-                            step_index,
-                            agent_pubkey,
-                            instruction,
-                            expected_result.as_deref(),
-                            timeout_secs,
-                            &owner_pubkey,
-                            &serde_json::Value::Array(prior_trace.to_vec()),
+                            crate::action_sink::AgentTaskParams {
+                                community_id,
+                                run_id,
+                                step_id,
+                                step_index,
+                                agent_pubkey,
+                                instruction,
+                                expected_result: expected_result.as_deref(),
+                                timeout_secs,
+                                owner_pubkey: &owner_pubkey,
+                                prior_trace: &serde_json::Value::Array(prior_trace.to_vec()),
+                            },
                         )
                         .await?;
                     Ok(StepResult::AgentWaiting {
@@ -1450,16 +1474,16 @@ async fn execute_steps(
             .unwrap_or(engine.config.default_timeout_secs);
         let dispatch_result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
-            dispatch_action(
+            dispatch_action(ActionDispatchParams {
                 step,
-                i,
-                &trace,
-                &resolved_action,
+                step_index: i,
+                prior_trace: &trace,
+                action: &resolved_action,
                 engine,
                 community_id,
                 run_id,
                 trigger_ctx,
-            ),
+            }),
         )
         .await;
 

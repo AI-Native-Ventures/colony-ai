@@ -10,7 +10,9 @@ use std::sync::{Arc, Weak};
 
 use buzz_core::kind::{KIND_STREAM_MESSAGE, KIND_WORKFLOW_APPROVAL_REQUESTED};
 use buzz_core::tenant::CommunityId;
-use buzz_workflow::action_sink::{ActionSink, ActionSinkError};
+use buzz_workflow::action_sink::{
+    ActionSink, ActionSinkError, ActionSinkFuture, AgentTaskParams, ApprovalRequestParams,
+};
 use chrono::{Duration, Utc};
 use nostr::{EventBuilder, Kind, Tag};
 use tracing::info;
@@ -474,19 +476,19 @@ impl ActionSink for RelayActionSink {
         })
     }
 
-    fn ask_agent(
-        &self,
-        community_id: CommunityId,
-        run_id: Uuid,
-        step_id: &str,
-        step_index: usize,
-        agent_pubkey: &str,
-        instruction: &str,
-        expected_result: Option<&str>,
-        timeout_secs: u64,
-        owner_pubkey: &str,
-        prior_trace: &serde_json::Value,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ActionSinkError>> + Send + '_>> {
+    fn ask_agent(&self, params: AgentTaskParams<'_>) -> ActionSinkFuture<'_, String> {
+        let AgentTaskParams {
+            community_id,
+            run_id,
+            step_id,
+            step_index,
+            agent_pubkey,
+            instruction,
+            expected_result,
+            timeout_secs,
+            owner_pubkey,
+            prior_trace,
+        } = params;
         let step_id = step_id.to_owned();
         let agent_pubkey = agent_pubkey.to_owned();
         let instruction = instruction.to_owned();
@@ -650,16 +652,19 @@ impl ActionSink for RelayActionSink {
 
     fn request_approval(
         &self,
-        community_id: CommunityId,
-        run_id: Uuid,
-        step_id: &str,
-        step_index: usize,
-        approver_spec: &str,
-        message: &str,
-        timeout_secs: u64,
-        prior_trace: &serde_json::Value,
-        approval_token: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(String, String), ActionSinkError>> + Send + '_>> {
+        params: ApprovalRequestParams<'_>,
+    ) -> ActionSinkFuture<'_, (String, String)> {
+        let ApprovalRequestParams {
+            community_id,
+            run_id,
+            step_id,
+            step_index,
+            approver_spec,
+            message,
+            timeout_secs,
+            prior_trace,
+            approval_token,
+        } = params;
         let step_id = step_id.to_owned();
         let approver_spec = approver_spec.trim().to_owned();
         let message = message.to_owned();
