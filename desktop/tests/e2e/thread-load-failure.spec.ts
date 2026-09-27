@@ -134,28 +134,27 @@ test.describe("thread load failure", () => {
     await setThreadRepliesFailing(page, true);
     await openWelcomeThread(page);
 
-    // The load-bearing assertion: a terminal failure paints the error/Retry
-    // card and NEVER the false-empty "No replies in this branch yet" state.
+    // A terminal failure paints the error/Retry card and never the empty divider.
     await expect(
       page.getByTestId("message-thread-replies-error"),
     ).toContainText("Couldn't load replies", { timeout: 15_000 });
     await expect(page.getByTestId("message-thread-replies-retry")).toHaveText(
       "Retry",
     );
-    await expect(page.getByText("No replies in this branch yet")).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByTestId("message-thread-replies-empty-divider"),
+    ).toHaveCount(0);
 
     // Retry with fetches succeeding again: the reply loads and renders — the
-    // error card is gone and no false-empty appears.
+    // error card is gone and the empty divider stays absent.
     await setThreadRepliesFailing(page, false);
     await page.getByTestId("message-thread-replies-retry").click();
     await expect(page.getByTestId("message-thread-replies-error")).toHaveCount(
       0,
     );
     await expect(page.getByText("First reply to welcome")).toBeVisible();
-    await expect(page.getByText("No replies in this branch yet")).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByTestId("message-thread-replies-empty-divider"),
+    ).toHaveCount(0);
   });
 });

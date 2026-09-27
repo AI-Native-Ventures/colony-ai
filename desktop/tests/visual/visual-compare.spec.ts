@@ -444,6 +444,9 @@ test.describe("visual comparison captures", () => {
             const threadPanel = appPage.getByTestId("message-thread-panel");
             await expect(threadPanel).toBeVisible();
             await expect(
+              threadPanel.getByTestId("message-thread-replies-empty-divider"),
+            ).toBeVisible();
+            await expect(
               threadPanel.locator(
                 '[data-message-id="reference-sales-lerato-0950"]',
               ),
