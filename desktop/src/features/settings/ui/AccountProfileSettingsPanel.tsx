@@ -1,46 +1,31 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/features/profile/hooks";
-import { usePresenceQuery } from "@/features/presence/hooks";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import type { SettingsSection } from "./SettingsPanels";
+import { AccountSettingsHeader } from "./AccountSettingsHeader";
 
 type AccountProfileSettingsPanelProps = {
   avatarSaved?: boolean;
-  currentPubkey?: string;
   fallbackDisplayName?: string;
-  onClose?: () => void;
+  onEditAvatar: () => void;
   onSectionChange: (section: SettingsSection) => void;
 };
 
 const accountQueryKey = ["settings-account-auth"] as const;
 
-function accountStatusLabel(status: string | undefined) {
-  switch (status) {
-    case "online":
-      return "Available";
-    case "away":
-      return "Away";
-    case "offline":
-      return "Offline";
-    default:
-      return "";
-  }
-}
-
 export function AccountProfileSettingsPanel({
   avatarSaved = false,
-  currentPubkey,
   fallbackDisplayName,
-  onClose,
+  onEditAvatar,
   onSectionChange,
 }: AccountProfileSettingsPanelProps) {
   const profileQuery = useProfileQuery();
@@ -51,10 +36,6 @@ export function AccountProfileSettingsPanel({
     retry: false,
     staleTime: 60_000,
   });
-  const presenceQuery = usePresenceQuery(currentPubkey ? [currentPubkey] : [], {
-    enabled: Boolean(currentPubkey),
-  });
-  const membershipQuery = useMyRelayMembershipQuery();
   const { activeCommunity } = useCommunities();
   const profileName =
     profileQuery.data?.displayName ?? fallbackDisplayName ?? "";
@@ -64,23 +45,6 @@ export function AccountProfileSettingsPanel({
   React.useEffect(() => {
     if (!dirtyRef.current) setNameDraft(profileName);
   }, [profileName]);
-
-  const timezone = React.useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    [],
-  );
-  const status = currentPubkey
-    ? presenceQuery.data?.[currentPubkey.toLowerCase()]
-    : undefined;
-  const membershipRole = membershipQuery.data?.role;
-  const roleLabel =
-    membershipRole === "owner"
-      ? "Owner"
-      : membershipRole === "admin"
-        ? "Admin"
-        : membershipRole === "member"
-          ? "Member"
-          : "";
 
   function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,208 +63,130 @@ export function AccountProfileSettingsPanel({
 
   return (
     <section
-      aria-busy={
-        profileQuery.isLoading ||
-        accountQuery.isLoading ||
-        membershipQuery.isLoading ||
-        presenceQuery.isLoading
-      }
+      aria-busy={profileQuery.isLoading || accountQuery.isLoading}
       className="w20-account-profile min-w-0"
       data-testid="settings-profile"
       data-ready={
-        !profileQuery.isLoading &&
-        !accountQuery.isLoading &&
-        !membershipQuery.isLoading &&
-        !presenceQuery.isLoading
-          ? "true"
-          : "false"
+        !profileQuery.isLoading && !accountQuery.isLoading ? "true" : "false"
       }
     >
-      <header className="w20-account-profile-header mb-[62px] flex min-h-8 items-center justify-between gap-4">
-        <h1 className="w20-account-page-title">Your account</h1>
-        <Button
-          className="h-8 px-3 text-xs"
-          data-testid="settings-profile-back-to-today"
-          onClick={onClose}
-          size="sm"
-          variant="outline"
+      <AccountSettingsHeader
+        businessName={activeCommunity?.name}
+        onSectionChange={(section) => onSectionChange(section)}
+        section="profile"
+        title="Your profile"
+      />
+
+      <section
+        aria-labelledby="account-personal-details-title"
+        className="w20-account-profile-details"
+        data-testid="settings-account-profile-card"
+      >
+        <h2
+          className="w20-account-card-title"
+          id="account-personal-details-title"
         >
-          Back to Today
-        </Button>
-      </header>
-
-      <div className="grid min-w-0 grid-cols-1 items-start gap-7 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
-        <section
-          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border bg-background"
-          data-testid="settings-account-profile-card"
-        >
-          <h2 className="w20-account-card-title px-6 pt-[22px]">
-            Your profile
-          </h2>
-          <form
-            className="w20-account-profile-form px-6 pb-[22px]"
-            onSubmit={saveProfile}
-          >
-            <div className="w20-account-field">
-              <label
-                className="w20-account-field-label"
-                htmlFor="account-profile-name"
-              >
-                Name
-              </label>
-              <Input
-                autoComplete="name"
-                className="w20-account-control h-10 rounded-[7px]"
-                data-testid="account-profile-name"
-                id="account-profile-name"
-                onChange={(event) => {
-                  dirtyRef.current = event.target.value.trim() !== profileName;
-                  setNameDraft(event.target.value);
-                }}
-                value={nameDraft}
-              />
-            </div>
-
-            <div className="w20-account-field">
-              <label
-                className="w20-account-field-label"
-                htmlFor="account-profile-email"
-              >
-                Email address
-              </label>
-              <Input
-                autoComplete="email"
-                className="w20-account-control h-10 rounded-[7px]"
-                data-testid="account-profile-email"
-                id="account-profile-email"
-                readOnly
-                value={accountQuery.data?.email ?? ""}
-              />
-            </div>
-
-            <button
-              className="w20-account-email-link text-left text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              data-testid="account-change-email"
-              onClick={() => onSectionChange("security")}
-              type="button"
-            >
-              Change your sign-in email
-            </button>
-
-            <div className="w20-account-field">
-              <label
-                className="w20-account-field-label"
-                htmlFor="account-profile-status"
-              >
-                Status
-              </label>
-              <Input
-                className="w20-account-control h-10 rounded-[7px]"
-                data-testid="account-profile-status"
-                id="account-profile-status"
-                readOnly
-                value={accountStatusLabel(status)}
-              />
-            </div>
-
-            <div className="w20-account-field">
-              <label
-                className="w20-account-field-label"
-                htmlFor="account-profile-timezone"
-              >
-                Timezone
-              </label>
-              <select
-                className="w20-account-control h-10 w-full rounded-[7px] border border-input bg-background disabled:cursor-default disabled:opacity-100"
-                data-testid="account-profile-timezone"
-                disabled
-                id="account-profile-timezone"
-                value={timezone}
-              >
-                <option value={timezone}>{timezone}</option>
-              </select>
-            </div>
-
-            {profileQuery.error instanceof Error ||
-            updateProfileMutation.error instanceof Error ? (
-              <p className="text-sm text-destructive" role="alert">
-                {updateProfileMutation.error instanceof Error
-                  ? updateProfileMutation.error.message
-                  : profileQuery.error instanceof Error
-                    ? profileQuery.error.message
-                    : ""}
-              </p>
-            ) : null}
-            {accountQuery.error instanceof Error ? (
-              <p className="text-sm text-destructive" role="alert">
-                {accountQuery.error.message}
-              </p>
-            ) : null}
-
-            <div className="w20-account-save-row flex justify-end">
-              <Button
-                className="w20-account-save bg-[#6c567e] text-white hover:bg-[#5d466e]"
-                data-testid="account-profile-save"
-                disabled={updateProfileMutation.isPending || !nameDraft.trim()}
-                type="submit"
-              >
-                Save
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        <section
-          className="w20-account-profile-card min-w-0 overflow-hidden rounded-[11px] border border-border bg-background"
-          data-testid="settings-account-business-card"
-        >
-          <h2 className="w20-account-card-title px-6 pt-[22px]">
-            This business
-          </h2>
-          <div className="px-6 pb-6">
-            <div className="mt-[18px] grid grid-cols-[145px_minmax(0,1fr)] gap-x-[18px] gap-y-[13px] text-compact leading-[1.7]">
-              <span className="text-muted-foreground">Business</span>
-              <span
-                className="min-w-0 truncate"
-                data-testid="account-business-name"
-              >
-                {activeCommunity?.name ?? ""}
-              </span>
-              <span className="text-muted-foreground">Your role</span>
-              <span data-testid="account-business-role">{roleLabel}</span>
-            </div>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Button
-                className="w20-account-card-action"
-                data-testid="account-business-settings"
-                onClick={() => onSectionChange("business-profile")}
-                size="sm"
-                variant="outline"
-              >
-                Business settings
-              </Button>
-              <Button
-                className="w20-account-card-action"
-                data-testid="account-business-members"
-                onClick={() => onSectionChange("people")}
-                size="sm"
-                variant="outline"
-              >
-                Members &amp; roles
-              </Button>
-            </div>
+          Personal details
+        </h2>
+        <div className="w20-account-photo-row">
+          <ProfileAvatar
+            avatarUrl={profileQuery.data?.avatarUrl ?? null}
+            className="size-7 rounded-[7px]"
+            label={profileName || "Your profile"}
+            shape="squircle"
+            testId="account-profile-avatar"
+          />
+          <div className="w20-account-photo-copy">
+            <strong>Profile photo</strong>
+            <p>Shown to people in your businesses.</p>
           </div>
-        </section>
-      </div>
-      {avatarSaved ? (
-        <div
-          className="my-[18px] rounded-[7px] border border-[#dceadd] bg-[#f0f7f1] px-[18px] py-[15px] text-sm text-[#54785c] dark:border-[#425845] dark:bg-[#293b31] dark:text-[#b0c9b6]"
-          data-testid="profile-avatar-saved"
-          role="status"
-        >
-          <strong className="font-semibold">Profile photo updated</strong>
+          <Button
+            className="w20-account-avatar-action"
+            data-testid="profile-avatar-edit"
+            onClick={onEditAvatar}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Edit avatar
+          </Button>
         </div>
-      ) : null}
+        <form
+          aria-label="Personal details"
+          className="w20-account-profile-form"
+          data-testid="account-profile-form"
+          onSubmit={saveProfile}
+        >
+          <div className="w20-account-field">
+            <label
+              className="w20-account-field-label"
+              htmlFor="account-profile-name"
+            >
+              Display name
+            </label>
+            <Input
+              autoComplete="name"
+              className="w20-account-control"
+              data-testid="profile-display-name"
+              id="account-profile-name"
+              onChange={(event) => {
+                dirtyRef.current = event.target.value.trim() !== profileName;
+                setNameDraft(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              value={nameDraft}
+            />
+          </div>
+
+          <div className="w20-account-field">
+            <label
+              className="w20-account-field-label"
+              htmlFor="account-profile-email"
+            >
+              Email address
+            </label>
+            <Input
+              autoComplete="email"
+              className="w20-account-control"
+              data-testid="account-profile-email"
+              id="account-profile-email"
+              readOnly
+              value={accountQuery.data?.email ?? ""}
+            />
+          </div>
+        </form>
+
+        <div aria-hidden="true" className="w20-account-profile-divider" />
+        {profileQuery.error instanceof Error ||
+        updateProfileMutation.error instanceof Error ? (
+          <p className="w20-account-profile-error" role="alert">
+            {updateProfileMutation.error instanceof Error
+              ? updateProfileMutation.error.message
+              : profileQuery.error instanceof Error
+                ? profileQuery.error.message
+                : ""}
+          </p>
+        ) : null}
+        {accountQuery.error instanceof Error ? (
+          <p className="w20-account-profile-error" role="alert">
+            {accountQuery.error.message}
+          </p>
+        ) : null}
+        {avatarSaved ? (
+          <div
+            className="w20-account-avatar-saved"
+            data-testid="profile-avatar-saved"
+            role="status"
+          >
+            Profile photo updated
+          </div>
+        ) : null}
+      </section>
     </section>
   );
 }

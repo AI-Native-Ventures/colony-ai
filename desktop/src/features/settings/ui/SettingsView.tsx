@@ -400,17 +400,7 @@ export function SettingsView({
 
         <SidebarFooter className="w20-nav-footer">
           <div className="w20-nav-person">
-            <button
-              aria-label="Edit profile photo"
-              className="w20-nav-person-avatar"
-              data-testid="profile-avatar-edit"
-              onClick={() => {
-                setAvatarSaved(false);
-                setIsAvatarDialogOpen(true);
-              }}
-              title="Edit profile photo"
-              type="button"
-            >
+            <div className="w20-nav-person-avatar">
               <ProfileAvatar
                 avatarUrl={profile.data?.avatarUrl ?? null}
                 className="size-full rounded-[7px]"
@@ -418,7 +408,7 @@ export function SettingsView({
                 shape="squircle"
                 testId="settings-profile-avatar"
               />
-            </button>
+            </div>
             <div>
               <strong>{signedInDisplayName}</strong>
               <small>Workspace owner</small>
@@ -434,7 +424,7 @@ export function SettingsView({
         )}
         data-testid="settings-view"
       >
-        <div className="w20-settings-topbar">
+        <div className="w20-settings-topbar" data-testid="settings-top-chrome">
           <div className="w20-topbar-history">
             <Button
               aria-label="Back"
@@ -457,7 +447,10 @@ export function SettingsView({
               <ArrowRight aria-hidden="true" className="size-3.5" />
             </Button>
           </div>
-          <div className="w20-topbar-title text-settings-topbar">
+          <div
+            className="w20-topbar-title text-settings-topbar"
+            data-tauri-drag-region
+          >
             <Settings aria-hidden="true" className="size-4" />
             <span className="text-xs">Settings</span>
             <span aria-hidden="true" className="text-xs">
@@ -480,28 +473,30 @@ export function SettingsView({
           className="w20-settings-surface"
           data-testid="settings-content-surface"
         >
-          <div
-            aria-label={`${activeGroup.label} settings sections`}
-            className="w20-inner-tabs"
-            role="tablist"
-          >
-            {activeGroup.sections.map((entry) => (
-              <button
-                aria-selected={entry.value === activeSection}
-                className={cn(
-                  "w20-inner-tab",
-                  entry.value === activeSection && "is-active",
-                )}
-                data-testid={`settings-inner-${entry.value}`}
-                key={entry.value}
-                onClick={() => chooseSection(entry.value)}
-                role="tab"
-                type="button"
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
+          {activeGroup.id === "account" ? null : (
+            <div
+              aria-label={`${activeGroup.label} settings sections`}
+              className="w20-inner-tabs"
+              role="tablist"
+            >
+              {activeGroup.sections.map((entry) => (
+                <button
+                  aria-selected={entry.value === activeSection}
+                  className={cn(
+                    "w20-inner-tab",
+                    entry.value === activeSection && "is-active",
+                  )}
+                  data-testid={`settings-inner-${entry.value}`}
+                  key={entry.value}
+                  onClick={() => chooseSection(entry.value)}
+                  role="tab"
+                  type="button"
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+          )}
           <section
             aria-label={`${activeGroup.label} settings`}
             className={cn(
@@ -551,6 +546,10 @@ export function SettingsView({
                   currentPubkey,
                   avatarSaved,
                   fallbackDisplayName,
+                  onEditAvatar: () => {
+                    setAvatarSaved(false);
+                    setIsAvatarDialogOpen(true);
+                  },
                   isUpdatingDesktopNotifications,
                   notificationErrorMessage,
                   notificationPermission,

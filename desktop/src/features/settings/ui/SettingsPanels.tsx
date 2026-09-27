@@ -320,6 +320,7 @@ export type SettingsPanelProps = {
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
   onOpenThemeCatalog?: () => void;
   onOpenDraftRecovery?: () => void;
+  onEditAvatar?: () => void;
 };
 
 export const settingsSections: SettingsSectionDescriptor[] = [
@@ -970,16 +971,15 @@ export function renderSettingsSection(
       return (
         <AccountProfileSettingsPanel
           avatarSaved={props.avatarSaved}
-          currentPubkey={props.currentPubkey}
           fallbackDisplayName={props.fallbackDisplayName}
-          onClose={props.onClose}
+          onEditAvatar={props.onEditAvatar ?? (() => undefined)}
           onSectionChange={props.onSectionChange ?? (() => undefined)}
         />
       );
     case "security":
       return (
         <AccountSecuritySettingsPanel
-          onClose={props.onClose}
+          onSectionChange={props.onSectionChange ?? (() => undefined)}
           onOpenDraftRecovery={props.onOpenDraftRecovery}
         />
       );
