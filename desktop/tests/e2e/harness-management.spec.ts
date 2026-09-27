@@ -346,6 +346,12 @@ test.describe("your harnesses split", () => {
     const confirmation = page.getByTestId("harness-install-confirmation-codex");
     await expect(confirmation).toBeVisible();
     expect(await installCalls()).toBe(0);
+    await confirmation.getByTestId("harness-install-close-codex").click();
+    await expect(confirmation).toHaveCount(0);
+    expect(await installCalls()).toBe(0);
+
+    await page.getByTestId("doctor-runtime-install-codex").click();
+    await expect(confirmation).toBeVisible();
     await confirmation.getByTestId("harness-install-confirm-codex").click();
     const dialog = page.getByTestId("doctor-runtime-install-failure-codex");
     await expect(dialog).toBeVisible();
@@ -361,6 +367,64 @@ test.describe("your harnesses split", () => {
     await dialog.getByRole("button", { name: "Retry" }).click();
     await expect(dialog).toHaveCount(0);
     await expect.poll(installCalls).toBe(2);
+    await expect(page.getByTestId("doctor-runtime-ready-codex")).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("catalog fresh install confirms before calling the installer", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      acpRuntimesCatalog: [HERMES_AVAILABLE, CODEX_NOT_INSTALLED],
+      acpRuntimesCatalogAfterInstall: [HERMES_AVAILABLE, CODEX_AVAILABLE],
+      installAcpRuntimeDelayMs: 300,
+      installAcpRuntimeResults: [
+        {
+          success: true,
+          steps: [
+            {
+              step: "install",
+              command: "install codex-acp",
+              success: true,
+              stdout: "Installed.",
+              stderr: "",
+              exit_code: 0,
+            },
+          ],
+          restarted_count: 0,
+          failed_restart_count: 0,
+          log_path: null,
+        },
+      ],
+    });
+    await openHarnessSettings(page);
+    await openCatalog(page);
+
+    const installCalls = () =>
+      page.evaluate(
+        () =>
+          (
+            (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+              .__BUZZ_E2E_COMMANDS__ ?? []
+          ).filter((command) => command === "install_acp_runtime").length,
+      );
+
+    const installButton = page.getByTestId("harness-catalog-install-codex");
+    await expect(installButton).toBeVisible();
+    await installButton.click();
+
+    const confirmation = page.getByTestId("harness-install-confirmation-codex");
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toContainText("Official package registry");
+    await expect(confirmation).toContainText("Latest supported version");
+    expect(await installCalls()).toBe(0);
+
+    await confirmation.getByTestId("harness-install-confirm-codex").click();
+    await expect(
+      page.getByTestId("harness-install-progress-codex"),
+    ).toBeVisible();
+    await expect.poll(installCalls).toBe(1);
     await expect(page.getByTestId("doctor-runtime-ready-codex")).toBeVisible({
       timeout: 5_000,
     });
