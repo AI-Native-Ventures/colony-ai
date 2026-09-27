@@ -64,11 +64,11 @@ class _AnimatedRecordButton extends StatelessWidget {
                   height: 64,
                   controlSize: 64,
                   fillWidth: true,
-                  foregroundColor: context.colors.onSurface,
+                  foregroundColor: context.mobileTokens.ink,
                   isBusy: busy,
                 )
               : Material(
-                  color: context.colors.onSurface,
+                  color: context.mobileTokens.ink,
                   borderRadius: BorderRadius.circular(Radii.full),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(

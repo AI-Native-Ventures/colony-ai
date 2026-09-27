@@ -9,7 +9,6 @@ class PersonalPreferencesPage extends HookConsumerWidget {
     final reduceMotion = useState(saved.reduceMotion);
     final largerTapTargets = useState(saved.largerTapTargets);
     final applying = useState(false);
-    final colors = context.colors;
 
     Future<void> apply() async {
       if (applying.value) return;
@@ -32,7 +31,7 @@ class PersonalPreferencesPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Preferences'),
       body: Column(
         children: [
@@ -99,7 +98,9 @@ class PersonalPreferencesPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

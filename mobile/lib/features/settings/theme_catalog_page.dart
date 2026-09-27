@@ -37,7 +37,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
     final colors = context.colors;
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Themes'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -58,8 +58,16 @@ class ThemeCatalogPage extends HookConsumerWidget {
             height: 44,
             child: TextField(
               onChanged: (value) => query.value = value,
+              style: context.mobileTypography.conversation.copyWith(
+                color: context.mobileTokens.ink,
+                fontSize: 13,
+              ),
               decoration: InputDecoration(
                 hintText: 'Search 62 themes',
+                hintStyle: context.mobileTypography.conversation.copyWith(
+                  color: context.mobileTokens.muted,
+                  fontSize: 13,
+                ),
                 filled: true,
                 fillColor: colors.surface,
                 contentPadding: const EdgeInsets.symmetric(
@@ -71,7 +79,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(9),
-                  borderSide: BorderSide(color: colors.outlineVariant),
+                  borderSide: BorderSide(color: context.mobileTokens.line),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(9),
@@ -98,7 +106,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
                 ),
             ],
           ),
-          const SizedBox(height: Grid.xs),
+          const SizedBox(height: Grid.xs + Grid.half),
           if (matches.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: Grid.lg),
@@ -122,7 +130,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 18,
-                childAspectRatio: 1.35,
+                mainAxisExtent: 126,
               ),
               itemBuilder: (context, index) {
                 final theme = matches[index];
@@ -158,7 +166,7 @@ class _ThemeFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = selected
         ? const Color(0xFF4D3A5E)
-        : context.colors.onSurface;
+        : context.mobileTokens.ink;
     return Semantics(
       button: true,
       selected: selected,

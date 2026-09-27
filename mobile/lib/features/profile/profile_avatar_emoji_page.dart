@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -47,7 +46,6 @@ class ProfileAvatarEmojiPage extends HookConsumerWidget {
     final emoji = useState(_avatarEmojis.first.$1);
     final background = useState(_avatarBackgrounds.first.$2);
     final saving = useState(false);
-    final colors = context.colors;
 
     Future<void> save() async {
       if (saving.value) return;
@@ -67,7 +65,7 @@ class ProfileAvatarEmojiPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Emoji avatar'),
       body: Column(
         children: [
@@ -133,7 +131,7 @@ class ProfileAvatarEmojiPage extends HookConsumerWidget {
                         child: Material(
                           color: selected
                               ? const Color(0xFFE9DEF0)
-                              : colors.surfaceContainerHighest,
+                              : context.mobileTokens.soft,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(9),
                             side: BorderSide(
@@ -182,7 +180,7 @@ class ProfileAvatarEmojiPage extends HookConsumerWidget {
                 Text(
                   'Shown beside your messages and on your profile.',
                   style: context.textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],
@@ -198,7 +196,9 @@ class ProfileAvatarEmojiPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

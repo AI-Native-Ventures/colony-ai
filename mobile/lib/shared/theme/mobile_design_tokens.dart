@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'color_scheme.dart' show contrastForeground;
+
 /// Semantic colors and geometry from the approved r16 mobile reference.
 @immutable
 class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
@@ -12,6 +14,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     required this.brandBarDivider,
     required this.soft,
     required this.action,
+    required this.flowAction,
+    required this.flowActionForeground,
     required this.actionSoft,
     required this.onActionSoft,
     required this.info,
@@ -28,6 +32,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
   final Color brandBarDivider;
   final Color soft;
   final Color action;
+  final Color flowAction;
+  final Color flowActionForeground;
   final Color actionSoft;
   final Color onActionSoft;
   final Color info;
@@ -44,6 +50,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     brandBarDivider: Color(0xFFDCD7E1),
     soft: Color(0xFFF6F4F6),
     action: Color(0xFF345C99),
+    flowAction: Color(0xFF45669F),
+    flowActionForeground: Color(0xFFFFFFFF),
     actionSoft: Color(0xFFDFE8F8),
     onActionSoft: Color(0xFF345C99),
     info: Color(0xFFEAF0F6),
@@ -61,6 +69,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     brandBarDivider: Color(0xFF3A3342),
     soft: Color(0xFF312B38),
     action: Color(0xFFA1BCE9),
+    flowAction: Color(0xFF45669F),
+    flowActionForeground: Color(0xFFFFFFFF),
     actionSoft: Color(0xFFDFE8F8),
     onActionSoft: Color(0xFFA1BCE9),
     info: Color(0xFF34404A),
@@ -81,6 +91,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
       brandBarDivider: scheme.outlineVariant,
       soft: scheme.surfaceContainerHighest,
       action: scheme.primary,
+      flowAction: scheme.primary,
+      flowActionForeground: contrastForeground(scheme.primary),
       actionSoft: scheme.primaryContainer,
       onActionSoft: scheme.onPrimaryContainer,
       error: scheme.errorContainer,
@@ -97,6 +109,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     Color? brandBarDivider,
     Color? soft,
     Color? action,
+    Color? flowAction,
+    Color? flowActionForeground,
     Color? actionSoft,
     Color? onActionSoft,
     Color? info,
@@ -112,6 +126,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     brandBarDivider: brandBarDivider ?? this.brandBarDivider,
     soft: soft ?? this.soft,
     action: action ?? this.action,
+    flowAction: flowAction ?? this.flowAction,
+    flowActionForeground: flowActionForeground ?? this.flowActionForeground,
     actionSoft: actionSoft ?? this.actionSoft,
     onActionSoft: onActionSoft ?? this.onActionSoft,
     info: info ?? this.info,
@@ -132,6 +148,12 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
       brandBarDivider: Color.lerp(brandBarDivider, other.brandBarDivider, t)!,
       soft: Color.lerp(soft, other.soft, t)!,
       action: Color.lerp(action, other.action, t)!,
+      flowAction: Color.lerp(flowAction, other.flowAction, t)!,
+      flowActionForeground: Color.lerp(
+        flowActionForeground,
+        other.flowActionForeground,
+        t,
+      )!,
       actionSoft: Color.lerp(actionSoft, other.actionSoft, t)!,
       onActionSoft: Color.lerp(onActionSoft, other.onActionSoft, t)!,
       info: Color.lerp(info, other.info, t)!,

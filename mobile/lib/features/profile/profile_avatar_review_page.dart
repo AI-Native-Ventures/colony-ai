@@ -26,7 +26,6 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
         ? draft.animation
         : null;
     final initials = _initials(profile?.displayName);
-    final colors = context.colors;
 
     Future<void> useAnimation() async {
       if (saving.value || draft is! ProfileAnimatedAvatarDraft) return;
@@ -46,7 +45,7 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Review your avatar'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +101,7 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
                 Text(
                   '00:00',
                   style: context.textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
                 const SizedBox(width: Grid.xxs),
@@ -119,7 +118,7 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
                 Text(
                   '00:03',
                   style: context.textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],
@@ -147,7 +146,7 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
             child: Text(
               '3-second sample loop · initials stand in for camera footage.',
               style: context.textTheme.labelSmall?.copyWith(
-                color: colors.onSurfaceVariant,
+                color: context.mobileTokens.muted,
               ),
             ),
           ),
@@ -176,7 +175,9 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

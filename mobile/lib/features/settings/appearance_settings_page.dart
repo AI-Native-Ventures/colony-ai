@@ -11,7 +11,6 @@ class AppearanceSettingsPage extends HookConsumerWidget {
     final themeName = useState(savedTheme.theme);
     final density = useState(savedDisplay.density);
     final textSize = useState(savedDisplay.textSize);
-    final colors = context.colors;
 
     Future<void> apply() async {
       final compatibleTheme =
@@ -41,7 +40,7 @@ class AppearanceSettingsPage extends HookConsumerWidget {
 
     final previewTheme = findTheme(themeName.value) ?? findTheme('buzz')!;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Appearance'),
       body: Column(
         children: [
@@ -110,10 +109,10 @@ class AppearanceSettingsPage extends HookConsumerWidget {
                   style: context.mobileTypography.conversation.copyWith(
                     fontSize: 13,
                     height: 1.6,
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
-                const SizedBox(height: Grid.fourteen),
+                const SizedBox(height: Grid.twelve),
                 _SettingsLinkRow(
                   title: 'Browse named themes',
                   subtitle: '62 themes · Preview before applying',
@@ -137,7 +136,9 @@ class AppearanceSettingsPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

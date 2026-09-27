@@ -19,9 +19,8 @@ class SettingsDevicesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Devices'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -42,7 +41,7 @@ class SettingsDevicesPage extends StatelessWidget {
                   constraints: const BoxConstraints(minHeight: 68),
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: colors.outlineVariant),
+                      bottom: BorderSide(color: context.mobileTokens.line),
                     ),
                   ),
                   child: Row(
@@ -52,7 +51,7 @@ class SettingsDevicesPage extends StatelessWidget {
                         child: Icon(
                           LucideIcons.signal,
                           size: 18,
-                          color: colors.onSurface,
+                          color: context.mobileTokens.ink,
                         ),
                       ),
                       const SizedBox(width: Grid.xxs),
@@ -70,7 +69,7 @@ class SettingsDevicesPage extends StatelessWidget {
                             Text(
                               'Active now',
                               style: bodyExtraSmallTextStyle.copyWith(
-                                color: colors.onSurfaceVariant,
+                                color: context.mobileTokens.muted,
                               ),
                             ),
                           ],

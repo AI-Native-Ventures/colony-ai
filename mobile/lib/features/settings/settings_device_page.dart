@@ -16,9 +16,8 @@ class SettingsDevicePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: MobileFlowAppBar(title: deviceName),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -58,7 +57,7 @@ class _DeviceFact extends StatelessWidget {
           child: Text(
             label,
             style: bodyExtraSmallTextStyle.copyWith(
-              color: context.colors.onSurfaceVariant,
+              color: context.mobileTokens.muted,
             ),
           ),
         ),

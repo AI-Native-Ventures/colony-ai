@@ -206,16 +206,18 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
             candidateRef.value = next;
             await reservation.ready;
             if (disposed) {
-              if (identical(candidateRef.value, next))
+              if (identical(candidateRef.value, next)) {
                 candidateRef.value = null;
+              }
               await reservation.dispose(next.dispose);
               return;
             }
             await next.initialize();
             await next.lockCaptureOrientation(DeviceOrientation.portraitUp);
             if (disposed) {
-              if (identical(candidateRef.value, next))
+              if (identical(candidateRef.value, next)) {
                 candidateRef.value = null;
+              }
               await reservation.dispose(next.dispose);
               return;
             }
@@ -539,7 +541,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: context.colors.onSurface.withValues(
+                                  color: context.mobileTokens.ink.withValues(
                                     alpha: 0.1,
                                   ),
                                 ),
@@ -719,7 +721,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                         ? Center(
                             child: BuzzLoadingIndicator(
                               size: 44,
-                              color: context.colors.onSurface,
+                              color: context.mobileTokens.ink,
                               semanticLabel: 'Preparing animated avatar',
                             ),
                           )
@@ -750,8 +752,8 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                     value: progress.value,
                     strokeWidth: 4,
                     strokeCap: StrokeCap.round,
-                    color: context.colors.onSurface,
-                    backgroundColor: context.colors.outlineVariant,
+                    color: context.mobileTokens.ink,
+                    backgroundColor: context.mobileTokens.line,
                   ),
                 ),
             ],
@@ -766,7 +768,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
               : 'Line up your shot.',
           textAlign: TextAlign.center,
           style: context.textTheme.bodyMedium?.copyWith(
-            color: context.colors.onSurfaceVariant,
+            color: context.mobileTokens.muted,
           ),
         ),
         if (error.value != null) _ErrorText(error.value!),

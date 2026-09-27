@@ -10,9 +10,8 @@ class SettingsClearCachePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Clear downloads?'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -29,7 +28,7 @@ class SettingsClearCachePage extends StatelessWidget {
                 Text(
                   'Remove downloaded files from this phone. Drafts, queued messages, and server content are retained.',
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],

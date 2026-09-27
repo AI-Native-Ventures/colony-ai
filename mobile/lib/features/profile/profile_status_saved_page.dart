@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../shared/community/community_provider.dart';
@@ -39,7 +38,7 @@ class ProfileStatusSavedPage extends ConsumerWidget {
     final colors = context.colors;
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Your profile'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -110,7 +109,7 @@ class ProfileStatusSavedPage extends ConsumerWidget {
                   detail,
                   textAlign: TextAlign.center,
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],
@@ -121,8 +120,8 @@ class ProfileStatusSavedPage extends ConsumerWidget {
             height: 44,
             child: FilledButton.tonal(
               style: FilledButton.styleFrom(
-                backgroundColor: colors.surfaceContainerHighest,
-                foregroundColor: colors.onSurface,
+                backgroundColor: context.mobileTokens.soft,
+                foregroundColor: context.mobileTokens.ink,
               ),
               onPressed: () =>
                   MobileNavigation.push<NoMobileRouteArguments, Object?>(

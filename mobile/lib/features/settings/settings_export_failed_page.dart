@@ -12,9 +12,8 @@ class SettingsExportFailedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Export unavailable'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,7 +67,9 @@ class SettingsExportFailedPage extends StatelessWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

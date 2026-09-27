@@ -8,9 +8,8 @@ class SettingsSaveFailedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Changes not saved'),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(Grid.gutter, 30, Grid.gutter, 0),
@@ -55,7 +54,7 @@ class SettingsSaveFailedPage extends StatelessWidget {
             Grid.xxs,
           ),
           decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: colors.outlineVariant)),
+            border: Border(top: BorderSide(color: context.mobileTokens.line)),
           ),
           child: SizedBox(
             height: 44,

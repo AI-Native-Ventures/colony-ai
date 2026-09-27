@@ -23,10 +23,9 @@ class PersonalSettingsHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final initials = _initials(displayName);
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(
         title: 'Settings',
         backLabel: 'Close settings',
@@ -44,9 +43,16 @@ class PersonalSettingsHomePage extends StatelessWidget {
               AvatarImage(
                 imageUrl: avatarUrl,
                 radius: 24,
-                backgroundColor: colors.secondaryContainer,
-                fallback: Text(initials),
-                isAgent: true,
+                backgroundColor: const Color(0xFFEAE3ED),
+                borderRadius: BorderRadius.circular(14.4),
+                fallback: Text(
+                  initials,
+                  style: const TextStyle(
+                    color: Color(0xFF786980),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const SizedBox(width: Grid.xs),
               Expanded(
@@ -67,7 +73,7 @@ class PersonalSettingsHomePage extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: bodyExtraSmallTextStyle.copyWith(
-                          color: colors.onSurfaceVariant,
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                   ],
@@ -75,6 +81,7 @@ class PersonalSettingsHomePage extends StatelessWidget {
               ),
               TextButton(
                 style: TextButton.styleFrom(
+                  foregroundColor: context.mobileTokens.action,
                   textStyle: context.mobileTypography.conversation,
                 ),
                 onPressed: () =>
@@ -172,7 +179,6 @@ class _PersonalSettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Semantics(
       button: true,
       label: title,
@@ -183,14 +189,16 @@ class _PersonalSettingsRow extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(minHeight: 69),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+              border: Border(
+                bottom: BorderSide(color: context.mobileTokens.line),
+              ),
             ),
             padding: const EdgeInsets.symmetric(vertical: Grid.xs),
             child: Row(
               children: [
                 SizedBox(
                   width: 40,
-                  child: Icon(icon, size: 19, color: colors.onSurface),
+                  child: Icon(icon, size: 19, color: context.mobileTokens.ink),
                 ),
                 const SizedBox(width: Grid.xxs),
                 Expanded(
@@ -208,7 +216,7 @@ class _PersonalSettingsRow extends StatelessWidget {
                       Text(
                         subtitle,
                         style: bodyExtraSmallTextStyle.copyWith(
-                          color: colors.onSurfaceVariant,
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ],
@@ -217,7 +225,7 @@ class _PersonalSettingsRow extends StatelessWidget {
                 Icon(
                   LucideIcons.arrowRight,
                   size: 16,
-                  color: colors.onSurfaceVariant,
+                  color: context.mobileTokens.muted,
                 ),
               ],
             ),
@@ -237,7 +245,7 @@ class _SettingsSectionLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     label,
     style: context.textTheme.labelSmall?.copyWith(
-      color: context.colors.onSurfaceVariant,
+      color: context.mobileTokens.muted,
       fontWeight: FontWeight.w600,
       letterSpacing: 0.8,
     ),

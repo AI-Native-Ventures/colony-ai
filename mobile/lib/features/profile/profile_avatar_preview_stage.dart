@@ -21,7 +21,7 @@ class ProfileAvatarPreviewStage extends StatelessWidget {
     height: 230,
     width: double.infinity,
     decoration: BoxDecoration(
-      color: context.colors.surfaceContainerHighest,
+      color: context.mobileTokens.soft,
       borderRadius: BorderRadius.circular(18),
     ),
     child:

@@ -24,7 +24,6 @@ class SettingsPrivacyPage extends HookConsumerWidget {
       _privacyChoices.contains(initial) ? initial! : _privacyChoices.first,
     );
     final saving = useState(false);
-    final colors = context.colors;
 
     Future<void> save() async {
       if (saving.value) return;
@@ -52,7 +51,7 @@ class SettingsPrivacyPage extends HookConsumerWidget {
         : 'Colony · You have a new notification.';
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Preview privacy'),
       body: Column(
         children: [
@@ -82,7 +81,7 @@ class SettingsPrivacyPage extends HookConsumerWidget {
                     ),
                   ),
                   style: context.mobileTypography.conversation.copyWith(
-                    color: colors.onSurface,
+                    color: context.mobileTokens.ink,
                   ),
                   items: _privacyChoices
                       .map(
@@ -139,7 +138,9 @@ class SettingsPrivacyPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

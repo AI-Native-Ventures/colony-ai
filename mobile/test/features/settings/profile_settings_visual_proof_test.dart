@@ -26,7 +26,6 @@ import 'package:buzz/features/profile/user_status.dart';
 import 'package:buzz/features/profile/user_status_provider.dart';
 import 'package:buzz/features/settings/appearance_display_preference.dart';
 import 'package:buzz/features/settings/appearance_settings_pages.dart';
-import 'package:buzz/shared/emoji/emoji_glyph.dart';
 import 'package:buzz/features/settings/personal_settings_home_page.dart';
 import 'package:buzz/features/settings/profile_settings_page.dart';
 import 'package:buzz/features/settings/settings_devices_page.dart';

@@ -81,9 +81,8 @@ class _R19CameraCaptureLayout extends StatelessWidget {
                                     child: CircularProgressIndicator(
                                       value: progress,
                                       strokeWidth: 3,
-                                      color: colors.onSurface.withValues(
-                                        alpha: 0.82,
-                                      ),
+                                      color: context.mobileTokens.ink
+                                          .withValues(alpha: 0.82),
                                       backgroundColor: Colors.white.withValues(
                                         alpha: 0.35,
                                       ),
@@ -221,7 +220,7 @@ class _R19CameraCaptureLayout extends StatelessWidget {
               child: Text(
                 'A short loop. Review it before updating your avatar.',
                 style: bodyExtraSmallTextStyle.copyWith(
-                  color: colors.onSurfaceVariant,
+                  color: context.mobileTokens.muted,
                 ),
               ),
             ),

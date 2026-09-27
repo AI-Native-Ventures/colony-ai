@@ -42,9 +42,9 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
   );
 }
 
-/// Applies the frozen flow action color while keeping the shared button sizing.
+/// Applies the frozen r19 action color while keeping shared button sizing.
 ButtonStyle mobileFlowActionButtonStyle(BuildContext context) =>
     FilledButton.styleFrom(
-      backgroundColor: context.mobileTokens.action,
-      foregroundColor: context.colors.onPrimary,
+      backgroundColor: context.mobileTokens.flowAction,
+      foregroundColor: context.mobileTokens.flowActionForeground,
     );

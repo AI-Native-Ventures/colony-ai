@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -190,12 +189,11 @@ class ProfileStatusPage extends HookConsumerWidget {
       }
     }
 
-    final colors = context.colors;
     final hasStatus = status != null && !status.isEmpty;
     final hasContent = text.value.trim().isNotEmpty || emoji.value.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Set a status'),
       body: Column(
         children: [
@@ -218,7 +216,7 @@ class ProfileStatusPage extends HookConsumerWidget {
                 Text(
                   'Let your team know when you’re available.',
                   style: context.textTheme.bodyMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
                 const SizedBox(height: Grid.xs),
@@ -232,7 +230,7 @@ class ProfileStatusPage extends HookConsumerWidget {
                 Text(
                   'Visible to people in ${community?.name ?? 'your community'}.',
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
                 const SizedBox(height: Grid.sm),
@@ -242,7 +240,16 @@ class ProfileStatusPage extends HookConsumerWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: Grid.twelve),
+                SizedBox(
+                  height: Grid.twelve,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      height: 1,
+                      color: context.mobileTokens.line,
+                    ),
+                  ),
+                ),
                 for (final preset in _statusPresets)
                   _QuickStatusRow(
                     emoji: preset.$1,
@@ -271,7 +278,7 @@ class ProfileStatusPage extends HookConsumerWidget {
                       ),
                     ),
                     style: context.mobileTypography.conversation.copyWith(
-                      color: colors.onSurface,
+                      color: context.mobileTokens.ink,
                     ),
                     items: _statusDurationOptions
                         .map(
@@ -366,8 +373,8 @@ class _StatusInput extends StatelessWidget {
       height: 64,
       decoration: BoxDecoration(
         color: colors.surface,
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: BorderRadius.circular(Radii.dialog),
+        border: Border.all(color: context.mobileTokens.line),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -379,7 +386,7 @@ class _StatusInput extends StatelessWidget {
               onTap: onChooseEmoji,
               child: ExcludeSemantics(
                 child: Material(
-                  color: colors.surfaceContainerHighest,
+                  color: context.mobileTokens.soft,
                   borderRadius: BorderRadius.circular(Radii.sm),
                   child: InkWell(
                     onTap: onChooseEmoji,
@@ -442,14 +449,15 @@ class _QuickStatusRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return SizedBox(
       height: 56,
       child: InkWell(
         onTap: onPressed,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+            border: Border(
+              bottom: BorderSide(color: context.mobileTokens.line),
+            ),
           ),
           child: Row(
             children: [

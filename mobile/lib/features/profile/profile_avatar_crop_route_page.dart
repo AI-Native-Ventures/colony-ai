@@ -20,7 +20,6 @@ class ProfileAvatarCropRoutePage extends HookWidget {
     final horizontal = useState(0.0);
     final vertical = useState(0.0);
     final saving = useState(false);
-    final colors = context.colors;
 
     Future<void> save() async {
       if (saving.value) return;
@@ -45,7 +44,7 @@ class ProfileAvatarCropRoutePage extends HookWidget {
     }
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Crop photo'),
       body: Column(
         children: [
@@ -118,7 +117,9 @@ class ProfileAvatarCropRoutePage extends HookWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

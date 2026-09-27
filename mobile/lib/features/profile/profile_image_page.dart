@@ -110,7 +110,7 @@ class ProfileImagePage extends HookConsumerWidget {
     };
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: Column(
         children: [
@@ -133,7 +133,7 @@ class ProfileImagePage extends HookConsumerWidget {
                   onTap: saving.value ? null : chooseImage,
                   borderRadius: BorderRadius.circular(Radii.md),
                   child: ProfileDashedBorder(
-                    color: colors.outlineVariant,
+                    color: context.mobileTokens.line,
                     child: Container(
                       height: 153,
                       decoration: BoxDecoration(
@@ -155,14 +155,14 @@ class ProfileImagePage extends HookConsumerWidget {
                           Text(
                             'JPEG, PNG or WebP · Preview only',
                             style: context.textTheme.labelSmall?.copyWith(
-                              color: colors.onSurfaceVariant,
+                              color: context.mobileTokens.muted,
                             ),
                           ),
                           const SizedBox(height: Grid.xxs),
                           Text(
                             'Choose File   No file chosen',
                             style: context.textTheme.labelSmall?.copyWith(
-                              color: colors.onSurfaceVariant,
+                              color: context.mobileTokens.muted,
                             ),
                           ),
                         ],
@@ -215,7 +215,7 @@ class _AvatarBottomAction extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.gutter, Grid.xs, Grid.xxs),
     decoration: BoxDecoration(
-      border: Border(top: BorderSide(color: context.colors.outlineVariant)),
+      border: Border(top: BorderSide(color: context.mobileTokens.line)),
     ),
     child: SizedBox(
       height: 44,

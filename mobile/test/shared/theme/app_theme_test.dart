@@ -4,6 +4,7 @@ import 'package:buzz/shared/theme/app_colors.dart';
 import 'package:buzz/shared/theme/app_theme.dart';
 import 'package:buzz/shared/theme/mobile_design_tokens.dart';
 import 'package:buzz/shared/theme/mobile_typography_tokens.dart';
+import 'package:buzz/shared/widgets/mobile_flow_app_bar.dart';
 
 void main() {
   test('disables Material touch ripples in every app theme', () {
@@ -42,6 +43,33 @@ void main() {
       everyElement('Manrope'),
     );
     expect(buttonStyles.map((style) => style.fontSize), everyElement(11));
+  });
+
+  testWidgets('uses the frozen r19 action color in light and dark flows', (
+    tester,
+  ) async {
+    const buttonKey = Key('flow-action');
+    for (final theme in [AppTheme.light(), AppTheme.dark()]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Builder(
+            builder: (context) => FilledButton(
+              key: buttonKey,
+              style: mobileFlowActionButtonStyle(context),
+              onPressed: () {},
+              child: const Text('Action'),
+            ),
+          ),
+        ),
+      );
+      final button = tester.widget<FilledButton>(find.byKey(buttonKey));
+      expect(
+        button.style!.backgroundColor!.resolve({}),
+        const Color(0xFF45669F),
+      );
+      expect(button.style!.foregroundColor!.resolve({}), Colors.white);
+    }
   });
 
   test('keeps inactive Huddle controls distinct in dark mode', () {

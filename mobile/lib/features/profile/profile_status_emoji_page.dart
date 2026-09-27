@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../shared/emoji/emoji_glyph.dart';
 import '../../shared/theme/theme.dart';
@@ -37,7 +36,7 @@ class ProfileStatusEmojiPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Status emoji'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

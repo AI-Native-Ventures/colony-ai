@@ -30,7 +30,7 @@ class ThemePreviewPage extends StatelessWidget {
       }
 
       return Scaffold(
-        backgroundColor: context.colors.surface,
+        backgroundColor: context.mobileTokens.paper,
         appBar: const MobileFlowAppBar(title: 'Preview theme'),
         body: Column(
           children: [
@@ -51,7 +51,7 @@ class ThemePreviewPage extends StatelessWidget {
                   Text(
                     'Preview only. Your current theme stays ${_themeDisplayName(findTheme(current.theme) ?? findTheme('buzz')!)} until you apply.',
                     style: context.textTheme.bodySmall?.copyWith(
-                      color: context.colors.onSurfaceVariant,
+                      color: context.mobileTokens.muted,
                     ),
                   ),
                   const SizedBox(height: Grid.sm),

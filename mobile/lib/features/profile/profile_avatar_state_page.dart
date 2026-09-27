@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -141,7 +140,7 @@ class ProfileAvatarStatePage extends HookConsumerWidget {
               .join()
               .toUpperCase();
     return Scaffold(
-      backgroundColor: context.colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,7 +179,7 @@ class ProfileAvatarStatePage extends HookConsumerWidget {
             child: Text(
               'Your previous avatar is replaced only after you save.',
               style: context.textTheme.labelSmall?.copyWith(
-                color: context.colors.onSurfaceVariant,
+                color: context.mobileTokens.muted,
               ),
             ),
           ),
@@ -245,9 +244,8 @@ class _CameraDeniedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Camera access'),
       body: Column(
         children: [
@@ -270,7 +268,7 @@ class _CameraDeniedPage extends StatelessWidget {
                 Text(
                   'Allow camera access in your phone’s settings to record an avatar.',
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
                 const SizedBox(height: Grid.twentyEight),
@@ -366,7 +364,7 @@ class _MessagePage extends StatelessWidget {
               : const Color(0xFF9B586B)
         : foreground;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: MobileFlowAppBar(title: appBarTitle),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,7 +442,7 @@ class _BottomButton extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.gutter, Grid.xs, Grid.xxs),
     decoration: BoxDecoration(
-      border: Border(top: BorderSide(color: context.colors.outlineVariant)),
+      border: Border(top: BorderSide(color: context.mobileTokens.line)),
     ),
     child: SizedBox(
       width: double.infinity,

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,6 +24,9 @@ class AvatarImage extends StatelessWidget {
   final double radius;
   final Color? backgroundColor;
   final Widget fallback;
+
+  /// Overrides the default circular shape for a non-agent profile avatar.
+  final BorderRadius? borderRadius;
   final bool isAgent;
   @visibleForTesting
   final EmojiGlyphBuilder? emojiBuilder;
@@ -35,6 +37,7 @@ class AvatarImage extends StatelessWidget {
     required this.radius,
     required this.fallback,
     this.backgroundColor,
+    this.borderRadius,
     this.isAgent = false,
     this.emojiBuilder,
   });
@@ -51,7 +54,9 @@ class AvatarImage extends StatelessWidget {
         emojiBuilder: emojiBuilder,
       ),
     );
-    if (!isAgent) {
+    final shape =
+        borderRadius ?? (isAgent ? BorderRadius.circular(radius * 0.6) : null);
+    if (shape == null) {
       return CircleAvatar(
         radius: radius,
         backgroundColor: color,
@@ -59,10 +64,9 @@ class AvatarImage extends StatelessWidget {
       );
     }
 
-    final borderRadius = BorderRadius.circular(radius * 0.6);
     return DecoratedBox(
-      decoration: BoxDecoration(color: color, borderRadius: borderRadius),
-      child: ClipRRect(borderRadius: borderRadius, child: content),
+      decoration: BoxDecoration(color: color, borderRadius: shape),
+      child: ClipRRect(borderRadius: shape, child: content),
     );
   }
 }

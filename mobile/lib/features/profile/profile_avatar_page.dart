@@ -83,7 +83,7 @@ class ProfileAvatarPage extends HookConsumerWidget {
 
     final initials = _profileInitials(profile);
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -109,7 +109,7 @@ class ProfileAvatarPage extends HookConsumerWidget {
             onTap: () => _push(context, MobileRoutes.profileImage),
             borderRadius: BorderRadius.circular(Radii.md),
             child: ProfileDashedBorder(
-              color: colors.outlineVariant,
+              color: context.mobileTokens.line,
               child: Container(
                 height: 153,
                 decoration: BoxDecoration(
@@ -131,14 +131,14 @@ class ProfileAvatarPage extends HookConsumerWidget {
                     Text(
                       'JPEG, PNG or WebP · Up to 5 MB',
                       style: context.textTheme.labelSmall?.copyWith(
-                        color: colors.onSurfaceVariant,
+                        color: context.mobileTokens.muted,
                       ),
                     ),
                     const SizedBox(height: Grid.xxs),
                     Text(
                       'Choose File   No file chosen',
                       style: context.textTheme.labelSmall?.copyWith(
-                        color: colors.onSurfaceVariant,
+                        color: context.mobileTokens.muted,
                       ),
                     ),
                   ],
@@ -197,7 +197,6 @@ class _AvatarRouteRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Semantics(
       button: true,
       label: title,
@@ -208,7 +207,9 @@ class _AvatarRouteRow extends StatelessWidget {
           child: Container(
             height: 70,
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+              border: Border(
+                bottom: BorderSide(color: context.mobileTokens.line),
+              ),
             ),
             child: Row(
               children: [
@@ -227,13 +228,17 @@ class _AvatarRouteRow extends StatelessWidget {
                       Text(
                         subtitle,
                         style: context.textTheme.labelSmall?.copyWith(
-                          color: colors.onSurfaceVariant,
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(LucideIcons.arrowRight, size: 16, color: colors.outline),
+                Icon(
+                  LucideIcons.arrowRight,
+                  size: 16,
+                  color: context.mobileTokens.muted,
+                ),
               ],
             ),
           ),

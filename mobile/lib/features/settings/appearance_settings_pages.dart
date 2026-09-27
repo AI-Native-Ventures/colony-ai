@@ -52,7 +52,7 @@ class _AppearancePreview extends StatelessWidget {
               Grid.gutter,
               Grid.gutter,
               Grid.gutter,
-              26,
+              16,
             ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -173,7 +173,7 @@ class _AppearanceSelect<T> extends StatelessWidget {
           ),
         ),
         style: context.mobileTypography.conversation.copyWith(
-          color: context.colors.onSurface,
+          color: context.mobileTokens.ink,
         ),
         items: labels.entries
             .map(
@@ -208,9 +208,7 @@ class _SettingsLinkRow extends StatelessWidget {
     child: Container(
       constraints: const BoxConstraints(minHeight: 68),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: context.colors.outlineVariant),
-        ),
+        border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
       ),
       padding: const EdgeInsets.symmetric(vertical: Grid.xs),
       child: Row(
@@ -229,13 +227,17 @@ class _SettingsLinkRow extends StatelessWidget {
                 Text(
                   subtitle,
                   style: bodyExtraSmallTextStyle.copyWith(
-                    color: context.colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(LucideIcons.arrowRight, size: 16, color: context.colors.outline),
+          Icon(
+            LucideIcons.arrowRight,
+            size: 16,
+            color: context.mobileTokens.muted,
+          ),
         ],
       ),
     ),
@@ -342,7 +344,7 @@ class _ThemeTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.textTheme.labelSmall?.copyWith(
-                        color: context.colors.onSurface,
+                        color: context.mobileTokens.ink,
                       ),
                     ),
                   ),
@@ -350,7 +352,7 @@ class _ThemeTile extends StatelessWidget {
                     Icon(
                       LucideIcons.check,
                       size: 14,
-                      color: context.colors.onSurface,
+                      color: context.mobileTokens.ink,
                     ),
                 ],
               ),
@@ -493,7 +495,7 @@ class _PreferenceCheckbox extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     constraints: const BoxConstraints(minHeight: 68),
     decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: context.colors.outlineVariant)),
+      border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
     ),
     child: CheckboxListTile(
       contentPadding: EdgeInsets.zero,
@@ -515,7 +517,7 @@ class _PreferenceCheckbox extends StatelessWidget {
       subtitle: Text(
         subtitle,
         style: bodyExtraSmallTextStyle.copyWith(
-          color: context.colors.onSurfaceVariant,
+          color: context.mobileTokens.muted,
         ),
       ),
     ),

@@ -21,10 +21,9 @@ class SettingsNotificationsPage extends ConsumerWidget {
     final communityState = ref.watch(activeCommunityProvider);
     final community = communityState.asData?.value;
     final canManagePush = Env.pushGatewayConfigured;
-    final colors = context.colors;
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Notifications'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -43,7 +42,7 @@ class SettingsNotificationsPage extends ConsumerWidget {
             Text(
               'Notification settings are unavailable until a community is connected.',
               style: bodyExtraSmallTextStyle.copyWith(
-                color: colors.onSurfaceVariant,
+                color: context.mobileTokens.muted,
               ),
             )
           else
@@ -95,7 +94,6 @@ class _NotificationSettingsLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Semantics(
       button: true,
       label: title,
@@ -107,7 +105,9 @@ class _NotificationSettingsLink extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 68),
             padding: const EdgeInsets.symmetric(vertical: Grid.xs),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+              border: Border(
+                bottom: BorderSide(color: context.mobileTokens.line),
+              ),
             ),
             child: Row(
               children: [
@@ -125,13 +125,13 @@ class _NotificationSettingsLink extends StatelessWidget {
                       Text(
                         subtitle,
                         style: bodyExtraSmallTextStyle.copyWith(
-                          color: colors.onSurfaceVariant,
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: colors.outline),
+                Icon(Icons.chevron_right, color: context.mobileTokens.muted),
               ],
             ),
           ),
@@ -154,7 +154,6 @@ class _PushNotificationSetting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Container(
       constraints: const BoxConstraints(minHeight: 72),
       decoration: BoxDecoration(
@@ -182,7 +181,7 @@ class _PushNotificationSetting extends StatelessWidget {
                             : 'Off for this community'
                       : 'Unavailable in this build',
                   style: bodyExtraSmallTextStyle.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
               ],

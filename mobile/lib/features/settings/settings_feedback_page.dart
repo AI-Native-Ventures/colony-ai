@@ -72,9 +72,8 @@ class SettingsFeedbackPage extends HookConsumerWidget {
       }
     }
 
-    final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Send feedback'),
       body: Column(
         children: [
@@ -106,7 +105,7 @@ class SettingsFeedbackPage extends HookConsumerWidget {
                     ),
                   ),
                   style: context.mobileTypography.conversation.copyWith(
-                    color: context.colors.onSurface,
+                    color: context.mobileTokens.ink,
                     fontSize: 13,
                   ),
                   items: _feedbackTopics
@@ -127,25 +126,28 @@ class SettingsFeedbackPage extends HookConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: Grid.xxs),
-                TextField(
-                  controller: controller,
-                  minLines: 6,
-                  maxLines: 6,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: Grid.twelve,
-                      vertical: 15,
+                SizedBox(
+                  height: 145,
+                  child: TextField(
+                    controller: controller,
+                    minLines: 6,
+                    maxLines: 6,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: Grid.twelve,
+                        vertical: 15,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 Container(
                   constraints: const BoxConstraints(minHeight: 70),
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: colors.outlineVariant),
+                      bottom: BorderSide(color: context.mobileTokens.line),
                     ),
                   ),
                   child: CheckboxListTile(
@@ -168,7 +170,7 @@ class SettingsFeedbackPage extends HookConsumerWidget {
                     subtitle: Text(
                       'Version and redacted errors, without messages or credentials.',
                       style: bodyExtraSmallTextStyle.copyWith(
-                        color: colors.onSurfaceVariant,
+                        color: context.mobileTokens.muted,
                       ),
                     ),
                   ),
@@ -186,7 +188,9 @@ class SettingsFeedbackPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,

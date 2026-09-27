@@ -35,7 +35,6 @@ class ProfileSettingsPage extends HookConsumerWidget {
     final controller = useTextEditingController(text: restoredName);
     final saving = useState(false);
     final name = useState(restoredName);
-    final colors = context.colors;
 
     Future<void> save() async {
       if (saving.value) return;
@@ -66,7 +65,7 @@ class ProfileSettingsPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Profile'),
       body: Column(
         children: [
@@ -87,6 +86,7 @@ class ProfileSettingsPage extends HookConsumerWidget {
                         imageUrl: avatarUrl,
                         radius: 17,
                         backgroundColor: const Color(0xFFEAE3ED),
+                        borderRadius: BorderRadius.circular(10.2),
                         fallback: Text(
                           _initials(displayName),
                           style: const TextStyle(
@@ -95,7 +95,6 @@ class ProfileSettingsPage extends HookConsumerWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        isAgent: true,
                       ),
                     ),
                     const SizedBox(width: Grid.twelve),
@@ -116,7 +115,7 @@ class ProfileSettingsPage extends HookConsumerWidget {
                           TextButton(
                             style: TextButton.styleFrom(
                               alignment: Alignment.centerLeft,
-                              foregroundColor: colors.primary,
+                              foregroundColor: context.mobileTokens.action,
                               minimumSize: Size.zero,
                               padding: EdgeInsets.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -197,7 +196,7 @@ class ProfileSettingsPage extends HookConsumerWidget {
                     alignment: Alignment.centerLeft,
                     minimumSize: const Size(0, 42),
                     padding: EdgeInsets.zero,
-                    foregroundColor: colors.primary,
+                    foregroundColor: context.mobileTokens.action,
                     textStyle: context.mobileTypography.metadata.copyWith(
                       fontSize: 12,
                     ),
@@ -233,7 +232,9 @@ class ProfileSettingsPage extends HookConsumerWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,
@@ -260,12 +261,11 @@ class _ProfileValueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Container(
       constraints: const BoxConstraints(minHeight: 50),
       padding: const EdgeInsets.symmetric(vertical: Grid.xs),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+        border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
       ),
       child: Row(
         children: [
@@ -274,7 +274,7 @@ class _ProfileValueRow extends StatelessWidget {
             child: Text(
               label,
               style: bodyExtraSmallTextStyle.copyWith(
-                color: colors.onSurfaceVariant,
+                color: context.mobileTokens.muted,
               ),
             ),
           ),
@@ -305,7 +305,6 @@ class _ProfileActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     return Semantics(
       button: true,
       label: title,
@@ -316,7 +315,9 @@ class _ProfileActionRow extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(minHeight: 68),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+              border: Border(
+                bottom: BorderSide(color: context.mobileTokens.line),
+              ),
             ),
             padding: const EdgeInsets.symmetric(vertical: Grid.xs),
             child: Row(
@@ -336,13 +337,17 @@ class _ProfileActionRow extends StatelessWidget {
                       Text(
                         subtitle,
                         style: bodyExtraSmallTextStyle.copyWith(
-                          color: colors.onSurfaceVariant,
+                          color: context.mobileTokens.muted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(LucideIcons.arrowRight, size: 16, color: colors.outline),
+                Icon(
+                  LucideIcons.arrowRight,
+                  size: 16,
+                  color: context.mobileTokens.muted,
+                ),
               ],
             ),
           ),

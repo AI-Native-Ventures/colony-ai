@@ -14,6 +14,7 @@ import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_route_scope.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
 import 'package:buzz/shared/theme/theme.dart';
+import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -42,6 +43,23 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Preferences'), findsOneWidget);
+    final editButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Edit'),
+    );
+    expect(
+      editButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.isAgent, isFalse);
+    expect(avatar.borderRadius, BorderRadius.circular(14.4));
+    expect(
+      find.descendant(
+        of: find.byType(AvatarImage),
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Account').first);
     await tester.pumpAndSettle();
     expect(find.text('Profile route opened'), findsOneWidget);
@@ -68,6 +86,30 @@ void main() {
       ),
     );
 
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.isAgent, isFalse);
+    expect(avatar.borderRadius, BorderRadius.circular(10.2));
+    expect(
+      find.descendant(
+        of: find.byType(AvatarImage),
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
+    final editAvatarButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Edit avatar'),
+    );
+    final retryPreviewButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Preview save error'),
+    );
+    expect(
+      editAvatarButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
+    expect(
+      retryPreviewButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
     await tester.enterText(find.byType(TextField), 'Lerato M.');
     await tester.tap(find.text('Save profile'));
     await tester.pumpAndSettle();

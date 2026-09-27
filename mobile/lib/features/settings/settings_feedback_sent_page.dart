@@ -13,7 +13,7 @@ class SettingsFeedbackSentPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Feedback sent'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -50,7 +50,7 @@ class SettingsFeedbackSentPage extends StatelessWidget {
           Text(
             'Your feedback submission is shown here as a preview. No report was sent.',
             style: context.textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
+              color: context.mobileTokens.muted,
             ),
           ),
           const SizedBox(height: Grid.sm),

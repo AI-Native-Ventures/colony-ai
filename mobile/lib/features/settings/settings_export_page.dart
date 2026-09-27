@@ -22,7 +22,7 @@ class SettingsExportPage extends HookWidget {
     final selection = useState(_exportOptions.first);
     final colors = context.colors;
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: context.mobileTokens.paper,
       appBar: const MobileFlowAppBar(title: 'Export data'),
       body: Column(
         children: [
@@ -49,7 +49,7 @@ class SettingsExportPage extends HookWidget {
                     ),
                   ),
                   style: context.mobileTypography.conversation.copyWith(
-                    color: colors.onSurface,
+                    color: context.mobileTokens.ink,
                   ),
                   items: _exportOptions
                       .map(
@@ -69,7 +69,7 @@ class SettingsExportPage extends HookWidget {
                   style: context.mobileTypography.conversation.copyWith(
                     fontSize: 13,
                     height: 1.6,
-                    color: colors.onSurfaceVariant,
+                    color: context.mobileTokens.muted,
                   ),
                 ),
                 const SizedBox(height: Grid.xxs),
@@ -108,7 +108,9 @@ class SettingsExportPage extends HookWidget {
                 Grid.xxs,
               ),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: context.mobileTokens.line),
+                ),
               ),
               child: SizedBox(
                 width: double.infinity,
