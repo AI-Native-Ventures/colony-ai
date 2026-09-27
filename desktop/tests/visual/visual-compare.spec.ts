@@ -449,6 +449,7 @@ test.describe("visual comparison captures", () => {
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
           );
+          await expect(channelTabs).toHaveCSS("height", "45px");
           const huddleButton = appPage.getByTestId(
             "channel-start-huddle-trigger",
           );

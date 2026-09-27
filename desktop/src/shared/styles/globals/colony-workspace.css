@@ -259,7 +259,7 @@
   display: flex;
   flex: none;
   gap: 1.625rem;
-  height: 41px;
+  height: 45px;
   padding-inline: 0;
   position: relative;
   z-index: 1000 !important;
@@ -272,7 +272,7 @@
   align-self: stretch;
   color: hsl(var(--muted-foreground));
   display: flex;
-  height: 40px;
+  height: 45px;
   font-size: var(--text-sm);
   line-height: 1.25rem;
   position: relative;

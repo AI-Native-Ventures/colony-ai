@@ -460,14 +460,14 @@
 
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"] {
-    padding-top: 1.625rem !important;
+    padding-top: 1.375rem !important;
   }
 
   :root:has([data-testid="channel-view-tabs"]):has(
       [data-testid="message-thread-panel"]
     )
     [data-testid="message-timeline"] {
-    padding-top: 1.75rem !important;
+    padding-top: 1.5rem !important;
   }
 
   :root:has([data-testid="channel-view-tabs"])
