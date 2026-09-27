@@ -15,8 +15,6 @@ import 'package:buzz/features/channels/channel_sort/channel_sort_provider.dart';
 import 'package:buzz/features/channels/channel_sort/channel_sort_storage.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_provider.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_storage.dart';
-import 'package:buzz/features/channels/channel_stars/channel_stars_provider.dart';
-import 'package:buzz/features/channels/channel_stars/channel_stars_storage.dart';
 import 'package:buzz/features/channels/channels_page.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
@@ -3025,23 +3023,6 @@ class _FakeProfileNotifier extends ProfileNotifier {
   @override
   Future<UserProfile?> build() async =>
       UserProfile(pubkey: pubkey, displayName: displayName);
-}
-
-class _FixtureChannelStarsNotifier extends ChannelStarsNotifier {
-  _FixtureChannelStarsNotifier(this.starredChannelIds);
-
-  final Set<String> starredChannelIds;
-
-  @override
-  ChannelStarsState build() => ChannelStarsState(
-    isReady: true,
-    store: ChannelStarStore(
-      channels: {
-        for (final channelId in starredChannelIds)
-          channelId: const ChannelStarEntry(starred: true, updatedAt: 1),
-      },
-    ),
-  );
 }
 
 class _FixtureChannelSortNotifier extends ChannelSortNotifier {
