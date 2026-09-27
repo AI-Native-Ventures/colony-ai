@@ -20,6 +20,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { useCommittedEmptyTimeline } from "./useCommittedEmptyTimeline";
 import { UnreadPill, unreadCountLabel } from "@/shared/ui/UnreadPill";
 import { ChannelIntroBlock, type ChannelIntro } from "./ChannelIntroBlock";
+import { DayDivider } from "./DayDivider";
 import { MessageTimelineErrorCard } from "./MessageTimelineErrorCard";
 import { TimelineSkeleton, useTimelineSkeletonRows } from "./TimelineSkeleton";
 import { TimelineMessageList } from "./TimelineMessageList";
@@ -39,6 +40,7 @@ export type MessageTimelineHandle = {
 };
 
 type MessageTimelineProps = {
+  activeThreadRootId?: string | null;
   channelId?: string | null;
   channelIntro?: ChannelIntro | null;
   channelName?: string;
@@ -79,7 +81,7 @@ type MessageTimelineProps = {
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
-  /** Adjust thread summaries for compact workspace timeline avatars. */
+  /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
   /** Hide agent access-policy badges in the purpose-built Huddle chat. */
   hideAgentAccessBadges?: boolean;
@@ -163,6 +165,7 @@ const MessageTimelineBase = React.forwardRef<
   MessageTimelineProps
 >(function MessageTimeline(
   {
+    activeThreadRootId = null,
     channelId,
     channelIntro = null,
     directMessageIntro = null,
@@ -181,7 +184,7 @@ const MessageTimelineBase = React.forwardRef<
     hasComposerOverlay = true,
     hideDayDividers = false,
     alwaysShowMessageIdentity = false,
-    compactThreadSummaryAvatars = false,
+    compactThreadSummaryAvatars = true,
     hideAgentAccessBadges = false,
     pinnedIntro,
     hasOlderMessages = true,
@@ -464,6 +467,15 @@ const MessageTimelineBase = React.forwardRef<
   const showChannelIntroOnly = activeChannelIntro !== null && !showMessageList;
   const showPinnedIntroOnly = activePinnedIntro !== null && !showMessageList;
   const omitHistoryLeadIn = showChannelIntroOnly || showPinnedIntroOnly;
+  const referenceWorkspaceWindowLabel =
+    window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__;
+  const referenceWindowDayLabel =
+    hasOlderMessages &&
+    !historyExhausted &&
+    !hideDayDividers &&
+    referenceWorkspaceWindowLabel?.channelId === channelId
+      ? (referenceWorkspaceWindowLabel?.label ?? null)
+      : null;
 
   const prepareForOwnMessage = React.useCallback(() => {
     // The user's own send is the deliberate Zulip exception: release buffered
@@ -645,8 +657,21 @@ const MessageTimelineBase = React.forwardRef<
             .
           </p>
         </div>
+      ) : referenceWindowDayLabel ? (
+        <div
+          className="relative flex flex-col py-3 before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
+          data-day-label={referenceWindowDayLabel}
+          data-testid="message-timeline-day-group"
+        >
+          <DayDivider label={referenceWindowDayLabel} sticky={false} />
+        </div>
       ) : null,
-    [activeChannelIntro, activeDirectMessageIntro, activePinnedIntro],
+    [
+      activeChannelIntro,
+      activeDirectMessageIntro,
+      activePinnedIntro,
+      referenceWindowDayLabel,
+    ],
   );
 
   const handleVirtualizerRangeChanged = React.useCallback(() => {
@@ -656,6 +681,7 @@ const MessageTimelineBase = React.forwardRef<
   const timelineList = showMessageList ? (
     <TimelineMessageList
       key={scrollContainerDomKey}
+      activeThreadRootId={activeThreadRootId}
       channelId={channelId}
       channelName={channelName}
       channelType={channelType}
@@ -687,7 +713,9 @@ const MessageTimelineBase = React.forwardRef<
       onOpenThread={onOpenThread}
       isSendingVideoReviewComment={isSendingVideoReviewComment}
       onSendVideoReviewComment={onSendVideoReviewComment}
-      onStartReached={loadOlderViaVirtualizer}
+      onStartReached={
+        referenceWindowDayLabel ? undefined : loadOlderViaVirtualizer
+      }
       onToggleReaction={onToggleReaction}
       onVirtualizerApiChange={setTimelineVirtualizerApi}
       onVirtualizerRangeChanged={handleVirtualizerRangeChanged}

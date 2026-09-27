@@ -222,7 +222,7 @@ test("recent: newest last message first", () => {
   );
 });
 
-test("recent: channels without activity sink to bottom alphabetically", () => {
+test("recent: channels without activity sink to bottom in authored order", () => {
   const sorted = sortChannelsForSidebar(
     [
       makeChannel("quiet-z", "zzz"),
@@ -233,11 +233,11 @@ test("recent: channels without activity sink to bottom alphabetically", () => {
   );
   assert.deepEqual(
     sorted.map((c) => c.id),
-    ["active", "quiet-a", "quiet-z"],
+    ["active", "quiet-z", "quiet-a"],
   );
 });
 
-test("recent: equal timestamps fall back to name then id", () => {
+test("recent: equal timestamps preserve authored order", () => {
   const ts = "2026-06-01T00:00:00Z";
   const sorted = sortChannelsForSidebar(
     [
@@ -249,7 +249,7 @@ test("recent: equal timestamps fall back to name then id", () => {
   );
   assert.deepEqual(
     sorted.map((c) => c.id),
-    ["c", "a", "b"],
+    ["b", "a", "c"],
   );
 });
 

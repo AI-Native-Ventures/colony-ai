@@ -202,7 +202,7 @@ export function AppSidebarPrimaryMenu({
         <SidebarMenu className="sidebar-primary-menu pb-2">
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               isActive={selectedView === "today" && !suppressTodaySelection}
               onClick={onSelectToday}
               tooltip="Today"
@@ -214,7 +214,7 @@ export function AppSidebarPrimaryMenu({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               isActive={selectedView === "home"}
               onClick={onSelectHome}
               tooltip="Inbox"
@@ -225,7 +225,7 @@ export function AppSidebarPrimaryMenu({
             </SidebarMenuButton>
             {homeBadgeCount > 0 ? (
               <SidebarMenuBadge
-                className="right-2 rounded-full bg-primary/15 px-1.5 text-2xs text-primary peer-data-[active=true]/menu-button:bg-sidebar-active-foreground/20 peer-data-[active=true]/menu-button:text-sidebar-active-foreground"
+                className="right-2 h-auto min-w-0 rounded-none bg-transparent px-0 py-0 text-2xs font-normal text-sidebar-foreground"
                 data-testid="sidebar-home-count"
               >
                 {Math.min(homeBadgeCount, 99)}
@@ -235,6 +235,7 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="workflows">
             <SidebarMenuItem>
               <SidebarMenuButton
+                className="text-xs"
                 data-testid="open-workflows-view"
                 isActive={selectedView === "workflows"}
                 onClick={onSelectWorkflows}
@@ -248,7 +249,7 @@ export function AppSidebarPrimaryMenu({
           </FeatureGate>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="data-[active=true]:font-normal"
+              className="text-xs data-[active=true]:font-normal"
               data-testid="open-agents-view"
               isActive={selectedView === "agents"}
               onClick={onSelectAgents}
@@ -262,6 +263,7 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="projects">
             <SidebarMenuItem>
               <SidebarMenuButton
+                className="text-xs"
                 data-testid="open-factory-view"
                 isActive={selectedView === "factory"}
                 onClick={onSelectFactory}

@@ -91,7 +91,10 @@ function UnreadDotBadge({
 }) {
   return (
     <span
-      className={cn("h-2 w-2 shrink-0 rounded-full bg-primary", className)}
+      className={cn(
+        "h-[5px] w-[5px] shrink-0 rounded-full bg-[#ad7fa7]",
+        className,
+      )}
       data-testid={`channel-unread-dot-${channelName}`}
     >
       <span className="sr-only">unread</span>
@@ -286,7 +289,7 @@ export function ChannelMenuButton({
   const button = (
     <SidebarMenuButton
       className={cn(
-        "data-[active=true]:font-normal",
+        "text-xs data-[active=true]:font-normal",
         isActive
           ? "group-hover/menu-item:bg-sidebar-active group-hover/menu-item:text-sidebar-active-foreground"
           : "group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-foreground",

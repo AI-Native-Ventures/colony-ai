@@ -10,6 +10,7 @@ import {
   reconcileRefreshedCachedChannel,
   refreshChannelsQuery,
   requireFullChannelList,
+  sortChannels,
   upsertCachedChannel,
   upsertCachedChannelMember,
 } from "./hooks.ts";
@@ -39,6 +40,22 @@ function makeChannel(
     ttlDeadline: null,
   };
 }
+
+test("sortChannels preserves authored order within channel types", () => {
+  const channels = [
+    makeChannel("forum-z", "Zeta forum", "forum"),
+    makeChannel("olive", "The Olive House"),
+    makeChannel("cedar", "Cedar Café"),
+    makeChannel("dm", "Lerato and Aya", "dm"),
+    makeChannel("northline", "Northline Interiors"),
+    makeChannel("forum-a", "Alpha forum", "forum"),
+  ];
+
+  assert.deepEqual(
+    sortChannels(channels).map((channel) => channel.id),
+    ["olive", "cedar", "northline", "forum-z", "forum-a", "dm"],
+  );
+});
 
 function deferred() {
   let resolve;

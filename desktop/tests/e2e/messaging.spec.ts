@@ -389,7 +389,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installMockBridge(page, mock);
 });
 
-test("agent avatars use the one normalized SVG clip path", async ({ page }) => {
+test("message agent avatar uses square initials and preserves its profile shortcut", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
 
@@ -397,10 +399,8 @@ test("agent avatars use the one normalized SVG clip path", async ({ page }) => {
     .getByTestId("message-row")
     .filter({ hasText: "Hey team — checking in." });
   const avatar = agentMessage.getByTestId("message-avatar");
-  await expect(avatar).toHaveClass(/rounded-squircle/);
-  await expect(avatar).toHaveCSS("border-radius", "0px");
-  await expect(avatar).toHaveCSS("clip-path", /rounded-squircle-clip/);
-  await expect(page.locator("#rounded-squircle-clip")).toHaveCount(1);
+  await expect(avatar).toHaveClass(/rounded-md/);
+  await expect(avatar).not.toHaveClass(/rounded-squircle/);
 
   const avatarButton = avatar.locator("xpath=ancestor::button[1]");
   await page.keyboard.press("Tab");
@@ -427,6 +427,7 @@ test("agent avatars use the one normalized SVG clip path", async ({ page }) => {
     .locator(".rounded-squircle")
     .first();
   await expect(profileAvatar).toBeVisible();
+  await expect(page.locator("#rounded-squircle-clip")).toHaveCount(1);
   await expect(profileAvatar).toHaveCSS("border-radius", "0px");
   await expect(profileAvatar).toHaveCSS("clip-path", /rounded-squircle-clip/);
   await expect

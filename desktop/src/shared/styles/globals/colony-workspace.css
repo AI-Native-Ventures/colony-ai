@@ -158,6 +158,10 @@
   text-rendering: auto;
 }
 
+:root:has([data-colony-workspace-route="true"]) [data-sidebar="content"] {
+  scrollbar-gutter: auto;
+}
+
 :root.dark:has([data-colony-workspace-route="true"]) {
   --colony-workspace-link-color: #9dc1fb;
 }
@@ -268,7 +272,7 @@
   align-self: stretch;
   color: hsl(var(--muted-foreground));
   display: flex;
-  height: 44px;
+  height: 45px;
   font-size: var(--text-sm);
   line-height: 1.25rem;
   position: relative;
@@ -415,7 +419,12 @@
   display: none;
 }
 
-:root:has([data-colony-workspace-route="true"]) [data-testid$="-quick-create"] {
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="section-actions-channels-quick-create"],
+    [data-testid="section-actions-forums-quick-create"],
+    [data-testid="section-actions-dms-quick-create"]
+  ) {
   opacity: 1;
 }
 
@@ -439,7 +448,7 @@
 :root:has([data-colony-workspace-route="true"])
   .colony-channel-view-tabs
   > [aria-current="page"]::after {
-  background: #593ba0;
+  background: var(--colony-workspace-link-color);
   border-radius: 2px;
   bottom: -1px;
   content: "";
