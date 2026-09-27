@@ -60,6 +60,7 @@ export function SystemRow({
 }
 
 type MessageRowItemProps = {
+  activeThreadRootId?: string | null;
   channelId?: string | null;
   currentPubkey?: string;
   compactThreadSummaryAvatars?: boolean;
@@ -93,6 +94,7 @@ type MessageRowItemProps = {
 };
 
 export function MessageRowItem({
+  activeThreadRootId = null,
   channelId,
   currentPubkey,
   compactThreadSummaryAvatars = true,
@@ -125,6 +127,7 @@ export function MessageRowItem({
   videoReviewContext,
 }: MessageRowItemProps) {
   const { message, summary } = entry;
+  const isActiveThreadRoot = message.id === activeThreadRootId;
   const canManage = canManageMessageForCurrentUser(
     message,
     currentPubkey,
@@ -142,6 +145,7 @@ export function MessageRowItem({
           isHighlighted &&
             "-mx-4 px-4 before:absolute before:-inset-y-1.5 before:inset-x-0 before:animate-[route-target-highlight-fade_2s_ease-out_forwards] before:bg-primary/10 before:content-[''] motion-reduce:before:animate-none sm:-mx-6 sm:px-6",
         )}
+        data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
       >
         <MessageRow
           channelId={channelId}
@@ -202,6 +206,7 @@ export function MessageRowItem({
         "flex flex-col gap-1",
         isFollowedByContinuation ? "pb-0" : "pb-2.5",
       )}
+      data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
     >
       <MessageRow
         channelId={channelId}

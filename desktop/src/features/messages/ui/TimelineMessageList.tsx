@@ -45,6 +45,7 @@ export type TimelineVirtualizerApi = {
 };
 
 type TimelineMessageListProps = {
+  activeThreadRootId?: string | null;
   channelId?: string | null;
   channelName?: string;
   channelType?: ChannelType | null;
@@ -127,6 +128,7 @@ type TimelineMessageListProps = {
 };
 
 export const TimelineMessageList = React.memo(function TimelineMessageList({
+  activeThreadRootId = null,
   channelId,
   channelName,
   channelType,
@@ -249,6 +251,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
         case "message":
           return (
             <MessageRowItem
+              activeThreadRootId={activeThreadRootId}
               channelId={channelId}
               currentPubkey={currentPubkey}
               compactThreadSummaryAvatars={compactThreadSummaryAvatars}
@@ -293,6 +296,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
     },
     [
       channelId,
+      activeThreadRootId,
       alwaysShowMessageIdentity,
       compactThreadSummaryAvatars,
       currentPubkey,

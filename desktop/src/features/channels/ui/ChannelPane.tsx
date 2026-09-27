@@ -659,6 +659,9 @@ export const ChannelPane = React.memo(function ChannelPane({
             <MessageTimeline
               ref={messageTimelineRef}
               channelId={activeChannel?.id}
+              activeThreadRootId={
+                workspaceChrome ? (threadHeadMessage?.id ?? null) : null
+              }
               channelIntro={channelIntro}
               directMessageIntro={directMessageIntro}
               scrollContainerRef={timelineScrollRef}

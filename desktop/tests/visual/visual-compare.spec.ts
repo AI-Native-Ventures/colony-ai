@@ -486,6 +486,18 @@ test.describe("visual comparison captures", () => {
           if (entry.appRoute.includes("?thread=")) {
             const threadPanel = appPage.getByTestId("message-thread-panel");
             await expect(threadPanel).toBeVisible();
+            const activeThreadRoot = appPage.locator(
+              '[data-active-thread-root="true"] [data-testid="message-row"]',
+            );
+            await expect(activeThreadRoot).toHaveAttribute(
+              "data-message-id",
+              "reference-sales-lerato-0950",
+            );
+            expect(
+              await activeThreadRoot.evaluate(
+                (element) => getComputedStyle(element).boxShadow,
+              ),
+            ).not.toBe("none");
             await expect(
               threadPanel.getByTestId("message-thread-replies-empty-divider"),
             ).toBeVisible();

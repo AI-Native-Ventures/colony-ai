@@ -40,6 +40,7 @@ export type MessageTimelineHandle = {
 };
 
 type MessageTimelineProps = {
+  activeThreadRootId?: string | null;
   channelId?: string | null;
   channelIntro?: ChannelIntro | null;
   channelName?: string;
@@ -164,6 +165,7 @@ const MessageTimelineBase = React.forwardRef<
   MessageTimelineProps
 >(function MessageTimeline(
   {
+    activeThreadRootId = null,
     channelId,
     channelIntro = null,
     directMessageIntro = null,
@@ -679,6 +681,7 @@ const MessageTimelineBase = React.forwardRef<
   const timelineList = showMessageList ? (
     <TimelineMessageList
       key={scrollContainerDomKey}
+      activeThreadRootId={activeThreadRootId}
       channelId={channelId}
       channelName={channelName}
       channelType={channelType}
