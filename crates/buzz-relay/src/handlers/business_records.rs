@@ -12,10 +12,11 @@ use uuid::Uuid;
 
 use buzz_core::business_records::{
     approval_matches_current_version, business_d_tag, client_d_tag, parse_business_command,
-    proposal_version_d_tag, validate_business_command_scope, validate_hex_reference,
-    BusinessCommand, ClientAction, ClientHead, DeliverablePointer, DeliverableVersion,
-    DraftInvoiceHead, PartyAction, PartyHead, ProposalAcceptance, ProposalHead, ProposalVersion,
-    RecordAction, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
+    proposal_version_d_tag, prospect_d_tag, validate_business_command_scope,
+    validate_hex_reference, BusinessCommand, ClientAction, ClientHead, DeliverablePointer,
+    DeliverableVersion, DraftInvoiceHead, PartyAction, PartyHead, ProposalAcceptance, ProposalHead,
+    ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
+    ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::*;
 use buzz_core::tenant::{CommunityId, TenantContext};
@@ -136,6 +137,8 @@ pub async fn handle(
     if matches!(
         &command,
         BusinessCommand::PartyAction(_)
+            | BusinessCommand::ServiceAction(_)
+            | BusinessCommand::ProspectAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::ProposalAcceptance(_)
     ) {
@@ -146,12 +149,7 @@ pub async fn handle(
                     "community business commands require the registered business channel",
                 ));
             }
-            None if matches!(
-                &command,
-                BusinessCommand::PartyAction(action)
-                    if action.action == RecordAction::Create
-            ) =>
-            {
+            None if initializes_business_channel(&command) => {
                 let actor_hex = auth.pubkey().to_hex();
                 let community_member = state
                     .db
@@ -179,15 +177,20 @@ pub async fn handle(
     if matches!(
         &command,
         BusinessCommand::PartyAction(_)
+            | BusinessCommand::ServiceAction(_)
+            | BusinessCommand::ProspectAction(_)
             | BusinessCommand::ClientAction(_)
             | BusinessCommand::WorkItemAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::DeliverableVersion(_)
     ) {
         match &command {
-            BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
+            BusinessCommand::PartyAction(_)
+            | BusinessCommand::ProspectAction(_)
+            | BusinessCommand::ProposalVersion(_) => {
                 require_member_or_admin(&role)?;
             }
+            BusinessCommand::ServiceAction(_) => require_admin(&role)?,
             BusinessCommand::ClientAction(_) => require_admin(&role)?,
             BusinessCommand::WorkItemAction(action) => {
                 validate_work_item_action(&role, action)?;
@@ -248,6 +251,287 @@ pub async fn handle(
             heads.push(HeadWrite {
                 event: relay_head_event(
                     KIND_PARTY_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    current.as_ref(),
+                    state,
+                )?,
+                channel_id,
+                d_tag,
+                expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
+            });
+        }
+        BusinessCommand::ServiceAction(action) => {
+            require_admin(&role)?;
+            validate_service_action(&action)?;
+            let d_tag = business_d_tag(*tenant.community().as_uuid(), "service", action.service_id);
+            let current =
+                current_head::<ServiceHead>(state, tenant.community(), KIND_SERVICE_HEAD, &d_tag)
+                    .await?;
+            if current
+                .as_ref()
+                .is_some_and(|stored| stored.channel_id != Some(channel_id))
+            {
+                return Err(conflict("service belongs to another business channel"));
+            }
+            check_expected(
+                action.action,
+                action.expected_head_event_id.as_deref(),
+                current.as_ref(),
+            )?;
+            let previous = current
+                .as_ref()
+                .map(|stored| parse_content::<ServiceHead>(&stored.event))
+                .transpose()?;
+            let status = resolve_lifecycle_status(
+                action.action,
+                previous.as_ref().map(|head| head.status.as_str()),
+                None,
+                "active",
+            )?;
+            let head = ServiceHead {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                service_id: action.service_id,
+                status,
+                service: action.service,
+                source_action_event_id: event.id.to_hex(),
+            };
+            heads.push(HeadWrite {
+                event: relay_head_event(
+                    KIND_SERVICE_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    current.as_ref(),
+                    state,
+                )?,
+                channel_id,
+                d_tag,
+                expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
+            });
+        }
+        BusinessCommand::ProspectAction(action) => {
+            require_member_or_admin(&role)?;
+            validate_prospect_action(&action)?;
+            let d_tag = prospect_d_tag(*tenant.community().as_uuid(), action.prospect_id);
+            let current =
+                current_head::<ProspectHead>(state, tenant.community(), KIND_PROSPECT_HEAD, &d_tag)
+                    .await?;
+            if current
+                .as_ref()
+                .is_some_and(|stored| stored.channel_id != Some(channel_id))
+            {
+                return Err(conflict("prospect belongs to another business channel"));
+            }
+            check_expected(
+                action.action,
+                action.expected_head_event_id.as_deref(),
+                current.as_ref(),
+            )?;
+            let previous = current
+                .as_ref()
+                .map(|stored| parse_content::<ProspectHead>(&stored.event))
+                .transpose()?;
+            if previous
+                .as_ref()
+                .is_some_and(|head| head.prospect.party.party_id != action.prospect.party.party_id)
+            {
+                return Err(conflict("prospect party identity cannot be changed"));
+            }
+            if action.prospect.stage == ProspectStage::Won
+                && previous
+                    .as_ref()
+                    .is_none_or(|head| head.prospect.stage != ProspectStage::Won)
+            {
+                return Err(forbidden(
+                    "only an accepted proposal can move a prospect to won",
+                ));
+            }
+
+            let business_channel_id = community_business_channel.unwrap_or(channel_id);
+            if let Some(activity) = action.activity.as_ref() {
+                if let (Some(proposal_id), Some(version_event_id)) = (
+                    activity.proposal_id,
+                    activity.proposal_version_event_id.as_deref(),
+                ) {
+                    let proposal_d =
+                        business_d_tag(*tenant.community().as_uuid(), "proposal", proposal_id);
+                    let proposal_stored = current_head::<ProposalHead>(
+                        state,
+                        tenant.community(),
+                        KIND_PROPOSAL_HEAD,
+                        &proposal_d,
+                    )
+                    .await?
+                    .ok_or_else(|| conflict("proposal is unavailable for this activity"))?;
+                    let proposal: ProposalHead = parse_content(&proposal_stored.event)?;
+                    if proposal_stored.channel_id != Some(business_channel_id)
+                        || proposal.proposal_id != proposal_id
+                        || proposal.current_version_event_id != version_event_id
+                    {
+                        return Err(conflict(
+                            "proposal changed or belongs to another business channel",
+                        ));
+                    }
+                    let version = load_version_event(
+                        state,
+                        tenant.community(),
+                        version_event_id,
+                        KIND_PROPOSAL_VERSION,
+                    )
+                    .await?;
+                    let version_content: ProposalVersion = parse_content(&version.event)?;
+                    let expected_version_d = proposal_version_d_tag(
+                        *tenant.community().as_uuid(),
+                        proposal_id,
+                        proposal.revision,
+                    );
+                    let (version_channel, version_d) = command_coordinates(&version.event)?;
+                    if version.channel_id != Some(business_channel_id)
+                        || version_channel != business_channel_id
+                        || version_d != expected_version_d
+                        || version_content.proposal_id != proposal_id
+                        || version_content.prospect_party_id != action.prospect.party.party_id
+                        || version_content.revision != proposal.revision
+                    {
+                        return Err(conflict(
+                            "proposal version does not belong to this prospect",
+                        ));
+                    }
+                    expected_heads.push(ExpectedHead {
+                        kind: KIND_PROPOSAL_HEAD,
+                        d_tag: proposal_d,
+                        event_id: proposal_stored.event.id.to_bytes().to_vec(),
+                    });
+                }
+            }
+            let party_d = business_d_tag(
+                *tenant.community().as_uuid(),
+                "party",
+                action.prospect.party.party_id,
+            );
+            let party_current =
+                current_head::<PartyHead>(state, tenant.community(), KIND_PARTY_HEAD, &party_d)
+                    .await?;
+            let party_current = match (action.action, party_current) {
+                (RecordAction::Create, None) => None,
+                (RecordAction::Create, Some(existing)) => {
+                    if existing.channel_id != Some(business_channel_id) {
+                        return Err(conflict(
+                            "prospect party belongs to another business channel",
+                        ));
+                    }
+                    let existing_party: PartyHead = parse_content(&existing.event)?;
+                    if existing_party.status != "active"
+                        || existing_party.party != action.prospect.party
+                    {
+                        return Err(conflict("prospect party identity already exists"));
+                    }
+                    Some(existing)
+                }
+                (_, Some(existing)) if existing.channel_id == Some(business_channel_id) => {
+                    let existing_party: PartyHead = parse_content(&existing.event)?;
+                    if existing_party.status != "active" {
+                        return Err(conflict("prospect party identity is not active"));
+                    }
+                    Some(existing)
+                }
+                (_, _) => return Err(conflict("prospect party identity is not available")),
+            };
+            if let Some(party_current) = party_current.as_ref() {
+                let existing_party: PartyHead = parse_content(&party_current.event)?;
+                if existing_party.party != action.prospect.party {
+                    expected_heads.push(ExpectedHead {
+                        kind: KIND_PARTY_HEAD,
+                        d_tag: party_d.clone(),
+                        event_id: party_current.event.id.to_bytes().to_vec(),
+                    });
+                    let party_head = PartyHead {
+                        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                        party_id: action.prospect.party.party_id,
+                        status: "active".into(),
+                        party: action.prospect.party.clone(),
+                        source_action_event_id: event.id.to_hex(),
+                    };
+                    heads.push(HeadWrite {
+                        event: relay_head_event(
+                            KIND_PARTY_HEAD,
+                            business_channel_id,
+                            &party_d,
+                            &party_head,
+                            Some(party_current),
+                            state,
+                        )?,
+                        channel_id: business_channel_id,
+                        d_tag: party_d.clone(),
+                        expected_event_id: Some(party_current.event.id.to_bytes().to_vec()),
+                    });
+                }
+            } else {
+                let party_head = PartyHead {
+                    schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                    party_id: action.prospect.party.party_id,
+                    status: "active".into(),
+                    party: action.prospect.party.clone(),
+                    source_action_event_id: event.id.to_hex(),
+                };
+                heads.push(HeadWrite {
+                    event: relay_head_event(
+                        KIND_PARTY_HEAD,
+                        business_channel_id,
+                        &party_d,
+                        &party_head,
+                        None,
+                        state,
+                    )?,
+                    channel_id: business_channel_id,
+                    d_tag: party_d,
+                    expected_event_id: None,
+                });
+            }
+
+            let status = resolve_lifecycle_status(
+                action.action,
+                previous.as_ref().map(|head| head.status.as_str()),
+                None,
+                "active",
+            )?;
+            let mut activities = previous
+                .as_ref()
+                .map(|head| head.activities.clone())
+                .unwrap_or_default();
+            if let Some(activity) = action.activity {
+                if activities.len() >= 500 {
+                    return Err(invalid("prospect activity history is full"));
+                }
+                if activities
+                    .iter()
+                    .any(|existing| existing.activity_id == activity.activity_id)
+                {
+                    return Err(conflict("prospect activity id already exists"));
+                }
+                activities.push(ProspectActivity {
+                    activity_id: activity.activity_id,
+                    activity_kind: activity.activity_kind,
+                    content: activity.content,
+                    proposal_id: activity.proposal_id,
+                    proposal_version_event_id: activity.proposal_version_event_id,
+                    author_pubkey: auth.pubkey().to_hex(),
+                    created_at: event.created_at.as_secs() as i64,
+                });
+            }
+            let head = ProspectHead {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                prospect_id: action.prospect_id,
+                status,
+                prospect: action.prospect,
+                activities,
+                source_action_event_id: event.id.to_hex(),
+            };
+            heads.push(HeadWrite {
+                event: relay_head_event(
+                    KIND_PROSPECT_HEAD,
                     channel_id,
                     &d_tag,
                     &head,
@@ -560,6 +844,9 @@ pub async fn handle(
             appended.extend(result.appended);
             expected_heads.push(result.current_proposal_head);
             expected_heads.push(result.current_party_head);
+            if let Some(prospect_head) = result.expected_prospect_head {
+                expected_heads.push(prospect_head);
+            }
             conversion_claim = Some(result.claim);
             client_channel_to_create = result.client_channel_to_create;
             client_channel_to_sync = Some(result.client_channel_id);
@@ -737,6 +1024,19 @@ async fn replay_existing_command(
     }))
 }
 
+fn initializes_business_channel(command: &BusinessCommand) -> bool {
+    matches!(
+        command,
+        BusinessCommand::PartyAction(action) if action.action == RecordAction::Create
+    ) || matches!(
+        command,
+        BusinessCommand::ServiceAction(action) if action.action == RecordAction::Create
+    ) || matches!(
+        command,
+        BusinessCommand::ProspectAction(action) if action.action == RecordAction::Create
+    )
+}
+
 fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<(), IngestError> {
     if auth
         .channel_ids()
@@ -906,6 +1206,7 @@ struct AcceptancePlan {
     appended: Vec<(Event, Uuid)>,
     current_proposal_head: ExpectedHead,
     current_party_head: ExpectedHead,
+    expected_prospect_head: Option<ExpectedHead>,
     claim: ConversionClaim,
     client_channel_id: Uuid,
     client_channel_to_create: Option<ClientChannelProvision>,
@@ -992,6 +1293,7 @@ async fn prepare_proposal_acceptance(
             "only the named proposal acceptor can sign acceptance",
         ));
     }
+    validate_proposal_acceptance_evidence(&acceptance)?;
     let proposal_head_d = business_d_tag(
         *tenant.community().as_uuid(),
         "proposal",
@@ -1055,6 +1357,49 @@ async fn prepare_proposal_acceptance(
         kind: KIND_PARTY_HEAD,
         d_tag: party_d,
         event_id: party_stored.event.id.to_bytes().to_vec(),
+    };
+
+    let prospect_d = prospect_d_tag(*tenant.community().as_uuid(), version.prospect_party_id);
+    let prospect_stored =
+        current_head::<ProspectHead>(state, tenant.community(), KIND_PROSPECT_HEAD, &prospect_d)
+            .await?;
+    let (prospect_head_write, expected_prospect_head) = match prospect_stored {
+        Some(stored) if stored.channel_id == Some(business_channel_id) => {
+            let mut prospect_head: ProspectHead = parse_content(&stored.event)?;
+            if prospect_head.status != "active"
+                || prospect_head.prospect.party.party_id != version.prospect_party_id
+            {
+                return Err(conflict("proposal prospect is not available"));
+            }
+            let expected = ExpectedHead {
+                kind: KIND_PROSPECT_HEAD,
+                d_tag: prospect_d.clone(),
+                event_id: stored.event.id.to_bytes().to_vec(),
+            };
+            prospect_head.prospect.stage = ProspectStage::Won;
+            prospect_head.prospect.lost_reason = None;
+            prospect_head.source_action_event_id = acceptance_event.id.to_hex();
+            let write = HeadWrite {
+                event: relay_head_event(
+                    KIND_PROSPECT_HEAD,
+                    business_channel_id,
+                    &prospect_d,
+                    &prospect_head,
+                    Some(&stored),
+                    state,
+                )?,
+                channel_id: business_channel_id,
+                d_tag: prospect_d,
+                expected_event_id: Some(stored.event.id.to_bytes().to_vec()),
+            };
+            (Some(write), Some(expected))
+        }
+        Some(_) => {
+            return Err(conflict(
+                "proposal prospect belongs to another business channel",
+            ));
+        }
+        None => (None, None),
     };
 
     #[cfg(test)]
@@ -1179,48 +1524,53 @@ async fn prepare_proposal_acceptance(
         d_tag: proposal_head_d,
         event_id: proposal_head.event.id.to_bytes().to_vec(),
     };
+    let mut heads = vec![
+        HeadWrite {
+            event: relay_event(
+                KIND_CLIENT_HEAD,
+                acceptance.client_id,
+                &client_d,
+                &client_head,
+                state,
+            )?,
+            channel_id: acceptance.client_id,
+            d_tag: client_d,
+            expected_event_id: None,
+        },
+        HeadWrite {
+            event: relay_event(
+                KIND_WORK_ITEM_HEAD,
+                acceptance.client_id,
+                &work_d,
+                &work_item,
+                state,
+            )?,
+            channel_id: acceptance.client_id,
+            d_tag: work_d,
+            expected_event_id: None,
+        },
+        HeadWrite {
+            event: relay_event(
+                KIND_INVOICE_HEAD,
+                acceptance.client_id,
+                &invoice_d,
+                &invoice,
+                state,
+            )?,
+            channel_id: acceptance.client_id,
+            d_tag: invoice_d,
+            expected_event_id: None,
+        },
+    ];
+    if let Some(prospect_head) = prospect_head_write {
+        heads.push(prospect_head);
+    }
     Ok(AcceptancePlan {
-        heads: vec![
-            HeadWrite {
-                event: relay_event(
-                    KIND_CLIENT_HEAD,
-                    acceptance.client_id,
-                    &client_d,
-                    &client_head,
-                    state,
-                )?,
-                channel_id: acceptance.client_id,
-                d_tag: client_d,
-                expected_event_id: None,
-            },
-            HeadWrite {
-                event: relay_event(
-                    KIND_WORK_ITEM_HEAD,
-                    acceptance.client_id,
-                    &work_d,
-                    &work_item,
-                    state,
-                )?,
-                channel_id: acceptance.client_id,
-                d_tag: work_d,
-                expected_event_id: None,
-            },
-            HeadWrite {
-                event: relay_event(
-                    KIND_INVOICE_HEAD,
-                    acceptance.client_id,
-                    &invoice_d,
-                    &invoice,
-                    state,
-                )?,
-                channel_id: acceptance.client_id,
-                d_tag: invoice_d,
-                expected_event_id: None,
-            },
-        ],
+        heads,
         appended: vec![(receipt, business_channel_id)],
         current_proposal_head: expected_proposal_head,
         current_party_head,
+        expected_prospect_head,
         claim,
         client_channel_id: acceptance.client_id,
         client_channel_to_create,
@@ -1240,6 +1590,24 @@ fn validate_acceptance_ids(acceptance: &ProposalAcceptance) -> Result<(), Ingest
         .map_err(|error| invalid(error.to_string()))?;
     validate_hex_reference(&acceptance.proposal_version_digest)
         .map_err(|error| invalid(error.to_string()))?;
+    Ok(())
+}
+
+fn validate_proposal_acceptance_evidence(
+    acceptance: &ProposalAcceptance,
+) -> Result<(), IngestError> {
+    let Some(evidence) = acceptance.evidence.as_ref() else {
+        return Err(invalid("proposal acceptance evidence is required"));
+    };
+    if evidence.accepted_by_name.trim().is_empty()
+        || evidence.accepted_by_name.len() > 240
+        || evidence.accepted_at <= 0
+        || evidence.evidence_reference.trim().is_empty()
+        || evidence.evidence_reference.len() > 1_000
+        || !evidence.exact_terms_confirmed
+    {
+        return Err(invalid("proposal acceptance evidence is incomplete"));
+    }
     Ok(())
 }
 
@@ -1717,6 +2085,132 @@ fn validate_party(action: &PartyAction) -> Result<(), IngestError> {
     Ok(())
 }
 
+fn validate_service_action(action: &ServiceAction) -> Result<(), IngestError> {
+    let service = &action.service;
+    if action.service_id.is_nil()
+        || service.service_id != action.service_id
+        || service.name.trim().is_empty()
+        || service.name.len() > 120
+        || service.description.len() > 2_000
+        || service.currency.len() != 3
+        || !service
+            .currency
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase())
+        || service.monthly_fee_minor < 0
+        || service.posts_per_month == 0
+        || service.revision_rounds > 20
+    {
+        return Err(invalid(
+            "service definition has invalid name, fee, or scope",
+        ));
+    }
+    validate_optional_event_id(action.expected_head_event_id.as_deref())?;
+    Ok(())
+}
+
+fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> {
+    let prospect = &action.prospect;
+    if action.prospect_id.is_nil()
+        || prospect.prospect_id != action.prospect_id
+        || prospect.party.party_id != action.prospect_id
+        || !matches!(
+            prospect.party.party_type.as_str(),
+            "person" | "organization"
+        )
+        || prospect.party.display_name.trim().is_empty()
+        || prospect.party.display_name.len() > 240
+        || prospect.industry.trim().is_empty()
+        || prospect.industry.len() > 200
+        || prospect.vertical.trim().is_empty()
+        || prospect.vertical.len() > 200
+        || prospect.fit_score.is_some_and(|score| score > 100)
+        || prospect
+            .potential_monthly_value_minor
+            .is_some_and(|amount| amount < 0)
+        || prospect.evidence.len() > 100
+        || prospect.party.external_ids.len() > 32
+        || (prospect.stage == ProspectStage::Lost
+            && prospect
+                .lost_reason
+                .as_ref()
+                .is_none_or(|reason| reason.trim().is_empty() || reason.len() > 1_000))
+        || (prospect.stage != ProspectStage::Lost && prospect.lost_reason.is_some())
+    {
+        return Err(invalid("prospect identity, taxonomy, or stage is invalid"));
+    }
+    validate_optional_event_id(action.expected_head_event_id.as_deref())?;
+    for external_id in &prospect.party.external_ids {
+        if external_id.trim().is_empty() || external_id.len() > 128 {
+            return Err(invalid("prospect external identifiers are invalid"));
+        }
+    }
+    validate_optional_text(prospect.website.as_deref(), 2_048, "website")?;
+    if let Some(website) = prospect.website.as_deref() {
+        validate_https_url(website, "website")?;
+    }
+    validate_optional_text(prospect.contact_name.as_deref(), 160, "contact name")?;
+    validate_optional_text(prospect.location.as_deref(), 200, "location")?;
+    validate_optional_text(prospect.email.as_deref(), 254, "email")?;
+    if prospect
+        .email
+        .as_deref()
+        .is_some_and(|email| !email.contains('@'))
+    {
+        return Err(invalid("prospect email is invalid"));
+    }
+    validate_optional_text(prospect.phone.as_deref(), 50, "phone")?;
+    if prospect
+        .last_verified_at
+        .is_some_and(|timestamp| timestamp <= 0)
+    {
+        return Err(invalid(
+            "prospect lastVerifiedAt must be a positive timestamp",
+        ));
+    }
+    for evidence in &prospect.evidence {
+        if evidence.title.trim().is_empty()
+            || evidence.title.len() > 200
+            || evidence.excerpt.len() > 2_000
+            || evidence.observed_at <= 0
+        {
+            return Err(invalid("prospect evidence is invalid"));
+        }
+        validate_https_url(&evidence.url, "evidence URL")?;
+    }
+    if let Some(activity) = action.activity.as_ref() {
+        if activity.activity_id.is_nil()
+            || activity.content.trim().is_empty()
+            || activity.content.len() > 2_000
+            || activity.proposal_id.is_some() != activity.proposal_version_event_id.is_some()
+        {
+            return Err(invalid("prospect activity is invalid"));
+        }
+        validate_optional_event_id(activity.proposal_version_event_id.as_deref())?;
+    }
+    Ok(())
+}
+
+fn validate_optional_text(
+    value: Option<&str>,
+    max_bytes: usize,
+    field: &str,
+) -> Result<(), IngestError> {
+    if value.is_some_and(|text| text.trim().is_empty() || text.len() > max_bytes) {
+        return Err(invalid(format!("prospect {field} is invalid")));
+    }
+    Ok(())
+}
+
+fn validate_https_url(value: &str, field: &str) -> Result<(), IngestError> {
+    let parsed =
+        url::Url::parse(value).map_err(|_| invalid(format!("prospect {field} is invalid")))?;
+    if parsed.scheme() != "https" || parsed.host_str().is_none() {
+        return Err(invalid(format!("prospect {field} must use HTTPS")));
+    }
+    Ok(())
+}
+
 fn validate_client_action(channel_id: Uuid, action: &ClientAction) -> Result<(), IngestError> {
     if action.head.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
         || action.client_id.is_nil()
@@ -1994,6 +2488,41 @@ fn internal(error: impl std::fmt::Display) -> IngestError {
 mod tests {
     use super::*;
 
+    fn prospect_action() -> ProspectAction {
+        let prospect_id = Uuid::from_u128(31);
+        ProspectAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            prospect_id,
+            action: RecordAction::Create,
+            expected_head_event_id: None,
+            prospect: buzz_core::business_records::ProspectRecordInput {
+                prospect_id,
+                party: buzz_core::business_records::PartyRecord {
+                    party_id: prospect_id,
+                    party_type: "organization".into(),
+                    display_name: "Example Studio".into(),
+                    external_ids: Vec::new(),
+                },
+                industry: "Professional Services".into(),
+                vertical: "Marketing Agency".into(),
+                fit_score: Some(87),
+                potential_monthly_value_minor: Some(450_000),
+                website: Some("https://example.test".into()),
+                contact_name: Some("Rene Example".into()),
+                location: Some("Cape Town".into()),
+                email: Some("hello@example.test".into()),
+                phone: None,
+                evidence: Vec::new(),
+                last_verified_at: None,
+                qualification: buzz_core::business_records::ProspectQualification::Unreviewed,
+                saved: false,
+                stage: ProspectStage::Qualified,
+                lost_reason: None,
+            },
+            activity: None,
+        }
+    }
+
     fn event_with_tags(tags: Vec<Tag>) -> Event {
         EventBuilder::new(Kind::Custom(KIND_CLIENT_ACTION as u16), "{}")
             .tags(tags)
@@ -2083,6 +2612,106 @@ mod tests {
                 .is_err()
         );
     }
+
+    #[test]
+    fn service_validation_rejects_negative_fees_and_empty_scope() {
+        let service_id = Uuid::from_u128(41);
+        let mut action = ServiceAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            service_id,
+            action: RecordAction::Create,
+            expected_head_event_id: None,
+            service: buzz_core::business_records::ServiceRecord {
+                service_id,
+                name: "Monthly social content".into(),
+                description: "Planning and publishing".into(),
+                currency: "ZAR".into(),
+                monthly_fee_minor: 25_000,
+                posts_per_month: 12,
+                revision_rounds: 2,
+            },
+        };
+        assert!(validate_service_action(&action).is_ok());
+        action.service.monthly_fee_minor = -1;
+        assert!(validate_service_action(&action).is_err());
+        action.service.monthly_fee_minor = 25_000;
+        action.service.posts_per_month = 0;
+        assert!(validate_service_action(&action).is_err());
+    }
+
+    #[test]
+    fn prospect_validation_requires_https_evidence_and_a_lost_reason() {
+        let mut action = prospect_action();
+        assert!(validate_prospect_action(&action).is_ok());
+        action
+            .prospect
+            .evidence
+            .push(buzz_core::business_records::ProspectEvidence {
+                title: "Profile".into(),
+                url: "http://example.test/profile".into(),
+                excerpt: "Public profile".into(),
+                observed_at: 1,
+            });
+        assert!(validate_prospect_action(&action).is_err());
+        action.prospect.evidence[0].url = "https://example.test/profile".into();
+        action.prospect.stage = ProspectStage::Lost;
+        assert!(validate_prospect_action(&action).is_err());
+        action.prospect.lost_reason = Some("Timing".into());
+        assert!(validate_prospect_action(&action).is_ok());
+    }
+
+    #[test]
+    fn proposal_revision_activity_requires_a_proposal_and_version_pair() {
+        let mut action = prospect_action();
+        action.activity = Some(buzz_core::business_records::ProspectActivityInput {
+            activity_id: Uuid::from_u128(44),
+            activity_kind: buzz_core::business_records::ProspectActivityKind::Note,
+            content: "Clarify the monthly reporting scope".into(),
+            proposal_id: Some(Uuid::from_u128(45)),
+            proposal_version_event_id: None,
+        });
+        assert!(validate_prospect_action(&action).is_err());
+
+        let activity = action.activity.as_mut().expect("revision activity");
+        activity.proposal_version_event_id = Some("a".repeat(64));
+        assert!(validate_prospect_action(&action).is_ok());
+
+        action
+            .activity
+            .as_mut()
+            .expect("revision activity")
+            .proposal_version_event_id = Some("not-an-event-id".into());
+        assert!(validate_prospect_action(&action).is_err());
+    }
+
+    #[test]
+    fn proposal_acceptance_requires_complete_exact_terms_evidence() {
+        let mut acceptance = ProposalAcceptance {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            proposal_id: Uuid::from_u128(1),
+            proposal_version_event_id: "a".repeat(64),
+            proposal_version_digest: "b".repeat(64),
+            conversion_id: Uuid::from_u128(2),
+            client_id: Uuid::from_u128(3),
+            work_item_id: Uuid::from_u128(4),
+            draft_invoice_id: Uuid::from_u128(5),
+            evidence: None,
+        };
+        assert!(validate_proposal_acceptance_evidence(&acceptance).is_err());
+        acceptance.evidence = Some(buzz_core::business_records::ProposalAcceptanceEvidence {
+            accepted_by_name: "Lerato Molefe".into(),
+            accepted_at: 1,
+            evidence_reference: "signature record".into(),
+            exact_terms_confirmed: true,
+        });
+        assert!(validate_proposal_acceptance_evidence(&acceptance).is_ok());
+        acceptance
+            .evidence
+            .as_mut()
+            .expect("test evidence")
+            .exact_terms_confirmed = false;
+        assert!(validate_proposal_acceptance_evidence(&acceptance).is_err());
+    }
 }
 
 #[cfg(test)]
@@ -2097,6 +2726,15 @@ mod postgres_tests {
     use serde::Serialize;
     use std::time::Duration;
     use tokio::sync::Notify;
+
+    fn test_acceptance_evidence() -> buzz_core::business_records::ProposalAcceptanceEvidence {
+        buzz_core::business_records::ProposalAcceptanceEvidence {
+            accepted_by_name: "Test acceptor".into(),
+            accepted_at: chrono::Utc::now().timestamp(),
+            evidence_reference: "signed test acceptance".into(),
+            exact_terms_confirmed: true,
+        }
+    }
 
     static BUSINESS_RECORDS_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
         std::sync::OnceLock::new();
@@ -2706,6 +3344,7 @@ mod postgres_tests {
             client_id: client_channel_id,
             work_item_id,
             draft_invoice_id,
+            evidence: Some(test_acceptance_evidence()),
         };
         let acceptance_d = business_d_tag(
             *fixture.tenant.community().as_uuid(),
@@ -3194,6 +3833,7 @@ mod postgres_tests {
             client_id,
             work_item_id,
             draft_invoice_id,
+            evidence: Some(test_acceptance_evidence()),
         };
         let acceptance_d = business_d_tag(
             *fixture.tenant.community().as_uuid(),
@@ -3233,6 +3873,71 @@ mod postgres_tests {
         .expect("exact acceptance replay");
         assert!(replay.accepted);
         assert!(replay.message.contains(&format!("receipt={receipt_id}")));
+
+        let client_head = current_head::<ClientHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_CLIENT_HEAD,
+            &client_d_tag(client_id, "client", client_id),
+        )
+        .await
+        .expect("load converted client")
+        .expect("one converted client head");
+        assert_eq!(client_head.channel_id, Some(client_id));
+        let client_channel_count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM channels WHERE community_id = $1 AND id = $2")
+                .bind(fixture.tenant.community().as_uuid())
+                .bind(client_id)
+                .fetch_one(&fixture.pool)
+                .await
+                .expect("count converted client channels");
+        assert_eq!(client_channel_count, 1);
+        let work_head = current_head::<WorkItemHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_WORK_ITEM_HEAD,
+            &client_d_tag(client_id, "work", work_item_id),
+        )
+        .await
+        .expect("load converted work")
+        .expect("one converted work head");
+        assert_eq!(work_head.channel_id, Some(client_id));
+        let invoice_head = current_head::<DraftInvoiceHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_INVOICE_HEAD,
+            &client_d_tag(client_id, "invoice", draft_invoice_id),
+        )
+        .await
+        .expect("load converted invoice")
+        .expect("one converted invoice head");
+        assert_eq!(invoice_head.channel_id, Some(client_id));
+        let receipt_event_id = hex::decode(&receipt_id).expect("receipt id is lowercase hex");
+        let receipt = fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(fixture.tenant.community(), &receipt_event_id)
+            .await
+            .expect("load conversion receipt by event id")
+            .expect("one conversion receipt");
+        assert_eq!(
+            receipt.event.kind.as_u16() as u32,
+            KIND_PROPOSAL_CONVERSION_RECEIPT
+        );
+        let receipt_content: buzz_core::business_records::ProposalConversionReceipt =
+            parse_content(&receipt.event).expect("parse conversion receipt");
+        assert_eq!(receipt_content.conversion_id, conversion_id);
+        let receipt_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM events \
+             WHERE community_id = $1 AND kind = $2 AND tags @> $3",
+        )
+        .bind(fixture.tenant.community().as_uuid())
+        .bind(KIND_PROPOSAL_CONVERSION_RECEIPT as i32)
+        .bind(serde_json::json!([["d", &acceptance_d]]))
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count conversion receipts");
+        assert_eq!(receipt_count, 1);
 
         let conflicting = ProposalAcceptance {
             work_item_id: Uuid::new_v4(),
@@ -3318,6 +4023,7 @@ mod postgres_tests {
             client_id: client_channel_id,
             work_item_id: Uuid::new_v4(),
             draft_invoice_id: Uuid::new_v4(),
+            evidence: Some(test_acceptance_evidence()),
         };
         let acceptance_event = signed_command(
             &actor,
@@ -3633,6 +4339,7 @@ mod postgres_tests {
             client_id: Uuid::new_v4(),
             work_item_id: Uuid::new_v4(),
             draft_invoice_id: Uuid::new_v4(),
+            evidence: Some(test_acceptance_evidence()),
         };
         let acceptance_d = business_d_tag(
             *fixture.tenant.community().as_uuid(),

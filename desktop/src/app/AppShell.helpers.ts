@@ -13,6 +13,7 @@ export type AppView =
   | "work"
   | "pulse"
   | "projects"
+  | "business"
   | "factory"
   | "pins";
 
@@ -242,6 +243,18 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "messages",
+    };
+  }
+
+  if (
+    pathname === "/discovery" ||
+    pathname === "/leads" ||
+    pathname === "/pipeline" ||
+    pathname.startsWith("/sales/")
+  ) {
+    return {
+      selectedChannelId: null,
+      selectedView: "business",
     };
   }
 
