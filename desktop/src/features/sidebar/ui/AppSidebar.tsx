@@ -799,7 +799,12 @@ export function AppSidebar({
                                 onClick={() => onBrowseChannels()}
                                 type="button"
                               >
-                                <Plus className="h-4 w-4" />
+                                <span
+                                  aria-hidden="true"
+                                  className="text-sm font-normal leading-none"
+                                >
+                                  +
+                                </span>
                                 <span className="truncate">
                                   Browse channels
                                 </span>
