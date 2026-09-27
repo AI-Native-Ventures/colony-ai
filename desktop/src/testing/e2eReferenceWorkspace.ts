@@ -264,7 +264,7 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
     {
       id: REFERENCE_SALES_UNREAD_REPLY_ID,
       pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 50) + 1,
+      created_at: todayAt(9, 50) + 2,
       kind: 9,
       tags: [
         ["h", channelId],
