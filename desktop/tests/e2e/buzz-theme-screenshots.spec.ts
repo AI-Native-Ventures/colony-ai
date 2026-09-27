@@ -938,6 +938,7 @@ for (const { mode, theme } of [
       new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
     );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
+    await expect(root).not.toHaveAttribute("data-buzz-sidebar", "");
 
     const productionStyle = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>(

@@ -1,10 +1,3 @@
-:root:not([data-buzz-sidebar]):has([data-colony-workspace-route="true"])
-  [data-testid="app-sidebar"]
-  [data-sidebar="menu-button"][data-active="true"] {
-  background-color: hsl(var(--sidebar-active));
-  color: hsl(var(--sidebar-active-foreground));
-}
-
 :root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
@@ -12,13 +5,13 @@
   color: hsl(var(--colony-sidebar-foreground));
 }
 
-:root.dark[data-buzz-sidebar]:not([data-prominent-active-tab]):has(
+:root:not([data-buzz-sidebar]):not([data-prominent-active-tab]):has(
     [data-colony-workspace-route="true"]
   )
   [data-testid="app-sidebar"]
   [data-sidebar="menu-button"][data-active="true"] {
-  background-color: var(--sidebar-row-subtle-active-surface);
-  color: hsl(var(--colony-sidebar-foreground));
+  background-color: hsl(var(--sidebar-active));
+  color: hsl(var(--sidebar-active-foreground));
 }
 
 :root[data-buzz-sidebar][data-prominent-active-tab]:has(
@@ -28,6 +21,15 @@
   [data-sidebar="menu-button"][data-active="true"] {
   background-color: var(--w20-appearance-accent, #2655a0);
   color: hsl(var(--primary-foreground));
+}
+
+:root.dark[data-buzz-sidebar]:not([data-prominent-active-tab]):has(
+    [data-colony-workspace-route="true"]
+  )
+  [data-testid="app-sidebar"]
+  [data-sidebar="menu-button"][data-active="true"] {
+  background-color: var(--sidebar-row-subtle-active-surface);
+  color: hsl(var(--colony-sidebar-foreground));
 }
 
 :root.dark[data-buzz-sidebar][data-prominent-active-tab]:has(
