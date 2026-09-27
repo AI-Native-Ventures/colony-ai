@@ -206,6 +206,8 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
+  const TopbarIcon =
+    activeGroup.id === "agents-group" ? Settings : activeGroup.icon;
   const signedInDisplayName =
     profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
 
@@ -508,7 +510,7 @@ export function SettingsView({
             className="w20-topbar-title text-settings-topbar"
             data-tauri-drag-region
           >
-            <Settings aria-hidden="true" className="size-4" />
+            <TopbarIcon aria-hidden="true" className="size-4" />
             <span className="text-xs">Settings</span>
             <span aria-hidden="true" className="text-xs">
               /

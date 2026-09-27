@@ -39,6 +39,16 @@ async function openAppearance(
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await page.getByTestId("settings-group-appearance-group").click();
+  await expect(
+    page.getByTestId("settings-group-appearance-group").locator("svg"),
+  ).toHaveClass(/lucide-sun/);
+  await expect(page.locator(".w20-topbar-title > svg")).toHaveClass(
+    /lucide-sun/,
+  );
+  await expect(page.locator(".w20-nav-person > div strong")).toHaveCSS(
+    "color",
+    theme === "buzz-dark" ? "rgb(236, 230, 239)" : "rgb(40, 37, 50)",
+  );
   await expect(page.getByTestId("settings-appearance")).toBeVisible({
     timeout: 10_000,
   });

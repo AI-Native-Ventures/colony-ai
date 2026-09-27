@@ -165,7 +165,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "appearance-group",
     label: "Appearance",
-    icon: MonitorCog,
+    icon: Sun,
     sections: [
       { value: "appearance", label: "Theme & layout" },
       { value: "accessibility", label: "Accessibility" },
