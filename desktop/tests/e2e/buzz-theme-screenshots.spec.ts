@@ -1438,7 +1438,7 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     await expect(activeRow).toHaveCSS("box-shadow", "none");
-    await expect(activeRow).toHaveCSS("font-weight", "650");
+    await expect(activeRow).toHaveCSS("font-weight", "700");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     const inactiveRow = page.getByTestId("channel-random");

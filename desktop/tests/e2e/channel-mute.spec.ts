@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
+import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const MOCK_PUBKEY = "deadbeef".repeat(8);
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
@@ -153,8 +154,9 @@ test.describe("channel muting", () => {
       "font-weight",
       "450",
     );
-    await expect(page.getByTestId("channel-unread-engineering")).toHaveText(
-      "1",
+    await expectUnreadBadgeCount(
+      page.getByTestId("channel-unread-engineering"),
+      1,
     );
     await expect(
       page.getByTestId("channel-unread-dot-engineering"),

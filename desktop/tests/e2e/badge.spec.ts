@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
 import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
+import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const SHOTS = "test-results/channel-row-decoration-pr";
@@ -196,7 +197,10 @@ test("direct-message rows show unread counts without changing text weight", asyn
   }, TEST_IDENTITIES.alice.pubkey);
 
   await expect(label).toHaveCSS("opacity", "1");
-  await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveText("1");
+  await expectUnreadBadgeCount(
+    page.getByTestId("channel-unread-alice-tyler"),
+    1,
+  );
   await expect(directMessage).toHaveCSS("font-weight", "450");
 });
 
@@ -238,7 +242,10 @@ test("light mode keeps conversation labels fully visible with unread counts", as
     "opacity",
     "1",
   );
-  await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveText("1");
+  await expectUnreadBadgeCount(
+    page.getByTestId("channel-unread-alice-tyler"),
+    1,
+  );
   await expect(directMessage).toHaveCSS("font-weight", "450");
 });
 
@@ -297,7 +304,7 @@ test("dark mode keeps selected rows semibold and unread rows regular", async ({
     "opacity",
     "1",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
   await expect(unreadChannel).toHaveCSS("font-weight", "450");
   await waitForAnimations(page);
   await page.screenshot({
@@ -545,7 +552,7 @@ test("regular message shows its channel unread count", async ({ page }) => {
     "opacity",
     "1",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
   await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
   await waitForBadgeState(page, withDotOnlyBadge(baselineBadge));
 
@@ -594,7 +601,7 @@ test("top-level @mention shows the channel unread count", async ({ page }) => {
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("2");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 2);
   await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 2));
 });
@@ -739,7 +746,7 @@ test("broadcast reply shows its channel unread count", async ({ page }) => {
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
 });
 
@@ -772,7 +779,7 @@ test("mark-as-read via context menu clears channel unread indicator", async ({
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
   await page.getByTestId("channel-random").click({ button: "right" });
   await page.getByText("Mark as read").click();

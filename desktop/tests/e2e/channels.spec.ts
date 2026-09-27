@@ -14,6 +14,7 @@ import {
   openNewMessagePage,
 } from "../helpers/bridge";
 import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
+import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
@@ -1735,8 +1736,9 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId(`channel-unread-${channelName}`)).toHaveText(
-    "1",
+  await expectUnreadBadgeCount(
+    page.getByTestId(`channel-unread-${channelName}`),
+    1,
   );
   await expect(
     page.getByTestId(`channel-ephemeral-${channelName}`),
@@ -2563,7 +2565,7 @@ test("sidebar shows unread indicator for newly active channels", async ({
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId("channel-unread-random")).toHaveText("1");
+  await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
@@ -2596,7 +2598,10 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
     "font-weight",
     "450",
   );
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveText("1");
+  await expectUnreadBadgeCount(
+    page.getByTestId("channel-unread-watercooler"),
+    1,
+  );
 
   await page.getByTestId("channel-watercooler").click();
   await expect(page.getByTestId("chat-title")).toHaveText("watercooler");

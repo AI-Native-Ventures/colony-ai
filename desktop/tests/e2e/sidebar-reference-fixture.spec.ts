@@ -1,18 +1,7 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-
-async function expectUnreadCount(locator: Locator, count: number) {
-  await expect(locator).toBeVisible();
-  await expect(locator).toHaveText(
-    `${count} unread notification${count === 1 ? "" : "s"}`,
-  );
-  expect(
-    await locator.evaluate((element) =>
-      element.firstChild?.textContent?.trim(),
-    ),
-  ).toBe(String(count));
-}
+import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 test("company shell fixture supplies the approved sidebar rows", async ({
   page,
@@ -38,7 +27,7 @@ test("company shell fixture supplies the approved sidebar rows", async ({
     0,
   );
   await expect(sidebar.getByText("Starred", { exact: true })).toHaveCount(0);
-  await expectUnreadCount(
+  await expectUnreadBadgeCount(
     sidebar.getByTestId("channel-unread-olive-studio"),
     2,
   );
@@ -46,12 +35,12 @@ test("company shell fixture supplies the approved sidebar rows", async ({
     "height",
     "17px",
   );
-  await expectUnreadCount(sidebar.getByTestId("channel-unread-sales"), 3);
-  await expectUnreadCount(
+  await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-sales"), 3);
+  await expectUnreadBadgeCount(
     sidebar.getByTestId("channel-unread-Company forum"),
     1,
   );
-  await expectUnreadCount(sidebar.getByTestId("channel-unread-Aya"), 1);
+  await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-Aya"), 1);
   await expect(sidebar.getByTestId("channel-avatar-Mina")).toHaveCSS(
     "width",
     "18px",

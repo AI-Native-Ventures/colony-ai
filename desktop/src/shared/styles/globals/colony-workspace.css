@@ -826,7 +826,9 @@
 
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
-  [data-sidebar-row-label]:not(.sidebar-muted-content) {
+  :is([data-sidebar-row-label], [data-sidebar="menu-label"]):not(
+    .sidebar-muted-content
+  ) {
   opacity: 1;
 }
 
