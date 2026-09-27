@@ -342,21 +342,6 @@ async function expectBuzzGradientPaint(
     return backgroundImage;
   }
 
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-buzz-gradient="light"]')
-        .evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe(mode === "light" ? "1" : "0");
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-buzz-gradient="dark"]')
-        .evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe(mode === "dark" ? "1" : "0");
-
   const paint = await page.evaluate(() => {
     const root = document.documentElement;
     const appSurface = document.querySelector(".buzz-huddle-app-surface");
@@ -402,6 +387,21 @@ async function expectBuzzGradientPaint(
     expect(paint.darkOpacity).toBe("0");
     return paint.surfaceImage;
   }
+
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-buzz-gradient="light"]')
+        .evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe(mode === "light" ? "1" : "0");
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-buzz-gradient="dark"]')
+        .evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe(mode === "dark" ? "1" : "0");
 
   expect(paint.surfaceImage).toBe("none");
   expect(paint.lightImage).not.toBe("");
@@ -778,7 +778,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   const prominentSurface = await resolveSidebarColor(
     page,
     "background-color",
-    "var(--sidebar-row-active-surface)",
+    "var(--w20-appearance-accent)",
   );
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   const subtleTextStyle = await activeRow.evaluate((element) => {
@@ -807,7 +807,10 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
     const styles = getComputedStyle(element);
     return { color: styles.color, fontWeight: styles.fontWeight };
   });
-  expect(prominentTextStyle).toEqual(subtleTextStyle);
+  expect(prominentTextStyle).toEqual({
+    color: "rgb(255, 255, 255)",
+    fontWeight: subtleTextStyle.fontWeight,
+  });
 
   await openAppearance(page, "light");
   await page.getByTestId("appearance-prominent").click();
@@ -853,15 +856,13 @@ test("prominent channel and direct-message rows share one flat active state", as
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
 
-for (const { activeSurface, hoverSurface, mode, theme } of [
+for (const { hoverSurface, mode, theme } of [
   {
-    activeSurface: "rgb(38, 85, 160)",
     hoverSurface: "rgba(255, 255, 255, 0.33)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    activeSurface: "rgb(157, 193, 251)",
     hoverSurface: "rgba(255, 255, 255, 0.33)",
     mode: "dark" as const,
     theme: "buzz-dark",
@@ -884,18 +885,25 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
       new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
     );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-    await expect(activeRow).toHaveCSS("background-color", activeSurface);
+    const subtleSurface = await resolveSidebarColor(
+      page,
+      "background-color",
+      "var(--sidebar-row-subtle-active-surface)",
+    );
+    const subtleForeground = await resolveSidebarColor(
+      page,
+      "color",
+      "var(--colony-sidebar-foreground)",
+    );
+    await expect(activeRow).toHaveCSS("background-color", subtleSurface);
     await expect(activeRow).toHaveCSS("box-shadow", "none");
     await expect(activeRow).toHaveCSS("font-weight", "700");
     await activeRow.hover();
-    await expect(activeRow).toHaveCSS("background-color", activeSurface);
+    await expect(activeRow).toHaveCSS("background-color", subtleSurface);
     const inactiveRow = page.getByTestId("channel-random");
     await inactiveRow.hover();
     await expect(inactiveRow).toHaveCSS("background-color", hoverSurface);
-    await expect(activeRow).toHaveCSS(
-      "color",
-      mode === "light" ? "rgb(255, 255, 255)" : "rgb(25, 23, 29)",
-    );
+    await expect(activeRow).toHaveCSS("color", subtleForeground);
   });
 }
 

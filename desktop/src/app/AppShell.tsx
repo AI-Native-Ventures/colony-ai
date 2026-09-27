@@ -78,6 +78,7 @@ import {
 import { useDueReminderBadgeCount } from "@/features/reminders/hooks";
 import { useReminderNotifications } from "@/features/reminders/useReminderNotifications";
 import { AppSidebar } from "@/features/sidebar/ui/AppSidebar";
+import "@/features/settings/ui/AppearanceWorkspaceSelection.css";
 import type { CreateChannelFormDraft } from "@/features/sidebar/lib/useCreateChannelForm";
 import { requestFocusedThreadClose } from "@/features/channels/focusedThreadCloseRequest";
 import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
