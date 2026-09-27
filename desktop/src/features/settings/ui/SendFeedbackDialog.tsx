@@ -184,12 +184,16 @@ export function SendFeedbackDialog({
           >
             {errorMessage ? (
               <div
-                className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
+                className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[15px] text-xs text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
                 data-testid="feedback-error"
                 role="alert"
               >
-                <p className="font-medium">Your feedback wasn’t sent</p>
-                <p>Your message is saved in this window. Try again.</p>
+                <p className="font-semibold leading-[1.5]">
+                  Your feedback wasn’t sent
+                </p>
+                <p className="mt-[5px] leading-[1.65]">
+                  Your message is saved in this window. Try again.
+                </p>
               </div>
             ) : null}
 

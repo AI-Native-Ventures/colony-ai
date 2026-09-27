@@ -971,8 +971,10 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-voice]"
+        "x": 238,
+        "y": 8,
+        "width": 1191,
+        "height": 245
       }
     },
     {
