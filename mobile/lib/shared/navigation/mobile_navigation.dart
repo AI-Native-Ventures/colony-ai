@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'mobile_route.dart';
+import 'mobile_route_context.dart';
 import 'mobile_route_scope.dart';
 import 'mobile_routes.dart';
 
@@ -11,6 +12,24 @@ abstract final class MobileNavigation {
     MobileRoute<TArguments> route,
     TArguments arguments,
   ) => MobileRouteScope.push<TArguments, TResult>(context, route, arguments);
+
+  /// Replaces the current page with an app-composed route.
+  static Future<void> replace<TArguments>(
+    BuildContext context,
+    MobileRoute<TArguments> route,
+    TArguments arguments,
+  ) {
+    final registry = MobileRouteScope.of(context).registry;
+    return Navigator.of(context).pushReplacement<void, void>(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: route.path),
+        builder: (routeContext) => MobileRouteScope(
+          registry: registry,
+          child: registry.build(routeContext, route, arguments),
+        ),
+      ),
+    );
+  }
 
   static Future<void> openSearch(BuildContext context) =>
       push<NoMobileRouteArguments, void>(
@@ -25,6 +44,18 @@ abstract final class MobileNavigation {
         MobileRoutes.updates,
         const NoMobileRouteArguments(),
       );
+
+  /// Opens Activity above the Today tab's retained navigation stack.
+  static Future<void> openActivity(
+    BuildContext context,
+    MobileShellRouteContext routeContext,
+  ) async {
+    await push<MobileShellRouteContext, void>(
+      context,
+      MobileRoutes.activity,
+      routeContext,
+    );
+  }
 
   static Future<void> openUpdateNote(BuildContext context, String noteId) =>
       push<String, void>(context, MobileRoutes.updateNote, noteId);

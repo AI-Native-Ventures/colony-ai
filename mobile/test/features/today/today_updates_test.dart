@@ -26,6 +26,7 @@ import 'package:buzz/features/today/today_models.dart';
 import 'package:buzz/features/today/today_page.dart';
 import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/community/community_provider.dart';
+import 'package:buzz/shared/navigation/mobile_navigation.dart';
 import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
@@ -177,7 +178,9 @@ void main() {
     });
   }
 
-  testWidgets('Today and Activity use their r19 shell chrome', (tester) async {
+  testWidgets('Today opens Activity from its shortcut inside the shell', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: _providerOverrides(),
@@ -192,10 +195,22 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
     expect(find.text('Mentions, replies and approvals'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Good morning, Lerato.'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Today tabs open live updates and activity rows keep their id', (
@@ -238,7 +253,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
 
     final reviewTop = tester.getTopLeft(find.text('Your review is needed')).dy;
@@ -566,9 +581,7 @@ void main() {
             );
             await tester.pumpAndSettle();
             if (route == _VisualRoute.activity) {
-              await tester.tap(
-                find.byKey(const ValueKey('mobile-nav-activity')),
-              );
+              await tester.tap(find.text('Activity'));
               await tester.pumpAndSettle();
             }
 
@@ -638,7 +651,7 @@ Widget _visualHome(_VisualRoute route) {
   final routes = MobileRouteRegistry.empty()
       .register(
         MobileRoutes.today,
-        (_, _) => TodayPage(
+        (_, routeContext) => TodayPage(
           communityName: _community.name,
           profileName: _lerato.displayName,
           reviewItems: AsyncValue.data([
@@ -662,6 +675,8 @@ Widget _visualHome(_VisualRoute route) {
           ),
           onOpenReview: (_) {},
           onOpenUpdate: (_) {},
+          onOpenActivity: (context) =>
+              MobileNavigation.openActivity(context, routeContext),
           initialSection: initialSection,
           initiallyPublished: route == _VisualRoute.published,
           now: DateTime(2026, 9, 24),

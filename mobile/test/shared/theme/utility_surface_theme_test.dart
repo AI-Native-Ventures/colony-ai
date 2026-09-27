@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('utility containers use the stronger grouped-surface radius', () {
-    expect(Radii.container, 22);
+    expect(Radii.container, 20);
     expect(Radii.card, Radii.container);
   });
 

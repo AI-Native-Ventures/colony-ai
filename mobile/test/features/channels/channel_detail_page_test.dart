@@ -2660,7 +2660,7 @@ void main() {
         find.byKey(const ValueKey('mobile-bottom-navigation')),
         findsOneWidget,
       );
-      await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+      await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
       await tester.pumpAndSettle();
       expect(find.text('Team updates'), findsOneWidget);
       await tester.tap(find.text('Team updates'));
@@ -2831,7 +2831,7 @@ void main() {
               ),
             );
             await tester.pumpAndSettle();
-            await tester.tap(find.byKey(const ValueKey('mobile-nav-chats')));
+            await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
             await tester.pumpAndSettle();
             await tester.tap(find.text('Team updates'));
             await tester.pumpAndSettle();
