@@ -14,13 +14,20 @@ import {
   type GoalStatus,
 } from "../goalModels";
 import { useGoalHeadsQuery } from "../goalRelay";
+import { GoalRouteHeader } from "./GoalRouteHeader";
 
 type GoalFilter = "active" | "archived";
 
 function GoalStatusLabel({ status }: { status: GoalStatus }) {
   const label = status.replaceAll("_", " ");
+  const statusClass =
+    status === "active" || status === "achieved"
+      ? "bg-[#507d69]/[0.12] text-[#507d69] dark:bg-[#92b7a1]/[0.12] dark:text-[#92b7a1]"
+      : "bg-[#eee7f4] text-[#76608c] dark:bg-[#403449] dark:text-[#c1a6d8]";
   return (
-    <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-1 text-xs ${statusClass}`}
+    >
       {label}
     </span>
   );
@@ -122,43 +129,49 @@ export function GoalsScreen() {
 
   if (goalsQuery.isPending) {
     return (
-      <div
-        className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading goals
-      </div>
+      <>
+        <GoalRouteHeader title="Goals" />
+        <div
+          className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading goals
+        </div>
+      </>
     );
   }
 
   if (goalsQuery.isError) {
     return (
-      <section
-        aria-labelledby="goals-unavailable-title"
-        className="mx-auto w-full max-w-[1230px] px-8 py-8"
-      >
-        <h1
-          className="text-2xl font-semibold tracking-tight"
-          id="goals-unavailable-title"
+      <>
+        <GoalRouteHeader title="Goals unavailable" />
+        <section
+          aria-labelledby="goals-unavailable-title"
+          className="mx-auto w-full max-w-[1230px] px-8 py-8"
         >
-          Goals unavailable
-        </h1>
-        <div className="mt-8 rounded-lg border border-border p-6">
-          <h2 className="text-base font-semibold">
-            Goals could not be loaded.
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Check your connection and try again.
-          </p>
-          <Button
-            className="mt-5"
-            onClick={() => void goalsQuery.refetch()}
-            variant="outline"
+          <h1
+            className="text-2xl font-semibold tracking-tight"
+            id="goals-unavailable-title"
           >
-            Try again
-          </Button>
-        </div>
-      </section>
+            Goals unavailable
+          </h1>
+          <div className="mt-8 rounded-lg border border-border p-6">
+            <h2 className="text-base font-semibold">
+              Goals could not be loaded.
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Check your connection and try again.
+            </p>
+            <Button
+              className="mt-5"
+              onClick={() => void goalsQuery.refetch()}
+              variant="outline"
+            >
+              Try again
+            </Button>
+          </div>
+        </section>
+      </>
     );
   }
 
@@ -167,6 +180,7 @@ export function GoalsScreen() {
       currentPubkey,
       profiles: profilesQuery.data?.profiles,
       pubkey: record.head.goal?.ownerPubkey ?? "",
+      preferResolvedSelfLabel: true,
     });
     const isSubgoal = Boolean(record.head.goal?.parentGoalId);
     return (
@@ -180,76 +194,88 @@ export function GoalsScreen() {
   });
   const isEmpty = visibleGoals.length === 0;
   return (
-    <main
-      className="mx-auto flex w-full max-w-[1230px] flex-col px-8 py-8"
-      data-testid="goals-screen"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Goals</h1>
-        {isGoalManager ? (
-          <Button data-testid="create-goal" onClick={() => void goNewGoal()}>
-            Create goal
-          </Button>
-        ) : null}
-      </div>
-      <search className="mt-6 flex flex-wrap items-center gap-5">
-        <label
-          className="relative w-full max-w-[400px]"
-          htmlFor="goals-search-input"
-        >
-          <span className="sr-only">Search goals</span>
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            className="pl-9"
-            data-testid="goals-search"
-            id="goals-search-input"
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            placeholder="Search goals"
-            value={search}
-          />
-        </label>
-        <fieldset aria-label="Goal status filter" className="flex gap-1">
-          <Button
-            aria-pressed={filter === "active"}
-            data-testid="goals-filter-active"
-            onClick={() => setFilter("active")}
-            variant={filter === "active" ? "default" : "outline"}
-          >
-            Active
-          </Button>
-          <Button
-            aria-pressed={filter === "archived"}
-            data-testid="goals-filter-archived"
-            onClick={() => setFilter("archived")}
-            variant={filter === "archived" ? "default" : "outline"}
-          >
-            Archived
-          </Button>
-        </fieldset>
-      </search>
-      {isEmpty ? (
-        <div className="mt-8 rounded-lg border border-border px-6 py-8">
-          <h2 className="text-base font-semibold">
-            {search.trim() ? "No matching goals" : "No goals here yet"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {search.trim()
-              ? "Try a different title or goal ID."
-              : "Set a direction, an owner and a clear done condition."}
-          </p>
-          {!search.trim() && isGoalManager ? (
-            <Button className="mt-5" onClick={() => void goNewGoal()}>
-              Create your first goal
+    <>
+      <GoalRouteHeader title="Goals" />
+      <main
+        className="mx-auto flex w-full max-w-[1230px] flex-col px-8 py-10"
+        data-testid="goals-screen"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold tracking-tight">Goals</h1>
+          {isGoalManager ? (
+            <Button
+              className="bg-[#637fb1] text-white hover:bg-[#536d9c] dark:bg-[#8aa6d8] dark:text-[#282532] dark:hover:bg-[#7795c9]"
+              data-testid="create-goal"
+              onClick={() => void goNewGoal()}
+            >
+              Create goal
             </Button>
           ) : null}
         </div>
-      ) : (
-        <div className="mt-5">{rowList}</div>
-      )}
-    </main>
+        <search className="mt-6 flex flex-wrap items-center gap-5">
+          <label
+            className="relative w-full max-w-[400px]"
+            htmlFor="goals-search-input"
+          >
+            <span className="sr-only">Search goals</span>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              className="pl-9"
+              data-testid="goals-search"
+              id="goals-search-input"
+              onChange={(event) => setSearch(event.currentTarget.value)}
+              placeholder="Search goals"
+              value={search}
+            />
+          </label>
+          <fieldset aria-label="Goal status filter" className="flex gap-1">
+            <Button
+              aria-pressed={filter === "active"}
+              className={
+                filter === "active"
+                  ? "bg-[#637fb1] text-white hover:bg-[#536d9c] dark:bg-[#8aa6d8] dark:text-[#282532] dark:hover:bg-[#7795c9]"
+                  : undefined
+              }
+              data-testid="goals-filter-active"
+              onClick={() => setFilter("active")}
+              variant={filter === "active" ? "default" : "outline"}
+            >
+              Active
+            </Button>
+            <Button
+              aria-pressed={filter === "archived"}
+              data-testid="goals-filter-archived"
+              onClick={() => setFilter("archived")}
+              variant={filter === "archived" ? "default" : "outline"}
+            >
+              Archived
+            </Button>
+          </fieldset>
+        </search>
+        {isEmpty ? (
+          <div className="mt-8 rounded-lg border border-border px-6 py-8">
+            <h2 className="text-base font-semibold">
+              {search.trim() ? "No matching goals" : "No goals here yet"}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {search.trim()
+                ? "Try a different title or goal ID."
+                : "Set a direction, an owner and a clear done condition."}
+            </p>
+            {!search.trim() && isGoalManager ? (
+              <Button className="mt-5" onClick={() => void goNewGoal()}>
+                Create your first goal
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-5">{rowList}</div>
+        )}
+      </main>
+    </>
   );
 }
 

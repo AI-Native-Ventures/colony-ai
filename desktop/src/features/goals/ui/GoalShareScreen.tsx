@@ -8,6 +8,7 @@ import { buildGoalLink } from "@/shared/lib/entityLink";
 import { Button } from "@/shared/ui/button";
 import { useGoalHeadQuery } from "../goalRelay";
 import { GoalReferenceCard } from "./GoalReferenceCard";
+import { GoalRouteBackLink, GoalRouteHeader } from "./GoalRouteHeader";
 
 const DEFAULT_MESSAGE = "Here is the outcome we’re working towards.";
 
@@ -72,149 +73,170 @@ export function GoalShareScreen({ goalId }: { goalId: string }) {
     identityQuery.isPending
   ) {
     return (
-      <div
-        className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading goal reference
-      </div>
+      <>
+        <GoalRouteHeader title="Reference this goal" />
+        <div
+          className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading goal reference
+        </div>
+      </>
     );
   }
 
   if (goalQuery.isError || channelsQuery.isError || identityQuery.isError) {
     return (
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <Button className="mb-5 px-0" onClick={goBack} variant="ghost">
-          Back to goal
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal unavailable
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          The goal, conversations or identity could not be loaded.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          {goalQuery.isError ? (
-            <Button onClick={() => void goalQuery.refetch()} variant="outline">
-              Try loading the goal again
-            </Button>
-          ) : null}
-          {channelsQuery.isError ? (
-            <Button
-              onClick={() => void channelsQuery.refetch()}
-              variant="outline"
-            >
-              Try loading conversations again
-            </Button>
-          ) : null}
-          {identityQuery.isError ? (
-            <Button
-              onClick={() => void identityQuery.refetch()}
-              variant="outline"
-            >
-              Try loading your identity again
-            </Button>
-          ) : null}
-        </div>
-      </main>
+      <>
+        <GoalRouteHeader title="Goal unavailable" />
+        <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={goBack} />
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Goal unavailable
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            The goal, conversations or identity could not be loaded.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {goalQuery.isError ? (
+              <Button
+                onClick={() => void goalQuery.refetch()}
+                variant="outline"
+              >
+                Try loading the goal again
+              </Button>
+            ) : null}
+            {channelsQuery.isError ? (
+              <Button
+                onClick={() => void channelsQuery.refetch()}
+                variant="outline"
+              >
+                Try loading conversations again
+              </Button>
+            ) : null}
+            {identityQuery.isError ? (
+              <Button
+                onClick={() => void identityQuery.refetch()}
+                variant="outline"
+              >
+                Try loading your identity again
+              </Button>
+            ) : null}
+          </div>
+        </main>
+      </>
     );
   }
 
   if (!goalQuery.data?.head.goal || goalQuery.data.head.status === "deleted") {
     return (
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <Button className="mb-5 px-0" onClick={goBack} variant="ghost">
-          Back to goal
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal unavailable
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          This goal is unavailable and cannot be referenced.
-        </p>
-      </main>
+      <>
+        <GoalRouteHeader title="Goal unavailable" />
+        <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={goBack} />
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Goal unavailable
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            This goal is unavailable and cannot be referenced.
+          </p>
+        </main>
+      </>
     );
   }
 
   return (
-    <main
-      className="mx-auto w-full max-w-[1230px] px-8 py-8"
-      data-testid="goal-share-screen"
-    >
-      <Button className="mb-5 px-0" onClick={goBack} variant="ghost">
-        Back to goal
-      </Button>
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Reference this goal
-      </h1>
-      <div className="mt-5 max-w-[650px]">
-        <GoalReferenceCard goalId={goalId} interactive={false} />
-      </div>
-      <form
-        className="mt-6 max-w-[650px]"
-        onSubmit={(event) => void onSubmit(event)}
+    <>
+      <GoalRouteHeader title="Reference this goal" />
+      <main
+        className="mx-auto w-full max-w-[1230px] px-8 py-8"
+        data-testid="goal-share-screen"
       >
-        <label
-          className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-          htmlFor="goal-share-channel"
+        <GoalRouteBackLink onClick={goBack} />
+        <h1 className="text-2xl font-bold tracking-tight">
+          Reference this goal
+        </h1>
+        <div className="mt-5 max-w-[740px]">
+          <GoalReferenceCard goalId={goalId} interactive={false} />
+        </div>
+        <form
+          className="mt-6 max-w-[740px]"
+          onSubmit={(event) => void onSubmit(event)}
         >
-          Conversation
-          <select
-            className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
-            disabled={streamChannels.length === 0}
-            id="goal-share-channel"
-            onChange={(event) => {
-              setFormError(null);
-              setChannelId(event.currentTarget.value);
-            }}
-            required
-            value={channelId}
+          <label
+            className="mb-5 flex flex-col gap-2 text-xs font-semibold"
+            htmlFor="goal-share-channel"
           >
-            {streamChannels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {channelsQuery.isSuccess && streamChannels.length === 0 ? (
-          <p className="mb-5 text-sm text-muted-foreground">
-            No conversations are available for this goal.
-          </p>
-        ) : null}
-        <label
-          className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-          htmlFor="goal-share-message"
-        >
-          Message
-          <textarea
-            className="min-h-28 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            id="goal-share-message"
-            maxLength={4000}
-            onChange={(event) => {
-              setFormError(null);
-              setMessage(event.currentTarget.value);
-            }}
-            value={message}
-          />
-        </label>
-        {formError ? (
-          <p
-            className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-            role="alert"
+            Conversation
+            <select
+              className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
+              disabled={streamChannels.length === 0}
+              id="goal-share-channel"
+              onChange={(event) => {
+                setFormError(null);
+                setChannelId(event.currentTarget.value);
+              }}
+              required
+              value={channelId}
+            >
+              {streamChannels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  {channel.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {channelsQuery.isSuccess && streamChannels.length === 0 ? (
+            <p className="mb-5 text-sm text-muted-foreground">
+              No conversations are available for this goal.
+            </p>
+          ) : null}
+          <label
+            className="mb-5 flex flex-col gap-2 text-xs font-semibold"
+            htmlFor="goal-share-message"
           >
-            {formError}
+            Message
+            <textarea
+              className="min-h-20 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              id="goal-share-message"
+              maxLength={4000}
+              onChange={(event) => {
+                setFormError(null);
+                setMessage(event.currentTarget.value);
+              }}
+              value={message}
+            />
+          </label>
+          <p className="mb-5 text-xs leading-5 text-muted-foreground">
+            The card links to this exact goal. A sub-goal keeps its own identity
+            and parent relationship.
           </p>
-        ) : null}
-        <Button
-          disabled={
-            !channelId || streamChannels.length === 0 || sendMutation.isPending
-          }
-          type="submit"
-        >
-          {sendMutation.isPending ? "Posting reference" : "Post reference"}
-        </Button>
-      </form>
-    </main>
+          {formError ? (
+            <p
+              className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {formError}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-3 border-t border-border pt-5">
+            <Button
+              className="bg-[#637fb1] text-white hover:bg-[#536d9c] dark:bg-[#8aa6d8] dark:text-[#282532] dark:hover:bg-[#7795c9]"
+              disabled={
+                !channelId ||
+                streamChannels.length === 0 ||
+                sendMutation.isPending
+              }
+              type="submit"
+            >
+              {sendMutation.isPending ? "Posting reference" : "Post reference"}
+            </Button>
+            <Button onClick={goBack} type="button" variant="outline">
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </main>
+    </>
   );
 }

@@ -23,6 +23,7 @@ import {
   useGoalHeadQuery,
   useGoalHeadsQuery,
 } from "../goalRelay";
+import { GoalRouteBackLink, GoalRouteHeader } from "./GoalRouteHeader";
 
 type GoalFormMode = "create" | "edit" | "subgoal";
 type GoalFormValues = {
@@ -148,13 +149,6 @@ export function GoalFormScreen({
                 canCreateSubgoal(role, currentPubkey, selectedParent.head),
             )
           : canManageCompanyGoals(role);
-  const communityId =
-    source?.communityId ??
-    parent?.communityId ??
-    selectedParent?.communityId ??
-    allGoals[0]?.communityId ??
-    null;
-
   const updateValue = (field: keyof GoalFormValues, value: string) => {
     setIsDirty(true);
     setFormError(null);
@@ -170,6 +164,13 @@ export function GoalFormScreen({
       void goGoals();
     }
   };
+
+  const title =
+    mode === "edit"
+      ? "Edit goal"
+      : mode === "subgoal" || values.parentGoalId
+        ? "Create sub-goal"
+        : "Create company goal";
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -201,16 +202,8 @@ export function GoalFormScreen({
       linkedChannelIds: values.linkedChannelId ? [values.linkedChannelId] : [],
     };
 
-    if (!communityId) {
-      setFormError(
-        "The relay has not provided the company identifier needed to save this goal.",
-      );
-      return;
-    }
-
     try {
       await mutation.mutateAsync({
-        communityId,
         action:
           mode === "edit"
             ? {
@@ -245,12 +238,15 @@ export function GoalFormScreen({
     (mode === "subgoal" && parentQuery.isPending)
   ) {
     return (
-      <div
-        className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading goal
-      </div>
+      <>
+        <GoalRouteHeader title={title} />
+        <div
+          className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading goal
+        </div>
+      </>
     );
   }
   if (
@@ -261,56 +257,63 @@ export function GoalFormScreen({
     (mode === "subgoal" && parentQuery.isError)
   ) {
     return (
-      <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal unavailable
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          Goal details, identity or community members could not be loaded.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          {allGoalsQuery.isError ? (
-            <Button
-              onClick={() => void allGoalsQuery.refetch()}
-              variant="outline"
-            >
-              Try loading goals again
+      <>
+        <GoalRouteHeader title="Goal unavailable" />
+        <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={onCancel} />
+          <h1 className="text-2xl font-bold tracking-tight">
+            Goal unavailable
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            Goal details, identity or community members could not be loaded.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {allGoalsQuery.isError ? (
+              <Button
+                onClick={() => void allGoalsQuery.refetch()}
+                variant="outline"
+              >
+                Try loading goals again
+              </Button>
+            ) : null}
+            {membersQuery.isError ? (
+              <Button
+                onClick={() => void membersQuery.refetch()}
+                variant="outline"
+              >
+                Try loading members again
+              </Button>
+            ) : null}
+            {identityQuery.isError ? (
+              <Button
+                onClick={() => void identityQuery.refetch()}
+                variant="outline"
+              >
+                Try loading identity again
+              </Button>
+            ) : null}
+            {mode === "edit" && goalQuery.isError ? (
+              <Button
+                onClick={() => void goalQuery.refetch()}
+                variant="outline"
+              >
+                Try loading goal again
+              </Button>
+            ) : null}
+            {mode === "subgoal" && parentQuery.isError ? (
+              <Button
+                onClick={() => void parentQuery.refetch()}
+                variant="outline"
+              >
+                Try loading parent again
+              </Button>
+            ) : null}
+            <Button onClick={onCancel} variant="ghost">
+              Back to goals
             </Button>
-          ) : null}
-          {membersQuery.isError ? (
-            <Button
-              onClick={() => void membersQuery.refetch()}
-              variant="outline"
-            >
-              Try loading members again
-            </Button>
-          ) : null}
-          {identityQuery.isError ? (
-            <Button
-              onClick={() => void identityQuery.refetch()}
-              variant="outline"
-            >
-              Try loading identity again
-            </Button>
-          ) : null}
-          {mode === "edit" && goalQuery.isError ? (
-            <Button onClick={() => void goalQuery.refetch()} variant="outline">
-              Try loading goal again
-            </Button>
-          ) : null}
-          {mode === "subgoal" && parentQuery.isError ? (
-            <Button
-              onClick={() => void parentQuery.refetch()}
-              variant="outline"
-            >
-              Try loading parent again
-            </Button>
-          ) : null}
-          <Button onClick={onCancel} variant="ghost">
-            Back to goals
-          </Button>
-        </div>
-      </section>
+          </div>
+        </section>
+      </>
     );
   }
   if (
@@ -320,272 +323,290 @@ export function GoalFormScreen({
       (!parent?.head.goal || parent.head.status === "deleted"))
   ) {
     return (
-      <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal unavailable
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          This goal is unavailable.
-        </p>
-        <Button className="mt-5" onClick={onCancel}>
-          Back to goals
-        </Button>
-      </section>
+      <>
+        <GoalRouteHeader title="Goal unavailable" />
+        <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={onCancel} />
+          <h1 className="text-2xl font-bold tracking-tight">
+            Goal unavailable
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            This goal is unavailable.
+          </p>
+          <Button className="mt-5" onClick={onCancel}>
+            Back to goals
+          </Button>
+        </section>
+      </>
     );
   }
   if (membershipQuery.isError) {
     return (
-      <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal permissions
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          Goal permissions could not be checked.
-        </p>
-        <Button
-          className="mt-5"
-          onClick={() => void membershipQuery.refetch()}
-          variant="outline"
-        >
-          Try again
-        </Button>
-      </section>
+      <>
+        <GoalRouteHeader title="Goal permissions" />
+        <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={onCancel} />
+          <h1 className="text-2xl font-bold tracking-tight">
+            Goal permissions
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            Goal permissions could not be checked.
+          </p>
+          <Button
+            className="mt-5"
+            onClick={() => void membershipQuery.refetch()}
+            variant="outline"
+          >
+            Try again
+          </Button>
+        </section>
+      </>
     );
   }
   if (!canSave && membershipQuery.isSuccess) {
     return (
-      <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Goal permissions
-        </h1>
-        <p className="mt-5 text-sm text-muted-foreground">
-          You do not have permission to manage this goal.
-        </p>
-        <Button className="mt-5" onClick={onCancel}>
-          Back to goals
-        </Button>
-      </section>
+      <>
+        <GoalRouteHeader title="Goal permissions" />
+        <section className="mx-auto w-full max-w-[1230px] px-8 py-8">
+          <GoalRouteBackLink onClick={onCancel} />
+          <h1 className="text-2xl font-bold tracking-tight">
+            Goal permissions
+          </h1>
+          <p className="mt-5 text-sm text-muted-foreground">
+            You do not have permission to manage this goal.
+          </p>
+          <Button className="mt-5" onClick={onCancel}>
+            Back to goals
+          </Button>
+        </section>
+      </>
     );
   }
 
-  const title =
-    mode === "edit"
-      ? "Edit goal"
-      : mode === "subgoal" || values.parentGoalId
-        ? "Create sub-goal"
-        : "Create company goal";
-
   return (
-    <main
-      className="mx-auto w-full max-w-[1230px] px-8 py-8"
-      data-testid="goal-form-screen"
-    >
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      {mode === "subgoal" && parent ? (
-        <div className="mt-5 rounded-lg bg-muted/40 px-4 py-3">
-          <strong className="text-sm">Parent goal</strong>
-          <p className="mt-1 text-sm">{parent.head.title}</p>
-        </div>
-      ) : null}
-      <form
-        className="mt-6 max-w-[740px]"
-        onSubmit={(event) => void onSubmit(event)}
+    <>
+      <GoalRouteHeader title={title} />
+      <main
+        className="mx-auto w-full max-w-[1230px] px-8 py-8"
+        data-testid="goal-form-screen"
       >
-        <label
-          className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-          htmlFor="goal-title"
+        <GoalRouteBackLink onClick={onCancel} />
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        {mode === "subgoal" && parent ? (
+          <div className="mt-5 rounded-lg bg-muted/40 px-4 py-3">
+            <strong className="text-sm">Parent goal</strong>
+            <p className="mt-1 text-sm">{parent.head.title}</p>
+          </div>
+        ) : null}
+        <form
+          className="mt-6 max-w-[740px]"
+          onSubmit={(event) => void onSubmit(event)}
         >
-          Goal title
-          <Input
-            autoFocus
-            id="goal-title"
-            maxLength={180}
-            onChange={(event) =>
-              updateValue("title", event.currentTarget.value)
-            }
-            required
-            value={values.title}
-          />
-        </label>
-        <label
-          className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-          htmlFor="goal-done-condition"
-        >
-          Done condition
-          <textarea
-            className="min-h-28 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            id="goal-done-condition"
-            maxLength={1000}
-            onChange={(event) =>
-              updateValue("doneCondition", event.currentTarget.value)
-            }
-            placeholder="What must be true for this goal to be achieved?"
-            required
-            value={values.doneCondition}
-          />
-        </label>
-        <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
           <label
             className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-            htmlFor="goal-owner"
+            htmlFor="goal-title"
           >
-            Owner
-            <select
-              className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
-              id="goal-owner"
+            Goal title
+            <Input
+              autoFocus
+              className="rounded-md text-sm"
+              id="goal-title"
+              maxLength={180}
               onChange={(event) =>
-                updateValue("ownerPubkey", event.currentTarget.value)
+                updateValue("title", event.currentTarget.value)
               }
               required
-              value={values.ownerPubkey}
-            >
-              <option value="">Choose an owner</option>
-              {(membersQuery.data ?? []).map((member) => (
-                <option key={member.pubkey} value={member.pubkey}>
-                  {resolveUserLabel({
-                    currentPubkey,
-                    profiles: profilesQuery.data?.profiles,
-                    pubkey: member.pubkey,
-                  })}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label
-            className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-            htmlFor="goal-due-date"
-          >
-            Due date
-            <Input
-              id="goal-due-date"
-              onChange={(event) =>
-                updateValue("dueDate", event.currentTarget.value)
-              }
-              type="date"
-              value={values.dueDate}
+              value={values.title}
             />
           </label>
           <label
             className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-            htmlFor="goal-linked-channel"
+            htmlFor="goal-done-condition"
           >
-            Linked channel
-            <select
-              className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
-              id="goal-linked-channel"
+            Done condition
+            <textarea
+              className="min-h-20 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              id="goal-done-condition"
+              maxLength={1000}
               onChange={(event) =>
-                updateValue("linkedChannelId", event.currentTarget.value)
+                updateValue("doneCondition", event.currentTarget.value)
               }
-              value={values.linkedChannelId}
-            >
-              <option value="">No linked channel</option>
-              {linkedChannels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
-                </option>
-              ))}
-            </select>
+              placeholder="What must be true for this goal to be achieved?"
+              required
+              value={values.doneCondition}
+            />
           </label>
-          {channelsQuery.isError ? (
-            <p className="mb-5 text-xs text-muted-foreground sm:col-span-2">
-              Conversations could not be loaded.{" "}
-              <button
-                className="text-primary underline underline-offset-2"
-                onClick={() => void channelsQuery.refetch()}
-                type="button"
-              >
-                Try again
-              </button>
-            </p>
-          ) : null}
-          {mode !== "subgoal" ? (
+          <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
             <label
               className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-              htmlFor="goal-parent"
+              htmlFor="goal-owner"
             >
-              Parent goal
+              Owner
               <select
                 className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
-                id="goal-parent"
+                id="goal-owner"
                 onChange={(event) =>
-                  updateValue("parentGoalId", event.currentTarget.value)
+                  updateValue("ownerPubkey", event.currentTarget.value)
                 }
-                value={values.parentGoalId}
+                required
+                value={values.ownerPubkey}
               >
-                <option value="">Company goal</option>
-                {activeParents.map((record) => (
-                  <option key={record.head.goalId} value={record.head.goalId}>
-                    {record.head.title}
+                <option value="">Choose an owner</option>
+                {(membersQuery.data ?? []).map((member) => (
+                  <option key={member.pubkey} value={member.pubkey}>
+                    {resolveUserLabel({
+                      currentPubkey,
+                      profiles: profilesQuery.data?.profiles,
+                      pubkey: member.pubkey,
+                      preferResolvedSelfLabel: true,
+                    })}
                   </option>
                 ))}
               </select>
             </label>
-          ) : null}
-        </div>
-        <details className="mb-5" open={Boolean(values.targetValue)}>
-          <summary className="cursor-pointer text-sm">
-            Optional numeric target
-          </summary>
-          <div className="mt-4 grid grid-cols-1 gap-x-5 sm:grid-cols-2">
             <label
               className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-              htmlFor="goal-target-value"
+              htmlFor="goal-due-date"
             >
-              Target
+              Due date
               <Input
-                id="goal-target-value"
-                min="0"
+                className="rounded-md text-sm"
+                id="goal-due-date"
                 onChange={(event) =>
-                  updateValue("targetValue", event.currentTarget.value)
+                  updateValue("dueDate", event.currentTarget.value)
                 }
-                step="any"
-                type="number"
-                value={values.targetValue}
+                type="date"
+                value={values.dueDate}
               />
             </label>
             <label
               className="mb-5 flex flex-col gap-2 text-xs font-semibold"
-              htmlFor="goal-target-unit"
+              htmlFor="goal-linked-channel"
             >
-              Unit
-              <Input
-                id="goal-target-unit"
-                maxLength={24}
+              Linked channel
+              <select
+                className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
+                id="goal-linked-channel"
                 onChange={(event) =>
-                  updateValue("targetUnit", event.currentTarget.value)
+                  updateValue("linkedChannelId", event.currentTarget.value)
                 }
-                placeholder="e.g. approved client plans"
-                required={Boolean(values.targetValue.trim())}
-                value={values.targetUnit}
-              />
+                value={values.linkedChannelId}
+              >
+                <option value="">No linked channel</option>
+                {linkedChannels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name}
+                  </option>
+                ))}
+              </select>
             </label>
+            {channelsQuery.isError ? (
+              <p className="mb-5 text-xs text-muted-foreground sm:col-span-2">
+                Conversations could not be loaded.{" "}
+                <button
+                  className="text-primary underline underline-offset-2"
+                  onClick={() => void channelsQuery.refetch()}
+                  type="button"
+                >
+                  Try again
+                </button>
+              </p>
+            ) : null}
+            {mode !== "subgoal" ? (
+              <label
+                className="mb-5 flex flex-col gap-2 text-xs font-semibold"
+                htmlFor="goal-parent"
+              >
+                Parent goal
+                <select
+                  className="min-h-10 rounded-md border border-input bg-background px-3 text-sm font-normal"
+                  id="goal-parent"
+                  onChange={(event) =>
+                    updateValue("parentGoalId", event.currentTarget.value)
+                  }
+                  value={values.parentGoalId}
+                >
+                  <option value="">Company goal</option>
+                  {activeParents.map((record) => (
+                    <option key={record.head.goalId} value={record.head.goalId}>
+                      {record.head.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
-        </details>
-        <p className="text-xs leading-6 text-muted-foreground">
-          Company goals are set by the founder. Managers can create sub-goals
-          within their team’s scope.
-        </p>
-        {formError ? (
-          <p
-            className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-            role="alert"
-          >
-            {formError}
+          <details className="mb-5" open={Boolean(values.targetValue)}>
+            <summary className="cursor-pointer text-sm">
+              Optional numeric target
+            </summary>
+            <div className="mt-4 grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+              <label
+                className="mb-5 flex flex-col gap-2 text-xs font-semibold"
+                htmlFor="goal-target-value"
+              >
+                Target
+                <Input
+                  className="rounded-md text-sm"
+                  id="goal-target-value"
+                  min="0"
+                  onChange={(event) =>
+                    updateValue("targetValue", event.currentTarget.value)
+                  }
+                  step="any"
+                  type="number"
+                  value={values.targetValue}
+                />
+              </label>
+              <label
+                className="mb-5 flex flex-col gap-2 text-xs font-semibold"
+                htmlFor="goal-target-unit"
+              >
+                Unit
+                <Input
+                  className="rounded-md text-sm"
+                  id="goal-target-unit"
+                  maxLength={24}
+                  onChange={(event) =>
+                    updateValue("targetUnit", event.currentTarget.value)
+                  }
+                  placeholder="e.g. approved client plans"
+                  required={Boolean(values.targetValue.trim())}
+                  value={values.targetUnit}
+                />
+              </label>
+            </div>
+          </details>
+          <p className="text-xs leading-6 text-muted-foreground">
+            Company goals are set by the founder. Managers can create sub-goals
+            within their team’s scope.
           </p>
-        ) : null}
-        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
-          <Button disabled={!canSave || mutation.isPending} type="submit">
-            {mutation.isPending
-              ? "Saving goal"
-              : mode === "edit"
-                ? "Save goal"
-                : "Create goal"}
-          </Button>
-          <Button onClick={onCancel} type="button" variant="ghost">
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </main>
+          {formError ? (
+            <p
+              className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {formError}
+            </p>
+          ) : null}
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
+            <Button
+              className="bg-[#637fb1] text-white hover:bg-[#536d9c] dark:bg-[#8aa6d8] dark:text-[#282532] dark:hover:bg-[#7795c9]"
+              disabled={!canSave || mutation.isPending}
+              type="submit"
+            >
+              {mutation.isPending
+                ? "Saving goal"
+                : mode === "edit"
+                  ? "Save goal"
+                  : "Create goal"}
+            </Button>
+            <Button onClick={onCancel} type="button" variant="outline">
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </main>
+    </>
   );
 }

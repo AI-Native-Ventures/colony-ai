@@ -104,17 +104,11 @@ export function useGoalActionMutation() {
   const relayUrl = activeCommunity?.relayUrl ?? null;
 
   return useMutation({
-    mutationFn: async ({
-      communityId,
-      action,
-    }: {
-      communityId: string;
-      action: GoalAction;
-    }) => {
+    mutationFn: async ({ action }: { action: GoalAction }) => {
       const event = await signRelayEvent({
         kind: KIND_GOAL_ACTION,
         content: JSON.stringify(action),
-        tags: [["d", goalDTag(communityId, action.goalId)]],
+        tags: [["d", goalDTag(action.goalId)]],
       });
       await relayClient.publishEvent(
         event,
@@ -131,7 +125,7 @@ export function useGoalActionMutation() {
         queryClient.invalidateQueries({
           queryKey: goalHistoryQueryKey(
             relayUrl,
-            goalDTag(variables.communityId, variables.action.goalId),
+            goalDTag(variables.action.goalId),
           ),
         }),
       ]);

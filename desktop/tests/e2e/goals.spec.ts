@@ -5,9 +5,10 @@ import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
 
-const COMMUNITY_ID = "d8c1a2b3-c4d5-4e6f-8a90-1234567890ab";
 const ACTIVE_GOAL_ID = "a1b2c3d4-e5f6-4789-8abc-1234567890ab";
 const ARCHIVED_GOAL_ID = "b1c2d3e4-f5a6-4789-8abc-1234567890ab";
+const CHILD_GOAL_ID = "c1d2e3f4-a5b6-4789-8abc-1234567890ab";
+const UNAVAILABLE_GOAL_ID = "d1e2f3a4-b5c6-4789-8abc-1234567890ab";
 const RELAY_PRIVATE_KEY = TEST_IDENTITIES.charlie.privateKey;
 const RELAY_SELF = getPublicKey(hexToBytes(RELAY_PRIVATE_KEY));
 const GOAL_OWNER = TEST_IDENTITIES.bob.pubkey;
@@ -17,14 +18,17 @@ function goalHeadEvent({
   goalId,
   status = "active",
   title,
+  parentGoalId,
 }: {
   goalId: string;
   status?: "active" | "archived";
   title: string;
+  parentGoalId?: string;
 }) {
   const goal = {
     schemaVersion: 1,
     goalId,
+    ...(parentGoalId ? { parentGoalId } : {}),
     title,
     ownerPubkey: GOAL_OWNER,
     doneCondition: `${title} has clear evidence.`,
@@ -35,7 +39,7 @@ function goalHeadEvent({
     {
       kind: 30642,
       created_at: Math.floor(Date.now() / 1_000),
-      tags: [["d", `company:${COMMUNITY_ID}:goal:${goalId}`]],
+      tags: [["d", `company:goal:${goalId}`]],
       content: JSON.stringify({
         schemaVersion: 1,
         goalId,
@@ -64,10 +68,11 @@ const GOAL_EVENTS = [
 async function installGoalsMock(
   page: import("@playwright/test").Page,
   relayRole: "owner" | "admin" | "member" = "owner",
+  goalEvents = GOAL_EVENTS,
 ) {
   await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
-    goalEvents: GOAL_EVENTS,
+    goalEvents,
     goalRelayPrivateKey: RELAY_PRIVATE_KEY,
     relaySelf: RELAY_SELF,
     relayRequiresMembership: true,
@@ -132,6 +137,39 @@ test("goal list searches, filters and opens the signed head", async ({
   );
 });
 
+test("an empty relay goal list shows the designed empty state", async ({
+  page,
+}) => {
+  await installGoalsMock(page, "owner", []);
+  await page.goto("/#/goals");
+
+  await expect(page.getByTestId("goals-screen")).toContainText(
+    "No goals here yet",
+  );
+  await expect(
+    page.getByRole("button", { name: "Create your first goal" }),
+  ).toBeVisible();
+});
+
+test("an invalid relay-signed goal head shows the unavailable state", async ({
+  page,
+}) => {
+  const invalidHead = {
+    ...goalHeadEvent({
+      goalId: ACTIVE_GOAL_ID,
+      title: "Malformed goal head",
+    }),
+    content: "{}",
+  };
+  await installGoalsMock(page, "owner", [invalidHead]);
+  await page.goto("/#/goals");
+
+  await expect(
+    page.getByRole("heading", { name: "Goals unavailable" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
 test("create and edit a root goal, then reload from the relay head", async ({
   page,
 }) => {
@@ -159,6 +197,142 @@ test("create and edit a root goal, then reload from the relay head", async ({
   );
 });
 
+test("goal references distinguish deleted and unavailable records", async ({
+  page,
+}) => {
+  const child = goalHeadEvent({
+    goalId: CHILD_GOAL_ID,
+    title: "Prepare the client launch brief",
+    parentGoalId: ACTIVE_GOAL_ID,
+  });
+  await installGoalsMock(page, "owner", [...GOAL_EVENTS, child]);
+  await joinGeneralChannel(page);
+  await waitForMockLiveSubscription(page, "general");
+  await page.evaluate((goalId) => {
+    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content: `This sub-goal is active: buzz://goal/${goalId}`,
+    });
+  }, CHILD_GOAL_ID);
+
+  const childCard = page.getByTestId(`goal-reference-card-${CHILD_GOAL_ID}`);
+  await expect(childCard).toBeVisible();
+  await childCard.click();
+  await expect(page.getByTestId("goal-detail")).toContainText(
+    "Prepare the client launch brief",
+  );
+  await page.getByRole("button", { name: "Delete goal" }).click();
+  await page
+    .getByTestId("goal-delete-screen")
+    .getByRole("button", { name: "Delete goal" })
+    .click();
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await expect(page.getByText(/Deleted goal · C1D2E3F4/)).toBeVisible();
+  await waitForMockLiveSubscription(page, "general");
+  await page.evaluate((goalId) => {
+    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content: `This reference is unavailable: buzz://goal/${goalId}`,
+    });
+  }, UNAVAILABLE_GOAL_ID);
+  await expect(page.getByText(/Goal unavailable · D1E2F3A4/)).toBeVisible();
+});
+
+test("progress status is explicit, archive restores, and delete respects sub-goals", async ({
+  page,
+}) => {
+  const child = goalHeadEvent({
+    goalId: CHILD_GOAL_ID,
+    title: "Prepare the client launch brief",
+    parentGoalId: ACTIVE_GOAL_ID,
+  });
+  await installGoalsMock(page, "owner", [...GOAL_EVENTS, child]);
+  await page.goto(`/#/goals/${ACTIVE_GOAL_ID}`);
+
+  await page.getByRole("button", { name: "Update progress" }).click();
+  const progressScreen = page.getByTestId("goal-progress-screen");
+  await expect(progressScreen).toBeVisible();
+  await page.getByLabel("Current value").fill("5");
+  await progressScreen.getByLabel("Status").selectOption("off_pace");
+  await page
+    .getByLabel("Evidence or update")
+    .fill("The final plan is awaiting client sign-off.");
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__ = ["progress"];
+  });
+  await page.getByRole("button", { name: "Record update" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "mock goal action rejected",
+  );
+  await expect(page.getByLabel("Current value")).toHaveValue("5");
+  await expect(progressScreen.getByLabel("Status")).toHaveValue("off_pace");
+  await expect(page.getByLabel("Evidence or update")).toHaveValue(
+    "The final plan is awaiting client sign-off.",
+  );
+  await page.getByRole("button", { name: "Record update" }).click();
+  await expect(page.getByTestId("goal-detail")).toContainText("off pace");
+  await expect(page.getByTestId("goal-detail")).toContainText(
+    "The final plan is awaiting client sign-off.",
+  );
+
+  await page.getByRole("button", { name: "Archive goal" }).click();
+  await expect(page.getByTestId("goal-archive-screen")).toContainText(
+    "1 sub-goals",
+  );
+  await page.getByRole("button", { name: "Archive goal" }).click();
+  await expect(page.getByTestId("goal-detail")).toContainText(
+    "This goal is archived.",
+  );
+  await page.getByRole("button", { name: "Restore goal" }).click();
+  await expect(page.getByTestId("goal-detail")).toContainText("active");
+
+  await page.getByRole("button", { name: "Delete goal" }).click();
+  await expect(page.getByTestId("goal-delete-screen")).toContainText(
+    "Resolve these links first.",
+  );
+  await expect(page.getByTestId("goal-delete-screen")).toContainText(
+    "Prepare the client launch brief",
+  );
+  await expect(
+    page.getByTestId("goal-delete-screen").getByRole("button", {
+      name: "Delete goal",
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByTestId("goal-delete-screen")
+    .getByRole("button", { name: "Edit relationships" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`#/goals/${CHILD_GOAL_ID}/edit$`));
+  await expect(page.getByLabel("Goal title")).toHaveValue(
+    "Prepare the client launch brief",
+  );
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("goal-detail")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete goal" }).click();
+  await page
+    .getByTestId("goal-delete-screen")
+    .getByRole("button", {
+      name: "Delete goal",
+    })
+    .click();
+  await expect(page).toHaveURL(/#\/goals$/);
+
+  await page.goto(`/#/goals/${ACTIVE_GOAL_ID}`);
+  await page.getByRole("button", { name: "Delete goal" }).click();
+  await expect(page.getByTestId("goal-delete-screen")).not.toContainText(
+    "Resolve these links first.",
+  );
+  await page
+    .getByTestId("goal-delete-screen")
+    .getByRole("button", {
+      name: "Delete goal",
+    })
+    .click();
+  await expect(page).toHaveURL(/#\/goals$/);
+  await expect(page.getByTestId(`goal-row-${ACTIVE_GOAL_ID}`)).toHaveCount(0);
+});
+
 test("chat picker inserts a goal chip and the message card opens that goal", async ({
   page,
 }) => {
@@ -182,8 +356,17 @@ test("chat picker inserts a goal chip and the message card opens that goal", asy
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByTestId("reference-goal-button").click();
   await expect(page.getByTestId("goal-reference-picker")).toBeVisible();
+  await expect(
+    page.getByText("Find a goal or sub-goal", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId(`insert-goal-${ARCHIVED_GOAL_ID}`)).toHaveCount(
+    0,
+  );
   await page.getByTestId("goal-reference-search").fill("qualified");
-  await page.getByTestId(`insert-goal-${ACTIVE_GOAL_ID}`).click();
+  const insertGoal = page.getByTestId(`insert-goal-${ACTIVE_GOAL_ID}`);
+  await page.keyboard.press("Tab");
+  await expect(insertGoal).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`#/channels/${GENERAL_CHANNEL_ID}$`));
   await expect(page.locator("[data-composer-buzz-link]")).toBeVisible();
   await expect(page.locator("[data-composer-buzz-link]")).toHaveAttribute(

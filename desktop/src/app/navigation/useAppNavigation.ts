@@ -195,6 +195,42 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goGoalProgress = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/progress",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalArchive = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/archive",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalDelete = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/delete",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goShareGoal = React.useCallback(
     (goalId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -569,6 +605,9 @@ export function useAppNavigation() {
     goForumPost,
     goHome,
     goGoal,
+    goGoalArchive,
+    goGoalDelete,
+    goGoalProgress,
     goGoalReference,
     goGoals,
     goNewGoal,

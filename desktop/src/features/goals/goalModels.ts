@@ -52,7 +52,6 @@ export type GoalHead = {
 };
 
 export type GoalHeadRecord = {
-  communityId: string;
   dTag: string;
   event: RelayEvent;
   head: GoalHead;
@@ -200,21 +199,18 @@ function parseRecordedProgress(value: unknown): RecordedGoalProgress | null {
   };
 }
 
-export function goalDTag(communityId: string, goalId: string): string {
-  if (!UUID_RE.test(communityId) || !UUID_RE.test(goalId)) {
-    throw new Error("Goal coordinates require UUID values.");
+export function goalDTag(goalId: string): string {
+  if (!UUID_RE.test(goalId)) {
+    throw new Error("Goal coordinates require a goal UUID.");
   }
-  return `company:${communityId.toLowerCase()}:goal:${goalId.toLowerCase()}`;
+  return `company:goal:${goalId.toLowerCase()}`;
 }
 
-export function parseGoalDTag(
-  value: string,
-): { communityId: string; goalId: string } | null {
-  const match = /^company:([0-9a-f-]{36}):goal:([0-9a-f-]{36})$/i.exec(value);
-  if (!match || !UUID_RE.test(match[1]) || !UUID_RE.test(match[2])) return null;
+export function parseGoalDTag(value: string): { goalId: string } | null {
+  const match = /^company:goal:([0-9a-f-]{36})$/i.exec(value);
+  if (!match || !UUID_RE.test(match[1])) return null;
   return {
-    communityId: match[1].toLowerCase(),
-    goalId: match[2].toLowerCase(),
+    goalId: match[1].toLowerCase(),
   };
 }
 
@@ -301,7 +297,6 @@ export function parseGoalHeadEvent(
   const head = parseGoalHeadContent(event.content);
   if (!coordinate || !head || coordinate.goalId !== head.goalId) return null;
   return {
-    communityId: coordinate.communityId,
     dTag,
     event,
     head,

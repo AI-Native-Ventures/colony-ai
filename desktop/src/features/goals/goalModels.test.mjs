@@ -7,13 +7,12 @@ import { goalDTag, parseGoalDTag, parseGoalHeadEvent } from "./goalModels.ts";
 const RELAY_SECRET = new Uint8Array(32).fill(2);
 const OTHER_SECRET = new Uint8Array(32).fill(3);
 const RELAY_PUBKEY = getPublicKey(RELAY_SECRET);
-const COMMUNITY_ID = "123e4567-e89b-12d3-a456-426614174000";
 const GOAL_ID = "123e4567-e89b-12d3-a456-426614174001";
 
 function signedHead({
   goalId = GOAL_ID,
   status = "active",
-  tags = [["d", goalDTag(COMMUNITY_ID, GOAL_ID)]],
+  tags = [["d", goalDTag(GOAL_ID)]],
   content,
   secret = RELAY_SECRET,
 } = {}) {
@@ -47,11 +46,10 @@ function signedHead({
   );
 }
 
-test("goal d-tags retain community and goal UUIDs", () => {
-  const dTag = goalDTag(COMMUNITY_ID, GOAL_ID);
-  assert.equal(dTag, `company:${COMMUNITY_ID}:goal:${GOAL_ID}`);
+test("goal d-tags contain only the goal UUID", () => {
+  const dTag = goalDTag(GOAL_ID);
+  assert.equal(dTag, `company:goal:${GOAL_ID}`);
   assert.deepEqual(parseGoalDTag(dTag), {
-    communityId: COMMUNITY_ID,
     goalId: GOAL_ID,
   });
   assert.equal(parseGoalDTag(`${dTag}:extra`), null);
@@ -61,7 +59,6 @@ test("goal head parsing accepts only verified relay-signed global heads", () => 
   const event = signedHead();
   const parsed = parseGoalHeadEvent(event, RELAY_PUBKEY);
   assert.equal(parsed?.head.goalId, GOAL_ID);
-  assert.equal(parsed?.communityId, COMMUNITY_ID);
 
   assert.equal(parseGoalHeadEvent(event, getPublicKey(OTHER_SECRET)), null);
   assert.equal(
@@ -76,8 +73,8 @@ test("goal head parsing accepts only verified relay-signed global heads", () => 
     parseGoalHeadEvent(
       signedHead({
         tags: [
-          ["d", goalDTag(COMMUNITY_ID, GOAL_ID)],
-          ["h", COMMUNITY_ID],
+          ["d", goalDTag(GOAL_ID)],
+          ["h", GOAL_ID],
         ],
       }),
       RELAY_PUBKEY,

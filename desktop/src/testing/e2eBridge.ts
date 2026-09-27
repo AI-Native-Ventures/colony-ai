@@ -1495,6 +1495,8 @@ declare global {
     }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
+    /** Goal action kinds rejected once to exercise goal retry states. */
+    __BUZZ_E2E_REJECT_GOAL_ACTIONS__?: string[];
     /** Makes the mock relay reject project announcements as an unknown kind. */
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
@@ -4769,12 +4771,19 @@ function isRelayMode(config: E2eConfig | undefined): boolean {
   return config?.mode === "relay";
 }
 
+let appliedRelayWsUrl: string | null = null;
+
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
+  if (appliedRelayWsUrl) {
+    return appliedRelayWsUrl
+      .replace(/^wss:/i, "https:")
+      .replace(/^ws:/i, "http:");
+  }
   return config?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
 }
 
 function getRelayWsUrl(config: E2eConfig | undefined): string {
-  return config?.relayWsUrl ?? DEFAULT_RELAY_WS_URL;
+  return appliedRelayWsUrl ?? config?.relayWsUrl ?? DEFAULT_RELAY_WS_URL;
 }
 
 /**
@@ -6952,9 +6961,7 @@ function brokerMockGoalAction(event: RelayEvent): string | null {
     return "invalid: company goal action must have one d tag.";
   }
   const dTag = event.tags[0][1];
-  const coordinate = /^company:([0-9a-f-]{36}):goal:([0-9a-f-]{36})$/i.exec(
-    dTag ?? "",
-  );
+  const coordinate = /^company:goal:([0-9a-f-]{36})$/i.exec(dTag ?? "");
   if (!coordinate) return "invalid: company goal d tag is malformed.";
 
   let action: {
@@ -6974,9 +6981,15 @@ function brokerMockGoalAction(event: RelayEvent): string | null {
   }
   if (
     action.schemaVersion !== 1 ||
-    action.goalId?.toLowerCase() !== coordinate[2].toLowerCase()
+    action.goalId?.toLowerCase() !== coordinate[1].toLowerCase()
   ) {
     return "invalid: goal action does not match its d tag.";
+  }
+  const rejectedActionIndex =
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.indexOf(action.action ?? "") ?? -1;
+  if (rejectedActionIndex >= 0) {
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.splice(rejectedActionIndex, 1);
+    return "conflict: mock goal action rejected.";
   }
 
   const existingEvent = mockGoalHeadByDTag(dTag);
@@ -7013,11 +7026,18 @@ function brokerMockGoalAction(event: RelayEvent): string | null {
       if (!action.progress || typeof action.progress.evidence !== "string") {
         return "invalid: progress evidence is required.";
       }
+      if (
+        action.status !== undefined &&
+        !["active", "off_pace", "achieved"].includes(action.status)
+      ) {
+        return "invalid: progress status is not supported.";
+      }
       nextProgress = {
         ...action.progress,
         recordedByPubkey: event.pubkey,
         recordedAt: new Date().toISOString(),
       };
+      if (action.status) nextStatus = action.status;
       break;
     case "set_status":
       if (!action.status || !action.reason) {
@@ -7026,14 +7046,18 @@ function brokerMockGoalAction(event: RelayEvent): string | null {
       nextStatus = action.status;
       break;
     case "archive":
-      if (!action.reason) return "invalid: reason is required.";
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
       nextStatus = "archived";
       break;
     case "restore":
       nextStatus = "active";
       break;
     case "delete":
-      if (!action.reason) return "invalid: reason is required.";
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
       if (
         getMockGoalEventStore().some((candidate) => {
           if (candidate.kind !== KIND_GOAL_HEAD) return false;
@@ -13801,9 +13825,17 @@ export function maybeInstallE2eTauriMocks() {
       case "apply_workspace": {
         const applyDelayMs = activeConfig?.mock?.applyCommunityDelayMs ?? 0;
         if (applyDelayMs > 0) {
-          return new Promise((resolve) =>
+          await new Promise((resolve) =>
             window.setTimeout(resolve, applyDelayMs),
           );
+        }
+        const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        if (
+          isRelayMode(activeConfig) &&
+          typeof relayUrl === "string" &&
+          relayUrl.trim().length > 0
+        ) {
+          appliedRelayWsUrl = relayUrl;
         }
         return;
       }

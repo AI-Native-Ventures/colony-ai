@@ -1,9 +1,6 @@
 import type * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { resolveUserLabel } from "@/features/profile/lib/identity";
-import { useIdentityQuery } from "@/shared/api/hooks";
 import { useGoalHeadsQuery } from "../goalRelay";
 
 function shortGoalId(goalId: string): string {
@@ -12,7 +9,7 @@ function shortGoalId(goalId: string): string {
 
 function GoalReferenceCardFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="my-3 flex w-full max-w-[650px] items-center gap-3 rounded-lg border border-border bg-muted/30 p-4 text-left">
+    <div className="my-3 flex w-full max-w-[740px] items-center gap-3 rounded-lg border border-border bg-[#f8f7f8] p-5 text-left dark:bg-[#302b38]">
       {children}
     </div>
   );
@@ -26,16 +23,11 @@ export function GoalReferenceCard({
   interactive?: boolean;
 }) {
   const goalsQuery = useGoalHeadsQuery();
-  const identityQuery = useIdentityQuery();
   const { goGoal } = useAppNavigation();
   const record = goalsQuery.data?.find(
     (candidate) => candidate.head.goalId === goalId,
   );
   const goal = record?.head.goal;
-  const ownerPubkey = goal?.ownerPubkey;
-  const profilesQuery = useUsersBatchQuery(ownerPubkey ? [ownerPubkey] : [], {
-    enabled: Boolean(ownerPubkey),
-  });
 
   if (goalsQuery.isPending) {
     return (
@@ -70,24 +62,7 @@ export function GoalReferenceCard({
     );
   }
 
-  const parent = goal.parentGoalId
-    ? goalsQuery.data?.find(
-        (candidate) => candidate.head.goalId === goal.parentGoalId,
-      )
-    : undefined;
-  const ownerLabel = resolveUserLabel({
-    currentPubkey: identityQuery.data?.pubkey,
-    profiles: profilesQuery.data?.profiles,
-    pubkey: goal.ownerPubkey,
-  });
-  const summary = [
-    ownerLabel,
-    record.head.status.replaceAll("_", " "),
-    parent ? `Part of ${parent.head.title}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const label = `${goal.parentGoalId ? "SUB-GOAL" : "GOAL"} · ${shortGoalId(goal.goalId)}`;
+  const label = `${goal.parentGoalId ? "Sub-goal" : "Company goal"} · ${shortGoalId(goal.goalId)}`;
 
   const contents = (
     <>
@@ -95,14 +70,12 @@ export function GoalReferenceCard({
         ◎
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-2xs text-muted-foreground">{label}</span>
-        <span className="my-1 block text-sm font-semibold leading-6">
+        <span className="block text-sm font-semibold leading-6">
           {record.head.title}
         </span>
-        <span className="block text-2xs text-muted-foreground">{summary}</span>
-      </span>
-      <span aria-hidden="true" className="text-base text-muted-foreground">
-        ↗
+        <span className="mt-1 block text-2xs text-muted-foreground">
+          {label}
+        </span>
       </span>
     </>
   );
@@ -114,7 +87,7 @@ export function GoalReferenceCard({
   return (
     <button
       aria-label={`Open goal: ${record.head.title}`}
-      className="my-3 flex w-full max-w-[650px] items-center gap-3 rounded-lg border border-border bg-muted/30 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="my-3 flex w-full max-w-[740px] items-center gap-3 rounded-lg border border-border bg-[#f8f7f8] p-5 text-left transition-colors hover:bg-[#f4f0f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-[#302b38] dark:hover:bg-[#39313f]"
       data-testid={`goal-reference-card-${goal.goalId}`}
       onClick={() => void goGoal(goal.goalId)}
       type="button"

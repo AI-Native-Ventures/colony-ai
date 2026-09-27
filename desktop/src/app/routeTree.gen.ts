@@ -34,7 +34,10 @@ import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
+import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
 import { Route as goalsDotgoalIdDoteditRouteImport } from "./routes/goals.$goalId.edit";
+import { Route as goalsDotgoalIdDotdeleteRouteImport } from "./routes/goals.$goalId.delete";
+import { Route as goalsDotgoalIdDotarchiveRouteImport } from "./routes/goals.$goalId.archive";
 import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
@@ -187,11 +190,28 @@ const goalsDotgoalIdDotshareRoute = goalsDotgoalIdDotshareRouteImport.update({
   path: "/goals/$goalId/share",
   getParentRoute: () => rootRouteImport,
 } as any);
+const goalsDotgoalIdDotprogressRoute =
+  goalsDotgoalIdDotprogressRouteImport.update({
+    id: "/goals/$goalId/progress",
+    path: "/goals/$goalId/progress",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const goalsDotgoalIdDoteditRoute = goalsDotgoalIdDoteditRouteImport.update({
   id: "/goals/$goalId/edit",
   path: "/goals/$goalId/edit",
   getParentRoute: () => rootRouteImport,
 } as any);
+const goalsDotgoalIdDotdeleteRoute = goalsDotgoalIdDotdeleteRouteImport.update({
+  id: "/goals/$goalId/delete",
+  path: "/goals/$goalId/delete",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotarchiveRoute =
+  goalsDotgoalIdDotarchiveRouteImport.update({
+    id: "/goals/$goalId/archive",
+    path: "/goals/$goalId/archive",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const factoryDotreviewDotrunIdRoute =
   factoryDotreviewDotrunIdRouteImport.update({
     id: "/factory/review/$runId",
@@ -254,7 +274,10 @@ export interface FileRoutesByFullPath {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
   "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
@@ -291,7 +314,10 @@ export interface FileRoutesByTo {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
   "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
@@ -329,7 +355,10 @@ export interface FileRoutesById {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
   "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
@@ -368,7 +397,10 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
     | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
     | "/channels/$channelId/posts/$postId";
@@ -405,7 +437,10 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
     | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
     | "/channels/$channelId/posts/$postId";
@@ -442,7 +477,10 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
     | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
     | "/channels/$channelId/posts/$postId";
@@ -480,7 +518,10 @@ export interface RootRouteChildren {
   factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
   factoryDotprojectDotprojectIdRoute: typeof factoryDotprojectDotprojectIdRoute;
   factoryDotreviewDotrunIdRoute: typeof factoryDotreviewDotrunIdRoute;
+  goalsDotgoalIdDotarchiveRoute: typeof goalsDotgoalIdDotarchiveRoute;
+  goalsDotgoalIdDotdeleteRoute: typeof goalsDotgoalIdDotdeleteRoute;
   goalsDotgoalIdDoteditRoute: typeof goalsDotgoalIdDoteditRoute;
+  goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
   goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
   goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
@@ -691,11 +732,32 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof goalsDotgoalIdDotshareRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/goals/$goalId/progress": {
+      id: "/goals/$goalId/progress";
+      path: "/goals/$goalId/progress";
+      fullPath: "/goals/$goalId/progress";
+      preLoaderRoute: typeof goalsDotgoalIdDotprogressRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/goals/$goalId/edit": {
       id: "/goals/$goalId/edit";
       path: "/goals/$goalId/edit";
       fullPath: "/goals/$goalId/edit";
       preLoaderRoute: typeof goalsDotgoalIdDoteditRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/delete": {
+      id: "/goals/$goalId/delete";
+      path: "/goals/$goalId/delete";
+      fullPath: "/goals/$goalId/delete";
+      preLoaderRoute: typeof goalsDotgoalIdDotdeleteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/archive": {
+      id: "/goals/$goalId/archive";
+      path: "/goals/$goalId/archive";
+      fullPath: "/goals/$goalId/archive";
+      preLoaderRoute: typeof goalsDotgoalIdDotarchiveRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/factory/review/$runId": {
@@ -768,7 +830,10 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,
   factoryDotprojectDotprojectIdRoute: factoryDotprojectDotprojectIdRoute,
   factoryDotreviewDotrunIdRoute: factoryDotreviewDotrunIdRoute,
+  goalsDotgoalIdDotarchiveRoute: goalsDotgoalIdDotarchiveRoute,
+  goalsDotgoalIdDotdeleteRoute: goalsDotgoalIdDotdeleteRoute,
   goalsDotgoalIdDoteditRoute: goalsDotgoalIdDoteditRoute,
+  goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
   goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
   goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:

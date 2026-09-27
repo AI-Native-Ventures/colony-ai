@@ -20,6 +20,7 @@ import {
   useGoalHistoryQuery,
 } from "../goalRelay";
 import { GoalListRow, GoalStatusLabel } from "./GoalsScreen";
+import { GoalRouteBackLink, GoalRouteHeader } from "./GoalRouteHeader";
 
 function shortGoalId(goalId: string): string {
   return goalId.slice(0, 8).toUpperCase();
@@ -33,51 +34,57 @@ function GoalUnavailable({
   onBack: () => void;
 }) {
   return (
-    <section
-      aria-labelledby="goal-unavailable-title"
-      className="mx-auto w-full max-w-[1230px] px-8 py-8"
-    >
-      <h1
-        className="text-2xl font-semibold tracking-tight"
-        id="goal-unavailable-title"
+    <>
+      <GoalRouteHeader title="Goal unavailable" />
+      <section
+        aria-labelledby="goal-unavailable-title"
+        className="mx-auto w-full max-w-[1230px] px-8 py-8"
       >
-        Goal unavailable
-      </h1>
-      <div className="mt-8 rounded-lg border border-border p-6">
-        <h2 className="text-base font-semibold">
-          {deleted ? "This goal was deleted." : "This goal is unavailable."}
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {deleted
-            ? "Its old references remain as a deleted-goal marker."
-            : "This goal could not be found in the current community."}
-        </p>
-        <Button className="mt-5" onClick={onBack}>
-          Back to goals
-        </Button>
-      </div>
-    </section>
+        <GoalRouteBackLink onClick={onBack} />
+        <h1
+          className="text-2xl font-semibold tracking-tight"
+          id="goal-unavailable-title"
+        >
+          Goal unavailable
+        </h1>
+        <div className="mt-8 rounded-lg border border-border p-6">
+          <h2 className="text-base font-semibold">
+            {deleted ? "This goal was deleted." : "This goal is unavailable."}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {deleted
+              ? "Its old references remain as a deleted-goal marker."
+              : "This goal could not be found in the current community."}
+          </p>
+          <Button className="mt-5" onClick={onBack}>
+            Back to goals
+          </Button>
+        </div>
+      </section>
+    </>
   );
 }
 
-function historyLabel(action: string): string {
+function historyLabel(action: string, parentGoal: boolean): string {
   switch (action) {
     case "create":
-      return "Goal created";
+      return parentGoal
+        ? "created this sub-goal."
+        : "created this company goal.";
     case "update":
-      return "Goal updated";
+      return "updated this goal.";
     case "progress":
-      return "Progress recorded";
+      return "recorded progress.";
     case "set_status":
-      return "Status changed";
+      return "changed this goal’s status.";
     case "archive":
-      return "Goal archived";
+      return "archived this goal.";
     case "restore":
-      return "Goal restored";
+      return "restored this goal.";
     case "delete":
-      return "Goal deleted";
+      return "deleted this goal.";
     default:
-      return "Goal updated";
+      return "updated this goal.";
   }
 }
 
@@ -92,8 +99,17 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   const membershipQuery = useMyRelayMembershipQuery();
   const channelsQuery = useChannelsQuery();
   const mutation = useGoalActionMutation();
-  const { goEditGoal, goGoal, goGoals, goNewGoal, goChannel, goShareGoal } =
-    useAppNavigation();
+  const {
+    goEditGoal,
+    goGoal,
+    goGoalArchive,
+    goGoalDelete,
+    goGoalProgress,
+    goGoals,
+    goNewGoal,
+    goChannel,
+    goShareGoal,
+  } = useAppNavigation();
   const record = goalQuery.data;
   const head = record?.head;
   const goal = head?.goal;
@@ -101,11 +117,20 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   const allGoals = goalsQuery.data ?? [];
   const children = React.useMemo(
     () =>
-      allGoals.filter(
-        (candidate) =>
-          candidate.head.goal?.parentGoalId === goalId &&
-          candidate.head.status !== "deleted",
-      ),
+      allGoals
+        .filter(
+          (candidate) =>
+            candidate.head.goal?.parentGoalId === goalId &&
+            candidate.head.status !== "deleted",
+        )
+        .sort((left, right) => {
+          const leftDueDate = left.head.goal?.dueDate ?? "9999-12-31";
+          const rightDueDate = right.head.goal?.dueDate ?? "9999-12-31";
+          return (
+            leftDueDate.localeCompare(rightDueDate) ||
+            left.head.title.localeCompare(right.head.title)
+          );
+        }),
     [allGoals, goalId],
   );
   const ownerAndHistoryPubkeys = React.useMemo(() => {
@@ -121,7 +146,6 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   const handleRestore = React.useCallback(async () => {
     if (!record) return;
     await mutation.mutateAsync({
-      communityId: record.communityId,
       action: {
         schemaVersion: 1,
         goalId: record.head.goalId,
@@ -133,40 +157,47 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
 
   if (goalQuery.isPending) {
     return (
-      <div
-        className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading goal
-      </div>
+      <>
+        <GoalRouteHeader title="Goals" />
+        <div
+          className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading goal
+        </div>
+      </>
     );
   }
 
   if (goalQuery.isError) {
     return (
-      <section
-        aria-labelledby="goal-load-error-title"
-        className="mx-auto w-full max-w-[1230px] px-8 py-8"
-      >
-        <h1
-          className="text-2xl font-semibold tracking-tight"
-          id="goal-load-error-title"
+      <>
+        <GoalRouteHeader title="Goal unavailable" />
+        <section
+          aria-labelledby="goal-load-error-title"
+          className="mx-auto w-full max-w-[1230px] px-8 py-8"
         >
-          Goal unavailable
-        </h1>
-        <div className="mt-8 rounded-lg border border-border p-6">
-          <h2 className="text-base font-semibold">
-            The goal could not be loaded.
-          </h2>
-          <Button
-            className="mt-5"
-            onClick={() => void goalQuery.refetch()}
-            variant="outline"
+          <GoalRouteBackLink onClick={() => void goGoals()} />
+          <h1
+            className="text-2xl font-semibold tracking-tight"
+            id="goal-load-error-title"
           >
-            Try again
-          </Button>
-        </div>
-      </section>
+            Goal unavailable
+          </h1>
+          <div className="mt-8 rounded-lg border border-border p-6">
+            <h2 className="text-base font-semibold">
+              The goal could not be loaded.
+            </h2>
+            <Button
+              className="mt-5"
+              onClick={() => void goalQuery.refetch()}
+              variant="outline"
+            >
+              Try again
+            </Button>
+          </div>
+        </section>
+      </>
     );
   }
 
@@ -187,12 +218,14 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
     currentPubkey,
     profiles: profilesQuery.data?.profiles,
     pubkey: goal.ownerPubkey,
+    preferResolvedSelfLabel: true,
   });
   const permissionsResolved =
     membershipQuery.isSuccess && identityQuery.isSuccess;
   const canEdit = canEditGoal(role, currentPubkey, head);
   const canAddSubgoal = canCreateSubgoal(role, currentPubkey, head);
   const canRestore = head.status === "archived" && canRestoreOrDeleteGoal(role);
+  const canDelete = canRestoreOrDeleteGoal(role);
   const linkedChannels = goal.linkedChannelIds.map((channelId) => ({
     id: channelId,
     channel: channels.find((candidate) => candidate.id === channelId),
@@ -209,292 +242,322 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   });
 
   return (
-    <main
-      className="mx-auto w-full max-w-[1230px] px-8 py-8"
-      data-testid="goal-detail"
-    >
-      <h1 className="max-w-3xl text-2xl font-semibold tracking-tight">
-        {head.title}
-      </h1>
-      {head.status === "archived" ? (
-        <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
-          <strong className="text-sm">This goal is archived.</strong>
-          <p className="mt-1 text-sm text-muted-foreground">
-            History and links are retained. Restore it to resume tracking.
-          </p>
-        </div>
-      ) : null}
-      <div className="my-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-        <GoalStatusLabel status={head.status} />
-        <span>
-          Owner:{" "}
-          <strong className="font-semibold text-foreground">
-            {ownerLabel}
-          </strong>
-        </span>
-        <span>
-          Due:{" "}
-          <strong className="font-semibold text-foreground">
-            {goal.dueDate ?? "Not set"}
-          </strong>
-        </span>
-        <span>
-          ID:{" "}
-          <strong className="font-semibold text-foreground">
-            {shortGoalId(goal.goalId)}
-          </strong>
-        </span>
-      </div>
-      {goal.parentGoalId ? (
-        <div className="mb-6 rounded-lg bg-muted/40 px-4 py-3 text-sm">
-          Part of{" "}
-          <button
-            className="font-medium text-primary underline underline-offset-4"
-            onClick={() => void goGoal(goal.parentGoalId ?? "")}
-            type="button"
-          >
-            {parentName}
-          </button>
-        </div>
-      ) : null}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(240px,1fr)] lg:gap-12">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold">What done means</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-7">
-            {goal.doneCondition}
-          </p>
-          {goal.target ? (
-            <div className="mt-6 grid gap-2">
-              {canShowMetric ? (
-                <strong className="text-2xl">
-                  {current}{" "}
-                  <span className="text-base font-normal">of {target}</span>
-                </strong>
-              ) : (
-                <strong className="text-2xl">{goal.target.value}</strong>
-              )}
-              <span className="text-sm text-muted-foreground">
-                {goal.target.unit}
-              </span>
-              {canShowMetric ? (
-                <progress
-                  aria-label={`${current} of ${target} ${goal.target.unit}`}
-                  className="my-2 h-1.5 w-full accent-primary"
-                  max={target}
-                  value={current}
-                />
-              ) : null}
-              <span className="text-xs text-muted-foreground">
-                A target reaching 100% does not automatically mark the goal
-                achieved.
-              </span>
-            </div>
-          ) : null}
-          <div className="my-7 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">
-              Sub-goals{" "}
-              <span className="text-xs font-normal text-muted-foreground">
-                {children.length}
-              </span>
-            </h2>
-            {head.status !== "archived" &&
-            permissionsResolved &&
-            canAddSubgoal ? (
-              <Button onClick={() => void goNewGoal(goalId)} variant="ghost">
-                Add sub-goal
-              </Button>
-            ) : null}
+    <>
+      <GoalRouteHeader title={head.title} />
+      <main
+        className="mx-auto w-full max-w-[1230px] px-8 py-8"
+        data-testid="goal-detail"
+      >
+        <GoalRouteBackLink onClick={() => void goGoals()} />
+        <h1 className="max-w-3xl text-2xl font-bold tracking-tight">
+          {head.title}
+        </h1>
+        {head.status === "archived" ? (
+          <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
+            <strong className="text-sm">This goal is archived.</strong>
+            <p className="mt-1 text-sm text-muted-foreground">
+              History and links are retained. Restore it to resume tracking.
+            </p>
           </div>
-          {children.length ? (
-            <div>
-              {children.map((child) => (
-                <GoalListRow
-                  key={child.head.goalId}
-                  ownerLabel={resolveUserLabel({
+        ) : null}
+        <div className="my-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <GoalStatusLabel status={head.status} />
+          <span>
+            Owner:{" "}
+            <strong className="font-semibold text-foreground">
+              {ownerLabel}
+            </strong>
+          </span>
+          <span>
+            Due:{" "}
+            <strong className="font-semibold text-foreground">
+              {goal.dueDate ?? "Not set"}
+            </strong>
+          </span>
+          <span>
+            ID:{" "}
+            <strong className="font-semibold text-foreground">
+              {shortGoalId(goal.goalId)}
+            </strong>
+          </span>
+        </div>
+        {goal.parentGoalId ? (
+          <div className="mb-6 rounded-lg bg-muted/40 px-4 py-3 text-sm">
+            Part of{" "}
+            <button
+              className="font-medium text-primary underline underline-offset-4"
+              onClick={() => void goGoal(goal.parentGoalId ?? "")}
+              type="button"
+            >
+              {parentName}
+            </button>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(240px,1fr)] lg:gap-12">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">What done means</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7">
+              {goal.doneCondition}
+            </p>
+            {goal.target ? (
+              <div className="mt-6 grid gap-2">
+                {canShowMetric ? (
+                  <strong className="text-2xl">
+                    {current}{" "}
+                    <span className="text-base font-normal">of {target}</span>
+                  </strong>
+                ) : (
+                  <strong className="text-2xl">{goal.target.value}</strong>
+                )}
+                <span className="text-sm text-muted-foreground">
+                  {goal.target.unit}
+                </span>
+                {canShowMetric ? (
+                  <progress
+                    aria-label={`${current} of ${target} ${goal.target.unit}`}
+                    className="my-2 h-1.5 w-full accent-[#637fb1] dark:accent-[#8aa6d8]"
+                    max={target}
+                    value={current}
+                  />
+                ) : null}
+                <span className="text-xs text-muted-foreground">
+                  A target reaching 100% does not automatically mark the goal
+                  achieved.
+                </span>
+              </div>
+            ) : null}
+            <div className="my-7 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">
+                Sub-goals{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {children.length}
+                </span>
+              </h2>
+              {head.status !== "archived" &&
+              permissionsResolved &&
+              canAddSubgoal ? (
+                <Button onClick={() => void goNewGoal(goalId)} variant="ghost">
+                  Add sub-goal
+                </Button>
+              ) : null}
+            </div>
+            {children.length ? (
+              <div>
+                {children.map((child) => (
+                  <GoalListRow
+                    key={child.head.goalId}
+                    ownerLabel={resolveUserLabel({
+                      currentPubkey,
+                      profiles: profilesQuery.data?.profiles,
+                      pubkey: child.head.goal?.ownerPubkey ?? "",
+                      preferResolvedSelfLabel: true,
+                    })}
+                    record={child}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-7 text-muted-foreground">
+                No sub-goals yet. Break the outcome down when it helps.
+              </p>
+            )}
+            {permissionsResolved &&
+            !canAddSubgoal &&
+            head.status !== "archived" ? (
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Only the community owner, an admin, or this goal’s owner can
+                create a sub-goal.
+              </p>
+            ) : null}
+            <h2 className="mt-8 text-base font-semibold">History</h2>
+            {historyQuery.isPending ? (
+              <p className="mt-3 text-sm text-muted-foreground" role="status">
+                Loading history
+              </p>
+            ) : null}
+            {historyQuery.isError ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                History is unavailable.
+              </p>
+            ) : null}
+            {!historyQuery.isPending &&
+            !historyQuery.isError &&
+            history.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No history available.
+              </p>
+            ) : null}
+            {history.length > 0 ? (
+              <ol className="mt-3 pl-0">
+                {history.map(({ event, action }) => {
+                  const actor = resolveUserLabel({
                     currentPubkey,
                     profiles: profilesQuery.data?.profiles,
-                    pubkey: child.head.goal?.ownerPubkey ?? "",
-                  })}
-                  record={child}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm leading-7 text-muted-foreground">
-              No sub-goals yet. Break the outcome down when it helps.
-            </p>
-          )}
-          {permissionsResolved &&
-          !canAddSubgoal &&
-          head.status !== "archived" ? (
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Only the community owner, an admin, or this goal’s owner can
-              create a sub-goal.
-            </p>
-          ) : null}
-          <h2 className="mt-8 text-base font-semibold">History</h2>
-          {historyQuery.isPending ? (
-            <p className="mt-3 text-sm text-muted-foreground" role="status">
-              Loading history
-            </p>
-          ) : null}
-          {historyQuery.isError ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              History is unavailable.
-            </p>
-          ) : null}
-          {!historyQuery.isPending &&
-          !historyQuery.isError &&
-          history.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No history available.
-            </p>
-          ) : null}
-          {history.map(({ event, action }) => (
-            <div className="border-b border-border py-4" key={event.id}>
-              <strong className="block text-sm">
-                {historyLabel(action.action)}
-              </strong>
-              <small className="mt-2 block text-xs text-muted-foreground">
-                {resolveUserLabel({
-                  currentPubkey,
-                  profiles: profilesQuery.data?.profiles,
-                  pubkey: event.pubkey,
-                })}{" "}
-                · {new Date(event.created_at * 1000).toLocaleString()}
-              </small>
-              {action.progress?.evidence ? (
-                <p className="mt-2 text-sm leading-6">
-                  {action.progress.evidence}
+                    pubkey: event.pubkey,
+                    preferResolvedSelfLabel: true,
+                  });
+                  return (
+                    <li
+                      className="relative border-l border-border pb-4 pl-4 before:absolute before:-left-[3px] before:top-1.5 before:size-1.5 before:rounded-full before:bg-primary"
+                      key={event.id}
+                    >
+                      <strong className="block text-xs font-semibold">
+                        {actor}{" "}
+                        {historyLabel(
+                          action.action,
+                          Boolean(goal.parentGoalId),
+                        )}
+                      </strong>
+                      {action.progress?.evidence ? (
+                        <p className="mt-2 text-sm leading-6">
+                          {action.progress.evidence}
+                        </p>
+                      ) : null}
+                      {action.reason ? (
+                        <p className="mt-2 text-sm leading-6">
+                          {action.reason}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : null}
+          </div>
+          <aside className="border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <h2 className="text-base font-semibold">Conversations</h2>
+            {linkedChannels.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No linked conversations.
+              </p>
+            ) : null}
+            {linkedChannels.map(({ id, channel }) => (
+              <Button
+                className="mt-2 w-full justify-start"
+                key={id}
+                onClick={() => channel && void goChannel(id)}
+                variant="outline"
+              >
+                {channel
+                  ? `# ${channel.name}`
+                  : `Conversation unavailable · ${shortGoalId(id)}`}
+              </Button>
+            ))}
+            <Button
+              className="mt-2 w-full"
+              onClick={() => void goShareGoal(goalId)}
+              variant="outline"
+            >
+              Reference in a conversation
+            </Button>
+            <h2 className="mt-7 text-base font-semibold">Progress</h2>
+            {permissionsResolved && canEdit && head.status !== "archived" ? (
+              <Button
+                className="mt-3 w-full"
+                onClick={() => void goGoalProgress(goalId)}
+                variant="outline"
+              >
+                Update progress
+              </Button>
+            ) : null}
+            <h2 className="mt-7 text-base font-semibold">Manage goal</h2>
+            {permissionsResolved && canEdit ? (
+              <Button
+                className="mt-2 w-full"
+                onClick={() => void goEditGoal(goalId)}
+                variant="outline"
+              >
+                Edit goal
+              </Button>
+            ) : null}
+            {permissionsResolved && canEdit && head.status !== "archived" ? (
+              <Button
+                className="mt-2 w-full"
+                onClick={() => void goGoalArchive(goalId)}
+                variant="outline"
+              >
+                Archive goal
+              </Button>
+            ) : null}
+            {permissionsResolved && canDelete ? (
+              <Button
+                className="mt-2 w-full text-[#a04f64] hover:bg-[#a04f64]/[0.08] dark:text-[#e8a1af] dark:hover:bg-[#e8a1af]/[0.08]"
+                onClick={() => void goGoalDelete(goalId)}
+                variant="ghost"
+              >
+                Delete goal
+              </Button>
+            ) : null}
+            {permissionsResolved && canRestore ? (
+              <Button
+                className="mt-2 w-full"
+                disabled={mutation.isPending}
+                onClick={() => void handleRestore()}
+                variant="outline"
+              >
+                {mutation.isPending ? "Restoring goal" : "Restore goal"}
+              </Button>
+            ) : null}
+            {permissionsResolved && !canEdit ? (
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Only the goal owner, the community owner, or an admin can edit
+                this goal.
+              </p>
+            ) : null}
+            {permissionsResolved &&
+            head.status === "archived" &&
+            !canRestore ? (
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Only the community owner or an admin can restore an archived
+                goal.
+              </p>
+            ) : null}
+            {permissionsResolved && !canDelete ? (
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Only the community owner or an admin can delete a goal.
+              </p>
+            ) : null}
+            {mutation.isError ? (
+              <p className="mt-2 text-sm text-destructive">
+                {mutation.error.message}
+              </p>
+            ) : null}
+            {membershipQuery.isPending || identityQuery.isPending ? (
+              <p className="mt-3 text-xs text-muted-foreground" role="status">
+                Checking goal permissions
+              </p>
+            ) : null}
+            {membershipQuery.isError ? (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">
+                  Goal permissions could not be checked.
                 </p>
-              ) : null}
-              {action.reason ? (
-                <p className="mt-2 text-sm leading-6">{action.reason}</p>
-              ) : null}
-            </div>
-          ))}
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => void membershipQuery.refetch()}
+                  variant="outline"
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+            {identityQuery.isError ? (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">
+                  Your identity could not be checked.
+                </p>
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => void identityQuery.refetch()}
+                  variant="outline"
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+          </aside>
         </div>
-        <aside className="border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-          <h2 className="text-base font-semibold">Conversations</h2>
-          {linkedChannels.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No linked conversations.
-            </p>
-          ) : null}
-          {linkedChannels.map(({ id, channel }) => (
-            <Button
-              className="mt-2 w-full justify-start"
-              key={id}
-              onClick={() => channel && void goChannel(id)}
-              variant="outline"
-            >
-              {channel
-                ? `# ${channel.name}`
-                : `Conversation unavailable · ${shortGoalId(id)}`}
-            </Button>
-          ))}
-          <Button
-            className="mt-2 w-full"
-            onClick={() => void goShareGoal(goalId)}
-            variant="outline"
-          >
-            Reference in a conversation
-          </Button>
-          <h2 className="mt-7 text-base font-semibold">Progress</h2>
-          {head.progress ? (
-            <div className="mt-3 rounded-lg border border-border p-3 text-sm">
-              {head.progress.current ? (
-                <strong className="block">
-                  Current: {head.progress.current}
-                  {goal.target ? ` ${goal.target.unit}` : ""}
-                </strong>
-              ) : null}
-              <p className="mt-1 leading-6">{head.progress.evidence}</p>
-              <small className="mt-2 block text-xs text-muted-foreground">
-                {resolveUserLabel({
-                  currentPubkey,
-                  profiles: profilesQuery.data?.profiles,
-                  pubkey: head.progress.recordedByPubkey,
-                })}{" "}
-                · {new Date(head.progress.recordedAt).toLocaleString()}
-              </small>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No progress recorded.
-            </p>
-          )}
-          <h2 className="mt-7 text-base font-semibold">Manage goal</h2>
-          {permissionsResolved && canEdit ? (
-            <Button
-              className="mt-2 w-full"
-              onClick={() => void goEditGoal(goalId)}
-              variant="outline"
-            >
-              Edit goal
-            </Button>
-          ) : null}
-          {permissionsResolved && canRestore ? (
-            <Button
-              className="mt-2 w-full"
-              disabled={mutation.isPending}
-              onClick={() => void handleRestore()}
-              variant="outline"
-            >
-              {mutation.isPending ? "Restoring goal" : "Restore goal"}
-            </Button>
-          ) : null}
-          {permissionsResolved && !canEdit ? (
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Only the goal owner, the community owner, or an admin can edit
-              this goal.
-            </p>
-          ) : null}
-          {permissionsResolved && head.status === "archived" && !canRestore ? (
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Only the community owner or an admin can restore an archived goal.
-            </p>
-          ) : null}
-          {mutation.isError ? (
-            <p className="mt-2 text-sm text-destructive">
-              {mutation.error.message}
-            </p>
-          ) : null}
-          {membershipQuery.isPending || identityQuery.isPending ? (
-            <p className="mt-3 text-xs text-muted-foreground" role="status">
-              Checking goal permissions
-            </p>
-          ) : null}
-          {membershipQuery.isError ? (
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">
-                Goal permissions could not be checked.
-              </p>
-              <Button
-                className="mt-2 w-full"
-                onClick={() => void membershipQuery.refetch()}
-                variant="outline"
-              >
-                Try again
-              </Button>
-            </div>
-          ) : null}
-          {identityQuery.isError ? (
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">
-                Your identity could not be checked.
-              </p>
-              <Button
-                className="mt-2 w-full"
-                onClick={() => void identityQuery.refetch()}
-                variant="outline"
-              >
-                Try again
-              </Button>
-            </div>
-          ) : null}
-        </aside>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

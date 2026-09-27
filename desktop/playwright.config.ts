@@ -208,6 +208,7 @@ export default defineConfig({
         "**/team-catalog.spec.ts",
         "**/agents-everywhere.live.spec.ts",
         "**/relay-restart.live.spec.ts",
+        "**/goals.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
       ],
       use: {
