@@ -631,7 +631,7 @@ body:has(.w20-settings-shell) {
   min-height: 100%;
   flex-direction: column;
   gap: 18px;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .w20-route-scroll:has([data-testid="settings-harnesses"]) {
