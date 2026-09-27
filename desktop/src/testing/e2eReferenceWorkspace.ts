@@ -9,7 +9,11 @@
  * harness compares like with like. It is opt-in through
  * `mock.referenceWorkspace` and never changes the default mock data.
  */
-import type { HomeFeedVisualFixture, RelayEvent } from "@/shared/api/types";
+import type {
+  ChannelType,
+  HomeFeedVisualFixture,
+  RelayEvent,
+} from "@/shared/api/types";
 import {
   BUSINESS_RECORD_SCHEMA_VERSION,
   buildDeliverableApprovalTemplate,
@@ -48,6 +52,10 @@ export const REFERENCE_CHANNEL_IDS = {
   sales: "1e1a7000-0000-4000-8000-000000000001",
   marketing: "1e1a7000-0000-4000-8000-000000000002",
   operations: "1e1a7000-0000-4000-8000-000000000003",
+  oliveStudio: "1e1a7000-0000-4000-8000-000000000004",
+  companyForum: "1e1a7000-0000-4000-8000-000000000005",
+  minaDm: "1e1a7000-0000-4000-8000-000000000006",
+  ayaDm: "1e1a7000-0000-4000-8000-000000000007",
   oliveHouse: "1e1a7000-0000-4000-8000-000000000011",
   cedarCafe: "1e1a7000-0000-4000-8000-000000000012",
   northline: "1e1a7000-0000-4000-8000-000000000013",
@@ -362,6 +370,7 @@ export type ReferenceChannelSeed = {
   description: string;
   agentMembers: string[];
   visibility?: "open" | "private";
+  channelType?: ChannelType;
 };
 
 /** Channel order and names as the reference sidebar lists them. */
@@ -756,6 +765,52 @@ export function referenceSalesRecordEvents(
   return events;
 }
 
+/** The sidebar-only rows rendered by the C1 full-app shell snapshot. */
+export function referenceSidebarChannelSeeds(): ReferenceChannelSeed[] {
+  const { aya, mina } = REFERENCE_AGENTS;
+  return [
+    {
+      id: REFERENCE_CHANNEL_IDS.oliveStudio,
+      name: "olive-studio",
+      description: "Campaign work for Olive Studio.",
+      agentMembers: [mina.pubkey],
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.marketing,
+      name: "marketing",
+      description: "Our story, shared with care.",
+      agentMembers: [mina.pubkey],
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.sales,
+      name: "sales",
+      description: "From first hello to lasting partnerships.",
+      agentMembers: [aya.pubkey],
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.companyForum,
+      name: "Company forum",
+      description: "Ideas and decisions for the company.",
+      agentMembers: [mina.pubkey],
+      channelType: "forum",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.minaDm,
+      name: "Mina",
+      description: "Direct message with Mina.",
+      agentMembers: [mina.pubkey],
+      channelType: "dm",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.ayaDm,
+      name: "Aya",
+      description: "Direct message with Aya.",
+      agentMembers: [aya.pubkey],
+      channelType: "dm",
+    },
+  ];
+}
+
 function todayAt(hours: number, minutes: number): number {
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
@@ -763,7 +818,13 @@ function todayAt(hours: number, minutes: number): number {
 }
 
 export function referenceSalesLastMessageAt(): string {
-  return new Date((todayAt(9, 50) + 1) * 1_000).toISOString();
+  return referenceChannelLastMessageAt();
+}
+
+export function referenceChannelLastMessageAt(minutesEarlier = 0): string {
+  return new Date(
+    (todayAt(9, 50) - minutesEarlier * 60 + 1) * 1_000,
+  ).toISOString();
 }
 
 /** The frozen r19 Today screen records used by the mock bridge. */
@@ -1036,11 +1097,12 @@ export function referenceOliveHouseMessages(selfPubkey: string): RelayEvent[] {
   ];
 }
 
-/**
- * Writes the reference sidebar state (starred channels, the client-work
- * section) and renames the seeded community, before the app first reads it.
- */
-export function seedReferenceSidebarStorage(selfPubkey: string): void {
+/** Writes reference sidebar storage and renames the seeded community. */
+export function seedReferenceSidebarStorage(
+  selfPubkey: string,
+  options: { sidebarShell?: boolean } = {},
+): void {
+  const sidebarShell = options.sidebarShell === true;
   const storage = window.localStorage;
   let relayUrl: string | undefined;
   try {
@@ -1057,11 +1119,13 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
   }
 
   const now = Date.now();
-  const starred = [
-    REFERENCE_CHANNEL_IDS.sales,
-    REFERENCE_CHANNEL_IDS.marketing,
-    REFERENCE_CHANNEL_IDS.operations,
-  ];
+  const starred = sidebarShell
+    ? []
+    : [
+        REFERENCE_CHANNEL_IDS.sales,
+        REFERENCE_CHANNEL_IDS.marketing,
+        REFERENCE_CHANNEL_IDS.operations,
+      ];
   storage.setItem(
     `buzz-channel-stars.v1:${selfPubkey}`,
     JSON.stringify({
@@ -1080,17 +1144,21 @@ export function seedReferenceSidebarStorage(selfPubkey: string): void {
   );
   storage.setItem(
     `buzz-home-feed-unread.v1:${selfPubkey}`,
-    JSON.stringify([...REFERENCE_HOME_UNREAD_IDS]),
+    JSON.stringify(sidebarShell ? [] : [...REFERENCE_HOME_UNREAD_IDS]),
   );
 
   const sections = {
     version: 1,
-    sections: [{ id: CLIENT_WORK_SECTION_ID, name: "Client work", order: 0 }],
-    assignments: {
-      [REFERENCE_CHANNEL_IDS.oliveHouse]: CLIENT_WORK_SECTION_ID,
-      [REFERENCE_CHANNEL_IDS.cedarCafe]: CLIENT_WORK_SECTION_ID,
-      [REFERENCE_CHANNEL_IDS.northline]: CLIENT_WORK_SECTION_ID,
-    },
+    sections: sidebarShell
+      ? []
+      : [{ id: CLIENT_WORK_SECTION_ID, name: "Client work", order: 0 }],
+    assignments: sidebarShell
+      ? {}
+      : {
+          [REFERENCE_CHANNEL_IDS.oliveHouse]: CLIENT_WORK_SECTION_ID,
+          [REFERENCE_CHANNEL_IDS.cedarCafe]: CLIENT_WORK_SECTION_ID,
+          [REFERENCE_CHANNEL_IDS.northline]: CLIENT_WORK_SECTION_ID,
+        },
   };
   const sectionsKey = relayUrl
     ? `buzz-channel-sections.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
