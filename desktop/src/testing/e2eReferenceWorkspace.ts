@@ -11,6 +11,14 @@
  */
 import type { HomeFeedVisualFixture, RelayEvent } from "@/shared/api/types";
 import { normalizeRelayUrl } from "@/shared/lib/normalizeRelayUrl";
+import {
+  businessDTag,
+  KIND_PROPOSAL_HEAD,
+  KIND_PROPOSAL_VERSION,
+  KIND_PROSPECT_HEAD,
+  KIND_SERVICE_HEAD,
+  proposalVersionDTag,
+} from "@/features/discovery/businessRecordContract";
 
 export const REFERENCE_SELF_NAME = "Lerato Molefe";
 export const REFERENCE_COMMUNITY_NAME = "Lerato Social";
@@ -30,6 +38,24 @@ export const REFERENCE_CHANNEL_IDS = {
   oliveHouse: "1e1a7000-0000-4000-8000-000000000011",
   cedarCafe: "1e1a7000-0000-4000-8000-000000000012",
   northline: "1e1a7000-0000-4000-8000-000000000013",
+} as const;
+
+export const REFERENCE_SERVICE_ID = "1e1a7000-0000-4000-9000-000000000021";
+export const REFERENCE_PROPOSAL_ID = "1e1a7000-0000-4000-9000-000000000022";
+
+export const REFERENCE_PROSPECT_IDS = {
+  "the-olive-house": "1e1a7000-0000-4000-9000-000000001001",
+  "form-field": "1e1a7000-0000-4000-9000-000000001002",
+  "sunday-edit": "1e1a7000-0000-4000-9000-000000001003",
+  stillroom: "1e1a7000-0000-4000-9000-000000001004",
+  "gather-house": "1e1a7000-0000-4000-9000-000000001005",
+  "common-ground": "1e1a7000-0000-4000-9000-000000001006",
+  "clay-collective": "1e1a7000-0000-4000-9000-000000001007",
+  "woven-living": "1e1a7000-0000-4000-9000-000000001008",
+  "little-kin": "1e1a7000-0000-4000-9000-000000001009",
+  "north-note": "1e1a7000-0000-4000-9000-000000001010",
+  "studio-local": "1e1a7000-0000-4000-9000-000000001011",
+  "cedar-co": "1e1a7000-0000-4000-9000-000000001012",
 } as const;
 
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
@@ -52,6 +78,7 @@ export type ReferenceChannelSeed = {
   name: string;
   description: string;
   agentMembers: string[];
+  visibility?: "open" | "private";
 };
 
 /** Channel order and names as the reference sidebar lists them. */
@@ -63,6 +90,7 @@ export function referenceChannelSeeds(): ReferenceChannelSeed[] {
       name: "Sales",
       description: "From first hello to lasting partnerships.",
       agentMembers: [aya.pubkey, scout.pubkey],
+      visibility: "private",
     },
     {
       id: REFERENCE_CHANNEL_IDS.marketing,
@@ -95,6 +123,354 @@ export function referenceChannelSeeds(): ReferenceChannelSeed[] {
       agentMembers: [aya.pubkey],
     },
   ];
+}
+
+const REFERENCE_LEADS = [
+  [
+    "the-olive-house",
+    "The Olive House",
+    "Parkhurst, Johannesburg",
+    "Independent homeware boutique",
+    "Nandi",
+    "Open to locally made collections",
+    "Website + business directory",
+    94,
+    "won",
+    4500,
+  ],
+  [
+    "form-field",
+    "Form & Field",
+    "Woodstock, Cape Town",
+    "Design-led home and living store",
+    "Jules",
+    "Example public profile: a clear product offer, but no consistent weekly content series.",
+    "Business directory",
+    91,
+    "new",
+    6500,
+  ],
+  [
+    "sunday-edit",
+    "The Sunday Edit",
+    "Rosebank, Johannesburg",
+    "Lifestyle and gift store",
+    "Ayesha",
+    "Seasonal ranges with a local maker focus",
+    "Website + business directory",
+    89,
+    "new",
+    4500,
+  ],
+  [
+    "stillroom",
+    "Stillroom",
+    "Stellenbosch, Western Cape",
+    "Home decor boutique",
+    "Lea",
+    "Natural materials and everyday objects",
+    "Public website",
+    88,
+    "contacted",
+    6500,
+  ],
+  [
+    "gather-house",
+    "Gather House",
+    "Morningside, Durban",
+    "Home and gifting retailer",
+    "Thandi",
+    "Growing collection of South African makers",
+    "Business directory",
+    86,
+    "new",
+    4500,
+  ],
+  [
+    "common-ground",
+    "Common Ground Store",
+    "Melville, Johannesburg",
+    "Independent design retailer",
+    "Palesa",
+    "Modern craft and thoughtful gifts",
+    "Public website",
+    85,
+    "new",
+    8500,
+  ],
+  [
+    "clay-collective",
+    "The Clay Collective",
+    "Gardens, Cape Town",
+    "Ceramics and homeware gallery",
+    "Sam",
+    "Stockist programme for local ceramicists",
+    "Public website",
+    84,
+    "new",
+    6500,
+  ],
+  [
+    "woven-living",
+    "Woven Living",
+    "Brooklyn, Pretoria",
+    "Textile and interiors boutique",
+    "Kea",
+    "Natural fibre and handmade home goods",
+    "Business directory",
+    82,
+    "proposal",
+    8500,
+  ],
+  [
+    "little-kin",
+    "Little Kin",
+    "Linden, Johannesburg",
+    "Neighbourhood gift shop",
+    "Maya",
+    "Thoughtful gifts and locally made objects",
+    "Public website",
+    81,
+    "new",
+    4500,
+  ],
+  [
+    "north-note",
+    "North Note",
+    "Ballito, KwaZulu-Natal",
+    "Coastal homeware store",
+    "Dineo",
+    "Small seasonal retail collections",
+    "Business directory",
+    79,
+    "new",
+    6500,
+  ],
+  [
+    "studio-local",
+    "Studio Local",
+    "Observatory, Cape Town",
+    "Design and craft concept store",
+    "Zoe",
+    "Features new independent makers monthly",
+    "Public website",
+    77,
+    "new",
+    4500,
+  ],
+  [
+    "cedar-co",
+    "Cedar & Co.",
+    "Somerset West, Western Cape",
+    "Home decor and lifestyle",
+    "Rene",
+    "Established homeware and gift selection",
+    "Business directory",
+    75,
+    "contacted",
+    6500,
+  ],
+] as const;
+
+function referenceW10Event(
+  id: number,
+  pubkey: string,
+  createdAt: number,
+  kind: number,
+  channelId: string,
+  dTag: string,
+  content: unknown,
+): RelayEvent {
+  return {
+    id: id.toString(16).padStart(64, "0"),
+    pubkey,
+    created_at: createdAt,
+    kind,
+    tags: [
+      ["h", channelId],
+      ["d", dTag],
+    ],
+    content: JSON.stringify(content),
+    sig: "mocksig".repeat(20).slice(0, 128),
+  };
+}
+
+/** W10 records from the reference workspace, seeded only in the opt-in E2E fixture. */
+export function referenceBusinessRecordEvents(
+  selfPubkey: string,
+  communityId: string,
+): RelayEvent[] {
+  const channelId = REFERENCE_CHANNEL_IDS.sales;
+  const now = Math.floor(Date.now() / 1000);
+  const events: RelayEvent[] = [];
+
+  const service = {
+    serviceId: REFERENCE_SERVICE_ID,
+    name: "Social media management",
+    description:
+      "Eight image or carousel posts each month. Monthly content plan, captions, scheduling and one monthly report. Two revision rounds. Advertising spend and on-site photography are excluded.",
+    currency: "ZAR",
+    monthlyFeeMinor: 450000,
+    postsPerMonth: 8,
+    revisionRounds: 2,
+  };
+  events.push(
+    referenceW10Event(
+      1001,
+      selfPubkey,
+      now - 4_000,
+      KIND_SERVICE_HEAD,
+      channelId,
+      businessDTag(communityId, "service", REFERENCE_SERVICE_ID),
+      {
+        schemaVersion: 1,
+        serviceId: REFERENCE_SERVICE_ID,
+        status: "active",
+        service,
+        sourceActionEventId: "1".repeat(64),
+      },
+    ),
+  );
+
+  REFERENCE_LEADS.forEach((lead, index) => {
+    const [
+      slug,
+      name,
+      location,
+      vertical,
+      contactName,
+      fit,
+      source,
+      score,
+      stage,
+      value,
+    ] = lead;
+    const prospectId =
+      REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS];
+    const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
+    const qualification = [
+      "qualified",
+      "contacted",
+      "proposal",
+      "won",
+    ].includes(stage)
+      ? "qualified"
+      : "unreviewed";
+    const prospectStage =
+      stage === "contacted"
+        ? "in_conversation"
+        : stage === "proposal" || stage === "won"
+          ? stage
+          : "qualified";
+    const prospect = {
+      prospectId,
+      party: {
+        partyId: prospectId,
+        partyType: "organization",
+        displayName: name,
+        externalIds: [],
+      },
+      industry: "Home & Living",
+      vertical,
+      fitScore: score,
+      potentialMonthlyValueMinor: value * 100,
+      website: `https://${slug}.example`,
+      contactName,
+      location,
+      email: `hello@${slug}.example`,
+      phone: null,
+      evidence: [
+        {
+          title: source,
+          url: `https://${slug}.example`,
+          excerpt: fit,
+          observedAt: verifiedAt,
+        },
+      ],
+      lastVerifiedAt: verifiedAt,
+      qualification,
+      saved: false,
+      stage: prospectStage,
+      lostReason: null,
+    };
+    const eventId = 1010 + index;
+    events.push(
+      referenceW10Event(
+        eventId,
+        selfPubkey,
+        now - (REFERENCE_LEADS.length - index),
+        KIND_PROSPECT_HEAD,
+        channelId,
+        businessDTag(communityId, "prospect", prospectId),
+        {
+          schemaVersion: 1,
+          prospectId,
+          status: "active",
+          prospect,
+          activities: [],
+          sourceActionEventId: "2".repeat(64),
+        },
+      ),
+    );
+  });
+
+  const proposalEventId = (1201).toString(16).padStart(64, "0");
+  const formFieldId = REFERENCE_PROSPECT_IDS["form-field"];
+  const proposalVersion = {
+    schemaVersion: 1,
+    proposalId: REFERENCE_PROPOSAL_ID,
+    prospectPartyId: formFieldId,
+    namedAcceptorPubkey: selfPubkey,
+    revision: 1,
+    previousVersionEventId: null,
+    expiresAt: null,
+    currency: "ZAR",
+    lines: [
+      {
+        serviceId: REFERENCE_SERVICE_ID,
+        description: service.description,
+        quantityHundredths: 100,
+        unitAmountMinor: 450000,
+      },
+    ],
+    terms: JSON.stringify({
+      schemaVersion: 1,
+      title: "A consistent social presence for Form & Field",
+      scope:
+        "8 image or carousel posts each month. Monthly content plan, captions, scheduling and one monthly report. Two revision rounds. Advertising spend and on-site photography are excluded.",
+      postsPerMonth: 8,
+      revisionRounds: 2,
+      serviceStart: "2026-10-01",
+    }),
+  };
+  events.push(
+    referenceW10Event(
+      1201,
+      selfPubkey,
+      now - 2_000,
+      KIND_PROPOSAL_VERSION,
+      channelId,
+      proposalVersionDTag(communityId, REFERENCE_PROPOSAL_ID, 1),
+      proposalVersion,
+    ),
+    referenceW10Event(
+      1202,
+      selfPubkey,
+      now - 1_900,
+      KIND_PROPOSAL_HEAD,
+      channelId,
+      businessDTag(communityId, "proposal", REFERENCE_PROPOSAL_ID),
+      {
+        schemaVersion: 1,
+        proposalId: REFERENCE_PROPOSAL_ID,
+        currentVersionEventId: proposalEventId,
+        currentVersionDigest: "3".repeat(64),
+        revision: 1,
+        sourceEventId: "4".repeat(64),
+      },
+    ),
+  );
+  return events;
 }
 
 function todayAt(hours: number, minutes: number): number {
@@ -331,6 +707,22 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
       sig,
     },
   ];
+}
+
+export function referenceCommunityId(): string | null {
+  try {
+    const communities = JSON.parse(
+      window.localStorage.getItem("buzz-communities") ?? "[]",
+    ) as Array<{ id?: string }>;
+    const activeId = window.localStorage.getItem("buzz-active-community-id");
+    return (
+      communities.find((community) => community.id === activeId)?.id ??
+      communities[0]?.id ??
+      null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**

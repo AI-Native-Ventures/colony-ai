@@ -48,6 +48,7 @@ export type AppSidebarProps = {
     | "workflows"
     | "pulse"
     | "projects"
+    | "business"
     | "factory"
     | "pins";
   unreadChannelCounts: ReadonlyMap<string, number>;

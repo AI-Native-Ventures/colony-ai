@@ -245,6 +245,12 @@ pub struct ProspectActivity {
     pub activity_kind: ProspectActivityKind,
     /// Note content.
     pub content: String,
+    /// Proposal this activity requests changes to, when applicable.
+    #[serde(default)]
+    pub proposal_id: Option<Uuid>,
+    /// Exact proposal version this activity references, when applicable.
+    #[serde(default)]
+    pub proposal_version_event_id: Option<String>,
     /// Member pubkey that authored this activity.
     pub author_pubkey: String,
     /// Unix time from the signed source event.
@@ -263,8 +269,17 @@ pub struct ProspectRecordInput {
     pub industry: String,
     /// Vertical taxonomy label.
     pub vertical: String,
+    /// Provider or reviewer fit score from zero through one hundred.
+    #[serde(default)]
+    pub fit_score: Option<u8>,
+    /// Potential monthly service value in minor currency units, when known.
+    #[serde(default)]
+    pub potential_monthly_value_minor: Option<i64>,
     /// Prospect website, if known.
     pub website: Option<String>,
+    /// Primary business contact name, if known.
+    #[serde(default)]
+    pub contact_name: Option<String>,
     /// Geographic area, if known.
     pub location: Option<String>,
     /// Business contact email, if known.
@@ -295,6 +310,12 @@ pub struct ProspectActivityInput {
     pub activity_kind: ProspectActivityKind,
     /// Note content.
     pub content: String,
+    /// Proposal this activity requests changes to, when applicable.
+    #[serde(default)]
+    pub proposal_id: Option<Uuid>,
+    /// Exact proposal version this activity references, when applicable.
+    #[serde(default)]
+    pub proposal_version_event_id: Option<String>,
 }
 
 /// Relay-authored complete prospect head.
@@ -909,7 +930,10 @@ mod tests {
                 },
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
+                fit_score: None,
+                potential_monthly_value_minor: None,
                 website: Some("https://example.test".into()),
+                contact_name: None,
                 location: Some("Cape Town".into()),
                 email: None,
                 phone: None,

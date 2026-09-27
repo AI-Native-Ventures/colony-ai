@@ -1,6 +1,15 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { ChevronDown, Users } from "lucide-react";
+import { useLocation } from "@tanstack/react-router";
+import {
+  BriefcaseBusiness,
+  ChevronDown,
+  FileText,
+  KanbanSquare,
+  Plus,
+  Search,
+  Users,
+} from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -81,6 +90,14 @@ import {
 } from "@/shared/ui/sidebar";
 import { useProtectedVisibleDirectMessages } from "@protected-feature-components";
 
+const BUSINESS_DESTINATIONS = [
+  ["/discovery", "Discovery", Search],
+  ["/leads", "Leads", Users],
+  ["/pipeline", "Pipeline", KanbanSquare],
+  ["/sales/proposals", "Proposals", FileText],
+  ["/sales/service", "Services", BriefcaseBusiness],
+] as const;
+
 export function AppSidebar({
   addCommunityPrefill,
   activeCommunity,
@@ -149,6 +166,7 @@ export function AppSidebar({
   onStarChannel,
   onUnstarChannel,
 }: AppSidebarProps) {
+  const location = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
@@ -851,6 +869,46 @@ export function AppSidebar({
                         <ChevronDown aria-hidden="true" />
                         <span data-sidebar-section-title>Business</span>
                       </h2>
+                      <SidebarMenu className="px-2 pb-2">
+                        {BUSINESS_DESTINATIONS.map(([href, label, Icon]) => (
+                          <SidebarMenuItem key={href as string}>
+                            <SidebarMenuButton
+                              asChild
+                              isActive={
+                                location.pathname === href ||
+                                (href === "/sales/proposals" &&
+                                  location.pathname.startsWith(
+                                    "/sales/proposal/",
+                                  )) ||
+                                (href === "/leads" &&
+                                  location.pathname.startsWith("/sales/lead/"))
+                              }
+                              tooltip={label}
+                            >
+                              <a
+                                href={`#${href}`}
+                                aria-current={
+                                  selectedView === "business" &&
+                                  (location.pathname === href ||
+                                    (href === "/sales/proposals" &&
+                                      location.pathname.startsWith(
+                                        "/sales/proposal/",
+                                      )) ||
+                                    (href === "/leads" &&
+                                      location.pathname.startsWith(
+                                        "/sales/lead/",
+                                      )))
+                                    ? "page"
+                                    : undefined
+                                }
+                              >
+                                <Icon aria-hidden="true" />
+                                <span>{label}</span>
+                              </a>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
                       <SidebarSection
                         action={
                           <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">

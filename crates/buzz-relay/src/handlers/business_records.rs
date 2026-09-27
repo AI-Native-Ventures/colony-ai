@@ -350,6 +350,62 @@ pub async fn handle(
             }
 
             let business_channel_id = community_business_channel.unwrap_or(channel_id);
+            if let Some(activity) = action.activity.as_ref() {
+                if let (Some(proposal_id), Some(version_event_id)) = (
+                    activity.proposal_id,
+                    activity.proposal_version_event_id.as_deref(),
+                ) {
+                    let proposal_d =
+                        business_d_tag(*tenant.community().as_uuid(), "proposal", proposal_id);
+                    let proposal_stored = current_head::<ProposalHead>(
+                        state,
+                        tenant.community(),
+                        KIND_PROPOSAL_HEAD,
+                        &proposal_d,
+                    )
+                    .await?
+                    .ok_or_else(|| conflict("proposal is unavailable for this activity"))?;
+                    let proposal: ProposalHead = parse_content(&proposal_stored.event)?;
+                    if proposal_stored.channel_id != Some(business_channel_id)
+                        || proposal.proposal_id != proposal_id
+                        || proposal.current_version_event_id != version_event_id
+                    {
+                        return Err(conflict(
+                            "proposal changed or belongs to another business channel",
+                        ));
+                    }
+                    let version = load_version_event(
+                        state,
+                        tenant.community(),
+                        version_event_id,
+                        KIND_PROPOSAL_VERSION,
+                    )
+                    .await?;
+                    let version_content: ProposalVersion = parse_content(&version.event)?;
+                    let expected_version_d = proposal_version_d_tag(
+                        *tenant.community().as_uuid(),
+                        proposal_id,
+                        proposal.revision,
+                    );
+                    let (version_channel, version_d) = command_coordinates(&version.event)?;
+                    if version.channel_id != Some(business_channel_id)
+                        || version_channel != business_channel_id
+                        || version_d != expected_version_d
+                        || version_content.proposal_id != proposal_id
+                        || version_content.prospect_party_id != action.prospect.party.party_id
+                        || version_content.revision != proposal.revision
+                    {
+                        return Err(conflict(
+                            "proposal version does not belong to this prospect",
+                        ));
+                    }
+                    expected_heads.push(ExpectedHead {
+                        kind: KIND_PROPOSAL_HEAD,
+                        d_tag: proposal_d,
+                        event_id: proposal_stored.event.id.to_bytes().to_vec(),
+                    });
+                }
+            }
             let party_d = business_d_tag(
                 *tenant.community().as_uuid(),
                 "party",
@@ -459,6 +515,8 @@ pub async fn handle(
                     activity_id: activity.activity_id,
                     activity_kind: activity.activity_kind,
                     content: activity.content,
+                    proposal_id: activity.proposal_id,
+                    proposal_version_event_id: activity.proposal_version_event_id,
                     author_pubkey: auth.pubkey().to_hex(),
                     created_at: event.created_at.as_secs() as i64,
                 });
@@ -2066,6 +2124,10 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         || prospect.industry.len() > 200
         || prospect.vertical.trim().is_empty()
         || prospect.vertical.len() > 200
+        || prospect.fit_score.is_some_and(|score| score > 100)
+        || prospect
+            .potential_monthly_value_minor
+            .is_some_and(|amount| amount < 0)
         || prospect.evidence.len() > 100
         || prospect.party.external_ids.len() > 32
         || (prospect.stage == ProspectStage::Lost
@@ -2087,6 +2149,7 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
     if let Some(website) = prospect.website.as_deref() {
         validate_https_url(website, "website")?;
     }
+    validate_optional_text(prospect.contact_name.as_deref(), 160, "contact name")?;
     validate_optional_text(prospect.location.as_deref(), 200, "location")?;
     validate_optional_text(prospect.email.as_deref(), 254, "email")?;
     if prospect
@@ -2119,9 +2182,11 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         if activity.activity_id.is_nil()
             || activity.content.trim().is_empty()
             || activity.content.len() > 2_000
+            || activity.proposal_id.is_some() != activity.proposal_version_event_id.is_some()
         {
             return Err(invalid("prospect activity is invalid"));
         }
+        validate_optional_event_id(activity.proposal_version_event_id.as_deref())?;
     }
     Ok(())
 }
@@ -2440,7 +2505,10 @@ mod tests {
                 },
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
+                fit_score: Some(87),
+                potential_monthly_value_minor: Some(450_000),
                 website: Some("https://example.test".into()),
+                contact_name: Some("Rene Example".into()),
                 location: Some("Cape Town".into()),
                 email: Some("hello@example.test".into()),
                 phone: None,
@@ -2590,6 +2658,30 @@ mod tests {
         assert!(validate_prospect_action(&action).is_err());
         action.prospect.lost_reason = Some("Timing".into());
         assert!(validate_prospect_action(&action).is_ok());
+    }
+
+    #[test]
+    fn proposal_revision_activity_requires_a_proposal_and_version_pair() {
+        let mut action = prospect_action();
+        action.activity = Some(buzz_core::business_records::ProspectActivityInput {
+            activity_id: Uuid::from_u128(44),
+            activity_kind: buzz_core::business_records::ProspectActivityKind::Note,
+            content: "Clarify the monthly reporting scope".into(),
+            proposal_id: Some(Uuid::from_u128(45)),
+            proposal_version_event_id: None,
+        });
+        assert!(validate_prospect_action(&action).is_err());
+
+        let activity = action.activity.as_mut().expect("revision activity");
+        activity.proposal_version_event_id = Some("a".repeat(64));
+        assert!(validate_prospect_action(&action).is_ok());
+
+        action
+            .activity
+            .as_mut()
+            .expect("revision activity")
+            .proposal_version_event_id = Some("not-an-event-id".into());
+        assert!(validate_prospect_action(&action).is_err());
     }
 
     #[test]
