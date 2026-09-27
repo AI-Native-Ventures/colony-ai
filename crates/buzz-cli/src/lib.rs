@@ -1048,9 +1048,6 @@ pub enum WorkflowsCmd {
 pub enum GoalsCmd {
     /// Create a company goal from a JSON GoalRecord
     Create {
-        /// Community UUID used in the goal d-tag
-        #[arg(long)]
-        community_id: String,
         /// GoalRecord JSON or a path to JSON; use - to read stdin
         #[arg(long)]
         record: String,
@@ -1072,6 +1069,9 @@ pub enum GoalsCmd {
         /// GoalProgress JSON or a path to JSON; use - to read stdin
         #[arg(long)]
         progress: String,
+        /// Optional explicit status to save with this progress update
+        #[arg(long)]
+        status: Option<String>,
     },
     /// Explicitly set a goal to active, off_pace, or achieved
     Status {
@@ -1090,9 +1090,9 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
-        /// Why the goal was archived
+        /// Optional reason for the archive
         #[arg(long)]
-        reason: String,
+        reason: Option<String>,
     },
     /// Restore an archived goal to active
     Restore {
@@ -1105,9 +1105,9 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
-        /// Why the goal was deleted
+        /// Optional reason for the deletion
         #[arg(long)]
-        reason: String,
+        reason: Option<String>,
     },
     /// List current company goal heads
     List {

@@ -18,31 +18,27 @@ const GOAL_QUERY_BOUND: u32 = 10_000;
 pub async fn dispatch(cmd: crate::GoalsCmd, client: &BuzzClient) -> Result<(), CliError> {
     use crate::GoalsCmd;
     match cmd {
-        GoalsCmd::Create {
-            community_id,
-            record,
-        } => cmd_create(client, &community_id, &record).await,
+        GoalsCmd::Create { record } => cmd_create(client, &record).await,
         GoalsCmd::Update { goal, record } => cmd_update(client, &goal, &record).await,
-        GoalsCmd::Progress { goal, progress } => cmd_progress(client, &goal, &progress).await,
+        GoalsCmd::Progress {
+            goal,
+            progress,
+            status,
+        } => cmd_progress(client, &goal, &progress, status.as_deref()).await,
         GoalsCmd::Status {
             goal,
             status,
             reason,
         } => cmd_status(client, &goal, &status, &reason).await,
-        GoalsCmd::Archive { goal, reason } => cmd_archive(client, &goal, &reason).await,
+        GoalsCmd::Archive { goal, reason } => cmd_archive(client, &goal, reason).await,
         GoalsCmd::Restore { goal } => cmd_restore(client, &goal).await,
-        GoalsCmd::Delete { goal, reason } => cmd_delete(client, &goal, &reason).await,
+        GoalsCmd::Delete { goal, reason } => cmd_delete(client, &goal, reason).await,
         GoalsCmd::List { limit } => cmd_list(client, limit).await,
         GoalsCmd::Get { goal } => cmd_get(client, &goal).await,
     }
 }
 
-async fn cmd_create(
-    client: &BuzzClient,
-    community_id: &str,
-    record_input: &str,
-) -> Result<(), CliError> {
-    let community_id = parse_uuid(community_id)?;
+async fn cmd_create(client: &BuzzClient, record_input: &str) -> Result<(), CliError> {
     let record: GoalRecord = read_json(record_input, "goal record")?;
     let goal_id = record.goal_id;
     let action = GoalAction {
@@ -55,8 +51,7 @@ async fn cmd_create(
         status: None,
         reason: None,
     };
-    let builder =
-        buzz_sdk::company_records::build_goal_action(community_id, &action).map_err(sdk_err)?;
+    let builder = buzz_sdk::company_records::build_goal_action(&action).map_err(sdk_err)?;
     let event = client.sign_event(builder)?;
     let response = client.submit_event(event).await?;
     print_create_response(&response, "goal_id", &goal_id.to_string());
@@ -76,7 +71,6 @@ async fn cmd_update(
         ));
     }
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::Update,
@@ -86,28 +80,29 @@ async fn cmd_update(
         None,
         None,
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
 async fn cmd_progress(
     client: &BuzzClient,
     goal_id: &str,
     progress_input: &str,
+    status_input: Option<&str>,
 ) -> Result<(), CliError> {
     let goal_id = parse_uuid(goal_id)?;
     let progress: GoalProgress = read_json(progress_input, "goal progress")?;
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
+    let status = status_input.map(parse_status).transpose()?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::Progress,
         event_id(&event)?,
         None,
         Some(progress),
-        None,
+        status,
         None,
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
 async fn cmd_status(
@@ -119,7 +114,6 @@ async fn cmd_status(
     let goal_id = parse_uuid(goal_id)?;
     let status = parse_status(status)?;
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::SetStatus,
@@ -129,13 +123,16 @@ async fn cmd_status(
         Some(status),
         Some(reason.to_owned()),
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
-async fn cmd_archive(client: &BuzzClient, goal_id: &str, reason: &str) -> Result<(), CliError> {
+async fn cmd_archive(
+    client: &BuzzClient,
+    goal_id: &str,
+    reason: Option<String>,
+) -> Result<(), CliError> {
     let goal_id = parse_uuid(goal_id)?;
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::Archive,
@@ -143,15 +140,14 @@ async fn cmd_archive(client: &BuzzClient, goal_id: &str, reason: &str) -> Result
         None,
         None,
         None,
-        Some(reason.to_owned()),
+        reason,
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
 async fn cmd_restore(client: &BuzzClient, goal_id: &str) -> Result<(), CliError> {
     let goal_id = parse_uuid(goal_id)?;
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::Restore,
@@ -161,13 +157,16 @@ async fn cmd_restore(client: &BuzzClient, goal_id: &str) -> Result<(), CliError>
         None,
         None,
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
-async fn cmd_delete(client: &BuzzClient, goal_id: &str, reason: &str) -> Result<(), CliError> {
+async fn cmd_delete(
+    client: &BuzzClient,
+    goal_id: &str,
+    reason: Option<String>,
+) -> Result<(), CliError> {
     let goal_id = parse_uuid(goal_id)?;
     let (event, _) = current_goal_event(client, goal_id).await?;
-    let community_id = community_id_from_event(&event, goal_id)?;
     let action = action_with_head(
         goal_id,
         GoalActionKind::Delete,
@@ -175,9 +174,9 @@ async fn cmd_delete(client: &BuzzClient, goal_id: &str, reason: &str) -> Result<
         None,
         None,
         None,
-        Some(reason.to_owned()),
+        reason,
     );
-    submit_action(client, community_id, &action).await
+    submit_action(client, &action).await
 }
 
 async fn cmd_list(client: &BuzzClient, limit: Option<u32>) -> Result<(), CliError> {
@@ -235,13 +234,8 @@ async fn current_goal_event(
     Err(CliError::NotFound(format!("goal {goal_id} not found")))
 }
 
-async fn submit_action(
-    client: &BuzzClient,
-    community_id: Uuid,
-    action: &GoalAction,
-) -> Result<(), CliError> {
-    let builder =
-        buzz_sdk::company_records::build_goal_action(community_id, action).map_err(sdk_err)?;
+async fn submit_action(client: &BuzzClient, action: &GoalAction) -> Result<(), CliError> {
+    let builder = buzz_sdk::company_records::build_goal_action(action).map_err(sdk_err)?;
     let event = client.sign_event(builder)?;
     let response = client.submit_event(event).await?;
     println!("{}", normalize_write_response(&response));
@@ -326,8 +320,7 @@ fn verify_goal_head_event(event: &Value, relay_self: &str) -> Result<(), CliErro
     }
 
     let head = parse_goal_head(event)?;
-    let community_id = community_id_from_event(event, head.goal_id)?;
-    let expected_d_tag = goal_d_tag(community_id, head.goal_id);
+    let expected_d_tag = goal_d_tag(head.goal_id);
     if d_tags[0].content() != Some(expected_d_tag.as_str()) {
         return Err(CliError::Other(
             "goal head d-tag does not match its content".into(),
@@ -342,24 +335,6 @@ fn event_id(event: &Value) -> Result<String, CliError> {
         .and_then(Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| CliError::Other("goal head event has no id".into()))
-}
-
-fn community_id_from_event(event: &Value, goal_id: Uuid) -> Result<Uuid, CliError> {
-    let d_tag = crate::client::extract_d_tag(event);
-    let parts = d_tag.split(':').collect::<Vec<_>>();
-    if parts.len() != 4 || parts[0] != "company" || parts[2] != "goal" {
-        return Err(CliError::Other(
-            "goal head has an invalid company d-tag".into(),
-        ));
-    }
-    let community_id = parse_uuid(parts[1])?;
-    let d_goal_id = parse_uuid(parts[3])?;
-    if d_goal_id != goal_id {
-        return Err(CliError::Other(
-            "goal head d-tag does not match its goalId".into(),
-        ));
-    }
-    Ok(community_id)
 }
 
 fn parse_status(value: &str) -> Result<GoalStatus, CliError> {
@@ -393,22 +368,17 @@ mod tests {
     }
 
     #[test]
-    fn goal_event_coordinate_must_match_the_requested_goal() {
-        let event = serde_json::json!({
-            "tags": [["d", "company:00000000-0000-0000-0000-000000000001:goal:00000000-0000-0000-0000-000000000002"]]
-        });
+    fn goal_coordinate_does_not_include_a_community_uuid() {
         assert_eq!(
-            community_id_from_event(&event, Uuid::from_u128(2)).unwrap(),
-            Uuid::from_u128(1)
+            goal_d_tag(Uuid::from_u128(2)),
+            "company:goal:00000000-0000-0000-0000-000000000002"
         );
-        assert!(community_id_from_event(&event, Uuid::from_u128(3)).is_err());
     }
 
     #[test]
     fn goal_head_verification_requires_relay_author_and_valid_signature() {
         let relay_keys = nostr::Keys::generate();
         let other_keys = nostr::Keys::generate();
-        let community_id = Uuid::from_u128(1);
         let goal_id = Uuid::from_u128(2);
         let head = GoalHead {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -420,7 +390,7 @@ mod tests {
             source_action_event_id: "0".repeat(64),
         };
         let content = serde_json::to_string(&head).expect("serialize goal head");
-        let d_tag = goal_d_tag(community_id, goal_id);
+        let d_tag = goal_d_tag(goal_id);
         let sign = |keys: &nostr::Keys| {
             nostr::EventBuilder::new(nostr::Kind::Custom(KIND_GOAL_HEAD as u16), content.clone())
                 .tag(nostr::Tag::parse(["d", d_tag.as_str()]).expect("d tag"))
@@ -433,6 +403,20 @@ mod tests {
         verify_goal_head_event(&valid_json, &relay_keys.public_key().to_hex())
             .expect("relay-signed head is valid");
         assert!(verify_goal_head_event(&valid_json, &other_keys.public_key().to_hex()).is_err());
+
+        let wrong_coordinate =
+            nostr::EventBuilder::new(nostr::Kind::Custom(KIND_GOAL_HEAD as u16), content.clone())
+                .tag(
+                    nostr::Tag::parse(["d", goal_d_tag(Uuid::from_u128(3)).as_str()])
+                        .expect("wrong d tag"),
+                )
+                .sign_with_keys(&relay_keys)
+                .expect("sign wrong goal coordinate");
+        let wrong_coordinate =
+            serde_json::to_value(wrong_coordinate).expect("serialize wrong coordinate");
+        assert!(
+            verify_goal_head_event(&wrong_coordinate, &relay_keys.public_key().to_hex()).is_err()
+        );
 
         let mut tampered = valid_json;
         tampered["content"] = Value::String("{}".into());
