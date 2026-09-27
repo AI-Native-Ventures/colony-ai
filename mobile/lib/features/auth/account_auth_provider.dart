@@ -87,7 +87,11 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
   }
 
   /// Verifies a code and persists the authenticated identity locally.
-  Future<void> verifyCode({required String email, required String code}) async {
+  Future<void> verifyCode({
+    required String email,
+    required String code,
+    int? resendCooldownSecs,
+  }) async {
     final normalizedEmail = _normalizeEmail(email);
     await _run(
       () async {
@@ -99,6 +103,8 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
       },
       successStatus: AccountAuthStatus.complete,
       email: normalizedEmail,
+      preserveRetryAfter: true,
+      retryAfterToPreserve: resendCooldownSecs,
     );
   }
 
@@ -137,14 +143,18 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
   Future<void> checkPasswordResetCode({
     required String email,
     required String code,
+    int? resendCooldownSecs,
   }) async {
     final normalizedEmail = _normalizeEmail(email);
     final normalizedCode = code.trim();
+    final preservedResendCooldownSecs =
+        resendCooldownSecs ?? state.retryAfterSecs;
     _clearPendingResetCode();
     state = AccountAuthState(
       status: AccountAuthStatus.loading,
       email: normalizedEmail,
       codePurpose: AccountCodePurpose.reset,
+      retryAfterSecs: preservedResendCooldownSecs,
     );
     try {
       await ref
@@ -156,6 +166,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         status: AccountAuthStatus.codeVerified,
         email: normalizedEmail,
         codePurpose: AccountCodePurpose.reset,
+        retryAfterSecs: preservedResendCooldownSecs,
       );
     } on AccountAuthFailure catch (failure) {
       state = AccountAuthState(
@@ -163,7 +174,10 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         email: normalizedEmail,
         codePurpose: AccountCodePurpose.reset,
         failure: failure,
-        retryAfterSecs: failure.retryAfterSecs,
+        retryAfterSecs: _retryAfterAfterCodeFailure(
+          failure,
+          preservedResendCooldownSecs,
+        ),
       );
     } catch (_) {
       state = AccountAuthState(
@@ -171,6 +185,7 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         email: normalizedEmail,
         codePurpose: AccountCodePurpose.reset,
         failure: const AccountAuthFailure(AccountAuthFailureKind.unavailable),
+        retryAfterSecs: preservedResendCooldownSecs,
       );
     }
   }
@@ -314,11 +329,17 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
     required AccountAuthStatus successStatus,
     String? email,
     AccountCodePurpose? codePurpose,
+    bool preserveRetryAfter = false,
+    int? retryAfterToPreserve,
   }) async {
+    final retryAfterBeforeOperation = preserveRetryAfter
+        ? retryAfterToPreserve ?? state.retryAfterSecs
+        : null;
     state = AccountAuthState(
       status: AccountAuthStatus.loading,
       email: email,
       codePurpose: codePurpose,
+      retryAfterSecs: retryAfterBeforeOperation,
     );
     try {
       final delivery = await operation();
@@ -334,7 +355,10 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         email: email,
         codePurpose: codePurpose,
         failure: failure,
-        retryAfterSecs: failure.retryAfterSecs,
+        retryAfterSecs: _retryAfterAfterCodeFailure(
+          failure,
+          retryAfterBeforeOperation,
+        ),
       );
     } catch (_) {
       state = AccountAuthState(
@@ -342,9 +366,22 @@ class AccountAuthNotifier extends Notifier<AccountAuthState> {
         email: email,
         codePurpose: codePurpose,
         failure: const AccountAuthFailure(AccountAuthFailureKind.unavailable),
+        retryAfterSecs: retryAfterBeforeOperation,
       );
     }
   }
+
+  int? _retryAfterAfterCodeFailure(
+    AccountAuthFailure failure,
+    int? previousResendCooldownSecs,
+  ) => switch (failure.kind) {
+    AccountAuthFailureKind.wrongCode ||
+    AccountAuthFailureKind.unavailable ||
+    AccountAuthFailureKind.resendCooldown =>
+      failure.retryAfterSecs ?? previousResendCooldownSecs,
+    AccountAuthFailureKind.codeExpired => failure.retryAfterSecs,
+    _ => failure.retryAfterSecs,
+  };
 
   Future<void> _persistSession(AccountSession session) async {
     final baseUrl = ref.read(relayConfigProvider).baseUrl;

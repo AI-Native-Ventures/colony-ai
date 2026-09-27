@@ -47,6 +47,7 @@ type ManagedAgentSessionPanelProps = {
   channelId?: string | null;
   className?: string;
   emptyDescription?: string;
+  emptyFallback?: React.ReactNode;
   emptyState?: AgentSessionTranscriptEmptyState;
   panelPadding?: boolean;
   rawLayout?: "responsive" | "exclusive";
@@ -65,6 +66,7 @@ export function ManagedAgentSessionPanel({
   channelId = null,
   className,
   emptyDescription = "Mention this agent in a channel to watch the next turn.",
+  emptyFallback,
   emptyState = "idle",
   panelPadding = true,
   rawLayout = "responsive",
@@ -77,7 +79,7 @@ export function ManagedAgentSessionPanel({
   transcriptOverride,
 }: ManagedAgentSessionPanelProps) {
   const hasObserver = agent.status === "running" || agent.status === "deployed";
-  // Always read from the store — archived frames are ingested regardless of
+  // Always read from the store. Archived frames are ingested regardless of
   // live status and must be renderable for idle agents with channel history.
   // The `hasObserver` flag still gates the relay subscription (via the
   // useEffect in useObserverEvents) and the empty-state message below.
@@ -87,7 +89,7 @@ export function ManagedAgentSessionPanel({
   );
 
   // Channel-scoped live events (capped at MAX_OBSERVER_EVENTS) and uncapped
-  // archived events from SQLite paging. Both are raw ObserverEvent[] — we merge
+  // archived events from SQLite paging. Both are raw ObserverEvent[]; we merge
   // them at the raw-event level and derive a single TranscriptState, so stateful
   // aggregates (tool start/update, plan replacement, permission request/response)
   // are never split across two independent state machines.
@@ -110,7 +112,7 @@ export function ManagedAgentSessionPanel({
   );
 
   // Derive transcript once from the combined raw window. When transcriptOverride
-  // is set (e.g. E2E snapshot specs), bypass both — the caller supplies the full
+  // is set (e.g. E2E snapshot specs), bypass both; the caller supplies the full
   // transcript directly.
   const derivedTranscript = React.useMemo(
     () => buildTranscriptState(combinedEvents).items,
@@ -127,6 +129,16 @@ export function ManagedAgentSessionPanel({
     () => deriveLatestSessionId(displayEvents),
     [displayEvents],
   );
+
+  if (
+    emptyFallback !== undefined &&
+    displayEvents.length === 0 &&
+    displayTranscript.length === 0 &&
+    errorMessage === null &&
+    (connectionState === "open" || !hasObserver)
+  ) {
+    return <>{emptyFallback}</>;
+  }
 
   return (
     <section

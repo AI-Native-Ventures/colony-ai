@@ -190,8 +190,8 @@ void main() {
       isTrue,
     );
     expect(
-      startSpans.any((span) => span.text == '.' && span.style == null),
-      isTrue,
+      startSpans.singleWhere((span) => span.text == '.').style?.fontWeight,
+      FontWeight.w400,
     );
     final pairRichText = tester.widget<RichText>(
       find.byWidgetPredicate(
@@ -208,6 +208,10 @@ void main() {
             span.style?.fontWeight == FontWeight.w700,
       ),
       isTrue,
+    );
+    expect(
+      pairSpans.singleWhere((span) => span.text == '.').style?.fontWeight,
+      FontWeight.w400,
     );
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -232,9 +236,11 @@ void main() {
     final card = tester.widget<Container>(
       find.byKey(const ValueKey('pairing-confirmation-code-card')),
     );
-    final border = (card.decoration! as BoxDecoration).border! as Border;
+    final decoration = card.decoration! as BoxDecoration;
+    final border = decoration.border! as Border;
     expect(border.top.width, 1);
     expect(border.left.width, 1);
+    expect(border.top.color, isNot(decoration.color));
   });
 
   testWidgets('Open Colony exits pairing and nested sign in routes', (

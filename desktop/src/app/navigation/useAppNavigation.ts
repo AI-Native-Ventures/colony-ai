@@ -104,6 +104,12 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSupervision = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -495,6 +501,7 @@ export function useAppNavigation() {
     goFactory,
     goPulse,
     goProfile,
+    goSupervision,
     goSettings,
     goWorkflow,
     goWorkflows,

@@ -6,6 +6,7 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
+import { showAgentTemplates } from "../helpers/agentWorkspace";
 
 type CatalogMember = {
   memberKey: string;
@@ -74,6 +75,7 @@ async function gotoAgentsView(page: import("@playwright/test").Page) {
     timeout: 10_000,
   });
   await page.getByTestId("open-agents-view").click();
+  await showAgentTemplates(page);
 }
 
 async function openTeamCatalog(page: import("@playwright/test").Page) {

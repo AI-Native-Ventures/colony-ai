@@ -250,6 +250,13 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (pathname === "/supervision" || pathname === "/power") {
+    return {
+      selectedChannelId: null,
+      selectedView: "agents",
+    };
+  }
+
   if (
     pathname === "/today" ||
     pathname.startsWith("/today/") ||
