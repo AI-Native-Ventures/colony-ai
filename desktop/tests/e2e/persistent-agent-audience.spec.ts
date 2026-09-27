@@ -1001,7 +1001,7 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(input).toHaveAttribute("contenteditable", "true", {
     timeout: 2_500,
   });
-  await input.fill("follow up");
+  await input.pressSequentially("follow up");
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),
   ).toHaveCount(0);
