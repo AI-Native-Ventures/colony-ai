@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -355,6 +354,13 @@ void main() {
                 top: 46,
                 bottom: 20,
               );
+              addTearDown(() {
+                tester.view.resetPhysicalSize();
+                tester.view.resetDevicePixelRatio();
+                tester.view.padding = FakeViewPadding.zero;
+                tester.view.viewPadding = FakeViewPadding.zero;
+                goldenFileComparator = previousComparator;
+              });
               final captureKey = GlobalKey();
               final fixture = _BusinessRecords();
               await _pumpApprovalPage(
@@ -383,11 +389,6 @@ void main() {
                 matchesGoldenFile(fileName),
               );
               debugPrint('VISUAL_PROOF ${output.path}/$fileName');
-              goldenFileComparator = previousComparator;
-              tester.view.resetPhysicalSize();
-              tester.view.resetDevicePixelRatio();
-              tester.view.padding = FakeViewPadding.zero;
-              tester.view.viewPadding = FakeViewPadding.zero;
             },
           );
         }
@@ -410,6 +411,7 @@ Future<void> _pumpApprovalPage(
     tester.view.physicalSize = const Size(390, 844);
   }
   final app = MaterialApp(
+    debugShowCheckedModeBanner: false,
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
     themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
@@ -427,13 +429,16 @@ Future<void> _pumpApprovalPage(
         child: captureStatusBar
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(36),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    app,
-                    _ProofStatusBar(brightness: brightness),
-                    _ProofHomeIndicator(brightness: brightness),
-                  ],
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      app,
+                      _ProofStatusBar(brightness: brightness),
+                      _ProofHomeIndicator(brightness: brightness),
+                    ],
+                  ),
                 ),
               )
             : app,
@@ -624,8 +629,9 @@ class _FakeDeliverableGateway implements DeliverableRecordGateway {
     final matches = events
         .where((event) {
           if (!filter.kinds.contains(event.kind)) return false;
-          if (filter.ids != null && !filter.ids!.contains(event.id))
+          if (filter.ids != null && !filter.ids!.contains(event.id)) {
             return false;
+          }
           if (filter.authors != null &&
               !filter.authors!.contains(event.pubkey)) {
             return false;

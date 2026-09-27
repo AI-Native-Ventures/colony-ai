@@ -137,7 +137,7 @@ class _ChatListToolbar extends StatelessWidget {
               children: [
                 Icon(
                   LucideIcons.search,
-                  size: Grid.md,
+                  size: MobileLayoutTokens.conversationSearchIconSize,
                   color: context.mobileTokens.muted,
                 ),
                 const SizedBox(width: Grid.half),

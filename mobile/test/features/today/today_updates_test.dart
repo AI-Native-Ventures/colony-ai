@@ -248,6 +248,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        key: const ValueKey('today-presence-refresh'),
         overrides: _providerOverrides(prefs, null, {_leratoKey: 'online'}),
         child: _proofApp(_visualHome(_VisualRoute.today)),
       ),
@@ -753,6 +754,15 @@ void main() {
               tester,
               captureScreenshots: captureScreenshots,
             );
+            if (route == _VisualRoute.today) {
+              debugPrint(
+                'VISUAL_LAYOUT today ${size.width.toInt()}x${size.height.toInt()} '
+                '${brightness.name} '
+                'header=${tester.getRect(find.byKey(const ValueKey('today-header')))} '
+                'title=${tester.getRect(find.text('Lerato Social'))} '
+                'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
+              );
+            }
             if (route == _VisualRoute.activity) {
               expect(find.text('Updates'), findsOneWidget);
               expect(find.text('The company, moving together'), findsOneWidget);

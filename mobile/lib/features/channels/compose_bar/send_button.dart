@@ -17,6 +17,7 @@ class _SendButton extends StatelessWidget {
       width: 36,
       height: 36,
       child: IconButton(
+        tooltip: 'Send message',
         onPressed: (isSending || isDisabled)
             ? null
             : () => _runComposerAction(onTap),

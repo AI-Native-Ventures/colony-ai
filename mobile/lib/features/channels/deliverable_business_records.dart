@@ -419,14 +419,16 @@ List<String> _pubkeys(Object? value) {
 
 String _string(Map<String, dynamic> record, String key) {
   final value = record[key];
-  if (value is! String)
+  if (value is! String) {
     throw FormatException('business record $key is invalid');
+  }
   return value;
 }
 
 String _readUuid(String value, String label) {
-  if (!_uuidPattern.hasMatch(value))
+  if (!_uuidPattern.hasMatch(value)) {
     throw FormatException('$label is not a UUID');
+  }
   return value.toLowerCase();
 }
 
@@ -434,8 +436,9 @@ String? _tryReadUuid(String value) =>
     _uuidPattern.hasMatch(value) ? value.toLowerCase() : null;
 
 String _readHex32(String value) {
-  if (!_hex32Pattern.hasMatch(value))
+  if (!_hex32Pattern.hasMatch(value)) {
     throw const FormatException('event id is invalid');
+  }
   return value.toLowerCase();
 }
 

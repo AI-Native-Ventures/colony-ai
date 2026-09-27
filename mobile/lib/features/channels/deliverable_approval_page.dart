@@ -8,7 +8,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../shared/identity/identity_components.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
-import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -141,6 +140,14 @@ class DeliverableApprovalPage extends HookConsumerWidget {
       );
     }
 
+    final contentTop =
+        frostedAppBarHeight(
+          context,
+          titleStyle: context.mobileTypography.companyHubTitle,
+          titleContentHeight: MobileLayoutTokens.appBarHeight,
+        ) +
+        Grid.xs;
+
     return FrostedScaffold(
       backgroundColor: context.mobileTokens.canvas,
       appBar: FrostedAppBar(
@@ -211,7 +218,7 @@ class DeliverableApprovalPage extends HookConsumerWidget {
             key: const ValueKey('deliverable-review-content'),
             padding: EdgeInsets.fromLTRB(
               Grid.gutter,
-              Grid.xs,
+              contentTop,
               Grid.gutter,
               MediaQuery.paddingOf(context).bottom + Grid.gutter,
             ),
@@ -548,8 +555,9 @@ class DeliverableFeedbackSheet extends HookConsumerWidget {
     final failed = useState(false);
 
     Future<void> send() async {
-      if (text.text.trim().isEmpty || submitting.value || !hasPermission)
+      if (text.text.trim().isEmpty || submitting.value || !hasPermission) {
         return;
+      }
       submitting.value = true;
       failed.value = false;
       try {

@@ -233,10 +233,16 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       return ActivityHomePage(
         tabReselection: routeContext.tabReselection,
         onComposeUpdate: (composeContext) async {
+          final container = ProviderScope.containerOf(
+            composeContext,
+            listen: false,
+          );
           final published = await MobileNavigation.openUpdateCompose(
             composeContext,
           );
-          if (published == true) ref.invalidate(globalNotesProvider);
+          if (published == true) {
+            container.invalidate(globalNotesProvider);
+          }
         },
         updatesPageBuilder: (_, published) =>
             TeamUpdatesPage(initiallyPublished: published),

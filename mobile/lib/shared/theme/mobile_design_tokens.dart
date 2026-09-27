@@ -192,6 +192,8 @@ abstract final class MobileLayoutTokens {
   static const bottomNavigationHeight = 59.0;
   static const minimumTapTarget = 44.0;
   static const minimumRowHeight = 64.0;
+  static const conversationSearchIconSize = 17.0;
+  static const conversationUnreadBadgeSize = 19.0;
   static const contentGutter = 20.0;
   static const scrollTopPadding = 22.0;
   static const scrollBottomPadding = 28.0;

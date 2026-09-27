@@ -94,7 +94,10 @@ void main() {
     final home = captureShell
         ? RepaintBoundary(
             key: const ValueKey('channels-fullscreen-capture'),
-            child: page,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [page, _ConversationCaptureSystemBars(brightness)],
+            ),
           )
         : page;
     return ProviderScope(
@@ -295,8 +298,9 @@ void main() {
         final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
         output.createSync(recursive: true);
         final previousComparator = goldenFileComparator;
-        goldenFileComparator = LocalFileComparator(
+        goldenFileComparator = _CaptureFileComparator(
           Uri.file('${output.path}/golden_test.dart'),
+          output.path,
         );
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
@@ -311,6 +315,7 @@ void main() {
               pubkey: 'aabb',
               displayName: 'Lerato Molefe',
             ),
+            presenceByPubkey: const {'mina': 'online', 'aya': 'online'},
             overrides: [
               channelSortProvider.overrideWith(
                 () => _FixtureChannelSortNotifier(),
@@ -381,6 +386,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        debugPrint(
+          'VISUAL_LAYOUT conversations ${size.key} $mode '
+          'title=${tester.getRect(find.text('Conversations').first)} '
+          'search=${tester.getRect(find.byKey(const ValueKey('channels-search-field')))} '
+          'filters=${tester.getRect(find.byKey(const ValueKey('conversation-filter-all')))} '
+          'firstRow=${tester.getRect(find.byKey(ValueKey('conversation-row-${channels.first.id}')))} '
+          'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
+        );
         expect(find.text('Conversations'), findsOneWidget);
         expect(find.text('LM'), findsOneWidget);
         expect(_dmTileAvatarInitial(tester, 'Mina'), 'M');
@@ -408,7 +421,7 @@ void main() {
     tester.view.resetDevicePixelRatio();
   });
 
-  testWidgets('uses shared person identity colors and plum unread badges', (
+  testWidgets('uses reference conversation identity colors and unread badges', (
     tester,
   ) async {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
@@ -437,9 +450,27 @@ void main() {
     );
     final campaign = fixture(
       id: 'campaign-unread',
-      name: 'Campaign studio',
+      name: 'olive-studio',
       type: 'stream',
       preview: 'Maya: September designs are ready',
+    );
+    final marketing = fixture(
+      id: 'marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Launch artwork is ready',
+    );
+    final sales = fixture(
+      id: 'sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Three promising leads',
+    );
+    final updates = fixture(
+      id: 'team-updates',
+      name: 'Team updates',
+      type: 'forum',
+      preview: 'September wins',
     );
     final maya = fixture(
       id: 'dm-maya',
@@ -460,7 +491,7 @@ void main() {
         overrides: [
           channelsProvider.overrideWith(
             () => _FakeNotifier(
-              [campaign, maya],
+              [campaign, marketing, sales, updates, maya],
               observedEventsByChannel: {
                 campaign.id: [
                   _observed(id: 'campaign-message', createdAt: now),
@@ -500,16 +531,49 @@ void main() {
       AppTheme.dark().extension<AppColors>()!.identityPersonForeground,
     );
 
+    final appColors = AppTheme.dark().extension<AppColors>()!;
+    for (final entry in [
+      ('campaign-unread', appColors.agentAvatarGradient),
+      ('marketing', appColors.personAvatarGradient),
+      ('sales', appColors.sageAvatarGradient),
+      ('team-updates', appColors.personAvatarGradient),
+    ]) {
+      final avatar = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey('conversation-avatar-${entry.$1}')),
+      );
+      expect((avatar.decoration as BoxDecoration).gradient, entry.$2);
+    }
+
     final badge = tester.widget<Container>(
       find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
     );
     expect(
       (badge.decoration! as BoxDecoration).color,
-      AppTheme.dark().extension<AppColors>()!.plum,
+      appColors.conversationUnreadBadgeBackground,
     );
     expect(
       (badge.decoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(Radii.xs),
+      BorderRadius.circular(Radii.sm),
+    );
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+      ),
+      const Size(19, 19),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey('channel-unread-badge-campaign-unread'),
+              ),
+              matching: find.byType(Text),
+            ),
+          )
+          .style
+          ?.color,
+      appColors.conversationUnreadBadgeForeground,
     );
   });
 
@@ -543,7 +607,10 @@ void main() {
       selectedFilter.style?.foregroundColor?.resolve({}),
       filterTokens.onAction,
     );
-    expect(tester.widget<Icon>(find.byIcon(LucideIcons.search)).size, Grid.md);
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.search)).size,
+      MobileLayoutTokens.conversationSearchIconSize,
+    );
     final appBarFinder = find.byType(FrostedAppBar);
     final appBar = tester.widget<FrostedAppBar>(appBarFinder);
     expect(
@@ -3198,4 +3265,76 @@ String _dmTileAvatarInitial(WidgetTester tester, String labelText) {
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _ConversationCaptureSystemBars extends StatelessWidget {
+  const _ConversationCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

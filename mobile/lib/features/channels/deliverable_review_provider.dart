@@ -400,8 +400,9 @@ final deliverableReviewProvider = StreamProvider.autoDispose
           );
           if (active && turn == generation) controller.add(result);
         } catch (error, stackTrace) {
-          if (active && turn == generation)
+          if (active && turn == generation) {
             controller.addError(error, stackTrace);
+          }
         }
       }
 
