@@ -15,12 +15,12 @@ use buzz_core::business_records::{
     invoice_lines_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
     money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
     prospect_d_tag, validate_business_command_scope, validate_hex_reference, BusinessCommand,
-    ClientAction, ClientHead, DeliverablePointer, DeliverableVersion, DraftInvoiceHead,
-    InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction, MoneyAdjustment,
-    MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead,
-    MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead,
-    ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
-    ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
+    ClientAction, ClientHead, DeliverablePointer, DeliverableVersion, InvoiceHead, InvoiceStatus,
+    InvoiceVersion, InvoiceVersionAction, MoneyAdjustment, MoneyAdjustmentType,
+    MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead, MoneyFollowUpStatus,
+    PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead, ProposalVersion,
+    ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction, ServiceAction,
+    ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::*;
 use buzz_core::tenant::{CommunityId, TenantContext};
@@ -3429,8 +3429,8 @@ mod tests {
 mod postgres_tests {
     use super::*;
     use buzz_core::business_records::{
-        deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval, ProposalLine,
-        WorkItemHeadInput,
+        deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval,
+        DraftInvoiceHead, ProposalLine, WorkItemHeadInput,
     };
     use buzz_db::channel::{ChannelType, ChannelVisibility};
     use nostr::{Keys, Tag};
@@ -5803,7 +5803,8 @@ mod postgres_tests {
         .await
         .expect("load approved follow-up")
         .map(|event| {
-            let head = parse_content(&event.event).expect("parse approved follow-up head");
+            let head: MoneyFollowUpHead =
+                parse_content(&event.event).expect("parse approved follow-up head");
             (event, head)
         })
         .expect("approved head exists");
