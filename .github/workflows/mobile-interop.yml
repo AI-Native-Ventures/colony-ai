@@ -37,6 +37,11 @@ jobs:
       - name: Activate the pinned toolchain
         uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
 
+      - name: Restore cached service images
+        # start-relay-for-tests.sh runs docker compose itself; restore the
+        # pinned images first so it does not pull anonymously.
+        uses: ./.github/actions/cached-service-images
+
       - name: Start the disposable relay
         # Reuses the existing fixture script unmodified; the relay and its
         # Postgres/Redis backends are disposable and runner-local.
