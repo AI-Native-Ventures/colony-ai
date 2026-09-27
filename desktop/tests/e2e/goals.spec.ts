@@ -19,18 +19,20 @@ function goalHeadEvent({
   status = "active",
   title,
   parentGoalId,
+  ownerPubkey = GOAL_OWNER,
 }: {
   goalId: string;
   status?: "active" | "archived";
   title: string;
   parentGoalId?: string;
+  ownerPubkey?: string;
 }) {
   const goal = {
     schemaVersion: 1,
     goalId,
     ...(parentGoalId ? { parentGoalId } : {}),
     title,
-    ownerPubkey: GOAL_OWNER,
+    ownerPubkey,
     doneCondition: `${title} has clear evidence.`,
     linkedChannelIds: [GENERAL_CHANNEL_ID],
     target: { value: "5", unit: "qualified requests" },
@@ -241,13 +243,21 @@ test("goal references distinguish deleted and unavailable records", async ({
 test("progress status is explicit, archive restores, and delete respects sub-goals", async ({
   page,
 }) => {
+  // A different owner from the parent proves sub-goal owners resolve their
+  // own profiles instead of falling back to an npub.
   const child = goalHeadEvent({
     goalId: CHILD_GOAL_ID,
     title: "Prepare the client launch brief",
     parentGoalId: ACTIVE_GOAL_ID,
+    ownerPubkey: TEST_IDENTITIES.alice.pubkey,
   });
   await installGoalsMock(page, "owner", [...GOAL_EVENTS, child]);
   await page.goto(`/#/goals/${ACTIVE_GOAL_ID}`);
+  const childRow = page
+    .getByTestId("goal-detail")
+    .getByTestId(`goal-row-${CHILD_GOAL_ID}`);
+  await expect(childRow).toContainText("alice");
+  await expect(childRow).not.toContainText("npub1");
 
   await page.getByRole("button", { name: "Update progress" }).click();
   const progressScreen = page.getByTestId("goal-progress-screen");

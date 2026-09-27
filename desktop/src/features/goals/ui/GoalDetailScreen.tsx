@@ -136,9 +136,13 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   const ownerAndHistoryPubkeys = React.useMemo(() => {
     const pubkeys = new Set<string>();
     if (goal?.ownerPubkey) pubkeys.add(goal.ownerPubkey);
+    for (const child of children) {
+      const childOwner = child.head.goal?.ownerPubkey;
+      if (childOwner) pubkeys.add(childOwner);
+    }
     for (const event of historyQuery.data ?? []) pubkeys.add(event.pubkey);
     return [...pubkeys];
-  }, [goal?.ownerPubkey, historyQuery.data]);
+  }, [children, goal?.ownerPubkey, historyQuery.data]);
   const profilesQuery = useUsersBatchQuery(ownerAndHistoryPubkeys);
   const channels = channelsQuery.data ?? [];
   const role = membershipQuery.data?.role;
