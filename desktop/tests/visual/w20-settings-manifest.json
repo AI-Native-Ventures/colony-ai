@@ -421,6 +421,11 @@
         }
       ],
       "appMockData": {
+        "ttsSettings": {
+          "version": 1,
+          "agentTextToSpeech": false,
+          "voicePreferences": ["pocket:mary"]
+        },
         "audioOutputDevices": [
           {
             "name": "MacBook speakers · example",
