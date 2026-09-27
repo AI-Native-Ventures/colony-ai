@@ -39,7 +39,7 @@ body:has(.w20-settings-shell) {
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell)
   .buzz-theme-gradient-underlay {
-  inset: 0;
+  inset: 1px;
 }
 
 :root[data-buzz-sidebar]:has(.w20-settings-shell) .buzz-theme-gradient-layer {
@@ -103,7 +103,7 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-settings-sidebar.w20-settings-sidebar [data-sidebar="sidebar"] {
-  background: transparent;
+  background: #fffefd;
   color: #5b4c65;
 }
 
@@ -135,7 +135,7 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-settings-sidebar.w20-settings-sidebar .w20-nav-back:hover {
-  background: transparent;
+  background: #211e26;
   color: #282532;
 }
 
