@@ -17,12 +17,14 @@ const double _kQuickActionCardRadius = _kMorphOpenRadius - Grid.xxs;
 
 class _MorphingQuickActionsButton extends HookWidget {
   final bool open;
+  final bool showClosedButton;
   final double openEdgeOffset;
   final VoidCallback onToggle;
   final ValueChanged<_QuickAction> onSelected;
 
   const _MorphingQuickActionsButton({
     required this.open,
+    this.showClosedButton = true,
     required this.openEdgeOffset,
     required this.onToggle,
     required this.onSelected,
@@ -124,14 +126,19 @@ class _MorphingQuickActionsButton extends HookWidget {
             height: height,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: context.colors.primary,
+                color: context.colors.primary.withValues(
+                  alpha: showClosedButton ? 1 : surfaceProgress,
+                ),
                 borderRadius: borderRadius,
                 boxShadow: [
-                  BoxShadow(
-                    color: context.colors.shadow.withValues(alpha: 0.24),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
+                  if (showClosedButton || surfaceProgress > 0)
+                    BoxShadow(
+                      color: context.colors.shadow.withValues(
+                        alpha: 0.24 * (showClosedButton ? 1 : surfaceProgress),
+                      ),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
                 ],
               ),
               child: ClipRRect(
@@ -181,47 +188,56 @@ class _MorphingQuickActionsButton extends HookWidget {
                           ),
                         ),
                       ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        width: _kMorphClosedSize,
-                        height: _kMorphClosedSize,
-                        child: IgnorePointer(
-                          ignoring: open,
-                          child: ExcludeSemantics(
-                            excluding: open,
-                            child: Opacity(
-                              opacity: 1 - fadeValue,
-                              child: ImageFiltered(
-                                imageFilter: ImageFilter.blur(
-                                  sigmaX: _kMorphBlur * fadeValue,
-                                  sigmaY: _kMorphBlur * fadeValue,
-                                ),
-                                child: Transform.translate(
-                                  offset: Offset(
-                                    -_kMorphSlide * surfaceProgress,
-                                    0,
+                      if (showClosedButton)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          width: _kMorphClosedSize,
+                          height: _kMorphClosedSize,
+                          child: IgnorePointer(
+                            ignoring: open,
+                            child: ExcludeSemantics(
+                              excluding: open,
+                              child: Opacity(
+                                opacity: 1 - fadeValue,
+                                child: ImageFiltered(
+                                  imageFilter: ImageFilter.blur(
+                                    sigmaX: _kMorphBlur * fadeValue,
+                                    sigmaY: _kMorphBlur * fadeValue,
                                   ),
-                                  child: Transform.rotate(
-                                    angle: (pi / 4) * surfaceProgress,
-                                    child: Transform.scale(
-                                      scale:
-                                          1 -
-                                          ((1 - _kMorphScale) *
-                                              surfaceProgress),
-                                      child: Tooltip(
-                                        message: 'Create or start conversation',
-                                        child: Semantics(
-                                          button: true,
-                                          label: 'Create or start conversation',
-                                          expanded: open,
-                                          child: InkWell(
-                                            customBorder: const CircleBorder(),
-                                            onTap: onToggle,
-                                            child: Center(
-                                              child: Icon(
-                                                LucideIcons.plus,
-                                                color: context.colors.onPrimary,
+                                  child: Transform.translate(
+                                    offset: Offset(
+                                      -_kMorphSlide * surfaceProgress,
+                                      0,
+                                    ),
+                                    child: Transform.rotate(
+                                      angle: (pi / 4) * surfaceProgress,
+                                      child: Transform.scale(
+                                        scale:
+                                            1 -
+                                            ((1 - _kMorphScale) *
+                                                surfaceProgress),
+                                        child: Tooltip(
+                                          message:
+                                              'Create or start conversation',
+                                          child: Semantics(
+                                            button: true,
+                                            label:
+                                                'Create or start conversation',
+                                            expanded: open,
+                                            child: InkWell(
+                                              key: const ValueKey(
+                                                'channel-quick-actions-floating-trigger',
+                                              ),
+                                              customBorder:
+                                                  const CircleBorder(),
+                                              onTap: onToggle,
+                                              child: Center(
+                                                child: Icon(
+                                                  LucideIcons.plus,
+                                                  color:
+                                                      context.colors.onPrimary,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -234,7 +250,6 @@ class _MorphingQuickActionsButton extends HookWidget {
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),

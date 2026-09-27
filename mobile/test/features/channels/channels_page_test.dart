@@ -177,7 +177,7 @@ void main() {
     ),
   ];
 
-  testWidgets('captures R17 chats at both mobile sizes and themes', (
+  testWidgets('captures R19 chats at both mobile sizes and themes', (
     tester,
   ) async {
     const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_CHATS');
@@ -324,6 +324,7 @@ void main() {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
         tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+        tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
         await tester.pumpWidget(
           buildTestable(
             includeShell: true,
@@ -402,6 +403,7 @@ void main() {
       }
     }
     tester.view.resetPadding();
+    tester.view.resetViewPadding();
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
@@ -458,6 +460,14 @@ void main() {
     expect(find.text('DIRECT MESSAGES'), findsOneWidget);
     expect(find.text('Community'), findsNothing);
     expect(find.byTooltip('Create or start conversation'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('channel-quick-actions-trigger')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('channel-quick-actions-floating-trigger')),
+      findsNothing,
+    );
     expect(find.byTooltip('Channels options'), findsNothing);
     expect(find.byTooltip('DMs options'), findsNothing);
     expect(find.text('Find a conversation'), findsOneWidget);
@@ -1944,19 +1954,30 @@ void main() {
   testWidgets('browse action scrolls and joins an offscreen channel', (
     tester,
   ) async {
-    final channels = List.generate(
-      500,
-      (index) => Channel(
-        id: 'directory-$index',
-        name: 'channel-${index.toString().padLeft(3, '0')}',
+    final channels = [
+      Channel(
+        id: 'joined-seed',
+        name: 'general',
         channelType: 'stream',
         visibility: 'open',
         description: '',
         createdBy: 'abc',
         createdAt: DateTime(2025),
-        memberCount: 0,
+        memberCount: 1,
+        isMember: true,
       ),
-    );
+      for (var index = 0; index < 500; index++)
+        Channel(
+          id: 'directory-$index',
+          name: 'channel-${index.toString().padLeft(3, '0')}',
+          channelType: 'stream',
+          visibility: 'open',
+          description: '',
+          createdBy: 'abc',
+          createdAt: DateTime(2025),
+          memberCount: 0,
+        ),
+    ];
     late _RecordingChannelActions actions;
     await tester.pumpWidget(
       buildTestable(

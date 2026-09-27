@@ -4,6 +4,7 @@ class ComposeBar extends HookConsumerWidget {
   final String channelId;
   final String channelName;
   final String? hintText;
+  final Color? surfaceColor;
   final ComposeBarOnSend onSend;
   final String? draftKeyOverride;
   final bool postEditorMode;
@@ -28,11 +29,13 @@ class ComposeBar extends HookConsumerWidget {
   /// Optional thread IDs for thread-scoped typing indicators.
   final String? threadHeadId;
   final String? rootId;
+  final bool fillWidth;
   const ComposeBar({
     super.key,
     required this.channelId,
     this.channelName = '',
     this.hintText,
+    this.surfaceColor,
     this.draftKeyOverride,
     this.postEditorMode = false,
     this.allowEmptySend = false,
@@ -47,6 +50,7 @@ class ComposeBar extends HookConsumerWidget {
     this.focusNode,
     this.onFocusRestorerChanged,
     this.onFocusRequested,
+    this.fillWidth = false,
     required this.onSend,
   });
   @override
@@ -1033,6 +1037,7 @@ class ComposeBar extends HookConsumerWidget {
         onVoiceNote: voiceNote.start,
         onSend: () => unawaited(send()),
         resolvedHint: resolvedHint,
+        surfaceColor: surfaceColor,
         attachmentSurface: attachmentSurface.value,
         onAttachmentTap: handleAttachmentTap,
         onExpand: expandComposer,
@@ -1068,6 +1073,7 @@ class ComposeBar extends HookConsumerWidget {
         isSending: isSending.value,
         postEditorMode: postEditorMode,
         enabled: enabled,
+        fillWidth: fillWidth,
       ),
     );
     if (postEditorMode) {
@@ -1092,6 +1098,7 @@ class ComposeBar extends HookConsumerWidget {
     return _ComposerDockFrame(
       expansionAnimation: composerExpansionController,
       forceFullWidth: _voiceNoteFullWidth(voiceNote, attachments.value),
+      fillWidth: fillWidth,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

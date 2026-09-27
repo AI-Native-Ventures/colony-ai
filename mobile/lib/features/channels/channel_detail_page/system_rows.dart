@@ -40,6 +40,9 @@ class _SystemMessageRow extends HookConsumerWidget {
     final usesMessageStyleLayout =
         groupedMembership != null ||
         (messageStyleActor != null && messageStyleActor.isNotEmpty);
+    final isHuddleEvent =
+        systemEvent.type == SystemEventType.huddleStarted ||
+        systemEvent.type == SystemEventType.huddleEnded;
 
     String resolveLabel(String? pubkey) {
       if (pubkey == null) return 'Someone';
@@ -117,8 +120,16 @@ class _SystemMessageRow extends HookConsumerWidget {
         highlightColor: context.colors.primary.withValues(alpha: 0.1),
         child: Padding(
           padding: EdgeInsets.only(
-            top: usesMessageStyleLayout ? Grid.xs : Grid.xxs,
-            bottom: usesMessageStyleLayout ? 0 : Grid.xxs,
+            top: isHuddleEvent
+                ? Grid.fifteen + Grid.twelve
+                : usesMessageStyleLayout
+                ? Grid.eighteen
+                : Grid.xxs,
+            bottom: isHuddleEvent
+                ? Grid.eighteen / 2
+                : usesMessageStyleLayout
+                ? 0
+                : Grid.xxs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,41 +398,38 @@ class _MessageStyleSystemMessageContent extends StatelessWidget {
         ),
         const SizedBox(width: messageAvatarContentGap),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: Grid.half),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Grid.quarter),
-                  child: MessageAuthorMeta(
-                    displayName: resolveLabel(displayPubkey),
-                    username: messageUsernameLabel(
-                      userCache[displayPubkey.toLowerCase()],
-                    ),
-                    timestamp: formatMessageTime(createdAt),
-                    nameColor: context.colors.onSurface,
-                    metadataColor: context.colors.onSurfaceVariant,
-                    nameStyle: systemMessageHeadingTextStyle,
-                    displayNameKey: ValueKey(
-                      'system-message-author-$displayPubkey',
-                    ),
-                    usernameKey: ValueKey(
-                      'system-message-username-$displayPubkey',
-                    ),
-                    timestampKey: ValueKey(
-                      'system-message-timestamp-$displayPubkey',
-                    ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: MessageAuthorMeta(
+                  displayName: resolveLabel(displayPubkey),
+                  username: messageUsernameLabel(
+                    userCache[displayPubkey.toLowerCase()],
+                  ),
+                  timestamp: formatMessageTime(createdAt),
+                  nameColor: context.colors.onSurface,
+                  metadataColor: context.colors.onSurfaceVariant,
+                  nameStyle: systemMessageHeadingTextStyle,
+                  displayNameKey: ValueKey(
+                    'system-message-author-$displayPubkey',
+                  ),
+                  usernameKey: ValueKey(
+                    'system-message-username-$displayPubkey',
+                  ),
+                  timestampKey: ValueKey(
+                    'system-message-timestamp-$displayPubkey',
                   ),
                 ),
-                Text.rich(
-                  TextSpan(
-                    style: _systemActionTextStyle(context),
-                    children: actionSpans,
-                  ),
+              ),
+              Text.rich(
+                TextSpan(
+                  style: _systemActionTextStyle(context),
+                  children: actionSpans,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
@@ -561,6 +569,8 @@ class _ThreadSummaryRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userCache = ref.watch(userCacheProvider);
+    final knownAgents = ref.watch(agentMentionPubkeysProvider(channelId));
+    final participants = summary.participantPubkeys.take(2).toList();
 
     return GestureDetector(
       onTap: () {
@@ -573,6 +583,8 @@ class _ThreadSummaryRow extends ConsumerWidget {
               currentPubkey: currentPubkey,
               isMember: isMember,
               isArchived: isArchived,
+              initialMessageId: message.id,
+              highlightInitialMessage: false,
             ),
           ),
         );
@@ -580,32 +592,45 @@ class _ThreadSummaryRow extends ConsumerWidget {
       child: Padding(
         key: ValueKey('thread-summary-${message.id}'),
         padding: const EdgeInsets.only(
-          left: messageAvatarSize + messageAvatarContentGap,
-          top: Grid.half,
+          left: conversationReplyIndent,
+          top: 10,
           bottom: Grid.xs,
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           children: [
-            // Stacked participant avatars.
             SizedBox(
-              width: 32.0 + (summary.participantPubkeys.length - 1) * 20.0,
-              height: 32,
-              child: Stack(
+              width: participants.isEmpty
+                  ? 0
+                  : participants.length * conversationMiniAvatarSize +
+                        (participants.length - 1) * 6,
+              height: conversationMiniAvatarSize,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (var i = 0; i < summary.participantPubkeys.length; i++)
-                    Positioned(
-                      left: i * 20.0,
-                      child: SmallAvatar(
-                        pubkey: summary.participantPubkeys[i],
-                        userCache: userCache,
-                        size: 32,
+                  for (var index = 0; index < participants.length; index++) ...[
+                    if (index > 0) const SizedBox(width: 6),
+                    ConversationAvatar(
+                      profile: userCache[participants[index].toLowerCase()],
+                      pubkey: participants[index],
+                      size: conversationMiniAvatarSize,
+                      radius: conversationMiniAvatarRadius,
+                      tint: conversationAvatarTint(
+                        profile: userCache[participants[index].toLowerCase()],
+                        isAgent:
+                            knownAgents.contains(
+                              participants[index].toLowerCase(),
+                            ) ||
+                            userCache[participants[index].toLowerCase()]
+                                    ?.ownerPubkey !=
+                                null,
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(width: Grid.xxs),
+            const SizedBox(width: 6),
             Flexible(
               child: Text.rich(
                 TextSpan(
@@ -613,23 +638,22 @@ class _ThreadSummaryRow extends ConsumerWidget {
                     TextSpan(
                       text:
                           '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}',
-                      style: replyPreviewTextStyle.copyWith(
-                        color: context.colors.primary,
+                      style: conversationReplyTextStyle.copyWith(
+                        color: conversationAccentColor(context),
                       ),
                     ),
                     if (summary.lastReplyAt case final lastReplyAt?) ...[
                       TextSpan(
                         text: ' · ',
-                        style: replyPreviewTextStyle.copyWith(
+                        style: conversationReplyTextStyle.copyWith(
                           color: context.colors.onSurfaceVariant.withValues(
                             alpha: 0.5,
                           ),
                         ),
                       ),
                       TextSpan(
-                        text:
-                            'last reply ${formatThreadSummaryLastReplyTime(lastReplyAt)}',
-                        style: replyPreviewTextStyle.copyWith(
+                        text: 'Last reply ${formatMessageTime(lastReplyAt)}',
+                        style: conversationReplyTextStyle.copyWith(
                           color: context.colors.onSurfaceVariant,
                         ),
                       ),

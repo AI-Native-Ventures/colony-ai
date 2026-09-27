@@ -22,6 +22,9 @@ class MessageAuthorMeta extends StatelessWidget {
   /// Optional callback invoked when [displayName] is tapped.
   final VoidCallback? onAuthorTap;
 
+  /// Optional inline badge placed after the author name.
+  final Widget? badge;
+
   /// Optional key assigned to the display-name text.
   final Key? displayNameKey;
 
@@ -49,6 +52,7 @@ class MessageAuthorMeta extends StatelessWidget {
     required this.metadataColor,
     this.username,
     this.onAuthorTap,
+    this.badge,
     this.displayNameKey,
     this.usernameKey,
     this.timestampKey,
@@ -91,6 +95,10 @@ class MessageAuthorMeta extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Flexible(child: authorName),
+            if (badge case final badge?) ...[
+              const SizedBox(width: Grid.quarter),
+              badge,
+            ],
             if (showUsername) ...[
               const SizedBox(width: Grid.half),
               ConstrainedBox(

@@ -11,6 +11,7 @@ class _ChannelsBody extends StatelessWidget {
   final ScrollController scrollController;
   final Future<void> Function() onRefresh;
   final Future<void> Function(Channel channel) onSelectChannel;
+  final VoidCallback onOpenQuickActions;
   final MobileRouteRegistry? routeRegistry;
 
   const _ChannelsBody({
@@ -24,6 +25,7 @@ class _ChannelsBody extends StatelessWidget {
     required this.scrollController,
     required this.onRefresh,
     required this.onSelectChannel,
+    required this.onOpenQuickActions,
     required this.routeRegistry,
   });
 
@@ -62,6 +64,7 @@ class _ChannelsBody extends StatelessWidget {
                     channels: loadedChannels,
                     currentPubkey: currentPubkey,
                     onSelectChannel: onSelectChannel,
+                    onOpenQuickActions: onOpenQuickActions,
                     routeRegistry: routeRegistry,
                   ),
                 ),
@@ -98,8 +101,8 @@ class _ChatListToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = _isChatDark(context);
-    final pink = isDark ? const Color(0xFF4B3E50) : const Color(0x44F4DFED);
-    final blue = isDark ? const Color(0xFF39465B) : const Color(0x33E0E9FA);
+    final pink = isDark ? const Color(0xFF4B3E50) : const Color(0x88F4DFED);
+    final blue = isDark ? const Color(0xFF39465B) : const Color(0x66E0E9FA);
     final filters = [
       (filter: _ChatFilter.all, label: 'All'),
       (filter: _ChatFilter.unread, label: 'Unread $unreadConversationCount'),
@@ -108,10 +111,11 @@ class _ChatListToolbar extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
+        color: _chatPaper(context),
         gradient: RadialGradient(
           center: const Alignment(-1.1, -1.0),
           radius: 1.25,
-          colors: [pink, Colors.transparent],
+          colors: [pink, pink.withValues(alpha: 0)],
         ),
       ),
       child: DecoratedBox(
@@ -119,7 +123,7 @@ class _ChatListToolbar extends StatelessWidget {
           gradient: RadialGradient(
             center: const Alignment(1.1, -1.0),
             radius: 1.25,
-            colors: [blue, Colors.transparent],
+            colors: [blue, blue.withValues(alpha: 0)],
           ),
         ),
         child: Padding(
@@ -235,12 +239,14 @@ class _SliverChannelsList extends HookConsumerWidget {
   final List<Channel> channels;
   final String? currentPubkey;
   final Future<void> Function(Channel channel) onSelectChannel;
+  final VoidCallback onOpenQuickActions;
   final MobileRouteRegistry? routeRegistry;
 
   const _SliverChannelsList({
     required this.channels,
     required this.currentPubkey,
     required this.onSelectChannel,
+    required this.onOpenQuickActions,
     required this.routeRegistry,
   });
 
@@ -399,24 +405,6 @@ class _SliverChannelsList extends HookConsumerWidget {
       };
     }
 
-    Future<void> createChannel() async {
-      final created = await showBuzzModalBottomSheet<Channel>(
-        context: context,
-        title: 'Create a new channel',
-        constraints: _quickActionSheetConstraints(context),
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (_) => const _CreateChannelSheet(channelType: 'stream'),
-      );
-      if (!context.mounted || created == null) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              ChannelDetailPage(channel: created, routeRegistry: routeRegistry),
-        ),
-      );
-    }
-
     return SliverPadding(
       padding: EdgeInsets.only(
         top: Grid.xxs,
@@ -437,8 +425,7 @@ class _SliverChannelsList extends HookConsumerWidget {
           else if (displayedChannels.isEmpty)
             const SizedBox.shrink()
           else ...[
-            if (activeFilter.value != _ChatFilter.direct &&
-                starredStreamChannels.isNotEmpty)
+            if (activeFilter.value != _ChatFilter.direct)
               _ChannelSection(
                 title: 'PINNED',
                 icon: LucideIcons.star,
@@ -454,7 +441,7 @@ class _SliverChannelsList extends HookConsumerWidget {
                 onSortModeChange: (mode) => setSortMode('starred', mode),
                 onSelectChannel: onSelectChannel,
                 simpleStyle: true,
-                onAdd: createChannel,
+                onAdd: onOpenQuickActions,
               ),
             for (final section
                 in activeFilter.value == _ChatFilter.direct

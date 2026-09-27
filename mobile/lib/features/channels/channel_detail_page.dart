@@ -35,6 +35,8 @@ import '../profile/profile_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
 import 'android_ime_lift.dart';
+import 'conversation_avatar.dart';
+import 'conversation_styles.dart';
 import 'channel.dart';
 import 'channel_actions_sheet.dart';
 import 'channel_forum_route.dart';
@@ -65,6 +67,8 @@ import 'message_actions.dart';
 import 'message_action_backdrop_state.dart';
 import 'message_long_press_region.dart';
 import 'message_content.dart';
+import 'message_presentation.dart';
+import 'deliverable_preview_card.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
 import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
@@ -518,6 +522,9 @@ class ChannelDetailPage extends HookConsumerWidget {
         !messagesNotifier.hasLoadedMessages;
     final appBarTitleContentHeight = _twoLineAppBarTitleContentHeight(context);
     final mobileTokens = context.mobileTokens;
+    final composerHintText = resolvedChannel.isDm
+        ? 'Message ${resolveDmChannelDisplayLabel(resolvedChannel, currentPubkey: currentPubkey).split(' ').first}...'
+        : 'Message ${resolvedChannel.name.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}...';
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
@@ -569,7 +576,9 @@ class ChannelDetailPage extends HookConsumerWidget {
     }, [channel.id, readState.isReady, readTimestamp]);
 
     return FrostedScaffold(
-      backgroundColor: mobileTokens.paper,
+      backgroundColor: resolvedChannel.isForum
+          ? mobileTokens.paper
+          : conversationSurfaceColor(context),
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
       appBar: FrostedAppBar(
@@ -590,19 +599,19 @@ class ChannelDetailPage extends HookConsumerWidget {
             : appBarTitleContentHeight,
         titleStyle: context.mobileTypography.body.copyWith(
           color: mobileTokens.ink,
-          fontSize: resolvedChannel.isForum ? 16 : 14,
+          fontSize: 16,
           fontWeight: FontWeight.w700,
           height: 1.25,
         ),
         frostedSurfaceOpacity: resolvedChannel.isForum ? 0 : 1,
         frostedBlurSigma: 0,
         bottomDividerOpacity: 1,
-        horizontalInset: resolvedChannel.isForum ? Grid.gutter : Grid.xxs,
+        horizontalInset: Grid.xs - Grid.half,
         title: Padding(
           padding: EdgeInsets.only(
             left: usesNativeIosGlassBackButton
                 ? iosGlassChannelHeaderTitleSpacing
-                : 0,
+                : Grid.half,
           ),
           child: resolvedChannel.isDm
               ? _DmAppBarTitle(
@@ -644,25 +653,6 @@ class ChannelDetailPage extends HookConsumerWidget {
                     channel: resolvedChannel,
                     currentPubkey: currentPubkey,
                   ),
-                IconButton(
-                  color: context.colors.primary,
-                  onPressed: () async {
-                    final shouldClose = await showChannelActionsSheet(
-                      context: context,
-                      channel: resolvedChannel,
-                      isUnread: false,
-                      sectionId: ref
-                          .read(channelSectionsProvider)
-                          .store
-                          .assignments[resolvedChannel.id],
-                    );
-                    if (shouldClose == true && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  tooltip: 'Channel actions',
-                  icon: const Icon(LucideIcons.ellipsisVertical, size: 22),
-                ),
               ]
             : [
                 if (resolvedChannel.isForum &&
@@ -795,10 +785,32 @@ class ChannelDetailPage extends HookConsumerWidget {
                                   channelMessagesProvider(channel.id).notifier,
                                 )
                                 .threadSummaries;
-                            final entries = buildMainTimelineEntries(
-                              messages,
-                              relaySummaries: summaries,
+                            final presentationOverrides = ref.watch(
+                              channelMessagePresentationProvider,
                             );
+                            final entries =
+                                buildMainTimelineEntries(
+                                  messages,
+                                  relaySummaries: summaries,
+                                ).map((entry) {
+                                  final replyCount =
+                                      presentationOverrides[entry.message.id]
+                                          ?.threadReplyCount;
+                                  final summary = entry.summary;
+                                  if (replyCount == null || summary == null) {
+                                    return entry;
+                                  }
+                                  return MainTimelineEntry(
+                                    message: entry.message,
+                                    summary: ThreadSummary(
+                                      threadHeadId: summary.threadHeadId,
+                                      replyCount: replyCount,
+                                      participantPubkeys:
+                                          summary.participantPubkeys,
+                                      lastReplyAt: summary.lastReplyAt,
+                                    ),
+                                  );
+                                }).toList();
                             return _MessageList(
                               entries: entries,
                               allMessages: messages,
@@ -820,6 +832,8 @@ class ChannelDetailPage extends HookConsumerWidget {
                                       initialOldestOrdinaryUnreadMessageId !=
                                           null),
                               channelId: channel.id,
+                              isDirectMessage:
+                                  resolvedChannel.channelType == 'dm',
                               currentPubkey: currentPubkey,
                               isMember: resolvedChannel.isMember,
                               isArchived: resolvedChannel.isArchived,
@@ -864,44 +878,52 @@ class ChannelDetailPage extends HookConsumerWidget {
                 child: ComposerDockSizeReporter(
                   key: const ValueKey('channel-composer-dock'),
                   onHeightChanged: (height) {
-                    if ((composerDockHeight.value - height).abs() < 0.5) return;
+                    if ((composerDockHeight.value - height).abs() < 0.5) {
+                      return;
+                    }
                     composerDockHeight.value = height;
                   },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedSize(
-                        duration: MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.bottomCenter,
-                        child: typingEntries.isEmpty
-                            ? const SizedBox.shrink()
-                            : ChannelTypingIndicator(entries: typingEntries),
-                      ),
-                      ComposeBar(
-                        channelId: channel.id,
-                        focusNode: composerFocusNode,
-                        onFocusRestorerChanged: (restoreFocus) =>
-                            restoreComposerFocus.value = restoreFocus,
-                        channelName: resolvedChannel.isDm
-                            ? ''
-                            : resolvedChannel.name,
-                        onSend:
-                            (
-                              content,
-                              mentionPubkeys, {
-                              mediaTags = const <List<String>>[],
-                            }) => sendMessage.call(
-                              channelId: channel.id,
-                              content: content,
-                              mentionPubkeys: mentionPubkeys,
-                              channel: resolvedChannel,
-                              mediaTags: mediaTags,
-                            ),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: Grid.xxs),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSize(
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.bottomCenter,
+                          child: typingEntries.isEmpty
+                              ? const SizedBox.shrink()
+                              : ChannelTypingIndicator(entries: typingEntries),
+                        ),
+                        ComposeBar(
+                          channelId: channel.id,
+                          focusNode: composerFocusNode,
+                          surfaceColor: conversationSurfaceColor(context),
+                          fillWidth: true,
+                          onFocusRestorerChanged: (restoreFocus) =>
+                              restoreComposerFocus.value = restoreFocus,
+                          channelName: resolvedChannel.isDm
+                              ? ''
+                              : resolvedChannel.name,
+                          hintText: composerHintText,
+                          onSend:
+                              (
+                                content,
+                                mentionPubkeys, {
+                                mediaTags = const <List<String>>[],
+                              }) => sendMessage.call(
+                                channelId: channel.id,
+                                content: content,
+                                mentionPubkeys: mentionPubkeys,
+                                channel: resolvedChannel,
+                                mediaTags: mediaTags,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

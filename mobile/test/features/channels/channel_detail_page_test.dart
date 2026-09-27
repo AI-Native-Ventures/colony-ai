@@ -20,8 +20,11 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
 import 'package:buzz/features/channels/channel_forum_route.dart';
+import 'package:buzz/features/channels/conversation_avatar.dart';
+import 'package:buzz/features/channels/conversation_styles.dart';
 import 'package:buzz/features/channels/compose_bar.dart';
 import 'package:buzz/features/channels/message_content.dart';
+import 'package:buzz/features/channels/message_presentation.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_provider.dart';
@@ -34,6 +37,7 @@ import 'package:buzz/features/channels/members_sheet.dart';
 import 'package:buzz/features/channels/composer_dock_size_reporter.dart';
 import 'package:buzz/features/channels/date_formatters.dart';
 import 'package:buzz/features/channels/day_divider.dart';
+import 'package:buzz/features/channels/deliverable_preview_card.dart';
 import 'package:buzz/features/channels/emoji_picker.dart';
 import 'package:buzz/features/channels/ime_metrics_settle_observer.dart';
 import 'package:buzz/features/channels/local_message_send_animation_provider.dart';
@@ -241,6 +245,8 @@ Widget _buildTestable({
   _FakeTypingNotifier? huddleTypingNotifier,
   MobileRouteRegistry? routeRegistry,
   ForumPostsResponse? forumPostsResponse,
+  Map<String, ChannelMessagePresentation> messagePresentations = const {},
+  DateTime? conversationDayNow,
   MediaUploadService? mediaUploadService,
   String? canvasContent,
   String? initialMessageId,
@@ -414,6 +420,12 @@ Widget _buildTestable({
       if (huddleCurrentPubkey != null)
         currentPubkeyProvider.overrideWith((ref) => huddleCurrentPubkey),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
+      channelMessagePresentationProvider.overrideWithValue(
+        messagePresentations,
+      ),
+      conversationDayHeadingNowProvider.overrideWithValue(
+        conversationDayNow ?? DateTime(2026, 9, 24, 12),
+      ),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
     ],
@@ -644,8 +656,10 @@ void main() {
         tester,
       ) async {
         final first = 'a' * 64, second = 'b' * 64, sibling = 'c' * 64;
-        Future<void> tapProfile(String label, String key) async {
-          await tester.tap(find.text(label));
+        Future<void> tapProfile(String key) async {
+          final mention = find.byKey(ValueKey('message-mention-$key'));
+          expect(mention.hitTestable(), findsOneWidget);
+          await tester.tap(mention.hitTestable());
           await tester.pumpAndSettle();
           expect(
             tester
@@ -692,12 +706,12 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
-              await tapProfile('Scout (bbbbbbbb…bbbb)', second);
+              await tapProfile(second);
               expect(find.text('Scout'), findsNothing);
               expect(find.text('Bob'), findsNothing);
               if (firstName != null) expect(find.text(firstName), findsNothing);
               expect(find.text('Other (eeeeeeee…eeee)'), findsNothing);
-              await tapProfile('Alice', sibling);
+              await tapProfile(sibling);
               expect(tester.takeException(), isNull);
               await tester.pumpWidget(const SizedBox.shrink());
               await tester.pumpAndSettle();
@@ -709,7 +723,7 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
-    testWidgets('captures R17 channel, DM and thread routes', (tester) async {
+    testWidgets('captures R19 channel, DM and thread routes', (tester) async {
       const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_DETAILS');
       if (!captureScreenshots) return;
 
@@ -721,8 +735,16 @@ void main() {
           rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
         );
       await iconFontLoader.load();
-
-      final now = DateTime.now();
+      final systemSerif = File(
+        '/System/Library/Fonts/Supplemental/Georgia.ttf',
+      );
+      if (systemSerif.existsSync()) {
+        final serifBytes = systemSerif.readAsBytesSync();
+        final artFontLoader = FontLoader('serif')
+          ..addFont(Future<ByteData>.value(ByteData.sublistView(serifBytes)));
+        await artFontLoader.load();
+      }
+      final now = DateTime(2026, 9, 24, 12);
       int timestamp(int hour, int minute) =>
           DateTime(
             now.year,
@@ -781,6 +803,16 @@ void main() {
           ['p', 'self'],
         ],
       );
+      final replyThree = _textMsg(
+        id: 'fixture-journal-reply-three',
+        pubkey: 'scout',
+        content: 'The revised headline now matches the brief.',
+        createdAt: timestamp(10, 43),
+        extraTags: const [
+          ['e', 'fixture-journal-review', '', 'reply'],
+          ['p', 'maya'],
+        ],
+      );
       final agent = _textMsg(
         id: 'fixture-agent-review',
         pubkey: 'scout',
@@ -830,6 +862,44 @@ void main() {
             displayName: member.$3,
           ),
       ];
+      const journalCard = DeliverablePreviewData(
+        title: 'September journal',
+        detail: 'Olive Studio · Instagram carousel · 4 slides',
+        brand: 'OLIVE STUDIO',
+        coverTitle: 'A little room\nto slow down.',
+        coverFooter: 'SEPTEMBER JOURNAL / 01',
+        reviewStatus: 'Needs your review',
+        versionLabel: 'Version 3',
+      );
+      final presentations = {
+        'fixture-journal-review': const ChannelMessagePresentation(
+          deliverable: journalCard,
+          threadReplyCount: 3,
+        ),
+        'fixture-dm-journal': const ChannelMessagePresentation(
+          deliverable: journalCard,
+        ),
+        'fixture-journal-reply-one': const ChannelMessagePresentation(
+          quote: QuotedMessagePreviewData(
+            label: 'Slide 2 · Version 3',
+            content: '“Make space for yourself.”',
+          ),
+        ),
+      };
+      final morningReactionOne = _reaction(
+        id: 'fixture-morning-reaction-one',
+        targetId: 'fixture-morning',
+        pubkey: 'maya',
+        createdAt: timestamp(9, 14),
+        content: '✓',
+      );
+      final morningReactionTwo = _reaction(
+        id: 'fixture-morning-reaction-two',
+        targetId: 'fixture-morning',
+        pubkey: 'scout',
+        createdAt: timestamp(9, 14),
+        content: '✓',
+      );
       const captureSizes = {
         '390x844': Size(390, 844),
         '412x915': Size(412, 915),
@@ -847,6 +917,10 @@ void main() {
             tester.view.physicalSize = size.value;
             tester.view.devicePixelRatio = 1;
             tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+            tester.view.viewPadding = const FakeViewPadding(
+              top: 44,
+              bottom: 34,
+            );
             final isDm = route == 'dm';
             final isThread = route == 'thread';
             await tester.pumpWidget(
@@ -875,8 +949,16 @@ void main() {
                         ),
                       ]
                     : isThread
-                    ? [root, replyOne, replyTwo]
-                    : [morning, channelRoot, agent],
+                    ? [root, replyOne, replyTwo, replyThree]
+                    : [
+                        morning,
+                        morningReactionOne,
+                        morningReactionTwo,
+                        channelRoot,
+                        replyOne,
+                        replyTwo,
+                        agent,
+                      ],
                 channel: isDm ? dm : campaign,
                 users: const {
                   'self': UserProfile(
@@ -893,9 +975,11 @@ void main() {
                 knownAgentPubkeys: const {'scout'},
                 members: isDm ? const [] : campaignMembers,
                 threadReplies: {
-                  'fixture-journal-review': [replyOne, replyTwo],
+                  'fixture-journal-review': [replyOne, replyTwo, replyThree],
                 },
                 initialThreadRootId: isThread ? 'fixture-journal-review' : null,
+                messagePresentations: presentations,
+                conversationDayNow: now,
                 brightness: brightness,
                 captureKey: const ValueKey('w23-detail-fullscreen-capture'),
                 routeInNavigationStack: true,
@@ -904,6 +988,110 @@ void main() {
               ),
             );
             await tester.pumpAndSettle();
+            if (route == 'channel') {
+              expect(find.text('Today, 24 September'), findsWidgets);
+              expect(
+                tester
+                    .getRect(find.text('Today, 24 September').first)
+                    .center
+                    .dy,
+                lessThan(170),
+              );
+              final morningReaction = find.byKey(
+                const ValueKey('reaction-pill-✓'),
+              );
+              expect(morningReaction, findsOneWidget);
+              expect(
+                find.descendant(of: morningReaction, matching: find.text('2')),
+                findsOneWidget,
+              );
+              expect(find.byType(DeliverablePreviewCard), findsOneWidget);
+              expect(find.text('September journal'), findsOneWidget);
+              expect(
+                find.text('Olive Studio · Instagram carousel · 4 slides'),
+                findsOneWidget,
+              );
+              expect(find.text('Needs your review'), findsOneWidget);
+              expect(find.text('Version 3'), findsOneWidget);
+              expect(find.text('AGENT'), findsOneWidget);
+              expect(findRichText('@Lerato'), findsOneWidget);
+              expect(findRichText('3 replies'), findsOneWidget);
+            } else if (route == 'dm') {
+              expect(find.text('Today, 24 September'), findsWidgets);
+              expect(
+                tester
+                    .getRect(find.text('Today, 24 September').first)
+                    .center
+                    .dy,
+                lessThan(170),
+              );
+              expect(find.byType(DeliverablePreviewCard), findsOneWidget);
+              expect(findRichText('10:36'), findsOneWidget);
+              expect(findRichText('10:37'), findsOneWidget);
+              expect(findRichText('10:38'), findsOneWidget);
+              expect(findRichText('September journal'), findsOneWidget);
+              expect(find.text('Message Maya...'), findsOneWidget);
+              expect(find.byTooltip('Channel actions'), findsNothing);
+              expect(find.byTooltip('View members'), findsNothing);
+            } else {
+              expect(find.text('Thread'), findsOneWidget);
+              expect(
+                find.text('September journal · 3 replies'),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const ValueKey('thread-context-strip')),
+                findsOneWidget,
+              );
+              expect(findRichText('3 replies · Following'), findsOneWidget);
+              expect(find.byType(QuotedMessagePreview), findsOneWidget);
+              expect(findRichText('Slide 2 · Version 3'), findsOneWidget);
+              expect(find.text('AGENT'), findsOneWidget);
+              final threadRoot = find.byKey(
+                const ValueKey('thread-message-fixture-journal-review'),
+              );
+              expect(
+                find.descendant(
+                  of: threadRoot,
+                  matching: find.byKey(const ValueKey('add-reaction-pill')),
+                ),
+                findsNothing,
+              );
+              expect(
+                tester
+                    .widget<Opacity>(
+                      find.byKey(
+                        const ValueKey('thread-initial-viewport-gate'),
+                      ),
+                    )
+                    .opacity,
+                1,
+              );
+              expect(
+                find.byKey(const ValueKey('thread-jump-to-latest-hidden')),
+                findsOneWidget,
+              );
+              final threadRootRect = tester.getRect(threadRoot);
+              final threadListRect = tester.getRect(
+                find.byKey(const ValueKey('thread-message-list')),
+              );
+              expect(
+                threadRootRect.top,
+                greaterThanOrEqualTo(threadListRect.top),
+              );
+              final composerRect = tester.getRect(
+                find.descendant(
+                  of: find.byKey(const ValueKey('thread-composer-dock')),
+                  matching: find.byKey(const ValueKey('composer-surface')),
+                ),
+              );
+              expect(composerRect.left, greaterThanOrEqualTo(12));
+              expect(composerRect.left, lessThan(20));
+              expect(composerRect.width, greaterThan(size.value.width - 36));
+              expect(findRichText('@Lerato'), findsWidgets);
+              expect(tester.getTopLeft(threadRoot).dy, lessThan(200));
+              expect(find.text('Today, 24 September'), findsNothing);
+            }
             await expectLater(
               find.byKey(const ValueKey('w23-detail-fullscreen-capture')),
               matchesGoldenFile('$route.png'),
@@ -915,11 +1103,12 @@ void main() {
         }
       }
       tester.view.resetPadding();
+      tester.view.resetViewPadding();
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
 
-    testWidgets('message avatars are circular in channel and thread', (
+    testWidgets('message avatars are rounded-square in channel and thread', (
       tester,
     ) async {
       final message = _textMsg(
@@ -937,22 +1126,30 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      ClipOval avatarIn(Finder row) => tester.widget<ClipOval>(
-        find.descendant(
-          of: row,
-          matching: find.byKey(const ValueKey('message-avatar-circle')),
+      final avatarKey = const ValueKey('message-avatar-rounded-square-bot');
+      ClipRRect avatarIn(Finder row) => tester.widget<ClipRRect>(
+        find.descendant(of: row, matching: find.byKey(avatarKey)),
+      );
+      final channelRow = find.byKey(const ValueKey('message-row-bot-message'));
+      expect(avatarIn(channelRow).borderRadius, BorderRadius.circular(11));
+      expect(
+        tester.getSize(
+          find.descendant(of: channelRow, matching: find.byKey(avatarKey)),
         ),
+        const Size(34, 34),
       );
       expect(
-        avatarIn(find.byKey(const ValueKey('message-row-bot-message'))),
-        isNotNull,
+        find.descendant(of: channelRow, matching: find.text('B')),
+        findsOneWidget,
       );
 
       await tester.tap(find.byKey(const ValueKey('message-row-bot-message')));
       await tester.pumpAndSettle();
       expect(
-        avatarIn(find.byKey(const ValueKey('thread-message-row-bot-message'))),
-        isNotNull,
+        avatarIn(
+          find.byKey(const ValueKey('thread-message-row-bot-message')),
+        ).borderRadius,
+        BorderRadius.circular(11),
       );
     });
 
@@ -2597,6 +2794,7 @@ void main() {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
         tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+        tester.view.viewPadding = const FakeViewPadding(top: 44);
         for (final brightness in [Brightness.light, Brightness.dark]) {
           final mode = brightness == Brightness.light ? 'light' : 'dark';
           final forumRelay = _R19ForumCaptureRelay(forumFixtureEvents);
@@ -2820,6 +3018,7 @@ void main() {
         }
       }
       tester.view.resetPadding();
+      tester.view.resetViewPadding();
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
       mediaUploadService.dispose();
@@ -3647,7 +3846,7 @@ void main() {
         findsNothing,
       );
 
-      expect(find.text('Message #general'), findsOneWidget);
+      expect(find.text('Message general...'), findsOneWidget);
     });
 
     testWidgets('Leave lives on the detail page instead of Manage', (
@@ -3857,19 +4056,22 @@ void main() {
       expect(find.text('Alice'), findsOneWidget);
       expect(find.text('alice@example.com'), findsOneWidget);
       expect(find.text('Bob'), findsOneWidget);
-      final messageAvatars = find.byType(AvatarImageContent);
+      final messageAvatars = find.byType(ConversationAvatar);
       expect(messageAvatars, findsNWidgets(2));
       for (final avatar in messageAvatars.evaluate()) {
         expect(
           tester.getSize(find.byWidget(avatar.widget)),
-          const Size.square(messageAvatarSize),
+          const Size.square(conversationAvatarSize),
         );
       }
       final aliceName = find.text('Alice');
       final aliceText = tester.widget<Text>(aliceName);
-      expect(aliceText.style?.fontSize, messageUsernameTextStyle.fontSize);
-      expect(aliceText.style?.fontWeight, messageUsernameTextStyle.fontWeight);
-      expect(aliceText.style?.height, messageUsernameTextStyle.height);
+      expect(aliceText.style?.fontSize, conversationAuthorTextStyle.fontSize);
+      expect(
+        aliceText.style?.fontWeight,
+        conversationAuthorTextStyle.fontWeight,
+      );
+      expect(aliceText.style?.height, conversationAuthorTextStyle.height);
       final aliceUsername = tester.widget<Text>(
         find.byKey(const ValueKey('message-username-msg1')),
       );
@@ -3881,7 +4083,7 @@ void main() {
       expect(aliceUsername.style?.height, messageMetadataTextStyle.height);
       expect(
         aliceTimestamp.style?.fontSize,
-        messageTimestampTextStyle.fontSize,
+        conversationTimestampTextStyle.fontSize,
       );
       expect(aliceTimestamp.style?.fontWeight, FontWeight.w400);
       expect(
@@ -3899,7 +4101,7 @@ void main() {
       final helloText = tester.widget<RichText>(helloContent);
       expect(
         effectiveFontSizeForText(helloText.text, 'Hello world!'),
-        messageBodyTextStyle.fontSize,
+        conversationBodyTextStyle.fontSize,
       );
       final messageList = tester.widget<ScrollablePositionedList>(
         find.byKey(const ValueKey('channel-message-list')),
@@ -3924,7 +4126,7 @@ void main() {
         find.byKey(const ValueKey('channel-jump-to-latest')),
         findsNothing,
       );
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message general...'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('channel-jump-to-latest')),
@@ -4499,19 +4701,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        findRichText(
-          '2 replies · last reply '
-          '${formatThreadSummaryLastReplyTime(1200)}',
-        ),
+        findRichText('2 replies · Last reply ${formatMessageTime(1200)}'),
         findsOneWidget,
       );
       expect(find.byIcon(LucideIcons.chevronRight), findsNothing);
-      final replyAvatars = find.byType(SmallAvatar);
+      final replyAvatars = find.descendant(
+        of: find.byKey(const ValueKey('thread-summary-root')),
+        matching: find.byType(ConversationAvatar),
+      );
       expect(replyAvatars, findsNWidgets(2));
       for (final avatar in replyAvatars.evaluate()) {
         expect(
           tester.getSize(find.byWidget(avatar.widget)),
-          const Size.square(32),
+          const Size.square(conversationMiniAvatarSize),
         );
       }
       final summaryPadding = tester.widget<Padding>(
@@ -4520,8 +4722,8 @@ void main() {
       expect(
         summaryPadding.padding,
         const EdgeInsets.only(
-          left: messageAvatarSize + messageAvatarContentGap,
-          top: Grid.half,
+          left: conversationReplyIndent,
+          top: 10,
           bottom: Grid.xs,
         ),
       );
@@ -5210,7 +5412,7 @@ void main() {
           closeTo(tester.getTopLeft(composerDock).dy, 1),
         );
 
-        await tester.tap(find.text('Message #general'));
+        await tester.tap(find.text('Message general...'));
         for (var frame = 0; frame < 15; frame += 1) {
           await tester.pump(const Duration(milliseconds: 16));
           expect(
@@ -5357,7 +5559,7 @@ void main() {
       );
       final composerDock = find.byKey(const ValueKey('channel-composer-dock'));
 
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message general...'));
       await tester.pumpAndSettle();
 
       expect(
@@ -5712,7 +5914,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.text('Message #general'));
+          await tester.tap(find.text('Message general...'));
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
           await tester.pump();
@@ -5841,7 +6043,7 @@ void main() {
           final collapsedGap = latestGap();
           expect(collapsedGap, closeTo(Grid.xs, 0.5));
 
-          await tester.tap(find.text('Message #general'));
+          await tester.tap(find.text('Message general...'));
           await tester.pump();
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -5896,20 +6098,16 @@ void main() {
         final stickyHeader = find.byKey(
           const ValueKey('channel-sticky-date-header'),
         );
-        final stickySurface = find.byKey(
-          const ValueKey('channel-sticky-date-header-surface'),
-        );
         expect(stickyHeader, findsOneWidget);
-        expect(stickySurface, findsOneWidget);
         expect(
           find.descendant(
             of: stickyHeader,
-            matching: find.text(formatDayHeading(firstDay + 86400)),
+            matching: find.text(formatConversationDayHeading(firstDay + 86400)),
           ),
           findsOneWidget,
         );
         expect(
-          tester.getTopLeft(stickySurface).dy,
+          tester.getTopLeft(stickyHeader).dy,
           closeTo(
             frostedAppBarHeight(
                   tester.element(stickyHeader),
@@ -5926,7 +6124,7 @@ void main() {
             of: stickyHeader,
             matching: find.byType(BackdropFilter),
           ),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -9871,11 +10069,9 @@ void main() {
       );
     });
 
-    testWidgets('a reacted message offers the + picker in the timeline', (
+    testWidgets('a reacted message keeps the timeline reaction row compact', (
       tester,
     ) async {
-      // Desktop puts the picker trigger beside existing reactions on every row,
-      // so reacting doesn't require discovering the long-press sheet.
       await tester.pumpWidget(
         _buildTestable(
           messages: [
@@ -9889,14 +10085,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('add-reaction-pill')), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('add-reaction-pill')));
-      // Not pumpAndSettle: with no dataset asset in a widget test the sheet
-      // shows its loading spinner, which animates forever.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(EmojiPickerSheet), findsOneWidget);
+      expect(find.byKey(const ValueKey('reaction-pill-👍')), findsOneWidget);
+      expect(find.byKey(const ValueKey('add-reaction-pill')), findsNothing);
     });
 
     testWidgets('an unreacted message keeps the timeline free of chrome', (
@@ -10381,7 +10571,7 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(find.byIcon(LucideIcons.mic).hitTestable(), findsOneWidget);
 
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message general...'));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsOneWidget);
@@ -10392,7 +10582,7 @@ void main() {
       await tester.pumpWidget(_buildTestable(messages: []));
       await tester.pumpAndSettle();
 
-      expect(find.text('Message #general'), findsOneWidget);
+      expect(find.text('Message general...'), findsOneWidget);
     });
   });
 
@@ -11732,18 +11922,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(DayDivider), findsNWidgets(2));
+      expect(find.byType(DayDivider), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(DayDivider),
-          matching: find.text(formatDayHeading(rootCreatedAt)),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(DayDivider),
-          matching: find.text(formatDayHeading(nextDayCreatedAt)),
+          matching: find.text(formatConversationDayHeading(nextDayCreatedAt)),
         ),
         findsOneWidget,
       );
@@ -11786,7 +11969,7 @@ void main() {
       );
       expect(
         threadTimestamp.style?.fontSize,
-        messageTimestampTextStyle.fontSize,
+        conversationTimestampTextStyle.fontSize,
       );
       expect(
         find.descendant(
@@ -11865,7 +12048,9 @@ void main() {
       expect(
         find.descendant(
           of: stickyHeader,
-          matching: find.text(formatDayHeading(timestampForDay(2, 0))),
+          matching: find.text(
+            formatConversationDayHeading(timestampForDay(2, 0)),
+          ),
         ),
         findsOneWidget,
       );
@@ -11874,7 +12059,7 @@ void main() {
           of: stickyHeader,
           matching: find.byType(BackdropFilter),
         ),
-        findsOneWidget,
+        findsNothing,
       );
 
       list.itemScrollController!.jumpTo(index: 70);
@@ -11882,7 +12067,9 @@ void main() {
       expect(
         find.descendant(
           of: stickyHeader,
-          matching: find.text(formatDayHeading(timestampForDay(3, 0))),
+          matching: find.text(
+            formatConversationDayHeading(timestampForDay(3, 0)),
+          ),
         ),
         findsOneWidget,
       );
@@ -11955,7 +12142,7 @@ void main() {
         lessThanOrEqualTo(tester.getTopLeft(composerSurface).dy),
       );
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply in thread...').hitTestable());
       await tester.pumpAndSettle();
 
       expect(tester.getSize(dock).height, greaterThan(compactDockHeight));
@@ -12042,7 +12229,7 @@ void main() {
       final initialHeadY = tester.getTopLeft(head).dy;
       expect(initialHeadY, lessThan(300));
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply in thread...').hitTestable());
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pump();
@@ -12116,7 +12303,7 @@ void main() {
             findsNothing,
           );
 
-          await tester.tap(find.text('Reply in thread…').hitTestable());
+          await tester.tap(find.text('Reply in thread...').hitTestable());
           for (var frame = 0; frame < 15; frame += 1) {
             await tester.pump(const Duration(milliseconds: 16));
             expect(
@@ -12249,7 +12436,7 @@ void main() {
               id: 'reply-$i',
               pubkey: 'bob',
               content: i == 29
-                  ? List.filled(33, 'Tall latest reply').join('\n')
+                  ? List.filled(29, 'Tall latest reply').join('\n')
                   : 'Reply $i',
               createdAt: 1100 + i,
               extraTags: const [
@@ -12615,7 +12802,7 @@ void main() {
               id: 'reply-$i',
               pubkey: 'bob',
               content: i == 29
-                  ? List.filled(15, 'Tall latest reply').join('\n')
+                  ? List.filled(14, 'Tall latest reply').join('\n')
                   : 'Reply $i',
               createdAt: 1100 + i,
               extraTags: const [
@@ -12652,7 +12839,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply in thread...').hitTestable());
         await tester.pumpAndSettle();
         tester.view.viewInsets = const FakeViewPadding(bottom: 300);
         await tester.pumpAndSettle();
@@ -12660,9 +12847,10 @@ void main() {
         final list = find.byKey(const ValueKey('thread-message-list'));
         final listHeight = tester.getSize(list).height;
         final mediaQueryHeight = MediaQuery.sizeOf(tester.element(list)).height;
+        final appBarHeight = frostedAppBarHeight(tester.element(list));
         expect(
           listHeight,
-          closeTo(mediaQueryHeight, 0.5),
+          closeTo(mediaQueryHeight - appBarHeight, 0.5),
           reason: 'Android keeps the thread viewport fixed behind the IME.',
         );
 
@@ -13552,7 +13740,7 @@ void main() {
         );
         expect(tester.getTopLeft(anchor).dy, closeTo(detachedTop, 0.5));
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply in thread...').hitTestable());
         await tester.pumpAndSettle();
         expect(tester.getTopLeft(anchor).dy, closeTo(detachedTop, 0.5));
 
@@ -13919,7 +14107,7 @@ void main() {
 
         expect(target, findsOneWidget);
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply in thread...').hitTestable());
         await tester.pumpAndSettle();
 
         expect(
@@ -13990,7 +14178,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply in thread...').hitTestable());
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pumpAndSettle();
@@ -14118,7 +14306,7 @@ void main() {
             findsOneWidget,
           );
 
-          await tester.tap(find.text('Reply in thread…').hitTestable());
+          await tester.tap(find.text('Reply in thread...').hitTestable());
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
           await tester.pump();
@@ -14202,7 +14390,7 @@ void main() {
         const latestButton = ValueKey('thread-jump-to-latest');
         expect(find.byKey(latestButton), findsOneWidget);
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply in thread...').hitTestable());
         await tester.pump();
         for (var frame = 0; frame < 10; frame++) {
           await tester.pump();
@@ -15015,15 +15203,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The head keeps a standing +; the bare reply gets none, so a thread
-      // reads as quietly as the channel does. Two + pills, not three: the head
-      // and the reacted reply.
-      expect(find.byKey(const ValueKey('add-reaction-pill')), findsNWidgets(2));
+      // The root follows the frozen thread design without a + control. Replies
+      // keep the picker after a reaction is present.
+      expect(find.byKey(const ValueKey('add-reaction-pill')), findsOneWidget);
       final headRow = find.descendant(
         of: find.byKey(const ValueKey('thread-message-group-thread-root')),
         matching: find.byKey(const ValueKey('add-reaction-pill')),
       );
-      expect(headRow, findsOneWidget);
+      expect(headRow, findsNothing);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('thread-message-group-reply-bare')),

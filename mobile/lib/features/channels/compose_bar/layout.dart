@@ -13,6 +13,7 @@ class _ComposeBarLayout extends HookWidget {
   final VoidCallback onVoiceNote;
   final VoidCallback onSend;
   final String resolvedHint;
+  final Color? surfaceColor;
   final _AttachmentSurface attachmentSurface;
   final ValueChanged<BuildContext> onAttachmentTap;
   final VoidCallback onExpand;
@@ -31,6 +32,7 @@ class _ComposeBarLayout extends HookWidget {
   final bool isSending;
   final bool postEditorMode;
   final bool enabled;
+  final bool fillWidth;
 
   const _ComposeBarLayout({
     required this.voiceNoteRecorder,
@@ -45,6 +47,7 @@ class _ComposeBarLayout extends HookWidget {
     required this.onVoiceNote,
     required this.onSend,
     required this.resolvedHint,
+    this.surfaceColor,
     required this.attachmentSurface,
     required this.onAttachmentTap,
     required this.onExpand,
@@ -63,6 +66,7 @@ class _ComposeBarLayout extends HookWidget {
     required this.isSending,
     required this.postEditorMode,
     required this.enabled,
+    required this.fillWidth,
   });
 
   @override
@@ -166,7 +170,7 @@ class _ComposeBarLayout extends HookWidget {
                           collapsedText,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: context.textTheme.bodyLarge?.copyWith(
+                          style: conversationComposerTextStyle.copyWith(
                             color: trimmedDraft.isEmpty
                                 ? context.colors.onSurfaceVariant
                                 : context.colors.onSurface,
@@ -277,13 +281,7 @@ class _ComposeBarLayout extends HookWidget {
       animation: Listenable.merge([expansionAnimation, recordingTransition]),
       child: content,
       builder: (context, child) {
-        final progress = expansionAnimation.value.clamp(0.0, 1.0).toDouble();
-        final composerRadius = Radii.dialog + Grid.quarter * (1 - progress);
-        final radius = BorderRadius.lerp(
-          BorderRadius.circular(composerRadius),
-          BorderRadius.circular(Radii.full),
-          Curves.easeInOutCubic.transform(recordingTransition.value),
-        )!;
+        final radius = BorderRadius.circular(14);
         final usesIosConcentricSurface =
             defaultTargetPlatform == TargetPlatform.iOS;
         final voiceNoteInsetProgress = hasVoiceNoteAttachment
@@ -294,15 +292,15 @@ class _ComposeBarLayout extends HookWidget {
           decoration: BoxDecoration(
             color: usesIosConcentricSurface
                 ? Colors.transparent
-                : context.colors.surfaceContainerHighest,
+                : surfaceColor ?? context.colors.surface,
             borderRadius: radius,
-            border: Border.all(
-              color: Colors.black.withValues(alpha: 0.04),
-              width: 1,
-            ),
+            border: Border.all(color: context.mobileTokens.line, width: 1),
           ),
-          padding: EdgeInsets.all(
-            Grid.xxs + Grid.half * voiceNoteInsetProgress,
+          padding: EdgeInsets.symmetric(
+            horizontal: Grid.xxs + Grid.half * voiceNoteInsetProgress,
+            vertical:
+                (fillWidth ? Grid.xxs - 1.5 : Grid.xxs) +
+                Grid.half * voiceNoteInsetProgress,
           ),
           child: child,
         );
@@ -311,7 +309,7 @@ class _ComposeBarLayout extends HookWidget {
           key: const ValueKey('composer-ios-concentric-surface'),
           enabled: true,
           usesGlass: true,
-          color: context.colors.surfaceContainerHighest,
+          color: surfaceColor ?? context.colors.surface,
           padding: EdgeInsets.zero,
           providesSheetSurface: false,
           minimumRadius: radius.topLeft.x,
@@ -356,10 +354,12 @@ class _ComposeBarLayout extends HookWidget {
       ),
       minLines: 1,
       maxLines: 5,
-      style: context.textTheme.bodyLarge,
+      style: conversationComposerTextStyle.copyWith(
+        color: context.colors.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: resolvedHint,
-        hintStyle: context.textTheme.bodyLarge?.copyWith(
+        hintStyle: conversationComposerTextStyle.copyWith(
           color: context.colors.onSurfaceVariant,
         ),
         border: InputBorder.none,
@@ -419,22 +419,24 @@ class _ComposeBarLayout extends HookWidget {
           ),
         ),
         if (attachments.isNotEmpty) ...[
-          const SizedBox(height: Grid.half),
-          for (final attachment in attachments)
+          const SizedBox(height: 10),
+          for (var index = 0; index < attachments.length; index++) ...[
             _PostAttachmentRow(
-              key: ValueKey('compose-post-attachment:${attachment.id}'),
-              attachment: attachment,
+              key: ValueKey('compose-post-attachment:${attachments[index].id}'),
+              attachment: attachments[index],
               enabled: enabled,
-              onRemove: () => onRemoveAttachment(attachment.id),
+              onRemove: () => onRemoveAttachment(attachments[index].id),
             ),
+            if (index < attachments.length - 1) const SizedBox(height: 10),
+          ],
         ],
         if (enabled) ...[
-          const SizedBox(height: Grid.xxs),
+          const SizedBox(height: 15),
           Builder(
-            builder: (buttonContext) => DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: context.mobileTokens.line),
-                borderRadius: BorderRadius.circular(10),
+            builder: (buttonContext) => CustomPaint(
+              painter: _DashedRoundedBorder(
+                color: context.mobileTokens.line,
+                radius: 9,
               ),
               child: SizedBox(
                 height: 44,
@@ -478,10 +480,10 @@ class _PostAttachmentRow extends HookWidget {
     final fileLength = useMemoized(attachment.file.length, [attachment.file]);
     final length = useFuture(fileLength).data;
     return Container(
-      margin: const EdgeInsets.only(bottom: Grid.xxs),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
       decoration: BoxDecoration(
         color: context.mobileTokens.soft,
+        border: Border.all(color: context.mobileTokens.line),
         borderRadius: BorderRadius.circular(9),
       ),
       child: Row(
@@ -511,11 +513,14 @@ class _PostAttachmentRow extends HookWidget {
                   ),
                 ),
                 if (length != null)
-                  Text(
-                    '${_postAttachmentSize(length)} · ${enabled ? 'Ready to attach' : 'Attachment'}',
-                    style: context.mobileTypography.body.copyWith(
-                      color: context.mobileTokens.muted,
-                      fontSize: 10,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Text(
+                      '${_postAttachmentSize(length)} · ${enabled ? 'Ready to attach' : 'Attachment'}',
+                      style: context.mobileTypography.body.copyWith(
+                        color: context.mobileTokens.muted,
+                        fontSize: 10,
+                      ),
                     ),
                   ),
               ],
@@ -525,13 +530,47 @@ class _PostAttachmentRow extends HookWidget {
             IconButton(
               onPressed: onRemove,
               tooltip: 'Remove attachment',
-              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              padding: const EdgeInsets.all(4),
               icon: const Icon(LucideIcons.x, size: 16),
             ),
         ],
       ),
     );
   }
+}
+
+class _DashedRoundedBorder extends CustomPainter {
+  final Color color;
+  final double radius;
+
+  const _DashedRoundedBorder({required this.color, required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(rect.deflate(0.5), Radius.circular(radius)),
+      );
+    final stroke = Paint()
+      ..color = color
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    for (final metric in path.computeMetrics()) {
+      for (var start = 0.0; start < metric.length; start += 8) {
+        canvas.drawPath(
+          metric.extractPath(start, math.min(start + 4, metric.length)),
+          stroke,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRoundedBorder oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }
 
 String _postAttachmentSize(int bytes) {

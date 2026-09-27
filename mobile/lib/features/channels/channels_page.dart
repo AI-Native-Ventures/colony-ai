@@ -67,6 +67,20 @@ enum _QuickAction { createChannel, newDm, browseChannels }
 
 enum _ChatFilter { all, unread, direct }
 
+final _channelQuickActionsOpenProvider =
+    NotifierProvider<_ChannelQuickActionsOpen, bool>(
+      _ChannelQuickActionsOpen.new,
+    );
+
+class _ChannelQuickActionsOpen extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void open() => state = true;
+
+  void close() => state = false;
+}
+
 const _r17ChatInk = Color(0xFF292632);
 const _r17ChatMuted = Color(0xFF8B8590);
 const _r17ChatLine = Color(0xFFEEEBEE);
@@ -361,6 +375,10 @@ class ChannelsPage extends HookConsumerWidget {
       Navigator.of(context).push(route);
     }
 
+    void openQuickActions() {
+      ref.read(_channelQuickActionsOpenProvider.notifier).open();
+    }
+
     return FrostedScaffold(
       backgroundColor: _chatPaper(context),
       appBar: FrostedAppBar(
@@ -393,6 +411,7 @@ class ChannelsPage extends HookConsumerWidget {
         scrollController: channelsScrollController,
         onRefresh: () => ref.read(channelsProvider.notifier).refresh(),
         onSelectChannel: openChannel,
+        onOpenQuickActions: openQuickActions,
         routeRegistry: routeRegistry,
       ),
     );

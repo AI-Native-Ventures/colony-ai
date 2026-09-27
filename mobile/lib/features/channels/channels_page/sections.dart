@@ -565,7 +565,8 @@ class _SectionHeader extends StatelessWidget {
             ),
             if (onAdd != null)
               IconButton(
-                tooltip: 'Create a channel',
+                key: const ValueKey('channel-quick-actions-trigger'),
+                tooltip: 'Create or start conversation',
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
                   LucideIcons.plus,

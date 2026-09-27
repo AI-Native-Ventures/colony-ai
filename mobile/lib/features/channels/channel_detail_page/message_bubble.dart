@@ -5,6 +5,7 @@ class _MessageBubble extends HookConsumerWidget {
   final bool showAuthor;
   final Map<String, String> channelNames;
   final String currentChannelId;
+  final bool isDirectMessage;
   final String? currentPubkey;
   final List<TimelineMessage>? allMessages;
   final bool isMember;
@@ -17,6 +18,7 @@ class _MessageBubble extends HookConsumerWidget {
     required this.showAuthor,
     required this.channelNames,
     required this.currentChannelId,
+    required this.isDirectMessage,
     required this.currentPubkey,
     this.allMessages,
     this.isMember = false,
@@ -28,6 +30,9 @@ class _MessageBubble extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final presentation = ref.watch(
+      channelMessagePresentationProvider.select((items) => items[message.id]),
+    );
     // Watch only this user's profile to avoid rebuilding on unrelated cache changes.
     final pk = message.pubkey.toLowerCase();
     final profile =
@@ -101,7 +106,7 @@ class _MessageBubble extends HookConsumerWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.only(top: showAuthor ? Grid.xs : 0),
+      padding: conversationMessageVerticalPadding(showAuthor: showAuthor),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(Radii.md),
@@ -148,34 +153,34 @@ class _MessageBubble extends HookConsumerWidget {
                         GestureDetector(
                           onTap: () =>
                               showUserProfileSheet(context, message.pubkey),
-                          child: _UserAvatar(
+                          child: ConversationAvatar(
                             profile: profile,
                             pubkey: message.pubkey,
+                            tint: conversationAvatarTint(
+                              profile: profile,
+                              isAgent: isAgent,
+                            ),
                           ),
                         )
                       else
-                        const SizedBox(width: messageAvatarSize),
-                      const SizedBox(width: messageAvatarContentGap),
+                        const SizedBox(width: conversationAvatarSize),
+                      const SizedBox(width: conversationAvatarGap),
                       Expanded(
                         child: Padding(
-                          padding: EdgeInsets.only(
-                            top: showAuthor ? Grid.half : 0,
-                          ),
+                          padding: EdgeInsets.zero,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (showAuthor)
                                 Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: Grid.quarter,
-                                  ),
+                                  padding: const EdgeInsets.only(bottom: 5),
                                   child: Row(
                                     children: [
                                       Expanded(
                                         child: MessageAuthorMeta(
                                           displayName: displayName,
                                           username: isAgent
-                                              ? 'AGENT'
+                                              ? null
                                               : messageUsernameLabel(profile),
                                           timestamp: formatMessageTime(
                                             message.createdAt,
@@ -188,6 +193,13 @@ class _MessageBubble extends HookConsumerWidget {
                                                 context,
                                                 message.pubkey,
                                               ),
+                                          badge: isAgent
+                                              ? const ConversationAgentBadge()
+                                              : null,
+                                          nameStyle:
+                                              conversationAuthorTextStyle,
+                                          timestampStyle:
+                                              conversationTimestampTextStyle,
                                           displayNameKey: ValueKey(
                                             'message-author-${message.id}',
                                           ),
@@ -221,11 +233,11 @@ class _MessageBubble extends HookConsumerWidget {
                                 agentMentionPubkeys: agentMentionPubkeys,
                                 channelNames: channelNames,
                                 tags: message.tags,
-                                baseStyle: messageBodyTextStyle.copyWith(
+                                baseStyle: conversationBodyTextStyle.copyWith(
                                   color: context.colors.onSurface,
                                 ),
                                 scaleEmojiOnly: true,
-                                mediaCarouselTrailingOverflow: Grid.gutter,
+                                mediaCarouselTrailingOverflow: Grid.xs,
                                 onMediaReply: allMessages == null
                                     ? null
                                     : () {
@@ -270,6 +282,14 @@ class _MessageBubble extends HookConsumerWidget {
                                 onMentionTap: (pubkey) =>
                                     showUserProfileSheet(context, pubkey),
                               ),
+                              if (presentation?.deliverable
+                                  case final deliverable?)
+                                DeliverablePreviewCard(data: deliverable),
+                              if (presentation?.quote case final quote?)
+                                QuotedMessagePreview(
+                                  label: quote.label,
+                                  content: quote.content,
+                                ),
                             ],
                           ),
                         ),
@@ -280,13 +300,14 @@ class _MessageBubble extends HookConsumerWidget {
                 if (message.reactions.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(
-                      left: messageAvatarSize + messageAvatarContentGap,
+                      left: conversationReplyIndent,
                     ),
                     child: ReactionRow(
                       messageId: message.id,
                       reactions: message.reactions,
                       onToggle: (emoji) => toggleReaction(ref, message, emoji),
-                      showAddButton: isMember && !isArchived,
+                      compact: true,
+                      showAddButton: false,
                       onAddReaction: () => showAddReactionPicker(
                         context: context,
                         ref: ref,
@@ -295,6 +316,50 @@ class _MessageBubble extends HookConsumerWidget {
                     ),
                   ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserAvatar extends StatelessWidget {
+  final UserProfile? profile;
+  final String pubkey;
+  final double size;
+
+  const _UserAvatar({
+    required this.profile,
+    required this.pubkey,
+    this.size = messageAvatarSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = profile?.avatarUrl;
+    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
+    final tokens = context.mobileTokens;
+    final initial =
+        profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
+
+    return ClipOval(
+      key: const ValueKey('message-avatar-circle'),
+      child: ColoredBox(
+        color: animatedAvatar == null ? tokens.soft : Colors.transparent,
+        child: SizedBox.square(
+          dimension: size,
+          child: AvatarImageContent(
+            imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
+            fallback: Center(
+              child: Text(
+                initial,
+                style: context.mobileTypography.metadata.copyWith(
+                  color: tokens.ink,
+                  fontSize: size > 28 ? 11 : 8,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ),
@@ -316,49 +381,6 @@ Widget _messageTimestamp(BuildContext context, int createdAt, {Key? key}) {
       ),
     ),
   );
-}
-
-class _UserAvatar extends StatelessWidget {
-  final UserProfile? profile;
-  final String pubkey;
-  final double size;
-
-  const _UserAvatar({
-    required this.profile,
-    required this.pubkey,
-    this.size = messageAvatarSize,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final initial =
-        profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
-    final avatarUrl = profile?.avatarUrl;
-    final animatedAvatar = parseAnimatedAvatarUrl(avatarUrl);
-    final tokens = context.mobileTokens;
-
-    return ClipOval(
-      key: const ValueKey('message-avatar-circle'),
-      child: ColoredBox(
-        key: const ValueKey('message-avatar-surface'),
-        color: animatedAvatar == null ? tokens.soft : Colors.transparent,
-        child: SizedBox.square(
-          dimension: size,
-          child: AvatarImageContent(
-            imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
-            fallback: Text(
-              initial,
-              style: context.mobileTypography.metadata.copyWith(
-                color: tokens.ink,
-                fontSize: size > 28 ? 11 : 8,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 IconData channelIcon(Channel channel) {

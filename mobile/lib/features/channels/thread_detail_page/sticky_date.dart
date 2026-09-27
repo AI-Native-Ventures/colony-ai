@@ -48,6 +48,7 @@ class _ThreadStickyDateIndex {
     required double viewportHeight,
     required double stickyTop,
     required double stickyHeaderHeight,
+    required DateTime dayHeadingNow,
   }) {
     if (viewportHeight <= 0 || messageCount == 0) {
       return _ThreadStickyDateUpdate.hidden;
@@ -82,6 +83,7 @@ class _ThreadStickyDateIndex {
     if (activeDayTimestamp == null || activeDayStartIndex == null) {
       return _ThreadStickyDateUpdate.hidden;
     }
+    if (activeDayStartIndex == 0) return _ThreadStickyDateUpdate.hidden;
 
     final activeHeaderPosition = visiblePositions
         .where((position) => position.index == activeDayStartIndex)
@@ -115,7 +117,10 @@ class _ThreadStickyDateIndex {
         .toDouble();
     return _ThreadStickyDateUpdate(
       state: StickyDateHeaderState(
-        label: formatDayHeading(activeDayTimestamp),
+        label: formatConversationDayHeading(
+          activeDayTimestamp,
+          now: dayHeadingNow,
+        ),
         translateY: (translateY * 2).round() / 2,
       ),
       activeDayTimestamp: activeDayTimestamp,

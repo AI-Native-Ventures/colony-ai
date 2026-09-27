@@ -35,6 +35,9 @@ class _ThreadMessage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final presentation = ref.watch(
+      channelMessagePresentationProvider.select((items) => items[message.id]),
+    );
     final pk = message.pubkey.toLowerCase();
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
@@ -121,7 +124,7 @@ class _ThreadMessage extends HookConsumerWidget {
           );
 
     return Padding(
-      padding: EdgeInsets.only(top: showAuthor ? Grid.xs : 0),
+      padding: conversationMessageVerticalPadding(showAuthor: showAuthor),
       child: DecoratedBox(
         key: ValueKey('thread-message-${message.id}'),
         decoration: BoxDecoration(
@@ -161,31 +164,28 @@ class _ThreadMessage extends HookConsumerWidget {
                             child: _Avatar(
                               profile: profile,
                               pubkey: message.pubkey,
+                              isAgent: isAgent,
                             ),
                           )
                         else
-                          const SizedBox(width: messageAvatarSize),
-                        const SizedBox(width: messageAvatarContentGap),
+                          const SizedBox(width: conversationAvatarSize),
+                        const SizedBox(width: conversationAvatarGap),
                         Expanded(
                           child: Padding(
-                            padding: EdgeInsets.only(
-                              top: showAuthor ? Grid.half : 0,
-                            ),
+                            padding: EdgeInsets.zero,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (showAuthor)
                                   Padding(
-                                    padding: const EdgeInsets.only(
-                                      bottom: Grid.quarter,
-                                    ),
+                                    padding: const EdgeInsets.only(bottom: 9),
                                     child: Row(
                                       children: [
                                         Expanded(
                                           child: MessageAuthorMeta(
                                             displayName: displayName,
                                             username: isAgent
-                                                ? 'AGENT'
+                                                ? null
                                                 : messageUsernameLabel(profile),
                                             timestamp: formatMessageTime(
                                               message.createdAt,
@@ -198,6 +198,13 @@ class _ThreadMessage extends HookConsumerWidget {
                                                   context,
                                                   message.pubkey,
                                                 ),
+                                            badge: isAgent
+                                                ? const ConversationAgentBadge()
+                                                : null,
+                                            nameStyle:
+                                                conversationAuthorTextStyle,
+                                            timestampStyle:
+                                                conversationTimestampTextStyle,
                                             displayNameKey: ValueKey(
                                               'thread-message-author-${message.id}',
                                             ),
@@ -231,7 +238,7 @@ class _ThreadMessage extends HookConsumerWidget {
                                   agentMentionPubkeys: agentMentionPubkeys,
                                   channelNames: channelNames,
                                   tags: message.tags,
-                                  baseStyle: messageBodyTextStyle.copyWith(
+                                  baseStyle: conversationBodyTextStyle.copyWith(
                                     color: context.colors.onSurface,
                                   ),
                                   scaleEmojiOnly: true,
@@ -280,6 +287,14 @@ class _ThreadMessage extends HookConsumerWidget {
                                   onMentionTap: (pubkey) =>
                                       showUserProfileSheet(context, pubkey),
                                 ),
+                                if (presentation?.deliverable
+                                    case final deliverable?)
+                                  DeliverablePreviewCard(data: deliverable),
+                                if (presentation?.quote case final quote?)
+                                  QuotedMessagePreview(
+                                    label: quote.label,
+                                    content: quote.content,
+                                  ),
                               ],
                             ),
                           ),
@@ -290,14 +305,15 @@ class _ThreadMessage extends HookConsumerWidget {
                   if (isThreadHead || message.reactions.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(
-                        left: messageAvatarSize + messageAvatarContentGap,
+                        left: conversationReplyIndent,
                       ),
                       child: ReactionRow(
                         messageId: message.id,
                         reactions: message.reactions,
                         onToggle: (emoji) =>
                             toggleReaction(ref, message, emoji),
-                        showAddButton: isMember && !isArchived,
+                        compact: true,
+                        showAddButton: !isThreadHead && isMember && !isArchived,
                         onAddReaction: () => showAddReactionPicker(
                           context: context,
                           ref: ref,
