@@ -284,7 +284,8 @@ void main() {
 
       expect(find.bySemanticsLabel('Checking age eligibility'), findsNothing);
       expect(find.byType(HomePage), findsOneWidget);
-      expect(find.byType(Navigator), findsOneWidget);
+      // MaterialApp owns the app stack and HomePage owns the selected tab stack.
+      expect(find.byType(Navigator), findsNWidgets(2));
       expect(relaySession.builds, 1);
       expect(requests, ageGatingEnabled ? 1 : 0);
       await tester.pump();

@@ -12,6 +12,14 @@ const bodyExtraSmallTextStyle = TextStyle(
   letterSpacing: 0,
 );
 
+const buttonTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 11,
+  fontWeight: FontWeight.w500,
+  height: 1.2,
+  letterSpacing: 0,
+);
+
 const textTheme = TextTheme(
   displayLarge: TextStyle(
     fontFamily: _fontFamily,

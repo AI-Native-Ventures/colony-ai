@@ -167,7 +167,7 @@ void main() {
         // compares these component identities before deciding whether to parse.
         expect(_components(tester), same(before));
       }
-      await tester.tap(find.text('Alice'));
+      await tester.tap(find.text('@Alice'));
       expect(fixture.tappedRevision, fixture.revision.value);
       expect(fixture.tappedId, 'alice-key');
       await tester.tap(find.text('sample'));
@@ -192,23 +192,29 @@ void main() {
       fixture.mentions['alice-key'] = 'ALICE';
       await fixture.refresh(tester);
       expect(_components(tester), isNot(same(before)));
-      expect(find.text('ALICE'), findsOneWidget);
+      expect(find.text('@Alice'), findsOneWidget);
+      expect(find.bySemanticsLabel('Mention ALICE'), findsOneWidget);
       before = _components(tester);
       fixture.agents.add('alice-key');
       await fixture.refresh(tester);
       expect(_components(tester), isNot(same(before)));
       expect(find.byIcon(LucideIcons.bot), findsOneWidget);
+      expect(find.text('ALICE'), findsOneWidget);
+      fixture.agents.remove('alice-key');
+      await fixture.refresh(tester);
       before = _components(tester);
       fixture.mentionHandler = false;
       fixture.tappedId = null;
       await fixture.refresh(tester);
       expect(_components(tester), isNot(same(before)));
-      await tester.tap(find.text('ALICE'));
+      await tester.tap(find.text('@Alice'));
       expect(fixture.tappedId, isNull);
       fixture.mentionHandler = true;
-      fixture.mentions = {'second-key': 'ALICE'};
+      fixture.mentions = {'second-key': 'Alice'};
       await fixture.refresh(tester);
-      await tester.tap(find.text('ALICE'));
+      await tester.tap(
+        find.byKey(const ValueKey('message-mention-second-key')),
+      );
       expect(fixture.tappedId, 'second-key');
       expect(find.byIcon(LucideIcons.bot), findsNothing);
     },
@@ -227,13 +233,15 @@ void main() {
     addTearDown(fixture.revision.dispose);
     await tester.pumpWidget(fixture.build());
     final before = _components(tester);
-    await tester.tap(find.text('Alice (aaaaaaaa…aaaa)'));
+    final mention = find.byKey(ValueKey('message-mention-$key'));
+    expect(mention, findsOneWidget);
+    await tester.tap(mention);
     expect(fixture.tappedId, key);
     fixture.tags = [];
     fixture.tappedId = null;
     await fixture.refresh(tester);
     expect(_components(tester), isNot(same(before)));
-    expect(find.text('Alice (aaaaaaaa…aaaa)'), findsNothing);
+    expect(find.byKey(ValueKey('message-mention-$key')), findsNothing);
   });
 
   testWidgets('community emoji palette and emoji-only size invalidate', (

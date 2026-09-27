@@ -178,7 +178,7 @@ class _HuddleButton extends ConsumerWidget {
 
     return IconButton(
       key: const ValueKey('channel-huddle-button'),
-      color: context.colors.primary,
+      color: context.mobileTokens.ink,
       onPressed: disabledByOtherHuddle
           ? null
           : () async {

@@ -199,6 +199,7 @@ Widget _buildComposeBar({
   String composeBarKey = 'compose-bar',
   VoiceNoteRecorder Function()? voiceNoteRecorderFactory,
   VoiceNotePlayerController Function()? voiceNotePlayerFactory,
+  bool fillWidth = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -263,6 +264,7 @@ Widget _buildComposeBar({
                   focusNode: focusNode,
                   onFocusRestorerChanged: onFocusRestorerChanged,
                   onFocusRequested: onFocusRequested,
+                  fillWidth: fillWidth,
                   onSend: onSend,
                 );
                 if (viewPadding == null) return composeBar;
@@ -694,7 +696,8 @@ void main() {
 
       expect(find.byType(TextField), findsNothing);
       expect(find.byTooltip('Add attachment').hitTestable(), findsOneWidget);
-      expect(find.byIcon(LucideIcons.arrowUp).hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Record voice note').hitTestable(), findsOneWidget);
+      expect(find.byIcon(LucideIcons.arrowUp), findsNothing);
       expect(find.byKey(const ValueKey('composer-footer-gradient')), findsOne);
       final composerBackdrop = find.descendant(
         of: find.byKey(const ValueKey('composer-footer-gradient')),
@@ -753,6 +756,50 @@ void main() {
       expect(find.byIcon(LucideIcons.hash), findsOneWidget);
       expect(find.byIcon(LucideIcons.smilePlus), findsOneWidget);
       expect(find.byIcon(LucideIcons.aLargeSmall), findsOneWidget);
+    });
+
+    testWidgets('uses the R19 rounded rectangle for a full-width composer', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildComposeBar(
+          uploadService: _testUploadService(nostr.Keys.generate().nsec),
+          fillWidth: true,
+          onSend: (_, _, {mediaTags = const <List<String>>[]}) async {},
+        ),
+      );
+
+      final decoration =
+          tester
+                  .widget<Container>(
+                    find.byKey(const ValueKey('composer-surface')),
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(decoration.borderRadius, BorderRadius.circular(14));
+      expect((decoration.border! as Border).top.width, 1);
+    });
+
+    testWidgets('R17 empty composer microphone starts voice note', (
+      tester,
+    ) async {
+      final recorder = _FakeVoiceNoteRecorder();
+      await tester.pumpWidget(
+        _buildComposeBar(
+          uploadService: _testUploadService(nostr.Keys.generate().nsec),
+          voiceNoteRecorderFactory: () => recorder,
+          onSend: (_, _, {mediaTags = const <List<String>>[]}) async {},
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Record voice note').hitTestable());
+      await tester.pumpAndSettle();
+
+      expect(recorder.started, isTrue);
+      expect(find.byKey(const ValueKey('voice-note-recorder')), findsOneWidget);
+      expect(find.byIcon(LucideIcons.arrowUp), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     testWidgets('notifies focus intent before attaching the focused field', (
@@ -4442,6 +4489,8 @@ void main() {
 
       expect(didSend, isTrue);
       expect(publishedEvents.where((event) => event['kind'] == 9000), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 250));
     });
 
     testWidgets(

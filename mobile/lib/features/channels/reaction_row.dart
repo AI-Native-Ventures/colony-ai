@@ -100,6 +100,9 @@ class ReactionRow extends StatelessWidget {
   /// tap away; the channel timeline leaves it off to keep the list dense.
   final bool showAddButton;
 
+  /// Compact style used in the r19 mobile conversation rows.
+  final bool compact;
+
   /// Invoked by the `+` pill. Required when [showAddButton] is set.
   final VoidCallback? onAddReaction;
 
@@ -109,6 +112,7 @@ class ReactionRow extends StatelessWidget {
     required this.reactions,
     required this.onToggle,
     this.showAddButton = false,
+    this.compact = false,
     this.onAddReaction,
   });
 
@@ -119,15 +123,16 @@ class ReactionRow extends StatelessWidget {
     if (reactions.isEmpty && !showAddButton) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: Grid.half),
+      padding: EdgeInsets.only(top: compact ? 4 : Grid.half),
       child: Wrap(
-        spacing: Grid.half,
-        runSpacing: Grid.half,
+        spacing: compact ? 6 : Grid.half,
+        runSpacing: compact ? 4 : Grid.half,
         children: [
           for (final reaction in reactions)
             _ReactionPill(
               messageId: messageId,
               reaction: reaction,
+              compact: compact,
               onTap: () => onToggle(reaction.emoji),
               onLongPress: () => showReactionDetailSheet(
                 context: context,
@@ -147,11 +152,13 @@ class ReactionRow extends StatelessWidget {
 class _PillSurface extends StatelessWidget {
   final bool highlighted;
   final double minWidth;
+  final bool compact;
   final Widget child;
 
   const _PillSurface({
     required this.highlighted,
     required this.minWidth,
+    this.compact = false,
     required this.child,
   });
 
@@ -159,19 +166,23 @@ class _PillSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Container(
-      height: _pillHeight,
+      height: compact ? 20 : _pillHeight,
       // No `alignment:` — it wraps the child in an expanding Align, which makes
       // every pill fill the Wrap's full width and stack one per line.
       // Children center themselves instead.
-      constraints: BoxConstraints(minWidth: minWidth),
-      padding: const EdgeInsets.symmetric(horizontal: Grid.xxs),
+      constraints: BoxConstraints(minWidth: compact ? 0 : minWidth),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 7 : Grid.xxs),
       decoration: BoxDecoration(
-        color: highlighted
+        color: compact
+            ? const Color(0xFFF0F5EF)
+            : highlighted
             ? colors.primary.withValues(alpha: 0.10)
             : colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(_pillHeight / 2),
+        borderRadius: BorderRadius.circular(compact ? 6 : _pillHeight / 2),
         border: Border.all(
-          color: highlighted
+          color: compact
+              ? const Color(0xFFDBE5DB)
+              : highlighted
               ? colors.primary.withValues(alpha: 0.40)
               : colors.outlineVariant,
         ),
@@ -186,12 +197,14 @@ class _ReactionPill extends HookConsumerWidget {
   final TimelineReaction reaction;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool compact;
 
   const _ReactionPill({
     required this.messageId,
     required this.reaction,
     required this.onTap,
     required this.onLongPress,
+    required this.compact,
   });
 
   @override
@@ -241,23 +254,34 @@ class _ReactionPill extends HookConsumerWidget {
       child: _PillSurface(
         highlighted: reacted,
         minWidth: _pillMinWidth,
+        compact: compact,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           // Centered so a short reaction sits mid-pill once the min width kicks
           // in rather than hugging the left edge.
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _ReactionEmoji(reaction: reaction, size: _pillGlyphSize),
-            const SizedBox(width: _pillGap),
+            _ReactionEmoji(
+              reaction: reaction,
+              size: compact ? 10 : _pillGlyphSize,
+            ),
+            SizedBox(width: compact ? 3 : _pillGap),
             // Desktop shows the count even at 1; hiding it made a fresh
             // reaction jump in width the moment a second person joined.
             Text(
               '${reaction.count}',
-              style: reactionCountTextStyle.copyWith(
-                color: reacted
-                    ? context.colors.primary
-                    : context.colors.onSurfaceVariant,
-              ),
+              style: compact
+                  ? const TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 10,
+                      height: 1,
+                      color: Color(0xFF65785F),
+                    )
+                  : reactionCountTextStyle.copyWith(
+                      color: reacted
+                          ? context.colors.primary
+                          : context.colors.onSurfaceVariant,
+                    ),
             ),
           ],
         ),
@@ -306,6 +330,18 @@ class _ReactionEmoji extends StatelessWidget {
   Widget build(BuildContext context) {
     final emojiUrl = reaction.emojiUrl;
     if (emojiUrl == null || emojiUrl.isEmpty) {
+      if (reaction.emoji == '✓') {
+        return Semantics(
+          label: 'Check mark',
+          child: ExcludeSemantics(
+            child: Icon(
+              LucideIcons.check,
+              size: size,
+              color: const Color(0xFF65785F),
+            ),
+          ),
+        );
+      }
       return NativeEmojiGlyph(emoji: reaction.emoji, size: size);
     }
     final shortcode = reaction.emoji.substring(1, reaction.emoji.length - 1);
