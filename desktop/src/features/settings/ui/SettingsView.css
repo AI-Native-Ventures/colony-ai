@@ -808,6 +808,45 @@ body:has(.w20-settings-shell) {
   max-width: 880px;
 }
 
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-topbar-history,
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-topbar-title > svg {
+  display: none;
+}
+
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-settings-topbar {
+  height: 52px;
+  min-height: 52px;
+  gap: 13px;
+  padding-right: 30px;
+  padding-left: 30px;
+  border-radius: 11px 11px 0 0;
+}
+
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-topbar-title {
+  gap: 13px;
+}
+
+.w20-settings-shell:has(.w20-avatar-profile-context) .w20-topbar-title strong {
+  color: #79747f;
+  font-weight: 400;
+}
+
+.dark
+  .w20-settings-shell:has(.w20-avatar-profile-context)
+  .w20-topbar-title
+  strong {
+  color: #a39aa9;
+}
+
+.dark .w20-settings-shell:has(.w20-avatar-profile-context),
+.dark .w20-settings-shell:has(.w20-avatar-profile-context) .w20-settings-topbar,
+.dark
+  .w20-settings-shell:has(.w20-avatar-profile-context)
+  .w20-settings-surface,
+.dark .w20-avatar-profile-context .w20-account-control {
+  background-color: #26232d;
+}
+
 .w20-avatar-profile-context .w20-account-profile-header {
   align-items: flex-start;
   margin-bottom: 38px;
@@ -946,16 +985,29 @@ body:has(.w20-settings-shell) {
 
 .w20-avatar-profile-context .w20-account-card-title {
   font-size: var(--text-sm);
-  margin-bottom: 17px;
+  margin-bottom: 33px;
+}
+
+.w20-avatar-profile-context [data-testid="account-profile-avatar"],
+.w20-avatar-profile-context [data-testid="account-profile-avatar-fallback"] {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background-color: #ece5ed;
+  color: #796782;
+}
+
+.w20-avatar-profile-context .w20-account-photo-row {
+  padding-bottom: 21px;
 }
 
 .w20-avatar-profile-context .w20-account-profile-form {
-  padding-top: 15px;
+  padding-top: 24px;
 }
 
 .w20-avatar-profile-context .w20-account-field {
   gap: 5px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .w20-avatar-profile-context .w20-account-field-label {
@@ -964,10 +1016,15 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-avatar-profile-context .w20-account-control {
-  height: 42px;
-  min-height: 42px;
+  height: 43px;
+  min-height: 43px;
   padding: 9px 12px;
   font-size: var(--text-sm);
+  border-radius: 6px;
+}
+
+.w20-avatar-profile-context .w20-account-profile-divider {
+  margin-top: 47px;
 }
 
 .w20-account-email-link {
