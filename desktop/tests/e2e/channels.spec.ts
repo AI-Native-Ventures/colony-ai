@@ -1570,7 +1570,9 @@ test("template picker returns a real template to the channel creation flow", asy
   const teamUpdates = page
     .getByTestId("channel-template-card")
     .filter({ hasText: "Team updates" });
-  await teamUpdates.getByTestId("channel-template-use").click();
+  const useTemplate = teamUpdates.getByTestId("channel-template-use");
+  await expect(useTemplate).toHaveCSS("background-color", "rgb(38, 85, 160)");
+  await useTemplate.click();
 
   const createForum = page.getByTestId("create-channel-dialog");
   await expect(createForum).toBeVisible();

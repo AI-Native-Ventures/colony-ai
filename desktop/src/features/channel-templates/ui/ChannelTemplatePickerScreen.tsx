@@ -56,7 +56,7 @@ export function ChannelTemplatePickerScreen() {
                 </p>
               ) : null}
               <Button
-                className="mt-5 self-start"
+                className="mt-5 h-9 self-start rounded-md border border-[#2655a0] bg-[#2655a0] px-3 text-xs font-semibold text-white shadow-none hover:bg-[#2655a0] dark:border-[#a9bee8] dark:bg-[#a9bee8] dark:text-[#282532] dark:hover:bg-[#a9bee8]"
                 data-testid="channel-template-use"
                 onClick={() =>
                   openCreateChannelFromTemplate(
