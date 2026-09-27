@@ -12,6 +12,22 @@ test.describe("Pocket voice settings", () => {
   test("selects and retains a bundled voice while text to speech is off", async ({
     page,
   }) => {
+    await page.addInitScript(() => {
+      const mediaDevices = navigator.mediaDevices;
+      if (!mediaDevices) return;
+      Object.defineProperty(mediaDevices, "enumerateDevices", {
+        configurable: true,
+        value: async () => [
+          {
+            deviceId: "mic-device-fixture",
+            groupId: "mic-group-fixture",
+            kind: "audioinput",
+            label: "Desk microphone",
+            toJSON: () => ({}),
+          } as MediaDeviceInfo,
+        ],
+      });
+    });
     await installMockBridge(page);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await openSettings(page, "voice");
@@ -19,11 +35,23 @@ test.describe("Pocket voice settings", () => {
     const card = page.getByTestId("settings-voice");
     await expect(card).toBeVisible();
     await expect(
-      page.getByText("Agent text to speech", { exact: true }),
+      card.getByRole("heading", { level: 1, name: "Voice & audio" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Pocket TTS voice", { exact: true }),
+      card.getByText("Your input, playback and agent voices on this device."),
     ).toBeVisible();
+    const microphone = page.getByTestId("voice-microphone-select");
+    await expect(microphone).toHaveValue("system-default");
+    await expect(microphone).toContainText("Desk microphone");
+    await microphone.selectOption("mic-device-fixture");
+    await expect(microphone).toHaveValue("mic-device-fixture");
+    await expect(page.getByTestId("voice-output-select")).toHaveValue(
+      "system-default",
+    );
+    await expect(
+      page.getByText("Read agent replies aloud", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Voice", { exact: true })).toBeVisible();
     await expect(card).not.toContainText("April INT8");
 
     await page.getByTestId("pocket-voice-selector").click();
@@ -33,7 +61,7 @@ test.describe("Pocket voice settings", () => {
       "Eve",
     );
     await expect(
-      page.getByRole("button", { name: "Pocket TTS voice: Eve" }),
+      page.getByRole("button", { name: "Voice: Eve" }),
     ).toBeVisible();
 
     await page.getByTestId("agent-text-to-speech-toggle").click();

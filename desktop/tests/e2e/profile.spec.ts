@@ -1863,6 +1863,12 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
 
   await openSettings(page, "notifications");
   await expect(page.getByTestId("settings-notifications")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Notifications & sounds" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Choose what deserves your attention.", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("notifications-desktop-state")).toContainText(
     "On",
   );

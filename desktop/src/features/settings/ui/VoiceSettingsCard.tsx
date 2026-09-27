@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ChevronDown, Mic, Play, Trash2, Upload, Volume2 } from "lucide-react";
 
+import { useHuddle } from "@/features/huddle/HuddleContext";
 import { invokeTauri } from "@/shared/api/tauri";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -47,6 +48,14 @@ type TtsVoiceMutation = {
 };
 
 export function VoiceSettingsCard() {
+  const {
+    audioDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    outputDevices,
+    selectedOutputDevice,
+    setSelectedOutputDevice,
+  } = useHuddle();
   const [settings, setSettings] = React.useState<TtsSettings | null>(null);
   const [registry, setRegistry] = React.useState<VoiceRegistryEntry[]>([]);
   const [hasLoaded, setHasLoaded] = React.useState(false);
@@ -427,20 +436,91 @@ export function VoiceSettingsCard() {
       />
 
       <SettingsOptionGroupList>
-        <SettingsOptionGroup title="Playback">
+        <SettingsOptionGroup title="Audio devices">
+          <SettingsOptionRow>
+            <label className="text-sm font-medium" htmlFor="voice-microphone">
+              Microphone
+            </label>
+            <select
+              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
+              data-testid="voice-microphone-select"
+              id="voice-microphone"
+              onChange={(event) => {
+                setSelectedDeviceId(
+                  event.currentTarget.value === "system-default"
+                    ? ""
+                    : event.currentTarget.value,
+                );
+              }}
+              value={
+                audioDevices.some(
+                  (device) => device.deviceId === selectedDeviceId,
+                )
+                  ? selectedDeviceId
+                  : "system-default"
+              }
+            >
+              <option value="system-default">System default</option>
+              {audioDevices
+                .filter(
+                  (device) => device.deviceId && device.deviceId !== "default",
+                )
+                .map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Mic ${device.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+            </select>
+          </SettingsOptionRow>
+          <SettingsOptionRow>
+            <label className="text-sm font-medium" htmlFor="voice-output">
+              Output
+            </label>
+            <select
+              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
+              data-testid="voice-output-select"
+              id="voice-output"
+              onChange={(event) => {
+                setSelectedOutputDevice(
+                  event.currentTarget.value === "system-default"
+                    ? ""
+                    : event.currentTarget.value,
+                );
+              }}
+              value={
+                (outputDevices ?? []).some(
+                  (device) => device.name === selectedOutputDevice,
+                )
+                  ? selectedOutputDevice
+                  : "system-default"
+              }
+            >
+              <option value="system-default">System default</option>
+              {(outputDevices ?? [])
+                .filter((device) => device.name)
+                .map((device) => (
+                  <option key={device.name} value={device.name}>
+                    {device.name}
+                  </option>
+                ))}
+            </select>
+          </SettingsOptionRow>
+        </SettingsOptionGroup>
+
+        <SettingsOptionGroup title="Agent voice">
           <SettingsOptionRow>
             <div className="min-w-0">
               <label
                 className="text-sm font-medium"
                 htmlFor="agent-text-to-speech-switch"
               >
-                Agent text to speech
+                Read agent replies aloud
               </label>
               <p
                 className="text-sm text-muted-foreground/70"
                 data-settings-subcopy
               >
-                Read new agent messages aloud in the order they arrive.
+                During an active huddle.
               </p>
             </div>
             <Switch
@@ -453,25 +533,22 @@ export function VoiceSettingsCard() {
               }}
             />
           </SettingsOptionRow>
-        </SettingsOptionGroup>
-
-        <div
-          aria-disabled={!enabled}
-          className={cn(
-            "transition-opacity",
-            !enabled && "pointer-events-none opacity-45",
-          )}
-          data-testid="pocket-voice-controls"
-        >
-          <SettingsOptionGroup title="Voice">
+          <div
+            aria-disabled={!enabled}
+            className={cn(
+              "transition-opacity",
+              !enabled && "pointer-events-none opacity-45",
+            )}
+            data-testid="pocket-voice-controls"
+          >
             <SettingsOptionRow>
               <div className="min-w-0">
-                <p className="text-sm font-medium">Pocket TTS voice</p>
+                <p className="text-sm font-medium">Voice</p>
                 <p
                   className="text-sm text-muted-foreground/70"
                   data-settings-subcopy
                 >
-                  Voice files stay private on this device.
+                  Local Pocket TTS voice library.
                 </p>
               </div>
 
@@ -479,7 +556,7 @@ export function VoiceSettingsCard() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      aria-label={`Pocket TTS voice: ${selectedVoice?.displayName ?? "Mary"}`}
+                      aria-label={`Voice: ${selectedVoice?.displayName ?? "Mary"}`}
                       className="min-w-32 justify-between"
                       data-testid="pocket-voice-selector"
                       disabled={controlsDisabled}
@@ -554,17 +631,17 @@ export function VoiceSettingsCard() {
                 )}
               </div>
             </SettingsOptionRow>
-          </SettingsOptionGroup>
-        </div>
-        <Button
-          className="mt-3"
-          data-testid="voice-library-open"
-          onClick={() => setShowLibrary(true)}
-          size="sm"
-          variant="outline"
-        >
-          Preview voice library
-        </Button>
+          </div>
+          <Button
+            className="mt-3"
+            data-testid="voice-library-open"
+            onClick={() => setShowLibrary(true)}
+            size="sm"
+            variant="outline"
+          >
+            Preview voice library
+          </Button>
+        </SettingsOptionGroup>
       </SettingsOptionGroupList>
       {error && (
         <p
