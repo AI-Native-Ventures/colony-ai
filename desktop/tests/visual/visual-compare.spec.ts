@@ -237,6 +237,12 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (entry.referenceCanvas && entry.theme === "dark") {
+          await referencePage.locator("#dark").click();
+          await expect(referencePage.locator("#canvas")).toHaveClass(
+            /\bdark\b/,
+          );
+        }
         if (
           entry.referenceInventoryRoute === "channel/sales" &&
           entry.appRoute.includes("?thread=")
