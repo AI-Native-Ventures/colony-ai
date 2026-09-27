@@ -449,7 +449,8 @@
       "routeLabel": "Avatar editor profile",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-profile]"
       }
     },
     {
@@ -466,7 +467,8 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       }
     },
     {
@@ -476,7 +478,8 @@
       "routeLabel": "Avatar image selection",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -498,7 +501,8 @@
       "routeLabel": "Avatar camera preview",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -520,7 +524,8 @@
       "routeLabel": "Avatar crop preview",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -548,7 +553,8 @@
       "routeLabel": "Avatar file rejected",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -579,7 +585,8 @@
         "profileUpdateDelayMs": 30000
       },
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -620,7 +627,8 @@
         "profileUpdateErrors": ["Profile update failed."]
       },
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
       },
       "actions": [
         {
@@ -686,7 +694,8 @@
         }
       ],
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-profile]"
       }
     },
     {
@@ -708,7 +717,8 @@
         }
       ],
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-profile]"
       }
     },
     {
@@ -764,7 +774,8 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=signout-dialog]"
       }
     },
     {
@@ -774,7 +785,8 @@
       "routeLabel": "Theme catalog",
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-appearance]"
       }
     },
     {
@@ -791,7 +803,8 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-appearance]"
       }
     },
     {
@@ -806,7 +819,8 @@
       },
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-appearance]"
       },
       "actions": [
         {
@@ -830,7 +844,8 @@
       },
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-appearance]"
       },
       "actions": [
         {
@@ -856,7 +871,8 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=settings-appearance]"
       }
     },
     {
@@ -897,7 +913,8 @@
       ],
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=voice-library]"
       }
     },
     {
@@ -957,7 +974,8 @@
       },
       "referenceCanvas": true,
       "clip": {
-        "referenceSelector": ".surface"
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=channel-template-picker]"
       }
     },
     {
@@ -996,7 +1014,7 @@
         {
           "type": "waitFor",
           "target": "app",
-          "selector": "[data-testid^=moderation-group-]"
+          "selector": "[data-testid=settings-moderation]"
         },
         {
           "type": "click",
@@ -1057,7 +1075,8 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
       }
     },
     {
@@ -1101,7 +1120,8 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "appMockData": {
         "feedbackPublishErrors": ["Relay connection unavailable."]
@@ -1115,7 +1135,8 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "actions": [
         {
@@ -1157,7 +1178,8 @@
         "feedbackPublishDelayMs": 4000
       },
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "actions": [
         {
@@ -1201,7 +1223,8 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "clip": {
-        "referenceSelector": ".modal"
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
       },
       "actions": [
         {

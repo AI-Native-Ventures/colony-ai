@@ -15,7 +15,14 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type: "click" | "hover" | "select";
+  type:
+    | "click"
+    | "hover"
+    | "select"
+    | "selectOption"
+    | "fill"
+    | "setInputFiles"
+    | "waitFor";
   target?: "reference" | "app" | "both";
   selector: string;
   value?: string;
@@ -780,6 +787,10 @@ test.describe("visual comparison captures", () => {
               appRoute: entry.appRoute,
               viewport: entry.viewport,
               theme: entry.theme,
+              captureRegion: entry.clip ?? null,
+              captureRegionBounds: clip
+                ? { reference: clip.reference, app: clip.app }
+                : null,
               deviceScaleFactor: 1,
               referenceGeometry,
               appGeometry,
@@ -1414,11 +1425,25 @@ async function performActions(
         await locator.click(options);
       } else if (action.type === "hover") {
         await locator.hover(options);
-      } else if (action.type === "select") {
+      } else if (action.type === "select" || action.type === "selectOption") {
         if (action.value === undefined) {
           throw new Error("Select visual actions need a value.");
         }
         await locator.selectOption(action.value);
+      } else if (action.type === "fill") {
+        if (action.value === undefined) {
+          throw new Error("Fill visual actions need a value.");
+        }
+        await locator.fill(action.value, { timeout: options.timeout });
+      } else if (action.type === "setInputFiles") {
+        if (action.value === undefined) {
+          throw new Error("File visual actions need a fixture name.");
+        }
+        await locator.setInputFiles(visualInputFile(action.value), {
+          timeout: options.timeout,
+        });
+      } else if (action.type === "waitFor") {
+        await locator.waitFor({ state: "visible", timeout: options.timeout });
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }
@@ -1427,6 +1452,24 @@ async function performActions(
       await runOnPage(referencePage);
     if (target === "app" || target === "both") await runOnPage(appPage);
   }
+}
+
+function visualInputFile(name: string) {
+  if (name === "avatar.png") {
+    const width = 32;
+    const height = 32;
+    const pixels = new Uint8Array(width * height * 4).fill(255);
+    const buffer = Buffer.from(UPNG.encode([pixels.buffer], width, height, 0));
+    return { name, mimeType: "image/png", buffer };
+  }
+  if (name === "unsupported.txt") {
+    return {
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from("unsupported avatar file"),
+    };
+  }
+  throw new Error(`Unknown visual input fixture: ${name}`);
 }
 
 async function resolveClip(
