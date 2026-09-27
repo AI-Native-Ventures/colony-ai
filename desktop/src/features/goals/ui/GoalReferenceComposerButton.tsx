@@ -20,7 +20,7 @@ export function GoalReferenceComposerButton() {
 
   return (
     <button
-      className="inline-flex min-h-8 items-center gap-1 rounded px-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex min-h-5 items-center gap-1 rounded px-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-testid="reference-goal-button"
       onClick={handleClick}
       type="button"

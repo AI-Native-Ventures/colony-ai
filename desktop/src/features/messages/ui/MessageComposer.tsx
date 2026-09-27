@@ -1021,12 +1021,8 @@ function MessageComposerImpl({
             >
               <EditorContent editor={richText.editor} />
             </div>
-            {footerContent ||
-            (channelId && channelType !== "forum" && editTarget == null) ? (
+            {footerContent ? (
               <div className="colony-message-composer-footer-content">
-                {channelId && channelType !== "forum" && editTarget == null ? (
-                  <GoalReferenceComposerButton />
-                ) : null}
                 {footerContent}
               </div>
             ) : null}
@@ -1039,7 +1035,16 @@ function MessageComposerImpl({
               workspaceChrome={workspaceChrome}
               composerDisabled={composerDisabled}
               editor={richText.editor}
-              extraActions={toolbarExtraActions}
+              extraActions={
+                <>
+                  {channelId &&
+                  channelType !== "forum" &&
+                  editTarget == null ? (
+                    <GoalReferenceComposerButton />
+                  ) : null}
+                  {toolbarExtraActions}
+                </>
+              }
               formattingDisabled={composerDisabled}
               gifMediaController={media}
               isEmojiPickerOpen={isEmojiPickerOpen}
