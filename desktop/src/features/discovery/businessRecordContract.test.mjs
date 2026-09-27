@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  KIND_PROSPECT_HEAD,
   latestByDTag,
   proposalConversionIds,
 } from "./businessRecordContract.ts";
@@ -15,7 +16,7 @@ function event(id, created_at, dTag, content = "{}") {
   return {
     id,
     created_at,
-    kind: 30642,
+    kind: KIND_PROSPECT_HEAD,
     tags: [["d", dTag]],
     content,
     pubkey: "a".repeat(64),

@@ -661,10 +661,12 @@ pub const KIND_SITE_HEAD: u32 = 30640;
 /// Current client invoice head.
 pub const KIND_INVOICE_HEAD: u32 = 30641;
 /// Current business-level prospect head.
-pub const KIND_PROSPECT_HEAD: u32 = 30642;
+pub const KIND_PROSPECT_HEAD: u32 = 30644;
 
-// Member-authored actions and immutable versions. The 47000 band was empty in
-// the full target registry at allocation time. These events are channel-scoped.
+// Member-authored business actions and immutable versions use the 47000 band.
+// The company-record kinds reserve 47031 through 47033; business prospect
+// actions use 47034 to keep the registries disjoint. Business events are scoped
+// to the business channel.
 /// Requested change to a canonical party identity.
 pub const KIND_PARTY_ACTION: u32 = 47000;
 /// Requested change to a client relationship.
@@ -728,7 +730,7 @@ pub const KIND_RECONCILIATION: u32 = 47029;
 /// Follow-up draft linked to an invoice or outstanding balance.
 pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
 /// Requested change to a prospect qualification or pipeline record.
-pub const KIND_PROSPECT_ACTION: u32 = 47031;
+pub const KIND_PROSPECT_ACTION: u32 = 47034;
 
 // Company records (docs/company-records.md). Goals are community-wide; asks
 // live in channel threads. Heads are relay-signed like business heads.
@@ -1167,6 +1169,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_THREAD_SUMMARY)); // 390
 const _: () = assert!(is_parameterized_replaceable(KIND_WINDOW_BOUNDS)); // 39006 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_GOAL_HEAD)); // 30642 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
