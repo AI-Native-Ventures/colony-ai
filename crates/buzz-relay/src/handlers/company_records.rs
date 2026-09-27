@@ -45,7 +45,7 @@ pub async fn handle(
     };
 
     validate_goal_action(&action).map_err(|error| invalid(format!("goal action: {error}")))?;
-    let d_tag = goal_command_d_tag(tenant, &event, action.goal_id)?;
+    let d_tag = goal_command_d_tag(&event, action.goal_id)?;
 
     if auth.channel_ids().is_some() {
         return Err(forbidden(
@@ -263,11 +263,7 @@ pub async fn handle(
     })
 }
 
-fn goal_command_d_tag(
-    tenant: &TenantContext,
-    event: &Event,
-    goal_id: Uuid,
-) -> Result<String, IngestError> {
+fn goal_command_d_tag(event: &Event, goal_id: Uuid) -> Result<String, IngestError> {
     let d_tags = event
         .tags
         .iter()
@@ -292,7 +288,7 @@ fn goal_command_d_tag(
     let d_tag = d_tags[0]
         .content()
         .ok_or_else(|| invalid("goal command d tag must have a value"))?;
-    validate_goal_d_tag(d_tag, *tenant.community().as_uuid(), goal_id)
+    validate_goal_d_tag(d_tag, goal_id)
         .map_err(|error| invalid(format!("goal command d tag: {error}")))?;
     Ok(d_tag.to_owned())
 }
@@ -372,7 +368,7 @@ async fn validate_parent_and_cycle(
     let Some(parent_id) = record.parent_goal_id else {
         return Ok(());
     };
-    let parent_tag = goal_d_tag(*tenant.community().as_uuid(), parent_id);
+    let parent_tag = goal_d_tag(parent_id);
     let parent_stored = current_goal_head(state, tenant.community(), &parent_tag)
         .await?
         .ok_or_else(|| invalid("parent goal does not exist in this community"))?;
@@ -410,7 +406,7 @@ async fn validate_parent_and_cycle(
             cursor = None;
             break;
         }
-        let ancestor_tag = goal_d_tag(*tenant.community().as_uuid(), ancestor_id);
+        let ancestor_tag = goal_d_tag(ancestor_id);
         let ancestor_stored = current_goal_head(state, tenant.community(), &ancestor_tag)
             .await?
             .ok_or_else(|| invalid("goal hierarchy contains a missing parent"))?;
@@ -522,6 +518,9 @@ fn next_goal_head(
                         recorded_by_pubkey: actor_pubkey.to_owned(),
                         recorded_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
                     });
+                    if let Some(status) = action.status {
+                        head.status = status;
+                    }
                 }
                 GoalActionKind::SetStatus => {
                     head.status = action.status.ok_or_else(|| invalid("status is required"))?;
@@ -577,7 +576,7 @@ async fn current_goal_head(
     let head = rows.pop();
     if let Some(head) = &head {
         let parsed = parse_goal_head(head)?;
-        validate_goal_d_tag(d_tag, *community_id.as_uuid(), parsed.goal_id)
+        validate_goal_d_tag(d_tag, parsed.goal_id)
             .map_err(|error| internal(format!("stored goal d tag: {error}")))?;
     }
     Ok(head)
@@ -742,21 +741,16 @@ mod tests {
         }
     }
 
-    fn signed_action(community_id: Uuid, keys: &nostr::Keys, action: &GoalAction) -> Event {
-        buzz_sdk::company_records::build_goal_action(community_id, action)
+    fn signed_action(keys: &nostr::Keys, action: &GoalAction) -> Event {
+        buzz_sdk::company_records::build_goal_action(action)
             .expect("build goal action")
             .sign_with_keys(keys)
             .expect("sign goal action")
     }
 
-    fn signed_raw_action(
-        community_id: Uuid,
-        keys: &nostr::Keys,
-        action: &GoalAction,
-        with_h_tag: bool,
-    ) -> Event {
+    fn signed_raw_action(keys: &nostr::Keys, action: &GoalAction, with_h_tag: bool) -> Event {
         let content = serde_json::to_string(action).expect("serialize goal action");
-        let d_tag = goal_d_tag(community_id, action.goal_id);
+        let d_tag = goal_d_tag(action.goal_id);
         let mut tags = vec![Tag::parse(["d", d_tag.as_str()]).expect("d tag")];
         if with_h_tag {
             tags.push(Tag::parse(["h", Uuid::new_v4().to_string().as_str()]).expect("h tag"));
@@ -772,7 +766,7 @@ mod tests {
         keys: &nostr::Keys,
         action: &GoalAction,
     ) -> Result<IngestResult, IngestError> {
-        let event = signed_action(*fixture.tenant.community().as_uuid(), keys, action);
+        let event = signed_action(keys, action);
         handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
     }
 
@@ -780,7 +774,7 @@ mod tests {
         current_goal_head(
             &fixture.state,
             fixture.tenant.community(),
-            &goal_d_tag(*fixture.tenant.community().as_uuid(), goal_id),
+            &goal_d_tag(goal_id),
         )
         .await
         .expect("query current goal head")
@@ -819,7 +813,7 @@ mod tests {
 
         let err = rejection(send(&fixture, &member, &create).await);
         assert!(err.contains("root goal"), "{err}");
-        let command_event = signed_action(*fixture.tenant.community().as_uuid(), &owner, &create);
+        let command_event = signed_action(&owner, &create);
         let command_id = command_event.id.to_hex();
         let created = handle(
             &fixture.tenant,
@@ -1013,10 +1007,49 @@ mod tests {
             None,
             Some(goal_record(foreign_parent_id, &admin, None)),
         );
-        let foreign_event = signed_action(other_community_id, &admin, &foreign_parent);
+        let foreign_event = signed_action(&admin, &foreign_parent);
         handle(&other_tenant, &fixture.state, foreign_event, auth(&admin))
             .await
             .expect("create goal in second community");
+
+        let shared_goal_id = Uuid::new_v4();
+        let primary_goal = action(
+            shared_goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(shared_goal_id, &admin, None)),
+        );
+        send(&fixture, &admin, &primary_goal)
+            .await
+            .expect("same coordinate is accepted in the first community");
+        let secondary_goal = action(
+            shared_goal_id,
+            GoalActionKind::Create,
+            None,
+            Some(goal_record(shared_goal_id, &admin, None)),
+        );
+        handle(
+            &other_tenant,
+            &fixture.state,
+            signed_action(&admin, &secondary_goal),
+            auth(&admin),
+        )
+        .await
+        .expect("same coordinate is scoped to the second community");
+        let primary_head = current_head(&fixture, shared_goal_id).await;
+        let secondary_head = current_goal_head(
+            &fixture.state,
+            other_tenant.community(),
+            &goal_d_tag(shared_goal_id),
+        )
+        .await
+        .expect("query secondary community goal")
+        .expect("secondary community goal exists");
+        assert_eq!(
+            parse_goal_head(&primary_head).expect("parse first community head"),
+            parse_goal_head(&secondary_head).expect("parse second community head")
+        );
+
         let cross_community_child_id = Uuid::new_v4();
         let cross_community_child = action(
             cross_community_child_id,
@@ -1102,6 +1135,39 @@ mod tests {
             owner.public_key().to_hex()
         );
 
+        let explicit_progress = GoalAction {
+            status: Some(GoalStatus::OffPace),
+            progress: Some(GoalProgress {
+                current: Some("4".into()),
+                evidence: "The final plan is awaiting client sign-off".into(),
+                evidence_refs: Vec::new(),
+            }),
+            ..action(
+                goal_id,
+                GoalActionKind::Progress,
+                Some(expected_head_id(&current_head(&fixture, goal_id).await)),
+                None,
+            )
+        };
+        let progress_result = send(&fixture, &owner, &explicit_progress)
+            .await
+            .expect("progress and explicit status share one head update");
+        let selected_status_head = parsed_head(&fixture, goal_id).await;
+        assert_eq!(selected_status_head.status, GoalStatus::OffPace);
+        assert_eq!(
+            selected_status_head
+                .progress
+                .as_ref()
+                .unwrap()
+                .progress
+                .evidence,
+            "The final plan is awaiting client sign-off"
+        );
+        assert_eq!(
+            selected_status_head.source_action_event_id,
+            progress_result.event_id
+        );
+
         let current_event = current_head(&fixture, goal_id).await;
         let mut no_evidence = action(
             goal_id,
@@ -1114,12 +1180,7 @@ mod tests {
             evidence: " ".into(),
             evidence_refs: Vec::new(),
         });
-        let raw = signed_raw_action(
-            *fixture.tenant.community().as_uuid(),
-            &owner,
-            &no_evidence,
-            false,
-        );
+        let raw = signed_raw_action(&owner, &no_evidence, false);
         assert!(
             rejection(handle(&fixture.tenant, &fixture.state, raw, auth(&owner)).await)
                 .contains("progress")
@@ -1294,7 +1355,7 @@ mod tests {
 
         let parent_before_archive = current_head(&fixture, parent_id).await;
         let archive = GoalAction {
-            reason: Some("Planning period has ended".into()),
+            reason: None,
             ..action(
                 parent_id,
                 GoalActionKind::Archive,
@@ -1359,7 +1420,7 @@ mod tests {
             .expect("archive child");
         let parent_before_second_delete = current_head(&fixture, parent_id).await;
         let delete_parent_again = GoalAction {
-            reason: Some("Remove after reviewing dependents".into()),
+            reason: None,
             ..action(
                 parent_id,
                 GoalActionKind::Delete,
@@ -1373,7 +1434,7 @@ mod tests {
         );
 
         let delete_child = GoalAction {
-            reason: Some("No longer needed".into()),
+            reason: None,
             ..action(
                 child_id,
                 GoalActionKind::Delete,
@@ -1386,7 +1447,7 @@ mod tests {
             .expect("admin deletes child");
         let final_parent = current_head(&fixture, parent_id).await;
         let delete_parent = GoalAction {
-            reason: Some("Remove the old direction".into()),
+            reason: None,
             ..action(
                 parent_id,
                 GoalActionKind::Delete,
@@ -1422,15 +1483,15 @@ mod tests {
             None,
             Some(goal_record(goal_id, &owner, None)),
         );
-        let event = signed_raw_action(*fixture.tenant.community().as_uuid(), &owner, &create, true);
+        let event = signed_raw_action(&owner, &create, true);
         assert!(
             rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await)
                 .contains("no h tag")
         );
 
-        let wrong_community_id = Uuid::new_v4();
         let content = serde_json::to_string(&create).expect("serialize goal action");
-        let wrong_d = goal_d_tag(wrong_community_id, goal_id);
+        let wrong_goal_id = Uuid::new_v4();
+        let wrong_d = goal_d_tag(wrong_goal_id);
         let event = EventBuilder::new(Kind::Custom(KIND_GOAL_ACTION as u16), content)
             .tag(Tag::parse(["d", wrong_d.as_str()]).expect("wrong d tag"))
             .sign_with_keys(&owner)
