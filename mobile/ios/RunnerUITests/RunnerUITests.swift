@@ -81,17 +81,27 @@ final class RunnerUITests: XCTestCase {
 
     // r18/r19 account entry: brand eyebrow, then create / sign in / pair.
     // Google sign-in moved onto the create and sign-in screens.
-    let eyebrow = app.staticTexts["A HOME FOR YOUR BUSINESS"]
+    // The eyebrow is a plain Flutter Text. In roughly one run in ten it was on
+    // screen but absent from staticTexts (PR #103, run 36331510553), so match
+    // its copy by label on any element type.
+    let eyebrow = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "A HOME FOR YOUR BUSINESS"))
+      .firstMatch
     let createAccount = app.buttons["Create an account"]
     let signIn = app.buttons["I already have an account"]
     let pair = app.buttons["Pair with my desktop"]
     let scan = app.buttons["Scan QR code"]
     let enterCode = app.buttons["Enter a code instead"]
 
-    XCTAssertTrue(
-      eyebrow.waitForExistence(timeout: landingTimeout),
-      "account landing eyebrow missing during \(phase)"
-    )
+    if !eyebrow.waitForExistence(timeout: landingTimeout) {
+      // Keep the accessibility tree so the next miss shows how Flutter
+      // exposed the eyebrow instead of only a screenshot.
+      let tree = XCTAttachment(string: app.debugDescription)
+      tree.name = "landing-\(phase)-accessibility-tree"
+      tree.lifetime = .keepAlways
+      add(tree)
+      XCTFail("account landing eyebrow missing during \(phase)")
+    }
     XCTAssertTrue(
       createAccount.waitForExistence(timeout: landingTimeout),
       "create-account action missing during \(phase)"

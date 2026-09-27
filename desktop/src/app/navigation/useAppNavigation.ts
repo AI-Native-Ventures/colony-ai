@@ -326,6 +326,49 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goClients = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/clients" }, behavior),
+    [commitNavigation],
+  );
+
+  const goClient = React.useCallback(
+    (clientId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/clients/$clientId",
+          params: { clientId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWork = React.useCallback(
+    (clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work",
+          search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWorkItem = React.useCallback(
+    (workItemId: string, clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: workItemId },
+          search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -600,6 +643,8 @@ export function useAppNavigation() {
     closeWorkflowDetail,
     goAgents,
     goChannel,
+    goClient,
+    goClients,
     goDuplicateWorkflow,
     goEditWorkflow,
     goForumPost,
@@ -626,6 +671,8 @@ export function useAppNavigation() {
     goSettings,
     goWorkflow,
     goWorkflows,
+    goWork,
+    goWorkItem,
     openSearchHit,
   };
 }

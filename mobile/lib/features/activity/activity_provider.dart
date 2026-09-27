@@ -508,7 +508,8 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     );
 
     const mentionKinds = {9, 40002, 1, 45001, 45003};
-    const needsActionKinds = {46010, 46011, 46012};
+    const needsActionKinds = {46010};
+    const approvalResultKinds = {46011, 46012};
     const agentActivityKinds = {43001, 43002, 43003, 43004, 43005, 43006};
     final dmChannelIdSet = dmChannelIds.toSet();
 
@@ -548,6 +549,13 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
             agentActivityKinds.contains(event.kind) && isAddressedToMe(event),
       ),
       'agent_activity',
+    );
+    add(
+      events.where(
+        (event) =>
+            approvalResultKinds.contains(event.kind) && isAddressedToMe(event),
+      ),
+      'activity',
     );
     add(
       events.where(

@@ -402,7 +402,7 @@ test("deferred-render: keys the empty decision off the live count, not deferred"
 
 // ── selectThreadRepliesSurface ──────────────────────────────────────────────
 // PR-1 defect 2: a terminal thread-load error must NEVER be presented as the
-// authoritative "No replies in this branch yet" empty state. These pin the
+// empty Replies divider. These pin the
 // paint precedence that gates that in MessageThreadPanel.
 
 test("thread-surface: pending query paints the skeleton", () => {

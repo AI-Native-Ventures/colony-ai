@@ -30,7 +30,9 @@ import {
 } from "@/features/messages/lib/threadTreeLayout";
 import {
   KIND_HUDDLE_STARTED,
+  KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_DIFF,
+  KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
@@ -58,6 +60,7 @@ import {
 import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
+import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
@@ -275,8 +278,6 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
-    const isAuthorAgent =
-      message.isAgent === true || profilePopoverRole === "bot";
     const agentMentionPubkeysByName = React.useMemo(() => {
       if (!mentionPubkeysByName) {
         return undefined;
@@ -382,6 +383,24 @@ export const MessageRow = React.memo(
       message.tags?.find((tag) => tag[0] === name)?.[1];
 
     const renderBody = () => {
+      const hasWorkItemReference = message.tags?.some(
+        (tag) =>
+          tag[0] === "a" && tag[1]?.startsWith(`${KIND_WORK_ITEM_HEAD}:`),
+      );
+      if (
+        message.kind === KIND_STREAM_MESSAGE &&
+        message.body.trim() === "" &&
+        hasWorkItemReference
+      ) {
+        return (
+          <WorkItemReferenceCard
+            channelId={channelId}
+            message={message}
+            profiles={profiles}
+          />
+        );
+      }
+
       switch (message.kind) {
         case KIND_STREAM_MESSAGE_DIFF:
           return (
@@ -467,9 +486,7 @@ export const MessageRow = React.memo(
 
     const isThreadReplyLayout = layoutVariant === "thread-reply";
     const guideBleedRem = isThreadReplyLayout ? 0.25 : 0;
-    const avatarButtonRadiusClass = isAuthorAgent
-      ? "rounded-[30%]"
-      : "rounded-full";
+    const avatarButtonRadiusClass = "rounded-md";
 
     const showRespondToIndicator =
       message.respondTo === "anyone" || message.respondTo === "allowlist";
@@ -479,9 +496,15 @@ export const MessageRow = React.memo(
         <UserAvatar
           accent={message.accent}
           avatarUrl={message.avatarUrl ?? null}
-          className="shrink-0"
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-md text-2xs",
+            message.isAgent
+              ? "colony-workspace-agent-message-avatar"
+              : "colony-workspace-human-message-avatar",
+          )}
           displayName={message.author}
-          shape={isAuthorAgent ? "squircle" : "circle"}
+          fallbackVariant="muted"
+          shape="square"
           testId="message-avatar"
         />
         {showRespondToIndicator &&

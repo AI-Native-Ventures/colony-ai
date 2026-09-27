@@ -9,8 +9,11 @@ export type AppView =
   | "messages"
   | "agents"
   | "workflows"
+  | "clients"
+  | "work"
   | "pulse"
   | "projects"
+  | "business"
   | "factory"
   | "pins";
 
@@ -243,6 +246,18 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (
+    pathname === "/discovery" ||
+    pathname === "/leads" ||
+    pathname === "/pipeline" ||
+    pathname.startsWith("/sales/")
+  ) {
+    return {
+      selectedChannelId: null,
+      selectedView: "business",
+    };
+  }
+
   if (pathname === "/agents") {
     return {
       selectedChannelId: null,
@@ -272,6 +287,20 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "workflows",
+    };
+  }
+
+  if (pathname === "/clients" || pathname.startsWith("/clients/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "clients",
+    };
+  }
+
+  if (pathname === "/work" || pathname.startsWith("/work/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "work",
     };
   }
 

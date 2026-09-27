@@ -1,6 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { ChevronDown, Plus, Users } from "lucide-react";
+import { ChevronDown, Users, Workflow } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -79,6 +79,8 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/shared/ui/sidebar";
+import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
+import { AppSidebarBusinessSection } from "@/features/sidebar/ui/AppSidebarBusinessSection";
 import { useProtectedVisibleDirectMessages } from "@protected-feature-components";
 
 export function AppSidebar({
@@ -124,6 +126,8 @@ export function AppSidebar({
   onSelectAgents,
   onSelectToday,
   onSelectFactory,
+  onSelectClients,
+  onSelectWork,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -384,6 +388,13 @@ export function AppSidebar({
     [],
   );
 
+  const handleCreateChannelInSection = React.useCallback(
+    (sectionId: string) => {
+      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
+    },
+    [assignChannel, onBrowseChannels],
+  );
+
   const handleCreateSectionConfirm = React.useCallback(
     (value: SectionDialogValue) => {
       const section = createSection(value.name, value.icon);
@@ -518,13 +529,6 @@ export function AppSidebar({
     openCreateDialog("stream");
   }, [onCreateChannelOpenChange, openCreateDialog]);
 
-  const handleCreateChannelInSection = React.useCallback(
-    (sectionId: string) => {
-      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
-    },
-    [assignChannel, onBrowseChannels],
-  );
-
   return (
     <Sidebar
       className="!z-[100] !border-r-0"
@@ -532,7 +536,9 @@ export function AppSidebar({
       data-colony-workspace-route={
         selectedView === "today" ||
         selectedView === "channel" ||
-        selectedView === "pins"
+        selectedView === "pins" ||
+        selectedView === "clients" ||
+        selectedView === "work"
           ? "true"
           : undefined
       }
@@ -609,8 +615,8 @@ export function AppSidebar({
                     onSelectToday={onSelectToday}
                     onSelectAgents={onSelectAgents}
                     onSelectHome={onSelectHome}
-                    onSelectFactory={onSelectFactory}
                     onSelectWorkflows={onSelectWorkflows}
+                    onSelectFactory={onSelectFactory}
                     suppressTodaySelection={suppressTodaySelection}
                     selectedView={selectedView}
                   />
@@ -799,7 +805,12 @@ export function AppSidebar({
                                 onClick={() => onBrowseChannels()}
                                 type="button"
                               >
-                                <Plus className="h-4 w-4" />
+                                <span
+                                  aria-hidden="true"
+                                  className="text-sm font-normal leading-none"
+                                >
+                                  +
+                                </span>
                                 <span className="truncate">
                                   Browse channels
                                 </span>
@@ -839,13 +850,11 @@ export function AppSidebar({
                           onDeleteChannel={requestDeleteChannel}
                         />
                       </FeatureGate>
-                      <h2
-                        className="colony-sidebar-business-heading"
-                        data-testid="sidebar-business-section"
-                      >
-                        <ChevronDown aria-hidden="true" />
-                        <span data-sidebar-section-title>Business</span>
-                      </h2>
+                      <AppSidebarBusinessSection
+                        onSelectClients={onSelectClients}
+                        onSelectWork={onSelectWork}
+                        selectedView={selectedView}
+                      />
                       <SidebarSection
                         action={
                           <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
@@ -890,9 +899,43 @@ export function AppSidebar({
                         onMuteChannel={onMuteChannel}
                         onUnmuteChannel={onUnmuteChannel}
                       />
+                      <h2 className="colony-sidebar-business-heading">
+                        <ChevronDown aria-hidden="true" />
+                        <span data-sidebar-section-title>
+                          Build &amp; automate
+                        </span>
+                      </h2>
+                      <SidebarMenu data-testid="sidebar-build-automate-destinations">
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="open-workflows-view"
+                            isActive={selectedView === "workflows"}
+                            onClick={onSelectWorkflows}
+                            tooltip="Workflows"
+                            type="button"
+                          >
+                            <Workflow
+                              aria-hidden="true"
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            />
+                            <SidebarMenuLabel
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            >
+                              Workflows
+                            </SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
                     </>
                   ) : null}
-
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
                     <div className="px-3 py-2 text-sm text-destructive">

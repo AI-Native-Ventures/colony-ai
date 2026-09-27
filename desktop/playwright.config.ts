@@ -183,6 +183,8 @@ export default defineConfig({
         "**/needs-restart-screenshots.spec.ts",
         "**/team-catalog-screenshots.spec.ts",
         "**/w07-agents-smoke.spec.ts",
+        "**/w10-discovery-sales.spec.ts",
+        "**/w11-clients-work.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
