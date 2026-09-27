@@ -30,8 +30,8 @@ import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
 import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
-import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
+import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
@@ -164,14 +164,14 @@ const factoryDotplansRoute = factoryDotplansRouteImport.update({
   path: "/factory/plans",
   getParentRoute: () => rootRouteImport,
 } as any);
-const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
-  id: "/channels/from-template",
-  path: "/channels/from-template",
-  getParentRoute: () => rootRouteImport,
-} as any);
 const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
   id: "/clients/$clientId",
   path: "/clients/$clientId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
+  id: "/channels/from-template",
+  path: "/channels/from-template",
   getParentRoute: () => rootRouteImport,
 } as any);
 const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
@@ -636,18 +636,18 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof factoryDotplansRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/channels/from-template": {
-      id: "/channels/from-template";
-      path: "/channels/from-template";
-      fullPath: "/channels/from-template";
-      preLoaderRoute: typeof channelsDotfromTemplateRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     "/clients/$clientId": {
       id: "/clients/$clientId";
       path: "/clients/$clientId";
       fullPath: "/clients/$clientId";
       preLoaderRoute: typeof clientsDotclientIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/channels/from-template": {
+      id: "/channels/from-template";
+      path: "/channels/from-template";
+      fullPath: "/channels/from-template";
+      preLoaderRoute: typeof channelsDotfromTemplateRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/channels/$channelId": {
