@@ -33,6 +33,8 @@ type SidebarSelectedView =
   | "messages"
   | "agents"
   | "workflows"
+  | "clients"
+  | "work"
   | "pulse"
   | "projects"
   | "factory"
@@ -63,8 +65,8 @@ type AppSidebarPrimaryMenuProps = {
   onSelectToday: () => void;
   onSelectAgents: () => void;
   onSelectHome: () => void;
-  onSelectFactory: () => void;
   onSelectWorkflows: () => void;
+  onSelectFactory: () => void;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
@@ -187,8 +189,8 @@ export function AppSidebarPrimaryMenu({
   onSelectToday,
   onSelectAgents,
   onSelectHome,
-  onSelectFactory,
   onSelectWorkflows,
+  onSelectFactory,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
@@ -236,7 +238,7 @@ export function AppSidebarPrimaryMenu({
             <SidebarMenuItem>
               <SidebarMenuButton
                 className="text-xs"
-                data-testid="open-workflows-view"
+                data-testid="open-workflows-pinned-view"
                 isActive={selectedView === "workflows"}
                 onClick={onSelectWorkflows}
                 tooltip="Work"

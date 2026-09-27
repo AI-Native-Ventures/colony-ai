@@ -165,6 +165,8 @@ export function AppShell() {
     goHome,
     goNewMessage,
     goFactory,
+    goClients,
+    goWork,
     goToday,
     goSettings,
     goWorkflows,
@@ -821,7 +823,9 @@ export function AppShell() {
                   location.pathname.startsWith("/today/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
-                  selectedView === "pins")
+                  selectedView === "pins" ||
+                  selectedView === "clients" ||
+                  selectedView === "work")
                   ? "true"
                   : undefined
               }
@@ -964,6 +968,8 @@ export function AppShell() {
                           ]}
                           onSelectHome={() => void goHome()}
                           onSelectFactory={() => void goFactory()}
+                          onSelectClients={() => void goClients()}
+                          onSelectWork={() => void goWork()}
                           onSelectSettings={handleOpenSettings}
                           onSelectWorkflows={() => void goWorkflows()}
                           onSetPresenceStatus={(status) =>
