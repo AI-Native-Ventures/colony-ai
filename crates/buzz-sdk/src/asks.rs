@@ -31,8 +31,8 @@ fn build(
 
 /// Build a channel-scoped ask create or cancel command (kind 47032).
 ///
-/// Create commands include the NIP-10 root marker so the relay can store the
-/// action as a reply in the same transaction that advances the ask head.
+/// Create commands include the NIP-10 root and reply markers so the relay can
+/// store the action as a reply in the same transaction that advances the ask head.
 pub fn build_ask_action(channel_id: Uuid, action: &AskAction) -> Result<EventBuilder, SdkError> {
     if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(SdkError::InvalidInput(
@@ -55,9 +55,12 @@ pub fn build_ask_action(channel_id: Uuid, action: &AskAction) -> Result<EventBui
         let root_id = EventId::parse(root_id).map_err(|error| {
             SdkError::InvalidInput(format!("invalid thread root event id: {error}"))
         })?;
-        let root_tag = Tag::parse(["e", root_id.to_hex().as_str(), "", "root"])
+        let root_hex = root_id.to_hex();
+        let root_tag = Tag::parse(["e", root_hex.as_str(), "", "root"])
             .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-        builder = builder.tag(root_tag);
+        let reply_tag = Tag::parse(["e", root_hex.as_str(), "", "reply"])
+            .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+        builder = builder.tag(root_tag).tag(reply_tag);
     }
 
     Ok(builder)
@@ -136,6 +139,10 @@ mod tests {
             .tags
             .iter()
             .any(|tag| { tag.as_slice() == ["e", root_id.to_hex().as_str(), "", "root"] }));
+        assert!(event
+            .tags
+            .iter()
+            .any(|tag| { tag.as_slice() == ["e", root_id.to_hex().as_str(), "", "reply"] }));
     }
 
     #[test]
