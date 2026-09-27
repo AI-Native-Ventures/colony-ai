@@ -432,9 +432,9 @@ function pairedThemeLabel(lightName: string): string {
 
 /**
  * Categorize themes into three groups:
- * 1. Paired — themes with both a light and dark variant (auto-switches with system)
- * 2. Light-only — light themes with no dark counterpart
- * 3. Dark-only — dark themes with no light counterpart
+ * 1. Paired: themes with both a light and dark variant, which auto-switch with system
+ * 2. Light-only: light themes with no dark counterpart
+ * 3. Dark-only: dark themes with no light counterpart
  *
  * For paired themes, we deduplicate by only keeping the light member
  * (the dark member is shown alongside it as a preview).
@@ -457,7 +457,7 @@ function useThemeCategories() {
     }
 
     for (const name of SYNTAX_THEMES) {
-      // Skip dark members of pairs — they'll be shown alongside their light counterpart
+      // Skip dark members of pairs because their light counterpart shows them.
       if (darkPairMembers.has(name)) continue;
 
       if (LIGHT_THEMES.has(name)) {
@@ -575,7 +575,7 @@ const APPEARANCE_MODE_OPTIONS = [
 // The picker sits below the theme grid and reads as tucking up behind it, so
 // it enters from above (slides *down* into place when a non-Buzz theme reveals
 // it) and exits upward (slides up behind the grid when Buzz hides it). No
-// height/scale — height collapse clipped the swatches behind the grid's bottom
+// height/scale: height collapse clipped the swatches behind the grid's bottom
 // fade (the "white bar"). Snappier than the modal 0.2s since this is a small
 // settings control, sharing the modal/ProfileSettingsCard easing curve.
 const ACCENT_PICKER_TRANSITION = {
@@ -669,7 +669,7 @@ export function ThemeSettingsCard() {
         if (pair) {
           setTheme(pair);
         } else {
-          // Unpaired theme — pick the first theme from the target mode
+          // Unpaired theme: pick the first theme from the target mode.
           const fallback = needsDark ? allDarkThemes[0] : allLightThemes[0];
           if (fallback) {
             setTheme(fallback);
@@ -729,7 +729,7 @@ export function ThemeSettingsCard() {
       data-testid="theme-style-options"
       id="theme-style-options"
     >
-      {/* Theme grid — constrained to ~3 rows, scrolls internally */}
+      {/* Theme grid is constrained to about 3 rows and scrolls internally. */}
       <div className="relative">
         {/* Top fade */}
         <div
@@ -740,7 +740,7 @@ export function ThemeSettingsCard() {
               "linear-gradient(to bottom, hsl(var(--background)), hsl(var(--background) / 0))",
           }}
         />
-        {/* Bottom fade — hidden while the accent picker is visible so its
+        {/* Bottom fade is hidden while the accent picker is visible so its
             near-white gradient (Buzz light) can't mask the swatches below it
             (the "white bar"). Kept only when the picker is hidden. */}
         {accentPickerHidden ? (
@@ -914,7 +914,7 @@ export function ThemeSettingsCard() {
             </AnimatePresence>
           )}
 
-          {/* Accent color picker — hidden for Buzz themes (pinned neutral accent).
+          {/* Accent color picker is hidden for Buzz themes (pinned neutral accent).
               Reveal/hide with the translate-up + opacity fade defined by
               ACCENT_PICKER_TRANSITION above. Reduced motion skips the transition
               and just renders/unrenders. */}
@@ -1044,7 +1044,7 @@ export function renderSettingsSection(
         <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
       );
     case "moderation":
-      return <ModerationQueueCard />;
+      return <ModerationQueueCard onBackToToday={props.onClose} />;
     case "audit":
       return <AuditSettingsPanel />;
     case "settings/admin":

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ShieldAlert } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,21 +23,18 @@ import {
 } from "@/shared/api/tauri";
 import {
   buildModerationQueue,
-  groupTopReportType,
   reportTypeLabel,
   resolvableActions,
-  severityTier,
   type ModerationAction,
   type ModerationQueueGroup,
   type ModerationReport,
   type ReportStatus,
   type ReportType,
-  type SeverityTier,
 } from "@/features/settings/lib/moderationQueue";
-import { cn } from "@/shared/lib/cn";
 import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { Textarea } from "@/shared/ui/textarea";
+import { SettingsOptionGroup } from "./SettingsOptionGroup";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,7 +82,7 @@ function statusForAction(action: ResolutionAction): "resolved" | "dismissed" {
  * Resolve the author (signer) pubkey a member-directed enforcement acts on.
  * For a pubkey-target report that IS the target; for an event-target report the
  * report row carries only the event id (the reporter's `p` author tag is
- * dropped at ingest), so we read the reported event and take its signer — the
+ * dropped at ingest), so we read the reported event and take its signer. The
  * stored `pubkey` is signer truth, never a `p`/`actor` override. Throws if the
  * event can't be resolved (e.g. already deleted) so the caller aborts before
  * touching the 9044.
@@ -105,10 +102,10 @@ async function resolveTargetAuthor(
  * Compose the enforcement event paired with a resolution, BEFORE the 9044.
  *
  * A 9044 resolve records the decision and DMs the reporter "reviewed and acted
- * on" — so it must not fire until the action actually happened. Enforce first;
+ * on", so it must not fire until the action actually happened. Enforce first;
  * on success the caller sends the 9044. On failure this throws and the caller
  * leaves the report open (no false DM, no orphan decision row). `escalate` and
- * `dismiss` carry no enforcement — they are pure 9044 decisions.
+ * `dismiss` carry no enforcement. They are pure 9044 decisions.
  */
 async function enforceResolution(
   group: ModerationQueueGroup,
@@ -178,7 +175,7 @@ const RESOLUTION_OPTIONS: {
   {
     action: "dismiss",
     label: "Dismiss",
-    description: "No violation — close without action.",
+    description: "No violation: close without action.",
   },
 ];
 
@@ -193,51 +190,23 @@ function formatTimestamp(iso: string): string {
   });
 }
 
-const SEVERITY_BADGE: Record<SeverityTier, string> = {
-  critical: "bg-destructive/15 text-destructive",
-  high: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  normal: "bg-muted text-muted-foreground",
-};
-
-function targetLabel(group: ModerationQueueGroup): string {
-  switch (group.targetKind) {
-    case "event":
-      // An event id is not a pubkey identity: keep the generic hex form.
-      return `Message ${truncatePubkey(group.target)}`;
-    case "pubkey":
-      return `Member ${truncateNpub(group.target)}`;
-    case "blob":
-      // Blob ids are not pubkey identities either.
-      return `Attachment ${truncatePubkey(group.target)}`;
-  }
-}
-
 function ReporterLine({
   report,
   displayName,
+  channelName,
 }: {
   report: ModerationReport;
   displayName?: string | null;
+  channelName?: string | null;
 }) {
   const who = displayName?.trim() || truncateNpub(report.reporterPubkey);
+  const detail = [who, channelName?.trim()].filter(Boolean).join(" · ");
   return (
-    <div className="rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5">
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        <span className="font-medium">
-          {reportTypeLabel(report.reportType)}
-        </span>
-        <span className="text-muted-foreground">
-          reported by {who} · {formatTimestamp(report.createdAt)}
-        </span>
-      </div>
-      {report.note ? (
-        <p
-          className="mt-1 text-xs text-muted-foreground/70"
-          data-settings-subcopy
-        >
-          {report.note}
-        </p>
-      ) : null}
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-semibold text-foreground">
+        {report.note?.trim() || reportTypeLabel(report.reportType)}
+      </p>
+      <p className="truncate text-xs text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -258,13 +227,14 @@ function ResolveMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          className="h-7 rounded-md px-3 text-xs font-medium"
           data-testid="moderation-resolve-trigger"
           disabled={disabled}
           size="sm"
           type="button"
+          variant="outline"
         >
-          Resolve
-          <ChevronDown className="h-4 w-4" />
+          Review report
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -295,45 +265,40 @@ function ResolveMenu({
 function QueueGroupCard({
   group,
   reporterNames,
+  channelNames,
   onResolve,
   disabled,
 }: {
   group: ModerationQueueGroup;
   reporterNames: Record<string, string | null | undefined>;
+  channelNames: Map<string, string>;
   onResolve: (group: ModerationQueueGroup, action: ResolutionAction) => void;
   disabled: boolean;
 }) {
-  const topType = groupTopReportType(group);
-  const tier = severityTier(topType);
   return (
     <div
-      className="space-y-2.5 rounded-lg border border-border/60 bg-background/60 p-3"
+      className="divide-y divide-border/55"
       data-testid={`moderation-group-${group.targetKey}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                SEVERITY_BADGE[tier],
-              )}
-            >
-              {tier === "critical" ? (
-                <ShieldAlert className="mr-1 h-3 w-3" />
-              ) : null}
-              {reportTypeLabel(topType)}
-            </span>
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {targetLabel(group)}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              · {group.reports.length}{" "}
-              {group.reports.length === 1 ? "report" : "reports"}
-            </span>
-          </div>
-        </div>
-        <div className="shrink-0">
+      {group.reports.map((report) => (
+        <div
+          className="flex min-h-16 items-center gap-3 px-4 py-3"
+          key={report.id}
+        >
+          <AlertTriangle
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+          <ReporterLine
+            channelName={
+              report.channelId ? channelNames.get(report.channelId) : null
+            }
+            displayName={reporterNames[report.reporterPubkey.toLowerCase()]}
+            report={report}
+          />
+          <span className="shrink-0 rounded-md border border-border/70 px-2 py-1 text-xs text-muted-foreground">
+            {report.status}
+          </span>
           <ResolveMenu
             allowed={resolvableActions(
               group.targetKind,
@@ -343,28 +308,20 @@ function QueueGroupCard({
             onResolve={(action) => onResolve(group, action)}
           />
         </div>
-      </div>
-
-      <div className="space-y-1.5">
-        {group.reports.map((report) => (
-          <ReporterLine
-            displayName={reporterNames[report.reporterPubkey.toLowerCase()]}
-            key={report.id}
-            report={report}
-          />
-        ))}
-      </div>
-
+      ))}
       {group.priorActions.length > 0 ? (
-        <div className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div className="flex items-start gap-1.5 bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+          />
           <span>
             {group.priorActions.length} prior action
             {group.priorActions.length === 1 ? "" : "s"} against this target
             {": "}
             {group.priorActions
               .slice(0, 3)
-              .map((a) => a.action)
+              .map((action) => action.action)
               .join(", ")}
           </span>
         </div>
@@ -399,7 +356,9 @@ function QueueTab({
     useState<FailedModerationResolution | null>(null);
   const [pendingTargetKey, setPendingTargetKey] = useState<string | null>(null);
   const channelsQuery = useChannelsQuery({
-    enabled: failedResolution !== null,
+    enabled:
+      failedResolution !== null ||
+      (reportsQuery.data ?? []).some((report) => report.channelId !== null),
   });
 
   const groups = useMemo(() => {
@@ -425,6 +384,13 @@ function QueueTab({
     }
     return map;
   }, [reporterProfiles.data]);
+  const channelNames = useMemo(
+    () =>
+      new Map(
+        (channelsQuery.data ?? []).map((channel) => [channel.id, channel.name]),
+      ),
+    [channelsQuery.data],
+  );
 
   async function handleResolve(
     group: ModerationQueueGroup,
@@ -625,7 +591,9 @@ function QueueTab({
     );
   }
   return (
-    <div className="space-y-3">
+    <SettingsOptionGroup
+      title={<span className="text-foreground">Reports</span>}
+    >
       {groups.map((group) => (
         <QueueGroupCard
           disabled={
@@ -633,13 +601,14 @@ function QueueTab({
             resolveMutation.isPending ||
             banMutation.isPending
           }
+          channelNames={channelNames}
           group={group}
           key={group.targetKey}
           onResolve={handleResolve}
           reporterNames={reporterNames}
         />
       ))}
-    </div>
+    </SettingsOptionGroup>
   );
 }
 
@@ -739,9 +708,11 @@ function AuditTab() {
 export function ModerationQueueCard({
   initialTab = "queue",
   title = "Moderation",
+  onBackToToday,
 }: {
   initialTab?: "queue" | "audit";
   title?: string;
+  onBackToToday?: () => void;
 } = {}) {
   const membershipQuery = useMyRelayMembershipQuery();
   const role = membershipQuery.data?.role;
@@ -755,12 +726,19 @@ export function ModerationQueueCard({
     >
       {!isFailurePanelOpen ? (
         <SettingsSectionHeader
-          title={title}
-          description={
-            initialTab === "queue"
-              ? "Review reported content and take action. Visible to community moderators only."
-              : undefined
+          action={
+            initialTab === "queue" && onBackToToday ? (
+              <Button
+                className="h-8 px-3 text-xs"
+                onClick={onBackToToday}
+                size="sm"
+                variant="outline"
+              >
+                Back to Today
+              </Button>
+            ) : undefined
           }
+          title={title}
         />
       ) : null}
 

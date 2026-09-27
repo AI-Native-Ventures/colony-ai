@@ -50,6 +50,15 @@ test("failed enforcement keeps the report open and shows the designed failure", 
 
   const group = page.locator('[data-testid^="moderation-group-"]');
   await expect(group).toBeVisible();
+  await expect(group).toContainText("Repeated unsolicited advertising");
+  await expect(group).toContainText("campaign-studio");
+  await expect(group.getByText("open", { exact: true })).toBeVisible();
+  await expect(
+    group.getByRole("button", { name: "Review report" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Back to Today" }),
+  ).toBeVisible();
   await group.getByTestId("moderation-resolve-trigger").click();
   await page.getByTestId("moderation-resolve-delete").click();
 
