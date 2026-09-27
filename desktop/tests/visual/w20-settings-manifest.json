@@ -105,7 +105,7 @@
       }
     },
     "appMockData": {
-      "accountEmail": "lerato@leratosocial.example",
+      "accountEmail": "lerato@example.com",
       "searchProfiles": [
         {
           "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
