@@ -21,7 +21,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
 
   const navigationOrder = await sidebar
     .locator(
-      "[data-testid^='sidebar-nav-'], [data-testid='sidebar-software-factory-group']",
+      "[data-testid='sidebar-nav-conversations'], section[data-testid='sidebar-nav-company'], section[data-testid='sidebar-nav-business'], section[data-testid='sidebar-software-factory-group'], section[data-testid='sidebar-nav-library']",
     )
     .evaluateAll((groups) =>
       groups.map((group) => group.getAttribute("data-testid")),
@@ -100,7 +100,9 @@ test("Saved for later remains under Activity and keeps the reminder filter", asy
   await savedForLater.click();
 
   await expect(page).toHaveURL(/filter=reminders/);
-  await expect(page.getByTestId("home-inbox-list")).toBeVisible();
+  const reminders = page.getByTestId("home-inbox-reminders");
+  await expect(reminders).toBeVisible();
+  await expect(reminders).toContainText("No reminders");
   await expect(savedForLater).toHaveAttribute("data-active", "true");
 });
 
