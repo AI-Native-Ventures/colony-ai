@@ -163,14 +163,16 @@ pub async fn handle(
 
     if let Some(record) = action.goal.as_ref() {
         validate_parent_and_cycle(
-            tenant,
-            state,
-            &role,
-            &actor_pubkey,
-            action.action,
-            action.goal_id,
+            ParentCycleContext {
+                tenant,
+                state,
+                role: &role,
+                actor_pubkey: &actor_pubkey,
+                action_kind: action.action,
+                goal_id: action.goal_id,
+                current: current.as_ref(),
+            },
             record,
-            current.as_ref(),
         )
         .await?;
     }
@@ -355,16 +357,29 @@ fn authorize_goal_owner_or_admin(
     }
 }
 
-async fn validate_parent_and_cycle(
-    tenant: &TenantContext,
-    state: &AppState,
-    role: &str,
-    actor_pubkey: &str,
+struct ParentCycleContext<'a> {
+    tenant: &'a TenantContext,
+    state: &'a AppState,
+    role: &'a str,
+    actor_pubkey: &'a str,
     action_kind: GoalActionKind,
     goal_id: Uuid,
+    current: Option<&'a GoalHead>,
+}
+
+async fn validate_parent_and_cycle(
+    context: ParentCycleContext<'_>,
     record: &GoalRecord,
-    current: Option<&GoalHead>,
 ) -> Result<(), IngestError> {
+    let ParentCycleContext {
+        tenant,
+        state,
+        role,
+        actor_pubkey,
+        action_kind,
+        goal_id,
+        current,
+    } = context;
     let Some(parent_id) = record.parent_goal_id else {
         return Ok(());
     };
