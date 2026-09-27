@@ -187,7 +187,7 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/moderation",
       "appRoute": "/#/settings?section=moderation",
       "routeLabel": "account/moderation",
-      "appReadySelector": "[data-testid^=moderation-group-]",
+      "appReadySelector": "[data-testid=settings-moderation]",
       "appMockData": {
         "relayRole": "owner",
         "relayRequiresMembership": true,
