@@ -1437,15 +1437,13 @@ test.describe("community rail", () => {
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
     expect(Math.abs(leftInset - visibleRightGap)).toBeLessThan(0.5);
 
-    // With the rail visible, the top-chrome controls (sidebar toggle, back/
-    // forward) sit just past the traffic lights near the rail edge - not
+    // With the rail visible, the top-chrome history controls sit just past
+    // the traffic lights near the rail edge, not
     // shifted far right by a redundant traffic-light offset.
-    const toggle = page
-      .locator('[data-testid="app-top-chrome"] button')
-      .first();
-    const toggleBox = await toggle.boundingBox();
-    expect(toggleBox).not.toBeNull();
-    expect(toggleBox?.x ?? 0).toBeLessThan(120);
+    const back = page.getByTestId("global-back");
+    const backBox = await back.boundingBox();
+    expect(backBox).not.toBeNull();
+    expect(backBox?.x ?? 0).toBeLessThan(120);
   });
 
   test("drag-to-reorder updates the stored community order and survives reload", async ({

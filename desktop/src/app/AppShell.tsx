@@ -942,7 +942,7 @@ export function AppShell() {
                             })
                           }
                           profile={profileQuery.data}
-                          showSidebarCollapseButton={!showAppTopChrome}
+                          showSidebarCollapseButton
                           suppressTodaySelection={location.pathname.startsWith(
                             "/navigation/",
                           )}

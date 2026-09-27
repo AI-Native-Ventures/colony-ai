@@ -13,7 +13,11 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
 
   const sidebar = page.getByTestId("app-sidebar");
   await expect(sidebar).toHaveAttribute("data-colony-full-app-shell", "true");
-  await expect(page.getByTestId("app-top-chrome")).toBeHidden();
+  await expect(page.getByTestId("app-top-chrome")).toBeVisible();
+  await expect(sidebar.locator('[data-sidebar="trigger"]')).toBeVisible();
+  await expect(
+    page.locator('[data-testid="app-top-chrome"] [data-sidebar="trigger"]'),
+  ).toBeHidden();
   await expect(page.getByTestId("sidebar-business-switcher")).toBeVisible();
   await expect(page.getByTestId("open-search")).toContainText("Find anything");
   await expect(page.getByTestId("sidebar-activity-button")).toContainText(
