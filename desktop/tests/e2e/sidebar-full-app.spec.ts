@@ -61,6 +61,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
     page.getByTestId("section-actions-dms-quick-create"),
   ).toHaveCount(0);
   await expect(page.getByTestId("open-workflows-view")).toBeVisible();
+  await expect(page.getByTestId("sidebar-company-goals")).toBeVisible();
   await expect(page.getByTestId("sidebar-company-work")).toBeVisible();
   await expect(page.getByTestId("open-factory-view")).toBeVisible();
   await expect(page.getByTestId("sidebar-software-factory-toggle")).toHaveCount(
@@ -72,7 +73,6 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
 
   for (const label of [
     "Team",
-    "Goals",
     "Discovery",
     "Clients",
     "Social media",
@@ -85,6 +85,24 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
       sidebar.getByRole("button", { name: label, exact: true }),
     ).toHaveCount(0);
   }
+});
+
+test("Company Goals opens the existing goals route", async ({ page }) => {
+  await page.goto("/");
+
+  const goals = page.getByTestId("sidebar-company-goals");
+  await expect(goals).toBeVisible();
+  await goals.click();
+
+  await expect(page).toHaveURL(/#\/goals$/);
+  await expect(page.getByTestId("sidebar-nav-company-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(goals).toHaveAttribute("data-active", "true");
+  await expect(
+    page.getByText("Company / Goals", { exact: true }),
+  ).toBeVisible();
 });
 
 test("Company Work and Business destinations open existing routes", async ({

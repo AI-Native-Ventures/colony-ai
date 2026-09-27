@@ -6,8 +6,7 @@
       "referenceSidebarShell": true
     },
     "referenceIgnoreSelectors": [
-      ".full-sidebar .nav-section button[data-go='team']",
-      ".full-sidebar .nav-section button[data-go='goals']"
+      ".full-sidebar .nav-section button[data-go='team']"
     ],
     "appPrefs": {
       "localStorage": {

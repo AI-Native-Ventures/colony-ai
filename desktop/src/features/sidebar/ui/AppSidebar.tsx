@@ -7,6 +7,7 @@ import {
   LayoutTemplate,
   Search,
   Settings as SettingsIcon,
+  Target,
   Workflow,
   Zap,
 } from "lucide-react";
@@ -139,6 +140,7 @@ export function AppSidebar({
   onSelectToday,
   onSelectSavedForLater,
   onSelectFactory,
+  onSelectGoals,
   onSelectClients,
   onSelectWork,
   onSelectPower,
@@ -885,11 +887,28 @@ export function AppSidebar({
                   <SidebarNavigationGroup
                     defaultExpanded
                     expandForActiveRoute={
-                      selectedView === "work" || selectedView === "workflows"
+                      selectedView === "goals" ||
+                      selectedView === "work" ||
+                      selectedView === "workflows"
                     }
                     label="Company"
                     testId="sidebar-nav-company"
                   >
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          className="sidebar-navigation-child pl-7"
+                          data-testid="sidebar-company-goals"
+                          isActive={selectedView === "goals"}
+                          onClick={onSelectGoals}
+                          tooltip="Goals"
+                          type="button"
+                        >
+                          <Target className="h-4 w-4" />
+                          <SidebarMenuLabel>Goals</SidebarMenuLabel>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
                     <SidebarMenu>
                       <SidebarMenuItem>
                         <SidebarMenuButton
