@@ -44,7 +44,7 @@ pub enum BusinessCommand {
     /// Business service catalog mutation.
     ServiceAction(ServiceAction),
     /// Prospect qualification, save, or pipeline mutation.
-    ProspectAction(ProspectAction),
+    ProspectAction(Box<ProspectAction>),
     /// Client relationship mutation.
     ClientAction(ClientAction),
     /// Work-item mutation.
@@ -877,11 +877,18 @@ pub fn parse_business_command(
                 .map_err(|_| BusinessRecordError::InvalidContent)
         };
     }
+    macro_rules! parse_boxed {
+        ($type:ty, $variant:ident) => {
+            serde_json::from_str::<$type>(content)
+                .map(|value| BusinessCommand::$variant(Box::new(value)))
+                .map_err(|_| BusinessRecordError::InvalidContent)
+        };
+    }
 
     let command = match kind {
         crate::kind::KIND_PARTY_ACTION => parse!(PartyAction, PartyAction)?,
         crate::kind::KIND_SERVICE_ACTION => parse!(ServiceAction, ServiceAction)?,
-        crate::kind::KIND_PROSPECT_ACTION => parse!(ProspectAction, ProspectAction)?,
+        crate::kind::KIND_PROSPECT_ACTION => parse_boxed!(ProspectAction, ProspectAction)?,
         crate::kind::KIND_CLIENT_ACTION => parse!(ClientAction, ClientAction)?,
         crate::kind::KIND_WORK_ITEM_ACTION => parse!(WorkItemAction, WorkItemAction)?,
         crate::kind::KIND_PROPOSAL_VERSION => parse!(ProposalVersion, ProposalVersion)?,
