@@ -220,7 +220,13 @@ export function AppSidebarPrimaryMenu({
           <SidebarMenuButton
             className="text-xs data-[active=true]:font-normal"
             isActive={selectedView === "today" && !suppressTodaySelection}
-            onClick={onSelectToday}
+            onClick={(event) => {
+              const button = event.currentTarget;
+              onSelectToday();
+              window.requestAnimationFrame(() => {
+                if (button.isConnected) button.focus({ preventScroll: true });
+              });
+            }}
             tooltip="Today"
             type="button"
           >
@@ -233,7 +239,13 @@ export function AppSidebarPrimaryMenu({
             className="text-xs data-[active=true]:font-normal"
             data-testid="sidebar-activity-button"
             isActive={selectedView === "home"}
-            onClick={onSelectHome}
+            onClick={(event) => {
+              const button = event.currentTarget;
+              onSelectHome();
+              window.requestAnimationFrame(() => {
+                if (button.isConnected) button.focus({ preventScroll: true });
+              });
+            }}
             tooltip="Activity"
             type="button"
           >
