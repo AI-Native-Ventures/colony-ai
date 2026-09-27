@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' show FlutterView;
+import 'dart:ui' show FlutterView, lerpDouble;
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
@@ -41,6 +41,7 @@ import 'camera_capture_cleanup.dart';
 import 'channel.dart';
 import 'channel_management_provider.dart';
 import 'channels_provider.dart';
+import 'conversation_styles.dart';
 import 'emoji_picker.dart';
 import 'mentions/mention_candidates.dart';
 import 'mentions/mention_candidates_provider.dart';
@@ -49,7 +50,6 @@ import 'photo_library.dart';
 import 'voice_note_attachment.dart';
 import 'voice_note_composer_recorder.dart';
 import 'voice_note_recording.dart';
-import 'conversation_styles.dart';
 
 part 'compose_bar/helpers.dart';
 part 'compose_bar/agent_mention_labels.dart';

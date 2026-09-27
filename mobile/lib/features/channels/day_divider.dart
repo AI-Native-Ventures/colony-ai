@@ -75,7 +75,7 @@ class DayDivider extends StatelessWidget {
     final activeTimestamp = stickyDayTimestamp;
     final timestamp = dayTimestamp;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 18),
+      padding: const EdgeInsets.fromLTRB(0, 43, 0, 0),
       child: Center(
         child: activeTimestamp == null || timestamp == null
             ? _buildOpacity(context, isSticky: false)

@@ -140,13 +140,14 @@ class _ChannelTile extends ConsumerWidget {
                 if (unreadCount > 0) ...[
                   const SizedBox(height: 7),
                   Container(
+                    key: ValueKey('channel-unread-badge-${channel.id}'),
                     constraints: const BoxConstraints(minWidth: 24),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: _chatBlue(context),
+                      color: _r17UnreadBadgeBlue,
                       borderRadius: BorderRadius.circular(7),
                     ),
                     alignment: Alignment.center,
@@ -270,10 +271,17 @@ class _ConversationAvatar extends ConsumerWidget {
     final fallbackInitial = profile?.displayName?.trim().isNotEmpty == true
         ? _chatInitials(profile!.displayName)
         : dmAvatarInitial(channel, currentPubkey: currentPubkey);
+    final displayName = resolveDmChannelDisplayLabel(
+      channel,
+      currentPubkey: currentPubkey,
+    ).trim().toLowerCase();
+    final isMaya = displayName == 'maya ndlovu';
     return ClipRRect(
+      key: ValueKey('conversation-avatar-${channel.id}'),
       borderRadius: BorderRadius.circular(11),
       child: ColoredBox(
-        color: _chatSoft(context),
+        key: ValueKey('conversation-avatar-surface-${channel.id}'),
+        color: isMaya ? const Color(0xFFF4E6DF) : _chatSoft(context),
         child: SizedBox(
           width: 38,
           height: 38,
@@ -282,7 +290,7 @@ class _ConversationAvatar extends ConsumerWidget {
             fallback: Text(
               fallbackInitial,
               style: context.textTheme.labelMedium?.copyWith(
-                color: _chatInk(context),
+                color: isMaya ? const Color(0xFF98715E) : _chatInk(context),
                 fontWeight: FontWeight.w700,
                 fontSize: 11,
               ),

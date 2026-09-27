@@ -384,6 +384,8 @@ class _ChannelSection extends StatelessWidget {
   final ChannelSortMode? sortMode;
   final ValueChanged<ChannelSortMode>? onSortModeChange;
   final bool simpleStyle;
+  final double simpleHeaderTopPadding;
+  final double expandedTrailingPadding;
   final VoidCallback? onAdd;
   final Future<void> Function(Channel channel) onSelectChannel;
 
@@ -401,6 +403,8 @@ class _ChannelSection extends StatelessWidget {
     this.sortMode,
     this.onSortModeChange,
     this.simpleStyle = false,
+    this.simpleHeaderTopPadding = 15,
+    this.expandedTrailingPadding = _kExpandedSectionTrailingPadding,
     this.onAdd,
     required this.onSelectChannel,
   });
@@ -419,6 +423,7 @@ class _ChannelSection extends StatelessWidget {
           sortMode: sortMode,
           onSortModeChange: onSortModeChange,
           simpleStyle: simpleStyle,
+          simpleHeaderTopPadding: simpleHeaderTopPadding,
           onAdd: onAdd,
         ),
         _AnimatedSectionBody(
@@ -452,7 +457,7 @@ class _ChannelSection extends StatelessWidget {
                     onMarkRead: null,
                     sectionId: null,
                   ),
-              const SizedBox(height: _kExpandedSectionTrailingPadding),
+              SizedBox(height: expandedTrailingPadding),
             ],
           ),
         ),
@@ -517,6 +522,7 @@ class _SectionHeader extends StatelessWidget {
   final ChannelSortMode? sortMode;
   final ValueChanged<ChannelSortMode>? onSortModeChange;
   final bool simpleStyle;
+  final double simpleHeaderTopPadding;
   final VoidCallback? onAdd;
 
   const _SectionHeader({
@@ -527,6 +533,7 @@ class _SectionHeader extends StatelessWidget {
     this.sortMode,
     this.onSortModeChange,
     this.simpleStyle = false,
+    this.simpleHeaderTopPadding = 15,
     this.onAdd,
   });
 
@@ -534,7 +541,7 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     if (simpleStyle) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 15, 20, 5),
+        padding: EdgeInsets.fromLTRB(20, simpleHeaderTopPadding, 20, 5),
         child: Row(
           children: [
             Expanded(

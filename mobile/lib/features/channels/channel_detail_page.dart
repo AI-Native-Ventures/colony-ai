@@ -603,7 +603,7 @@ class ChannelDetailPage extends HookConsumerWidget {
           fontWeight: FontWeight.w700,
           height: 1.25,
         ),
-        frostedSurfaceOpacity: resolvedChannel.isForum ? 0 : 1,
+        frostedSurfaceOpacity: 0,
         frostedBlurSigma: 0,
         bottomDividerOpacity: 1,
         horizontalInset: Grid.xs - Grid.half,
@@ -884,7 +884,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                     composerDockHeight.value = height;
                   },
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: Grid.xxs),
+                    padding: const EdgeInsets.only(bottom: Grid.fourteen),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

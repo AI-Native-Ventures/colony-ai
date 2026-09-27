@@ -172,8 +172,8 @@ class _ComposeBarLayout extends HookWidget {
                           overflow: TextOverflow.ellipsis,
                           style: conversationComposerTextStyle.copyWith(
                             color: trimmedDraft.isEmpty
-                                ? context.colors.onSurfaceVariant
-                                : context.colors.onSurface,
+                                ? conversationMutedColor(context)
+                                : conversationInkColor(context),
                           ),
                         ),
                       ),
@@ -281,7 +281,18 @@ class _ComposeBarLayout extends HookWidget {
       animation: Listenable.merge([expansionAnimation, recordingTransition]),
       child: content,
       builder: (context, child) {
-        final radius = BorderRadius.circular(14);
+        final collapsedRadius = fillWidth ? 14.0 : Radii.dialog + Grid.quarter;
+        final expandedRadius = fillWidth ? 14.0 : Radii.dialog;
+        final restingRadius = hasVoiceNoteAttachment
+            ? collapsedRadius
+            : lerpDouble(
+                collapsedRadius,
+                expandedRadius,
+                expansionAnimation.value,
+              )!;
+        final radius = BorderRadius.circular(
+          lerpDouble(restingRadius, Radii.full, recordingTransition.value)!,
+        );
         final usesIosConcentricSurface =
             defaultTargetPlatform == TargetPlatform.iOS;
         final voiceNoteInsetProgress = hasVoiceNoteAttachment
@@ -355,12 +366,12 @@ class _ComposeBarLayout extends HookWidget {
       minLines: 1,
       maxLines: 5,
       style: conversationComposerTextStyle.copyWith(
-        color: context.colors.onSurface,
+        color: conversationInkColor(context),
       ),
       decoration: InputDecoration(
         hintText: resolvedHint,
         hintStyle: conversationComposerTextStyle.copyWith(
-          color: context.colors.onSurfaceVariant,
+          color: conversationMutedColor(context),
         ),
         border: InputBorder.none,
         enabledBorder: InputBorder.none,

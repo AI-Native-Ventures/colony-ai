@@ -67,7 +67,7 @@ class _VoiceNoteButton extends StatelessWidget {
         icon: Icon(
           LucideIcons.mic,
           size: 18,
-          color: context.colors.onSurfaceVariant,
+          color: conversationMutedColor(context),
         ),
       ),
     );

@@ -86,6 +86,7 @@ const _r17ChatMuted = Color(0xFF8B8590);
 const _r17ChatLine = Color(0xFFEEEBEE);
 const _r17ChatSoft = Color(0xFFF6F4F6);
 const _r17ChatBlue = Color(0xFF345C99);
+const _r17UnreadBadgeBlue = Color(0xFF486AAB);
 const _r17ChatDarkPaper = Color(0xFF25222C);
 const _r17ChatDarkInk = Color(0xFFEEE8F0);
 const _r17ChatDarkMuted = Color(0xFFAAA1B1);

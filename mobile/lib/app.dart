@@ -49,7 +49,6 @@ import 'features/channels/voice_note_recording.dart';
 import 'features/profile/user_profile_sheet.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
-import 'features/profile/profile_provider.dart';
 import 'features/profile/settings_profile_header.dart';
 import 'features/profile/profile_edit_page.dart';
 import 'features/profile/profile_text_editor.dart';

@@ -41,7 +41,7 @@ void main() {
       buttonStyles.map((style) => style.fontFamily),
       everyElement('Manrope'),
     );
-    expect(buttonStyles.map((style) => style.fontSize), everyElement(12));
+    expect(buttonStyles.map((style) => style.fontSize), everyElement(11));
   });
 
   test('keeps inactive Huddle controls distinct in dark mode', () {

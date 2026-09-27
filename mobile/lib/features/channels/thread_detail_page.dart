@@ -983,7 +983,7 @@ class ThreadDetailPage extends HookConsumerWidget {
             ),
         ],
         titleStyle: titleStyle,
-        frostedSurfaceOpacity: 1,
+        frostedSurfaceOpacity: 0,
         frostedBlurSigma: 0,
         bottomDividerOpacity: 1,
       ),
@@ -1087,7 +1087,7 @@ class ThreadDetailPage extends HookConsumerWidget {
                   key: const ValueKey('thread-composer-dock'),
                   onHeightChanged: updateComposerDockHeight,
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: Grid.xxs),
+                    padding: const EdgeInsets.only(bottom: Grid.fourteen),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

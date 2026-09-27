@@ -412,8 +412,12 @@ void main() {
     final navigationRect = tester.getRect(
       find.byKey(const ValueKey('mobile-bottom-navigation')),
     );
-    expect(navigationRect.top, 755);
-    expect(navigationRect.bottom, 810);
+    expect(navigationRect.top, 844 - 34 - MobileShell.navigationBarHeight);
+    expect(navigationRect.bottom, 844);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('mobile-nav-chats'))).bottom,
+      lessThanOrEqualTo(844 - 34),
+    );
   });
 }
 

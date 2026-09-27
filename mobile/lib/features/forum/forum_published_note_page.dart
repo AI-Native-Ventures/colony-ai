@@ -254,7 +254,7 @@ class ForumPublishedNotePage extends ConsumerWidget {
                 16,
                 12,
                 16,
-                MediaQuery.viewPaddingOf(context).bottom + 42,
+                MediaQuery.viewPaddingOf(context).bottom + 8,
               ),
               child: SizedBox(
                 width: double.infinity,

@@ -58,13 +58,28 @@ Color conversationAccentColor(BuildContext context) =>
     ? const Color(0xFFA1BCE9)
     : const Color(0xFF45669F);
 
+Color conversationInkColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFFEEE8F0)
+    : const Color(0xFF292632);
+
+Color conversationMutedColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFFAAA1B1)
+    : const Color(0xFF8B8590);
+
 Color conversationSurfaceColor(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
     ? context.mobileTokens.paper
     : Colors.white;
 
-EdgeInsets conversationMessageVerticalPadding({required bool showAuthor}) =>
-    EdgeInsets.only(top: showAuthor ? Grid.eighteen : 0);
+EdgeInsets conversationMessageVerticalPadding({
+  required bool showAuthor,
+  bool followsDayDivider = false,
+  double authorSpacing = Grid.eighteen,
+}) => EdgeInsets.only(
+  top: showAuthor ? (followsDayDivider ? Grid.quarter : authorSpacing) : 0,
+);
 
 const conversationReplyIndent = conversationAvatarSize + conversationAvatarGap;
 

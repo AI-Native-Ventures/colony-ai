@@ -121,9 +121,9 @@ class _SystemMessageRow extends HookConsumerWidget {
         child: Padding(
           padding: EdgeInsets.only(
             top: isHuddleEvent
-                ? Grid.fifteen + Grid.twelve
+                ? 33
                 : usesMessageStyleLayout
-                ? Grid.eighteen
+                ? Grid.sm
                 : Grid.xxs,
             bottom: isHuddleEvent
                 ? Grid.eighteen / 2
@@ -593,8 +593,8 @@ class _ThreadSummaryRow extends ConsumerWidget {
         key: ValueKey('thread-summary-${message.id}'),
         padding: const EdgeInsets.only(
           left: conversationReplyIndent,
-          top: 10,
-          bottom: Grid.xs,
+          top: 14,
+          bottom: Grid.half,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.max,

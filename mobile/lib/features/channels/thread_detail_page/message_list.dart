@@ -124,7 +124,7 @@ class _ThreadMessageList extends StatelessWidget {
                   return trackActiveScrollPosition(
                     Padding(
                       key: ValueKey('thread-message-group-${head.id}'),
-                      padding: const EdgeInsets.only(bottom: Grid.half * 2),
+                      padding: EdgeInsets.zero,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -145,12 +145,12 @@ class _ThreadMessageList extends StatelessWidget {
                           Container(
                             key: const ValueKey('thread-replies-following'),
                             width: double.infinity,
-                            margin: const EdgeInsets.only(top: 8),
+                            margin: const EdgeInsets.only(top: 18),
                             padding: const EdgeInsets.fromLTRB(
                               Grid.gutter,
                               8,
                               Grid.gutter,
-                              8,
+                              6,
                             ),
                             decoration: BoxDecoration(
                               border: Border(
@@ -234,6 +234,10 @@ class _ThreadMessageList extends StatelessWidget {
                             channelId: channelId,
                             currentPubkey: currentPubkey,
                             showAuthor: showAuthor,
+                            followsDayDivider: showDayDivider,
+                            authorSpacing: previousReply == null
+                                ? Grid.eighteen
+                                : 22,
                             isHighlighted: reply.id == highlightedMessageId,
                             allMessages: allMessages,
                             isMember: isMember,

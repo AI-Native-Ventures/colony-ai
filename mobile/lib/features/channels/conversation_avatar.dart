@@ -31,7 +31,7 @@ class ConversationAvatar extends StatelessWidget {
     final (background, foreground) = switch (tint) {
       ConversationAvatarTint.lilac => (
         const Color(0xFFE8E2EC),
-        const Color(0xFF847188),
+        const Color(0xFF76657D),
       ),
       ConversationAvatarTint.coral => (
         const Color(0xFFF4E6DF),

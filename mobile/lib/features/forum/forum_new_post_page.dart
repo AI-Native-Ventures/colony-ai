@@ -434,7 +434,7 @@ class _PostComposerFooter extends StatelessWidget {
         border: Border(top: BorderSide(color: context.mobileTokens.line)),
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, bottom + 37),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, bottom + 5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -610,7 +610,7 @@ class _DiscardPostContent extends StatelessWidget {
               16,
               12,
               16,
-              MediaQuery.viewPaddingOf(context).bottom + 44,
+              MediaQuery.viewPaddingOf(context).bottom + 8,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

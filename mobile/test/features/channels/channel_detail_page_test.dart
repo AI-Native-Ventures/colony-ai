@@ -916,10 +916,10 @@ void main() {
             );
             tester.view.physicalSize = size.value;
             tester.view.devicePixelRatio = 1;
-            tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+            tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
             tester.view.viewPadding = const FakeViewPadding(
-              top: 44,
-              bottom: 34,
+              top: 46,
+              bottom: 20,
             );
             final isDm = route == 'dm';
             final isThread = route == 'thread';
@@ -988,6 +988,12 @@ void main() {
               ),
             );
             await tester.pumpAndSettle();
+            expect(
+              tester
+                  .widget<FrostedAppBar>(find.byType(FrostedAppBar).first)
+                  .frostedSurfaceOpacity,
+              0,
+            );
             if (route == 'channel') {
               expect(find.text('Today, 24 September'), findsWidgets);
               expect(
@@ -2793,8 +2799,8 @@ void main() {
       for (final size in captureSizes.entries) {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
-        tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
-        tester.view.viewPadding = const FakeViewPadding(top: 44);
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
         for (final brightness in [Brightness.light, Brightness.dark]) {
           final mode = brightness == Brightness.light ? 'light' : 'dark';
           final forumRelay = _R19ForumCaptureRelay(forumFixtureEvents);
@@ -4723,8 +4729,8 @@ void main() {
         summaryPadding.padding,
         const EdgeInsets.only(
           left: conversationReplyIndent,
-          top: 10,
-          bottom: Grid.xs,
+          top: Grid.fourteen,
+          bottom: Grid.half,
         ),
       );
     });
@@ -6115,7 +6121,7 @@ void main() {
                       .widget<FrostedAppBar>(find.byType(FrostedAppBar).first)
                       .titleContentHeight,
                 ) +
-                Grid.twelve,
+                Grid.gutter,
             1,
           ),
         );

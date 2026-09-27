@@ -6,6 +6,8 @@ class _ThreadMessage extends HookConsumerWidget {
   final String channelId;
   final String? currentPubkey;
   final bool showAuthor;
+  final bool followsDayDivider;
+  final double authorSpacing;
   final bool isHighlighted;
   final List<TimelineMessage>? allMessages;
   final bool isMember;
@@ -23,6 +25,8 @@ class _ThreadMessage extends HookConsumerWidget {
     required this.channelId,
     required this.currentPubkey,
     required this.showAuthor,
+    this.followsDayDivider = false,
+    this.authorSpacing = Grid.eighteen,
     this.isHighlighted = false,
     this.allMessages,
     this.isMember = false,
@@ -124,7 +128,11 @@ class _ThreadMessage extends HookConsumerWidget {
           );
 
     return Padding(
-      padding: conversationMessageVerticalPadding(showAuthor: showAuthor),
+      padding: conversationMessageVerticalPadding(
+        showAuthor: showAuthor,
+        followsDayDivider: followsDayDivider,
+        authorSpacing: authorSpacing,
+      ),
       child: DecoratedBox(
         key: ValueKey('thread-message-${message.id}'),
         decoration: BoxDecoration(
@@ -190,9 +198,11 @@ class _ThreadMessage extends HookConsumerWidget {
                                             timestamp: formatMessageTime(
                                               message.createdAt,
                                             ),
-                                            nameColor: context.colors.onSurface,
+                                            nameColor: conversationInkColor(
+                                              context,
+                                            ),
                                             metadataColor:
-                                                context.colors.onSurfaceVariant,
+                                                conversationMutedColor(context),
                                             onAuthorTap: () =>
                                                 showUserProfileSheet(
                                                   context,
@@ -222,9 +232,9 @@ class _ThreadMessage extends HookConsumerWidget {
                                             '(edited)',
                                             style: context.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: context
-                                                      .colors
-                                                      .onSurfaceVariant,
+                                                  color: conversationMutedColor(
+                                                    context,
+                                                  ),
                                                   fontStyle: FontStyle.italic,
                                                 ),
                                           ),
@@ -239,7 +249,7 @@ class _ThreadMessage extends HookConsumerWidget {
                                   channelNames: channelNames,
                                   tags: message.tags,
                                   baseStyle: conversationBodyTextStyle.copyWith(
-                                    color: context.colors.onSurface,
+                                    color: conversationInkColor(context),
                                   ),
                                   scaleEmojiOnly: true,
                                   mediaCarouselTrailingOverflow: Grid.gutter,

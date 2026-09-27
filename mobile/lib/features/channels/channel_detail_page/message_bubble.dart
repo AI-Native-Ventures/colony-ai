@@ -3,6 +3,8 @@ part of '../channel_detail_page.dart';
 class _MessageBubble extends HookConsumerWidget {
   final TimelineMessage message;
   final bool showAuthor;
+  final bool followsDayDivider;
+  final bool followsThreadSummary;
   final Map<String, String> channelNames;
   final String currentChannelId;
   final bool isDirectMessage;
@@ -16,6 +18,8 @@ class _MessageBubble extends HookConsumerWidget {
   const _MessageBubble({
     required this.message,
     required this.showAuthor,
+    this.followsDayDivider = false,
+    this.followsThreadSummary = false,
     required this.channelNames,
     required this.currentChannelId,
     required this.isDirectMessage,
@@ -106,7 +110,15 @@ class _MessageBubble extends HookConsumerWidget {
     }
 
     return Padding(
-      padding: conversationMessageVerticalPadding(showAuthor: showAuthor),
+      padding: conversationMessageVerticalPadding(
+        showAuthor: showAuthor,
+        followsDayDivider: followsDayDivider,
+        authorSpacing: isDirectMessage
+            ? 27
+            : followsThreadSummary
+            ? Grid.eighteen
+            : Grid.sm,
+      ),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(Radii.md),
@@ -185,9 +197,12 @@ class _MessageBubble extends HookConsumerWidget {
                                           timestamp: formatMessageTime(
                                             message.createdAt,
                                           ),
-                                          nameColor: context.colors.onSurface,
-                                          metadataColor:
-                                              context.colors.onSurfaceVariant,
+                                          nameColor: conversationInkColor(
+                                            context,
+                                          ),
+                                          metadataColor: conversationMutedColor(
+                                            context,
+                                          ),
                                           onAuthorTap: () =>
                                               showUserProfileSheet(
                                                 context,
@@ -217,9 +232,9 @@ class _MessageBubble extends HookConsumerWidget {
                                           '(edited)',
                                           style: context.textTheme.labelSmall
                                               ?.copyWith(
-                                                color: context
-                                                    .colors
-                                                    .onSurfaceVariant,
+                                                color: conversationMutedColor(
+                                                  context,
+                                                ),
                                                 fontStyle: FontStyle.italic,
                                               ),
                                         ),
@@ -234,7 +249,7 @@ class _MessageBubble extends HookConsumerWidget {
                                 channelNames: channelNames,
                                 tags: message.tags,
                                 baseStyle: conversationBodyTextStyle.copyWith(
-                                  color: context.colors.onSurface,
+                                  color: conversationInkColor(context),
                                 ),
                                 scaleEmojiOnly: true,
                                 mediaCarouselTrailingOverflow: Grid.xs,

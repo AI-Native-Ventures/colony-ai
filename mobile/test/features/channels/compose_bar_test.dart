@@ -199,6 +199,7 @@ Widget _buildComposeBar({
   String composeBarKey = 'compose-bar',
   VoiceNoteRecorder Function()? voiceNoteRecorderFactory,
   VoiceNotePlayerController Function()? voiceNotePlayerFactory,
+  bool fillWidth = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -263,6 +264,7 @@ Widget _buildComposeBar({
                   focusNode: focusNode,
                   onFocusRestorerChanged: onFocusRestorerChanged,
                   onFocusRequested: onFocusRequested,
+                  fillWidth: fillWidth,
                   onSend: onSend,
                 );
                 if (viewPadding == null) return composeBar;
@@ -754,6 +756,28 @@ void main() {
       expect(find.byIcon(LucideIcons.hash), findsOneWidget);
       expect(find.byIcon(LucideIcons.smilePlus), findsOneWidget);
       expect(find.byIcon(LucideIcons.aLargeSmall), findsOneWidget);
+    });
+
+    testWidgets('uses the R19 rounded rectangle for a full-width composer', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildComposeBar(
+          uploadService: _testUploadService(nostr.Keys.generate().nsec),
+          fillWidth: true,
+          onSend: (_, _, {mediaTags = const <List<String>>[]}) async {},
+        ),
+      );
+
+      final decoration =
+          tester
+                  .widget<Container>(
+                    find.byKey(const ValueKey('composer-surface')),
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(decoration.borderRadius, BorderRadius.circular(14));
+      expect((decoration.border! as Border).top.width, 1);
     });
 
     testWidgets('R17 empty composer microphone starts voice note', (

@@ -323,8 +323,8 @@ void main() {
         );
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
-        tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
-        tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
         await tester.pumpWidget(
           buildTestable(
             includeShell: true,
@@ -406,6 +406,115 @@ void main() {
     tester.view.resetViewPadding();
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
+  });
+
+  testWidgets('uses the reference Maya tint and solid unread badges', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
+    Channel fixture({
+      required String id,
+      required String name,
+      required String type,
+      required String preview,
+      List<String> participants = const [],
+      List<String> participantPubkeys = const [],
+    }) => Channel(
+      id: id,
+      name: name,
+      channelType: type,
+      visibility: 'open',
+      description: name,
+      createdBy: 'aabb',
+      createdAt: DateTime(2026),
+      memberCount: 8,
+      lastMessageAt: DateTime.fromMillisecondsSinceEpoch(now * 1000),
+      lastMessageContent: preview,
+      lastMessageCreatedAt: now,
+      participants: participants,
+      participantPubkeys: participantPubkeys,
+      isMember: true,
+    );
+    final campaign = fixture(
+      id: 'campaign-unread',
+      name: 'Campaign studio',
+      type: 'stream',
+      preview: 'Maya: September designs are ready',
+    );
+    final maya = fixture(
+      id: 'dm-maya',
+      name: 'DM',
+      type: 'dm',
+      preview: 'Can you check the second slide?',
+      participants: const ['Maya Ndlovu', 'Lerato Molefe'],
+      participantPubkeys: const ['maya', 'aabb'],
+    );
+    await tester.pumpWidget(
+      buildTestable(
+        brightness: Brightness.dark,
+        profile: _FakeProfileNotifier(
+          pubkey: 'aabb',
+          displayName: 'Lerato Molefe',
+        ),
+        overrides: [
+          channelsProvider.overrideWith(
+            () => _FakeNotifier(
+              [campaign, maya],
+              observedEventsByChannel: {
+                campaign.id: [
+                  _observed(id: 'campaign-message', createdAt: now),
+                ],
+              },
+            ),
+          ),
+          readStateProvider.overrideWith(
+            () => _FakeReadStateNotifier(
+              ReadStateState(
+                isReady: true,
+                pubkey: 'aabb',
+                contexts: {campaign.id: now - 60},
+                version: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final mayaSurface = tester.widget<ColoredBox>(
+      find.byKey(const ValueKey('conversation-avatar-surface-dm-maya')),
+    );
+    expect(mayaSurface.color, const Color(0xFFF4E6DF));
+    final mayaInitial = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('conversation-avatar-dm-maya')),
+        matching: find.text('MN'),
+      ),
+    );
+    expect(mayaInitial.style?.color, const Color(0xFF98715E));
+
+    final badge = tester.widget<Container>(
+      find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+    );
+    expect((badge.decoration! as BoxDecoration).color, const Color(0xFF486AAB));
+  });
+
+  testWidgets('keeps the R19 gap between search and chat filters', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestable(
+        overrides: [channelsProvider.overrideWith(() => _FakeNotifier([]))],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final search = tester.getRect(
+      find.byKey(const ValueKey('channels-search-field')),
+    );
+    final allFilter = tester.getRect(find.widgetWithText(TextButton, 'All'));
+    expect(allFilter.top - search.bottom, 34);
   });
 
   testWidgets('shows grouped channel list when data loads', (tester) async {

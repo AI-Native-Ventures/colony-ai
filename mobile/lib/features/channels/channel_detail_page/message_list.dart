@@ -907,6 +907,8 @@ class _MessageList extends HookConsumerWidget {
                           _MessageBubble(
                             message: message,
                             showAuthor: showAuthor,
+                            followsDayDivider: showDayDivider,
+                            followsThreadSummary: prevEntry?.summary != null,
                             channelNames: channelNamesMap,
                             currentChannelId: channelId,
                             isDirectMessage: isDirectMessage,
@@ -947,7 +949,7 @@ class _MessageList extends HookConsumerWidget {
                   context,
                   titleContentHeight: appBarTitleContentHeight,
                 ) +
-                Grid.twelve,
+                Grid.gutter,
             child: StickyDateHeader(
               key: const ValueKey('channel-sticky-date-header'),
               state: stickyDateHeaderState,
