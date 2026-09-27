@@ -87,6 +87,17 @@ test("conversation controls update the preview and save one global snapshot", as
     .toBe("focus");
 });
 
+test("appearance preview keeps the custom thumbnail and compose affordance", async ({
+  page,
+}) => {
+  await openAppearance(page);
+
+  await expect(
+    page.getByTestId("appearance-theme-custom").locator(".ap-mini"),
+  ).toHaveCSS("background-image", /linear-gradient/);
+  await expect(page.locator(".ap-live-compose")).toContainText("＋");
+});
+
 test("custom palette validates, survives Default, and stays applied after closing settings", async ({
   page,
 }) => {

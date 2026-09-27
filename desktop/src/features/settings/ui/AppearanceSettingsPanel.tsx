@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Mic,
   PanelRight,
-  Plus,
   UsersRound,
 } from "lucide-react";
 
@@ -532,7 +531,7 @@ function LiveAppearancePreview({
               <div className="ap-live-compose">
                 Message #the-olive-house…
                 <span>
-                  <Plus aria-hidden="true" />
+                  <span aria-hidden="true">＋</span>
                   <i>@</i>
                   <Mic aria-hidden="true" />
                 </span>
@@ -826,18 +825,14 @@ export function AppearanceSettingsPanel({
           "--ap-accent": accentTint,
           "--ap-soft": accentSoft,
           "--ap-glass-alpha": `${preferences.glassOpacity}%`,
-          "--ap-t1": preferences.custom
-            ? customGradientStops(
-                preferences.customLight,
-                isDark ? "dark" : "light",
-              )[0]
-            : "transparent",
-          "--ap-t2": preferences.custom
-            ? customGradientStops(
-                preferences.customLight,
-                isDark ? "dark" : "light",
-              )[1]
-            : "transparent",
+          "--ap-t1": customGradientStops(
+            preferences.customLight,
+            isDark ? "dark" : "light",
+          )[0],
+          "--ap-t2": customGradientStops(
+            preferences.customLight,
+            isDark ? "dark" : "light",
+          )[1],
         } as React.CSSProperties
       }
     >
