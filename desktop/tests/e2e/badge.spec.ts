@@ -157,7 +157,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     "opacity",
     "1",
   );
-  await expect(work.locator("svg")).toHaveCSS("opacity", "1");
+  await expect(work.locator("svg")).toHaveCSS("opacity", "0.8");
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {

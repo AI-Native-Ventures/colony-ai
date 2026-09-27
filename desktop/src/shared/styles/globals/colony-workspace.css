@@ -414,7 +414,9 @@
   height: 0.625rem;
 }
 
-:root:has([data-colony-workspace-route="true"])
+:root:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="sidebar-projects-section"] {
   display: none;
 }
@@ -890,6 +892,20 @@
 
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
+  [data-sidebar="menu-button"]
+  > svg.sidebar-muted-content {
+  opacity: 0.5;
+}
+
+:root.dark:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"]
+  > svg.sidebar-muted-content {
+  opacity: 0.45;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
   [data-sidebar="menu-button"][data-active="true"] {
   position: relative;
   background: rgb(255 255 255 / 56%);
@@ -910,6 +926,26 @@
   .app-sidebar-full-shell
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
   background: rgb(255 255 255 / 7.4%);
+}
+
+:root[data-buzz-sidebar][data-prominent-active-tab]:has(
+    [data-colony-full-app-shell="true"]
+  )
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"] {
+  --sidebar-active-foreground: var(--colony-sidebar-selected-foreground);
+  background-color: var(--colony-workspace-link-color);
+  box-shadow: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+:root.dark[data-buzz-sidebar][data-prominent-active-tab]:has(
+    [data-colony-full-app-shell="true"]
+  )
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"] {
+  color: #19171d;
 }
 
 :root:has([data-colony-full-app-shell="true"])

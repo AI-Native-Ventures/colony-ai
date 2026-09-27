@@ -1176,7 +1176,7 @@ test("Factory navigation stays separate from legacy project browsing", async ({
   );
   await expect(sidebarProject.locator('[data-sidebar="menu-label"]')).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
 
   await sidebarProject.click();

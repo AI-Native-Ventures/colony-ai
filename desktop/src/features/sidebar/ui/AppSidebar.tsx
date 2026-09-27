@@ -979,6 +979,9 @@ export function AppSidebar({
                   <SidebarSoftwareFactoryGroup
                     isActive={selectedView === "factory"}
                     isProjectsActive={selectedView === "projects"}
+                    selectedChannelId={
+                      selectedView === "channel" ? selectedChannelId : null
+                    }
                     onSelectFactory={onSelectFactory}
                     onSelectSettings={onSelectSettings}
                     scope={factoryScope}

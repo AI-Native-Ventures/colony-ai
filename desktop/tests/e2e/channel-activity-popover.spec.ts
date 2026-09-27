@@ -244,11 +244,11 @@ async function seedChannelActivity(
     );
   }
 
-  // The selected channel uses selected weight; thread activity still shows a
+  // C1 keeps channel labels at the same weight; thread activity still shows a
   // dot and does not add a numeric badge.
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "650",
+    "450",
   );
   await expect(page.getByTestId("channel-unread-general")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();

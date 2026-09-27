@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Cpu, Factory } from "lucide-react";
 
 import { FactoryNavigator } from "@/features/factory/ui/FactoryNavigator";
@@ -15,17 +16,26 @@ import type { FactoryScope } from "@/shared/api/factoryRuntime";
 export function SidebarSoftwareFactoryGroup({
   isActive,
   isProjectsActive,
+  selectedChannelId,
   onSelectFactory,
   onSelectSettings,
   scope,
 }: {
   isActive: boolean;
   isProjectsActive: boolean;
+  selectedChannelId: string | null;
   onSelectFactory: () => void;
   onSelectSettings: (section?: SettingsSection) => void;
   scope: FactoryScope;
 }) {
-  const showFactoryDestinations = isActive || isProjectsActive;
+  const [activeProjectChannelId, setActiveProjectChannelId] = React.useState<
+    string | null
+  >(null);
+  const showFactoryDestinations =
+    isActive ||
+    isProjectsActive ||
+    (selectedChannelId !== null &&
+      selectedChannelId === activeProjectChannelId);
 
   return (
     <section
@@ -54,7 +64,9 @@ export function SidebarSoftwareFactoryGroup({
           className="sidebar-software-factory-content"
           data-testid="sidebar-software-factory-content"
         >
-          <SidebarProjectsSection />
+          <SidebarProjectsSection
+            onProjectChannelSelect={setActiveProjectChannelId}
+          />
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
