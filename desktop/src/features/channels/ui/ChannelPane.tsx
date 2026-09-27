@@ -672,9 +672,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               alwaysShowMessageIdentity={
                 isHuddleTranscript || (workspaceChrome && hasOpenMessageThread)
               }
-              compactThreadSummaryAvatars={
-                workspaceChrome && hasOpenMessageThread
-              }
+              compactThreadSummaryAvatars
               hideAgentAccessBadges={isHuddleTranscript}
               pinnedIntro={
                 isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined
