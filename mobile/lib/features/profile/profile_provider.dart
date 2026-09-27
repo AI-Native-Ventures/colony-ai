@@ -199,7 +199,9 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
         ..remove('display_name')
         ..remove('name');
     }
-    if (patch['picture'] == null) nextMetadata.remove('picture');
+    if (patch.containsKey('picture') && patch['picture'] == null) {
+      nextMetadata.remove('picture');
+    }
     final relay = SignedEventRelay(session: session, nsec: context.config.nsec);
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final currentCreatedAt = currentHead?.createdAt ?? 0;

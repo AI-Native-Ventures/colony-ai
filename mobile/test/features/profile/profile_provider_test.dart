@@ -79,6 +79,40 @@ void main() {
     );
   });
 
+  test(
+    'clearing avatar removes picture and preserves other metadata',
+    () async {
+      final keys = nostr.Keys.generate();
+      final relaySession = _ProfileRelaySession(
+        NostrEvent(
+          id: 'profile-with-avatar',
+          pubkey: keys.public,
+          createdAt: 1,
+          kind: EventKind.profile,
+          tags: const [],
+          content: jsonEncode({
+            'display_name': 'Alice',
+            'about': 'Building Buzz',
+            'picture': 'https://relay.example/alice.png',
+          }),
+          sig: 'sig',
+        ),
+      );
+      final container = _profileContainer(keys.nsec, relaySession);
+      addTearDown(container.dispose);
+
+      await container.read(profileProvider.future);
+      await container.read(profileProvider.notifier).clearAvatar();
+
+      final content =
+          jsonDecode(relaySession.published.single.content)
+              as Map<String, dynamic>;
+      expect(content.containsKey('picture'), isFalse);
+      expect(content['display_name'], 'Alice');
+      expect(content['about'], 'Building Buzz');
+    },
+  );
+
   test('confirmed profile save survives an older in-flight batch', () async {
     final keys = nostr.Keys.generate();
     final owner = nostr.Keys.generate();
