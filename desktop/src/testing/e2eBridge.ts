@@ -35,6 +35,8 @@ import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
   REFERENCE_HOME_VISUAL_FIXTURE,
+  REFERENCE_SALES_UNREAD_REPLY_ID,
+  REFERENCE_SALES_UNREAD_ROOT_ID,
   REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
   referenceChannelSeeds,
@@ -5074,6 +5076,9 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
       channelId === REFERENCE_CHANNEL_IDS.sales
         ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
         : [];
+    if (channelId === REFERENCE_CHANNEL_IDS.sales) {
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_UNREAD_ROOT_ID);
+    }
     mockMessages.set(channelId, referenceSeeded);
     return referenceSeeded;
   }
@@ -15995,12 +16000,33 @@ export function maybeInstallE2eTauriMocks() {
         const results: UnreadCatchUpChannelResult[] =
           request.request.channels.map((channel) => {
             const events = getMockMessageStore(channel.id);
+            const activityRows =
+              referenceWorkspaceActive &&
+              channel.id === REFERENCE_CHANNEL_IDS.sales
+                ? events
+                    .filter(
+                      (event) =>
+                        event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                        getThreadReferenceFromTags(event.tags).parentEventId !==
+                          null,
+                    )
+                    .map((event) => ({
+                      id: event.id,
+                      kind: event.kind,
+                      pubkey: event.pubkey,
+                      content: event.content,
+                      createdAt: event.created_at,
+                      channelId: channel.id,
+                      channelName: "Sales",
+                      tags: [...event.tags],
+                    }))
+                : [];
             return {
               status: "success",
               channelId: channel.id,
               observedEvents: [],
               maxTrigger: 0,
-              activityRows: [],
+              activityRows,
               discovered: {
                 participated: [],
                 authored: events
