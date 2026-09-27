@@ -1678,6 +1678,27 @@ fn relay_head_event<T: Serialize>(
     )
 }
 
+pub(crate) fn relay_global_head_event<T: Serialize>(
+    kind: u32,
+    d_tag: &str,
+    content: &T,
+    previous: Option<&StoredEvent>,
+    state: &AppState,
+) -> Result<Event, IngestError> {
+    let now = nostr::Timestamp::now().as_secs();
+    let created_at = previous.map_or(now, |stored| {
+        now.max(stored.event.created_at.as_secs().saturating_add(1))
+    });
+    let content = serde_json::to_string(content).map_err(internal)?;
+    let d_tag = Tag::parse(["d", d_tag])
+        .map_err(|error| internal(format!("company goal d tag: {error}")))?;
+    EventBuilder::new(Kind::Custom(kind as u16), content)
+        .tag(d_tag)
+        .custom_created_at(nostr::Timestamp::from_secs(created_at))
+        .sign_with_keys(&state.relay_keypair)
+        .map_err(internal)
+}
+
 fn relay_event_at<T: Serialize>(
     kind: u32,
     channel_id: Uuid,
