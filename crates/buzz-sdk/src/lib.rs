@@ -16,6 +16,8 @@ pub mod broker;
 pub mod builders;
 /// Typed event builders for Colony business records.
 pub mod business_records;
+/// Typed event builders for Colony company records.
+pub mod company_records;
 pub mod mentions;
 pub mod nip_oa;
 

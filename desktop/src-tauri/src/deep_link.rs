@@ -369,7 +369,7 @@ fn parse_join_deep_link(url: &Url) -> Option<serde_json::Value> {
 
 /// Hosts of the `buzz://` git-entity links built by
 /// `desktop/src/shared/lib/entityLink.ts` and `crates/buzz-cli/src/links.rs`.
-const ENTITY_LINK_HOSTS: [&str; 4] = ["repo", "project", "pr", "issue"];
+const ENTITY_LINK_HOSTS: [&str; 5] = ["repo", "project", "pr", "issue", "goal"];
 
 fn is_hex64(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
@@ -391,7 +391,7 @@ fn is_linkable_dtag(value: &str) -> bool {
         && !value.contains("..")
 }
 
-/// Validate a `buzz://repo|project|pr|issue?…` link and return it verbatim
+/// Validate a `buzz://repo|project|pr|issue?…` or `buzz://goal/<uuid>` link and return it verbatim
 /// for the frontend, which re-parses it with `parseEntityLink` before
 /// navigating. Validating here too keeps a malformed link from raising and
 /// focusing the window for a navigation that would then be declined.
@@ -428,6 +428,22 @@ fn parse_entity_deep_link(url: &Url) -> Option<()> {
     let host = url.host_str()?;
     if !ENTITY_LINK_HOSTS.contains(&host) {
         return None;
+    }
+    if host == "goal" {
+        if url.query().is_some()
+            || url.fragment().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.port().is_some()
+        {
+            return None;
+        }
+        let id = url.path().strip_prefix('/')?;
+        let goal_id = uuid::Uuid::parse_str(id).ok()?;
+        if goal_id.to_string() != id.to_ascii_lowercase() {
+            return None;
+        }
+        return Some(());
     }
     if !matches!(url.path(), "" | "/") || url.fragment().is_some() {
         return None;

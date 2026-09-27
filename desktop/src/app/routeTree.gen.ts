@@ -16,6 +16,7 @@ import { Route as projectsRouteImport } from "./routes/projects";
 import { Route as powerRouteImport } from "./routes/power";
 import { Route as pipelineRouteImport } from "./routes/pipeline";
 import { Route as leadsRouteImport } from "./routes/leads";
+import { Route as goalsRouteImport } from "./routes/goals";
 import { Route as factoryRouteImport } from "./routes/factory";
 import { Route as discoveryRouteImport } from "./routes/discovery";
 import { Route as clientsRouteImport } from "./routes/clients";
@@ -32,6 +33,9 @@ import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$pro
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as goalsDotreferenceRouteImport } from "./routes/goals.reference";
+import { Route as goalsDotnewRouteImport } from "./routes/goals.new";
+import { Route as goalsDotgoalIdRouteImport } from "./routes/goals.$goalId";
 import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
 import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
@@ -42,6 +46,12 @@ import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sa
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
+import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
+import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
+import { Route as goalsDotgoalIdDoteditRouteImport } from "./routes/goals.$goalId.edit";
+import { Route as goalsDotgoalIdDotdeleteRouteImport } from "./routes/goals.$goalId.delete";
+import { Route as goalsDotgoalIdDotarchiveRouteImport } from "./routes/goals.$goalId.archive";
 import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
@@ -101,6 +111,11 @@ const pipelineRoute = pipelineRouteImport.update({
 const leadsRoute = leadsRouteImport.update({
   id: "/leads",
   path: "/leads",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsRoute = goalsRouteImport.update({
+  id: "/goals",
+  path: "/goals",
   getParentRoute: () => rootRouteImport,
 } as any);
 const factoryRoute = factoryRouteImport.update({
@@ -183,6 +198,21 @@ const messagesDotnewRoute = messagesDotnewRouteImport.update({
   path: "/messages/new",
   getParentRoute: () => rootRouteImport,
 } as any);
+const goalsDotreferenceRoute = goalsDotreferenceRouteImport.update({
+  id: "/goals/reference",
+  path: "/goals/reference",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotnewRoute = goalsDotnewRouteImport.update({
+  id: "/goals/new",
+  path: "/goals/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdRoute = goalsDotgoalIdRouteImport.update({
+  id: "/goals/$goalId",
+  path: "/goals/$goalId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const factoryDotstatesRoute = factoryDotstatesRouteImport.update({
   id: "/factory/states",
   path: "/factory/states",
@@ -237,6 +267,39 @@ const salesDotleadDotprospectIdRoute =
     path: "/sales/lead/$prospectId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const goalsDotgoalIdDotsubgoalRoute =
+  goalsDotgoalIdDotsubgoalRouteImport.update({
+    id: "/goals/$goalId/subgoal",
+    path: "/goals/$goalId/subgoal",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const goalsDotgoalIdDotshareRoute = goalsDotgoalIdDotshareRouteImport.update({
+  id: "/goals/$goalId/share",
+  path: "/goals/$goalId/share",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotprogressRoute =
+  goalsDotgoalIdDotprogressRouteImport.update({
+    id: "/goals/$goalId/progress",
+    path: "/goals/$goalId/progress",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const goalsDotgoalIdDoteditRoute = goalsDotgoalIdDoteditRouteImport.update({
+  id: "/goals/$goalId/edit",
+  path: "/goals/$goalId/edit",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotdeleteRoute = goalsDotgoalIdDotdeleteRouteImport.update({
+  id: "/goals/$goalId/delete",
+  path: "/goals/$goalId/delete",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotarchiveRoute =
+  goalsDotgoalIdDotarchiveRouteImport.update({
+    id: "/goals/$goalId/archive",
+    path: "/goals/$goalId/archive",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const factoryDotreviewDotrunIdRoute =
   factoryDotreviewDotrunIdRouteImport.update({
     id: "/factory/review/$runId",
@@ -274,6 +337,7 @@ export interface FileRoutesByFullPath {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -291,6 +355,9 @@ export interface FileRoutesByFullPath {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
@@ -305,6 +372,12 @@ export interface FileRoutesByFullPath {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -318,6 +391,7 @@ export interface FileRoutesByTo {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -335,6 +409,9 @@ export interface FileRoutesByTo {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
@@ -349,6 +426,12 @@ export interface FileRoutesByTo {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -363,6 +446,7 @@ export interface FileRoutesById {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -380,6 +464,9 @@ export interface FileRoutesById {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
@@ -394,6 +481,12 @@ export interface FileRoutesById {
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -409,6 +502,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/factory"
+    | "/goals"
     | "/leads"
     | "/pipeline"
     | "/power"
@@ -426,6 +520,9 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
@@ -440,6 +537,12 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -453,6 +556,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/factory"
+    | "/goals"
     | "/leads"
     | "/pipeline"
     | "/power"
@@ -470,6 +574,9 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
@@ -484,6 +591,12 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -497,6 +610,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/factory"
+    | "/goals"
     | "/leads"
     | "/pipeline"
     | "/power"
@@ -514,6 +628,9 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
@@ -528,6 +645,12 @@ export interface FileRouteTypes {
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -542,6 +665,7 @@ export interface RootRouteChildren {
   clientsRoute: typeof clientsRoute;
   discoveryRoute: typeof discoveryRoute;
   factoryRoute: typeof factoryRoute;
+  goalsRoute: typeof goalsRoute;
   leadsRoute: typeof leadsRoute;
   pipelineRoute: typeof pipelineRoute;
   powerRoute: typeof powerRoute;
@@ -559,6 +683,9 @@ export interface RootRouteChildren {
   factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
   factoryDotsessionsRoute: typeof factoryDotsessionsRoute;
   factoryDotstatesRoute: typeof factoryDotstatesRoute;
+  goalsDotgoalIdRoute: typeof goalsDotgoalIdRoute;
+  goalsDotnewRoute: typeof goalsDotnewRoute;
+  goalsDotreferenceRoute: typeof goalsDotreferenceRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
@@ -573,6 +700,12 @@ export interface RootRouteChildren {
   factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
   factoryDotprojectDotprojectIdRoute: typeof factoryDotprojectDotprojectIdRoute;
   factoryDotreviewDotrunIdRoute: typeof factoryDotreviewDotrunIdRoute;
+  goalsDotgoalIdDotarchiveRoute: typeof goalsDotgoalIdDotarchiveRoute;
+  goalsDotgoalIdDotdeleteRoute: typeof goalsDotgoalIdDotdeleteRoute;
+  goalsDotgoalIdDoteditRoute: typeof goalsDotgoalIdDoteditRoute;
+  goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
+  goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
+  goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
@@ -657,6 +790,13 @@ declare module "@tanstack/react-router" {
       path: "/leads";
       fullPath: "/leads";
       preLoaderRoute: typeof leadsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals": {
+      id: "/goals";
+      path: "/goals";
+      fullPath: "/goals";
+      preLoaderRoute: typeof goalsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/factory": {
@@ -771,6 +911,27 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof messagesDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/goals/reference": {
+      id: "/goals/reference";
+      path: "/goals/reference";
+      fullPath: "/goals/reference";
+      preLoaderRoute: typeof goalsDotreferenceRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/new": {
+      id: "/goals/new";
+      path: "/goals/new";
+      fullPath: "/goals/new";
+      preLoaderRoute: typeof goalsDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId": {
+      id: "/goals/$goalId";
+      path: "/goals/$goalId";
+      fullPath: "/goals/$goalId";
+      preLoaderRoute: typeof goalsDotgoalIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/factory/states": {
       id: "/factory/states";
       path: "/factory/states";
@@ -841,6 +1002,48 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/goals/$goalId/subgoal": {
+      id: "/goals/$goalId/subgoal";
+      path: "/goals/$goalId/subgoal";
+      fullPath: "/goals/$goalId/subgoal";
+      preLoaderRoute: typeof goalsDotgoalIdDotsubgoalRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/share": {
+      id: "/goals/$goalId/share";
+      path: "/goals/$goalId/share";
+      fullPath: "/goals/$goalId/share";
+      preLoaderRoute: typeof goalsDotgoalIdDotshareRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/progress": {
+      id: "/goals/$goalId/progress";
+      path: "/goals/$goalId/progress";
+      fullPath: "/goals/$goalId/progress";
+      preLoaderRoute: typeof goalsDotgoalIdDotprogressRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/edit": {
+      id: "/goals/$goalId/edit";
+      path: "/goals/$goalId/edit";
+      fullPath: "/goals/$goalId/edit";
+      preLoaderRoute: typeof goalsDotgoalIdDoteditRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/delete": {
+      id: "/goals/$goalId/delete";
+      path: "/goals/$goalId/delete";
+      fullPath: "/goals/$goalId/delete";
+      preLoaderRoute: typeof goalsDotgoalIdDotdeleteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/archive": {
+      id: "/goals/$goalId/archive";
+      path: "/goals/$goalId/archive";
+      fullPath: "/goals/$goalId/archive";
+      preLoaderRoute: typeof goalsDotgoalIdDotarchiveRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/factory/review/$runId": {
       id: "/factory/review/$runId";
       path: "/factory/review/$runId";
@@ -886,6 +1089,7 @@ const rootRouteChildren: RootRouteChildren = {
   clientsRoute: clientsRoute,
   discoveryRoute: discoveryRoute,
   factoryRoute: factoryRoute,
+  goalsRoute: goalsRoute,
   leadsRoute: leadsRoute,
   pipelineRoute: pipelineRoute,
   powerRoute: powerRoute,
@@ -903,6 +1107,9 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotprojectsRoute: factoryDotprojectsRoute,
   factoryDotsessionsRoute: factoryDotsessionsRoute,
   factoryDotstatesRoute: factoryDotstatesRoute,
+  goalsDotgoalIdRoute: goalsDotgoalIdRoute,
+  goalsDotnewRoute: goalsDotnewRoute,
+  goalsDotreferenceRoute: goalsDotreferenceRoute,
   messagesDotnewRoute: messagesDotnewRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
@@ -917,6 +1124,12 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,
   factoryDotprojectDotprojectIdRoute: factoryDotprojectDotprojectIdRoute,
   factoryDotreviewDotrunIdRoute: factoryDotreviewDotrunIdRoute,
+  goalsDotgoalIdDotarchiveRoute: goalsDotgoalIdDotarchiveRoute,
+  goalsDotgoalIdDotdeleteRoute: goalsDotgoalIdDotdeleteRoute,
+  goalsDotgoalIdDoteditRoute: goalsDotgoalIdDoteditRoute,
+  goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
+  goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
+  goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,

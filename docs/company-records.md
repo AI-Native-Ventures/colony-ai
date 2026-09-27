@@ -35,9 +35,9 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 - **Goals are community-wide.** Goal commands and heads carry no `h` tag. The
   kinds are global-only (`is_global_only_kind`), so every authenticated member
   of the community can read them and channel-scoped tokens cannot write them.
-  The d-tag is `company:<community-uuid>:goal:<goal-uuid>`. Goal commands are
-  brokered by their own handler, not the business-record broker, which
-  requires a channel.
+  The d-tag is `company:goal:<goal-uuid>`. The relay resolves the community
+  from the host. Goal commands are brokered by their own handler, not the
+  business-record broker, which requires a channel.
 - **Asks are channel-scoped.** Ask commands carry exactly one `h` tag (the
   channel of the thread) and one d-tag
   `channel:<channel-uuid>:ask:<ask-uuid>`. Reading follows channel access.
@@ -163,8 +163,16 @@ groups by channel when there are many, and links each row to its thread.
 ## Goals
 
 Goals are company-wide. Every goal has a done condition in plain words.
-Reaching a numeric target or completing linked work never marks a goal
-achieved; only an explicit `achieve` action does.
+The d-tag is `company:goal:<goal-uuid>`; the relay resolves the community from
+the host and scopes records there. Clients do not include a community UUID in
+goal coordinates.
+
+Reaching a numeric target or completing linked work never changes goal status.
+Only a person selecting `achieved` in an explicit progress or status action can
+mark a goal achieved.
+
+NEEDS_API: There is no authoritative company profile record for a mission yet.
+Goals do not display a mission line until that record exists.
 
 ### Goal action, kind 47031
 
@@ -175,11 +183,11 @@ action's payload:
 | --- | --- | --- |
 | `create` | `goal` | Root goal: owner or admin. Sub-goal: owner, admin, or the parent's owner. |
 | `update` | `goal` | Owner, admin, or the goal's owner. |
-| `progress` | `progress` | Owner, admin, or the goal's owner. `evidence` required. |
+| `progress` | `progress`; optional `status` | Owner, admin, or the goal's owner. `evidence` required. A selected status is saved in the same head update as progress. |
 | `set_status` | `status`, `reason` | `active`, `off_pace` or `achieved`. Owner, admin, or the goal's owner. |
-| `archive` | `reason` | Owner, admin, or the goal's owner. Sub-goals stay active. |
+| `archive` | optional `reason` | Owner, admin, or the goal's owner. A supplied reason must be non-empty and at most 1000 characters. Sub-goals stay active. |
 | `restore` | none | Owner or admin. Restores to `active`. |
-| `delete` | `reason` | Owner or admin. Rejected while the goal has non-deleted sub-goals or linked work; the error lists them. |
+| `delete` | optional `reason` | Owner or admin. A supplied reason must be non-empty and at most 1000 characters. Rejected while the goal has non-deleted sub-goals or linked work; the error lists them. |
 
 `goal` contains `schemaVersion`, `goalId`, optional `parentGoalId`, `title`
 (1 to 180 characters), `ownerPubkey`, optional `dueDate` (`YYYY-MM-DD`),
@@ -196,8 +204,10 @@ Rules enforced by the relay:
 - A parent must exist, be in the same community and not be deleted.
 - Changing `parentGoalId` must not create a cycle; the relay walks the parent
   chain under the goal-tree lock.
-- `create` and `update` never set `status`; status changes go through
-  `set_status`, `archive`, `restore` and `delete`.
+- `create` and `update` never set `status`. `progress` may carry an explicit
+  `status` with its required evidence, and the progress and status are persisted
+  together in one head update. `set_status` changes status without recording
+  progress and requires a reason. Nothing marks a goal achieved automatically.
 
 The relay emits kind 30642 `GoalHead`: the `goal` fields plus `status`
 (`active`, `off_pace`, `achieved`, `archived`, `deleted`), the latest
