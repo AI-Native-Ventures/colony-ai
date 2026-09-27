@@ -386,6 +386,15 @@ test.describe("visual comparison captures", () => {
           entry.referenceInventoryRoute === "channel/sales" &&
           usesReferenceWorkspace
         ) {
+          const channelTabs = appPage.getByTestId("channel-view-tabs");
+          await expect(channelTabs).toHaveText(
+            "DiscussionWorkKnowledgeCanvasFiles",
+          );
+          if (!entry.appRoute.includes("?thread=")) {
+            await expect(
+              appPage.locator(".colony-channel-description"),
+            ).toHaveText("From first hello to lasting partnerships.");
+          }
           const salesTimeline = appPage.getByTestId("message-timeline");
           await expect(
             salesTimeline.locator(

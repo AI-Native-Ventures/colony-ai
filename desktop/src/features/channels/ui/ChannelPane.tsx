@@ -647,7 +647,7 @@ export const ChannelPane = React.memo(function ChannelPane({
           }
         >
           {isHuddleTranscript ? null : header}
-          {workspaceChrome && activeChannel && hasOpenMessageThread ? (
+          {workspaceChrome && activeChannel?.channelType === "stream" ? (
             <ChannelWorkspaceTabs />
           ) : null}
           {isHuddleTranscript && huddleThreadRepliesError ? (
