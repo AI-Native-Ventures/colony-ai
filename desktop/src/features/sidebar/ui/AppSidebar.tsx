@@ -384,6 +384,13 @@ export function AppSidebar({
     [],
   );
 
+  const handleCreateChannelInSection = React.useCallback(
+    (sectionId: string) => {
+      onBrowseChannels?.((channelId) => assignChannel(channelId, sectionId));
+    },
+    [assignChannel, onBrowseChannels],
+  );
+
   const handleCreateSectionConfirm = React.useCallback(
     (value: SectionDialogValue) => {
       const section = createSection(value.name, value.icon);

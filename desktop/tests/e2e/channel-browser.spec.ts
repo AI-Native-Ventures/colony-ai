@@ -234,7 +234,7 @@ test("sidebar add-channel button creates without treating the click as a callbac
   await expect(page.getByTestId("stream-list")).toContainText(channelName);
 });
 
-test("custom section add button creates directly into that section", async ({
+test("custom section add action stays out of the pointer header and creates by keyboard", async ({
   page,
 }) => {
   await seedCustomSection(page);
@@ -244,7 +244,10 @@ test("custom section add button creates directly into that section", async ({
     `section-actions-${CUSTOM_SECTION.id}-quick-create`,
   );
   await expect(addButton).toHaveAccessibleName("Add channel to Projects");
-  await addButton.click();
+  await page.getByTestId(`section-title-${CUSTOM_SECTION.id}`).hover();
+  await expect(addButton).toHaveCSS("opacity", "0");
+  await addButton.focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
 
   const channelName = `section-created-${Date.now()}`;
