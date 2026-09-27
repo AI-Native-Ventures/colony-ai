@@ -20,6 +20,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { useCommittedEmptyTimeline } from "./useCommittedEmptyTimeline";
 import { UnreadPill, unreadCountLabel } from "@/shared/ui/UnreadPill";
 import { ChannelIntroBlock, type ChannelIntro } from "./ChannelIntroBlock";
+import { DayDivider } from "./DayDivider";
 import { MessageTimelineErrorCard } from "./MessageTimelineErrorCard";
 import { TimelineSkeleton, useTimelineSkeletonRows } from "./TimelineSkeleton";
 import { TimelineMessageList } from "./TimelineMessageList";
@@ -464,6 +465,15 @@ const MessageTimelineBase = React.forwardRef<
   const showChannelIntroOnly = activeChannelIntro !== null && !showMessageList;
   const showPinnedIntroOnly = activePinnedIntro !== null && !showMessageList;
   const omitHistoryLeadIn = showChannelIntroOnly || showPinnedIntroOnly;
+  const referenceWorkspaceWindowLabel =
+    window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__;
+  const referenceWindowDayLabel =
+    hasOlderMessages &&
+    !historyExhausted &&
+    !hideDayDividers &&
+    referenceWorkspaceWindowLabel?.channelId === channelId
+      ? (referenceWorkspaceWindowLabel?.label ?? null)
+      : null;
 
   const prepareForOwnMessage = React.useCallback(() => {
     // The user's own send is the deliberate Zulip exception: release buffered
@@ -645,8 +655,17 @@ const MessageTimelineBase = React.forwardRef<
             .
           </p>
         </div>
+      ) : referenceWindowDayLabel ? (
+        <div className="pb-2 pt-3">
+          <DayDivider label={referenceWindowDayLabel} sticky={false} />
+        </div>
       ) : null,
-    [activeChannelIntro, activeDirectMessageIntro, activePinnedIntro],
+    [
+      activeChannelIntro,
+      activeDirectMessageIntro,
+      activePinnedIntro,
+      referenceWindowDayLabel,
+    ],
   );
 
   const handleVirtualizerRangeChanged = React.useCallback(() => {
@@ -687,7 +706,9 @@ const MessageTimelineBase = React.forwardRef<
       onOpenThread={onOpenThread}
       isSendingVideoReviewComment={isSendingVideoReviewComment}
       onSendVideoReviewComment={onSendVideoReviewComment}
-      onStartReached={loadOlderViaVirtualizer}
+      onStartReached={
+        referenceWindowDayLabel ? undefined : loadOlderViaVirtualizer
+      }
       onToggleReaction={onToggleReaction}
       onVirtualizerApiChange={setTimelineVirtualizerApi}
       onVirtualizerRangeChanged={handleVirtualizerRangeChanged}

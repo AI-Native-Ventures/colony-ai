@@ -397,6 +397,9 @@ test.describe("visual comparison captures", () => {
           }
           const salesTimeline = appPage.getByTestId("message-timeline");
           await expect(
+            salesTimeline.getByTestId("message-timeline-day-divider"),
+          ).toHaveText("Today");
+          await expect(
             salesTimeline.locator(
               '[data-message-id="reference-sales-lerato-0914"]',
             ),

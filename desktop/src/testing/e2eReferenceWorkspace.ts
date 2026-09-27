@@ -43,6 +43,7 @@ export const REFERENCE_HOME_UNREAD_IDS = [
 export const REFERENCE_SALES_UNREAD_ROOT_ID = "reference-sales-unread-root";
 export const REFERENCE_SALES_UNREAD_REPLY_ID = "reference-sales-unread-reply";
 export const REFERENCE_SALES_VOICE_NOTE_ID = "reference-sales-lerato-0950";
+export const REFERENCE_SALES_WINDOW_START_DAY_LABEL = "Today";
 // The Sales capture opens within a channel that has earlier history above the viewport.
 export const REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY = true;
 
