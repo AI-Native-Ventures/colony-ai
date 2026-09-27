@@ -79,6 +79,13 @@ class ForumPostsView extends HookConsumerWidget {
           if (posts.isEmpty) {
             return _EmptyState(isMember: isMember, isArchived: isArchived);
           }
+          final entries = <({String? heading, ForumPost? post})>[];
+          for (final group in _forumPostGroups(context, posts)) {
+            entries.add((heading: group.title, post: null));
+            for (final post in group.posts) {
+              entries.add((heading: null, post: post));
+            }
+          }
           return BeeRefreshIndicator(
             onRefresh: () async {
               ref.invalidate(forumPostsProvider(channelId));
@@ -92,16 +99,31 @@ class ForumPostsView extends HookConsumerWidget {
                       titleContentHeight: MobileLayoutTokens.appBarHeight,
                     ) -
                     Grid.half,
-                left: 16,
-                right: 16,
-                bottom: Grid.xs,
+                left: Grid.xs,
+                right: Grid.xs,
+                bottom: MobileLayoutTokens.scrollBottomPadding,
               ),
-              itemCount: posts.length + 1,
-              separatorBuilder: (_, index) =>
-                  SizedBox(height: index == 0 ? 8 : 10),
+              itemCount: entries.length,
+              separatorBuilder: (_, index) => SizedBox(
+                height: entries[index].heading == null ? Grid.xxs : Grid.half,
+              ),
               itemBuilder: (context, index) {
-                if (index == 0) return const _RecentSortIndicator();
-                final post = posts[index - 1];
+                final entry = entries[index];
+                if (entry.heading case final heading?) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Grid.half,
+                      vertical: Grid.half,
+                    ),
+                    child: Text(
+                      heading,
+                      style: context.mobileTypography.identityName.copyWith(
+                        color: context.mobileTokens.ink,
+                      ),
+                    ),
+                  );
+                }
+                final post = entry.post!;
                 return ForumPostCard(
                   post: post,
                   currentPubkey: currentPubkey,
@@ -139,38 +161,38 @@ class ForumPostsView extends HookConsumerWidget {
   }
 }
 
-class _RecentSortIndicator extends StatelessWidget {
-  const _RecentSortIndicator();
+List<({String title, List<ForumPost> posts})> _forumPostGroups(
+  BuildContext context,
+  List<ForumPost> posts,
+) {
+  DateTime weekStart(DateTime date) => DateTime(
+    date.year,
+    date.month,
+    date.day - date.weekday + DateTime.monday,
+  );
 
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Semantics(
-        label: 'Forum posts sorted by recent activity',
-        child: SizedBox(
-          width: 66,
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: context.mobileTokens.soft,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Text(
-              'Recent',
-              style: context.textTheme.labelMedium?.copyWith(
-                color: context.mobileTokens.ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  DateTime activityDate(ForumPost post) => DateTime.fromMillisecondsSinceEpoch(
+    (post.threadSummary?.lastReplyAt ?? post.createdAt) * 1000,
+    isUtc: true,
+  ).toLocal();
+
+  final currentWeek = weekStart(DateTime.now());
+  final previousWeek = currentWeek.subtract(const Duration(days: 7));
+  final grouped = <DateTime, List<ForumPost>>{};
+  for (final post in posts) {
+    grouped.putIfAbsent(weekStart(activityDate(post)), () => []).add(post);
   }
+  return [
+    for (final entry in grouped.entries)
+      (
+        title: entry.key == currentWeek
+            ? 'This week'
+            : entry.key == previousWeek
+            ? 'Last week'
+            : MaterialLocalizations.of(context).formatMonthYear(entry.key),
+        posts: entry.value,
+      ),
+  ];
 }
 
 class _EmptyState extends StatelessWidget {

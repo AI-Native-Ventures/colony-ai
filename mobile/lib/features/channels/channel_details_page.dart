@@ -11,6 +11,7 @@ Future<bool?> showChannelDetailsPage({
   required Channel channel,
   required String? currentPubkey,
   required void Function(BuildContext context, String pubkey) onMemberTap,
+  VoidCallback? openQuickActions,
   String? sectionId,
 }) => Navigator.of(context).push<bool>(
   MaterialPageRoute<bool>(
@@ -18,6 +19,7 @@ Future<bool?> showChannelDetailsPage({
       channel: channel,
       currentPubkey: currentPubkey,
       onMemberTap: onMemberTap,
+      openQuickActions: openQuickActions,
       sectionId: sectionId,
     ),
   ),
@@ -30,12 +32,14 @@ class ChannelDetailsPage extends HookConsumerWidget {
     required this.channel,
     required this.currentPubkey,
     required this.onMemberTap,
+    this.openQuickActions,
     this.sectionId,
   });
 
   final Channel channel;
   final String? currentPubkey;
   final void Function(BuildContext context, String pubkey) onMemberTap;
+  final VoidCallback? openQuickActions;
   final String? sectionId;
 
   @override
@@ -43,9 +47,6 @@ class ChannelDetailsPage extends HookConsumerWidget {
     final displayedChannel = useState(channel);
     final resolvedChannel = displayedChannel.value;
     final scrollController = useScrollController();
-    final heroNameKey = useMemoized(GlobalKey.new);
-    final collapsedTitleOffset = useRef<double?>(null);
-    final showCollapsedTitle = useState(false);
     final headerFrostProgress = useState(0.0);
     final isJoining = useState(false);
     final isMuted =
@@ -104,10 +105,6 @@ class ChannelDetailsPage extends HookConsumerWidget {
         membersAsync.isLoading || agentOwnersAsync.isLoading;
     final lifecycleCapabilitiesUnavailable =
         membersAsync.hasError || agentOwnersAsync.hasError;
-    final memberCount =
-        membersAsync.value?.length ?? resolvedChannel.memberCount;
-    final memberLabel =
-        '$memberCount ${memberCount == 1 ? 'member' : 'members'}';
     final previewMembers = members.take(_channelMemberPreviewLimit).toList();
     final userCache = ref.watch(userCacheProvider);
     final currentSectionId = sectionState.isReady
@@ -127,7 +124,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
     }, [previewPubkeyKey]);
 
     useEffect(() {
-      void updateCollapsedTitle() {
+      void updateHeaderFrost() {
         final nextFrostProgress = !scrollController.hasClients
             ? 0.0
             : (scrollController.offset /
@@ -137,32 +134,11 @@ class ChannelDetailsPage extends HookConsumerWidget {
         if ((headerFrostProgress.value - nextFrostProgress).abs() > 0.001) {
           headerFrostProgress.value = nextFrostProgress;
         }
-
-        final threshold = collapsedTitleOffset.value;
-        if (threshold == null || !context.mounted) return;
-        final nextValue = scrollController.offset >= threshold;
-        if (showCollapsedTitle.value != nextValue) {
-          showCollapsedTitle.value = nextValue;
-        }
       }
 
-      collapsedTitleOffset.value = null;
-      scrollController.addListener(updateCollapsedTitle);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final nameContext = heroNameKey.currentContext;
-        final renderBox = nameContext?.findRenderObject() as RenderBox?;
-        if (renderBox == null || !renderBox.hasSize || !context.mounted) {
-          return;
-        }
-        final nameBottom = renderBox
-            .localToGlobal(Offset(0, renderBox.size.height))
-            .dy;
-        collapsedTitleOffset.value =
-            scrollController.offset + nameBottom - frostedAppBarHeight(context);
-        updateCollapsedTitle();
-      });
-      return () => scrollController.removeListener(updateCollapsedTitle);
-    }, [scrollController, resolvedChannel.name]);
+      scrollController.addListener(updateHeaderFrost);
+      return () => scrollController.removeListener(updateHeaderFrost);
+    }, [scrollController]);
 
     Future<void> openMembers() => showBuzzModalBottomSheet<void>(
       context: context,
@@ -248,14 +224,13 @@ class ChannelDetailsPage extends HookConsumerWidget {
       }
     }
 
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
+    final channelTitle = _humanizedChannelName(resolvedChannel.name);
     return FrostedScaffold(
-      useUtilitySurfaceTheme: true,
       appBar: FrostedAppBar(
-        centerTitle: true,
+        centerTitle: false,
         leading: usesNativeIosGlassBackButton
             ? IosGlassNavigationButton(
                 key: const ValueKey('channel-details-ios-glass-back'),
@@ -266,49 +241,70 @@ class ChannelDetailsPage extends HookConsumerWidget {
                 buttonCenterX: iosGlassChannelHeaderButtonCenterX,
               )
             : null,
-        iconColor: context.colors.primary,
-        actions: [
-          SizedBox(
-            width: usesNativeIosGlassBackButton
-                ? iosGlassChannelHeaderLeadingWidth
-                : 48,
-            height: 48,
-          ),
-        ],
+        iconColor: context.mobileTokens.ink,
+        actions: openQuickActions == null
+            ? const []
+            : [
+                IconButton(
+                  key: const ValueKey('channel-details-quick-actions'),
+                  tooltip: 'Quick actions',
+                  onPressed: openQuickActions,
+                  style: IconButton.styleFrom(
+                    foregroundColor: context.mobileTokens.ink,
+                    backgroundColor: context.mobileTokens.paper,
+                    side: BorderSide(color: context.mobileTokens.line),
+                    shape: const CircleBorder(),
+                  ),
+                  icon: const Icon(LucideIcons.plus),
+                ),
+              ],
         frosted: headerFrostProgress.value > 0,
         frostedSurfaceOpacity: 0.5 * headerFrostProgress.value,
         frostedBlurSigma:
             _channelDetailsHeaderFrostMaxBlurSigma * headerFrostProgress.value,
-        showBottomDivider: headerFrostProgress.value > 0,
-        bottomDividerOpacity: 0.07 * headerFrostProgress.value,
+        showBottomDivider: true,
+        bottomDividerOpacity: 1,
         horizontalInset: Grid.xs - Grid.half,
-        title: AnimatedSwitcher(
-          duration: reducedMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 160),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeOutCubic,
-          child: showCollapsedTitle.value
-              ? Text(
-                  resolvedChannel.name,
-                  key: const ValueKey('channel-details-collapsed-title'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : const SizedBox(
-                  key: ValueKey('channel-details-expanded-title-space'),
-                ),
+        titleContentHeight: MobileLayoutTokens.appBarHeight,
+        titleStyle: context.mobileTypography.identityName.copyWith(
+          color: context.mobileTokens.ink,
+        ),
+        title: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              channelTitle,
+              key: const ValueKey('channel-details-collapsed-title'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.mobileTypography.identityName.copyWith(
+                color: context.mobileTokens.ink,
+              ),
+            ),
+            Text(
+              resolvedChannel.isForum ? 'Forum' : 'Client channel',
+              style: context.mobileTypography.identityDetails.copyWith(
+                color: context.mobileTokens.muted,
+              ),
+            ),
+          ],
         ),
       ),
       body: ListView(
         key: const ValueKey('channel-details-page-list'),
         controller: scrollController,
         padding: EdgeInsets.only(
-          top: frostedAppBarHeight(context) + Grid.xs,
+          top:
+              frostedAppBarHeight(
+                context,
+                titleContentHeight: MobileLayoutTokens.appBarHeight,
+              ) +
+              Grid.xs,
           bottom: MediaQuery.viewPaddingOf(context).bottom + Grid.xs,
         ),
         children: [
-          _ChannelDetailsHero(channel: resolvedChannel, nameKey: heroNameKey),
+          _ChannelDetailsHero(channel: resolvedChannel),
           Padding(
             key: const ValueKey('channel-details-actions'),
             padding: const EdgeInsets.fromLTRB(
@@ -361,7 +357,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
           ),
           AppListCard(
             key: const ValueKey('channel-details-members-card'),
-            label: memberLabel,
+            label: 'In this conversation',
             dividerIndent: Grid.xs + 40 + Grid.xs,
             verticalPadding: _channelDetailsSectionPadding,
             children: [
@@ -573,10 +569,9 @@ class ChannelDetailsPage extends HookConsumerWidget {
 }
 
 class _ChannelDetailsHero extends StatelessWidget {
-  const _ChannelDetailsHero({required this.channel, required this.nameKey});
+  const _ChannelDetailsHero({required this.channel});
 
   final Channel channel;
-  final GlobalKey nameKey;
 
   @override
   Widget build(BuildContext context) {
@@ -588,50 +583,40 @@ class _ChannelDetailsHero extends StatelessWidget {
         Grid.gutter,
         _channelDetailsSectionPadding,
       ),
-      child: Column(
-        children: [
-          Container(
-            key: const ValueKey('channel-details-avatar'),
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: context.colors.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _channelDetailsIcon(channel),
-              size: 32,
-              color: context.colors.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: Grid.xxs),
-          KeyedSubtree(
-            key: const ValueKey('channel-details-name'),
-            child: Text(
-              channel.name,
-              key: nameKey,
+      child: Container(
+        key: const ValueKey('channel-details-hero'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(Grid.xs),
+        decoration: BoxDecoration(
+          gradient: context.appColors.companyWashGradient,
+          borderRadius: BorderRadius.circular(Radii.companyCard),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              channel.isForum ? channel.name : '# ${channel.name}',
+              key: const ValueKey('channel-details-name'),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: context.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
+              style: context.mobileTypography.companyHubTitle.copyWith(
+                color: context.mobileTokens.ink,
               ),
             ),
-          ),
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: Grid.half),
-            Text(
-              description,
-              key: const ValueKey('channel-details-description'),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: context.colors.onSurfaceVariant,
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: Grid.half),
+              Text(
+                description,
+                key: const ValueKey('channel-details-description'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: context.mobileTypography.identityDetails.copyWith(
+                  color: context.mobileTokens.muted,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -665,39 +650,29 @@ class _ChannelMemberPreviewRow extends StatelessWidget {
     // Self/named initials come from the visible label; unnamed members stay
     // keyed to the hex public key so the compact-npub label doesn't render
     // `N` for everyone.
-    final initial = isSelf || hasName
-        ? label[0].toUpperCase()
-        : (member.pubkey.isNotEmpty ? member.pubkey[0].toUpperCase() : '?');
-    final roleLabel = _channelMemberRoleLabel(member.role);
-    final titleStyle = context.textTheme.bodyLarge;
-    final roleStyle = context.textTheme.bodySmall?.copyWith(
-      color: context.colors.onSurfaceVariant,
+    final initials = _channelMemberInitials(
+      label,
+      fallback: member.pubkey.isNotEmpty ? member.pubkey[0].toUpperCase() : '?',
     );
-
-    return AppListRowRaw(
-      leading: AvatarImage(
-        imageUrl: avatarUrl,
-        radius: 20,
-        backgroundColor: context.colors.primaryContainer,
-        fallback: Text(initial),
-        isAgent: member.isBot,
-      ),
-      title: Text.rich(
-        TextSpan(
-          style: titleStyle,
-          children: [
-            TextSpan(text: label),
-            TextSpan(text: ' · $roleLabel', style: roleStyle),
-          ],
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: const _ChannelDetailsChevron(),
+    final roleLabel = _channelMemberRoleLabel(member.role);
+    return IdentityRow(
+      name: label,
+      details: roleLabel,
+      initials: initials,
+      kind: member.isBot ? IdentityKind.agent : IdentityKind.person,
+      imageUrl: avatarUrl,
       onTap: () => onMemberTap(context, member.pubkey),
-      verticalPadding: Grid.xxs,
     );
   }
+}
+
+String _channelMemberInitials(String label, {required String fallback}) {
+  final words = label
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty);
+  final initials = words.take(2).map((word) => word[0].toUpperCase()).join();
+  return initials.isEmpty ? fallback : initials;
 }
 
 String _channelMemberRoleLabel(String role) {
@@ -706,10 +681,12 @@ String _channelMemberRoleLabel(String role) {
   return '${role[0].toUpperCase()}${role.substring(1)}';
 }
 
-IconData _channelDetailsIcon(Channel channel) {
-  if (channel.isPrivate) return LucideIcons.lock;
-  if (channel.isForum) return LucideIcons.messageSquareText;
-  return LucideIcons.hash;
+String _humanizedChannelName(String name) {
+  final words = name.replaceAll(RegExp(r'[-_]'), ' ').split(RegExp(r'\s+'));
+  return words
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
 }
 
 class _ChannelDetailsChevron extends StatelessWidget {

@@ -11,6 +11,7 @@ import 'package:buzz/features/forum/forum_provider.dart';
 import 'package:buzz/features/forum/forum_thread_page.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
 import 'package:buzz/shared/mentions/agent_identity_provider.dart';
+import 'package:buzz/shared/identity/identity_components.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/relay/relay.dart';
@@ -239,17 +240,18 @@ void main() {
   });
 
   group('ForumPostCard', () {
-    testWidgets('matches the r17 note card hierarchy', (tester) async {
+    testWidgets('matches the v5 team note card hierarchy', (tester) async {
       await tester.pumpWidget(
         _buildPostCard(
           post: _makePost(
             content:
-                'This week at Lerato\nThe work that matters this week: '
+                'This week at Lerato\n\nThe work that matters this week: '
                 'Olive Studio, Cedar’s launch, and client reports.',
             threadSummary: ForumThreadSummary(
               replyCount: 3,
               descendantCount: 3,
-              lastReplyAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              lastReplyAt:
+                  DateTime(2026, 9, 28, 9).millisecondsSinceEpoch ~/ 1000,
               participants: const ['alice'],
             ),
           ),
@@ -258,7 +260,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('TEAM NOTE'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
       expect(find.text('This week at Lerato'), findsOneWidget);
       expect(
         find.text(
@@ -267,8 +269,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('3 replies · Alice · Today'), findsOneWidget);
-      expect(find.byType(AvatarImage), findsNothing);
+      expect(find.text('3 replies'), findsOneWidget);
+      expect(find.text('Open note'), findsOneWidget);
+      final avatar = tester.widget<IdentityAvatar>(find.byType(IdentityAvatar));
+      expect(avatar.initials, 'A');
+      expect(avatar.kind, IdentityKind.person);
     });
 
     testWidgets('uses a compact fallback identity in the card footer', (
@@ -287,7 +292,7 @@ void main() {
       expect(find.textContaining('npub140x…etzk'), findsOneWidget);
     });
 
-    testWidgets('keeps the reply footer on one line at large text size', (
+    testWidgets('keeps the reply footer usable at large text size', (
       tester,
     ) async {
       _setSurfaceSize(tester, const Size(240, 600));
@@ -309,9 +314,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final footer = tester.widget<Text>(find.textContaining('replies ·'));
-      expect(footer.maxLines, 1);
-      expect(footer.overflow, TextOverflow.ellipsis);
+      expect(find.textContaining('replies'), findsOneWidget);
+      expect(find.text('Open note'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -590,7 +594,7 @@ void main() {
       );
     });
 
-    testWidgets('shows original post and replies header', (tester) async {
+    testWidgets('shows team note header and empty discussion', (tester) async {
       await tester.pumpWidget(
         _buildThreadPage(
           threadResponse: ForumThreadResponse(
@@ -603,15 +607,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Thread'), findsOneWidget); // App bar title
-      expect(find.text('0 replies'), findsOneWidget);
-      expect(
-        find.text('No replies yet. Be the first to respond.'),
-        findsOneWidget,
-      );
+      expect(find.text('Team note'), findsOneWidget); // App bar title
+      expect(find.text('Discussion'), findsOneWidget);
+      expect(find.text('No replies yet'), findsOneWidget);
+      expect(find.text('Thread root'), findsOneWidget);
     });
 
-    testWidgets('shows reply count with replies', (tester) async {
+    testWidgets('renders replies in the discussion', (tester) async {
       await tester.pumpWidget(
         _buildThreadPage(
           threadResponse: ForumThreadResponse(
@@ -640,8 +642,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('1 reply'), findsOneWidget);
+      expect(find.text('Discussion'), findsOneWidget);
       expect(find.text('Bob'), findsOneWidget);
+      expect(find.text('Great post!'), findsOneWidget);
     });
 
     testWidgets('constrains post and reply timestamps at large text sizes', (
@@ -847,27 +850,13 @@ void main() {
       expect(find.text('Reply to this post\u2026'), findsNothing);
     });
 
-    testWidgets('shows 3-dot in app bar for own post', (tester) async {
+    testWidgets('keeps own-post actions available by long press', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _buildThreadPage(
           threadResponse: ForumThreadResponse(
-            post: _makePost(pubkey: 'self'),
-            replies: const [],
-            totalReplies: 0,
-          ),
-          currentPubkey: 'self',
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byTooltip('Post actions'), findsOneWidget);
-    });
-
-    testWidgets('hides 3-dot in app bar for others post', (tester) async {
-      await tester.pumpWidget(
-        _buildThreadPage(
-          threadResponse: ForumThreadResponse(
-            post: _makePost(pubkey: 'alice'),
+            post: _makePost(pubkey: 'self', content: 'Owned note'),
             replies: const [],
             totalReplies: 0,
           ),
@@ -877,6 +866,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Post actions'), findsNothing);
+      await tester.longPress(find.text('Owned note'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Copy text'), findsOneWidget);
+      expect(find.text('Delete post'), findsOneWidget);
+    });
+
+    testWidgets('does not expose own-post actions for others posts', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildThreadPage(
+          threadResponse: ForumThreadResponse(
+            post: _makePost(pubkey: 'alice', content: 'Other note'),
+            replies: const [],
+            totalReplies: 0,
+          ),
+          currentPubkey: 'self',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Post actions'), findsNothing);
+      await tester.longPress(find.text('Other note'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Copy text'), findsNothing);
+      expect(find.text('Delete post'), findsNothing);
     });
   });
 }

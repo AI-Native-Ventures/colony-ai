@@ -26,7 +26,7 @@ class StickyDateHeaderState {
   int get hashCode => Object.hash(label, translateY);
 }
 
-/// A centered date label with hairlines that remains below the app bar.
+/// A centered date label that remains below the app bar.
 class StickyDateHeader extends StatelessWidget {
   final ValueListenable<StickyDateHeaderState> state;
 
@@ -65,43 +65,17 @@ class StickyDateHeader extends StatelessWidget {
                 child: Opacity(
                   key: const ValueKey('sticky-date-push-off-opacity'),
                   opacity: 1 - pushOffProgress,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Semantics(
-                      header: true,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: Divider(
-                              color: context.mobileTokens.line,
-                              height: 1,
-                              thickness: 1,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Flexible(
-                            flex: 3,
-                            child: Text(
-                              value.label ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: conversationDateTextStyle.copyWith(
-                                color: context.mobileTokens.muted,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 2,
-                            child: Divider(
-                              color: context.mobileTokens.line,
-                              height: 1,
-                              thickness: 1,
-                            ),
-                          ),
-                        ],
+                  child: Semantics(
+                    header: true,
+                    child: Center(
+                      child: Text(
+                        value.label ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: conversationDateTextStyle.copyWith(
+                          color: context.mobileTokens.muted,
+                        ),
                       ),
                     ),
                   ),

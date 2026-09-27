@@ -53,6 +53,21 @@ void threadReplyRefreshTests() {
     );
   }
 
+  void expectThreadContext(WidgetTester tester) {
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('thread-app-bar-title')))
+          .data,
+      'Refresh root',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('thread-app-bar-summary')))
+          .data,
+      'Thread in #general',
+    );
+  }
+
   testWidgets(
     'thread refresh keeps cached replies through retry and recovery',
     (tester) async {
@@ -73,11 +88,11 @@ void threadReplyRefreshTests() {
         find.byKey(const ValueKey('thread-app-bar-summary')),
         findsOneWidget,
       );
-      expect(find.text('1 reply'), findsOneWidget);
+      expectThreadContext(tester);
       expect(findRichText('1 reply · Following'), findsOneWidget);
       container.invalidate(threadRepliesProvider(args));
       await tester.pump();
-      expect(find.text('1 reply'), findsOneWidget);
+      expectThreadContext(tester);
       expect(findRichText('1 reply · Following'), findsOneWidget);
       refresh.completeError(Exception('Transient refresh failure'));
       await tester.pump();
@@ -104,7 +119,7 @@ void threadReplyRefreshTests() {
         ),
       ]);
       await tester.pumpAndSettle();
-      expect(find.text('2 replies'), findsOneWidget);
+      expectThreadContext(tester);
       expect(findRichText('2 replies · Following'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('thread-message-group-fresh-reply')),
@@ -176,7 +191,7 @@ void threadReplyRefreshTests() {
     expect(find.text('Loading replies…'), findsOneWidget);
     reopened.complete([reply]);
     await tester.pumpAndSettle();
-    expect(find.text('1 reply'), findsOneWidget);
+    expectThreadContext(tester);
     expect(findRichText('1 reply · Following'), findsOneWidget);
     expect(find.text('Loading replies…'), findsNothing);
   });
@@ -203,7 +218,7 @@ void threadReplyRefreshTests() {
       find.byKey(const ValueKey('thread-app-bar-summary')),
       findsOneWidget,
     );
-    expect(find.text('0 replies'), findsOneWidget);
+    expectThreadContext(tester);
     expect(findRichText('0 replies · Following'), findsOneWidget);
     expect(find.text('Loading replies…'), findsNothing);
     expect(find.text('Couldn’t load replies'), findsNothing);

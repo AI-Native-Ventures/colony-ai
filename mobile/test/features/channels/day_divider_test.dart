@@ -11,7 +11,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: const Scaffold(body: DayDivider(label: 'Today, 24 September')),
+        home: const Scaffold(body: DayDivider(label: 'Today · 24 September')),
       ),
     );
 
@@ -46,7 +46,7 @@ void main() {
       conversationMessageVerticalPadding(showAuthor: true, authorSpacing: 27),
       const EdgeInsets.only(top: 27),
     );
-    expect(find.text('Today, 24 September'), findsOneWidget);
+    expect(find.text('Today · 24 September'), findsOneWidget);
   });
 
   testWidgets('fades the in-flow date while that day is sticky', (

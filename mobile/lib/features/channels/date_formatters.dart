@@ -72,7 +72,7 @@ String formatConversationDayHeading(int unixSeconds, {DateTime? now}) {
   ).toLocal();
   now ??= DateTime.now();
   if (_calendarDaysBetween(now, date) == 0) {
-    return 'Today, ${_todayMonthDayFormat.format(date)}';
+    return 'Today · ${_todayMonthDayFormat.format(date)}';
   }
   return formatDayHeading(unixSeconds, now: now);
 }
