@@ -163,7 +163,7 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch();
+          const response = await route.fetch({ timeout: 30_000 });
           const stylesheet = await response.text();
           const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
             .map((selector) => `${selector} { display: none !important; }`)
