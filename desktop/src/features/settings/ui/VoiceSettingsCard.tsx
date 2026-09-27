@@ -422,8 +422,8 @@ export function VoiceSettingsCard() {
   return (
     <section className="min-w-0" data-testid="settings-voice">
       <SettingsSectionHeader
-        title="Voice"
-        description="Choose whether Buzz reads new agent responses aloud during an active huddle."
+        title="Voice & audio"
+        description="Your input, playback and agent voices on this device."
       />
 
       <SettingsOptionGroupList>

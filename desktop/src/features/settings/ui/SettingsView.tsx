@@ -67,6 +67,24 @@ type SettingsViewProps = SettingsPanelProps & {
 
 const LAST_SECTIONS_KEY = "colony.settings.last-inner-section.v1";
 
+const R19_SETTINGS_LAYOUT_SECTIONS = new Set<SettingsSection>([
+  "notifications",
+  "voice",
+  "shortcuts",
+  "accessibility",
+  "business-profile",
+  "moderation",
+  "audit",
+  "custom-emoji",
+  "local-archive",
+  "archived-records",
+  "recovery",
+  "storage",
+  "updates",
+  "experimental",
+  "feedback",
+]);
+
 function safeReadLastSections(): Partial<
   Record<SettingsGroupId, SettingsSection>
 > {
@@ -510,6 +528,8 @@ export function SettingsView({
             <div
               className={cn(
                 "w20-route-content",
+                R19_SETTINGS_LAYOUT_SECTIONS.has(activeSection) &&
+                  "w20-route-content-r19",
                 ["profile", "security"].includes(activeSection) &&
                   "w20-route-content-account",
                 activeSection === "appearance" &&
