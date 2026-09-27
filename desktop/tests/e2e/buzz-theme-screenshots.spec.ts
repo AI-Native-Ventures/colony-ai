@@ -928,6 +928,7 @@ test("settings content uses the same inset surface as the main app", async ({
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const searchBox = await page.getByTestId("open-search").boundingBox();
   await page.getByTestId("open-settings").click();
@@ -950,9 +951,10 @@ test("settings content uses the same inset surface as the main app", async ({
   await expect(settingsTopTitle).toHaveCSS("user-select", "none");
   await expect(settingsBackToApp).not.toHaveAttribute("data-tauri-drag-region");
   await expect(settingsBackToApp).toHaveCSS("cursor", "pointer");
+  // The r19 account surface uses a 59px top inset for the profile content.
   await expect(page.getByTestId("settings-content-scroll")).toHaveCSS(
     "padding-top",
-    "24px",
+    "59.03px",
   );
 
   const viewBox = await settingsView.boundingBox();
@@ -965,15 +967,15 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  expect(searchBox.y - backToAppBox.y).toBe(44);
+  expect(searchBox.y - backToAppBox.y).toBe(70);
 
-  // Match the normal app shell: a fixed 40px top chrome strip, then a 1px
-  // top/left inset and 8px right/bottom inset around the rounded content card.
-  expect(surfaceBox.y - viewBox.y).toBe(41);
+  // Match the r19 settings shell: a fixed 60px top chrome strip, a 1px
+  // top/left inset, and the measured right/bottom content insets.
+  expect(surfaceBox.y - viewBox.y).toBe(61);
   expect(surfaceBox.x - viewBox.x).toBe(1);
   expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(8);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
-    8,
+    9,
   );
 
   const topChromeBox = await settingsTopTitle.boundingBox();
