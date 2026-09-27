@@ -755,7 +755,7 @@ pub fn validate_business_command_scope(
         }
         BusinessCommand::ProspectAction(value) => {
             if value.prospect.prospect_id != value.prospect_id
-                || value.prospect.party.party_id.is_nil()
+                || value.prospect.party.party_id != value.prospect_id
             {
                 return Err(BusinessRecordError::InvalidContent);
             }
@@ -892,8 +892,8 @@ mod tests {
     use super::*;
 
     fn example_prospect_action() -> ProspectAction {
-        let party_id = Uuid::from_u128(11);
-        let prospect_id = Uuid::from_u128(12);
+        let party_id = Uuid::from_u128(12);
+        let prospect_id = party_id;
         ProspectAction {
             schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
             prospect_id,
