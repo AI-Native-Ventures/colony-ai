@@ -5,6 +5,10 @@
       "referenceWorkspace": true,
       "referenceSidebarShell": true
     },
+    "referenceIgnoreSelectors": [
+      ".full-sidebar .nav-section button[data-go='team']",
+      ".full-sidebar .nav-section button[data-go='goals']"
+    ],
     "appPrefs": {
       "localStorage": {
         "buzz-follow-system": "false",
@@ -14,7 +18,7 @@
         "buzz-prominent-active-tab": "true",
         "buzz.appearance.fontSize": "default",
         "buzz.appearance.conversationDensity": "comfortable",
-        "buzz-sidebar-width": "220"
+        "buzz-sidebar-width": "244"
       },
       "sessionStorage": {},
       "cookies": {
