@@ -1239,7 +1239,7 @@ pub async fn create_approval_and_suspend_run(
     trace_entry: &serde_json::Value,
     request_event: &nostr::Event,
     channel_id: Uuid,
-) -> Result<(crate::StoredEvent, bool)> {
+) -> Result<(buzz_core::StoredEvent, bool)> {
     let mut tx = pool.begin().await?;
     let token_hash = hash_approval_token(params.token);
     sqlx::query(
@@ -1449,7 +1449,7 @@ pub async fn update_approval_by_stored_hash(
 pub async fn create_workflow_agent_wait(
     pool: &PgPool,
     params: CreateWorkflowAgentWaitParams<'_>,
-) -> Result<(crate::StoredEvent, bool)> {
+) -> Result<(buzz_core::StoredEvent, bool)> {
     if params.agent_pubkey.len() != 32 || params.request_event_id.len() != 32 {
         return Err(DbError::InvalidData(
             "agent wait pubkey and request id must be 32 bytes".to_string(),
@@ -2099,7 +2099,7 @@ impl Db {
     pub async fn create_workflow_agent_wait(
         &self,
         params: CreateWorkflowAgentWaitParams<'_>,
-    ) -> Result<(crate::StoredEvent, bool)> {
+    ) -> Result<(buzz_core::StoredEvent, bool)> {
         crate::workflow::create_workflow_agent_wait(&self.pool, params).await
     }
 
@@ -2261,7 +2261,7 @@ impl Db {
         trace_entry: &serde_json::Value,
         request_event: &nostr::Event,
         channel_id: Uuid,
-    ) -> Result<(crate::StoredEvent, bool)> {
+    ) -> Result<(buzz_core::StoredEvent, bool)> {
         crate::workflow::create_approval_and_suspend_run(
             &self.pool,
             params,
@@ -3387,7 +3387,7 @@ mod postgres_tests {
         .expect("matching wait resumes run");
         assert_eq!(run.status, RunStatus::Running);
         assert_eq!(run.current_step, 1);
-        assert_eq!(run.definition_snapshot, Some(definition));
+        assert_eq!(run.definition_snapshot, Some(definition.clone()));
         let trace = run.execution_trace.as_array().expect("trace array");
         assert_eq!(trace[0]["status"], "completed");
         assert_eq!(trace[0]["output"]["agent_pubkey"], hex::encode(&agent));

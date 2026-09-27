@@ -959,7 +959,7 @@ async fn handle_workflow_status(
         }
     }
 
-    let tx = match persist_command_event(&state.db, tenant, event, Some(channel_id)).await? {
+    let mut tx = match persist_command_event(&state.db, tenant, event, Some(channel_id)).await? {
         PersistResult::Duplicate => {
             return Ok(IngestResult {
                 event_id: event.id.to_hex(),
