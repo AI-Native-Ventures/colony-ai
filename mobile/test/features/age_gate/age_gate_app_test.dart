@@ -5,9 +5,12 @@ import 'package:buzz/app.dart';
 import 'package:buzz/features/age_gate/age_restriction_page.dart';
 import 'package:buzz/features/age_gate/age_signal_push_bootstrap.dart';
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
+import 'package:buzz/features/activity/activity_provider.dart';
+import 'package:buzz/features/activity/feed_item.dart';
 import 'package:buzz/features/channels/unread_badge/unread_badge_provider.dart';
 import 'package:buzz/features/home/home_page.dart';
 import 'package:buzz/features/pairing/pairing_provider.dart';
+import 'package:buzz/features/pulse/pulse_provider.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/huddle/huddle.dart';
 import 'package:nostr/nostr.dart' as nostr;
@@ -20,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -257,6 +261,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ..._todayRouteOverrides(),
             authProvider.overrideWith(() => _AuthenticatedAuthNotifier()),
             relaySessionProvider.overrideWith(() => relaySession),
             ageAllowedNotificationRestorerProvider.overrideWithValue(() async {
@@ -306,6 +311,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ..._todayRouteOverrides(),
             authProvider.overrideWith(() => _AuthenticatedAuthNotifier()),
             relaySessionProvider.overrideWith(() => relaySession),
             ageSignalProvider.overrideWith(
@@ -457,6 +463,21 @@ void main() {
       expect(purges, 1 + ageRestrictedNotificationMaintenancePurgeLimit);
       expect(scheduledMaintenance, isEmpty);
     },
+  );
+}
+
+List<Override> _todayRouteOverrides() => [
+  activityProvider.overrideWith(() => _EmptyActivityNotifier()),
+  globalNotesProvider.overrideWith((_) async => const []),
+];
+
+class _EmptyActivityNotifier extends ActivityNotifier {
+  @override
+  Future<HomeFeedResponse> build() async => HomeFeedResponse(
+    mentions: const [],
+    needsAction: const [],
+    activity: const [],
+    agentActivity: const [],
   );
 }
 

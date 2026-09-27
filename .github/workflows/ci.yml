@@ -55,6 +55,10 @@ jobs:
               - 'deny.toml'
               - '.github/workflows/ci.yml'
               - '.github/workflows/_ci-*.yml'
+              # Relay jobs start their services from docker-compose.yml
+              # through the cached-service-images action.
+              - 'docker-compose.yml'
+              - '.github/actions/cached-service-images/**'
               - 'scripts/run-tests.sh'
               - 'scripts/model-capabilities.json'
               - 'scripts/normative-corpus.json'

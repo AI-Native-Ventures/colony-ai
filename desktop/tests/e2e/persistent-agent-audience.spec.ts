@@ -951,7 +951,7 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).not.toContainText(
     "Future messages in this channel will include this agent.",
   );
-  await expect(autoPinConfirmation).toHaveAttribute("data-side", "left");
+  await expect(autoPinConfirmation).toHaveAttribute("data-side", "right");
   await expect(autoPinConfirmation.locator("span")).toHaveCSS(
     "white-space",
     "nowrap",
@@ -971,8 +971,8 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   if (!addressControlBox || !confirmationBox) {
     throw new Error("Automatic mention confirmation is not laid out");
   }
-  expect(confirmationBox.x + confirmationBox.width).toBeLessThanOrEqual(
-    addressControlBox.x,
+  expect(confirmationBox.x).toBeGreaterThanOrEqual(
+    addressControlBox.x + addressControlBox.width,
   );
   const turnOffAction = autoPinConfirmation.getByRole("button", {
     name: "Turn off",
@@ -1029,6 +1029,11 @@ test("a manual mention persists when automatic mentions are enabled", async ({
       { timeout: 5_000 },
     )
     .toBe(true);
+  await expect(composer.getByTestId("message-composer")).toHaveAttribute(
+    "data-submit-locked",
+    "false",
+    { timeout: 2_500 },
+  );
   await expect(input).toHaveAttribute("contenteditable", "true");
   await input.fill("follow up");
   await expect(

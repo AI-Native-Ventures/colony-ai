@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Moon, Sun } from "lucide-react";
+import { Sun } from "lucide-react";
 import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
 import { useSelfProfileCache } from "@/features/profile/hooks";
@@ -176,7 +176,7 @@ export function SidebarProfileCard({
               </span>
             }
             badgeBox={SIDEBAR_PROFILE_STATUS_BADGE}
-            className="h-6 w-6"
+            className="colony-sidebar-profile-avatar-frame h-6 w-6"
             curve={STATUS_DOT_MASK_CURVE}
             cutout={SIDEBAR_PROFILE_STATUS_CUTOUT}
             size={SIDEBAR_PROFILE_AVATAR_SIZE}
@@ -288,11 +288,7 @@ export function SidebarProfileCard({
           }}
           type="button"
         >
-          {isDark ? (
-            <Moon aria-hidden="true" className="size-3.5" />
-          ) : (
-            <Sun aria-hidden="true" className="size-3.5" />
-          )}
+          <Sun aria-hidden="true" className="size-3.5" />
         </button>
       </div>
     </div>

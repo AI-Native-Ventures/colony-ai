@@ -6,6 +6,8 @@ on:
       - feat/phase1-drive
     paths:
       - ".github/workflows/electron-e2e.yml"
+      - ".github/actions/cached-service-images/**"
+      - "docker-compose.yml"
       - "Cargo.lock"
       - "Justfile"
       - "desktop/electron/**"

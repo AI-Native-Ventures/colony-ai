@@ -30,6 +30,7 @@ export type NoteCardActions = {
   share?: (note: UserNote) => void;
   startDm?: (pubkey: string) => void;
   toggleUpvote?: (note: UserNote, remove: boolean) => Promise<unknown>;
+  toggleFollow?: (pubkey: string, isFollowing: boolean) => Promise<unknown>;
 };
 
 type NoteCardProps = {
@@ -45,6 +46,10 @@ type NoteCardProps = {
   members?: ChannelMember[];
   isAgent?: boolean;
   isOwnNote: boolean;
+  isFollowing?: boolean;
+  isFollowPending?: boolean;
+  layout?: "default" | "today-updates";
+  timestampLabel?: string;
   actions?: NoteCardActions;
 };
 
@@ -146,8 +151,12 @@ export function NoteCard({
   reactionCount = 0,
   isUpvotePending = false,
   isUpvoted = false,
+  isFollowing = false,
+  isFollowPending = false,
+  layout = "default",
   members = [],
   actions,
+  timestampLabel,
 }: NoteCardProps) {
   const displayName = profile?.displayName ?? truncateNpub(note.pubkey);
   const avatarUrl = profile?.avatarUrl ?? null;
@@ -160,9 +169,17 @@ export function NoteCard({
     reactionCount > 0 ? <AnimatedCount value={reactionCount} /> : null;
   const currentUserAvatarUrl = currentUserProfile?.avatarUrl ?? null;
   const replyParentId = getReplyParent(note);
+  const isTodayUpdates = layout === "today-updates";
 
   return (
-    <article className="flex items-start gap-2.5 rounded-2xl px-1 pb-1 pt-4 sm:px-2">
+    <article
+      className={
+        isTodayUpdates
+          ? "colony-update-card flex items-start"
+          : "flex items-start gap-2.5 rounded-2xl px-1 pb-1 pt-4 sm:px-2"
+      }
+      data-testid="pulse-note-card"
+    >
       <UserProfilePopover
         botIdenticonValue={displayName}
         pubkey={note.pubkey}
@@ -174,9 +191,14 @@ export function NoteCard({
         >
           <UserAvatar
             avatarUrl={avatarUrl}
-            className="!h-9 !w-9 shrink-0"
+            className={
+              isTodayUpdates
+                ? "!h-[2.0625rem] !w-[2.0625rem] shrink-0 colony-update-avatar"
+                : "!h-9 !w-9 shrink-0"
+            }
             displayName={displayName}
-            shape={isAgent ? "squircle" : "circle"}
+            fallbackDelayMs={isTodayUpdates ? 0 : 200}
+            shape={isTodayUpdates || isAgent ? "squircle" : "circle"}
           />
           {isAgent ? (
             <Bot className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background p-0.5 text-muted-foreground" />
@@ -184,15 +206,31 @@ export function NoteCard({
         </button>
       </UserProfilePopover>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
+      <div
+        className={
+          isTodayUpdates
+            ? "colony-update-content min-w-0 flex-1"
+            : "min-w-0 flex-1"
+        }
+      >
+        <div
+          className={
+            isTodayUpdates
+              ? "colony-update-header flex min-w-0 items-center"
+              : "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0"
+          }
+        >
           <UserProfilePopover
             botIdenticonValue={displayName}
             pubkey={note.pubkey}
             role={isAgent ? "bot" : undefined}
           >
             <button
-              className="truncate rounded text-sm font-semibold leading-none tracking-tight focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className={
+                isTodayUpdates
+                  ? "colony-update-author text-update-author truncate rounded font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  : "truncate rounded text-sm font-semibold leading-none tracking-tight focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              }
               type="button"
             >
               {displayName}
@@ -208,9 +246,29 @@ export function NoteCard({
               {profile.nip05Handle}
             </span>
           ) : null}
-          <span className="shrink-0 text-xs text-muted-foreground/70">
-            {formatRelativeTime(note.createdAt)}
+          <span
+            className={
+              isTodayUpdates
+                ? "colony-update-timestamp shrink-0 text-update-meta text-muted-foreground/70"
+                : "shrink-0 text-xs text-muted-foreground/70"
+            }
+          >
+            {timestampLabel ?? formatRelativeTime(note.createdAt)}
           </span>
+          {isTodayUpdates && !isOwnNote ? (
+            <button
+              aria-label={`${isFollowing ? "Unfollow" : "Follow"} ${displayName}`}
+              aria-pressed={isFollowing}
+              className="colony-update-follow"
+              disabled={isFollowPending}
+              onClick={() => {
+                void actions?.toggleFollow?.(note.pubkey, isFollowing);
+              }}
+              type="button"
+            >
+              {isFollowing ? "Following" : "Follow"}
+            </button>
+          ) : null}
         </div>
 
         {replyParentId ? (
@@ -220,18 +278,36 @@ export function NoteCard({
           />
         ) : null}
 
-        <div className="mt-0.5 pb-3 text-sm text-foreground">
+        <div
+          className={
+            isTodayUpdates
+              ? "colony-update-body text-update-body text-foreground"
+              : "mt-0.5 pb-3 text-sm text-foreground"
+          }
+        >
           <Markdown content={note.content} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-5 text-xs font-medium">
-          <div className="flex flex-wrap items-center gap-5">
+        <div
+          className={
+            isTodayUpdates
+              ? "colony-update-actions flex flex-wrap items-center"
+              : "flex flex-wrap items-center gap-5 text-xs font-medium"
+          }
+        >
+          <div
+            className={
+              isTodayUpdates
+                ? "flex items-center gap-6"
+                : "flex flex-wrap items-center gap-5"
+            }
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   aria-label={isUpvoted ? "Unlike" : "Like"}
                   aria-pressed={isUpvoted}
-                  className={`${actionButtonClass} ${isUpvoted ? activeActionClass : ""} disabled:opacity-45`}
+                  className={`${isTodayUpdates ? "colony-update-action" : actionButtonClass} ${isUpvoted ? activeActionClass : ""} disabled:opacity-45`}
                   disabled={isUpvotePending}
                   onClick={() => {
                     if (!isUpvotePending) {
@@ -240,10 +316,19 @@ export function NoteCard({
                   }}
                   type="button"
                 >
-                  <Heart
-                    className={`h-4 w-4 ${isUpvoted ? "fill-current" : ""}`}
-                  />
-                  {reactionCountLabel}
+                  {isTodayUpdates ? (
+                    <>
+                      ♡ Like
+                      {reactionCountLabel}
+                    </>
+                  ) : (
+                    <>
+                      <Heart
+                        className={`h-4 w-4 ${isUpvoted ? "fill-current" : ""}`}
+                      />
+                      {reactionCountLabel}
+                    </>
+                  )}
                 </button>
               </TooltipTrigger>
               <TooltipContent>{isUpvoted ? "Unlike" : "Like"}</TooltipContent>
@@ -253,31 +338,39 @@ export function NoteCard({
                 <button
                   aria-label="Reply"
                   aria-expanded={isReplyComposerOpen}
-                  className={actionButtonClass}
+                  className={
+                    isTodayUpdates ? "colony-update-action" : actionButtonClass
+                  }
                   onClick={() => setIsReplyComposerOpen((current) => !current)}
                   type="button"
                 >
-                  <MessageCircle className="h-4 w-4" />
-                  {countPlaceholder}
+                  {isTodayUpdates ? (
+                    "Reply"
+                  ) : (
+                    <MessageCircle className="h-4 w-4" />
+                  )}
+                  {!isTodayUpdates ? countPlaceholder : null}
                 </button>
               </TooltipTrigger>
               <TooltipContent>Reply</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  aria-label="Share"
-                  className={actionButtonClass}
-                  onClick={() => actions?.share?.(note)}
-                  type="button"
-                >
-                  <SquareArrowOutUpRight className="h-4 w-4" />
-                  {countPlaceholder}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Share</TooltipContent>
-            </Tooltip>
-            {!isOwnNote ? (
+            {!isTodayUpdates ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label="Share"
+                    className={actionButtonClass}
+                    onClick={() => actions?.share?.(note)}
+                    type="button"
+                  >
+                    <SquareArrowOutUpRight className="h-4 w-4" />
+                    {countPlaceholder}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Share</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {!isTodayUpdates && !isOwnNote ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

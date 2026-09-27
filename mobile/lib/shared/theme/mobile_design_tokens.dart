@@ -147,7 +147,7 @@ abstract final class MobileLayoutTokens {
   static const statusBarHeight = 46.0;
   static const brandBarHeight = 54.0;
   static const appBarHeight = 66.0;
-  static const bottomNavigationHeight = 55.0;
+  static const bottomNavigationHeight = 59.0;
   static const minimumTapTarget = 44.0;
   static const minimumRowHeight = 64.0;
   static const contentGutter = 20.0;

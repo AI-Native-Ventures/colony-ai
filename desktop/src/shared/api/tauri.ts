@@ -12,6 +12,7 @@ import type {
   CanvasResponse,
   GetHomeFeedInput,
   HomeFeedResponse,
+  HomeFeedVisualFixture,
   ManagedAgent,
   ManagedAgentBackend,
   RelayAgent,
@@ -77,6 +78,7 @@ type RawHomeFeedResponse = {
     total: number;
     generated_at: number;
   };
+  visual_fixture?: HomeFeedVisualFixture;
 };
 
 type RawSearchHit = {
@@ -381,6 +383,9 @@ export async function getHomeFeed(
       total: response.meta.total,
       generatedAt: response.meta.generated_at,
     },
+    ...(response.visual_fixture
+      ? { visualFixture: response.visual_fixture }
+      : {}),
   };
 }
 
