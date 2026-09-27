@@ -675,6 +675,37 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn returns_when_escaped_descendant_retains_pipe() {
+        // The timeout only exercises the escaped-writer path once perl has
+        // started and left the leader's group. On a loaded host perl can take
+        // longer than the helper timeout to start; the group kill then takes
+        // it down before it records a PID and the premise never happens. Retry
+        // that case with a longer timeout. Every attempt must still fail
+        // closed, and the escape itself is asserted below.
+        let mut escaped = None;
+        for timeout_ms in [300, 1_000, 3_000] {
+            if let Some(pid) = run_escaped_descendant_probe(Duration::from_millis(timeout_ms)) {
+                escaped = Some(pid);
+                break;
+            }
+        }
+        let descendant_pid =
+            escaped.expect("escaped descendant must record its PID within the retry budget");
+        assert!(
+            pid_alive(descendant_pid),
+            "descendant {descendant_pid} was expected to survive the group kill (proving it escaped)"
+        );
+        // Reap the escaped writer so the test leaves nothing behind.
+        unsafe {
+            libc::kill(descendant_pid, libc::SIGKILL);
+        }
+    }
+
+    /// Runs the escaped-descendant probe once with `timeout` as the helper
+    /// deadline. Asserts the helper failed closed, then returns the PID the
+    /// escaped descendant recorded, or `None` when it was killed before it
+    /// could `setsid()` and record one.
+    #[cfg(unix)]
+    fn run_escaped_descendant_probe(timeout: Duration) -> Option<i32> {
         let pid_file = tempfile::NamedTempFile::new().expect("temp file for descendant pid");
         let pid_path = pid_file
             .path()
@@ -692,25 +723,17 @@ mod tests {
         );
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", &script]);
-        let result = run_watchdogged(cmd, Duration::from_millis(300), Duration::from_secs(5));
+        let result = run_watchdogged(cmd, timeout, Duration::from_secs(10));
         assert!(
             result.is_none(),
             "a timed-out probe must fail closed even when an escaped writer holds the pipe"
         );
-
-        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
-            .expect("escaped descendant must have recorded its PID")
-            .trim()
-            .parse()
-            .expect("descendant PID must be numeric");
-        assert!(
-            pid_alive(descendant_pid),
-            "descendant {descendant_pid} was expected to survive the group kill (proving it escaped)"
-        );
-        // Reap the escaped writer so the test leaves nothing behind.
-        unsafe {
-            libc::kill(descendant_pid, libc::SIGKILL);
+        let recorded = std::fs::read_to_string(&pid_path).expect("read descendant pid file");
+        let recorded = recorded.trim();
+        if recorded.is_empty() {
+            return None;
         }
+        Some(recorded.parse().expect("descendant PID must be numeric"))
     }
 
     // Adversarial (capture bound): a producer that streams zero bytes
