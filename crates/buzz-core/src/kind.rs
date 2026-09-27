@@ -440,6 +440,8 @@ pub const KIND_WINDOW_BOUNDS: u32 = 39006;
 
 /// Workflow definition (parameterized replaceable, d=workflow_uuid).
 pub const KIND_WORKFLOW_DEF: u32 = 30620;
+/// Workflow draft definition, kept separate from the active definition.
+pub const KIND_WORKFLOW_DRAFT: u32 = 30623;
 
 /// NIP-DV: per-viewer DM visibility snapshot (relay-signed, parameterized
 /// replaceable, d=viewer_pubkey). Carries one `h` tag per DM the viewer has
@@ -556,6 +558,8 @@ pub const KIND_FORUM_COMMENT: u32 = 45003;
 // Workflow engine (46000–46999)
 /// Trigger workflow execution.
 pub const KIND_WORKFLOW_TRIGGER: u32 = 46020;
+/// Pause or resume an active workflow without changing its definition version.
+pub const KIND_WORKFLOW_STATUS: u32 = 46021;
 /// Grant pending approval.
 pub const KIND_APPROVAL_GRANT: u32 = 46030;
 /// Deny pending approval.
@@ -950,6 +954,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MEMBER_REMOVED_NOTIFICATION,
     KIND_AGENT_TURN_METRIC,
     KIND_WORKFLOW_DEF,
+    KIND_WORKFLOW_DRAFT,
     KIND_LONG_FORM,
     KIND_USER_STATUS,
     KIND_READ_STATE,
@@ -957,6 +962,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_FORUM_VOTE,
     KIND_FORUM_COMMENT,
     KIND_WORKFLOW_TRIGGER,
+    KIND_WORKFLOW_STATUS,
     KIND_APPROVAL_GRANT,
     KIND_APPROVAL_DENY,
     KIND_WORKFLOW_TRIGGERED,
@@ -1091,10 +1097,12 @@ pub const fn is_command_kind(kind: u32) -> bool {
     matches!(
         kind,
         KIND_WORKFLOW_DEF
+            | KIND_WORKFLOW_DRAFT
             | KIND_DM_OPEN
             | KIND_DM_ADD_MEMBER
             | KIND_DM_HIDE
             | KIND_WORKFLOW_TRIGGER
+            | KIND_WORKFLOW_STATUS
             | KIND_APPROVAL_GRANT
             | KIND_APPROVAL_DENY
             | KIND_PARTY_ACTION
@@ -1162,6 +1170,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_MANAGED_AGENT)); // 3017
 const _: () = assert!(is_parameterized_replaceable(KIND_TEAM_CATALOG)); // 30178 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PRIVATE_MANAGED_AGENT)); // 30179 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKFLOW_DEF)); // 30620 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_WORKFLOW_DRAFT)); // 30623 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_EVENT_REMINDER)); // 30300 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_DM_VISIBILITY)); // 30622 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROJECT)); // 30621 ∈ 30000–39999

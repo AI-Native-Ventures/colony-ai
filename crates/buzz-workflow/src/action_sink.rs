@@ -74,4 +74,33 @@ pub trait ActionSink: Send + Sync {
         author_pubkey: &str,
         reply_to: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<String, ActionSinkError>> + Send + '_>>;
+
+    /// Publish a workflow task to a named channel agent and persist its reply wait.
+    fn ask_agent(
+        &self,
+        community_id: CommunityId,
+        run_id: uuid::Uuid,
+        step_id: &str,
+        step_index: usize,
+        agent_pubkey: &str,
+        instruction: &str,
+        expected_result: Option<&str>,
+        timeout_secs: u64,
+        owner_pubkey: &str,
+        prior_trace: &serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ActionSinkError>> + Send + '_>>;
+
+    /// Persist and publish a request for approval, returning its token and event id.
+    fn request_approval(
+        &self,
+        community_id: CommunityId,
+        run_id: uuid::Uuid,
+        step_id: &str,
+        step_index: usize,
+        approver_spec: &str,
+        message: &str,
+        timeout_secs: u64,
+        prior_trace: &serde_json::Value,
+        approval_token: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(String, String), ActionSinkError>> + Send + '_>>;
 }
