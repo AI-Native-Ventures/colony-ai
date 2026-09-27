@@ -662,6 +662,8 @@ pub const KIND_SITE_HEAD: u32 = 30640;
 pub const KIND_INVOICE_HEAD: u32 = 30641;
 /// Current business-level prospect head.
 pub const KIND_PROSPECT_HEAD: u32 = 30644;
+/// Current relay-signed head for an overdue client money follow-up.
+pub const KIND_MONEY_FOLLOW_UP_HEAD: u32 = 30645;
 
 // Member-authored business actions and immutable versions use the 47000 band.
 // The company-record kinds reserve 47031 through 47033; business prospect
@@ -779,6 +781,7 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_SITE_HEAD,
     KIND_INVOICE_HEAD,
     KIND_PROSPECT_HEAD,
+    KIND_MONEY_FOLLOW_UP_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
@@ -835,6 +838,7 @@ pub const fn is_business_relay_only_kind(kind: u32) -> bool {
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
+            | KIND_MONEY_FOLLOW_UP_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
     )
 }
@@ -852,6 +856,10 @@ pub const fn is_business_command_kind(kind: u32) -> bool {
             | KIND_PROPOSAL_ACCEPTANCE
             | KIND_DELIVERABLE_VERSION
             | KIND_DELIVERABLE_APPROVAL
+            | KIND_INVOICE_VERSION
+            | KIND_PAYMENT
+            | KIND_MONEY_ADJUSTMENT
+            | KIND_MONEY_FOLLOW_UP
     )
 }
 
@@ -1001,6 +1009,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_SITE_HEAD,
     KIND_INVOICE_HEAD,
     KIND_PROSPECT_HEAD,
+    KIND_MONEY_FOLLOW_UP_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
@@ -1106,6 +1115,10 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_PROPOSAL_ACCEPTANCE
             | KIND_DELIVERABLE_VERSION
             | KIND_DELIVERABLE_APPROVAL
+            | KIND_INVOICE_VERSION
+            | KIND_PAYMENT
+            | KIND_MONEY_ADJUSTMENT
+            | KIND_MONEY_FOLLOW_UP
             | KIND_GOAL_ACTION
             | KIND_ASK_ACTION
             | KIND_ASK_RESPONSE
@@ -1136,6 +1149,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
+            | KIND_MONEY_FOLLOW_UP_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
             | KIND_GOAL_HEAD
             | KIND_ASK_HEAD
@@ -1170,6 +1184,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_WINDOW_BOUNDS)); // 3900
 const _: () = assert!(is_parameterized_replaceable(KIND_GOAL_HEAD)); // 30642 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
@@ -1217,6 +1232,23 @@ mod tests {
     fn nip43_membership_snapshot_is_relay_only() {
         assert!(is_relay_only_kind(KIND_NIP43_MEMBERSHIP_LIST));
         assert!(!is_relay_only_kind(KIND_NIP43_LEAVE_REQUEST));
+    }
+
+    #[test]
+    fn money_kinds_are_registered_with_write_authority() {
+        for kind in [
+            KIND_INVOICE_VERSION,
+            KIND_PAYMENT,
+            KIND_MONEY_ADJUSTMENT,
+            KIND_MONEY_FOLLOW_UP,
+        ] {
+            assert!(is_business_record_kind(kind));
+            assert!(is_business_command_kind(kind));
+            assert!(!is_relay_only_kind(kind));
+        }
+        assert!(is_business_record_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+        assert!(is_business_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+        assert!(is_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
     }
 
     #[test]
