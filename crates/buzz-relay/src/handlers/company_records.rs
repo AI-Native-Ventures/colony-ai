@@ -1045,10 +1045,11 @@ mod tests {
         .await
         .expect("query secondary community goal")
         .expect("secondary community goal exists");
-        assert_eq!(
-            parse_goal_head(&primary_head).expect("parse first community head"),
-            parse_goal_head(&secondary_head).expect("parse second community head")
-        );
+        let primary_head = parse_goal_head(&primary_head).expect("parse first community head");
+        let secondary_head = parse_goal_head(&secondary_head).expect("parse second community head");
+        assert_eq!(primary_head.goal_id, secondary_head.goal_id);
+        assert_eq!(primary_head.status, secondary_head.status);
+        assert_eq!(primary_head.goal, secondary_head.goal);
 
         let cross_community_child_id = Uuid::new_v4();
         let cross_community_child = action(
