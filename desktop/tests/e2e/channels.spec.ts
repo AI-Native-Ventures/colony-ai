@@ -1560,6 +1560,8 @@ test("template picker returns a real template to the channel creation flow", asy
 
   const picker = page.getByTestId("channel-template-picker");
   await expect(picker).toBeVisible();
+  await expect(picker.getByText("New channel", { exact: true })).toBeVisible();
+  await expect(picker.getByText("E2E Test", { exact: true })).toBeVisible();
   await expect(
     picker.getByRole("heading", { name: "Create from a template" }),
   ).toBeVisible();
