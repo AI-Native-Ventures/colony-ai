@@ -2301,8 +2301,7 @@ test("settings subtitles share the Appearance secondary color", async ({
   const settingsView = page.getByTestId("settings-view");
   const appearancePanel = page.getByTestId("settings-appearance");
   const secondaryColor = await appearancePanel
-    .locator("[data-settings-subcopy]")
-    .first()
+    .locator(".ap-heading p")
     .evaluate((element) => getComputedStyle(element).color);
 
   for (const section of [
@@ -2320,7 +2319,10 @@ test("settings subtitles share the Appearance secondary color", async ({
     "updates",
   ]) {
     await selectSettingsSection(page, section);
-    const subtitles = settingsView.locator("[data-settings-subcopy]:visible");
+    const subtitles =
+      section === "appearance"
+        ? appearancePanel.locator(".ap-heading p:visible")
+        : settingsView.locator("[data-settings-subcopy]:visible");
     await expect(subtitles.first()).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).color),

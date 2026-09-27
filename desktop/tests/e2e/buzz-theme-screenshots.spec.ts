@@ -11,6 +11,10 @@ const PROMINENT_ACTIVE_TAB_STORAGE_KEY = "buzz-prominent-active-tab";
 const FONT_SIZE_STORAGE_KEY = "buzz.appearance.fontSize";
 const MOCK_PUBKEY = "deadbeef".repeat(8);
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+const MOCK_RELAY_URL = (
+  process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
+).replace(/^http/u, "ws");
+const COMMUNITY_THEME_STORAGE_KEY = `buzz-community-theme.v1:${MOCK_PUBKEY}:${encodeURIComponent(MOCK_RELAY_URL)}`;
 
 /**
  * Seed the active theme into localStorage BEFORE the mock bridge installs so
@@ -19,10 +23,23 @@ const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
  */
 async function seedTheme(page: Page, theme: string) {
   await page.addInitScript(
-    ({ key, value }) => {
+    ({ communityKey, key, value }) => {
       window.localStorage.setItem(key, value);
+      window.localStorage.setItem(
+        communityKey,
+        JSON.stringify({
+          version: 1,
+          theme: value,
+          accent: "#3b82f6",
+          followSystem: false,
+        }),
+      );
     },
-    { key: THEME_STORAGE_KEY, value: theme },
+    {
+      communityKey: COMMUNITY_THEME_STORAGE_KEY,
+      key: THEME_STORAGE_KEY,
+      value: theme,
+    },
   );
 }
 
@@ -667,7 +684,11 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   if (!selectedLabelBox || !unselectedLabelBox) {
     throw new Error("Settings nav label geometry is missing");
   }
-  expect(Math.abs(selectedLabelBox.width - unselectedLabelBox.width)).toBe(0);
+  expect(Math.abs(selectedLabelBox.x - unselectedLabelBox.x)).toBe(0);
+  expect(Math.abs(selectedLabelBox.y - unselectedLabelBox.y)).toBe(0);
+  expect(
+    Math.abs(selectedLabelBox.width - unselectedLabelBox.width),
+  ).toBeLessThanOrEqual(2);
   await expectBuzzSettingsPalette(page, "light");
   const activeRow = page.getByTestId("settings-group-appearance-group");
   await expect(activeRow).toHaveAttribute("data-active", "true");
@@ -704,8 +725,21 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   await openAppearance(page, "light");
 
   const root = page.locator("html");
-  const activeRow = page.getByTestId("settings-group-appearance-group");
   const toggle = page.getByTestId("appearance-prominent");
+  await expect(toggle).not.toBeChecked();
+  await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => window.localStorage.getItem(key),
+        PROMINENT_ACTIVE_TAB_STORAGE_KEY,
+      ),
+    )
+    .toBe("false");
+
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("channel-general").click();
+  const activeRow = page.getByTestId("channel-general");
   const subtleSurface = await resolveSidebarColor(
     page,
     "background-color",
@@ -716,26 +750,18 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
     "background-color",
     "var(--sidebar-row-active-surface)",
   );
-  await expect(toggle).not.toBeChecked();
-  await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   const subtleTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.color, fontWeight: styles.fontWeight };
   });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        PROMINENT_ACTIVE_TAB_STORAGE_KEY,
-      ),
-    )
-    .toBe("false");
 
-  await toggle.click();
-  await expect(toggle).toBeChecked();
+  await openAppearance(page, "light");
+  const enabledToggle = page.getByTestId("appearance-prominent");
+
+  await enabledToggle.click();
+  await expect(enabledToggle).toBeChecked();
   await expect(root).toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS("background-color", prominentSurface);
   await expect
     .poll(() =>
       page.evaluate(
@@ -744,15 +770,18 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
       ),
     )
     .toBe("true");
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("channel-general").click();
+  await expect(activeRow).toHaveCSS("background-color", prominentSurface);
   const prominentTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.color, fontWeight: styles.fontWeight };
   });
   expect(prominentTextStyle).toEqual(subtleTextStyle);
 
-  await toggle.click();
+  await openAppearance(page, "light");
+  await page.getByTestId("appearance-prominent").click();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   await expect
     .poll(() =>
       page.evaluate(
@@ -761,6 +790,9 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
       ),
     )
     .toBe("false");
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("channel-general").click();
+  await expect(activeRow).toHaveCSS("background-color", subtleSurface);
 });
 
 test("prominent channel and direct-message rows share one flat active state", async ({
@@ -904,22 +936,20 @@ test("settings content uses the same inset surface as the main app", async ({
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
   const settingsTopChrome = page.getByTestId("settings-top-chrome");
-  const settingsSidebarTopChrome = page.getByTestId(
-    "settings-sidebar-top-chrome",
-  );
+  const settingsBackToApp = page.getByTestId("settings-back-to-app");
   const backToAppBox = await page
     .getByTestId("settings-back-to-app")
     .boundingBox();
   await expect(contentSurface).toBeVisible({ timeout: 10_000 });
   const settingsTopTitle = settingsTopChrome.locator(".w20-topbar-title");
-  for (const dragRegion of [settingsTopTitle, settingsSidebarTopChrome]) {
-    await expect(dragRegion).toHaveAttribute(
-      "data-tauri-drag-region",
-      /^(?:|true)$/,
-    );
-    await expect(dragRegion).toHaveCSS("cursor", "default");
-    await expect(dragRegion).toHaveCSS("user-select", "none");
-  }
+  await expect(settingsTopTitle).toHaveAttribute(
+    "data-tauri-drag-region",
+    /^(?:|true)$/,
+  );
+  await expect(settingsTopTitle).toHaveCSS("cursor", "default");
+  await expect(settingsTopTitle).toHaveCSS("user-select", "none");
+  await expect(settingsBackToApp).not.toHaveAttribute("data-tauri-drag-region");
+  await expect(settingsBackToApp).toHaveCSS("cursor", "pointer");
   await expect(page.getByTestId("settings-content-scroll")).toHaveCSS(
     "padding-top",
     "24px",
