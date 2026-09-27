@@ -459,7 +459,7 @@ body:has(.w20-settings-shell) {
   border: 1px solid rgb(232 224 230 / 40%);
   border-bottom-color: #eae7eb;
   border-radius: 11px 11px 0 0;
-  background: #fffefd;
+  background: transparent;
   color: #79747f;
   font-size: var(--text-xs);
   cursor: default;
@@ -469,7 +469,7 @@ body:has(.w20-settings-shell) {
 .dark .w20-settings-topbar {
   border-color: rgb(60 53 68 / 75%);
   border-bottom-color: #3c3544;
-  background: #211e26;
+  background: transparent;
   color: #ece6ef;
 }
 
