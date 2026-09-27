@@ -1060,7 +1060,7 @@ void main() {
     expect(deleteIcon.color, error);
   });
 
-  testWidgets('aligns the v5 Conversations header and skeleton labels', (
+  testWidgets('keeps the v5 header and reconnect skeleton labels', (
     tester,
   ) async {
     final relaySession = _ReconnectingRelaySession();
@@ -1077,9 +1077,8 @@ void main() {
 
     expect(find.text('Conversations'), findsOneWidget);
     expect(find.text('Where your company comes together'), findsOneWidget);
-    final sectionLabelX = tester.getTopLeft(find.text('CHANNELS')).dx;
-    final rowLabelX = tester.getTopLeft(find.text('general')).dx;
-    expect(sectionLabelX, lessThan(rowLabelX));
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsNothing);
 
     relaySession.setReconnecting();
     await tester.pump();
