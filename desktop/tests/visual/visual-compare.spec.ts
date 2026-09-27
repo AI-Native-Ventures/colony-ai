@@ -406,6 +406,11 @@ test.describe("visual comparison captures", () => {
           await expect(channelTabs).toHaveText(
             "DiscussionWorkKnowledgeCanvasFiles",
           );
+          const huddleButton = appPage.getByTestId(
+            "channel-start-huddle-trigger",
+          );
+          await expect(huddleButton).toHaveText("Huddle");
+          await expect(huddleButton.locator("svg")).toHaveCount(0);
           const activeTabUnderline = await channelTabs
             .locator('[aria-current="page"]')
             .evaluate(
