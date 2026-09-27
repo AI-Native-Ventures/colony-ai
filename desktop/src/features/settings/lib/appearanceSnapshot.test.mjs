@@ -36,12 +36,12 @@ test("color blending clamps and rounds each channel", () => {
 
 test("custom gradient stops use the light and dark reference tint ratios", () => {
   assert.deepEqual(customGradientStops(["#ffffff", "#000000"], "light"), [
-    "#fbedf2",
-    "#6e85b9",
+    "#ffffff",
+    "#bdbdbd",
   ]);
   assert.deepEqual(customGradientStops(["#ffffff", "#000000"], "dark"), [
-    "#6a5d6f",
-    "#1a2854",
+    "#404040",
+    "#000000",
   ]);
 });
 

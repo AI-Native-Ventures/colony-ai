@@ -82,10 +82,9 @@ export function customGradientStops(
   mode: "light" | "dark",
 ): [string, string] {
   const amount = mode === "light" ? 0.26 : 0.25;
-  const bases =
-    mode === "light" ? ["#fae7ed", "#94b4fa"] : ["#38273f", "#223570"];
+  const base = mode === "light" ? "#ffffff" : "#000000";
   return [
-    blendColor(bases[0], colors[0], amount),
-    blendColor(bases[1], colors[1], amount),
+    blendColor(base, colors[0], amount),
+    blendColor(base, colors[1], amount),
   ];
 }
