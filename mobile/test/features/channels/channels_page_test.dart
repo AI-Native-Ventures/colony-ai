@@ -59,7 +59,7 @@ void main() {
     );
     final page = includeShell
         ? MobileShell(
-            destination: MobileShellDestination.chats,
+            destination: MobileShellDestination.chat,
             onDestinationSelected: (_) {},
             showBrandBar: false,
             overlayBuilder: (context, shellContext) =>

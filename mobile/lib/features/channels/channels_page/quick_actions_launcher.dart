@@ -43,6 +43,11 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
     this.routeRegistry,
   });
 
+  /// Opens the existing quick actions from another app-composed surface.
+  static void openFromHome(WidgetRef ref) {
+    ref.read(_channelQuickActionsOpenProvider.notifier).open();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentPubkey = ref.watch(currentPubkeyProvider);

@@ -27,6 +27,7 @@ import 'features/channels/channels_page.dart';
 import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
+import 'features/home/company_hub_page.dart';
 import 'features/today/today_models.dart';
 import 'features/today/today_page.dart';
 import 'features/invites/invite_join_provider.dart';
@@ -190,6 +191,9 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
                 builder: (_) => ActivityPage(initialItemId: itemId),
               ),
             ),
+            onOpenActivity: (activityContext) => unawaited(
+              MobileNavigation.openActivity(activityContext, routeContext),
+            ),
             onOpenUpdate: (noteId) =>
                 MobileNavigation.openUpdateNote(context, noteId),
           );
@@ -218,6 +222,24 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
                 builder: (_) => ActivityPage(initialItemId: item.id),
               ),
             ),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.business, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final profile = ref.watch(profileProvider).asData?.value;
+          return CompanyHubPage(
+            routeRegistry: _mobileRouteRegistry,
+            settingsPageBuilder: routeContext.settingsPageBuilder,
+            companyName: community?.name,
+            identityInitials: profile?.initials,
+            identityLabel: profile?.label,
+            identityAvatarUrl: profile?.avatarUrl,
+            onOpenQuickActions: () =>
+                ChannelQuickActionsLauncher.openFromHome(ref),
           );
         },
       );
@@ -932,13 +954,16 @@ class App extends HookConsumerWidget {
                   ChannelQuickActionsLauncher(
                     visible:
                         shellContext.destination ==
-                        MobileShellDestination.chats,
+                            MobileShellDestination.chat ||
+                        shellContext.destination ==
+                            MobileShellDestination.company,
                     navigationBarHeight: shellContext.navigationBarHeight,
                     navigationBarBottomGap:
                         shellContext.navigationBarHeight + Grid.half,
                     navigationBarWidth: shellContext.navigationBarWidth,
                     systemBottomInset: shellContext.bottomInset,
                     rightInset: Grid.xs,
+                    routeRegistry: _mobileRouteRegistry,
                   ),
             ),
           ),
