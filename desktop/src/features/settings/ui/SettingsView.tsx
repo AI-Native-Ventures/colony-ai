@@ -12,7 +12,7 @@ import {
 } from "@/shared/ui/sidebar";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { useTheme } from "@/shared/theme/ThemeProvider";
+import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
@@ -26,6 +26,7 @@ import {
   appearanceLastBusinessKey,
   appearanceSnapshotKey,
   blendColor,
+  isValidHexColor,
   writeAppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
 import {
@@ -213,17 +214,42 @@ export function SettingsView({
   }, []);
 
   React.useEffect(() => {
-    const accent =
-      theme.accentColor === "neutral" ? "#74717B" : theme.accentColor;
+    const personId =
+      identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
+    const businessId = activeCommunity?.id ?? "local-business";
+    const savedAccent = readAppearanceSnapshot(
+      appearanceSnapshotKey(personId, businessId),
+    )?.accent;
+    let storedAccent: string | null = null;
+    try {
+      storedAccent = window.localStorage.getItem(ACCENT_STORAGE_KEY);
+    } catch {
+      // The live theme value remains available when storage is blocked.
+    }
+    const accentValue =
+      savedAccent === "neutral" ||
+      (typeof savedAccent === "string" && isValidHexColor(savedAccent))
+        ? savedAccent
+        : storedAccent === "neutral" ||
+            (storedAccent !== null && isValidHexColor(storedAccent))
+          ? storedAccent
+          : theme.accentColor || "#895AF6";
+    const accent = accentValue === "neutral" ? "#74717B" : accentValue;
     document.documentElement.style.setProperty(
       "--w20-appearance-accent",
       blendColor(
         accent,
         theme.isDark ? "#ffffff" : "#000000",
-        theme.isDark ? 0.5 : 0.65,
+        theme.isDark ? 0.5 : 0.35,
       ),
     );
-  }, [theme.accentColor, theme.isDark]);
+  }, [
+    activeCommunity?.id,
+    activeCommunity?.pubkey,
+    identity.data?.pubkey,
+    theme.accentColor,
+    theme.isDark,
+  ]);
 
   React.useEffect(() => {
     if (activeSection !== section) onSectionChange(activeSection);

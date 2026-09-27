@@ -63,6 +63,29 @@ test("settings use nine groups, inner search, remembered sections, and return na
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
+test("prominent settings selection uses the saved accent tint", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => {
+    localStorage.setItem("buzz-accent-color", "#3b82f6");
+    localStorage.setItem("buzz-prominent-active-tab", "true");
+  });
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "profile");
+
+  const selectedGroup = page.getByTestId("settings-group-account");
+  await expect(selectedGroup).toHaveAttribute("data-active", "true");
+  await expect
+    .poll(() =>
+      selectedGroup.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    )
+    .toBe("rgb(38, 85, 160)");
+});
+
 test("routes without a data-backed design fall back to Account profile", async ({
   page,
 }) => {
