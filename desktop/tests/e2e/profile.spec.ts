@@ -2104,8 +2104,17 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
   await page.getByTestId("theme-catalog-github-light").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  const themePreview = page.getByRole("region", {
+    name: "Theme preview conversation",
+  });
+  await expect(themePreview).toContainText("Campaign studio");
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
+  await expect(
+    themePreview.getByText("The September designs are ready for feedback."),
+  ).toBeVisible();
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))

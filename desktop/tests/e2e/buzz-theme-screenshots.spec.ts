@@ -1214,8 +1214,16 @@ test("accent controls remain available after applying a named theme", async ({
   await panel.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  const themePreview = page.getByRole("region", {
+    name: "Theme preview conversation",
+  });
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
+  await expect(
+    themePreview.getByText("The September designs are ready for feedback."),
+  ).toBeVisible();
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
   const updatedAppearance = page.getByTestId("settings-appearance");
@@ -1336,8 +1344,16 @@ test("theme catalog applies a named theme through a scoped save", async ({
   await expect(page.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  const themePreview = page.getByRole("region", {
+    name: "Theme preview conversation",
+  });
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
+  await expect(
+    themePreview.getByText("The September designs are ready for feedback."),
+  ).toBeVisible();
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
   await expectAppliedBuzzTheme(page, "buzz-dark");
   await expect
     .poll(() => businessSnapshot(page))

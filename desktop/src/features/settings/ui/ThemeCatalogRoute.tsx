@@ -18,6 +18,7 @@ import {
   withAccentPreviewVars,
 } from "@/shared/theme/useThemePreviewVars";
 import { cn } from "@/shared/lib/cn";
+import "./ThemeCatalogRoute.css";
 
 type ThemeCatalogRouteProps = {
   onBack: () => void;
@@ -43,12 +44,16 @@ function themeVarsStyle(vars: ThemePreviewVars): React.CSSProperties {
   return vars as React.CSSProperties;
 }
 
-function sidebarStyle(name: string): React.CSSProperties {
+function themeWorkspaceStyle(vars: ThemePreviewVars): React.CSSProperties {
+  const background = vars["--background"] ?? "0 0% 100%";
+  const foreground = vars["--foreground"] ?? "0 0% 9%";
+  const accent = vars["--status-added"] ?? foreground;
   return {
-    backgroundImage: LIGHT_THEMES.has(name as SyntaxThemeName)
-      ? "linear-gradient(155deg, #eddbe9, #d9dcea)"
-      : "linear-gradient(155deg, #56445f, #404458)",
-  };
+    ...themeVarsStyle(vars),
+    "--theme-bg": `hsl(${background})`,
+    "--theme-fg": `hsl(${foreground})`,
+    "--theme-accent": `hsl(${accent})`,
+  } as React.CSSProperties;
 }
 
 function themeCardStyle(
@@ -131,102 +136,66 @@ function ThemeCardPreview({
   );
 }
 
-function ThemeWorkspacePreview({
-  name,
-  vars,
-}: {
-  name: SyntaxThemeName;
-  vars: ThemePreviewVars;
-}) {
+function ThemeWorkspacePreview({ vars }: { vars: ThemePreviewVars }) {
   return (
-    <div
-      className="w20-theme-workspace-preview grid min-h-[29.75rem] grid-cols-[12.5rem_minmax(0,1fr)] overflow-hidden rounded-xl border border-border/80 bg-background text-foreground shadow-sm"
+    <section
+      aria-label="Theme preview conversation"
+      className="d17-theme-live"
       data-testid="theme-workspace-preview"
-      style={themeVarsStyle(vars)}
+      style={themeWorkspaceStyle(vars)}
     >
-      <aside
-        className="flex min-h-0 flex-col gap-5 px-4 py-5 text-xs"
-        style={sidebarStyle(name)}
-      >
-        <strong className="text-sm font-semibold">Lerato Social</strong>
-        <div className="flex flex-col gap-3">
-          <span>Today</span>
-          <span>Work</span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <span className="text-2xs text-muted-foreground">Channels</span>
-          <span className="rounded-md bg-foreground/10 px-2 py-1.5 font-medium">
-            # Campaign studio
-          </span>
-          <span># the-olive-house</span>
-          <span># ideas</span>
-        </div>
-        <div className="flex flex-col gap-3">
-          <span className="text-2xs text-muted-foreground">Business</span>
-          <span>Website</span>
-          <span>Social</span>
-          <span>Library</span>
-        </div>
-        <span className="mt-auto text-2xs">LM · Lerato Molefe</span>
+      <aside className="text-xs">
+        <strong className="text-sm">Lerato Social</strong>
+        <span>Today</span>
+        <span>Work</span>
+        <small className="text-badge">Channels</small>
+        <b className="text-2xs"># Campaign studio</b>
+        <span># the-olive-house</span>
+        <span># ideas</span>
+        <small className="text-badge">Business</small>
+        <span>Website</span>
+        <span>Social</span>
+        <span>Library</span>
+        <footer className="text-2xs">LM · Lerato Molefe</footer>
       </aside>
 
-      <div className="flex min-w-0 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/70 px-5">
-          <strong className="text-sm font-semibold"># Campaign studio</strong>
-          <span className="text-2xs text-muted-foreground">3 members</span>
+      <section>
+        <header className="text-compact">
+          # Campaign studio <small className="text-badge">3 members</small>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col px-5 py-6">
-          <div className="flex gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-xs font-semibold">
-              MN
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs">
-                <strong className="font-semibold">Maya Ndlovu</strong>{" "}
-                <span className="text-2xs text-muted-foreground">10:42</span>
-              </p>
-              <p className="mt-2 text-sm">
-                The September designs are ready for feedback.
-              </p>
-              <div className="mt-4 w-[17.5rem] overflow-hidden rounded-lg border border-border/80">
-                <div className="flex h-20 items-center bg-gradient-to-br from-[#e7d8bc] to-[#c9d2c3] px-6 text-xl text-stone-700">
-                  Autumn, softly.
-                </div>
-                <div className="space-y-1 px-3 py-2">
-                  <p className="text-xs font-semibold">
-                    Olive House · Campaign v3
-                  </p>
-                  <p className="text-2xs text-muted-foreground">
-                    Ready for review
-                  </p>
-                </div>
-              </div>
+        <article>
+          <b className="text-2xs">MN</b>
+          <div>
+            <strong className="text-xs">
+              Maya Ndlovu <small className="text-badge">10:42</small>
+            </strong>
+            <p className="text-compact">
+              The September designs are ready for feedback.
+            </p>
+            <div className="d17-design-card">
+              <span className="text-xl">Autumn, softly.</span>
+              <strong className="text-xs">Olive House · Campaign v3</strong>
+              <small className="text-badge">Ready for review</small>
             </div>
+            <small className="text-badge">2 replies</small>
           </div>
-          <span className="ml-12 mt-4 text-2xs text-muted-foreground">
-            2 replies
-          </span>
-          <div className="mt-7 flex gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-xs font-semibold">
-              LM
-            </span>
-            <div>
-              <p className="text-xs">
-                <strong className="font-semibold">Lerato Molefe</strong>{" "}
-                <span className="text-2xs text-muted-foreground">10:44</span>
-              </p>
-              <p className="mt-2 text-sm">
-                Let&apos;s bring more warmth into the headline.
-              </p>
-            </div>
+        </article>
+        <article>
+          <b className="text-2xs">LM</b>
+          <div>
+            <strong className="text-xs">
+              Lerato Molefe <small className="text-badge">10:44</small>
+            </strong>
+            <p className="text-compact">
+              Let&apos;s bring more warmth into the headline.
+            </p>
           </div>
-          <div className="mt-auto flex h-11 shrink-0 items-center rounded-lg border border-border/80 px-3 text-xs text-muted-foreground">
-            <span>Message Campaign studio...</span>
-            <span className="ml-auto">+ @ ♪</span>
-          </div>
-        </div>
-      </div>
-    </div>
+        </article>
+        <footer className="text-2xs">
+          Message Campaign studio… <span>＋ @ ♩</span>
+        </footer>
+      </section>
+    </section>
   );
 }
 
@@ -375,31 +344,37 @@ export function ThemePreviewRoute({
   const vars = withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
   return (
     <section className="min-w-0" data-testid="settings-theme-preview">
-      <div className="mb-7 flex items-start justify-between gap-4">
+      <div className="mb-7 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-semibold tracking-tight">
+          <h2 className="text-settings-title font-semibold">
             {themeLabel(name)}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="d17-preview-intro mt-[9px] text-sm leading-[1.5]">
             Preview only. Apply when it feels right.
           </p>
         </div>
-        <Button onClick={onBack} size="sm" variant="outline">
+        <Button
+          className="d17-preview-back"
+          onClick={onBack}
+          size="sm"
+          variant="outline"
+        >
           Back to themes
         </Button>
       </div>
       <div className="max-w-[59.375rem]">
-        <ThemeWorkspacePreview name={name} vars={vars} />
-        <div className="mt-6 flex items-start justify-between gap-4">
-          <p className="text-xs">
+        <ThemeWorkspacePreview vars={vars} />
+        <div className="d17-preview-footer text-compact">
+          <p>
             {LIGHT_THEMES.has(name) ? "Light" : "Dark"} palette ·{" "}
             {themeLabel(name)}
-            <span className="mt-1 block text-2xs text-muted-foreground">
+            <br />
+            <small className="text-2xs">
               Message density and text size stay as you set them.
-            </span>
+            </small>
           </p>
           <Button
-            className="bg-[#5b4568] text-white hover:bg-[#4b3957]"
+            className="d17-preview-button"
             data-testid="theme-use"
             onClick={onApply}
             size="sm"
@@ -427,34 +402,34 @@ export function ThemeAppliedRoute({
   const vars = withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
   return (
     <section className="min-w-0" data-testid="settings-theme-applied">
-      <div className="mb-7 flex items-start justify-between gap-4">
+      <div className="mb-7 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-semibold tracking-tight">
-            Theme applied
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h2 className="text-settings-title font-semibold">Theme applied</h2>
+          <p className="d17-preview-intro mt-[9px] text-sm leading-[1.5]">
             Your personal appearance is updated.
           </p>
         </div>
-        <Button onClick={onBack} size="sm" variant="outline">
+        <Button
+          className="d17-preview-back"
+          onClick={onBack}
+          size="sm"
+          variant="outline"
+        >
           Back to themes
         </Button>
       </div>
       <div className="max-w-[59.375rem]">
-        <ThemeWorkspacePreview name={name} vars={vars} />
-        <div className="mt-6 flex items-start justify-between gap-4">
-          <p className="text-xs">
+        <ThemeWorkspacePreview vars={vars} />
+        <div className="d17-preview-footer text-compact">
+          <p>
             {LIGHT_THEMES.has(name) ? "Light" : "Dark"} palette ·{" "}
             {themeLabel(name)}
-            <span className="mt-1 block text-2xs text-muted-foreground">
+            <br />
+            <small className="text-2xs">
               Message density and text size stay as you set them.
-            </span>
+            </small>
           </p>
-          <Button
-            className="bg-[#5b4568] text-white hover:bg-[#4b3957]"
-            onClick={onDone}
-            size="sm"
-          >
+          <Button className="d17-applied-button" onClick={onDone} size="sm">
             Done
           </Button>
         </div>

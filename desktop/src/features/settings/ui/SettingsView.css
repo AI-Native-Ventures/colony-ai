@@ -648,6 +648,11 @@ body:has(.w20-settings-shell) {
   padding-left: 42px;
 }
 
+.w20-route-scroll:has(.w20-route-content-theme) {
+  padding-right: 42px;
+  padding-left: 42px;
+}
+
 .w20-route-content {
   display: flex;
   width: 100%;
