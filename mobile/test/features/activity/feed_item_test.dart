@@ -110,6 +110,8 @@ void main() {
       expect(makeItem(kind: 45001).headline, 'Forum post');
       expect(makeItem(kind: 45003).headline, 'Forum reply');
       expect(makeItem(kind: 46010).headline, 'Approval requested');
+      expect(makeItem(kind: 46011).headline, 'Approval granted');
+      expect(makeItem(kind: 46012).headline, 'Approval denied');
       expect(makeItem(kind: 43001).headline, 'Job requested');
       expect(makeItem(kind: 43002).headline, 'Job accepted');
       expect(makeItem(kind: 43003).headline, 'Progress update');
