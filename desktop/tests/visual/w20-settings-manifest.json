@@ -227,20 +227,6 @@
       "routeLabel": "account/recovery"
     },
     {
-      "id": "workspace-agent-settings-defaults",
-      "referenceInventoryRoute": "agent-settings/defaults",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#agent-settings/defaults",
-      "appRoute": "/#/settings?section=agent-defaults",
-      "routeLabel": "agent-settings/defaults"
-    },
-    {
-      "id": "workspace-agent-settings-harnesses",
-      "referenceInventoryRoute": "agent-settings/harnesses",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#agent-settings/harnesses",
-      "appRoute": "/#/settings?section=harnesses",
-      "routeLabel": "agent-settings/harnesses"
-    },
-    {
       "id": "workspace-settings-appearance",
       "referenceInventoryRoute": "settings/appearance",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/appearance",
@@ -417,7 +403,7 @@
           "deviceId": "macbook-microphone-example",
           "groupId": "macbook-audio-example",
           "kind": "audioinput",
-          "label": "MacBook microphone · example"
+          "label": "MacBook microphone \u00b7 example"
         }
       ],
       "appMockData": {
@@ -428,7 +414,7 @@
         },
         "audioOutputDevices": [
           {
-            "name": "MacBook speakers · example",
+            "name": "MacBook speakers \u00b7 example",
             "is_default": false
           }
         ]
@@ -874,185 +860,6 @@
       }
     },
     {
-      "id": "desktop-09-discovered",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#09/discovered",
-      "appRoute": "/#/settings?section=harnesses",
-      "routeLabel": "Harness lifecycle discovered",
-      "referenceCanvas": true,
-      "appMockData": {
-        "acpRuntimesCatalog": [
-          {
-            "id": "claude",
-            "label": "Claude Code",
-            "avatar_url": "",
-            "availability": "available",
-            "command": "claude-agent-acp",
-            "binary_path": "/usr/local/bin/claude-agent-acp",
-            "default_args": [],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://code.claude.com/docs/en/getting-started",
-            "can_auto_install": true,
-            "requires_external_cli": true,
-            "underlying_cli_path": "/usr/local/bin/claude",
-            "node_required": false,
-            "auth_status": {
-              "status": "logged_in"
-            },
-            "source": "builtin"
-          },
-          {
-            "id": "codex",
-            "label": "Codex",
-            "avatar_url": "",
-            "availability": "not_installed",
-            "command": null,
-            "binary_path": null,
-            "default_args": [],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://developers.openai.com/codex/cli/",
-            "can_auto_install": true,
-            "requires_external_cli": true,
-            "underlying_cli_path": null,
-            "node_required": false,
-            "auth_status": {
-              "status": "unknown"
-            },
-            "source": "builtin"
-          },
-          {
-            "id": "opencode",
-            "label": "OpenCode",
-            "avatar_url": "",
-            "availability": "available",
-            "command": "opencode",
-            "binary_path": "/usr/local/bin/opencode",
-            "default_args": ["acp"],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://opencode.ai/docs",
-            "can_auto_install": false,
-            "requires_external_cli": true,
-            "underlying_cli_path": "/usr/local/bin/opencode",
-            "node_required": false,
-            "auth_status": {
-              "status": "logged_out"
-            },
-            "login_hint": "Sign in to OpenCode.",
-            "source": "preset"
-          }
-        ]
-      },
-      "clip": {
-        "referenceSelector": ".surface"
-      }
-    },
-    {
-      "id": "desktop-09-failed",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#09/failed",
-      "appRoute": "/#/settings?section=harnesses",
-      "routeLabel": "Harness lifecycle failed",
-      "appMockData": {
-        "acpRuntimesCatalog": [
-          {
-            "id": "claude",
-            "label": "Claude Code",
-            "avatar_url": "",
-            "availability": "available",
-            "command": "claude-agent-acp",
-            "binary_path": "/usr/local/bin/claude-agent-acp",
-            "default_args": [],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://code.claude.com/docs/en/getting-started",
-            "can_auto_install": true,
-            "requires_external_cli": true,
-            "underlying_cli_path": "/usr/local/bin/claude",
-            "node_required": false,
-            "auth_status": {
-              "status": "logged_in"
-            },
-            "source": "builtin"
-          },
-          {
-            "id": "codex",
-            "label": "Codex",
-            "avatar_url": "",
-            "availability": "not_installed",
-            "command": null,
-            "binary_path": null,
-            "default_args": [],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://developers.openai.com/codex/cli/",
-            "can_auto_install": true,
-            "requires_external_cli": true,
-            "underlying_cli_path": null,
-            "node_required": false,
-            "auth_status": {
-              "status": "unknown"
-            },
-            "source": "builtin"
-          },
-          {
-            "id": "opencode",
-            "label": "OpenCode",
-            "avatar_url": "",
-            "availability": "available",
-            "command": "opencode",
-            "binary_path": "/usr/local/bin/opencode",
-            "default_args": ["acp"],
-            "mcp_command": null,
-            "install_hint": "",
-            "install_instructions_url": "https://opencode.ai/docs",
-            "can_auto_install": false,
-            "requires_external_cli": true,
-            "underlying_cli_path": "/usr/local/bin/opencode",
-            "node_required": false,
-            "auth_status": {
-              "status": "logged_out"
-            },
-            "login_hint": "Sign in to OpenCode.",
-            "source": "preset"
-          }
-        ],
-        "installAcpRuntimeResult": {
-          "success": false,
-          "steps": [
-            {
-              "step": "download",
-              "command": "download codex-acp",
-              "success": false,
-              "stdout": "",
-              "stderr": "The package download was interrupted.",
-              "exit_code": 1
-            }
-          ],
-          "restarted_count": 0,
-          "failed_restart_count": 0,
-          "log_path": null
-        }
-      },
-      "referenceCanvas": true,
-      "actions": [
-        {
-          "type": "click",
-          "target": "app",
-          "selector": "[data-testid=doctor-runtime-install-codex]"
-        },
-        {
-          "type": "waitFor",
-          "target": "app",
-          "selector": "[data-testid=doctor-runtime-install-failure-codex]"
-        }
-      ],
-      "appReadySelector": "[data-testid=settings-harnesses]",
-      "clip": {
-        "referenceSelector": ".modal"
-      }
-    },
-    {
       "id": "desktop-11-library",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#11/library",
       "appRoute": "/#/settings?section=voice",
@@ -1239,7 +1046,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1273,7 +1080,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1325,7 +1132,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1367,7 +1174,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
@@ -1411,7 +1218,7 @@
           "type": "fill",
           "target": "app",
           "selector": "[data-testid=feedback-message]",
-          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+          "value": "The channel and side-by-side thread layout works well. I\u2019d like a quicker way to switch between client projects."
         },
         {
           "type": "click",
