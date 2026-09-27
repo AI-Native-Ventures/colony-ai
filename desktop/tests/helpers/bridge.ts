@@ -288,6 +288,8 @@ type MockBridgeOptions = {
   agentListDelayMs?: number;
   createManagedAgentDelayMs?: number;
   channelTemplates?: ChannelTemplate[];
+  /** Override display names for visual fixtures without changing channel IDs. */
+  channelNamesById?: Record<string, string>;
   deleteMessageError?: string;
   addChannelMembersDelayMs?: number;
   /** Sequenced add-member failures. A string fails that call; null succeeds. */

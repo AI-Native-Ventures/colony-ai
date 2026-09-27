@@ -1124,6 +1124,9 @@
       "routeLabel": "Moderation save failed",
       "appReadySelector": "[data-testid=settings-moderation]",
       "appMockData": {
+        "channelNamesById": {
+          "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50": "campaign-studio"
+        },
         "relayRequiresMembership": true,
         "relayRole": "owner",
         "deleteMessageError": "Permission denied.",

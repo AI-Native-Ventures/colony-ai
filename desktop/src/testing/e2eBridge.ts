@@ -382,6 +382,8 @@ type E2eConfig = {
     channelMembersReadDelayMs?: number;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
+    /** Override display names for visual fixtures without changing channel IDs. */
+    channelNamesById?: Record<string, string>;
     /** Reject the mock delete_message command before changing its message store. */
     deleteMessageError?: string;
     channelsReadError?: string;
@@ -1844,7 +1846,7 @@ function toRawChannel(
 
   return {
     id: channel.id,
-    name: channel.name,
+    name: config?.mock?.channelNamesById?.[channel.id] ?? channel.name,
     channel_type: channel.channel_type,
     visibility: channel.visibility,
     description: channel.description,

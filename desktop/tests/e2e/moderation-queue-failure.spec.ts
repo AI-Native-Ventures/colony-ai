@@ -9,6 +9,7 @@ test("failed enforcement keeps the report open and shows the designed failure", 
   page,
 }) => {
   await installMockBridge(page, {
+    channelNamesById: { [channelId]: "campaign-studio" },
     deleteMessageError: "Permission denied.",
     relayRequiresMembership: true,
     relayRole: "owner",
@@ -60,10 +61,19 @@ test("failed enforcement keeps the report open and shows the designed failure", 
   await expect(
     actionForm.getByText("Reported message", { exact: true }),
   ).toBeVisible();
-  await expect(actionForm.getByLabel("Reason for action")).toHaveValue("");
+  await expect(
+    actionForm.getByText("# campaign-studio · Reported by a member"),
+  ).toBeVisible();
+  await expect(actionForm.getByLabel("Reason for action")).toHaveValue(
+    "Repeated unsolicited advertising",
+  );
   await expect(actionForm.getByLabel("Action", { exact: true })).toHaveValue(
     "delete",
   );
+  await expect(actionForm.getByRole("option")).toHaveText([
+    "Remove reported message",
+    "Restrict member",
+  ]);
 
   const failure = actionForm.getByTestId("moderation-action-failed");
   await expect(failure).toContainText("Moderation action failed");

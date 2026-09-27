@@ -2288,6 +2288,58 @@ body:has(.w20-settings-shell) {
   }
 }
 
+.settings-moderation-failure {
+  max-width: 750px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 26px;
+}
+
+.settings-moderation-failure__title {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.settings-moderation-failure__reported {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 18px 0;
+}
+
+.settings-moderation-failure__reported-detail {
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.settings-moderation-failure__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 19px 0;
+}
+
+.settings-moderation-failure__notice {
+  margin: 18px 0;
+  border: 1px solid #edd8dd;
+  border-radius: 7px;
+  background: #fcf2f4;
+  padding: 15px 18px;
+  color: #925369;
+}
+
+.settings-moderation-failure__notice-detail {
+  margin-top: 5px;
+}
+
+.settings-moderation-failure__confirm {
+  margin-top: 22px;
+}
+
+.dark .settings-moderation-failure__notice {
+  border-color: #63414e;
+  background: #402b34;
+  color: #dcacb8;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .w20-appearance .ap-switch,
   .w20-appearance .ap-switch i,

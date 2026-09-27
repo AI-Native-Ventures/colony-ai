@@ -429,8 +429,9 @@ function QueueTab({
   async function handleResolve(
     group: ModerationQueueGroup,
     action: ResolutionAction,
-    reason = "",
+    reason?: string,
   ) {
+    const actionReason = reason ?? "";
     const status = statusForAction(action);
     const openReports = group.reports.filter(
       (report) => report.status === "open",
@@ -442,9 +443,18 @@ function QueueTab({
       // on". If enforcement fails we must not send that lie, and we leave the
       // report open (retryable, no orphan decision row). Only after the paired
       // 9040/9005/9001 lands do we resolve every open report about this target.
-      await enforceResolution(group, action, banMutation.mutateAsync, reason);
+      await enforceResolution(
+        group,
+        action,
+        banMutation.mutateAsync,
+        actionReason,
+      );
     } catch {
-      setFailedResolution({ group, action, reason });
+      const retryReason =
+        reason ??
+        group.reports.find((report) => report.note?.trim())?.note ??
+        "";
+      setFailedResolution({ group, action, reason: retryReason });
       onFailurePanelChange(true);
       setPendingTargetKey(null);
       return;
@@ -463,7 +473,7 @@ function QueueTab({
             reportEventId: report.reportEventId,
             status,
             action,
-            reason: reason.trim() || undefined,
+            reason: actionReason.trim() || undefined,
           }),
         ),
       );
@@ -491,12 +501,15 @@ function QueueTab({
       failedResolution.group.targetKind,
       failedResolution.group.channelId != null,
     ).filter(
-      (action) => action === "delete" || action === "ban" || action === "kick",
+      (action) =>
+        action === "delete" ||
+        action === "ban" ||
+        action === failedResolution.action,
     );
 
     return (
       <form
-        className="max-w-[880px] border-b border-border pb-6"
+        className="settings-moderation-failure"
         data-testid="moderation-action-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -507,26 +520,26 @@ function QueueTab({
           );
         }}
       >
-        <h3 className="mb-4 text-sm font-semibold text-foreground">
+        <h3 className="settings-moderation-failure__title text-base font-semibold text-foreground">
           Moderation failed
         </h3>
-        <div className="border-b border-border pb-5">
-          <p className="text-sm font-medium text-foreground">
+        <div className="settings-moderation-failure__reported">
+          <p className="settings-moderation-failure__reported-title text-base font-semibold text-foreground">
             Reported message
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="settings-moderation-failure__reported-detail text-sm text-muted-foreground">
             {channel ? `# ${channel.name} · ` : ""}Reported by a member
           </p>
         </div>
-        <div className="mt-5">
+        <div className="settings-moderation-failure__field">
           <label
-            className="mb-2 block text-xs text-foreground"
+            className="settings-moderation-failure__label text-sm text-foreground"
             htmlFor="moderation-action-reason"
           >
             Reason for action
           </label>
           <Textarea
-            className="min-h-[116px] resize-y rounded-md border-border/70 bg-background text-sm"
+            className="min-h-0 resize-y rounded-md border-input bg-background px-3 py-2.5 text-sm leading-[1.7]"
             data-testid="moderation-action-reason"
             id="moderation-action-reason"
             onChange={(event) =>
@@ -534,18 +547,19 @@ function QueueTab({
                 current ? { ...current, reason: event.target.value } : current,
               )
             }
+            rows={4}
             value={failedResolution.reason}
           />
         </div>
-        <div className="mt-5">
+        <div className="settings-moderation-failure__field">
           <label
-            className="mb-2 block text-xs text-foreground"
+            className="settings-moderation-failure__label text-sm text-foreground"
             htmlFor="moderation-action-select"
           >
             Action
           </label>
           <select
-            className="h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm text-foreground"
+            className="h-[38px] w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
             data-testid="moderation-action-select"
             id="moderation-action-select"
             onChange={(event) =>
@@ -568,18 +582,20 @@ function QueueTab({
           </select>
         </div>
         <div
-          className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive"
+          className="settings-moderation-failure__notice"
           data-testid="moderation-action-failed"
           role="alert"
         >
-          <p className="text-xs font-semibold">Moderation action failed</p>
-          <p className="mt-2 text-xs">
+          <p className="settings-moderation-failure__notice-title text-sm font-semibold">
+            Moderation action failed
+          </p>
+          <p className="settings-moderation-failure__notice-detail text-sm">
             The content remains unchanged. Retry after checking your
             permissions.
           </p>
         </div>
         <Button
-          className="mt-4 h-[34px] rounded-md px-[13px] text-xs font-semibold text-destructive hover:bg-destructive/10"
+          className="mt-0 h-[34px] rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-sm font-semibold text-[#925369] hover:bg-[#a04f6415] dark:text-[#dcacb8]"
           data-testid="moderation-confirm-action"
           disabled={pendingTargetKey !== null}
           type="submit"
