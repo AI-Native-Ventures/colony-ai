@@ -19,6 +19,8 @@ pub mod config;
 pub mod conformance;
 /// WebSocket connection lifecycle and state.
 pub mod connection;
+/// Server-priced Colony credit packs.
+pub mod credit_packs;
 /// Relay error types.
 pub mod error;
 /// WebSocket message handlers for NIP-01 client commands.
@@ -33,6 +35,10 @@ pub mod mesh_boot;
 pub mod metrics;
 /// NIP-11 relay information document.
 pub mod nip11;
+/// PayFast hosted checkout and ITN verification.
+pub mod payfast;
+/// Hosted payment provider contract shared by checkout handlers.
+pub mod payments_provider;
 /// NIP-01 client/relay message parsing.
 pub mod protocol;
 /// Durable NIP-PL matcher and delivery worker.

@@ -368,12 +368,12 @@ export function WorkspaceTabs({
       <ProjectSectionHeader
         action={{
           disabled: createIssueAction.pending,
-          label: "Create task",
+          label: "New issue",
           onClick: () => setCreateIssueOpen(true),
         }}
         className={PROJECT_SECTION_HEADER_CLASS}
         icon={CircleDot}
-        title="Tasks"
+        title="Issues"
       />
     ) : selectedTab === "prs" && !selectedPullRequestId ? (
       <ProjectSectionHeader

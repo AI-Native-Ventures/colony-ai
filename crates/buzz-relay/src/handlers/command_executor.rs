@@ -62,6 +62,9 @@ pub async fn handle_command(
     }
 
     let kind = event.kind.as_u16() as u32;
+    if buzz_core::kind::is_business_command_kind(kind) {
+        return super::business_records::handle(tenant, state, event, auth).await;
+    }
     match kind {
         KIND_DM_OPEN => handle_dm_open(tenant, state, &event, &auth).await,
         KIND_DM_ADD_MEMBER => handle_dm_add_member(tenant, state, &event, &auth).await,

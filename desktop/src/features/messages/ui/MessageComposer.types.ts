@@ -39,6 +39,8 @@ export type MessageComposerProps = {
    * composer dock. `standalone` keeps both concerns inside this component.
    */
   layoutMode?: "dock" | "standalone";
+  /** Use the frozen Colony channel workspace composer chrome. */
+  workspaceChrome?: boolean;
   disabled?: boolean;
   draftKey?: string;
   /**
@@ -111,6 +113,8 @@ export type MessageComposerProps = {
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;
   toolbarExtraActions?: ReactNode;
+  /** Optional accessible content rendered between the editor and toolbar. */
+  footerContent?: ReactNode;
   typingParentEventId?: string | null;
   typingRootEventId?: string | null;
 };

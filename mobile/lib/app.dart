@@ -3,43 +3,64 @@ import 'dart:async';
 import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:intl/intl.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import 'features/age_gate/age_restriction_page.dart';
 import 'features/age_gate/age_signal_provider.dart';
+import 'features/activity/activity_page.dart';
+import 'features/activity/activity_home_page.dart';
 import 'features/activity/activity_provider.dart';
+import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
 import 'features/auth/account_claim_prompt.dart';
 import 'features/auth/auth_entry_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
+import 'features/channels/channels_page.dart';
 import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
+import 'features/today/today_models.dart';
+import 'features/today/today_page.dart';
 import 'features/invites/invite_create_page.dart';
 import 'features/invites/invite_join_provider.dart';
 import 'features/pairing/pairing_page.dart';
 import 'features/pairing/pairing_provider.dart';
+import 'features/pulse/team_update_compose_page.dart';
+import 'features/pulse/team_update_note_page.dart';
+import 'features/pulse/pulse_actions.dart';
+import 'features/pulse/pulse_provider.dart';
+import 'features/pulse/team_updates_page.dart';
+import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
 import 'features/channels/deep_link_dispatcher.dart';
 import 'features/channels/voice_note_recording.dart';
 import 'features/profile/user_status_cache_provider.dart';
+import 'features/profile/profile_provider.dart';
 import 'features/profile/settings_profile_header.dart';
 import 'features/profile/profile_edit_page.dart';
 import 'features/profile/profile_text_editor.dart';
 import 'features/settings/settings_page.dart';
 import 'shared/auth/auth.dart';
+import 'shared/community/community_icon_provider.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
+import 'shared/navigation/mobile_route.dart';
+import 'shared/navigation/mobile_navigation.dart';
+import 'shared/navigation/mobile_routes.dart';
 import 'shared/push/push_subscription_provider.dart';
 import 'shared/push/push_relay_capability_provider.dart';
 import 'shared/relay/relay.dart';
+import 'shared/profile/user_cache_provider.dart';
+import 'shared/utils/string_utils.dart';
 import 'shared/read_state/read_state_provider.dart';
 import 'shared/theme/theme.dart';
+import 'shared/shell/mobile_shell.dart';
 import 'shared/widgets/buzz_loading_indicator.dart';
 
 const _starterChannelNamespace = '3ce33bea-8f09-5f1b-9c85-8a7d2659e6b0';
@@ -51,6 +72,181 @@ const _starterChannels = [
     description: 'Say hi, ask a question, or share what brought you here.',
   ),
 ];
+
+/// App composition is the only layer that knows concrete feature pages.
+final _mobileRouteRegistry = MobileRouteRegistry.empty()
+    .register(MobileRoutes.chats, (context, routeContext) {
+      return ChannelsPage(
+        settingsPageBuilder: routeContext.settingsPageBuilder,
+        tabReselection: routeContext.tabReselection,
+        onSettingsTransitionProgress: routeContext.onSettingsTransitionProgress,
+      );
+    })
+    .register(MobileRoutes.today, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final profile = ref.watch(profileProvider).asData?.value;
+          final communityIcon = community == null
+              ? null
+              : ref
+                    .watch(communityIconProvider(community.relayUrl))
+                    .asData
+                    ?.value;
+          final activityAsync = ref.watch(activityProvider);
+          final needsAction =
+              activityAsync.asData?.value.needsAction ?? const <FeedItem>[];
+          if (needsAction.isNotEmpty) {
+            ref
+                .read(userCacheProvider.notifier)
+                .preload(needsAction.map((item) => item.pubkey).toList());
+          }
+          final reviewItems = activityAsync.whenData(
+            (feed) => [
+              for (final item in feed.needsAction) _todayReviewItem(ref, item),
+            ],
+          );
+          final notesAsync = ref.watch(globalNotesProvider);
+          final latestNote = notesAsync.asData?.value
+              .where((note) => note.replyParentId == null)
+              .firstOrNull;
+          final noteAuthor = latestNote == null
+              ? null
+              : ref.watch(
+                  userCacheProvider.select((cache) => cache[latestNote.pubkey]),
+                );
+          if (latestNote != null && noteAuthor == null) {
+            ref.read(userCacheProvider.notifier).get(latestNote.pubkey);
+          }
+          final teamUpdate = notesAsync.whenData((notes) {
+            final note = notes
+                .where((candidate) => candidate.replyParentId == null)
+                .firstOrNull;
+            if (note == null) return null;
+            final firstParagraph = note.content
+                .trim()
+                .split(RegExp(r'\n\s*\n'))
+                .firstOrNull
+                ?.replaceAll('\n', ' ')
+                .trim();
+            final title = firstParagraph?.isNotEmpty == true
+                ? firstParagraph!
+                : 'Team update';
+            final author =
+                _firstName(noteAuthor?.displayName) ?? shortPubkey(note.pubkey);
+            final time = DateFormat('HH:mm').format(
+              DateTime.fromMillisecondsSinceEpoch(note.createdAt * 1000),
+            );
+            return TodayTeamUpdate(
+              id: note.id,
+              title: title,
+              subtitle: '$author shared an update · $time',
+              initials: noteAuthor?.initials ?? _pubkeyInitial(note.pubkey),
+            );
+          });
+
+          return TodayPage(
+            communityName: community?.name,
+            communityIconUrl: communityIcon,
+            profileName: profile?.displayName,
+            reviewItems: reviewItems,
+            teamUpdate: teamUpdate,
+            updatesPageBuilder: (_, published) =>
+                TeamUpdatesPage(initiallyPublished: published),
+            onOpenReview: (itemId) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ActivityPage(initialItemId: itemId),
+              ),
+            ),
+            onOpenUpdate: (noteId) =>
+                MobileNavigation.openUpdateNote(context, noteId),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.activity, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final communityIcon = community == null
+              ? null
+              : ref
+                    .watch(communityIconProvider(community.relayUrl))
+                    .asData
+                    ?.value;
+          return ActivityHomePage(
+            communityName: community?.name,
+            communityIconUrl: communityIcon,
+            currentUser: ref.watch(profileProvider).asData?.value,
+            tabReselection: routeContext.tabReselection,
+            updatesPageBuilder: (_, published) =>
+                TeamUpdatesPage(initiallyPublished: published),
+            onOpenItem: (item) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ActivityPage(initialItemId: item.id),
+              ),
+            ),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
+    .register(
+      MobileRoutes.updateNote,
+      (context, noteId) => buildTeamUpdateNoteRoute(noteId),
+    )
+    .register(
+      MobileRoutes.updateCompose,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.compose),
+    )
+    .register(
+      MobileRoutes.updateDraft,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.draft),
+    )
+    .register(
+      MobileRoutes.updateFailed,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.failed),
+    )
+    .register(
+      MobileRoutes.updatePublished,
+      (context, _) => const TeamUpdatesPage(initiallyPublished: true),
+    )
+    .register(MobileRoutes.search, (context, _) => const SearchPage());
+
+/// Builds the production page for a team update note route.
+Widget buildTeamUpdateNoteRoute(String noteId) =>
+    TeamUpdateNotePage(noteId: noteId, onReviewCampaign: null);
+
+TodayReviewItem _todayReviewItem(WidgetRef ref, FeedItem item) {
+  final author = ref.watch(
+    userCacheProvider.select((cache) => cache[item.pubkey.toLowerCase()]),
+  );
+  if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
+  return TodayReviewItem(
+    id: item.id,
+    title: item.displayContent,
+    subtitle: item.channelName.isEmpty
+        ? '${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review'
+        : '${item.channelName} · ${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review',
+    initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+  );
+}
+
+String _pubkeyInitial(String pubkey) =>
+    pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?';
+
+String? _firstName(String? name) {
+  final normalized = name?.trim();
+  if (normalized == null || normalized.isEmpty) return null;
+  return normalized.split(RegExp(r'\s+')).first;
+}
+
+Widget _teamUpdateComposer(TeamUpdateComposeMode mode) => Consumer(
+  builder: (context, ref, _) => TeamUpdateComposePage(
+    mode: mode,
+    onPublish: (content) => publishNote(ref, content: content),
+  ),
+);
 
 final _inviteRelayConnectedProvider = FutureProvider.family<void, String>((
   ref,
@@ -392,10 +588,16 @@ class App extends HookConsumerWidget {
       theme: AppTheme.light(
         colorScheme: lightScheme,
         topSectionGradient: buzzLightGradient,
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.light
+            : MobileDesignTokens.fromColorScheme(lightScheme),
       ),
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.dark
+            : MobileDesignTokens.fromColorScheme(darkScheme),
       ),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
@@ -417,9 +619,22 @@ class App extends HookConsumerWidget {
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => DeepLinkDispatcher(
             child: HomePage(
+              routeRegistry: _mobileRouteRegistry,
               settingsPageBuilder: _buildSettingsPage,
               hasUnreadInbox: hasUnreadInbox,
               accountClaimPrompt: const AccountClaimPrompt(),
+              overlayBuilder: (context, shellContext) =>
+                  ChannelQuickActionsLauncher(
+                    visible:
+                        shellContext.destination ==
+                        MobileShellDestination.chats,
+                    navigationBarHeight: shellContext.navigationBarHeight,
+                    navigationBarBottomGap:
+                        shellContext.navigationBarHeight + Grid.half,
+                    navigationBarWidth: shellContext.navigationBarWidth,
+                    systemBottomInset: shellContext.bottomInset,
+                    rightInset: Grid.xs,
+                  ),
             ),
           ),
           _ => DeepLinkDispatcher(

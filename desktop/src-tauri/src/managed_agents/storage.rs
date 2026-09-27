@@ -6,6 +6,7 @@ use std::{
 };
 
 use tauri::{AppHandle, Manager};
+use zeroize::Zeroize;
 
 use crate::app_state::keyring_service;
 use crate::managed_agents::{
@@ -269,6 +270,43 @@ pub fn load_managed_agents<R: tauri::Runtime>(
     let mut records = load_agent_store(app)?;
     records.retain(|record| !record.pubkey.is_empty());
     hydrate_keys(&mut records);
+    Ok(records)
+}
+
+/// Read Factory agent records without keyring access or store repair writes.
+fn load_factory_records<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Vec<ManagedAgentRecord>, String> {
+    let path = managed_agents_store_path(app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read Factory agent config: {error}"))?;
+    let mut records: Vec<ManagedAgentRecord> = serde_json::from_str(&content)
+        .map_err(|error| format!("failed to parse Factory agent config: {error}"))?;
+    for record in &mut records {
+        record.private_key_nsec.zeroize();
+    }
+    Ok(records)
+}
+
+/// Load local ACP agent configuration for Factory without hydrating managed
+/// agent private keys from the OS keyring or writing to the agent store.
+pub(crate) fn load_factory_agent_records<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Vec<ManagedAgentRecord>, String> {
+    let mut records = load_factory_records(app)?;
+    records.retain(|record| !record.pubkey.is_empty());
+    Ok(records)
+}
+
+/// Load key-less persona definitions for Factory without writing to the store.
+pub(crate) fn load_factory_agent_definitions<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Vec<ManagedAgentRecord>, String> {
+    let mut records = load_factory_records(app)?;
+    records.retain(|record| record.pubkey.is_empty());
     Ok(records)
 }
 

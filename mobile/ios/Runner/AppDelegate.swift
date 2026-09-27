@@ -375,6 +375,14 @@ import os.log
       generator.prepare()
       generator.notificationOccurred(.success)
       result(nil)
+    case "openCameraSettings":
+      guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+        result(false)
+        return
+      }
+      UIApplication.shared.open(settingsURL, options: [:]) { opened in
+        result(opened)
+      }
     default:
       result(FlutterMethodNotImplemented)
     }

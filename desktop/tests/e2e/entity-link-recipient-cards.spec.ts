@@ -606,7 +606,7 @@ test("reopening the same entity link reapplies its workspace state", async ({
     .getByTestId("project-issue-detail")
     .getByRole("heading", { name: ISSUE_SUBJECT });
   await expect(issueHeading).toBeVisible();
-  await breadcrumb.getByRole("button", { name: "Tasks", exact: true }).click();
+  await breadcrumb.getByRole("button", { name: "Issues", exact: true }).click();
   await expect(issueHeading).toHaveCount(0);
   await emitEntityLink(issueLink);
   await expect(issueHeading).toBeVisible();

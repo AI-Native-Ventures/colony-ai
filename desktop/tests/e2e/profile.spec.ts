@@ -9,6 +9,7 @@ import {
 import { waitForAnimations } from "../helpers/animations";
 import { expectEmojiMartStylesInstalled } from "../helpers/css";
 import { openProfileMenu, openSettings } from "../helpers/settings";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -367,7 +368,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     "Keep every profile entry point in sync.",
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -408,7 +409,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     { dmChannelId, pubkey: agentPubkey },
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -1128,6 +1129,7 @@ test("updates presence from the profile menu", async ({ page }) => {
 test("renders agent profile ingress subviews from the Playwright mock bridge", async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
     agentMemory: createMockAgentMemoryListing(),
     // The viewer is the agent's verified NIP-OA owner, so archiveActions
@@ -1916,7 +1918,7 @@ test("an older agent message stays exact while persona navigation selects the li
   });
   await page.goto("/");
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId(`persona-agent-row-${personaId}`).click();
   await expect(
     page.getByTestId("user-profile-agent-primary-action"),

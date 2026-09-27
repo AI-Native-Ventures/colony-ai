@@ -15,13 +15,16 @@ mod scope;
 mod setup_mode;
 mod usage;
 
+pub use acp::{
+    AcpClient, AcpError, EnvVar, McpServer, SessionNewResponse, StopReason, SystemPromptTransport,
+};
+pub use observer::{ObserverContext, ObserverEvent, ObserverHandle};
 pub use usage::TurnUsage;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
-use acp::{AcpClient, EnvVar, McpServer};
 use anyhow::{ensure, Context, Result};
 use buzz_core::kind::{
     KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION, KIND_STREAM_MESSAGE,

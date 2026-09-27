@@ -60,14 +60,17 @@ EdgeInsets _activityScrollPadding(
 /// Matches desktop's Home inbox item design and semantics (see
 /// `desktop/src/features/home/ui/InboxListPane.tsx`): full sender avatar +
 /// name, contextual "Mentioned in #channel"-style label, unread dot + time,
-/// message preview — while keeping mobile's list → canonical destination
+/// message preview while keeping the canonical destination flow for mobile.
 /// navigation. Row taps deep-link to the represented message (oldest unread
 /// for grouped conversations) rather than just opening the channel.
 class ActivityPage extends HookConsumerWidget {
-  const ActivityPage({this.tabReselection, super.key});
+  const ActivityPage({this.tabReselection, this.initialItemId, super.key});
 
   /// Notifies this page when its already-selected tab is tapped again.
   final ValueListenable<int>? tabReselection;
+
+  /// Opens a feed item after the inbox has loaded, when launched from Today.
+  final String? initialItemId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -269,6 +272,19 @@ class ActivityPage extends HookConsumerWidget {
         ),
       );
     }
+
+    final openedInitialItem = useRef(false);
+    useEffect(() {
+      final targetId = initialItemId;
+      if (targetId == null || openedInitialItem.value) return null;
+      final target = allItems.where((item) => item.id == targetId).firstOrNull;
+      if (target == null) return null;
+      openedInitialItem.value = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) unawaited(openItem(target));
+      });
+      return null;
+    }, [initialItemId, allItems.map((item) => item.id).join('\u0000')]);
 
     void openDraft(ComposeDraft draft) {
       final channel = channelById[draft.channelId];

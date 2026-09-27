@@ -69,11 +69,10 @@ flutter:
     # desktop uses. Do not hand-edit.
     - assets/emoji/emoji-data.json
   fonts:
-    - family: Inter
+    - family: Manrope
       fonts:
-        - asset: assets/fonts/InterVariable.ttf
-        - asset: assets/fonts/InterVariable-Italic.ttf
-          style: italic
+        - asset: assets/fonts/Manrope-Variable.ttf
+          weight: 200
     - family: GeistMono
       fonts:
         - asset: assets/fonts/GeistMono-Variable.ttf

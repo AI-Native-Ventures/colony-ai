@@ -22,6 +22,8 @@ on:
       - 'scripts/ci-mesh-lifecycle-smoke.sh'
       - 'scripts/start-relay-for-tests.sh'
       - '.github/workflows/mesh-lifecycle.yml'
+      - 'docker-compose.yml'
+      - '.github/actions/cached-service-images/**'
   pull_request:
     paths:
       - 'crates/buzz-relay/examples/mesh_*.rs'
@@ -34,6 +36,8 @@ on:
       - 'scripts/ci-mesh-lifecycle-smoke.sh'
       - 'scripts/start-relay-for-tests.sh'
       - '.github/workflows/mesh-lifecycle.yml'
+      - 'docker-compose.yml'
+      - '.github/actions/cached-service-images/**'
   workflow_dispatch:
 
 concurrency:
@@ -74,6 +78,8 @@ jobs:
           restore-keys: |
             mesh-lifecycle-${{ runner.os }}-smollm2-135m-
 
+      - name: Restore cached service images
+        uses: ./.github/actions/cached-service-images
       - name: Start integration services
         run: |
           for attempt in 1 2 3; do

@@ -206,15 +206,25 @@ test("keeps the drawer open until the huddle is expanded", async ({ page }) => {
     "[data-buzz-content-surface]:not([data-buzz-content-unframed])",
   );
   await expect(mainContentSurface).toBeVisible();
-  const [mainContentColor, huddleCardColor] = await Promise.all([
-    mainContentSurface.evaluate(
-      (element) => getComputedStyle(element).backgroundColor,
-    ),
-    huddleControl.evaluate(
-      (element) => getComputedStyle(element).backgroundColor,
-    ),
-  ]);
-  expect(huddleCardColor).toBe(mainContentColor);
+  const [mainContentColor, huddleCardColor, backgroundTokenColor] =
+    await Promise.all([
+      mainContentSurface.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+      huddleControl.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+      page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.className = "bg-background";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      }),
+    ]);
+  expect(huddleCardColor).toBe(backgroundTokenColor);
+  expect(huddleCardColor).not.toBe(mainContentColor);
   await expect(huddleControl).toHaveCSS("border-top-width", "1px");
   await expect(huddleControl).toContainText("In a huddle");
   await expect(huddleControl).toContainText("#general");

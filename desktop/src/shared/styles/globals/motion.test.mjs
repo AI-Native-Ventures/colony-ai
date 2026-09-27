@@ -8,7 +8,11 @@ const motionCss = readFileSync(
 );
 
 test("conversation arrival uses shared motion tokens", () => {
-  assert.match(motionCss, /--motion-duration-arrival:\s*500ms/);
+  assert.match(motionCss, /--colony-motion-toast:\s*180ms/);
+  assert.match(
+    motionCss,
+    /--motion-duration-arrival:\s*var\(--colony-motion-toast\)/,
+  );
   assert.match(motionCss, /--motion-ease-arrival:/);
   assert.match(
     motionCss,

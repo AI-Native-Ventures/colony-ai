@@ -587,6 +587,40 @@ export function parseSupportedLinkPreview(
   return createPreview("generic-link", parsed, provider, "link", provider);
 }
 
+/** Remove a zero-width standalone link when its resolved preview is rendered. */
+export function stripRenderedPreviewPlaceholderLinks(
+  content: string,
+  previewHrefs: ReadonlySet<string>,
+  activeRelayOrigin?: string | null,
+): string {
+  if (previewHrefs.size === 0) return content;
+
+  return content
+    .split("\n")
+    .filter((line) => {
+      const match = line.match(
+        /^[\t ]*\[(?:[\t ]|\u200b)*\]\(([^)\s]+)\)[\t ]*$/,
+      );
+      if (!match?.[1]) return true;
+
+      const preview = parseSupportedLinkPreview(match[1], activeRelayOrigin);
+      return !preview || !previewHrefs.has(preview.href);
+    })
+    .join("\n");
+}
+
+export function stripPreview(
+  content: string,
+  previews: readonly Pick<SupportedLinkPreview, "href">[],
+  activeRelayOrigin?: string | null,
+): string {
+  return stripRenderedPreviewPlaceholderLinks(
+    content,
+    new Set(previews.map((preview) => preview.href)),
+    activeRelayOrigin,
+  );
+}
+
 export function isSupportedLinkAutolinkLabel(
   label: string,
   preview: SupportedLinkPreview,
@@ -691,3 +725,5 @@ export function extractSupportedLinkPreviews(
 
   return previews;
 }
+
+export { parseSupportedLinkPreview as parsePreview };

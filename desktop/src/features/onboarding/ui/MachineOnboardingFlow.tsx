@@ -56,6 +56,23 @@ import {
   type MachineOnboardingPage,
 } from "./machineOnboardingStartup";
 import type { DefaultConfigDraft } from "./types";
+import { useCommunityOnboarding } from "../communityOnboarding";
+import {
+  BusinessSetupStep,
+  businessCommunityRelayUrl,
+  readOnboardingBusinessProfile,
+  type OnboardingBusinessProfile,
+} from "./BusinessSetupStep";
+import { ConnectSetupStep } from "./ConnectSetupStep";
+import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
+import {
+  getSelfProvisioningHttpBase,
+  listMyCommunities,
+} from "@/features/communities/selfProvisioningApi";
+import {
+  OnboardingScenePresentation,
+  type OnboardingBusinessChoice,
+} from "./OnboardingScenePresentation";
 
 export type { MachineOnboardingPage } from "./machineOnboardingStartup";
 
@@ -114,6 +131,20 @@ export function MachineOnboardingFlow({
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
+  const communityOnboarding = useCommunityOnboarding();
+  const [createdCommunity, setCreatedCommunity] =
+    React.useState<SelfServeCommunity | null>(null);
+  const [businessProfile, setBusinessProfile] =
+    React.useState<OnboardingBusinessProfile | null>(null);
+  const [ownedCommunities, setOwnedCommunities] = React.useState<
+    SelfServeCommunity[]
+  >([]);
+  const [businessListError, setBusinessListError] = React.useState<
+    string | null
+  >(null);
+  const [businessBackPage, setBusinessBackPage] = React.useState<
+    "account-auth" | "businesses"
+  >("account-auth");
   const [keyImportStage, setKeyImportStage] =
     React.useState<NostrKeyImportStage>("key-entry");
   const [isKeyImporting, setIsKeyImporting] = React.useState(false);
@@ -299,8 +330,36 @@ export function MachineOnboardingFlow({
       setAccountAuthenticated(true);
       setSelectedPubkey(identity.pubkey);
       setIdentityStorage(identity.storage);
-      setTransitionDirection("forward");
-      setPage("setup");
+      setBusinessListError(null);
+      try {
+        const httpBase = await getSelfProvisioningHttpBase();
+        const mine = await listMyCommunities(httpBase);
+        if (mine.owner_pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
+          throw new Error("business_owner_mismatch");
+        }
+        const owned = mine.communities
+          .filter(
+            (community) =>
+              community.owner_pubkey.toLowerCase() ===
+              account.pubkey.toLowerCase(),
+          )
+          .map((community) => {
+            const profile = readOnboardingBusinessProfile(community.id);
+            return profile ? { ...community, name: profile.name } : community;
+          });
+        setOwnedCommunities(owned);
+        setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
+        setTransitionDirection("forward");
+        setPage(owned.length > 0 ? "businesses" : "business");
+      } catch {
+        setOwnedCommunities([]);
+        setBusinessListError(
+          "Could not load your businesses. Start a new business or try again later.",
+        );
+        setBusinessBackPage("businesses");
+        setTransitionDirection("forward");
+        setPage("businesses");
+      }
     },
     [continueWithIdentity, queryClient, showUnsupported],
   );
@@ -411,24 +470,16 @@ export function MachineOnboardingFlow({
 
   if (page === "account-auth") {
     return (
-      <div
-        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
-        data-testid="machine-onboarding-gate"
-      >
-        <StartupWindowDragRegion />
-        <LandingBees />
-        <OnboardingCard current={1} testId="machine-onboarding-card">
-          <AccountAuthFlow
-            authClient={authClient}
-            onAdvanced={() => {
-              setAccountAuthenticated(false);
-              setTransitionDirection("forward");
-              setPage("identity");
-            }}
-            onAuthenticated={installAccount}
-          />
-        </OnboardingCard>
-      </div>
+      <AccountAuthFlow
+        authClient={authClient}
+        onAdvanced={() => {
+          setAccountAuthenticated(false);
+          setTransitionDirection("forward");
+          setPage("identity");
+        }}
+        onAuthenticated={installAccount}
+        standalone
+      />
     );
   }
 
@@ -453,7 +504,8 @@ export function MachineOnboardingFlow({
                 src="/landing/buzz-wordmark.png"
               />
               <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
-                Your people, your agents, your projects —<br />
+                Your people, your agents, your projects,
+                <br />
                 all in one place.
               </p>
               {error ? (
@@ -529,6 +581,127 @@ export function MachineOnboardingFlow({
           </div>
         </OnboardingFooterProvider>
       </div>
+    );
+  }
+
+  if (page === "businesses") {
+    const choices: OnboardingBusinessChoice[] = ownedCommunities.map(
+      (community) => ({
+        id: community.id,
+        name: community.name || community.slug,
+        role: "Owner",
+      }),
+    );
+    return (
+      <OnboardingScenePresentation
+        businessChoices={choices}
+        data={{
+          name: "",
+          email: "",
+          business: choices[0]?.name ?? "",
+          website: "",
+          description: "",
+        }}
+        error={businessListError}
+        onCreateBusiness={() => {
+          setBusinessBackPage("businesses");
+          setTransitionDirection("forward");
+          setPage("business");
+        }}
+        onSelectBusiness={(id) => {
+          const selected = ownedCommunities.find(
+            (community) => community.id === id,
+          );
+          if (!selected || !selectedPubkey) {
+            setBusinessListError("That business is no longer available.");
+            return;
+          }
+          const started = communityOnboarding.start({
+            source: "first-community",
+            firstCommunityPage: "owned",
+            relayUrl: businessCommunityRelayUrl(selected),
+            businessCommunityId: selected.id,
+            communityName:
+              readOnboardingBusinessProfile(selected.id)?.name ||
+              selected.name ||
+              selected.slug,
+          });
+          if (!started) {
+            setBusinessListError(
+              "Finish the community setup already in progress before opening this business.",
+            );
+            return;
+          }
+          complete(selectedPubkey);
+        }}
+        scene="businesses"
+      />
+    );
+  }
+
+  if (page === "business") {
+    return (
+      <BusinessSetupStep
+        additional={businessBackPage === "businesses"}
+        onBack={() => {
+          setError(null);
+          setTransitionDirection("backward");
+          setPage(businessBackPage);
+        }}
+        onCreated={(community, profile) => {
+          setCreatedCommunity(community);
+          setBusinessProfile(profile);
+          setError(null);
+          setTransitionDirection("forward");
+          setPage("connect");
+        }}
+        pubkey={selectedPubkey ?? ""}
+      />
+    );
+  }
+
+  if (page === "connect") {
+    if (!createdCommunity || !businessProfile || !selectedPubkey) {
+      return (
+        <NativeUnavailableScreen
+          body="Business setup is incomplete. Return to business details and retry before connecting."
+          onBack={() => setPage("business")}
+          title="Business not ready"
+          testId="onboarding-business-not-ready"
+        />
+      );
+    }
+    return (
+      <ConnectSetupStep
+        business={businessProfile}
+        communityId={createdCommunity.id}
+        error={error}
+        onBack={() => {
+          setError(null);
+          setTransitionDirection("backward");
+          setPage("business");
+        }}
+        onContinue={() => {
+          const started = communityOnboarding.start({
+            source: "first-community",
+            firstCommunityPage: "create",
+            relayUrl: businessCommunityRelayUrl(createdCommunity),
+            businessCommunityId: createdCommunity.id,
+            communityName:
+              businessProfile.name ||
+              createdCommunity.name ||
+              createdCommunity.slug,
+          });
+          if (!started) {
+            setError(
+              "Finish the community setup already in progress before opening this business.",
+            );
+            return;
+          }
+          setError(null);
+          complete(selectedPubkey);
+        }}
+      />
     );
   }
 
@@ -756,7 +929,7 @@ export function MachineOnboardingFlow({
               setupSelectionHandoffRef.current = ids.length > 0;
               setReadyRuntimeIds(ids);
               // Harness install can fail (Windows/PATH/network). Don't soft-lock
-              // onboarding — users can finish setup later in Settings → Agents.
+              // onboarding, users can finish setup later in Settings → Agents.
               if (ids.length === 0) {
                 complete(selectedPubkey ?? undefined, {
                   continueToProfile: !identityWasImported,

@@ -6,21 +6,39 @@
 
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
+import { Route as todayRouteImport } from "./routes/today";
+import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
 import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
+import { Route as powerRouteImport } from "./routes/power";
 import { Route as agentsRouteImport } from "./routes/agents";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
+import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
+import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
+import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
   id: "/workflows",
   path: "/workflows",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const todayRoute = todayRouteImport.update({
+  id: "/today",
+  path: "/today",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const supervisionRoute = supervisionRouteImport.update({
+  id: "/supervision",
+  path: "/supervision",
   getParentRoute: () => rootRouteImport,
 } as any);
 const settingsRoute = settingsRouteImport.update({
@@ -43,6 +61,11 @@ const projectsRoute = projectsRouteImport.update({
   path: "/projects",
   getParentRoute: () => rootRouteImport,
 } as any);
+const powerRoute = powerRouteImport.update({
+  id: "/power",
+  path: "/power",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const agentsRoute = agentsRouteImport.update({
   id: "/agents",
   path: "/agents",
@@ -58,9 +81,29 @@ const workflowsDotworkflowIdRoute = workflowsDotworkflowIdRouteImport.update({
   path: "/workflows/$workflowId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const todayDotupdatesRoute = todayDotupdatesRouteImport.update({
+  id: "/today/updates",
+  path: "/today/updates",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
+  id: "/today/reviews-empty",
+  path: "/today/reviews-empty",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   id: "/projects/$projectId",
   path: "/projects/$projectId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const navigationDotstartRoute = navigationDotstartRouteImport.update({
+  id: "/navigation/start",
+  path: "/navigation/start",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const navigationDothistoryRoute = navigationDothistoryRouteImport.update({
+  id: "/navigation/history",
+  path: "/navigation/history",
   getParentRoute: () => rootRouteImport,
 } as any);
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
@@ -73,6 +116,12 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const channelsDotpinsDotchannelIdRoute =
+  channelsDotpinsDotchannelIdRouteImport.update({
+    id: "/channels/pins/$channelId",
+    path: "/channels/pins/$channelId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -83,44 +132,68 @@ const channelsDotchannelIdDotpostsDotpostIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
+  "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
+  "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
+  "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
+  "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
+  "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
+  "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
@@ -128,58 +201,90 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/agents"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
+    | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
+    | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/agents"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
+    | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
+    | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
     | "/"
     | "/agents"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
+    | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
+    | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   agentsRoute: typeof agentsRoute;
+  powerRoute: typeof powerRoute;
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
   remindersRoute: typeof remindersRoute;
   settingsRoute: typeof settingsRoute;
+  supervisionRoute: typeof supervisionRoute;
+  todayRoute: typeof todayRoute;
   workflowsRoute: typeof workflowsRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
+  navigationDothistoryRoute: typeof navigationDothistoryRoute;
+  navigationDotstartRoute: typeof navigationDotstartRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
+  todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
+  todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
+  channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -190,6 +295,20 @@ declare module "@tanstack/react-router" {
       path: "/workflows";
       fullPath: "/workflows";
       preLoaderRoute: typeof workflowsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/today": {
+      id: "/today";
+      path: "/today";
+      fullPath: "/today";
+      preLoaderRoute: typeof todayRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/supervision": {
+      id: "/supervision";
+      path: "/supervision";
+      fullPath: "/supervision";
+      preLoaderRoute: typeof supervisionRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/settings": {
@@ -220,6 +339,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof projectsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/power": {
+      id: "/power";
+      path: "/power";
+      fullPath: "/power";
+      preLoaderRoute: typeof powerRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/agents": {
       id: "/agents";
       path: "/agents";
@@ -241,11 +367,39 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof workflowsDotworkflowIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/today/updates": {
+      id: "/today/updates";
+      path: "/today/updates";
+      fullPath: "/today/updates";
+      preLoaderRoute: typeof todayDotupdatesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/today/reviews-empty": {
+      id: "/today/reviews-empty";
+      path: "/today/reviews-empty";
+      fullPath: "/today/reviews-empty";
+      preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/projects/$projectId": {
       id: "/projects/$projectId";
       path: "/projects/$projectId";
       fullPath: "/projects/$projectId";
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/navigation/start": {
+      id: "/navigation/start";
+      path: "/navigation/start";
+      fullPath: "/navigation/start";
+      preLoaderRoute: typeof navigationDotstartRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/navigation/history": {
+      id: "/navigation/history";
+      path: "/navigation/history";
+      fullPath: "/navigation/history";
+      preLoaderRoute: typeof navigationDothistoryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/messages/new": {
@@ -262,6 +416,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/channels/pins/$channelId": {
+      id: "/channels/pins/$channelId";
+      path: "/channels/pins/$channelId";
+      fullPath: "/channels/pins/$channelId";
+      preLoaderRoute: typeof channelsDotpinsDotchannelIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -275,15 +436,23 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   agentsRoute: agentsRoute,
+  powerRoute: powerRoute,
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
   remindersRoute: remindersRoute,
   settingsRoute: settingsRoute,
+  supervisionRoute: supervisionRoute,
+  todayRoute: todayRoute,
   workflowsRoute: workflowsRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   messagesDotnewRoute: messagesDotnewRoute,
+  navigationDothistoryRoute: navigationDothistoryRoute,
+  navigationDotstartRoute: navigationDotstartRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
+  todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
+  todayDotupdatesRoute: todayDotupdatesRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
+  channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

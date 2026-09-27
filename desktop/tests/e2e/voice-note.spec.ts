@@ -596,8 +596,9 @@ test("records from the composer and renders an inline waveform card", async ({
   expect(attachBox).not.toBeNull();
   expect(recordBox).not.toBeNull();
   expect(emojiBox).not.toBeNull();
+  // The R17 composer toolbar ends with the microphone.
   expect(recordBox?.x).toBeGreaterThan(attachBox?.x ?? 0);
-  expect(recordBox?.x).toBeLessThan(emojiBox?.x ?? Number.POSITIVE_INFINITY);
+  expect(recordBox?.x).toBeGreaterThan(emojiBox?.x ?? Number.POSITIVE_INFINITY);
 
   await record.click();
   const recorder = page.getByTestId("voice-note-recorder");

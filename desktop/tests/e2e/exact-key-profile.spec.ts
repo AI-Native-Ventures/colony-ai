@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { showAgentTemplates } from "../helpers/agentWorkspace";
 
 const REMOTE = TEST_IDENTITIES.charlie.pubkey;
 const LOCAL = "d".repeat(64);
@@ -65,6 +66,7 @@ for (const hasSibling of [false, true]) {
 
     // Persona-only navigation remains legitimate and intentionally different.
     await page.getByTestId("auxiliary-panel-close").click();
+    await showAgentTemplates(page);
     await page.getByTestId(`persona-agent-row-${PERSONA}`).click();
     await expect(
       page.getByTestId(
@@ -123,6 +125,7 @@ for (const allArchived of [false, true]) {
     );
     // Persona navigation still excludes archived representatives.
     await page.getByTestId("auxiliary-panel-close").click();
+    await showAgentTemplates(page);
     await page.getByTestId(`persona-agent-row-${PERSONA}`).click();
     if (allArchived) {
       await expect(page.getByTestId("user-profile-start-agent")).toBeVisible();

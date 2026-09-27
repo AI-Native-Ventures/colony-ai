@@ -271,6 +271,46 @@ pub(crate) async fn parse_json_response<T: DeserializeOwned>(
     })
 }
 
+/// Deserialize JSON from an HTTP response without buffering more than `max_bytes`.
+///
+/// This is used for relay endpoints whose response cardinality is attacker
+/// controlled. The declared content length is checked first, then each decoded
+/// body chunk is checked so chunked responses cannot bypass the bound.
+pub(crate) async fn parse_json_response_bounded<T: DeserializeOwned>(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<T, String> {
+    let final_host = response.url().host_str().unwrap_or("").to_string();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if let Some(msg) = classify_intercepted_response(&final_host, &content_type) {
+        return Err(msg);
+    }
+    if max_bytes == 0
+        || response
+            .content_length()
+            .is_some_and(|content_length| content_length > max_bytes as u64)
+    {
+        return Err("relay response exceeded the configured size limit".to_string());
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        classify_body_timeout(&error).unwrap_or_else(|| MALFORMED_RESPONSE_MESSAGE.to_string())
+    })? {
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err("relay response exceeded the configured size limit".to_string());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).map_err(|_| MALFORMED_RESPONSE_MESSAGE.to_string())
+}
+
 /// Extract the `retry in Ns` hint from a rate-limit error string.
 ///
 /// Matches the canonical format emitted by the relay in both HTTP 429 bodies
@@ -283,6 +323,20 @@ fn extract_retry_in_hint(body: &str) -> Option<u64> {
 }
 
 pub async fn relay_error_message(response: reqwest::Response) -> String {
+    relay_error_message_with_limit(response, None).await
+}
+
+pub(crate) async fn relay_error_message_bounded(
+    response: reqwest::Response,
+    max_body_bytes: usize,
+) -> String {
+    relay_error_message_with_limit(response, Some(max_body_bytes)).await
+}
+
+async fn relay_error_message_with_limit(
+    response: reqwest::Response,
+    max_body_bytes: Option<usize>,
+) -> String {
     let status = response.status();
 
     // Check for intercepted/proxy responses before reading the body.
@@ -305,14 +359,17 @@ pub async fn relay_error_message(response: reqwest::Response) -> String {
     // shared helper instead of letting `unwrap_or_default` swallow it into a
     // bare status label. A non-timeout body error still degrades to an empty
     // body → status-only message, exactly as before.
-    let body = match response.text().await {
+    let body_result = if let Some(limit) = max_body_bytes {
+        read_bounded_response_text(response, limit).await
+    } else {
+        response.text().await.map_err(|error| {
+            classify_body_timeout(&error).unwrap_or_else(|| MALFORMED_RESPONSE_MESSAGE.to_string())
+        })
+    };
+    let body = match body_result {
         Ok(body) => body,
-        Err(e) => {
-            if let Some(timeout) = classify_body_timeout(&e) {
-                return timeout;
-            }
-            String::new()
-        }
+        Err(error) if error.starts_with("relay unreachable:") => return error,
+        Err(_) => String::new(),
     };
 
     // 429 Too Many Requests → typed `relay rate-limited:` prefix so the TS
@@ -346,6 +403,29 @@ pub async fn relay_error_message(response: reqwest::Response) -> String {
 
     // Non-JSON, non-HTML body: emit status only — no raw body in the UI.
     format!("relay returned {status}")
+}
+
+async fn read_bounded_response_text(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<String, String> {
+    if max_bytes == 0
+        || response
+            .content_length()
+            .is_some_and(|content_length| content_length > max_bytes as u64)
+    {
+        return Err("relay response exceeded the configured size limit".to_string());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        classify_body_timeout(&error).unwrap_or_else(|| MALFORMED_RESPONSE_MESSAGE.to_string())
+    })? {
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err("relay response exceeded the configured size limit".to_string());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 // ── HTTP bridge: POST /query ────────────────────────────────────────────────
@@ -667,6 +747,7 @@ pub struct AgentProfileInfo {
 
 mod get;
 pub use get::get_relay_json;
+pub(crate) use get::get_relay_json_bounded;
 
 mod submit;
 pub use submit::{

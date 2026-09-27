@@ -22,7 +22,7 @@ const WORKSPACE_SHEET_TITLES: Record<ProjectHomeWorkspaceSheetTab, string> = {
   commits: "Commits",
   contributors: "People",
   files: "Files",
-  issues: "Tasks",
+  issues: "Issues",
   prs: "Reviews",
 };
 

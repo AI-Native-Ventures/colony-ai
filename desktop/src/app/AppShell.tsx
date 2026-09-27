@@ -150,7 +150,7 @@ export function AppShell() {
     goHome,
     goNewMessage,
     goProjects,
-    goPulse,
+    goToday,
     goSettings,
     goWorkflows,
     closeSettings,
@@ -173,6 +173,14 @@ export function AppShell() {
   });
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
+  const showAppTopChrome =
+    !settingsOpen &&
+    !isHuddleRoom &&
+    selectedView !== "pins" &&
+    location.pathname !== "/today" &&
+    !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/navigation/") &&
+    selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;
   const settingsSection: SettingsSection = isSettingsSection(
@@ -709,6 +717,7 @@ export function AppShell() {
       <ChannelNavigationProvider channels={channels}>
         <AppShellProvider
           value={{
+            navigationHistory: { canGoBack, canGoForward, goBack, goForward },
             markAllChannelsRead,
             markChannelRead,
             markChannelUnread,
@@ -770,11 +779,22 @@ export function AppShell() {
             ) : null}
             <SidebarProvider
               className="relative z-10 min-h-0 min-w-0 flex-1 flex-col overflow-visible"
+              data-colony-workspace-route={
+                !settingsOpen &&
+                !isHuddleRoom &&
+                (location.pathname === "/today" ||
+                  location.pathname.startsWith("/today/") ||
+                  location.pathname.startsWith("/navigation/") ||
+                  selectedView === "channel" ||
+                  selectedView === "pins")
+                  ? "true"
+                  : undefined
+              }
               data-testid="app-sidebar-layer"
             >
               <AppProfilePanelProvider>
                 <AppWorkflowEditorOverlayProvider>
-                  {!settingsOpen && !isHuddleRoom ? (
+                  {showAppTopChrome ? (
                     <AppTopChrome
                       canGoBack={canGoBack}
                       canGoForward={canGoForward}
@@ -824,7 +844,10 @@ export function AppShell() {
                       </React.Suspense>
                     </div>
                   ) : (
-                    <div className="relative flex min-h-0 flex-1 overflow-visible">
+                    <div
+                      className="relative flex min-h-0 flex-1 overflow-visible"
+                      data-colony-workspace-frame-content
+                    >
                       {!isHuddleRoom ? (
                         <AppSidebar
                           activeCommunity={communitiesHook.activeCommunity}
@@ -880,6 +903,7 @@ export function AppShell() {
                             await goChannel(directMessage.id);
                           }}
                           onSelectAgents={() => void goAgents()}
+                          onSelectToday={() => void goToday()}
                           onSelectChannel={handleSidebarChannelSelect}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}
@@ -889,7 +913,6 @@ export function AppShell() {
                           ]}
                           onSelectHome={() => void goHome()}
                           onSelectProjects={() => void goProjects()}
-                          onSelectPulse={() => void goPulse()}
                           onSelectSettings={handleOpenSettings}
                           onSelectWorkflows={() => void goWorkflows()}
                           onSetPresenceStatus={(status) =>
@@ -903,6 +926,10 @@ export function AppShell() {
                             })
                           }
                           profile={profileQuery.data}
+                          showSidebarCollapseButton={!showAppTopChrome}
+                          suppressTodaySelection={location.pathname.startsWith(
+                            "/navigation/",
+                          )}
                           projectsOverviewActive={
                             location.pathname === "/projects"
                           }

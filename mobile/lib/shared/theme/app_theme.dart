@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'app_colors.dart';
 import 'color_scheme.dart';
 import 'grid.dart';
+import 'mobile_design_tokens.dart';
+import 'mobile_typography_tokens.dart';
 import 'text_theme.dart';
 
 /// Border radius constants matching desktop shadcn "New York" style.
@@ -19,6 +21,12 @@ class Radii {
   /// Shared strong radius for grouped rows, fields, and utility containers.
   static const double container = 22.0;
   static const double card = container; // Backwards-compatible card alias.
+  static const double compactCard = 15.0;
+  static const double field = 10.0;
+  static const double button = 10.0;
+  static const double tapTarget = 12.0;
+  static const double sheet = 22.0;
+  static const double phone = 36.0;
   static const double popover = 20.0;
   static const double dialog = 24.0; // desktop uses rounded-3xl for dialogs
 
@@ -30,6 +38,7 @@ class AppTheme {
   static ThemeData light({
     ColorScheme? colorScheme,
     Gradient? topSectionGradient,
+    MobileDesignTokens? mobileTokens,
   }) {
     final scheme = colorScheme ?? lightColorScheme;
     final appColors = AppColors(
@@ -48,12 +57,14 @@ class AppTheme {
       brightness: Brightness.light,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
+      mobileTokens: mobileTokens ?? MobileDesignTokens.light,
     );
   }
 
   static ThemeData dark({
     ColorScheme? colorScheme,
     Gradient? topSectionGradient,
+    MobileDesignTokens? mobileTokens,
   }) {
     final scheme = colorScheme ?? darkColorScheme;
     final appColors = AppColors(
@@ -77,6 +88,7 @@ class AppTheme {
       brightness: Brightness.dark,
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
+      mobileTokens: mobileTokens ?? MobileDesignTokens.dark,
     );
   }
 
@@ -86,14 +98,15 @@ class AppTheme {
     required Brightness brightness,
     required Brightness statusBarIconBrightness,
     required Brightness statusBarBrightness,
+    required MobileDesignTokens mobileTokens,
   }) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       splashFactory: NoSplash.splashFactory,
       scaffoldBackgroundColor: scheme.surface,
-      extensions: [appColors],
-      fontFamily: 'Inter',
+      extensions: [appColors, mobileTokens, MobileTypographyTokens.r16],
+      fontFamily: 'Manrope',
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,

@@ -633,6 +633,185 @@ pub const KIND_GIT_STATUS_DRAFT: u32 = 1633;
 /// announcement, never a project. See `docs/nips/NIP-MP.md`.
 pub const KIND_PROJECT: u32 = 30621;
 
+// Colony business-record heads use the NIP-33 parameterized-replaceable range.
+// They are relay-authored projections; member writes use the action/version
+// kinds below so the relay can enforce client scope and version preconditions.
+/// Canonical person or organization identity head.
+pub const KIND_PARTY_HEAD: u32 = 30630;
+/// Canonical client relationship head for a party.
+pub const KIND_CLIENT_HEAD: u32 = 30631;
+/// Business service definition head.
+pub const KIND_SERVICE_HEAD: u32 = 30632;
+/// Current proposal head.
+pub const KIND_PROPOSAL_HEAD: u32 = 30633;
+/// Canonical client work item head, including current deliverable version refs.
+pub const KIND_WORK_ITEM_HEAD: u32 = 30634;
+/// Current client knowledge document head.
+pub const KIND_KNOWLEDGE_DOCUMENT_HEAD: u32 = 30635;
+/// Current client knowledge fact head.
+pub const KIND_KNOWLEDGE_FACT_HEAD: u32 = 30636;
+/// Safe metadata for a connected client social account.
+pub const KIND_SOCIAL_ACCOUNT_HEAD: u32 = 30637;
+/// Current client content campaign head.
+pub const KIND_CONTENT_CAMPAIGN_HEAD: u32 = 30638;
+/// Current client social post head.
+pub const KIND_CONTENT_POST_HEAD: u32 = 30639;
+/// Current client website project head.
+pub const KIND_SITE_HEAD: u32 = 30640;
+/// Current client invoice head.
+pub const KIND_INVOICE_HEAD: u32 = 30641;
+
+// Member-authored actions and immutable versions. The 47000 band was empty in
+// the full target registry at allocation time. These events are channel-scoped.
+/// Requested change to a canonical party identity.
+pub const KIND_PARTY_ACTION: u32 = 47000;
+/// Requested change to a client relationship.
+pub const KIND_CLIENT_ACTION: u32 = 47001;
+/// Requested change to a business service definition.
+pub const KIND_SERVICE_ACTION: u32 = 47002;
+/// Immutable proposal revision.
+pub const KIND_PROPOSAL_VERSION: u32 = 47003;
+/// Acceptance of one exact proposal version and conversion claim.
+pub const KIND_PROPOSAL_ACCEPTANCE: u32 = 47004;
+/// Relay-authored receipt for an idempotent proposal conversion.
+pub const KIND_PROPOSAL_CONVERSION_RECEIPT: u32 = 47005;
+/// Requested change to a client work item.
+pub const KIND_WORK_ITEM_ACTION: u32 = 47006;
+/// Immutable deliverable version.
+pub const KIND_DELIVERABLE_VERSION: u32 = 47007;
+/// Append-only approval or rejection of an exact deliverable version.
+pub const KIND_DELIVERABLE_APPROVAL: u32 = 47008;
+/// Immutable knowledge document revision.
+pub const KIND_KNOWLEDGE_DOCUMENT_VERSION: u32 = 47009;
+/// Immutable knowledge fact revision.
+pub const KIND_KNOWLEDGE_FACT_VERSION: u32 = 47010;
+/// Knowledge access grant or revocation.
+pub const KIND_KNOWLEDGE_ACCESS_CHANGE: u32 = 47011;
+/// Social provider authorization receipt with opaque credential reference.
+pub const KIND_SOCIAL_ACCOUNT_AUTHORIZATION: u32 = 47012;
+/// Requested change to a content campaign.
+pub const KIND_CONTENT_CAMPAIGN_ACTION: u32 = 47013;
+/// Immutable social post revision.
+pub const KIND_CONTENT_POST_VERSION: u32 = 47014;
+/// Feedback anchored to an exact post version and media location.
+pub const KIND_CONTENT_FEEDBACK: u32 = 47015;
+/// Approval or rejection of an exact social post version.
+pub const KIND_CONTENT_APPROVAL: u32 = 47016;
+/// Durable request to publish approved content.
+pub const KIND_PUBLISHING_INTENT: u32 = 47017;
+/// Provider result or reconciliation receipt for a publish intent.
+pub const KIND_PUBLISHING_RECEIPT: u32 = 47018;
+/// Social inbox assignment, reply, or resolution action.
+pub const KIND_SOCIAL_INBOX_ACTION: u32 = 47019;
+/// Sourced and freshness-stamped report snapshot.
+pub const KIND_SOURCED_REPORT_SNAPSHOT: u32 = 47020;
+/// Immutable website source revision.
+pub const KIND_SITE_VERSION: u32 = 47021;
+/// Website build result with source and artifact digests.
+pub const KIND_SITE_BUILD: u32 = 47022;
+/// Deployment intent or provider result.
+pub const KIND_SITE_DEPLOYMENT: u32 = 47023;
+/// Domain verification and DNS evidence.
+pub const KIND_SITE_DOMAIN: u32 = 47024;
+/// Sourced website enquiry.
+pub const KIND_SITE_ENQUIRY: u32 = 47025;
+/// Immutable invoice revision.
+pub const KIND_INVOICE_VERSION: u32 = 47026;
+/// Sourced payment or collection evidence.
+pub const KIND_PAYMENT: u32 = 47027;
+/// Refund, credit, fee, or other financial adjustment evidence.
+pub const KIND_MONEY_ADJUSTMENT: u32 = 47028;
+/// Reconciliation match or exception evidence.
+pub const KIND_RECONCILIATION: u32 = 47029;
+/// Follow-up draft linked to an invoice or outstanding balance.
+pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
+
+/// Every Phase 2 business-record kind, including heads and immutable events.
+pub const BUSINESS_RECORD_KINDS: &[u32] = &[
+    KIND_PARTY_HEAD,
+    KIND_CLIENT_HEAD,
+    KIND_SERVICE_HEAD,
+    KIND_PROPOSAL_HEAD,
+    KIND_WORK_ITEM_HEAD,
+    KIND_KNOWLEDGE_DOCUMENT_HEAD,
+    KIND_KNOWLEDGE_FACT_HEAD,
+    KIND_SOCIAL_ACCOUNT_HEAD,
+    KIND_CONTENT_CAMPAIGN_HEAD,
+    KIND_CONTENT_POST_HEAD,
+    KIND_SITE_HEAD,
+    KIND_INVOICE_HEAD,
+    KIND_PARTY_ACTION,
+    KIND_CLIENT_ACTION,
+    KIND_SERVICE_ACTION,
+    KIND_PROPOSAL_VERSION,
+    KIND_PROPOSAL_ACCEPTANCE,
+    KIND_PROPOSAL_CONVERSION_RECEIPT,
+    KIND_WORK_ITEM_ACTION,
+    KIND_DELIVERABLE_VERSION,
+    KIND_DELIVERABLE_APPROVAL,
+    KIND_KNOWLEDGE_DOCUMENT_VERSION,
+    KIND_KNOWLEDGE_FACT_VERSION,
+    KIND_KNOWLEDGE_ACCESS_CHANGE,
+    KIND_SOCIAL_ACCOUNT_AUTHORIZATION,
+    KIND_CONTENT_CAMPAIGN_ACTION,
+    KIND_CONTENT_POST_VERSION,
+    KIND_CONTENT_FEEDBACK,
+    KIND_CONTENT_APPROVAL,
+    KIND_PUBLISHING_INTENT,
+    KIND_PUBLISHING_RECEIPT,
+    KIND_SOCIAL_INBOX_ACTION,
+    KIND_SOURCED_REPORT_SNAPSHOT,
+    KIND_SITE_VERSION,
+    KIND_SITE_BUILD,
+    KIND_SITE_DEPLOYMENT,
+    KIND_SITE_DOMAIN,
+    KIND_SITE_ENQUIRY,
+    KIND_INVOICE_VERSION,
+    KIND_PAYMENT,
+    KIND_MONEY_ADJUSTMENT,
+    KIND_RECONCILIATION,
+    KIND_MONEY_FOLLOW_UP,
+];
+
+/// Returns `true` for a kind allocated to the Phase 2 business-record contract.
+pub fn is_business_record_kind(kind: u32) -> bool {
+    BUSINESS_RECORD_KINDS.contains(&kind)
+}
+
+/// Returns `true` for relay-authored business heads and conversion receipts.
+pub const fn is_business_relay_only_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_PARTY_HEAD
+            | KIND_CLIENT_HEAD
+            | KIND_SERVICE_HEAD
+            | KIND_PROPOSAL_HEAD
+            | KIND_WORK_ITEM_HEAD
+            | KIND_KNOWLEDGE_DOCUMENT_HEAD
+            | KIND_KNOWLEDGE_FACT_HEAD
+            | KIND_SOCIAL_ACCOUNT_HEAD
+            | KIND_CONTENT_CAMPAIGN_HEAD
+            | KIND_CONTENT_POST_HEAD
+            | KIND_SITE_HEAD
+            | KIND_INVOICE_HEAD
+            | KIND_PROPOSAL_CONVERSION_RECEIPT
+    )
+}
+
+/// Returns `true` for member actions that execute through the business broker.
+pub const fn is_business_command_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_PARTY_ACTION
+            | KIND_CLIENT_ACTION
+            | KIND_WORK_ITEM_ACTION
+            | KIND_PROPOSAL_VERSION
+            | KIND_PROPOSAL_ACCEPTANCE
+            | KIND_DELIVERABLE_VERSION
+            | KIND_DELIVERABLE_APPROVAL
+    )
+}
+
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
     KIND_PROFILE,
@@ -766,6 +945,49 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GIT_STATUS_CLOSED,
     KIND_GIT_STATUS_DRAFT,
     KIND_PROJECT,
+    KIND_PARTY_HEAD,
+    KIND_CLIENT_HEAD,
+    KIND_SERVICE_HEAD,
+    KIND_PROPOSAL_HEAD,
+    KIND_WORK_ITEM_HEAD,
+    KIND_KNOWLEDGE_DOCUMENT_HEAD,
+    KIND_KNOWLEDGE_FACT_HEAD,
+    KIND_SOCIAL_ACCOUNT_HEAD,
+    KIND_CONTENT_CAMPAIGN_HEAD,
+    KIND_CONTENT_POST_HEAD,
+    KIND_SITE_HEAD,
+    KIND_INVOICE_HEAD,
+    KIND_PARTY_ACTION,
+    KIND_CLIENT_ACTION,
+    KIND_SERVICE_ACTION,
+    KIND_PROPOSAL_VERSION,
+    KIND_PROPOSAL_ACCEPTANCE,
+    KIND_PROPOSAL_CONVERSION_RECEIPT,
+    KIND_WORK_ITEM_ACTION,
+    KIND_DELIVERABLE_VERSION,
+    KIND_DELIVERABLE_APPROVAL,
+    KIND_KNOWLEDGE_DOCUMENT_VERSION,
+    KIND_KNOWLEDGE_FACT_VERSION,
+    KIND_KNOWLEDGE_ACCESS_CHANGE,
+    KIND_SOCIAL_ACCOUNT_AUTHORIZATION,
+    KIND_CONTENT_CAMPAIGN_ACTION,
+    KIND_CONTENT_POST_VERSION,
+    KIND_CONTENT_FEEDBACK,
+    KIND_CONTENT_APPROVAL,
+    KIND_PUBLISHING_INTENT,
+    KIND_PUBLISHING_RECEIPT,
+    KIND_SOCIAL_INBOX_ACTION,
+    KIND_SOURCED_REPORT_SNAPSHOT,
+    KIND_SITE_VERSION,
+    KIND_SITE_BUILD,
+    KIND_SITE_DEPLOYMENT,
+    KIND_SITE_DOMAIN,
+    KIND_SITE_ENQUIRY,
+    KIND_INVOICE_VERSION,
+    KIND_PAYMENT,
+    KIND_MONEY_ADJUSTMENT,
+    KIND_RECONCILIATION,
+    KIND_MONEY_FOLLOW_UP,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -825,6 +1047,13 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_WORKFLOW_TRIGGER
             | KIND_APPROVAL_GRANT
             | KIND_APPROVAL_DENY
+            | KIND_PARTY_ACTION
+            | KIND_CLIENT_ACTION
+            | KIND_WORK_ITEM_ACTION
+            | KIND_PROPOSAL_VERSION
+            | KIND_PROPOSAL_ACCEPTANCE
+            | KIND_DELIVERABLE_VERSION
+            | KIND_DELIVERABLE_APPROVAL
     )
 }
 
@@ -839,6 +1068,19 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_DM_VISIBILITY
             | KIND_THREAD_SUMMARY
             | KIND_WINDOW_BOUNDS
+            | KIND_PARTY_HEAD
+            | KIND_CLIENT_HEAD
+            | KIND_SERVICE_HEAD
+            | KIND_PROPOSAL_HEAD
+            | KIND_WORK_ITEM_HEAD
+            | KIND_KNOWLEDGE_DOCUMENT_HEAD
+            | KIND_KNOWLEDGE_FACT_HEAD
+            | KIND_SOCIAL_ACCOUNT_HEAD
+            | KIND_CONTENT_CAMPAIGN_HEAD
+            | KIND_CONTENT_POST_HEAD
+            | KIND_SITE_HEAD
+            | KIND_INVOICE_HEAD
+            | KIND_PROPOSAL_CONVERSION_RECEIPT
     )
 }
 

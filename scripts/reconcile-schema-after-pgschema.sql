@@ -197,6 +197,24 @@ BEGIN
     END IF;
 END $$;
 
+-- pgschema does not execute the write-fence attachment declaration for the
+-- post-0029 conversion claim table. Attach it after desired-state DDL and fail
+-- bootstrap if the live catalog does not contain the guard.
+SELECT attach_community_write_fence('business_proposal_conversion_claims');
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = 'business_proposal_conversion_claims'::regclass
+          AND tgname = 'community_write_fence_business_proposal_conversion_claims'
+          AND NOT tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'business_proposal_conversion_claims must have its community write fence after pgschema apply';
+    END IF;
+END $$;
+
 -- pgschema does not apply operator-global registry seed rows. These accounts
 -- span all communities on a deployment and must never enter tenant deletion.
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
@@ -204,7 +222,12 @@ INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('account_google_identities', 'deployment-global provider links to account identities'),
     ('account_codes', 'deployment-global one-time account recovery and verification codes'),
     ('account_mail_outbox', 'deployment-global durable account email delivery retry queue'),
-    ('account_test_mail', 'development and CI account mail sink; not tenant-visible')
+    ('account_test_mail', 'development and CI account mail sink; not tenant-visible'),
+    ('account_credit_ledger', 'deployment-global account credit balance and server-confirmed usage'),
+    ('account_payment_intents', 'deployment-global PayFast credit checkout and settlement state'),
+    ('account_site_subscriptions', 'deployment-global PayFast website hosting subscriptions'),
+    ('account_site_subscription_payments', 'deployment-global PayFast subscription payment history'),
+    ('account_payment_notifications', 'deployment-global idempotent PayFast ITN processing journal')
 ON CONFLICT (table_name) DO UPDATE SET reason = EXCLUDED.reason;
 
 DO $$
@@ -218,7 +241,12 @@ BEGIN
         ('account_google_identities'),
         ('account_codes'),
         ('account_mail_outbox'),
-        ('account_test_mail')
+        ('account_test_mail'),
+        ('account_credit_ledger'),
+        ('account_payment_intents'),
+        ('account_site_subscriptions'),
+        ('account_site_subscription_payments'),
+        ('account_payment_notifications')
     ) AS required(table_name)
     WHERE to_regclass(format('%I.%I', current_schema(), required.table_name)) IS NULL
        OR NOT EXISTS (
@@ -227,7 +255,7 @@ BEGIN
        );
 
     IF missing IS NOT NULL THEN
-        RAISE EXCEPTION 'account tables must exist and be operator-global after pgschema apply: %', missing;
+        RAISE EXCEPTION 'account and payment tables must exist and be operator-global after pgschema apply: %', missing;
     END IF;
 END $$;
 

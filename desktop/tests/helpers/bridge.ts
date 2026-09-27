@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
-import type { MockManagedAgentSeed } from "../../src/testing/e2eBridge";
+import type {
+  MockManagedAgentSeed,
+  VisualFixtureSeed,
+} from "../../src/testing/e2eBridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
 export const TEST_IDENTITIES = {
@@ -85,6 +88,7 @@ type MockPersonaSeed = {
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
+  description?: string | null;
   systemPrompt: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -150,6 +154,8 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Visual harness: reproduce the reference "Lerato Social" workspace. */
+  referenceWorkspace?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
@@ -223,6 +229,9 @@ type MockBridgeOptions = {
     mcp?: MockCommandAvailability;
   };
   managedAgents?: MockManagedAgentSeed[];
+  /** Channel records used only to reproduce frozen visual reference data. */
+  visualChannels?: Array<{ id: string; name: string }>;
+  agentUsageSeries?: import("../../src/shared/api/tauriArchive").AgentUsageSeries;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;
@@ -257,6 +266,8 @@ type MockBridgeOptions = {
   /** Outcomes for successive explicit persona share publications. */
   personaSharePublicationStatuses?: Array<"published" | "queued">;
   teams?: MockTeamSeed[];
+  /** Use only the explicitly supplied teams instead of the generic mock teams. */
+  replaceDefaultTeams?: boolean;
   /** Community team-catalog (kind:30178) heads returned by relay queries. */
   teamCatalogEvents?: RelayEvent[];
   /** Outcomes for successive explicit team share publications. */
@@ -289,6 +300,8 @@ type MockBridgeOptions = {
   /** Number of seeded rows in the deep-history fixture. Defaults to 600. */
   deepHistoryMessageCount?: number;
   feedReadError?: string;
+  /** Exact reference records for visual comparison captures only. */
+  visualFixture?: VisualFixtureSeed;
   canvasReadError?: string;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
@@ -414,6 +427,11 @@ type MockBridgeOptions = {
    * evaluates false).
    */
   relayRole?: "owner" | "admin" | "member" | null;
+  /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+  relayMembers?: Array<{
+    pubkey: string;
+    role: "owner" | "admin" | "member";
+  }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
@@ -797,9 +815,10 @@ async function seedDefaultCommunity(
   page: Page,
   fallbackPubkey: string,
   relayWsUrl?: string,
+  businessName?: string,
 ) {
   await page.addInitScript(
-    ({ fallback, identityOverrideKey, relayUrl }) => {
+    ({ fallback, identityOverrideKey, relayUrl, seededBusinessName }) => {
       // If seedActiveIdentity() ran before this script (the normal ordering),
       // use its pubkey so the community matches the active identity and
       // migrateMachineOnboardingCompletion's strict voucher accepts it.
@@ -828,7 +847,7 @@ async function seedDefaultCommunity(
       const communityId = "e2e-default-community";
       const community = {
         id: communityId,
-        name: "E2E Test",
+        name: seededBusinessName ?? "E2E Test",
         relayUrl,
         pubkey: overridePubkey ?? fallback,
         addedAt: new Date().toISOString(),
@@ -843,6 +862,7 @@ async function seedDefaultCommunity(
       fallback: fallbackPubkey,
       identityOverrideKey: "buzz:e2e-identity-override.v1",
       relayUrl: relayWsUrl ?? DEFAULT_RELAY_WS_URL,
+      seededBusinessName: businessName,
     },
   );
 }
@@ -872,7 +892,12 @@ export async function installBridge(page: Page, options: BridgeOptions) {
   // the bridge identity's pubkey or DEFAULT_MOCK_PUBKEY for mock mode.
   if (!options.skipCommunitySeed) {
     const activePubkey = identity?.pubkey ?? DEFAULT_MOCK_PUBKEY;
-    await seedDefaultCommunity(page, activePubkey, options.relayWsUrl);
+    await seedDefaultCommunity(
+      page,
+      activePubkey,
+      options.relayWsUrl,
+      options.mock?.visualFixture?.businessName,
+    );
   }
   if (!options.skipOnboardingSeed) {
     await seedOnboardingCompletionForKnownIdentities(page, options.relayWsUrl);

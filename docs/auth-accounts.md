@@ -58,18 +58,24 @@ below) removes the account row and wipes custody material.
 
 Common errors: `400 invalid_request`, `401 invalid_credentials`,
 `403 email_unverified`, `409 email_taken`, `409 identity_taken`,
-`410 code_expired`, `422 weak_password` (min 10 chars), `429 rate_limited`
-with `retry_after_secs`. Never reveal whether an email exists except
-`409 email_taken` on signup (accepted enumeration trade-off, rate limited).
+`410 code_expired`, `422 weak_password` (min 10 chars), and `429 rate_limited`
+with `retry_after_secs`. Code routes also return `422 wrong_code` with
+`attempts_left`, `429 too_many_attempts` with `retry_after_secs`, or
+`429 resend_cooldown` with `retry_after_secs`. The code errors distinguish an
+active challenge from a missing, expired, or consumed challenge, including for
+password reset. Reset request and successful resend responses remain generic
+for unknown email addresses. Signup email conflicts remain an accepted,
+rate-limited enumeration trade-off.
 
 | Route | Body | Success |
 |---|---|---|
-| `POST /api/accounts/signup` | `{email, password}` | `202 {status:"verification_sent"}`; account created unverified, key generated and sealed |
+| `POST /api/accounts/signup` | `{email, password, display_name?}` | `202 {status:"verification_sent", retry_after_secs:30}`; account created unverified, key generated and sealed |
 | `POST /api/accounts/verify` | `{email, code}` | `200 {account}` + `nsec` (see Session payload) |
-| `POST /api/accounts/resend-code` | `{email, purpose:"verify"\|"reset"}` | `202` always |
+| `POST /api/accounts/resend-code` | `{email, purpose:"verify"\|"reset"}` | `202 {status:"verification_sent", retry_after_secs:30}`; `429 resend_cooldown` while the 30-second cooldown is active |
 | `POST /api/accounts/signin` | `{email, password}` | `200` session payload; `403 email_unverified` (a new code is sent) |
 | `POST /api/accounts/google` | `{id_token}` | `200` session payload; creates the account on first use (email taken from the verified Google token, marked verified); links to an existing account with the same verified email |
-| `POST /api/accounts/reset/request` | `{email}` | `202` always; emails a reset code if the account exists |
+| `POST /api/accounts/reset/request` | `{email}` | `202 {status:"verification_sent", retry_after_secs:30}` always; emails a reset code if the account exists |
+| `POST /api/accounts/reset/check` | `{email, code}` | `200 {status:"code_valid"}`; validates without consuming the code |
 | `POST /api/accounts/reset/confirm` | `{email, code, new_password}` | `200` session payload (same key as before: history preserved) |
 | `POST /api/accounts/claim` | NIP-98 signed; `{email, password, nsec}` | `202 verification_sent`; binds an existing key-based identity to a new account; `nsec` must match the NIP-98 signer |
 | `POST /api/accounts/password` | NIP-98 signed; `{new_password}` | `204` |
@@ -79,6 +85,29 @@ with `retry_after_secs`. Never reveal whether an email exists except
 Session payload: `{account: {id, email, pubkey, has_password, google_linked}, nsec}`.
 Clients hand `nsec` to the existing `import_identity` path, then drop it from
 memory; they never display it.
+
+Signup trims an optional `display_name`, treats blank input as omitted, and
+rejects names longer than 80 characters or containing control characters.
+The relay signs a Nostr kind 0 profile event with the newly generated account
+key. Its content is `{"display_name":"..."}` when a name was provided and
+`{}` otherwise. The account, profile event, verification code, and encrypted
+mail outbox entry commit in one database transaction. The committed profile
+event is also published to the community's global event stream; event history
+remains available if live publication fails.
+
+Verification and reset codes expire after 15 minutes and remain single-use.
+The relay stores only an HMAC-SHA256 code hash keyed from `COLONY_ACCOUNT_KEK`;
+the encrypted outbox copy exists only to support retryable mail delivery.
+Five incorrect submissions lock the challenge until expiry. The first four
+return `422 {error:"wrong_code", attempts_left:4..1}`; the fifth and later
+submissions return `429 {error:"too_many_attempts", retry_after_secs:N}`.
+Expired, missing, superseded, and consumed codes return
+`410 {error:"code_expired"}`. Resend attempts share a 30-second cooldown per
+email and purpose in Redis. Redis errors fail the account request closed.
+While a code is locked, resend returns `too_many_attempts` with the remaining
+challenge lifetime. `POST /api/accounts/reset/check` counts wrong submissions
+but does not consume a valid code. Reset confirmation checks and consumes it
+again atomically with the password update.
 
 Google: the relay verifies the ID token signature against Google's JWKS
 (cached, respecting cache headers), `iss`, `exp`, `email_verified == true`,

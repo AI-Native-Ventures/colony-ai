@@ -63,11 +63,11 @@ test("adjacent composer tooltips each require a fresh dwell", async ({
   await expect(mentionTooltip).toHaveCount(0);
   await expect(mentionTooltip).toBeVisible({ timeout: 1_000 });
 
-  await page.getByRole("button", { name: "Attach file" }).hover();
+  await page.getByRole("button", { name: "Toggle formatting" }).hover();
   await page.waitForTimeout(400);
-  const attachTooltip = page.getByRole("tooltip", { name: "Attach file" });
-  await expect(attachTooltip).toHaveCount(0);
-  await expect(attachTooltip).toBeVisible({ timeout: 1_000 });
+  const formattingTooltip = page.getByRole("tooltip", { name: "Formatting" });
+  await expect(formattingTooltip).toHaveCount(0);
+  await expect(formattingTooltip).toBeVisible({ timeout: 1_000 });
 });
 
 test("formatting sub-toolbar tooltip dismisses when cursor leaves the trigger", async ({

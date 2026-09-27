@@ -175,8 +175,14 @@ test("appearance previews stay grouped and responsive", async ({ page }) => {
   if (!cardBox || !linkControlBox || !threadControlBox) {
     throw new Error("Responsive Appearance geometry is missing");
   }
-  expect(linkControlBox.width).toBeGreaterThan(cardBox.width - 40);
-  expect(threadControlBox.width).toBeGreaterThan(cardBox.width - 40);
+  for (const controlBox of [linkControlBox, threadControlBox]) {
+    expect(controlBox.width).toBeGreaterThanOrEqual(180);
+    expect(controlBox.width).toBeLessThan(cardBox.width);
+    expect(controlBox.x).toBeGreaterThanOrEqual(cardBox.x);
+    expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+      cardBox.x + cardBox.width,
+    );
+  }
 
   await waitForAnimations(page);
   await linkGroup.screenshot({

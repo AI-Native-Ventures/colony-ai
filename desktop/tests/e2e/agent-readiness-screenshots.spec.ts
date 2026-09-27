@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/agent-readiness";
 
 // An existing goose-runtime managed agent for the Edit-dialog shot.
 // Tyler's pubkey maps to gooseSurface in the mock bridge (runtimeId: "goose"),
-// which supports LLM provider selection — the edit dialog's provider/model
+// which supports LLM provider selection  -  the edit dialog's provider/model
 // pickers render for it just as they do for buzz-agent.
 const EDIT_AGENT_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 
@@ -16,7 +17,7 @@ const EDIT_AGENT_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
  */
 async function openCreateDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
   await page.locator("#persona-display-name").fill("Test Agent");
 }
@@ -86,7 +87,7 @@ async function openEditDialog(
   agentName: string,
 ) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const agentButton = page.getByRole("button", {
     name: `${agentName} agent profile`,
@@ -224,7 +225,7 @@ test.describe("agent readiness gate screenshots", () => {
     });
   });
 
-  // Shot 05: claude runtime (CLI-login) — provider not required; an explicit
+  // Shot 05: claude runtime (CLI-login)  -  provider not required; an explicit
   // model completes the custom configuration and enables submit.
   // Override the catalog to make claude fully available so it appears in the dropdown.
   test("05-create-cli-login-runtime-no-provider-required", async ({ page }) => {

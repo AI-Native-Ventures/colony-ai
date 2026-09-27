@@ -334,11 +334,11 @@ fn load_or_create_identity(data_dir: &std::path::Path) -> Result<ResolvedIdentit
     #[cfg(not(feature = "system-keyring"))]
     {
         let keys = colony_identity_kernel::load_file_or_generate(&profile)?;
-        return Ok(ResolvedIdentity {
+        Ok(ResolvedIdentity {
             keys,
             recovery: RecoveryState::None,
             storage: IdentityStorage::LocalFile,
-        });
+        })
     }
 
     #[cfg(feature = "system-keyring")]

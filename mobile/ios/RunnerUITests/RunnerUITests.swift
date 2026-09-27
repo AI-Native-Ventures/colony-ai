@@ -12,36 +12,38 @@ final class RunnerUITests: XCTestCase {
 
     assertAccountLanding(in: app, phase: "initial")
 
-    let advanced = app.buttons["Advanced: use an existing Nostr identity"]
+    // r18: pairing an existing identity starts from "Pair with my desktop"
+    // on the landing, replacing the old "Advanced" entry.
+    let pair = app.buttons["Pair with my desktop"]
     XCTAssertTrue(
-      advanced.waitForExistence(timeout: landingTimeout),
-      "Advanced identity action missing on the account screen"
+      pair.waitForExistence(timeout: landingTimeout),
+      "Pair with my desktop action missing on the account screen"
     )
-    XCTAssertTrue(advanced.isHittable, "Advanced identity action is not hittable")
-    advanced.tap()
+    XCTAssertTrue(pair.isHittable, "Pair with my desktop action is not hittable")
+    pair.tap()
 
-    let scan = app.buttons["Scan a QR code"]
-    let pairingCode = app.buttons["Use pairing code"]
+    let scan = app.buttons["Scan QR code"]
+    let enterCode = app.buttons["Enter a code instead"]
     XCTAssertTrue(
       scan.waitForExistence(timeout: landingTimeout),
-      "Advanced identity action did not open pairing"
+      "Pair with my desktop did not open pairing"
     )
     XCTAssertTrue(
-      pairingCode.waitForExistence(timeout: landingTimeout),
-      "pairing-code action missing behind Advanced"
+      enterCode.waitForExistence(timeout: landingTimeout),
+      "enter-code action missing on the pairing start screen"
     )
-    XCTAssertTrue(scan.isHittable, "QR scan action is not hittable behind Advanced")
+    XCTAssertTrue(scan.isHittable, "QR scan action is not hittable on the pairing start screen")
     XCTAssertTrue(
-      pairingCode.isHittable,
-      "pairing-code action is not hittable behind Advanced"
+      enterCode.isHittable,
+      "enter-code action is not hittable on the pairing start screen"
     )
     XCTAssertFalse(
-      app.buttons["Create account"].exists,
-      "account actions remained visible after opening Advanced pairing"
+      app.buttons["Create an account"].exists,
+      "account actions remained visible after opening pairing"
     )
 
     let pairingAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    pairingAttachment.name = "landing-advanced-pairing"
+    pairingAttachment.name = "landing-pairing-start"
     pairingAttachment.lifetime = .keepAlways
     add(pairingAttachment)
 
@@ -77,47 +79,41 @@ final class RunnerUITests: XCTestCase {
       "app did not reach foreground during \(phase)"
     )
 
-    let welcome = app.staticTexts["Welcome to Buzz"]
-    let createAccount = app.buttons["Create account"]
-    let google = app.buttons["Continue with Google"]
-    let signIn = app.buttons["Sign in"]
-    let advanced = app.buttons["Advanced: use an existing Nostr identity"]
-    let scan = app.buttons["Scan a QR code"]
-    let pairingCode = app.buttons["Use pairing code"]
+    // r18/r19 account entry: brand eyebrow, then create / sign in / pair.
+    // Google sign-in moved onto the create and sign-in screens.
+    let eyebrow = app.staticTexts["A HOME FOR YOUR BUSINESS"]
+    let createAccount = app.buttons["Create an account"]
+    let signIn = app.buttons["I already have an account"]
+    let pair = app.buttons["Pair with my desktop"]
+    let scan = app.buttons["Scan QR code"]
+    let enterCode = app.buttons["Enter a code instead"]
 
     XCTAssertTrue(
-      welcome.waitForExistence(timeout: landingTimeout),
-      "account welcome label missing during \(phase)"
+      eyebrow.waitForExistence(timeout: landingTimeout),
+      "account landing eyebrow missing during \(phase)"
     )
     XCTAssertTrue(
       createAccount.waitForExistence(timeout: landingTimeout),
       "create-account action missing during \(phase)"
     )
     XCTAssertTrue(
-      google.waitForExistence(timeout: landingTimeout),
-      "Google sign-in action missing during \(phase)"
-    )
-    XCTAssertTrue(
       signIn.waitForExistence(timeout: landingTimeout),
       "sign-in action missing during \(phase)"
     )
     XCTAssertTrue(
-      advanced.waitForExistence(timeout: landingTimeout),
-      "Advanced identity action missing during \(phase)"
+      pair.waitForExistence(timeout: landingTimeout),
+      "Pair with my desktop action missing during \(phase)"
     )
     XCTAssertTrue(createAccount.isHittable, "create-account action is not hittable during \(phase)")
     XCTAssertTrue(signIn.isHittable, "sign-in action is not hittable during \(phase)")
-    XCTAssertTrue(
-      advanced.isHittable,
-      "Advanced identity action is not hittable during \(phase)"
-    )
+    XCTAssertTrue(pair.isHittable, "Pair with my desktop action is not hittable during \(phase)")
     XCTAssertFalse(
       scan.exists,
-      "QR scan action must stay behind Advanced during \(phase)"
+      "QR scan action must stay behind Pair with my desktop during \(phase)"
     )
     XCTAssertFalse(
-      pairingCode.exists,
-      "pairing-code action must stay behind Advanced during \(phase)"
+      enterCode.exists,
+      "enter-code action must stay behind Pair with my desktop during \(phase)"
     )
 
     let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

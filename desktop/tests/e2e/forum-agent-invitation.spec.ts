@@ -430,8 +430,17 @@ for (const stage of ["add", "publish"] as const) {
         await expect(
           page.getByRole("button", { name: "Remove attachment" }),
         ).toBeVisible();
-      if (replacement !== null)
-        await page.getByTestId("message-input").fill(replacement);
+      if (replacement !== null) {
+        // Replace the draft the way a person does: select all, delete, type.
+        // A programmatic fill can race ProseMirror's DOM observer around the
+        // mention node and leave the old draft in place.
+        const input = page.getByTestId("message-input");
+        await input.click();
+        await page.keyboard.press("ControlOrMeta+A");
+        await page.keyboard.press("Backspace");
+        if (replacement) await page.keyboard.type(replacement);
+        await expect(input).toHaveText(replacement);
+      }
       await navigate(1);
       await releaseForumGate(page);
       expect(

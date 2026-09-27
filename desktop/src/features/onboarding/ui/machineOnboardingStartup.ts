@@ -8,6 +8,9 @@ export type MachineOnboardingPage =
   | "key-import"
   | "unsupported"
   | "backup"
+  | "businesses"
+  | "business"
+  | "connect"
   | "setup"
   | "config";
 

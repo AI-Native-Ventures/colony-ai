@@ -254,7 +254,7 @@ test("keeps an open status draft when the saved status expires", async ({
   // exact boundary by one controlled millisecond so the scheduled callback
   // cannot remain queued at the endpoint.
   await page.clock.fastForward(STATUS_EXPIRY_CROSSING_MS);
-  await expect(sidebarStatus).toHaveCount(0);
+  await expect(sidebarStatus).toHaveText("Set a status");
 
   await expect(input).toHaveValue("Unsaved draft");
   await expect(dialog.getByRole("alert")).toHaveText(

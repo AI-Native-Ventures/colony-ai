@@ -1,5 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
+import { ChevronDown, Plus, Users } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
@@ -71,6 +72,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
@@ -93,8 +95,10 @@ export function AppSidebar({
   projectsOverviewActive,
   relayConnectionCard,
   selfPresenceStatus,
+  showSidebarCollapseButton,
   errorMessage,
   selectedChannelId,
+  suppressTodaySelection = false,
   selectedView,
   unreadChannelCounts,
   unreadChannelIds,
@@ -117,8 +121,8 @@ export function AppSidebar({
   onRemoveCommunity,
   onCreateAgent,
   onSelectAgents,
+  onSelectToday,
   onSelectProjects,
-  onSelectPulse,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -505,7 +509,14 @@ export function AppSidebar({
   return (
     <Sidebar
       className="!z-[100] !border-r-0"
-      collapsible="offcanvas"
+      collapsible="icon"
+      data-colony-workspace-route={
+        selectedView === "today" ||
+        selectedView === "channel" ||
+        selectedView === "pins"
+          ? "true"
+          : undefined
+      }
       data-testid="app-sidebar"
       onClick={(event) => {
         if (isSidebarBackgroundTarget(event.target)) {
@@ -522,6 +533,7 @@ export function AppSidebar({
         data-testid="app-sidebar-scroll-anchor"
       >
         <AppSidebarPinnedHeader
+          activeCommunityName={activeCommunity?.name ?? ""}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
@@ -535,6 +547,7 @@ export function AppSidebar({
           onSelectChannel={onSelectChannel}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
+          showSidebarCollapseButton={showSidebarCollapseButton}
           scopeSearchFocusRequest={searchFocusRequests[1]}
           suggestionChannels={channels}
         />
@@ -567,12 +580,13 @@ export function AppSidebar({
             >
               <AppSidebarPrimaryMenu
                 homeBadgeCount={homeBadgeCount}
+                onSelectToday={onSelectToday}
                 onSelectAgents={onSelectAgents}
                 onSelectHome={onSelectHome}
                 onSelectProjects={onSelectProjects}
-                onSelectPulse={onSelectPulse}
                 onSelectWorkflows={onSelectWorkflows}
                 projectsOverviewActive={projectsOverviewActive}
+                suppressTodaySelection={suppressTodaySelection}
                 selectedView={selectedView}
               />
 
@@ -582,43 +596,6 @@ export function AppSidebar({
 
               {!isLoading ? (
                 <>
-                  {starredChannels.length > 0 ? (
-                    <ChannelGroupSection
-                      hasUnread={starredChannels.some((c) =>
-                        unreadChannelIds.has(c.id),
-                      )}
-                      isCollapsed={collapsedGroups.starred}
-                      isActiveChannel={selectedView === "channel"}
-                      activeWorkingByChannelId={activeWorkingByChannelId}
-                      items={starredChannels}
-                      sortMode={sortModeFor("starred")}
-                      onSortModeChange={(mode) =>
-                        setSortModeFor("starred", mode)
-                      }
-                      actionsTestId="section-actions-starred"
-                      listTestId="starred-list"
-                      onMarkAllRead={() => {
-                        for (const channel of starredChannels) {
-                          onMarkChannelRead(channel.id, channel.lastMessageAt);
-                        }
-                      }}
-                      onMarkChannelRead={onMarkChannelRead}
-                      onMarkChannelUnread={onMarkChannelUnread}
-                      onSelectChannel={onSelectChannel}
-                      onToggleCollapsed={() => toggleCollapsedGroup("starred")}
-                      selectedChannelId={selectedChannelId}
-                      title="Starred"
-                      unreadChannelIds={unreadChannelIds}
-                      mutedChannelIds={mutedChannelIds}
-                      onMuteChannel={onMuteChannel}
-                      onUnmuteChannel={onUnmuteChannel}
-                      starredChannelIds={starredChannelIds}
-                      onStarChannel={onStarChannel}
-                      onUnstarChannel={onUnstarChannel}
-                      onDeleteChannel={requestDeleteChannel}
-                      onLeaveChannel={requestLeaveChannel}
-                    />
-                  ) : null}
                   <SidebarDndContext
                     channels={channels}
                     sections={channelSections}
@@ -727,6 +704,61 @@ export function AppSidebar({
                       onLeaveChannel={requestLeaveChannel}
                     />
                   </SidebarDndContext>
+                  {starredChannels.length > 0 ? (
+                    <ChannelGroupSection
+                      hasUnread={starredChannels.some((c) =>
+                        unreadChannelIds.has(c.id),
+                      )}
+                      isCollapsed={collapsedGroups.starred}
+                      isActiveChannel={selectedView === "channel"}
+                      activeWorkingByChannelId={activeWorkingByChannelId}
+                      items={starredChannels}
+                      sortMode={sortModeFor("starred")}
+                      onSortModeChange={(mode) =>
+                        setSortModeFor("starred", mode)
+                      }
+                      actionsTestId="section-actions-starred"
+                      listTestId="starred-list"
+                      onMarkAllRead={() => {
+                        for (const channel of starredChannels) {
+                          onMarkChannelRead(channel.id, channel.lastMessageAt);
+                        }
+                      }}
+                      onMarkChannelRead={onMarkChannelRead}
+                      onMarkChannelUnread={onMarkChannelUnread}
+                      onSelectChannel={onSelectChannel}
+                      onToggleCollapsed={() => toggleCollapsedGroup("starred")}
+                      selectedChannelId={selectedChannelId}
+                      title="Starred"
+                      unreadChannelIds={unreadChannelIds}
+                      mutedChannelIds={mutedChannelIds}
+                      onMuteChannel={onMuteChannel}
+                      onUnmuteChannel={onUnmuteChannel}
+                      starredChannelIds={starredChannelIds}
+                      onStarChannel={onStarChannel}
+                      onUnstarChannel={onUnstarChannel}
+                      onDeleteChannel={requestDeleteChannel}
+                      onLeaveChannel={requestLeaveChannel}
+                    />
+                  ) : null}
+                  {onBrowseChannels ? (
+                    <div
+                      className="colony-sidebar-browse-channels"
+                      data-testid="sidebar-browse-channels"
+                    >
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            onClick={() => onBrowseChannels()}
+                            type="button"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span className="truncate">Browse channels</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                    </div>
+                  ) : null}
                   <FeatureGate feature="forum">
                     <ChannelGroupSection
                       createLabel="New forum"
@@ -756,6 +788,13 @@ export function AppSidebar({
                       onDeleteChannel={requestDeleteChannel}
                     />
                   </FeatureGate>
+                  <h2
+                    className="colony-sidebar-business-heading"
+                    data-testid="sidebar-business-section"
+                  >
+                    <ChevronDown aria-hidden="true" />
+                    <span data-sidebar-section-title>Business</span>
+                  </h2>
                   <SidebarSection
                     action={
                       <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
@@ -810,6 +849,25 @@ export function AppSidebar({
               ) : null}
             </div>
           </SidebarContent>
+          <div
+            className="colony-sidebar-team-section shrink-0"
+            data-testid="sidebar-team-section"
+          >
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  aria-current={selectedView === "agents" ? "page" : undefined}
+                  data-testid="sidebar-your-team"
+                  className="colony-sidebar-workspace-team-link"
+                  onClick={onSelectAgents}
+                  type="button"
+                >
+                  <Users aria-hidden="true" />
+                  <span>Your team</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </div>
         </div>
 
         <div className="relative z-30 shrink-0" data-buzz-glass-footer-wrap>

@@ -95,7 +95,7 @@ function isValidThemeName(name: string): name is SyntaxThemeName {
 
 /** Read stored theme, migrating legacy "light"/"dark"/"system" values. */
 function readStoredTheme(fallback: SyntaxThemeName): SyntaxThemeName {
-  // block/buzz#5078 — WebKit throws SecurityError from getItem under a
+  // block/buzz#5078: WebKit throws SecurityError from getItem under a
   // denied-storage origin; the throw-safe helper lets the provider degrade to
   // the fallback instead of unmounting the root during first render.
   const stored = getStorageItem(THEME_STORAGE_KEY);
@@ -197,11 +197,24 @@ function rgbToHex({ r, g, b }: Rgb): string {
 
 function applyAccentColor(value: string) {
   const root = document.documentElement;
+  const isBrandedTheme = root.hasAttribute("data-buzz-sidebar");
   if (value === NEUTRAL_ACCENT) {
     const styles = window.getComputedStyle(root);
     const foreground = styles.getPropertyValue("--foreground").trim();
     const background = styles.getPropertyValue("--background").trim();
-    root.style.setProperty("--buzz-selected-accent", foreground);
+    const primary = isBrandedTheme
+      ? styles.getPropertyValue("--colony-accent").trim()
+      : foreground;
+    const primaryForeground = isBrandedTheme
+      ? styles.getPropertyValue("--colony-surface").trim()
+      : background;
+    const selectedSurface = isBrandedTheme
+      ? styles.getPropertyValue("--colony-accent-soft").trim()
+      : foreground;
+    const selectedForeground = isBrandedTheme
+      ? styles.getPropertyValue("--colony-accent").trim()
+      : background;
+    root.style.setProperty("--buzz-selected-accent", primary);
     root.style.setProperty(
       "--buzz-video-review-accent",
       VIDEO_REVIEW_NEUTRAL_ACCENT,
@@ -210,12 +223,12 @@ function applyAccentColor(value: string) {
       "--buzz-video-review-accent-foreground",
       VIDEO_REVIEW_NEUTRAL_ACCENT,
     );
-    root.style.setProperty("--primary", foreground);
-    root.style.setProperty("--primary-foreground", background);
-    root.style.setProperty("--sidebar-primary", foreground);
-    root.style.setProperty("--sidebar-primary-foreground", background);
-    root.style.setProperty("--sidebar-active", foreground);
-    root.style.setProperty("--sidebar-active-foreground", background);
+    root.style.setProperty("--primary", primary);
+    root.style.setProperty("--primary-foreground", primaryForeground);
+    root.style.setProperty("--sidebar-primary", primary);
+    root.style.setProperty("--sidebar-primary-foreground", primaryForeground);
+    root.style.setProperty("--sidebar-active", selectedSurface);
+    root.style.setProperty("--sidebar-active-foreground", selectedForeground);
     return;
   }
 
@@ -232,24 +245,75 @@ function applyAccentColor(value: string) {
   root.style.setProperty("--primary-foreground", fgHsl);
   root.style.setProperty("--sidebar-primary", accentHsl);
   root.style.setProperty("--sidebar-primary-foreground", fgHsl);
-  root.style.setProperty("--sidebar-active", accentHsl);
-  root.style.setProperty("--sidebar-active-foreground", fgHsl);
+  root.style.setProperty(
+    "--sidebar-active",
+    isBrandedTheme
+      ? window
+          .getComputedStyle(root)
+          .getPropertyValue("--colony-accent-soft")
+          .trim()
+      : accentHsl,
+  );
+  root.style.setProperty(
+    "--sidebar-active-foreground",
+    isBrandedTheme
+      ? window.getComputedStyle(root).getPropertyValue("--colony-accent").trim()
+      : fgHsl,
+  );
+}
+
+/** Map the branded light/dark theme onto the reference foundation tokens. */
+function createColonyFoundationVars(root: HTMLElement): Record<string, string> {
+  const styles = window.getComputedStyle(root);
+  const token = (name: string) =>
+    styles.getPropertyValue(`--colony-${name}`).trim();
+
+  return {
+    "--background": token("canvas"),
+    "--foreground": token("fg"),
+    "--card": token("surface"),
+    "--card-foreground": token("fg"),
+    "--popover": token("surface"),
+    "--popover-foreground": token("fg"),
+    "--primary": token("accent"),
+    "--primary-foreground": token("surface"),
+    "--secondary": token("surface-raised"),
+    "--secondary-foreground": token("fg"),
+    "--muted": token("surface-raised"),
+    "--muted-foreground": token("muted"),
+    "--accent": token("hover"),
+    "--accent-foreground": token("fg"),
+    "--destructive": token("danger"),
+    "--destructive-foreground": token("surface"),
+    "--border": token("border"),
+    "--input": token("border"),
+    "--ring": token("focus"),
+    "--sidebar": token("canvas"),
+    "--sidebar-background": token("canvas"),
+    "--sidebar-foreground": token("sidebar-foreground"),
+    "--sidebar-primary": token("accent"),
+    "--sidebar-primary-foreground": token("surface"),
+    "--sidebar-active": token("accent-soft"),
+    "--sidebar-active-foreground": token("accent"),
+    "--sidebar-accent": token("hover"),
+    "--sidebar-accent-foreground": token("sidebar-selected-foreground"),
+    "--sidebar-border": token("border"),
+    "--sidebar-ring": token("focus"),
+  };
 }
 
 /**
- * The Buzz themes ship with a fixed neutral accent (the GitHub black/white
- * foreground) rather than a user-selectable accent color. When a Buzz theme is
- * active we force `NEUTRAL_ACCENT` regardless of the stored preference, and the
- * appearance panel hides the accent picker. The user's chosen accent is left
- * untouched in storage so it returns when they switch back to another theme.
+ * The branded themes use the fixed foundation accent. Their appearance panel
+ * hides the accent picker, while the user's chosen accent stays in storage for
+ * other syntax themes.
  */
 export function isBuzzTheme(themeName: string): boolean {
   return themeName === "buzz" || themeName === "buzz-dark";
 }
 
 /**
- * Resolve the accent to actually apply for a theme: Buzz themes are pinned to
- * the neutral accent; every other theme uses the stored/selected accent.
+ * Resolve the accent to apply: branded themes use their foundation accent;
+ * other themes use the stored or selected accent.
  */
 function resolveEffectiveAccent(
   themeName: string,
@@ -402,11 +466,15 @@ function applyCachedVars(): string | null {
     if (!cached) return null;
     const { themeName, vars, isDark } = JSON.parse(cached);
     const root = document.documentElement;
-    for (const [key, value] of Object.entries(vars)) {
+    root.classList.toggle("dark", isDark);
+    root.classList.toggle("light", !isDark);
+    const foundationVars = isBuzzTheme(themeName)
+      ? createColonyFoundationVars(root)
+      : {};
+    const cachedVars = { ...vars, ...foundationVars };
+    for (const [key, value] of Object.entries(cachedVars)) {
       root.style.setProperty(key, value as string);
     }
-    root.classList.remove("light", "dark");
-    root.classList.add(isDark ? "dark" : "light");
     applyBuzzSidebar(themeName);
     glassThemeReady = true;
 
@@ -435,19 +503,27 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   if (requestToken !== themeApplyRequest) return null;
 
   const info = extractThemeInfo(name, themeData);
-  const { isDark, vars } = createThemeVars(info.bg, info.fg, info.comment, {
-    added: info.added,
-    deleted: info.deleted,
-    modified: info.modified,
-  });
+  const { isDark, vars: adaptiveVars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    {
+      added: info.added,
+      deleted: info.deleted,
+      modified: info.modified,
+    },
+  );
 
   const root = document.documentElement;
+  root.classList.toggle("dark", isDark);
+  root.classList.toggle("light", !isDark);
+  const vars = isBuzzTheme(name)
+    ? { ...adaptiveVars, ...createColonyFoundationVars(root) }
+    : adaptiveVars;
   for (const [key, value] of Object.entries(vars)) {
     root.style.setProperty(key, value);
   }
 
-  root.classList.remove("light", "dark");
-  root.classList.add(isDark ? "dark" : "light");
   applyBuzzSidebar(name);
   glassThemeReady = true;
   maybeEnableGlassBackground(glassVibrancyRequest);
@@ -455,7 +531,7 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   // Apply the accent synchronously in the same batch as the theme vars so the
   // browser paints the new theme + accent together. Doing this in a later
   // microtask (e.g. the caller's `.then`) let the previous accent flash on the
-  // new theme for a frame — the flicker seen when switching to Buzz. Buzz
+  // new theme for a frame, which caused flicker when switching to Buzz. Buzz
   // themes resolve to the neutral accent regardless of the stored value.
   applyAccentColor(
     resolveEffectiveAccent(
@@ -471,7 +547,7 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
       JSON.stringify({ themeName: name, vars, isDark }),
     );
   } catch {
-    // Storage full — non-critical
+    // Storage full. This is non-critical.
   }
 
   return { isDark, terminalPalette: info.terminalPalette };
@@ -497,7 +573,7 @@ export function ThemeProvider({
   >(null);
   const loadingRef = useRef<string | null>(null);
   const [accentColor, setAccentColorState] = useState<string>(() => {
-    // block/buzz#5078 — use the throw-safe accessor for init-time reads; a
+    // block/buzz#5078: use the throw-safe accessor for init-time reads; a
     // denied-storage origin would otherwise kill the root on first mount.
     return getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
   });
@@ -556,7 +632,7 @@ export function ThemeProvider({
       if (!result) return;
       // Only update if this is still the theme we want. The accent is applied
       // inside applyTheme (synchronously with the theme vars), so there's no
-      // separate re-application here — that avoided the switch-time flicker.
+      // separate re-application here, which avoided switch-time flicker.
       if (loadingRef.current === thisTheme) {
         setIsDark(result.isDark);
         setTerminalPalette(result.terminalPalette);
@@ -627,8 +703,8 @@ export function ThemeProvider({
 
   // Re-apply the accent when the user picks a new swatch or the effective theme
   // changes. applyTheme already applies the (Buzz-neutral-aware) accent in the
-  // same synchronous batch as the theme vars — the flicker fix — so this effect
-  // is idempotent on theme changes and simply covers accent-only changes.
+  // same synchronous batch as the theme vars to avoid switch-time flicker.
+  // This effect is idempotent on theme changes and covers accent-only changes.
   useEffect(() => {
     applyAccentColor(resolveEffectiveAccent(effectiveTheme, accentColor));
   }, [accentColor, effectiveTheme]);

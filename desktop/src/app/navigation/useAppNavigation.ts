@@ -82,6 +82,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goToday = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/today",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goAgents = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -93,11 +104,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSupervision = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/pulse",
+          to: "/today/updates",
         },
         behavior,
       ),
@@ -464,6 +481,7 @@ export function useAppNavigation() {
     goEditWorkflow,
     goForumPost,
     goHome,
+    goToday,
     goNewMessage,
     goNewWorkflow,
     goNewWorkflowForChannel,
@@ -471,6 +489,7 @@ export function useAppNavigation() {
     goProjects,
     goPulse,
     goProfile,
+    goSupervision,
     goSettings,
     goWorkflow,
     goWorkflows,

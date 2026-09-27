@@ -17,6 +17,11 @@ export function isBroadcastReply(tags: string[][]): boolean {
   return tags.some((tag) => tag[0] === "broadcast" && tag[1] === "1");
 }
 
+/** Add the existing broadcast tag used to expose a thread reply in its channel timeline. */
+export function addBroadcastReplyTag(tags: string[][] = []): string[][] {
+  return isBroadcastReply(tags) ? tags : [...tags, ["broadcast", "1"]];
+}
+
 export function isThreadReply(tags: string[][]): boolean {
   const ref = getThreadReference(tags);
   return ref.parentId !== null && !isBroadcastReply(tags);

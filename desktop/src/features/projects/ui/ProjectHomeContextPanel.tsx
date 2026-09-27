@@ -271,7 +271,7 @@ export function ProjectHomeContextPanel({
           testId="project-home-context-tasks"
           title={addRepositoryTitle}
         >
-          Tasks
+          Issues
         </ContextNavButton>
         <ContextNavButton
           count={presentContextCount(activity?.prCount)}

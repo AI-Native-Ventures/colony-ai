@@ -45,6 +45,33 @@ async function editWorkflowName(
   ).not.toBeVisible();
 }
 
+async function addSendMessageStep(
+  page: import("@playwright/test").Page,
+  dialog: import("@playwright/test").Locator,
+) {
+  // Adding a step moves the node inspector from the trigger to the new step.
+  // Until that pane lands, the trigger filter's "Message text" field is the
+  // only field with that name, so a fill right after the menu click typed the
+  // step's message into the trigger filter (the saved workflow then had a
+  // filter and no message, and skipped the "may run often" confirmation).
+  const existingSteps = await dialog
+    .getByRole("button", { name: /^Step \d+:/ })
+    .count();
+  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`pane=step%3Astep_${existingSteps + 1}(?:&|$)`),
+  );
+  // The URL moves first; the inspector keeps the trigger pane mounted until
+  // its transition ends. "Run controls" exists only on a step pane, and a
+  // single "Message text" field means the trigger pane has unmounted.
+  const inspector = dialog.getByTestId("workflow-node-inspector");
+  await expect(
+    inspector.getByRole("button", { name: "Run controls" }),
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Message text")).toHaveCount(1);
+}
+
 async function createWorkflow(
   page: import("@playwright/test").Page,
   name: string,
@@ -94,8 +121,7 @@ async function createWorkflow(
       .click();
   }
 
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await addSendMessageStep(page, dialog);
   await dialog.getByLabel("Message text").fill("Workflow notification");
   if (options?.stepName) {
     await dialog.getByRole("button", { name: "Step details" }).click();
@@ -260,8 +286,7 @@ test("disables autocapitalization in the workflow form", async ({ page }) => {
     dialog.getByRole("textbox", { name: "Workflow name" }),
   ).toHaveAttribute("autocapitalize", "off");
 
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await addSendMessageStep(page, dialog);
   await dialog.getByRole("button", { name: "Step details" }).click();
   await expect(dialog.getByLabel("Name (optional)")).toHaveAttribute(
     "autocapitalize",
@@ -698,8 +723,7 @@ test("captures the built editor at desktop and narrow widths", async ({
   const dialog = page.getByRole("dialog", { name: "Create workflow" });
   await selectWorkflowChannel(page, dialog);
   await editWorkflowName(dialog, "editor_screenshot");
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await addSendMessageStep(page, dialog);
   await dialog.getByLabel("Message text").fill("Notify the workflow channel");
   const inspector = dialog.getByTestId("workflow-node-inspector");
 
@@ -730,8 +754,7 @@ test("preserves final sequence affordances and responsive inspector behavior", a
   const dialog = page.getByRole("dialog", { name: "Create workflow" });
   await selectWorkflowChannel(page, dialog);
   await editWorkflowName(dialog, "sequence_parity_test");
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await addSendMessageStep(page, dialog);
 
   const inspector = dialog.getByTestId("workflow-node-inspector");
   const runControls = inspector.getByRole("button", { name: "Run controls" });
@@ -803,8 +826,7 @@ test("pane routes use stable IDs and Form/YAML changes stay synchronized", async
   await selectWorkflowChannel(page, dialog);
   await editWorkflowName(dialog, "pane_sync_test");
 
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
+  await addSendMessageStep(page, dialog);
   await dialog.getByLabel("Message text").fill("first message");
   await expect(page).toHaveURL(/pane=step%3Astep_1/);
 

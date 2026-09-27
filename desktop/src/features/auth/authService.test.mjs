@@ -126,6 +126,9 @@ function successFor(method, path) {
   if (method === "POST" && path === "/api/accounts/reset/request") {
     return { status: 202, body: { status: "verification_sent" } };
   }
+  if (method === "POST" && path === "/api/accounts/reset/check") {
+    return { status: 200, body: { status: "code_valid" } };
+  }
   if (method === "POST" && path === "/api/accounts/reset/confirm") {
     return { status: 200, body: SERVER_SESSION };
   }
@@ -170,7 +173,11 @@ test("service covers every account endpoint and signs protected routes", async (
     async (baseUrl) => {
       const auth = createService(baseUrl);
       assert.deepEqual(
-        await auth.service.signUp(" founder@example.com ", "correct horse"),
+        await auth.service.signUp(
+          " founder@example.com ",
+          "correct horse",
+          "Ada Example",
+        ),
         {
           status: "verification_sent",
         },
@@ -196,6 +203,7 @@ test("service covers every account endpoint and signs protected routes", async (
       await auth.service.signIn("founder@example.com", "password");
       await auth.service.signInWithGoogle();
       await auth.service.requestReset("founder@example.com");
+      await auth.service.checkResetCode("founder@example.com", "654321");
       await auth.service.confirmReset(
         "founder@example.com",
         "654321",
@@ -226,13 +234,14 @@ test("service covers every account endpoint and signs protected routes", async (
         "POST /api/accounts/google",
         "POST /api/accounts/password",
         "POST /api/accounts/resend-code",
+        "POST /api/accounts/reset/check",
         "POST /api/accounts/reset/confirm",
         "POST /api/accounts/reset/request",
         "POST /api/accounts/signin",
         "POST /api/accounts/signup",
         "POST /api/accounts/verify",
       ]);
-      assert.equal(requests.length, 12);
+      assert.equal(requests.length, 13);
 
       const signup = requests.find(
         (request) => request.path === "/api/accounts/signup",
@@ -240,6 +249,7 @@ test("service covers every account endpoint and signs protected routes", async (
       assert.deepEqual(signup.body, {
         email: "founder@example.com",
         password: "correct horse",
+        display_name: "Ada Example",
       });
       const verify = requests.find(
         (request) => request.path === "/api/accounts/verify",
@@ -259,6 +269,13 @@ test("service covers every account endpoint and signs protected routes", async (
         email: "founder@example.com",
         code: "654321",
         new_password: "new password",
+      });
+      const resetCheck = requests.find(
+        (request) => request.path === "/api/accounts/reset/check",
+      );
+      assert.deepEqual(resetCheck.body, {
+        email: "founder@example.com",
+        code: "654321",
       });
       const claim = requests.find(
         (request) => request.path === "/api/accounts/claim",
@@ -348,7 +365,10 @@ test("contract errors map to typed failures and preserve the retry hint without 
     [409, "identity_taken", "identity_taken"],
     [410, "code_expired", "code_expired"],
     [422, "weak_password", "weak_password"],
+    [422, "wrong_code", "wrong_code"],
     [429, "rate_limited", "rate_limited"],
+    [429, "too_many_attempts", "too_many_attempts"],
+    [429, "resend_cooldown", "resend_cooldown"],
   ];
   let override;
   const requests = [];
@@ -364,7 +384,11 @@ test("contract errors map to typed failures and preserve the retry hint without 
           status,
           body: {
             error,
-            ...(status === 429 ? { retry_after_secs: 37 } : {}),
+            ...(status === 429
+              ? { retry_after_secs: 37, remaining_attempts: 2 }
+              : error === "wrong_code"
+                ? { attempts_left: 3 }
+                : {}),
           },
         };
         await assert.rejects(
@@ -373,12 +397,37 @@ test("contract errors map to typed failures and preserve the retry hint without 
             assert.ok(failure instanceof AuthApiError);
             assert.equal(failure.code, code);
             assert.equal(failure.status, status);
-            if (status === 429) assert.equal(failure.retryAfterSecs, 37);
+            if (status === 429) {
+              assert.equal(failure.retryAfterSecs, 37);
+              assert.equal(failure.remainingAttempts, 2);
+            }
             return true;
           },
         );
       }
       assert.equal(requests.length, cases.length);
+    },
+  );
+});
+
+test("invalid verification responses preserve only the server attempt count", async () => {
+  await withFakeServer(
+    async () => ({
+      status: 401,
+      body: { error: "invalid_credentials", remaining_attempts: 2 },
+    }),
+    async (baseUrl) => {
+      const auth = createService(baseUrl);
+      await assert.rejects(
+        auth.service.verifyEmail("founder@example.com", "000000"),
+        (failure) => {
+          assert.ok(failure instanceof AuthApiError);
+          assert.equal(failure.code, "invalid_credentials");
+          assert.equal(failure.remainingAttempts, 2);
+          assert.equal("remaining_attempts" in failure, false);
+          return true;
+        },
+      );
     },
   );
 });

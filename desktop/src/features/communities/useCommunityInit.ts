@@ -352,6 +352,8 @@ export function useCommunityInit(
           activeCommunity.token,
           activeCommunity.reposDir,
           getOverrides().agentManagedProfiles === true,
+          activeCommunity.businessCommunityId,
+          activeCommunity.clientChannelId,
         );
       } catch (error) {
         // A bad `repos_dir` no longer reaches here — `apply_workspace` treats

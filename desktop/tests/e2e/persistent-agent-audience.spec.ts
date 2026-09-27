@@ -598,18 +598,36 @@ test("the mention button opens settings and can undo an address", async ({
     })
     .click();
   await expect(input).toHaveText("@Morgarita draft text");
-  await expect(
-    composer.getByRole("button", { name: "Mention someone" }),
-  ).toBeVisible();
-  await input.fill("");
+  const mentionSomeone = composer.getByRole("button", {
+    name: "Mention someone",
+  });
+  await expect(mentionSomeone).toBeVisible();
+  // Clear through the keyboard: a programmatic fill can race ProseMirror's
+  // DOM observer around the mention node and leave the draft in place.
+  await input.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await expect(input).toHaveText("");
+  // Editing without an @ query closes the button-opened picker once the
+  // mention debounce settles. Wait for that, then reopen it from the button
+  // instead of racing the debounce with a click on the closing menu.
+  await expect(menu).toHaveCount(0);
+  await mentionSomeone.click();
+  await expect(menu).toBeVisible();
 
-  await menu
-    .getByRole("button", { name: "Mention Morgarita", exact: true })
-    .click();
+  const manualMention = menu.getByRole("button", {
+    name: "Mention Morgarita",
+    exact: true,
+  });
+  await expect(manualMention).toBeVisible();
+  await manualMention.click();
   await expect(input).toHaveText("@Morgarita ");
+  // After "Don't automatically mention", a plain mention is one-off: this
+  // message mentions the agent, but the agent is not pinned again. The chip
+  // that was just removed can still be fading out here, so wait for it to go.
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await input.type("later");
   await input.press("Enter");
@@ -933,7 +951,7 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).not.toContainText(
     "Future messages in this channel will include this agent.",
   );
-  await expect(autoPinConfirmation).toHaveAttribute("data-side", "left");
+  await expect(autoPinConfirmation).toHaveAttribute("data-side", "right");
   await expect(autoPinConfirmation.locator("span")).toHaveCSS(
     "white-space",
     "nowrap",
@@ -953,8 +971,8 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   if (!addressControlBox || !confirmationBox) {
     throw new Error("Automatic mention confirmation is not laid out");
   }
-  expect(confirmationBox.x + confirmationBox.width).toBeLessThanOrEqual(
-    addressControlBox.x,
+  expect(confirmationBox.x).toBeGreaterThanOrEqual(
+    addressControlBox.x + addressControlBox.width,
   );
   const turnOffAction = autoPinConfirmation.getByRole("button", {
     name: "Turn off",
@@ -966,6 +984,24 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).toHaveCount(0);
 
   await input.type("hello");
+  // The thread composer is disabled while a send is in flight, and the lock
+  // engages a few hundred ms after Enter (the send starts after async
+  // preflight). Record the lock cycle from before Enter so the follow-up is
+  // typed only after the send has finished, not in the gap before the lock.
+  await input.evaluate((element) => {
+    const cycle = { locked: false, unlocked: false };
+    (
+      window as unknown as { __threadComposerLock?: typeof cycle }
+    ).__threadComposerLock = cycle;
+    new MutationObserver(() => {
+      const editable = element.getAttribute("contenteditable");
+      if (editable === "false") cycle.locked = true;
+      if (editable === "true" && cycle.locked) cycle.unlocked = true;
+    }).observe(element, {
+      attributeFilter: ["contenteditable"],
+      attributes: true,
+    });
+  });
   await input.press("Enter");
 
   await expect(input).toHaveText("@Morgarita ", { timeout: 2_500 });
@@ -979,9 +1015,26 @@ test("a manual mention persists when automatic mentions are enabled", async ({
     .poll(() => readOutgoingMentionPubkeys(page, "@Morgarita hello"))
     .toContain(AGENT_A);
 
-  await expect(input).toHaveAttribute("contenteditable", "true", {
-    timeout: 2_500,
-  });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __threadComposerLock?: { unlocked: boolean };
+              }
+            ).__threadComposerLock?.unlocked ?? false,
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  await expect(composer.getByTestId("message-composer")).toHaveAttribute(
+    "data-submit-locked",
+    "false",
+    { timeout: 2_500 },
+  );
+  await expect(input).toHaveAttribute("contenteditable", "true");
   await input.fill("follow up");
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),

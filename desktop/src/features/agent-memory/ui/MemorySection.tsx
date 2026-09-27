@@ -13,13 +13,13 @@ const MEMORY_LIST_PREVIEW_LIMIT = 3;
 type MemorySectionVariant = "cards" | "grouped";
 
 const MEMORY_TRUNCATED_TOOLTIP =
-  "This list may be incomplete — the relay returned the maximum number of memories.";
+  "This list may be incomplete. The relay returned the maximum number of memories.";
 
 const MEMORY_DANGLING_REF_TOOLTIP =
   "This memory links to a slug that wasn't found in the loaded memory list.";
 
 /**
- * Memory section — IXI-7 phase 1 read-only viewer.
+ * Memory section. IXI-7 phase 1 read-only viewer.
  *
  * Owner-gated by the caller: the parent passes `viewerIsOwner` (the
  * `isCurrentUserOwner || isOwner` signal computed in the profile panel from
@@ -38,7 +38,7 @@ const MEMORY_DANGLING_REF_TOOLTIP =
  *   ── orphans list (if any) ──
  *   ── missing [[slug]] refs highlighted inline on parent memories ──
  *
- * tho will refine the visual design — this is the structural placement.
+ * This is the structural placement; visual refinement can follow.
  */
 export function MemorySection({
   agentPubkey,
@@ -60,12 +60,14 @@ export function MemoryRefreshButton({
   viewerIsOwner,
   className,
   iconClassName,
+  showLabel = false,
   variant = "ghost",
 }: {
   agentPubkey: string;
   viewerIsOwner: boolean;
   className?: string;
   iconClassName?: string;
+  showLabel?: boolean;
   variant?: ButtonProps["variant"];
 }): React.ReactElement | null {
   const { query } = useAgentMemoryGraph(agentPubkey, {
@@ -81,7 +83,7 @@ export function MemoryRefreshButton({
       data-testid="agent-memory-refetch"
       disabled={query.isFetching}
       onClick={() => query.refetch()}
-      size="icon"
+      size={showLabel ? "sm" : "icon"}
       type="button"
       variant={variant}
     >
@@ -91,6 +93,7 @@ export function MemoryRefreshButton({
           query.isFetching && "animate-spin",
         )}
       />
+      {showLabel ? "Refresh" : null}
     </Button>
   );
 }
@@ -277,6 +280,10 @@ function MemoryGraphView({
     ...orphans,
   ];
   const entries = [...(core ? [core] : []), ...memories];
+  const latestMemoryAt = memories.reduce(
+    (latest, entry) => Math.max(latest, entry.createdAt),
+    0,
+  );
   const hasMoreEntries = entries.length > MEMORY_LIST_PREVIEW_LIMIT;
   const visibleEntries = showAllEntries
     ? entries
@@ -284,15 +291,23 @@ function MemoryGraphView({
 
   return (
     <div className={variant === "grouped" ? undefined : "space-y-3"}>
-      {!core && memories.length > 0 ? (
+      {variant === "grouped" ? (
+        <div className="mt-5 flex items-center justify-between py-2 text-2xs text-muted-foreground">
+          <strong className="font-semibold text-foreground">
+            {memories.length} memories
+          </strong>
+          {latestMemoryAt > 0 ? (
+            <span>Updated {formatMemoryUpdateTime(latestMemoryAt)}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!core && memories.length > 0 && variant !== "grouped" ? (
         <p
-          className={cn(
-            "text-xs italic text-muted-foreground",
-            variant === "grouped" && "px-4 py-3",
-          )}
+          className={cn("text-xs italic text-muted-foreground")}
           data-testid="agent-memory-no-core"
         >
-          No <code className="font-mono text-2xs">core</code> memory yet — agent
+          No <code className="font-mono text-2xs">core</code> memory yet. Agent
           identity is unrooted.
         </p>
       ) : null}
@@ -343,6 +358,30 @@ function MemoryGraphView({
       ) : null}
     </div>
   );
+}
+
+function formatMemoryUpdateTime(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) return "Not reported";
+
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const dateLabel = isToday
+    ? "Today"
+    : new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+      }).format(date);
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+  }).format(date);
+
+  return `${dateLabel} · ${time}`;
 }
 
 function MemoryShowMoreButton({
@@ -522,7 +561,7 @@ function elementExceedsLines(element: HTMLElement, lines: number): boolean {
   return element.scrollHeight > lineHeight * lines + 1;
 }
 
-/** A single engram accordion — collapsed preview truncates to two lines. */
+/** A single engram accordion with a two-line collapsed preview. */
 function MemoryEntryAccordion({
   danglingSlugs,
   entry,

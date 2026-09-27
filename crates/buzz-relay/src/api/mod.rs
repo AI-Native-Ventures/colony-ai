@@ -11,6 +11,7 @@ pub mod media;
 pub mod mesh_demo;
 pub mod nip05;
 pub mod operator;
+pub mod payments;
 pub mod self_provisioning;
 pub mod workflows;
 

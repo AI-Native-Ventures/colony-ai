@@ -33,6 +33,24 @@ async function hoverUntilMetadataTooltip(
     .toBeGreaterThan(0);
 }
 
+async function pressHistoryChord(
+  page: import("@playwright/test").Page,
+  direction: "back" | "forward",
+) {
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  const key = isMac
+    ? direction === "back"
+      ? "Meta+["
+      : "Meta+]"
+    : direction === "back"
+      ? "Alt+ArrowLeft"
+      : "Alt+ArrowRight";
+
+  await page.keyboard.press(key);
+}
+
 async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByTestId("open-workflows-view").click();
@@ -77,7 +95,7 @@ async function createWorkflow(
   await expect(dialog).not.toBeVisible();
 }
 
-test("global back and forward move across channel routes", async ({ page }) => {
+test("back and forward move across channel routes", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("channel-general").click();
@@ -86,10 +104,10 @@ test("global back and forward move across channel routes", async ({ page }) => {
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 });
 
@@ -222,11 +240,11 @@ test("back and forward restore open thread panels", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(threadPanel).toBeVisible();
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 });
@@ -250,7 +268,7 @@ test("back undoes closing a thread panel", async ({ page }) => {
   await threadPanel.getByRole("button", { name: "Close panel" }).click();
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(threadPanel).toBeVisible();
 });
 
@@ -611,6 +629,21 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
   expect(fragmentMetrics.rects.length).toBeGreaterThanOrEqual(2);
 
   const tooltip = page.getByRole("tooltip");
+  // Radix closes a tooltip when an ancestor of its trigger scrolls. Focusing
+  // a chip that is partly out of view scrolls the timeline to reveal it,
+  // which closed the focus-opened tooltip; it then stayed closed because the
+  // later pointer moves never left the chip. Reveal the chip and let the
+  // timeline settle first, so focusing it does not scroll.
+  await sentChip.scrollIntoViewIfNeeded();
+  await page.getByTestId("message-timeline").evaluate(async (element) => {
+    let prior = element.scrollTop;
+    let stableFrames = 0;
+    for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      stableFrames = element.scrollTop === prior ? stableFrames + 1 : 0;
+      prior = element.scrollTop;
+    }
+  });
   await sentChip.focus();
   await expect(tooltip).toBeVisible();
   const positionOverFragment = async (index: number) => {

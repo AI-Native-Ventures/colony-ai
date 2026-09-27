@@ -211,12 +211,12 @@ fi
 wait_for_ui initial account-entry
 capture_screen initial
 
-tap_app_label "$output_dir/initial.xml" "Advanced: use an existing Nostr identity"
-wait_for_ui advanced-pairing pairing
-capture_screen advanced-pairing
+tap_app_label "$output_dir/initial.xml" "Pair with my desktop"
+wait_for_ui pairing-start pairing
+capture_screen pairing-start
 
 adb_target shell input keyevent 4
-wait_for_ui after-advanced-back account-entry
+wait_for_ui after-pairing-back account-entry
 
 echo "Force-stopping $package"
 adb_target shell am force-stop "$package"
@@ -230,8 +230,8 @@ capture_screen relaunch
 {
     echo "relaunch=passed"
     echo "force_stop=issued"
-    echo "fresh_install_ui=account-entry with create account, Google, sign in, and Advanced"
-    echo "advanced_pairing_ui=Scan a QR code reachable through Advanced"
+    echo "fresh_install_ui=account-entry with create an account, sign in, and pair with my desktop"
+    echo "pairing_ui=Scan QR code and Enter a code instead reachable through Pair with my desktop"
     echo "relaunch_ui=account-entry after force-stop"
 } > "$output_dir/lifecycle.txt"
 

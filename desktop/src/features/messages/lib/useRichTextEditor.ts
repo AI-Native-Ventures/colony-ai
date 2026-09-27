@@ -313,17 +313,19 @@ export function useRichTextEditor({
         Extension.create({
           name: "submitOnEnter",
           addKeyboardShortcuts() {
+            const submit = ({ editor: ed }: { editor: Editor }) => {
+              if (isAutocompleteOpen?.current) return false;
+              if (!onSubmitRef.current) return false;
+
+              const fenceResult = handleCodeFenceEnter(ed);
+              if (fenceResult !== undefined) return fenceResult;
+
+              onSubmitRef.current();
+              return true;
+            };
             return {
-              Enter: ({ editor: ed }) => {
-                if (isAutocompleteOpen?.current) return false;
-                if (!onSubmitRef.current) return false;
-
-                const fenceResult = handleCodeFenceEnter(ed);
-                if (fenceResult !== undefined) return fenceResult;
-
-                onSubmitRef.current();
-                return true;
-              },
+              Enter: submit,
+              "Mod-Enter": submit,
             };
           },
         }),

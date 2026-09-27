@@ -314,6 +314,7 @@ export function ProjectChannelHome({
                 }
                 currentIdentity={identityQuery.data}
                 currentProfile={profileQuery.data}
+                hideWorkspaceTopBar
                 idleAuxiliaryPanel={workspaceSheet}
                 idleAuxiliaryHeaderActions={{
                   actions: (

@@ -997,7 +997,7 @@ test("project issue author rollover matches pull requests", async ({
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const row = page.locator('[data-testid^="projects-issue-row-"]').first();
@@ -1059,7 +1059,7 @@ test("project issues preserve partial results from aggregate queries", async ({
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
 
   await expect(
     page.getByRole("button", { name: /^View / }).first(),
@@ -1200,7 +1200,7 @@ test("project channels are grouped by project", async ({ page }) => {
     "Activity",
     "Projects",
     "Repositories",
-    "Tasks",
+    "Issues",
     "Reviews",
     "Channels",
   ]);
@@ -1385,7 +1385,7 @@ test("project section icons lead their titles", async ({ page }) => {
   await expectIconBeforeTitle("projects-page-header");
 
   await openBuzzProject(page);
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expectIconBeforeTitle("project-section-header");
 });
 
@@ -1397,7 +1397,7 @@ test("project detail lists follow overview header geometry", async ({
   await openBuzzProject(page);
 
   for (const [tab, title] of [
-    ["Tasks", "Tasks"],
+    ["Issues", "Issues"],
     ["Review", "Reviews"],
   ] as const) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -1405,7 +1405,7 @@ test("project detail lists follow overview header geometry", async ({
     const group = page.getByTestId("project-work-item-group-header").first();
     const firstRow = page
       .getByTestId(
-        tab === "Tasks" ? "project-issue-row" : "project-pull-request-row",
+        tab === "Issues" ? "project-issue-row" : "project-pull-request-row",
       )
       .first();
     const [headerBox, titleBox, groupBox, groupLabelBox, rowTitleBox] =
@@ -1662,7 +1662,12 @@ test("channels tab opens the latest matching conversation without leaving the pr
   await expect(discussedAgent).toBeFocused();
   await expect(discussedAgent).toHaveCSS("clip-path", "none");
 
-  await channelRow.click();
+  // Click the row's title area; the row centre can land on the participant
+  // avatars, which open profiles instead of the conversation.
+  const channelRowBox = await channelRow.boundingBox();
+  await channelRow.click({
+    position: { x: 96, y: (channelRowBox?.height ?? 36) / 2 },
+  });
 
   const panel = page.getByTestId("project-conversation-panel");
   await expect(panel).toBeVisible();
@@ -2059,7 +2064,7 @@ test("project overview presents collapsible context beside grouped activity", as
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-issues").click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(
     page.getByTestId("projects-overview-create-issue"),
@@ -2349,7 +2354,7 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const rows = page.locator('[data-testid^="projects-issue-row-"]');
@@ -2428,7 +2433,7 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   );
   await page.getByRole("button", { name: "Close agent chat" }).click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(page.getByTestId("projects-overview-context-rail")).toHaveCSS(
     "width",
@@ -2443,7 +2448,7 @@ test("selection restores a previously collapsed Projects context drawer", async 
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const toggle = page.getByTestId("projects-overview-context-toggle");
@@ -2470,7 +2475,7 @@ test("repository changes discard captured selection context before agent sends",
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await addProjectToSidebar(page, "buzz");
   await page.getByTestId("project-home-context-repo-buzz").click();
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
 
   const selectedRow = page.getByTestId("project-issue-row").first();
   const selectedTitle = (
@@ -2763,7 +2768,7 @@ test("selecting repository workspace rows switches the context pod to the cluste
     0,
   );
 
-  await page.getByRole("tab", { name: "Tasks" }).click();
+  await page.getByRole("tab", { name: "Issues" }).click();
   const issueRows = page.getByTestId("project-issue-row");
   await expect(issueRows.first()).toBeVisible();
   await expectSinglePrimaryTextColumn(issueRows.first());
@@ -2934,7 +2939,7 @@ test("project subsections do not paint backgrounds behind list or grid items", a
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
 
-  for (const section of ["Repositories", "Reviews", "Tasks"] as const) {
+  for (const section of ["Repositories", "Reviews", "Issues"] as const) {
     await page.getByRole("button", { name: section, exact: true }).click();
     await page.getByRole("button", { name: "List layout" }).click();
 
@@ -3065,7 +3070,7 @@ test("project detail content areas do not paint background fills", async ({
     "Overview",
     "Files",
     "Commits",
-    "Tasks",
+    "Issues",
     "Review",
     "Contributors",
   ]) {
@@ -3517,17 +3522,17 @@ test("pushed local branch can open a pull request", async ({ page }) => {
   ]);
 });
 
-test("project task can be created with a category from the tasks header", async ({
+test("project issue can be created with a category from the Issues header", async ({
   page,
 }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await page
     .getByTestId("project-section-header")
-    .getByRole("button", { name: "Create task" })
+    .getByRole("button", { name: "New issue" })
     .click();
   await page
     .getByTestId("create-issue-category")
@@ -3539,7 +3544,7 @@ test("project task can be created with a category from the tasks header", async 
     .getByTestId("create-issue-body")
     .fill("The project workflow needs a clear repair path.");
   await page.getByTestId("create-issue-submit").click();
-  await expect(page.getByText("Task created.")).toBeVisible();
+  await expect(page.getByText("Issue created.")).toBeVisible();
 
   const createdEvent = await page.evaluate(() =>
     window.__BUZZ_E2E_SIGNED_EVENTS__?.find((event) => event.kind === 1621),
@@ -3576,14 +3581,16 @@ test("narrow layouts keep section context reachable through a sheet", async ({
 
   // Keyboard journey into the Tasks section: open the sheet from the toggle.
   await page.getByTestId("projects-section-issues").click();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
   await contextToggle.focus();
   await page.keyboard.press("Enter");
   const contextSheet = page.getByTestId("projects-overview-context-sheet");
   await expect(contextSheet).toBeVisible();
   await expect(
     contextSheet.getByTestId("projects-overview-context-title"),
-  ).toHaveText("Tasks");
+  ).toHaveText("Issues");
   await expect(contextToggle).toHaveAttribute("aria-pressed", "true");
 
   // Escape dismisses the sheet and returns focus to the toggle.
@@ -3614,8 +3621,10 @@ test("narrow layouts keep section context reachable through a sheet", async ({
   await expect(contextSheet).toBeVisible();
   await contextSheet
     .getByTestId("projects-overview-stat")
-    .filter({ hasText: "Tasks" })
+    .filter({ hasText: "Issues" })
     .click();
   await expect(contextSheet).toBeHidden();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
 });
