@@ -107,9 +107,7 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
   expect(
     await sidebarBestie.evaluate(
       (element) =>
-        element.previousElementSibling?.querySelector(
-          '[data-testid="open-agents-view"]',
-        ) !== null,
+        element.closest('[data-testid="sidebar-nav-conversations"]') !== null,
     ),
   ).toBe(true);
   await waitForAnimations(page);
@@ -206,7 +204,7 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
 
   await floatingTrigger.click();
   await expect(page.getByTestId("bestie-composer")).toBeFocused();
-  const outsideDestination = page.getByTestId("open-agents-view");
+  const outsideDestination = page.getByTestId("sidebar-activity-button");
   await outsideDestination.click();
   await expect(page.getByTestId("bestie-bloom-content")).toHaveCount(0);
   await expect(outsideDestination).toBeFocused();

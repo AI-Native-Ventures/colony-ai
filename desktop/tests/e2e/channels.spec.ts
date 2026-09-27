@@ -13,6 +13,7 @@ import {
   openCreateChannelDialog,
   openNewMessagePage,
 } from "../helpers/bridge";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
@@ -440,7 +441,7 @@ async function expectIntroSpacedAboveDayDivider(
   // The intro is a flex sibling above the timeline; the day divider and first
   // message-row are virtualized items positioned by translateY inside the
   // scroll container. The intro -> divider gap is the wrapper flex spacing the
-  // layout controls (8px, stable), so guard THAT with a tight band — a layout
+  // layout controls (8px, stable), so guard THAT with a tight band - a layout
   // regression that collapses or balloons it fails here. The divider -> message
   // gap is NOT a layout-spacing contract: virtualized rows are positioned
   // back-to-back (no inter-item gap), so it is ~0 by construction plus
@@ -563,7 +564,7 @@ test("shows cached profile labels while relay profiles revalidate", {
 
   const aliceMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   // beforeEach holds get_users_batch for 10 s for this tag, so relay
   // revalidation cannot supply the label inside this window: "Cached Alice"
   // can only come from the persisted cache. A 1 s budget also had to cover
@@ -817,7 +818,7 @@ test("creates the DM before preparing a persona mention", async ({ page }) => {
     .toBeGreaterThan(baselineCreateCount);
   await expect(page.getByTestId("chat-title")).toContainText("charlie");
   await expect(page.getByTestId("chat-title")).toContainText("Fizz");
-  // Assert popover hidden after chat-title settles — by this point the send
+  // Assert popover hidden after chat-title settles - by this point the send
   // flow has completed and the UI has fully transitioned away from the popover.
   await expect(page.getByTestId("new-message-recipient-popover")).toBeHidden();
 
@@ -1197,7 +1198,7 @@ test("publishes into an expanded DM even when agent startup fails", async ({
   );
 
   // The start failure surfaces as a toast, and the sent text is not restored
-  // into the composer — the send succeeded, so there is nothing to retry.
+  // into the composer - the send succeeded, so there is nothing to retry.
   // (The persistent agent audience may legitimately re-seed a "@Fizz"
   // auto-mention, so only the message body proves there was no restore.)
   await expect(
@@ -2491,7 +2492,7 @@ test("typing indicator shows avatars and maintains stable name order", async ({
   ).toContainText("alice and bob are typing");
   await expect(avatars).toHaveCount(2);
 
-  // Alice re-broadcasts — order should stay "alice and bob", not flip
+  // Alice re-broadcasts - order should stay "alice and bob", not flip
   await page.evaluate((pubkey) => {
     window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
       channelName: "random",
@@ -2503,7 +2504,7 @@ test("typing indicator shows avatars and maintains stable name order", async ({
     page.getByTestId("message-typing-indicator-label"),
   ).toContainText("alice and bob are typing");
 
-  // Bob re-broadcasts — order should still stay "alice and bob"
+  // Bob re-broadcasts - order should still stay "alice and bob"
   await page.evaluate((pubkey) => {
     window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
       channelName: "random",
@@ -2525,7 +2526,7 @@ test("sidebar shows unread indicator for newly active channels", async ({
   await waitForMockLiveSubscription(page, "random");
 
   // The unread tracker ignores the current user's own messages, so emit as
-  // alice — simulating a real "another user posted while I was elsewhere".
+  // alice - simulating a real "another user posted while I was elsewhere".
   await page.evaluate(
     ({ pubkey }) => {
       window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
@@ -2558,7 +2559,7 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
   await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
   await waitForMockLiveSubscription(page, "watercooler");
 
-  // Emit as alice — the unread tracker ignores self-authored messages.
+  // Emit as alice - the unread tracker ignores self-authored messages.
   await page.evaluate(
     ({ pubkey }) => {
       window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
@@ -3649,7 +3650,7 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
   const draftRow = page.getByTestId(`home-all-drafts-${draftKey}`);
   await expect(messageRow).toBeVisible();
   await expect(reminderRow).toBeVisible();
-  // Drafts belong to the dedicated Drafts filter — never the mixed All view.
+  // Drafts belong to the dedicated Drafts filter - never the mixed All view.
   await expect(draftRow).toHaveCount(0);
 
   await page.getByTestId("inbox-options-trigger").click();
@@ -4193,7 +4194,7 @@ test("home channel settings keeps agent lifecycle actions scoped to the active c
     "stop_managed_agent",
   );
 
-  await page.getByRole("button", { exact: true, name: "Inbox" }).click();
+  await page.getByRole("button", { exact: true, name: "Activity" }).click();
   await seedHomeInboxMention(
     page,
     "mock-feed-home-agent-lifecycle",
@@ -4309,8 +4310,8 @@ test("members sidebar virtualizes large channel rosters", async ({ page }) => {
   });
   // Fully scrolling must render the roster's true tail, and the tail
   // endpoint must be known independently of whatever the virtual window
-  // happens to render. The sidebar's own roster accounting — the
-  // "Members · N" header — must read exactly the fixture-known total
+  // happens to render. The sidebar's own roster accounting - the
+  // "Members · N" header - must read exactly the fixture-known total
   // ("random" seeds alice, the mock identity, and bob; this test adds the
   // 500 generated pubkeys on top), so fixture or classification drift
   // fails loudly here instead of silently weakening the tail check.
@@ -4350,7 +4351,7 @@ test("members sidebar orders unnamed members by full canonical npub", async ({
   await openMembersSidebar(page, "random");
   // "random" seeds alice, the mock identity, and bob, so the two unnamed
   // fixtures round out a five-row roster that the initial virtual window
-  // renders entirely — both fixtures are visible without scrolling.
+  // renders entirely - both fixtures are visible without scrolling.
   await expect(
     page.getByTestId(`sidebar-member-${UNNAMED_MEMBER_V24_PUBKEY}`),
   ).toBeVisible();
@@ -4889,7 +4890,7 @@ test("removing a channel-scoped agent preserves the managed agent record", async
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 });
 
@@ -5063,7 +5064,7 @@ test("members sidebar omits bulk controls for managed bots", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await expect(
     page.getByTestId(`managed-agent-${firstAgentPubkey}`),
   ).toHaveCount(1);
@@ -5122,7 +5123,7 @@ test("removing a multi-channel managed bot preserves its record after removal fr
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 
   let commands = await readCommandLog(page);
@@ -5141,7 +5142,7 @@ test("removing a multi-channel managed bot preserves its record after removal fr
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 
   commands = await readCommandLog(page);
@@ -5161,7 +5162,7 @@ test("bulk remove stays hidden when row-level remove is not allowed", async ({
   await page.goto("/");
 
   // Join the "design" channel (unjoined by default) via the channel browser.
-  // The user becomes a regular member — not admin/owner.
+  // The user becomes a regular member - not admin/owner.
   await openChannelBrowser(page);
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
   await page
@@ -5199,7 +5200,7 @@ test("open channel management supports join and leave", async ({ page }) => {
     .click();
   await expect(page.getByTestId("chat-title")).toHaveText("design");
 
-  // Open members sidebar — should show current user after joining
+  // Open members sidebar - should show current user after joining
   await page.getByTestId("channel-members-trigger").click();
   await expect(page.getByTestId("members-sidebar")).toBeVisible();
   await expect(
@@ -5207,7 +5208,7 @@ test("open channel management supports join and leave", async ({ page }) => {
   ).toContainText("You");
   await page.keyboard.press("Escape");
 
-  // Open channel management — should show Leave since we just joined
+  // Open channel management - should show Leave since we just joined
   await page.getByTestId("channel-management-trigger").click();
   await expect(page.getByTestId("channel-management-sheet")).toBeVisible();
   await expect(page.getByTestId("channel-management-join")).toHaveCount(0);
@@ -5217,7 +5218,7 @@ test("open channel management supports join and leave", async ({ page }) => {
   await page.getByTestId("channel-management-leave").click();
   await expect(page.getByTestId("channel-management-sheet")).not.toBeVisible();
 
-  // After leaving, the app navigates away — re-open browser and find design
+  // After leaving, the app navigates away - re-open browser and find design
   await openChannelBrowser(page);
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
 

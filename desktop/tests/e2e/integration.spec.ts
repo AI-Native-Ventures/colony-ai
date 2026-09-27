@@ -327,12 +327,12 @@ test("live mentions refetch the home feed without waiting for polling", async ({
 
     // The Inbox feed should have been refetched live (the original purpose
     // of this test). The home badge stays at 0 while the user is actively
-    // reading #general — reading in-channel advances the NIP-RS marker past
-    // the new mention — so the assertion that the refetch happened is the
+    // reading #general - reading in-channel advances the NIP-RS marker past
+    // the new mention - so the assertion that the refetch happened is the
     // Inbox-list content, not the badge.
     await targetPage
       .getByTestId("app-sidebar")
-      .getByRole("button", { name: "Inbox" })
+      .getByRole("button", { name: "Activity" })
       .click();
     await expect(targetPage.getByTestId("home-inbox-list")).toBeVisible();
     await expect(targetPage.getByTestId("home-inbox-list")).toContainText(
@@ -388,7 +388,7 @@ test("live forum mentions refetch the home feed without waiting for polling", as
 
     await targetPage
       .getByTestId("app-sidebar")
-      .getByRole("button", { name: "Inbox" })
+      .getByRole("button", { name: "Activity" })
       .click();
     await expect(targetPage.getByTestId("home-inbox-list")).toBeVisible();
     await expect(targetPage.getByTestId("home-inbox-list")).toBeVisible();
@@ -470,7 +470,7 @@ test("multiple channels independent", async ({ page }) => {
   await page.getByTestId("send-message").click();
   await expect(page.getByTestId("message-timeline")).toContainText(messageA);
 
-  // Switch to channel B — message from A should not appear
+  // Switch to channel B - message from A should not appear
   await page.getByTestId(`channel-${channelB}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelB);
   await expect(page.getByTestId("message-timeline")).not.toContainText(

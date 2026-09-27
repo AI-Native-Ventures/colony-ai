@@ -740,7 +740,7 @@ test.describe("community rail", () => {
 
     await page
       .getByTestId("sidebar-primary-menu")
-      .getByRole("button", { name: "Inbox", exact: true })
+      .getByRole("button", { name: "Activity", exact: true })
       .click();
     await expect(page).toHaveURL(/#\/$/);
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
@@ -1438,7 +1438,7 @@ test.describe("community rail", () => {
     expect(Math.abs(leftInset - visibleRightGap)).toBeLessThan(0.5);
 
     // With the rail visible, the top-chrome controls (sidebar toggle, back/
-    // forward) sit just past the traffic lights near the rail edge — not
+    // forward) sit just past the traffic lights near the rail edge - not
     // shifted far right by a redundant traffic-light offset.
     const toggle = page
       .locator('[data-testid="app-top-chrome"] button')
@@ -1500,7 +1500,7 @@ test.describe("community rail", () => {
       )
       .toEqual([COMMUNITY_B.id, COMMUNITY_A.id]);
 
-    // Verify the new order is also reflected in the rendered DOM — B button
+    // Verify the new order is also reflected in the rendered DOM - B button
     // must appear above A button.
     const newBoxA = await buttonA.boundingBox();
     const newBoxB = await buttonB.boundingBox();
@@ -1545,7 +1545,7 @@ test.describe("community rail", () => {
 
     // Focus B (the second/lower item) and use keyboard to move it above A.
     // Note: page.keyboard.press("Space") fires the button's native click on this
-    // Chromium build even when React's onKeyDown calls preventDefault — a CDP
+    // Chromium build even when React's onKeyDown calls preventDefault - a CDP
     // input-injection quirk. The synthetic dispatch below goes directly through
     // React's event system where preventDefault correctly suppresses the click,
     // while still exercising the real KeyboardSensor path (Thufir verified the
@@ -1573,7 +1573,7 @@ test.describe("community rail", () => {
     await expect(
       page.locator('[id^="DndLiveRegion-"]', { hasText: "was moved over" }),
     ).toHaveCount(1);
-    // Space drops the item — same synthetic dispatch for consistency.
+    // Space drops the item - same synthetic dispatch for consistency.
     await page.evaluate((testId) => {
       const el = document.querySelector(`[data-testid="${testId}"]`);
       if (!el) throw new Error(`button not found: ${testId}`);

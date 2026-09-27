@@ -132,16 +132,17 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     (element) => getComputedStyle(element, "::before").backgroundColor,
   );
   expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
-  await expect(sidebarScroller.getByTestId("open-agents-view")).toBeVisible();
+  const activityButton = page.getByTestId("sidebar-activity-button");
+  await expect(
+    sidebarScroller.getByTestId("sidebar-activity-button"),
+  ).toBeVisible();
   await sidebarScroller.evaluate((element) => {
     element.scrollTop = 0;
   });
   const searchBox = await search.boundingBox();
   const pinnedHeaderBox = await pinnedHeader.boundingBox();
   const primaryMenuBox = await primaryMenu.boundingBox();
-  const primaryRowBox = await page
-    .getByTestId("open-agents-view")
-    .boundingBox();
+  const primaryRowBox = await activityButton.boundingBox();
   const activeRowBox = await page.getByTestId("channel-general").boundingBox();
   const hoverRowBox = await page.getByTestId("channel-random").boundingBox();
   const scrollContentBox = await scrollContent.evaluate((element) => {
@@ -219,9 +220,8 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   });
   const hoverChannelLabel = hoverChannel.locator("[data-sidebar-row-label]");
   const hoverChannelIcon = hoverChannel.locator("svg").first();
-  const agentsButton = page.getByTestId("open-agents-view");
-  const agentsLabel = agentsButton.locator('[data-sidebar="menu-label"]');
-  const agentsIcon = agentsButton.locator("svg").first();
+  const activityLabel = activityButton.locator('[data-sidebar="menu-label"]');
+  const activityIcon = activityButton.locator("svg").first();
   const sidebarForeground = await page
     .getByTestId("app-sidebar")
     .evaluate((element) => getComputedStyle(element).color);
@@ -232,13 +232,13 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     (element) => getComputedStyle(element).color,
   );
   expect(channelForeground).toBe(directMessageForeground);
-  await expect(agentsButton).toHaveCSS("color", sidebarForeground);
+  await expect(activityButton).toHaveCSS("color", sidebarForeground);
   await expect(hoverChannelLabel).toHaveCSS("opacity", "0.8");
   await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
   await expect(firstDmButton).toHaveCSS("opacity", "1");
   await expect(firstDmLabel).toHaveCSS("opacity", "0.8");
-  await expect(agentsLabel).toHaveCSS("opacity", "0.8");
-  await expect(agentsIcon).toHaveCSS("opacity", "0.8");
+  await expect(activityLabel).toHaveCSS("opacity", "0.8");
+  await expect(activityIcon).toHaveCSS("opacity", "0.8");
   await firstDmItem.hover();
   await expect(closeDmButton).toBeVisible();
   await closeDmButton.hover();
@@ -1237,21 +1237,21 @@ test("app font size and conversation density apply independently", async ({
   });
 });
 
-test("appearance picker — system tab (Buzz follows OS)", async ({ page }) => {
+test("appearance picker - system tab (Buzz follows OS)", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page, "system");
   await panel.screenshot({ path: `${SHOTS}/03-picker-system.png` });
 });
 
-test("appearance picker — light tab (Buzz)", async ({ page }) => {
+test("appearance picker - light tab (Buzz)", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page, "light");
   await panel.screenshot({ path: `${SHOTS}/04-picker-light.png` });
 });
 
-test("appearance picker — dark tab (Buzz Dark)", async ({ page }) => {
+test("appearance picker - dark tab (Buzz Dark)", async ({ page }) => {
   await seedTheme(page, "buzz-dark");
   await installMockBridge(page);
   const panel = await openAppearance(page, "dark");
@@ -1822,7 +1822,7 @@ test("non-Buzz glass preserves the selected theme sidebar tint", async ({
 
 test("accent picker reveals/hides when toggling Buzz", async ({ page }) => {
   // Start on a non-Buzz theme so the accent picker is present, then select the
-  // Buzz tile — the picker should animate out and unmount. Reselecting a
+  // Buzz tile - the picker should animate out and unmount. Reselecting a
   // non-Buzz tile brings it back. Asserts the presence toggle (the motion
   // wrapper) works end to end.
   await seedTheme(page, "github-light");
@@ -1848,7 +1848,7 @@ test("accent picker reveals/hides when toggling Buzz", async ({ page }) => {
     "glass-background-row",
   ]);
 
-  // Switch to Buzz — picker should leave (allow the exit animation to settle).
+  // Switch to Buzz - picker should leave (allow the exit animation to settle).
   await page.getByTestId("theme-style-trigger").click();
   await page.getByTestId("theme-option-buzz").click();
   await expect(page.getByTestId("theme-style-trigger")).toHaveAttribute(
@@ -1857,7 +1857,7 @@ test("accent picker reveals/hides when toggling Buzz", async ({ page }) => {
   );
   await expect(page.getByTestId("accent-color-neutral")).toHaveCount(0);
 
-  // Back to a non-Buzz theme — picker returns.
+  // Back to a non-Buzz theme - picker returns.
   await page.getByTestId("theme-option-github-light").click();
   await expect(page.getByTestId("accent-color-neutral")).toBeVisible();
   await expect(page.getByTestId("theme-style-trigger")).toHaveAttribute(

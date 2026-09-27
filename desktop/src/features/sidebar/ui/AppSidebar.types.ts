@@ -28,6 +28,8 @@ export type AppSidebarProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
   homeBadgeCount: number;
+  isSavedForLaterActive: boolean;
+  isPowerActive: boolean;
   isAddCommunityOpen?: boolean;
   isLoading: boolean;
   isCreatingChannel: boolean;
@@ -91,9 +93,10 @@ export type AppSidebarProps = {
   ) => void;
   onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onCreateAgent: () => void;
-  onSelectAgents: () => void;
   onSelectToday: () => void;
+  onSelectSavedForLater: () => void;
   onSelectFactory: () => void;
+  onSelectPower: () => void;
   onSelectWorkflows: () => void;
   onSelectClients?: () => void;
   onSelectWork: () => void;

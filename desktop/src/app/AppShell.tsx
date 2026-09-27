@@ -150,9 +150,10 @@ export function AppShell() {
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
-    goAgents,
     goChannel,
     goHome,
+    goSavedForLater,
+    goPower,
     goNewMessage,
     goFactory,
     goClients,
@@ -862,6 +863,12 @@ export function AppShell() {
                           errorMessage={channelsErrorMessage}
                           fallbackDisplayName={identityQuery.data?.displayName}
                           homeBadgeCount={homeBadgeCount + dueReminderBadge}
+                          isPowerActive={location.pathname === "/power"}
+                          isSavedForLaterActive={
+                            location.pathname === "/" &&
+                            (location.search as { filter?: unknown }).filter ===
+                              "reminders"
+                          }
                           addCommunityPrefill={addCommunityDialog.prefill}
                           isAddCommunityOpen={addCommunityDialog.open}
                           relayConnectionCard={relayConnectionCard}
@@ -908,8 +915,9 @@ export function AppShell() {
                               });
                             await goChannel(directMessage.id);
                           }}
-                          onSelectAgents={() => void goAgents()}
                           onSelectToday={() => void goToday()}
+                          onSelectSavedForLater={() => void goSavedForLater()}
+                          onSelectPower={() => void goPower()}
                           onSelectChannel={handleSidebarChannelSelect}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}

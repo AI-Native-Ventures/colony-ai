@@ -82,6 +82,15 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSavedForLater = React.useCallback(
+    () =>
+      commitNavigation({
+        to: "/",
+        search: { filter: "reminders" },
+      }),
+    [commitNavigation],
+  );
+
   const goToday = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -107,6 +116,12 @@ export function useAppNavigation() {
   const goSupervision = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
+  const goPower = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/power" }, behavior),
     [commitNavigation],
   );
 
@@ -658,6 +673,8 @@ export function useAppNavigation() {
     goNewGoal,
     goEditGoal,
     goShareGoal,
+    goSavedForLater,
+    goPower,
     goToday,
     goNewMessage,
     goNewWorkflow,

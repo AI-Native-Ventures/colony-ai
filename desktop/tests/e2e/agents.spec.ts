@@ -9,7 +9,10 @@ import { emojiAvatarDataUrl } from "@/features/profile/ui/ProfileAvatarEditor.ut
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentTemplatesView,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 function createCatalogEvent(input: {
   eventId?: string;
@@ -70,7 +73,7 @@ async function gotoApp(page: import("@playwright/test").Page) {
     await waitForInvokeBridge(page);
 
     try {
-      await expect(page.getByTestId("open-agents-view")).toBeVisible({
+      await expect(page.getByTestId("sidebar-primary-menu")).toBeVisible({
         timeout: 10_000,
       });
       return;
@@ -823,8 +826,8 @@ test("agent defaults stays in the header without an actions menu", async ({
     },
   });
   await gotoApp(page);
-  // r19 "Your team" header: Agent defaults, Invite a person, Add agent.
-  await page.getByTestId("open-agents-view").click();
+  // Agent defaults, Invite a person, and Add agent remain on the directory route.
+  await openAgentsDirectoryView(page);
 
   await expect(page.getByTestId("agent-header-actions-button")).toHaveCount(0);
   await expect(
@@ -854,7 +857,7 @@ test("agent defaults stays in the header without an actions menu", async ({
 
 test("unconfigured agent defaults use the setup label", async ({ page }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
 
   await expect(page.getByTestId("agent-defaults-button")).toHaveText(
     "Set agent defaults",
@@ -1944,7 +1947,7 @@ test("a catalog entry keeps the owner's emoji avatar", async ({ page }) => {
   const personaId = "emoji-reviewer";
   const remoteCatalogId = `catalog:${TEST_IDENTITIES.alice.pubkey}:${personaId}`;
   // Emoji avatars persist as inline percent-encoded SVG rather than a hosted
-  // URL, so build the value with the same producer the editor uses — a
+  // URL, so build the value with the same producer the editor uses - a
   // hand-rolled data URL would pass even if the real shape stopped matching.
   const avatarUrl = emojiAvatarDataUrl("🐝", "#FFCC00");
   await installMockBridge(page, {
@@ -1962,7 +1965,7 @@ test("a catalog entry keeps the owner's emoji avatar", async ({ page }) => {
   await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
-  // An `<img>` carrying the avatar — not the initials fallback — in both the
+  // An `<img>` carrying the avatar - not the initials fallback - in both the
   // list row and the detail header is what proves the projection kept it.
   const remoteEntry = page.getByTestId(
     `community-catalog-agent-${remoteCatalogId}`,
@@ -2036,7 +2039,7 @@ test("a community member can discover and add another member's catalog agent", a
   });
 
   // Reopening must offer the entry as already added rather than minting a
-  // second copy — the copy has a fresh local id, so only the stored
+  // second copy - the copy has a fresh local id, so only the stored
   // coordinate can link it back to Alice's publication.
   await page.keyboard.press("Escape");
   await openPersonaCatalog(page);
@@ -2100,7 +2103,7 @@ test("catalog defaults an unknown session policy without dropping the agent", as
 test("catalog detail shows Community member when the publisher profile cannot be resolved", async ({
   page,
 }) => {
-  // A pubkey that is not in the mock profile registry — profile resolution
+  // A pubkey that is not in the mock profile registry - profile resolution
   // will fail and the detail pane must fall back gracefully.
   const unknownPrivateKey = "1".repeat(64);
   const unknownPubkey = getPublicKey(hexToBytes(unknownPrivateKey));
@@ -2241,7 +2244,7 @@ test("one share level selector drives both the link and send paths", async ({
   expect(catalogAccessBox?.y ?? 0).toBeGreaterThanOrEqual(
     (copyLinkButtonBox?.y ?? 0) + (copyLinkButtonBox?.height ?? 0),
   );
-  // The memory choice is stated once, governing both delivery actions —
+  // The memory choice is stated once, governing both delivery actions -
   // neither the recipients row nor the link row carries its own copy.
   await expect(
     shareDialog.getByTestId("persona-share-recipient-access"),
@@ -2374,7 +2377,7 @@ test("one share level selector drives both the link and send paths", async ({
   await expect(memoryConfirmation).toBeVisible();
   await expect(memoryConfirmation).toContainText("plaintext all memories");
   await expect(memoryConfirmation).toContainText(
-    "Charlie—and anyone with the file link—can view it.",
+    "Charlie-and anyone with the file link-can view it.",
   );
   const encodeLevelsBeforeSendConfirmation = await page.evaluate(() =>
     (

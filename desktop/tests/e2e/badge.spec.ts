@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const SHOTS = "test-results/channel-row-decoration-pr";
@@ -107,21 +108,22 @@ test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
 });
 
-test("selected Inbox and Agents rows keep their highlight without bold text", async ({
+test("Activity keeps its selected highlight and agent route remains reachable", async ({
   page,
 }) => {
   await page.goto("/");
 
-  const inbox = page
-    .getByTestId("sidebar-primary-menu")
-    .getByRole("button", { name: "Inbox", exact: true });
-  await expect(inbox).toHaveAttribute("data-active", "true");
-  await expect(inbox).toHaveCSS("font-weight", "400");
+  const activity = page.getByTestId("sidebar-activity-button");
+  await expect(activity).toHaveAttribute("data-active", "true");
+  await expect(activity).toHaveCSS("font-weight", "400");
+  await expect(
+    page
+      .getByTestId("app-sidebar")
+      .getByRole("button", { name: "Agent work", exact: true }),
+  ).toHaveCount(0);
 
-  const agents = page.getByTestId("open-agents-view");
-  await agents.click();
-  await expect(agents).toHaveAttribute("data-active", "true");
-  await expect(agents).toHaveCSS("font-weight", "400");
+  await openAgentsDirectoryView(page);
+  await expect(page.getByTestId("agents-page-content")).toBeVisible();
 });
 
 test("primary navigation rows share the same inactive emphasis", async ({
@@ -133,10 +135,9 @@ test("primary navigation rows share the same inactive emphasis", async ({
   const primaryMenu = page.getByTestId("sidebar-primary-menu");
   const inactiveRows = [
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
-    primaryMenu.getByRole("button", { name: "Inbox", exact: true }),
+    page.getByTestId("sidebar-activity-button"),
     page.getByTestId("open-workflows-view"),
     page.getByTestId("open-factory-view"),
-    page.getByTestId("open-agents-view"),
   ];
 
   for (const row of inactiveRows) {
@@ -210,7 +211,7 @@ test("light mode reserves full opacity for unread text and avatars", async ({
 
   const inbox = page
     .getByTestId("sidebar-primary-menu")
-    .getByRole("button", { name: "Inbox", exact: true });
+    .getByTestId("sidebar-activity-button");
   await expect(inbox).toHaveCSS("opacity", "1");
   await expect(inbox.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
@@ -250,17 +251,21 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
   await expect(page.locator("html")).toHaveClass(/dark/);
   const inbox = page
     .getByTestId("sidebar-primary-menu")
-    .getByRole("button", { name: "Inbox", exact: true });
+    .getByTestId("sidebar-activity-button");
   await expect(inbox).toHaveAttribute("data-active", "true");
   await expect(inbox).toHaveCSS("font-weight", "400");
-  await expect(page.getByTestId("open-agents-view")).toHaveCSS("opacity", "1");
-  await expect(
-    page.getByTestId("open-agents-view").locator("[data-sidebar=menu-label]"),
-  ).toHaveCSS("opacity", "0.8");
-  await expect(page.getByTestId("open-agents-view").locator("svg")).toHaveCSS(
+  await expect(page.getByTestId("sidebar-activity-button")).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
+  await expect(
+    page
+      .getByTestId("sidebar-activity-button")
+      .locator("[data-sidebar=menu-label]"),
+  ).toHaveCSS("opacity", "0.8");
+  await expect(
+    page.getByTestId("sidebar-activity-button").locator("svg"),
+  ).toHaveCSS("opacity", "0.8");
 
   await page.getByTestId("channel-general").click();
   await expect(inbox).toHaveCSS("opacity", "1");
@@ -667,7 +672,7 @@ test("numeric badge increments for DM message", async ({ page }) => {
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
 });
 
-test("interested thread reply shows the channel preview dot without incrementing Inbox", async ({
+test("interested thread reply shows the channel preview dot without incrementing Activity", async ({
   page,
 }) => {
   await page.goto("/");

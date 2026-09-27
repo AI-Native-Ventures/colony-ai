@@ -562,7 +562,7 @@ test.describe("channel activity hover preview", () => {
     await page.goto("/");
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     await expect(page.getByTestId("home-inbox-list")).toBeVisible();
     await pushMockInboxFeedItems(
       page,
@@ -659,7 +659,7 @@ test.describe("channel activity hover preview", () => {
 
     await page.mouse.move(900, 680);
     await expect(popover).toBeHidden();
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     const topLevelItemId = "top-level-inbox-item-for-channel-read";
     await pushMockInboxFeedItems(page, [
       {
@@ -721,7 +721,7 @@ test.describe("channel activity hover preview", () => {
       .getByTestId(`mark-read-toggle-${manualUnreadMessage.id}`)
       .click();
 
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     const groupedRootId = "grouped-inbox-root-preserve-manual";
     const groupedReplyId = "grouped-inbox-reply-preserve-manual";
     await pushMockInboxFeedItems(page, [
@@ -764,7 +764,7 @@ test.describe("channel activity hover preview", () => {
     await page.goto("/");
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     const topLevelItemIds = [
       "first-top-level-inbox-owner",
       "second-top-level-inbox-owner",
@@ -792,7 +792,7 @@ test.describe("channel activity hover preview", () => {
     );
     await expect.poll(() => getForcedUnreadSources(page)).toEqual(["inbox"]);
 
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     for (const [index, itemId] of topLevelItemIds.entries()) {
       const inboxRow = page.getByTestId(`home-inbox-item-${itemId}`);
       await inboxRow.hover();

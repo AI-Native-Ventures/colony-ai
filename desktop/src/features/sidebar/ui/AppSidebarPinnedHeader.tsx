@@ -1,26 +1,24 @@
+import * as React from "react";
 import {
   ArrowLeft,
-  Bot,
-  BriefcaseBusiness,
-  Folders,
+  Bookmark,
+  ChevronDown,
+  ClipboardCheck,
   House,
-  Inbox,
 } from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
-import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
-import { FeatureGate } from "@/shared/features";
 import type { Channel, SearchHit } from "@/shared/api/types";
 import {
   SidebarHeader,
+  SidebarMenuAction,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
-import { ProtectedBestieSidebarEntry } from "@protected-feature-components";
 import { Button } from "@/shared/ui/button";
 import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
 import { useSidebar } from "@/shared/ui/sidebar";
@@ -63,11 +61,10 @@ type AppSidebarPinnedHeaderProps = {
 
 type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
+  isSavedForLaterActive: boolean;
+  onSelectSavedForLater: () => void;
   onSelectToday: () => void;
-  onSelectAgents: () => void;
   onSelectHome: () => void;
-  onSelectWorkflows: () => void;
-  onSelectFactory: () => void;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
@@ -132,8 +129,13 @@ export function AppSidebarPinnedHeader({
               {communityInitial}
               <span className="colony-sidebar-brand-mark-dot">·</span>
             </span>
-            <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
-              {activeCommunityName || "No community"}
+            <span className="sidebar-company-name min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
+              <span className="block truncate">
+                {activeCommunityName || "No community"}
+              </span>
+              <span className="sidebar-company-context block truncate">
+                Company workspace
+              </span>
             </span>
           </button>
         )}
@@ -188,100 +190,98 @@ export function AppSidebarPinnedHeader({
 export function AppSidebarPrimaryMenu({
   homeBadgeCount,
   onSelectToday,
-  onSelectAgents,
   onSelectHome,
-  onSelectWorkflows,
-  onSelectFactory,
+  isSavedForLaterActive,
+  onSelectSavedForLater,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
+  const [activityExpanded, setActivityExpanded] = React.useState(
+    isSavedForLaterActive,
+  );
+
+  React.useEffect(() => {
+    if (isSavedForLaterActive) setActivityExpanded(true);
+  }, [isSavedForLaterActive]);
+
   return (
-    <>
-      <SidebarHeader
-        className="relative z-40 cursor-default select-none px-2 pb-0 pt-0"
-        data-tauri-drag-region
-        data-testid="sidebar-primary-menu"
-      >
-        <SidebarMenu className="sidebar-primary-menu pb-2">
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="text-xs data-[active=true]:font-normal"
-              isActive={selectedView === "today" && !suppressTodaySelection}
-              onClick={onSelectToday}
-              tooltip="Today"
-              type="button"
+    <SidebarHeader
+      className="relative z-40 cursor-default select-none px-2 pb-0 pt-0"
+      data-tauri-drag-region
+      data-testid="sidebar-primary-menu"
+    >
+      <SidebarMenu className="sidebar-primary-menu pb-2">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="text-xs data-[active=true]:font-normal"
+            isActive={selectedView === "today" && !suppressTodaySelection}
+            onClick={onSelectToday}
+            tooltip="Today"
+            type="button"
+          >
+            <House className="h-4 w-4" />
+            <SidebarMenuLabel>Today</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem data-testid="sidebar-activity-item">
+          <SidebarMenuButton
+            className="text-xs data-[active=true]:font-normal"
+            data-testid="sidebar-activity-button"
+            isActive={selectedView === "home"}
+            onClick={onSelectHome}
+            tooltip="Activity"
+            type="button"
+          >
+            <ClipboardCheck className="h-4 w-4" />
+            <SidebarMenuLabel>Activity</SidebarMenuLabel>
+          </SidebarMenuButton>
+          <SidebarMenuAction
+            aria-controls="sidebar-activity-children"
+            aria-expanded={activityExpanded}
+            aria-label={
+              activityExpanded ? "Collapse Activity" : "Expand Activity"
+            }
+            data-testid="sidebar-activity-toggle"
+            onClick={() => setActivityExpanded((value) => !value)}
+            showOnHover
+            type="button"
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={activityExpanded ? "rotate-0" : "-rotate-90"}
+            />
+          </SidebarMenuAction>
+          {homeBadgeCount > 0 ? (
+            <SidebarMenuBadge
+              className="right-7 h-auto min-w-0 rounded-none bg-transparent px-0 py-0 text-2xs font-normal text-sidebar-foreground"
+              data-testid="sidebar-home-count"
             >
-              <House className="h-4 w-4" />
-              <SidebarMenuLabel>Today</SidebarMenuLabel>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="text-xs data-[active=true]:font-normal"
-              isActive={selectedView === "home"}
-              onClick={onSelectHome}
-              tooltip="Inbox"
-              type="button"
+              {Math.min(homeBadgeCount, 99)}
+            </SidebarMenuBadge>
+          ) : null}
+          {activityExpanded ? (
+            <SidebarMenu
+              className="sidebar-activity-children"
+              data-testid="sidebar-activity-children"
+              id="sidebar-activity-children"
             >
-              <Inbox className="h-4 w-4" />
-              <SidebarMenuLabel>Inbox</SidebarMenuLabel>
-            </SidebarMenuButton>
-            {homeBadgeCount > 0 ? (
-              <SidebarMenuBadge
-                className="right-2 h-auto min-w-0 rounded-none bg-transparent px-0 py-0 text-2xs font-normal text-sidebar-foreground"
-                data-testid="sidebar-home-count"
-              >
-                {Math.min(homeBadgeCount, 99)}
-              </SidebarMenuBadge>
-            ) : null}
-          </SidebarMenuItem>
-          <FeatureGate feature="workflows">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-xs"
-                data-testid="open-workflows-pinned-view"
-                isActive={selectedView === "workflows"}
-                onClick={onSelectWorkflows}
-                tooltip="Work"
-                type="button"
-              >
-                <BriefcaseBusiness className="h-4 w-4" />
-                <SidebarMenuLabel>Work</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="text-xs data-[active=true]:font-normal"
-              data-testid="open-agents-view"
-              isActive={selectedView === "agents"}
-              onClick={onSelectAgents}
-              tooltip="Agent work"
-              type="button"
-            >
-              <Bot className="h-4 w-4" />
-              <SidebarMenuLabel>Agent work</SidebarMenuLabel>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <FeatureGate feature="projects">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-xs"
-                data-testid="open-factory-view"
-                isActive={selectedView === "factory"}
-                onClick={onSelectFactory}
-                tooltip="Software Factory"
-                type="button"
-              >
-                <Folders className="h-4 w-4" />
-                <SidebarMenuLabel>Software Factory</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
-          <ProtectedBestieSidebarEntry />
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarProjectsSection />
-    </>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="sidebar-navigation-child pl-7"
+                  data-testid="sidebar-saved-for-later"
+                  isActive={isSavedForLaterActive}
+                  onClick={onSelectSavedForLater}
+                  tooltip="Saved for later"
+                  type="button"
+                >
+                  <Bookmark className="h-4 w-4" />
+                  <SidebarMenuLabel>Saved for later</SidebarMenuLabel>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          ) : null}
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarHeader>
   );
 }
