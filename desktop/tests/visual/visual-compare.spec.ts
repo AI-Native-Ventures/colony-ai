@@ -163,7 +163,7 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch();
+          const response = await route.fetch({ timeout: 30_000 });
           const stylesheet = await response.text();
           const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
             .map((selector) => `${selector} { display: none !important; }`)
@@ -413,19 +413,27 @@ test.describe("visual comparison captures", () => {
           await expect(workspaceTopBar.locator("svg.lucide-globe")).toHaveCount(
             1,
           );
-          for (const unavailableDestination of [
-            "Website",
-            "Social",
-            "Clients",
-            "Discovery",
-            "Pipeline",
-            "Leads",
-            "Money",
-          ]) {
+          for (const unavailableDestination of ["Website", "Social", "Money"]) {
             await expect(
               appPage.getByText(unavailableDestination, { exact: true }),
             ).toHaveCount(0);
           }
+          const businessDestinations = appPage.getByTestId(
+            "sidebar-business-destinations",
+          );
+          for (const destination of ["Discovery", "Leads", "Pipeline"]) {
+            await expect(
+              businessDestinations.getByRole("link", {
+                name: destination,
+                exact: true,
+              }),
+            ).toBeVisible();
+          }
+          const clientsDestination = appPage.getByTestId(
+            "sidebar-business-clients",
+          );
+          await expect(clientsDestination).toBeVisible();
+          await expect(clientsDestination).toContainText("Clients");
           const browseChannels = appPage.getByTestId("sidebar-browse-channels");
           await expect(browseChannels).toHaveCount(1);
           await expect(browseChannels).toContainText("+Browse channels");

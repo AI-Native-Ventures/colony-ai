@@ -6,6 +6,7 @@
 
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
+import { Route as workRouteImport } from "./routes/work";
 import { Route as todayRouteImport } from "./routes/today";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
@@ -17,10 +18,12 @@ import { Route as pipelineRouteImport } from "./routes/pipeline";
 import { Route as leadsRouteImport } from "./routes/leads";
 import { Route as factoryRouteImport } from "./routes/factory";
 import { Route as discoveryRouteImport } from "./routes/discovery";
+import { Route as clientsRouteImport } from "./routes/clients";
 import { Route as campaignRouteImport } from "./routes/campaign";
 import { Route as agentsRouteImport } from "./routes/agents";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
+import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
@@ -33,6 +36,7 @@ import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
 import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
+import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
@@ -47,6 +51,11 @@ import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./rou
 const workflowsRoute = workflowsRouteImport.update({
   id: "/workflows",
   path: "/workflows",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const workRoute = workRouteImport.update({
+  id: "/work",
+  path: "/work",
   getParentRoute: () => rootRouteImport,
 } as any);
 const todayRoute = todayRouteImport.update({
@@ -104,6 +113,11 @@ const discoveryRoute = discoveryRouteImport.update({
   path: "/discovery",
   getParentRoute: () => rootRouteImport,
 } as any);
+const clientsRoute = clientsRouteImport.update({
+  id: "/clients",
+  path: "/clients",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const campaignRoute = campaignRouteImport.update({
   id: "/campaign",
   path: "/campaign",
@@ -122,6 +136,11 @@ const indexRoute = indexRouteImport.update({
 const workflowsDotworkflowIdRoute = workflowsDotworkflowIdRouteImport.update({
   id: "/workflows/$workflowId",
   path: "/workflows/$workflowId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const workDotworkIdRoute = workDotworkIdRouteImport.update({
+  id: "/work/$workId",
+  path: "/work/$workId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const todayDotupdatesRoute = todayDotupdatesRouteImport.update({
@@ -182,6 +201,11 @@ const factoryDotprojectsRoute = factoryDotprojectsRouteImport.update({
 const factoryDotplansRoute = factoryDotplansRouteImport.update({
   id: "/factory/plans",
   path: "/factory/plans",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
+  id: "/clients/$clientId",
+  path: "/clients/$clientId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
@@ -247,6 +271,7 @@ export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
+  "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/leads": typeof leadsRoute;
@@ -258,8 +283,10 @@ export interface FileRoutesByFullPath {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
+  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
@@ -272,6 +299,7 @@ export interface FileRoutesByFullPath {
   "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
+  "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
@@ -287,6 +315,7 @@ export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
+  "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/leads": typeof leadsRoute;
@@ -298,8 +327,10 @@ export interface FileRoutesByTo {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
+  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
@@ -312,6 +343,7 @@ export interface FileRoutesByTo {
   "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
+  "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
@@ -328,6 +360,7 @@ export interface FileRoutesById {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
+  "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/leads": typeof leadsRoute;
@@ -339,8 +372,10 @@ export interface FileRoutesById {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
+  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
@@ -353,6 +388,7 @@ export interface FileRoutesById {
   "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
+  "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
@@ -370,6 +406,7 @@ export interface FileRouteTypes {
     | "/"
     | "/agents"
     | "/campaign"
+    | "/clients"
     | "/discovery"
     | "/factory"
     | "/leads"
@@ -381,8 +418,10 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
+    | "/work"
     | "/workflows"
     | "/channels/$channelId"
+    | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
     | "/factory/sessions"
@@ -395,6 +434,7 @@ export interface FileRouteTypes {
     | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
+    | "/work/$workId"
     | "/workflows/$workflowId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
@@ -410,6 +450,7 @@ export interface FileRouteTypes {
     | "/"
     | "/agents"
     | "/campaign"
+    | "/clients"
     | "/discovery"
     | "/factory"
     | "/leads"
@@ -421,8 +462,10 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
+    | "/work"
     | "/workflows"
     | "/channels/$channelId"
+    | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
     | "/factory/sessions"
@@ -435,6 +478,7 @@ export interface FileRouteTypes {
     | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
+    | "/work/$workId"
     | "/workflows/$workflowId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
@@ -450,6 +494,7 @@ export interface FileRouteTypes {
     | "/"
     | "/agents"
     | "/campaign"
+    | "/clients"
     | "/discovery"
     | "/factory"
     | "/leads"
@@ -461,8 +506,10 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
+    | "/work"
     | "/workflows"
     | "/channels/$channelId"
+    | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
     | "/factory/sessions"
@@ -475,6 +522,7 @@ export interface FileRouteTypes {
     | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
+    | "/work/$workId"
     | "/workflows/$workflowId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
@@ -491,6 +539,7 @@ export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   agentsRoute: typeof agentsRoute;
   campaignRoute: typeof campaignRoute;
+  clientsRoute: typeof clientsRoute;
   discoveryRoute: typeof discoveryRoute;
   factoryRoute: typeof factoryRoute;
   leadsRoute: typeof leadsRoute;
@@ -502,8 +551,10 @@ export interface RootRouteChildren {
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
   todayRoute: typeof todayRoute;
+  workRoute: typeof workRoute;
   workflowsRoute: typeof workflowsRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
+  clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   factoryDotplansRoute: typeof factoryDotplansRoute;
   factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
   factoryDotsessionsRoute: typeof factoryDotsessionsRoute;
@@ -516,6 +567,7 @@ export interface RootRouteChildren {
   salesDotserviceRoute: typeof salesDotserviceRoute;
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
+  workDotworkIdRoute: typeof workDotworkIdRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
   factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
@@ -535,6 +587,13 @@ declare module "@tanstack/react-router" {
       path: "/workflows";
       fullPath: "/workflows";
       preLoaderRoute: typeof workflowsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work": {
+      id: "/work";
+      path: "/work";
+      fullPath: "/work";
+      preLoaderRoute: typeof workRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/today": {
@@ -614,6 +673,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof discoveryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/clients": {
+      id: "/clients";
+      path: "/clients";
+      fullPath: "/clients";
+      preLoaderRoute: typeof clientsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/campaign": {
       id: "/campaign";
       path: "/campaign";
@@ -640,6 +706,13 @@ declare module "@tanstack/react-router" {
       path: "/workflows/$workflowId";
       fullPath: "/workflows/$workflowId";
       preLoaderRoute: typeof workflowsDotworkflowIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/$workId": {
+      id: "/work/$workId";
+      path: "/work/$workId";
+      fullPath: "/work/$workId";
+      preLoaderRoute: typeof workDotworkIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/today/updates": {
@@ -726,6 +799,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof factoryDotplansRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/clients/$clientId": {
+      id: "/clients/$clientId";
+      path: "/clients/$clientId";
+      fullPath: "/clients/$clientId";
+      preLoaderRoute: typeof clientsDotclientIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId": {
       id: "/channels/$channelId";
       path: "/channels/$channelId";
@@ -803,6 +883,7 @@ const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   agentsRoute: agentsRoute,
   campaignRoute: campaignRoute,
+  clientsRoute: clientsRoute,
   discoveryRoute: discoveryRoute,
   factoryRoute: factoryRoute,
   leadsRoute: leadsRoute,
@@ -814,8 +895,10 @@ const rootRouteChildren: RootRouteChildren = {
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
   todayRoute: todayRoute,
+  workRoute: workRoute,
   workflowsRoute: workflowsRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
+  clientsDotclientIdRoute: clientsDotclientIdRoute,
   factoryDotplansRoute: factoryDotplansRoute,
   factoryDotprojectsRoute: factoryDotprojectsRoute,
   factoryDotsessionsRoute: factoryDotsessionsRoute,
@@ -828,6 +911,7 @@ const rootRouteChildren: RootRouteChildren = {
   salesDotserviceRoute: salesDotserviceRoute,
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
+  workDotworkIdRoute: workDotworkIdRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
   factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,

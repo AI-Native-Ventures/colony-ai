@@ -59,6 +59,8 @@ import {
   referenceBusinessRecordEvents,
   referenceCommunityId,
   referenceSalesMessages,
+  referenceOliveHouseMessages,
+  referenceSalesRecordEvents,
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
 import { installReferenceDiscoveryProvider } from "./e2eReferenceDiscovery.ts";
@@ -97,6 +99,9 @@ import {
   KIND_AGENT_OBSERVER_FRAME,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
+  KIND_CLIENT_ACTION,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
   KIND_GIT_ISSUE,
@@ -119,6 +124,7 @@ import {
   KIND_TEXT_NOTE,
   KIND_TEAM_CATALOG,
   KIND_USER_STATUS,
+  KIND_WORK_ITEM_ACTION,
 } from "@/shared/constants/kinds";
 import type {
   RawAcpAuthMethodsResult,
@@ -351,6 +357,13 @@ type E2eConfig = {
     accountLinked?: boolean;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Override the current member role in reference client channels. */
+    referenceWorkspaceRole?: "owner" | "admin" | "member";
+    /** Override record statuses to exercise reference workspace boundaries. */
+    referenceWorkspaceClientStatus?: string;
+    referenceWorkspaceWorkStatus?: string;
+    /** Seed the r19 work-reference card in The Olive House client channel. */
+    referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -1257,6 +1270,13 @@ type MockSocket = {
   subscriptions: Map<string, MockSubscription>;
 };
 
+const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
+  KIND_CLIENT_ACTION,
+  KIND_WORK_ITEM_ACTION,
+  KIND_DELIVERABLE_VERSION,
+  KIND_DELIVERABLE_APPROVAL,
+]);
+
 function createMockRelayMembershipEvent(): RelayEvent {
   return createMockEvent(
     13534,
@@ -1520,6 +1540,11 @@ declare global {
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
     __BUZZ_E2E_FAIL_PROJECT_EVENT_ACK_KINDS__?: number[];
+    /** Reject business commands once to exercise conflict and permission UI. */
+    __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /**
      * Extra project events appended to the mock store on first access.
      * Use to seed standalone repositories (kind 30617) or other project-scoped
@@ -4601,6 +4626,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   };
   installReferenceDiscoveryProvider();
   const self = getMockMemberPubkey(config);
+  const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);
   const selfProfile = mockProfiles.get(self);
   if (selfProfile) {
@@ -4629,7 +4655,13 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       id: seed.id,
       name: seed.name,
       channel_type: "stream",
-      visibility: seed.visibility ?? "open",
+      visibility:
+        seed.visibility ??
+        (seed.id === REFERENCE_CHANNEL_IDS.oliveHouse ||
+        seed.id === REFERENCE_CHANNEL_IDS.cedarCafe ||
+        seed.id === REFERENCE_CHANNEL_IDS.northline
+          ? "private"
+          : "open"),
       description: seed.description,
       topic: null,
       purpose: null,
@@ -4649,7 +4681,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       created_minutes_ago: 1440,
       updated_minutes_ago: 30,
       members: [
-        createMockMember(self, "owner", 1440),
+        createMockMember(self, selfRole, 1440),
         ...seed.agentMembers.map((pubkey) =>
           createMockMember(pubkey, "member", 1200),
         ),
@@ -4657,11 +4689,29 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  for (const event of referenceBusinessRecordEvents(self, {
+    clientStatus: config.mock?.referenceWorkspaceClientStatus,
+    workStatus: config.mock?.referenceWorkspaceWorkStatus,
+    workShare: config.mock?.referenceWorkspaceWorkShare,
+  })) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  for (const event of referenceOliveHouseMessages(self)) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
   seedReferenceSidebarStorage(self);
   mockBusinessRecordEvents.clear();
   const communityId = referenceCommunityId();
   if (communityId) {
-    for (const event of referenceBusinessRecordEvents(self, communityId)) {
+    for (const event of referenceSalesRecordEvents(self, communityId)) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;
       const store = mockBusinessRecordEvents.get(channelId) ?? [];
@@ -5384,6 +5434,24 @@ function emitMockHistory(
     ])
     .filter((event) => {
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
+        return false;
+      }
+      const dTags = filter["#d"];
+      if (
+        dTags &&
+        !dTags.some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      const addressTags = filter["#a"];
+      if (
+        addressTags &&
+        !addressTags.some((addressTag) =>
+          event.tags.some((tag) => tag[0] === "a" && tag[1] === addressTag),
+        )
+      ) {
         return false;
       }
       if (filter.since !== undefined && event.created_at < filter.since) {
@@ -12303,6 +12371,21 @@ function sendToMockSocket(args: {
 
   if (type === "EVENT") {
     const event = rest[0] as RelayEvent;
+    if (
+      referenceWorkspaceActive &&
+      REFERENCE_BUSINESS_COMMAND_KINDS.has(event.kind)
+    ) {
+      const rejections =
+        window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ ?? [];
+      const rejectionIndex = rejections.findIndex(
+        (candidate) => candidate.kind === event.kind,
+      );
+      if (rejectionIndex >= 0) {
+        const [rejection] = rejections.splice(rejectionIndex, 1);
+        sendWsText(socket.handler, ["OK", event.id, false, rejection.reason]);
+        return;
+      }
+    }
 
     if (
       referenceWorkspaceActive &&

@@ -46,6 +46,8 @@ export type AppSidebarProps = {
     | "messages"
     | "agents"
     | "workflows"
+    | "clients"
+    | "work"
     | "pulse"
     | "projects"
     | "business"
@@ -93,6 +95,8 @@ export type AppSidebarProps = {
   onSelectToday: () => void;
   onSelectFactory: () => void;
   onSelectWorkflows: () => void;
+  onSelectClients?: () => void;
+  onSelectWork: () => void;
   onSelectHome: () => void;
   onSelectChannel: (channelId: string) => void;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;

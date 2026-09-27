@@ -6,8 +6,10 @@ import {
   ChevronDown,
   FileText,
   KanbanSquare,
+  ListTodo,
   Search,
   Users,
+  Workflow,
 } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
@@ -87,6 +89,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/shared/ui/sidebar";
+import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import { useProtectedVisibleDirectMessages } from "@protected-feature-components";
 
 const BUSINESS_DESTINATIONS = [
@@ -140,6 +143,8 @@ export function AppSidebar({
   onSelectAgents,
   onSelectToday,
   onSelectFactory,
+  onSelectClients,
+  onSelectWork,
   onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
@@ -549,7 +554,9 @@ export function AppSidebar({
       data-colony-workspace-route={
         selectedView === "today" ||
         selectedView === "channel" ||
-        selectedView === "pins"
+        selectedView === "pins" ||
+        selectedView === "clients" ||
+        selectedView === "work"
           ? "true"
           : undefined
       }
@@ -626,8 +633,8 @@ export function AppSidebar({
                     onSelectToday={onSelectToday}
                     onSelectAgents={onSelectAgents}
                     onSelectHome={onSelectHome}
-                    onSelectFactory={onSelectFactory}
                     onSelectWorkflows={onSelectWorkflows}
+                    onSelectFactory={onSelectFactory}
                     suppressTodaySelection={suppressTodaySelection}
                     selectedView={selectedView}
                   />
@@ -868,7 +875,33 @@ export function AppSidebar({
                         <ChevronDown aria-hidden="true" />
                         <span data-sidebar-section-title>Business</span>
                       </h2>
-                      <SidebarMenu className="px-2 pb-2">
+                      <SidebarMenu data-testid="sidebar-business-destinations">
+                        {onSelectClients ? (
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              data-testid="sidebar-business-clients"
+                              isActive={selectedView === "clients"}
+                              onClick={onSelectClients}
+                              tooltip="Clients"
+                              type="button"
+                            >
+                              <BriefcaseBusiness aria-hidden="true" />
+                              <SidebarMenuLabel>Clients</SidebarMenuLabel>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ) : null}
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="sidebar-business-work"
+                            isActive={selectedView === "work"}
+                            onClick={onSelectWork}
+                            tooltip="Work"
+                            type="button"
+                          >
+                            <ListTodo aria-hidden="true" />
+                            <SidebarMenuLabel>Work</SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
                         {BUSINESS_DESTINATIONS.map(([href, label, Icon]) => (
                           <SidebarMenuItem key={href as string}>
                             <SidebarMenuButton
@@ -902,7 +935,7 @@ export function AppSidebar({
                                 }
                               >
                                 <Icon aria-hidden="true" />
-                                <span>{label}</span>
+                                <SidebarMenuLabel>{label}</SidebarMenuLabel>
                               </a>
                             </SidebarMenuButton>
                           </SidebarMenuItem>
@@ -952,6 +985,41 @@ export function AppSidebar({
                         onMuteChannel={onMuteChannel}
                         onUnmuteChannel={onUnmuteChannel}
                       />
+                      <h2 className="colony-sidebar-business-heading">
+                        <ChevronDown aria-hidden="true" />
+                        <span data-sidebar-section-title>
+                          Build &amp; automate
+                        </span>
+                      </h2>
+                      <SidebarMenu data-testid="sidebar-build-automate-destinations">
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            data-testid="open-workflows-view"
+                            isActive={selectedView === "workflows"}
+                            onClick={onSelectWorkflows}
+                            tooltip="Workflows"
+                            type="button"
+                          >
+                            <Workflow
+                              aria-hidden="true"
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            />
+                            <SidebarMenuLabel
+                              className={
+                                selectedView === "workflows"
+                                  ? undefined
+                                  : "opacity-80"
+                              }
+                            >
+                              Workflows
+                            </SidebarMenuLabel>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
                     </>
                   ) : null}
                   {errorMessage &&
