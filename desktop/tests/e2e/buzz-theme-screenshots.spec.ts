@@ -312,6 +312,15 @@ async function expectBuzzGradientPaint(
   page: Page,
   mode: "light" | "dark",
 ): Promise<string> {
+  if ((await page.getByTestId("settings-view").count()) > 0) {
+    const underlay = page.locator(".buzz-theme-gradient-underlay").first();
+    const backgroundImage = await underlay.evaluate(
+      (element) => getComputedStyle(element).backgroundImage,
+    );
+    expect(backgroundImage).toContain(`colony-field-${mode}.svg`);
+    return backgroundImage;
+  }
+
   await expect
     .poll(() =>
       page
@@ -595,7 +604,7 @@ test("text size, message size, and density save to their own scopes", async ({
   const accessibility = page.getByTestId("settings-accessibility");
   await expect(accessibility).toBeVisible();
   await expect(
-    accessibility.getByText("Text size", { exact: true }),
+    accessibility.getByRole("group", { name: "Text size" }),
   ).toBeVisible();
   await accessibility
     .getByRole("button", { name: "Larger", exact: true })
@@ -646,7 +655,7 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   const profileRow = page.getByTestId("settings-group-account");
   const profileLabel = profileRow.locator(".truncate");
   await expect(profileRow).toHaveAttribute("data-active", "true");
-  await expect(profileRow).toHaveCSS("font-weight", "600");
+  await expect(profileRow).toHaveCSS("font-weight", "700");
   const selectedLabelBox = await profileLabel.boundingBox();
   // Appearance is the active section here; its nav row uses the Buzz
   // selected surface (data-active=true), matching the Left Nav treatment.
@@ -721,7 +730,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
         PROMINENT_ACTIVE_TAB_STORAGE_KEY,
       ),
     )
-    .toBeNull();
+    .toBe("false");
 
   await toggle.click();
   await expect(toggle).toBeChecked();
@@ -836,19 +845,21 @@ for (const { mode, theme } of [
       { key: PROMINENT_ACTIVE_TAB_STORAGE_KEY },
     );
     await installMockBridge(page);
-    await openAppearance(page, mode);
+    await openChannel(page);
 
     const root = page.locator("html");
-    const activeRow = page.getByTestId("settings-group-appearance-group");
-    await expect(page.getByTestId("appearance-prominent")).toBeVisible();
+    const activeRow = page.getByTestId("channel-general");
+    await expect(root).toHaveClass(
+      new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
+    );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
 
     const productionStyle = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>(
-        '[data-testid="settings-sidebar"]',
+        '[data-testid="app-sidebar"]',
       );
       const row = document.querySelector<HTMLElement>(
-        '[data-testid="settings-group-appearance-group"]',
+        '[data-testid="channel-general"]',
       );
       if (!sidebar || !row) return null;
       const probe = document.createElement("span");
@@ -900,7 +911,8 @@ test("settings content uses the same inset surface as the main app", async ({
     .getByTestId("settings-back-to-app")
     .boundingBox();
   await expect(contentSurface).toBeVisible({ timeout: 10_000 });
-  for (const dragRegion of [settingsTopChrome, settingsSidebarTopChrome]) {
+  const settingsTopTitle = settingsTopChrome.locator(".w20-topbar-title");
+  for (const dragRegion of [settingsTopTitle, settingsSidebarTopChrome]) {
     await expect(dragRegion).toHaveAttribute(
       "data-tauri-drag-region",
       /^(?:|true)$/,
@@ -934,7 +946,7 @@ test("settings content uses the same inset surface as the main app", async ({
     8,
   );
 
-  const topChromeBox = await settingsTopChrome.boundingBox();
+  const topChromeBox = await settingsTopTitle.boundingBox();
   const settingsHeadingBox = await page
     .getByRole("heading", { level: 1, name: "Your profile" })
     .boundingBox();
@@ -1017,7 +1029,7 @@ test("glass controls keep settings content solid", async ({ page }) => {
         GLASS_BACKGROUND_STORAGE_KEY,
       ),
     )
-    .toBeNull();
+    .toBe("false");
   await expect(opacitySlider).toHaveCount(0);
   await expect(root).not.toHaveAttribute("data-glass-background", "");
 

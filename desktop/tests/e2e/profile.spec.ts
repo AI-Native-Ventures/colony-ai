@@ -639,7 +639,9 @@ test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
             .__BUZZ_E2E_COMMANDS__ ?? [],
       ),
     )
-    .toEqual(expect.arrayContaining(["upload_media_bytes", "update_profile"]));
+    .toEqual(
+      expect.arrayContaining(["upload_media_bytes_raw", "update_profile"]),
+    );
   await expect(
     page.getByTestId("account-profile-avatar-image"),
   ).toHaveAttribute("src", uploadedAvatarUrl);
@@ -2173,7 +2175,11 @@ test("storage clear resets composed font size and keyboard zoom across windows",
 }) => {
   await page.goto("/");
   await openSettings(page, "appearance");
-  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("settings-inner-accessibility").click();
+  await page
+    .getByRole("group", { name: "Text size" })
+    .getByRole("button", { name: "Larger", exact: true })
+    .click();
 
   const dispatchZoomIn = () =>
     page.evaluate(() => {
@@ -2292,7 +2298,8 @@ test("settings subtitles share the Appearance secondary color", async ({
   await page.goto("/");
   await openSettings(page, "appearance");
 
-  const appearancePanel = page.getByTestId("settings-panel-appearance");
+  const settingsView = page.getByTestId("settings-view");
+  const appearancePanel = page.getByTestId("settings-appearance");
   const secondaryColor = await appearancePanel
     .locator("[data-settings-subcopy]")
     .first()
@@ -2313,15 +2320,7 @@ test("settings subtitles share the Appearance secondary color", async ({
     "updates",
   ]) {
     await selectSettingsSection(page, section);
-    const panelSection =
-      section === "local-archive"
-        ? "storage"
-        : section === "agents"
-          ? "agent-defaults"
-          : section;
-    const subtitles = page
-      .getByTestId(`settings-panel-${panelSection}`)
-      .locator("[data-settings-subcopy]");
+    const subtitles = settingsView.locator("[data-settings-subcopy]:visible");
     await expect(subtitles.first()).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).color),
