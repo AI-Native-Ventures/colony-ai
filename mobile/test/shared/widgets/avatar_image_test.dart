@@ -16,6 +16,7 @@ void main() {
   Widget subject(
     String? imageUrl, {
     Color? backgroundColor,
+    BorderRadius? borderRadius,
     bool isAgent = false,
   }) => ProviderScope(
     child: MaterialApp(
@@ -24,6 +25,7 @@ void main() {
         radius: 16,
         backgroundColor: backgroundColor,
         fallback: const Text('R'),
+        borderRadius: borderRadius,
         isAgent: isAgent,
       ),
     ),
@@ -44,6 +46,22 @@ void main() {
     expect(find.byType(CircleAvatar), findsNothing);
     final clip = tester.widget<ClipRRect>(find.byType(ClipRRect));
     expect(clip.borderRadius, BorderRadius.circular(9.6));
+  });
+
+  testWidgets('supports rounded profile avatars without agent treatment', (
+    tester,
+  ) async {
+    final borderRadius = BorderRadius.circular(9.6);
+    await tester.pumpWidget(subject(null, borderRadius: borderRadius));
+
+    expect(find.byType(CircleAvatar), findsNothing);
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.isAgent, isFalse);
+    expect(avatar.borderRadius, borderRadius);
+    expect(
+      tester.widget<ClipRRect>(find.byType(ClipRRect)).borderRadius,
+      borderRadius,
+    );
   });
 
   testWidgets('renders raccoon percent-encoded SVG data avatar', (

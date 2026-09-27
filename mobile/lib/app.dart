@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_badge_plus/app_badge_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:intl/intl.dart';
@@ -17,7 +18,9 @@ import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
 import 'features/auth/account_claim_prompt.dart';
+import 'features/auth/account_claim_status_provider.dart';
 import 'features/auth/auth_entry_page.dart';
+import 'features/auth/request_password_reset_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
 import 'features/channels/channels_page.dart';
@@ -27,7 +30,6 @@ import 'features/home/home_page.dart';
 import 'features/home/company_hub_page.dart';
 import 'features/today/today_models.dart';
 import 'features/today/today_page.dart';
-import 'features/invites/invite_create_page.dart';
 import 'features/invites/invite_join_provider.dart';
 import 'features/pairing/pairing_page.dart';
 import 'features/pairing/pairing_provider.dart';
@@ -50,10 +52,32 @@ import 'features/channels/voice_note_recording.dart';
 import 'features/profile/user_profile_sheet.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
-import 'features/profile/settings_profile_header.dart';
-import 'features/profile/profile_edit_page.dart';
-import 'features/profile/profile_text_editor.dart';
-import 'features/settings/settings_page.dart';
+import 'features/profile/profile_avatar_page.dart';
+import 'features/profile/profile_image_page.dart';
+import 'features/profile/profile_avatar_crop_route_page.dart';
+import 'features/profile/profile_avatar_emoji_page.dart';
+import 'features/profile/profile_avatar_capture_page.dart';
+import 'features/profile/profile_avatar_review_page.dart';
+import 'features/profile/profile_avatar_state_page.dart';
+import 'features/profile/profile_status_emoji_page.dart';
+import 'features/profile/profile_status_page.dart';
+import 'features/profile/profile_status_saved_page.dart';
+import 'features/profile/user_status_provider.dart';
+import 'features/settings/appearance_display_preference.dart';
+import 'features/settings/appearance_settings_pages.dart';
+import 'features/settings/personal_settings_home_page.dart';
+import 'features/settings/profile_settings_page.dart';
+import 'features/settings/settings_devices_page.dart';
+import 'features/settings/settings_device_page.dart';
+import 'features/settings/settings_feedback_page.dart';
+import 'features/settings/settings_feedback_failed_page.dart';
+import 'features/settings/settings_feedback_sent_page.dart';
+import 'features/settings/settings_export_page.dart';
+import 'features/settings/settings_export_failed_page.dart';
+import 'features/settings/settings_notifications_page.dart';
+import 'features/settings/settings_privacy_page.dart';
+import 'features/settings/settings_clear_cache_page.dart';
+import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
 import 'shared/community/community_icon_provider.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
@@ -242,6 +266,189 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       (context, _) => const TeamUpdatesPage(initiallyPublished: true),
     )
     .register(MobileRoutes.search, (context, _) => const SearchPage())
+    .register(
+      MobileRoutes.profileStatus,
+      (context, _) => const ProfileStatusPage(),
+    )
+    .register(
+      MobileRoutes.profileStatusEmoji,
+      (context, selectedEmoji) =>
+          ProfileStatusEmojiPage(selectedEmoji: selectedEmoji),
+    )
+    .register(
+      MobileRoutes.profileStatusSaved,
+      (context, _) => const ProfileStatusSavedPage(),
+    )
+    .register(
+      MobileRoutes.settingsHome,
+      (context, _) => Consumer(
+        builder: (context, ref, _) => _personalSettingsHomePage(ref),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsProfile,
+      (context, _) => Consumer(
+        builder: (context, ref, _) {
+          final profile = ref.watch(profileProvider).asData?.value;
+          final account = ref.watch(accountProfileProvider).asData?.value;
+          final status = ref.watch(userStatusProvider).asData?.value;
+          final profileName = profile?.displayName?.trim() ?? '';
+          final displayName = profileName.isEmpty
+              ? 'Your profile'
+              : profileName;
+          return ProfileSettingsPage(
+            displayName: displayName,
+            avatarUrl: profile?.avatarUrl,
+            email: account?.email,
+            statusLabel: status == null || status.isEmpty
+                ? 'Set a status'
+                : '${status.emoji} ${status.text}'.trim(),
+            onSaveDisplayName: ref
+                .read(profileProvider.notifier)
+                .updateDisplayName,
+          );
+        },
+      ),
+    )
+    .register(
+      MobileRoutes.settingsAppearance,
+      (context, _) => const AppearanceSettingsPage(),
+    )
+    .register(
+      MobileRoutes.settingsPreferences,
+      (context, _) => const PersonalPreferencesPage(),
+    )
+    .register(
+      MobileRoutes.settingsThemes,
+      (context, _) => const ThemeCatalogPage(),
+    )
+    .register(
+      MobileRoutes.settingsThemePreview,
+      (context, themeName) => ThemePreviewPage(themeName: themeName),
+    )
+    .register(
+      MobileRoutes.settingsThemeApplied,
+      (context, themeName) => ThemeAppliedPage(themeName: themeName),
+    )
+    .register(
+      MobileRoutes.settingsDevices,
+      (context, _) => SettingsDevicesPage(
+        currentDeviceName: _currentDeviceName,
+        onOpenCurrentDevice: () => MobileNavigation.push<String, Object?>(
+          context,
+          MobileRoutes.settingsDevice,
+          'current',
+        ),
+        onLinkAnotherDevice: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => const PairingPage()),
+        ),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsDevice,
+      (context, _) => Consumer(
+        builder: (context, ref, _) => SettingsDevicePage(
+          deviceName: _currentDeviceName,
+          communityName: ref.watch(activeCommunityProvider).asData?.value?.name,
+        ),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsNotifications,
+      (context, _) => const SettingsNotificationsPage(),
+    )
+    .register(
+      MobileRoutes.settingsPrivacy,
+      (context, _) => const SettingsPrivacyPage(),
+    )
+    .register(
+      MobileRoutes.settingsClearCache,
+      (context, _) => const SettingsClearCachePage(),
+    )
+    .register(
+      MobileRoutes.settingsExport,
+      (context, _) => const SettingsExportPage(),
+    )
+    .register(
+      MobileRoutes.settingsExportFailed,
+      (context, _) => const SettingsExportFailedPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedback,
+      (context, _) => const SettingsFeedbackPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedbackSent,
+      (context, _) => const SettingsFeedbackSentPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedbackFailed,
+      (context, _) => const SettingsFeedbackFailedPage(),
+    )
+    .register(
+      MobileRoutes.settingsSaveFailed,
+      (context, _) => const SettingsSaveFailedPage(),
+    )
+    .register(
+      MobileRoutes.accountForgot,
+      (context, _) => RequestPasswordResetPage(
+        pairIdentityPageBuilder: (_) => const PairingPage(),
+      ),
+    )
+    .register(
+      MobileRoutes.profileAvatar,
+      (context, _) => const ProfileAvatarPage(),
+    )
+    .register(
+      MobileRoutes.profileImage,
+      (context, _) => const ProfileImagePage(),
+    )
+    .register(
+      MobileRoutes.profileCrop,
+      (context, bytes) => ProfileAvatarCropRoutePage(imageBytes: bytes),
+    )
+    .register(
+      MobileRoutes.profileInvalid,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.invalid),
+    )
+    .register(
+      MobileRoutes.profileSaving,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.saving),
+    )
+    .register(
+      MobileRoutes.profileSaved,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.saved),
+    )
+    .register(
+      MobileRoutes.profileFailed,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.failed),
+    )
+    .register(
+      MobileRoutes.profileAvatarCapture,
+      (context, _) => const ProfileAvatarCapturePage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarCameraDenied,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.cameraDenied),
+    )
+    .register(
+      MobileRoutes.profileAvatarEmoji,
+      (context, _) => const ProfileAvatarEmojiPage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarReview,
+      (context, _) => const ProfileAvatarReviewPage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarSaved,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.avatarSaved),
+    )
     .register(ChannelForumRoutes.posts, (context, arguments) {
       return ForumPostsView(
         channelId: arguments.channelId,
@@ -260,6 +467,12 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         presentation: _forumPresentation(),
       );
     });
+
+final _currentDeviceName = switch (defaultTargetPlatform) {
+  TargetPlatform.iOS => 'This iPhone',
+  TargetPlatform.android => 'This phone',
+  _ => 'This device',
+};
 
 ForumPresentationFactories _forumPresentation() => ForumPresentationFactories(
   composeBarBuilder:
@@ -594,6 +807,14 @@ class App extends HookConsumerWidget {
     final communityTheme = ageSignalState != AgeSignalState.restricted
         ? ref.watch(communityThemeProvider)
         : defaultCommunityTheme;
+    final displayPreference = ref.watch(appearanceDisplayPreferenceProvider);
+    final baseVisualDensity = displayPreference.density.visualDensity;
+    final effectiveVisualDensity = VisualDensity(
+      horizontal: baseVisualDensity.horizontal,
+      vertical:
+          baseVisualDensity.vertical +
+          (displayPreference.largerTapTargets ? 1 : 0),
+    );
     final themeMode = communityTheme.mode;
     final accentIndex = effectiveAccentIndex(
       communityTheme.theme,
@@ -683,25 +904,39 @@ class App extends HookConsumerWidget {
         mobileTokens: isBuzzTheme(schemeName)
             ? MobileDesignTokens.light
             : MobileDesignTokens.fromColorScheme(lightScheme),
-      ),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
         mobileTokens: isBuzzTheme(schemeName)
             ? MobileDesignTokens.dark
             : MobileDesignTokens.fromColorScheme(darkScheme),
-      ),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
       // route that was pushed while the store signal request was in flight.
-      builder: (context, child) => switch (ageSignalState) {
-        AgeSignalState.restricted => const AgeRestrictionPage(),
-        _ => AppMarkdownTheme(
-          child: MobileHuddleShell(
-            navigatorKey: _mobileRootNavigatorKey,
-            child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) {
+        final appContent = switch (ageSignalState) {
+          AgeSignalState.restricted => const AgeRestrictionPage(),
+          _ => AppMarkdownTheme(
+            child: MobileHuddleShell(
+              navigatorKey: _mobileRootNavigatorKey,
+              child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+            ),
           ),
-        ),
+        };
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            disableAnimations:
+                mediaQuery.disableAnimations || displayPreference.reduceMotion,
+            textScaler: applyAppearanceTextSize(
+              mediaQuery.textScaler,
+              displayPreference.textSize,
+            ),
+          ),
+          child: appContent,
+        );
       },
       home: authState.when(
         loading: () => const _SplashScreen(),
@@ -750,18 +985,19 @@ class _SettingsPageContent extends ConsumerWidget {
   const _SettingsPageContent();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return SettingsPage(
-      profileHeader: const SettingsProfileHeader(),
-      profileEditPageBuilder: (_) =>
-          const ProfileEditPage(startInPhotoEditor: true),
-      onEditDisplayName: showProfileDisplayNameEditor,
-      onEditProfileDescription: showProfileDescriptionEditor,
-      invitePageBuilder: (_) => const CommunityInvitePage(),
-      identityRecoveryPageBuilder: (_) =>
-          const PairingPage(addingCommunity: true, identityRecoveryOnly: true),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) =>
+      _personalSettingsHomePage(ref);
+}
+
+Widget _personalSettingsHomePage(WidgetRef ref) {
+  final profile = ref.watch(profileProvider).asData?.value;
+  final account = ref.watch(accountProfileProvider).asData?.value;
+  final profileName = profile?.displayName?.trim() ?? '';
+  return PersonalSettingsHomePage(
+    displayName: profileName.isEmpty ? 'Your profile' : profileName,
+    email: account?.email,
+    avatarUrl: profile?.avatarUrl,
+  );
 }
 
 class _SplashScreen extends StatelessWidget {

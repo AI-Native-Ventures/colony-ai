@@ -29,6 +29,7 @@ part 'animated_avatar_capture/review_controls.dart';
 part 'animated_avatar_capture/capture_controls.dart';
 part 'animated_avatar_capture/frame_processing.dart';
 part 'animated_avatar_capture/error_text.dart';
+part 'animated_avatar_capture/r19_camera_capture_layout.dart';
 
 const _captureDuration = Duration(seconds: 3);
 const _captureFrameInterval = Duration(milliseconds: 125);
@@ -44,8 +45,11 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
     super.key,
     required this.height,
     required this.onPrepareChanged,
+    this.onCameraUnavailable,
     this.initialFrames = const [],
     this.disposalBarrier,
+    this.compactPresentation = false,
+    this.cameraPreviewBuilder,
   });
 
   /// The vertical space available to the capture surface.
@@ -54,6 +58,9 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
   /// Reports the current deferred draft-preparation callback to the parent.
   final ValueChanged<Future<ProfileAvatarDraft?> Function()?> onPrepareChanged;
 
+  /// Reports a camera initialization failure so the route can offer recovery.
+  final VoidCallback? onCameraUnavailable;
+
   /// Seeds processed frames in lifecycle-focused widget tests.
   @visibleForTesting
   final List<Uint8List> initialFrames;
@@ -61,10 +68,20 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
   /// Serializes ownership release with another profile capture surface.
   final CameraDisposalBarrier? disposalBarrier;
 
+  /// Uses the reference's camera card and inline controls on the route screen.
+  final bool compactPresentation;
+
+  /// Replaces the native preview in deterministic visual tests.
+  @visibleForTesting
+  final WidgetBuilder? cameraPreviewBuilder;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = useState<CameraController?>(null);
     final controllerRef = useRef<CameraController?>(null);
+    final cameras = useState<List<CameraDescription>>([]);
+    final selectedCamera = useRef<CameraDescription?>(null);
+    final stopRecording = useRef<Completer<void>?>(null);
     final controllerDisposal = useRef(
       disposalBarrier ?? CameraDisposalBarrier(),
     );
@@ -86,11 +103,14 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
     final activeSection = useState(_AnimatedReviewSection.person);
     final backdropColor = useState(emojiAvatarColors[8]);
     final personOutline = useState(true);
+    final lastCapturePreview = useState<Uint8List?>(null);
     final gestureStartScale = useRef(_mobileDefaultPersonScale);
     final error = useState<String?>(null);
     final encodedCache = useRef<_EncodedAvatarCache?>(null);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final lifecycle = ref.watch(appLifecycleProvider);
+    final lifecycle = cameraPreviewBuilder == null
+        ? ref.watch(appLifecycleProvider)
+        : AppLifecycleState.resumed;
     final encodeKey = frames.value.isEmpty
         ? null
         : _EncodeKey(
@@ -129,85 +149,115 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
       return timer.cancel;
     }, [frames.value, reduceMotion]);
 
-    useEffect(() {
-      var disposed = false;
+    useEffect(
+      () {
+        var disposed = false;
 
-      if (lifecycle != AppLifecycleState.resumed || frames.value.isNotEmpty) {
-        isInitializing.value = false;
-        controller.value = null;
-        return null;
-      }
-
-      isInitializing.value = true;
-
-      Future<void> releaseController(CameraController? active) {
-        if (active == null) return controllerDisposal.value.settled;
-        return controllerDisposal.value.release(active.dispose);
-      }
-
-      Future<void> initialize() async {
-        CameraController? next;
-        CameraDisposalReservation? reservation;
-        var installed = false;
-        try {
-          await controllerDisposal.value.settled;
-          if (disposed) return;
-          final cameras = await availableCameras();
-          if (disposed || cameras.isEmpty) return;
-          final selected = cameras.firstWhere(
-            (camera) => camera.lensDirection == CameraLensDirection.front,
-            orElse: () => cameras.first,
-          );
-          next = CameraController(
-            selected,
-            ResolutionPreset.medium,
-            enableAudio: false,
-            imageFormatGroup: defaultTargetPlatform == TargetPlatform.iOS
-                ? ImageFormatGroup.bgra8888
-                : ImageFormatGroup.yuv420,
-          );
-          reservation = controllerDisposal.value.reserve();
-          candidateRef.value = next;
-          await reservation.ready;
-          if (disposed) {
-            if (identical(candidateRef.value, next)) candidateRef.value = null;
-            await reservation.dispose(next.dispose);
-            return;
-          }
-          await next.initialize();
-          await next.lockCaptureOrientation(DeviceOrientation.portraitUp);
-          if (disposed) {
-            if (identical(candidateRef.value, next)) candidateRef.value = null;
-            await reservation.dispose(next.dispose);
-            return;
-          }
-          candidateRef.value = null;
-          reservation.complete();
-          controllerRef.value = next;
-          controller.value = next;
-          installed = true;
-        } catch (_) {
-          if (!installed &&
-              next != null &&
-              identical(candidateRef.value, next)) {
-            candidateRef.value = null;
-            await reservation?.dispose(next.dispose);
-          }
-          if (!disposed) error.value = 'Could not access the camera.';
-        } finally {
-          if (!disposed) isInitializing.value = false;
+        if (cameraPreviewBuilder != null) {
+          isInitializing.value = false;
+          controller.value = null;
+          return null;
         }
-      }
 
-      unawaited(initialize());
-      return () {
-        disposed = true;
-        captureEpoch.value++;
-        final active = controllerRef.value;
-        controllerRef.value = null;
-        unawaited(releaseController(active));
-      };
-    }, [lifecycle, frames.value.isEmpty, cameraGeneration.value]);
+        if (lifecycle != AppLifecycleState.resumed || frames.value.isNotEmpty) {
+          isInitializing.value = false;
+          controller.value = null;
+          return null;
+        }
+
+        isInitializing.value = true;
+
+        Future<void> releaseController(CameraController? active) {
+          if (active == null) return controllerDisposal.value.settled;
+          return controllerDisposal.value.release(active.dispose);
+        }
+
+        Future<void> initialize() async {
+          CameraController? next;
+          CameraDisposalReservation? reservation;
+          var installed = false;
+          try {
+            await controllerDisposal.value.settled;
+            if (disposed) return;
+            final discovered = await availableCameras();
+            if (disposed || discovered.isEmpty) return;
+            cameras.value = discovered;
+            final preferred = discovered.firstWhere(
+              (camera) => camera.lensDirection == CameraLensDirection.front,
+              orElse: () => discovered.first,
+            );
+            final requested = selectedCamera.value;
+            final selected = requested == null
+                ? preferred
+                : discovered.firstWhere(
+                    (camera) => camera.name == requested.name,
+                    orElse: () => preferred,
+                  );
+            selectedCamera.value = selected;
+            next = CameraController(
+              selected,
+              ResolutionPreset.medium,
+              enableAudio: false,
+              imageFormatGroup: defaultTargetPlatform == TargetPlatform.iOS
+                  ? ImageFormatGroup.bgra8888
+                  : ImageFormatGroup.yuv420,
+            );
+            reservation = controllerDisposal.value.reserve();
+            candidateRef.value = next;
+            await reservation.ready;
+            if (disposed) {
+              if (identical(candidateRef.value, next)) {
+                candidateRef.value = null;
+              }
+              await reservation.dispose(next.dispose);
+              return;
+            }
+            await next.initialize();
+            await next.lockCaptureOrientation(DeviceOrientation.portraitUp);
+            if (disposed) {
+              if (identical(candidateRef.value, next)) {
+                candidateRef.value = null;
+              }
+              await reservation.dispose(next.dispose);
+              return;
+            }
+            candidateRef.value = null;
+            reservation.complete();
+            controllerRef.value = next;
+            controller.value = next;
+            installed = true;
+          } catch (_) {
+            if (!installed &&
+                next != null &&
+                identical(candidateRef.value, next)) {
+              candidateRef.value = null;
+              await reservation?.dispose(next.dispose);
+            }
+            if (!disposed) {
+              error.value = 'Could not access the camera.';
+              onCameraUnavailable?.call();
+            }
+          } finally {
+            if (!disposed) isInitializing.value = false;
+          }
+        }
+
+        unawaited(initialize());
+        return () {
+          disposed = true;
+          captureEpoch.value++;
+          final active = controllerRef.value;
+          controllerRef.value = null;
+          unawaited(releaseController(active));
+        };
+      },
+      [
+        lifecycle,
+        frames.value.isEmpty,
+        cameraGeneration.value,
+        cameraPreviewBuilder,
+      ],
+    );
 
     Future<ProfileAvatarDraft?> prepare() async {
       final key = latestEncodeKey.value;
@@ -256,8 +306,11 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
     Future<void> record() async {
       final active = controller.value;
       if (active == null || isRecording.value) return;
+      final stopRequested = Completer<void>();
+      stopRecording.value = stopRequested;
       final currentCapture = ++captureEpoch.value;
       frames.value = const [];
+      lastCapturePreview.value = null;
       posterIndex.value = 0;
       previewFrameIndex.value = 0;
       scale.value = _mobileDefaultPersonScale;
@@ -323,13 +376,22 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
             converting = false;
           }
         });
-        await Future<void>.delayed(_captureDuration);
+        await Future.any<void>([
+          Future<void>.delayed(_captureDuration),
+          stopRequested.future,
+        ]);
+        while (captured.length < 2 &&
+            DateTime.now().difference(startedAt) < _captureDuration &&
+            captureEpoch.value == currentCapture) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
         if (captureEpoch.value != currentCapture || !context.mounted) return;
         await active.stopImageStream();
         while (converting && captureEpoch.value == currentCapture) {
           await Future<void>.delayed(const Duration(milliseconds: 10));
         }
         if (captureEpoch.value != currentCapture || !context.mounted) return;
+        if (captured.isNotEmpty) lastCapturePreview.value = captured.last;
         if (captured.length < 2) {
           throw StateError('Not enough frames were captured.');
         }
@@ -367,6 +429,9 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
         }
       } finally {
         timer.cancel();
+        if (identical(stopRecording.value, stopRequested)) {
+          stopRecording.value = null;
+        }
         if (context.mounted) {
           progress.value = 1;
           isRecording.value = false;
@@ -476,7 +541,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: context.colors.onSurface.withValues(
+                                  color: context.mobileTokens.ink.withValues(
                                     alpha: 0.1,
                                   ),
                                 ),
@@ -557,6 +622,66 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
     }
 
     final active = controller.value;
+    void requestRecordOrStop() {
+      if (isRecording.value) {
+        final stop = stopRecording.value;
+        if (stop != null && !stop.isCompleted) stop.complete();
+        return;
+      }
+      if (cameraPreviewBuilder != null) return;
+      unawaited(HapticFeedback.mediumImpact());
+      unawaited(record());
+    }
+
+    void switchCamera() {
+      if (cameraPreviewBuilder != null ||
+          cameras.value.length < 2 ||
+          isRecording.value ||
+          isPreparingFrames.value) {
+        return;
+      }
+      final currentIndex = cameras.value.indexWhere(
+        (camera) => camera.name == selectedCamera.value?.name,
+      );
+      selectedCamera.value =
+          cameras.value[(currentIndex + 1) % cameras.value.length];
+      controller.value = null;
+      cameraGeneration.value++;
+    }
+
+    if (compactPresentation) {
+      final preview =
+          cameraPreviewBuilder?.call(context) ??
+          (active == null && lastCapturePreview.value != null
+              ? Image.memory(lastCapturePreview.value!, fit: BoxFit.cover)
+              : active == null
+              ? Center(
+                  child: isInitializing.value
+                      ? const BuzzLoadingIndicator(
+                          color: Colors.white,
+                          semanticLabel: 'Starting camera',
+                        )
+                      : const Icon(
+                          LucideIcons.cameraOff,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                )
+              : _AspectCorrectCameraPreview(controller: active));
+      return _R19CameraCaptureLayout(
+        height: height,
+        preview: preview,
+        isRecording: isRecording.value,
+        isPreparing: isPreparingFrames.value,
+        progress: progress.value,
+        canRecord: active != null || cameraPreviewBuilder != null,
+        canSwitchCamera:
+            cameraPreviewBuilder != null || cameras.value.length > 1,
+        onRecordOrStop: requestRecordOrStop,
+        onSwitchCamera: switchCamera,
+        onAccessHelp: onCameraUnavailable,
+      );
+    }
     final compactCapture = height < 400;
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final statusStyle = context.textTheme.bodyMedium;
@@ -596,7 +721,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                         ? Center(
                             child: BuzzLoadingIndicator(
                               size: 44,
-                              color: context.colors.onSurface,
+                              color: context.mobileTokens.ink,
                               semanticLabel: 'Preparing animated avatar',
                             ),
                           )
@@ -627,8 +752,8 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                     value: progress.value,
                     strokeWidth: 4,
                     strokeCap: StrokeCap.round,
-                    color: context.colors.onSurface,
-                    backgroundColor: context.colors.outlineVariant,
+                    color: context.mobileTokens.ink,
+                    backgroundColor: context.mobileTokens.line,
                   ),
                 ),
             ],
@@ -643,7 +768,7 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
               : 'Line up your shot.',
           textAlign: TextAlign.center,
           style: context.textTheme.bodyMedium?.copyWith(
-            color: context.colors.onSurfaceVariant,
+            color: context.mobileTokens.muted,
           ),
         ),
         if (error.value != null) _ErrorText(error.value!),

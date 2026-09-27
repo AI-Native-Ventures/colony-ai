@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Semantic colors and geometry from the approved r16 mobile reference.
+import 'color_scheme.dart';
+
+/// Semantic colors and geometry from the approved mobile references.
 @immutable
 class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
   const MobileDesignTokens({
@@ -13,6 +15,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     required this.soft,
     required this.action,
     required this.onAction,
+    required this.flowAction,
+    required this.flowActionForeground,
     required this.actionSoft,
     required this.onActionSoft,
     required this.info,
@@ -32,6 +36,12 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
 
   /// Foreground color for content placed on [action].
   final Color onAction;
+
+  /// Primary color retained by profile and settings flows on the r19 design.
+  final Color flowAction;
+
+  /// Foreground color for profile and settings flow actions.
+  final Color flowActionForeground;
   final Color actionSoft;
   final Color onActionSoft;
   final Color info;
@@ -49,6 +59,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     soft: Color(0xFFEEE7F2),
     action: Color(0xFF694180),
     onAction: Color(0xFFFFFDFD),
+    flowAction: Color(0xFF45669F),
+    flowActionForeground: Color(0xFFFFFFFF),
     actionSoft: Color(0xFFEEE7F2),
     onActionSoft: Color(0xFF694180),
     info: Color(0xFFEAE3F0),
@@ -67,6 +79,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     soft: Color(0xFF382B43),
     action: Color(0xFFD1ABEA),
     onAction: Color(0xFF201927),
+    flowAction: Color(0xFF45669F),
+    flowActionForeground: Color(0xFFFFFFFF),
     actionSoft: Color(0xFF382B43),
     onActionSoft: Color(0xFFD1ABEA),
     info: Color(0xFF382B43),
@@ -88,6 +102,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
       soft: scheme.surfaceContainerHighest,
       action: scheme.primary,
       onAction: scheme.onPrimary,
+      flowAction: scheme.primary,
+      flowActionForeground: contrastForeground(scheme.primary),
       actionSoft: scheme.primaryContainer,
       onActionSoft: scheme.onPrimaryContainer,
       error: scheme.errorContainer,
@@ -105,6 +121,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     Color? soft,
     Color? action,
     Color? onAction,
+    Color? flowAction,
+    Color? flowActionForeground,
     Color? actionSoft,
     Color? onActionSoft,
     Color? info,
@@ -121,6 +139,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     soft: soft ?? this.soft,
     action: action ?? this.action,
     onAction: onAction ?? this.onAction,
+    flowAction: flowAction ?? this.flowAction,
+    flowActionForeground: flowActionForeground ?? this.flowActionForeground,
     actionSoft: actionSoft ?? this.actionSoft,
     onActionSoft: onActionSoft ?? this.onActionSoft,
     info: info ?? this.info,
@@ -142,6 +162,12 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
       soft: Color.lerp(soft, other.soft, t)!,
       action: Color.lerp(action, other.action, t)!,
       onAction: Color.lerp(onAction, other.onAction, t)!,
+      flowAction: Color.lerp(flowAction, other.flowAction, t)!,
+      flowActionForeground: Color.lerp(
+        flowActionForeground,
+        other.flowActionForeground,
+        t,
+      )!,
       actionSoft: Color.lerp(actionSoft, other.actionSoft, t)!,
       onActionSoft: Color.lerp(onActionSoft, other.onActionSoft, t)!,
       info: Color.lerp(info, other.info, t)!,

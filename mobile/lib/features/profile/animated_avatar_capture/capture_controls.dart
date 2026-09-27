@@ -57,18 +57,18 @@ class _AnimatedRecordButton extends StatelessWidget {
               ? IosGlassNavigationButton(
                   key: const ValueKey('animated-avatar-record'),
                   icon: IosGlassNavigationIcon.shutter,
-                  label: busy ? null : 'Record',
-                  semanticLabel: 'Record animated avatar',
+                  label: busy ? null : 'Start recording',
+                  semanticLabel: 'Start recording animated avatar',
                   onPressed: busy ? null : onPressed,
                   width: busy ? 64 : constraints.maxWidth,
                   height: 64,
                   controlSize: 64,
                   fillWidth: true,
-                  foregroundColor: context.colors.onSurface,
+                  foregroundColor: context.mobileTokens.ink,
                   isBusy: busy,
                 )
               : Material(
-                  color: context.colors.onSurface,
+                  color: context.mobileTokens.ink,
                   borderRadius: BorderRadius.circular(Radii.full),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
@@ -91,7 +91,7 @@ class _AnimatedRecordButton extends StatelessWidget {
                                 semanticLabel: 'Capturing animated avatar',
                               )
                             : Text(
-                                'Record',
+                                'Start recording',
                                 key: const ValueKey(
                                   'animated-avatar-record-label',
                                 ),
