@@ -268,19 +268,21 @@ export function SendFeedbackDialog({
               </Button>
               {showDiagnostics ? (
                 <p
-                  className="rounded-md border border-blue-200 bg-blue-50 px-3 py-[10px] text-xs leading-6 text-blue-900 dark:border-[#3c3544] dark:bg-[#302b36] dark:text-[#e6e1ec]"
+                  className="rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]"
                   data-testid="feedback-diagnostics-details"
                 >
-                  <span className="mb-2 block font-medium text-blue-950 dark:text-[#e6e1ec]">
+                  <span className="mb-[5px] block font-semibold leading-[1.5]">
                     Diagnostic information
                   </span>
-                  {DIAGNOSTICS_DESCRIPTION}
+                  <span className="block leading-[1.65]">
+                    {DIAGNOSTICS_DESCRIPTION}
+                  </span>
                 </p>
               ) : null}
             </div>
 
             <div
-              className={`${showDiagnostics ? "mt-[40px]" : "mt-[26px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
+              className={`${showDiagnostics ? "mt-[47px]" : "mt-[26px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
             >
               <Button
                 className="rounded-md border-input bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
