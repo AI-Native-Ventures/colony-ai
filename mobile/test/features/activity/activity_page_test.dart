@@ -189,40 +189,48 @@ void main() {
     expect(find.text('No activity yet'), findsOneWidget);
   });
 
-  testWidgets(
-    'Activity home uses its r19 header and tabs without a back action',
-    (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light(),
-            home: Scaffold(
-              body: ActivityHomePage(
-                communityName: 'Lerato Social',
-                currentUser: const UserProfile(
-                  pubkey: 'lerato-pubkey',
-                  displayName: 'Lerato Molefe',
-                ),
-                onOpenItem: (_) {},
-                updatesPageBuilder: (_, _) => const SizedBox.shrink(),
+  testWidgets('Activity home uses the v5 Updates header and keeps both tabs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
+          activityProvider.overrideWith(
+            () => _FakeActivityNotifier(
+              HomeFeedResponse(
+                mentions: const [],
+                needsAction: const [],
+                activity: const [],
+                agentActivity: const [],
               ),
             ),
           ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: ActivityHomePage(
+              onOpenItem: (_) {},
+              updatesPageBuilder: (_, _) => const SizedBox.shrink(),
+            ),
+          ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Activity'), findsOneWidget);
-      expect(find.text('Mentions, replies and approvals'), findsOneWidget);
-      expect(find.text('For you'), findsOneWidget);
-      expect(find.text('Team updates'), findsOneWidget);
-      expect(find.byType(FrostedAppBar), findsNothing);
-      expect(find.byTooltip('Back'), findsNothing);
-    },
-  );
+    expect(find.text('Updates'), findsOneWidget);
+    expect(find.text('The company, moving together'), findsOneWidget);
+    expect(find.text('For you'), findsOneWidget);
+    expect(find.text('Team updates'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('activity-back-to-today')),
+      findsOneWidget,
+    );
+    expect(find.byType(FrostedAppBar), findsNothing);
+    expect(find.text('No activity yet'), findsOneWidget);
+  });
 
   testWidgets('sizes the Activity app bar for its custom title style', (
     tester,

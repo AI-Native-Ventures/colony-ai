@@ -79,7 +79,6 @@ import 'features/settings/settings_privacy_page.dart';
 import 'features/settings/settings_clear_cache_page.dart';
 import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
-import 'shared/community/community_icon_provider.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/navigation/mobile_route.dart';
@@ -120,12 +119,6 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         builder: (context, ref, _) {
           final community = ref.watch(activeCommunityProvider).value;
           final profile = ref.watch(profileProvider).asData?.value;
-          final communityIcon = community == null
-              ? null
-              : ref
-                    .watch(communityIconProvider(community.relayUrl))
-                    .asData
-                    ?.value;
           final activityAsync = ref.watch(activityProvider);
           final needsAction =
               activityAsync.asData?.value.needsAction ?? const <FeedItem>[];
@@ -138,6 +131,29 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             (feed) => [
               for (final item in feed.needsAction) _todayReviewItem(ref, item),
             ],
+          );
+          final movingItems = activityAsync.whenData(
+            (feed) => [
+              for (final item in feed.agentActivity)
+                if ({43002, 43003, 43004}.contains(item.kind))
+                  _todayProgressItem(ref, item),
+            ],
+          );
+          // The overview accepts only metrics supplied by their live owner.
+          // The Asks lane can add its open-ask count here when its provider is
+          // available; approval records are not a proxy for company asks.
+          final overviewMetrics = activityAsync.when<List<TodayOverviewMetric>>(
+            data: (feed) => [
+              TodayOverviewMetric(
+                value: '${feed.needsAction.length}',
+                label: 'needs your eye',
+                onTap: () => unawaited(
+                  MobileNavigation.openActivity(context, routeContext),
+                ),
+              ),
+            ],
+            loading: () => const [],
+            error: (_, _) => const [],
           );
           final notesAsync = ref.watch(globalNotesProvider);
           final latestNote = notesAsync.asData?.value
@@ -180,13 +196,21 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
 
           return TodayPage(
             communityName: community?.name,
-            communityIconUrl: communityIcon,
             profileName: profile?.displayName,
+            profileInitials: profile?.initials,
+            profileAvatarUrl: profile?.avatarUrl,
             reviewItems: reviewItems,
+            movingItems: movingItems,
             teamUpdate: teamUpdate,
-            updatesPageBuilder: (_, published) =>
-                TeamUpdatesPage(initiallyPublished: published),
+            overviewMetrics: overviewMetrics,
+            onOpenUpdates: (updatesContext) =>
+                unawaited(MobileNavigation.openUpdates(updatesContext)),
             onOpenReview: (itemId) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ActivityPage(initialItemId: itemId),
+              ),
+            ),
+            onOpenProgress: (itemId) => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => ActivityPage(initialItemId: itemId),
               ),
@@ -196,34 +220,22 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             ),
             onOpenUpdate: (noteId) =>
                 MobileNavigation.openUpdateNote(context, noteId),
+            onRetryActivity: () =>
+                ref.read(activityProvider.notifier).refresh(),
           );
         },
       );
     })
     .register(MobileRoutes.activity, (context, routeContext) {
-      return Consumer(
-        builder: (context, ref, _) {
-          final community = ref.watch(activeCommunityProvider).value;
-          final communityIcon = community == null
-              ? null
-              : ref
-                    .watch(communityIconProvider(community.relayUrl))
-                    .asData
-                    ?.value;
-          return ActivityHomePage(
-            communityName: community?.name,
-            communityIconUrl: communityIcon,
-            currentUser: ref.watch(profileProvider).asData?.value,
-            tabReselection: routeContext.tabReselection,
-            updatesPageBuilder: (_, published) =>
-                TeamUpdatesPage(initiallyPublished: published),
-            onOpenItem: (item) => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => ActivityPage(initialItemId: item.id),
-              ),
-            ),
-          );
-        },
+      return ActivityHomePage(
+        tabReselection: routeContext.tabReselection,
+        updatesPageBuilder: (_, published) =>
+            TeamUpdatesPage(initiallyPublished: published),
+        onOpenItem: (item) => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ActivityPage(initialItemId: item.id),
+          ),
+        ),
       );
     })
     .register(MobileRoutes.business, (context, routeContext) {
@@ -530,11 +542,29 @@ TodayReviewItem _todayReviewItem(WidgetRef ref, FeedItem item) {
   if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
   return TodayReviewItem(
     id: item.id,
+    requesterName: _firstName(author?.displayName) ?? shortPubkey(item.pubkey),
     title: item.displayContent,
     subtitle: item.channelName.isEmpty
         ? '${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review'
         : '${item.channelName} · ${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review',
     initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+    requesterIsAgent: author?.isAgent ?? false,
+  );
+}
+
+TodayProgressItem _todayProgressItem(WidgetRef ref, FeedItem item) {
+  final author = ref.watch(
+    userCacheProvider.select((cache) => cache[item.pubkey.toLowerCase()]),
+  );
+  if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
+  final authorName =
+      _firstName(author?.displayName) ?? shortPubkey(item.pubkey);
+  return TodayProgressItem(
+    id: item.id,
+    title: item.kind == 43004 ? 'Research completed' : item.headline,
+    subtitle: '$authorName · ${item.displayContent}',
+    initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+    isAgent: author?.isAgent ?? item.category == 'agent_activity',
   );
 }
 
