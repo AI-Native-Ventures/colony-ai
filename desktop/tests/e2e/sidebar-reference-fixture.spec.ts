@@ -26,7 +26,32 @@ test("company shell fixture supplies the approved sidebar rows", async ({
     0,
   );
   await expect(sidebar.getByText("Starred", { exact: true })).toHaveCount(0);
+  await expect(sidebar.getByTestId("channel-unread-olive-studio")).toHaveText(
+    "2",
+  );
+  await expect(sidebar.getByTestId("channel-unread-sales")).toHaveText("3");
+  await expect(sidebar.getByTestId("channel-unread-Company forum")).toHaveText(
+    "1",
+  );
+  await expect(sidebar.getByTestId("channel-unread-Aya")).toHaveText("1");
+  await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-profile-user-status")).toContainText(
     "Set a status",
   );
+
+  const streamRows = await sidebar
+    .getByTestId("stream-list")
+    .locator("[data-channel-id]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-testid")));
+  expect(streamRows).toEqual([
+    "channel-olive-studio",
+    "channel-marketing",
+    "channel-sales",
+  ]);
+
+  const dmRows = await sidebar
+    .getByTestId("dm-list")
+    .locator("[data-channel-id]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-testid")));
+  expect(dmRows).toEqual(["channel-Mina", "channel-Aya"]);
 });

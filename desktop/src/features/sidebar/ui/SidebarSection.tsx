@@ -68,7 +68,7 @@ function UnreadCountBadge({
   return (
     <span
       className={cn(
-        "flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold leading-none text-primary-foreground tabular-nums",
+        "ml-auto shrink-0 text-2xs font-medium leading-none text-sidebar-foreground/60 tabular-nums",
         className,
       )}
       data-testid={`channel-unread-${channelName}`}
@@ -255,6 +255,7 @@ export function ChannelMenuButton({
   isMuted,
   dmParticipants,
   presenceStatus,
+  unreadCount = 0,
   onSelectChannel,
 }: {
   channel: Channel;
@@ -265,6 +266,7 @@ export function ChannelMenuButton({
   isMuted?: boolean;
   dmParticipants?: SidebarDmParticipant[];
   presenceStatus?: PresenceStatus;
+  unreadCount?: number;
   onSelectChannel: (channelId: string) => void;
 }) {
   const resolvedLabel = label ?? channel.name;
@@ -275,6 +277,11 @@ export function ChannelMenuButton({
     (hasSidebarUnreadProjections
       ? unreadThreadChannelIds.has(channel.id)
       : hasUnread);
+  const showsUnreadCount =
+    channel.channelType !== "dm" &&
+    hasUnread &&
+    unreadCount > 0 &&
+    !hasThreadUnread;
   const showsEphemeralBadge =
     Boolean(ephemeralDisplay) && !activeWorking && !isMuted && !hasThreadUnread;
   const inactiveContentOpacity = cn(
@@ -359,7 +366,9 @@ export function ChannelMenuButton({
           )}
         />
       ) : null}
-      {hasThreadUnread ? (
+      {showsUnreadCount ? (
+        <UnreadCountBadge channelName={channel.name} count={unreadCount} />
+      ) : hasUnread ? (
         <UnreadDotBadge channelName={channel.name} className="ml-auto" />
       ) : null}
     </SidebarMenuButton>
@@ -487,7 +496,12 @@ export function SidebarSection({
                         isActiveChannel && selectedChannelId === channel.id
                       }
                       label={channelLabels?.[channel.id] ?? channel.name}
-                      presenceStatus={presenceByChannelId?.[channel.id]}
+                      presenceStatus={
+                        unreadChannelIds.has(channel.id)
+                          ? undefined
+                          : presenceByChannelId?.[channel.id]
+                      }
+                      unreadCount={unreadChannelCounts.get(channel.id) ?? 0}
                       onSelectChannel={onSelectChannel}
                     />
                     {channel.channelType === "dm" &&

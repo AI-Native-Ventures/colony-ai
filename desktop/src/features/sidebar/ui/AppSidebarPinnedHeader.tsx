@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   Bookmark,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   House,
 } from "lucide-react";
@@ -20,7 +22,6 @@ import {
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import { Button } from "@/shared/ui/button";
-import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
 import { useSidebar } from "@/shared/ui/sidebar";
 import colonyIcon from "../assets/colony-icon-v2.svg";
 
@@ -149,7 +150,11 @@ export function AppSidebarPinnedHeader({
             type="button"
             variant="ghost"
           >
-            <DrawerPanelIcon side={sidebar.open ? "left" : "right"} />
+            {sidebar.open ? (
+              <ChevronLeft aria-hidden="true" className="size-3" />
+            ) : (
+              <ChevronRight aria-hidden="true" className="size-3" />
+            )}
           </Button>
         ) : null}
       </div>

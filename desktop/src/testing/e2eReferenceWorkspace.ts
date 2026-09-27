@@ -24,7 +24,9 @@ import {
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_FORUM_POST,
   KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_V2,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
 import { normalizeRelayUrl } from "@/shared/lib/normalizeRelayUrl";
@@ -811,6 +813,90 @@ export function referenceSidebarChannelSeeds(): ReferenceChannelSeed[] {
   ];
 }
 
+/** Unread conversation records shown by the company shell review fixture. */
+export function referenceSidebarUnreadMessages(
+  selfPubkey: string,
+): Record<string, RelayEvent[]> {
+  const message = (
+    id: string,
+    channelId: string,
+    pubkey: string,
+    content: string,
+    createdAt: number,
+    kind = KIND_STREAM_MESSAGE,
+  ): RelayEvent => ({
+    id,
+    pubkey,
+    created_at: createdAt,
+    kind,
+    tags: [["h", channelId]],
+    content,
+    sig: REFERENCE_EVENT_SIGNATURE,
+  });
+
+  return {
+    [REFERENCE_CHANNEL_IDS.oliveStudio]: [
+      message(
+        "c1-olive-studio-unread-1",
+        REFERENCE_CHANNEL_IDS.oliveStudio,
+        selfPubkey,
+        "Campaign review is ready.",
+        todayAt(9, 42),
+      ),
+      message(
+        "c1-olive-studio-unread-2",
+        REFERENCE_CHANNEL_IDS.oliveStudio,
+        REFERENCE_AGENTS.mina.pubkey,
+        "The latest social draft is ready to review.",
+        todayAt(9, 50),
+      ),
+    ],
+    [REFERENCE_CHANNEL_IDS.sales]: [
+      message(
+        "c1-sales-unread-1",
+        REFERENCE_CHANNEL_IDS.sales,
+        selfPubkey,
+        "A new lead is ready for follow-up.",
+        todayAt(9, 20),
+      ),
+      message(
+        "c1-sales-unread-2",
+        REFERENCE_CHANNEL_IDS.sales,
+        REFERENCE_AGENTS.aya.pubkey,
+        "The prospect list is ready to review.",
+        todayAt(9, 25),
+      ),
+      message(
+        "c1-sales-unread-3",
+        REFERENCE_CHANNEL_IDS.sales,
+        selfPubkey,
+        "I will review the qualified prospects.",
+        todayAt(9, 28),
+      ),
+    ],
+    [REFERENCE_CHANNEL_IDS.companyForum]: [
+      message(
+        "c1-company-forum-unread-1",
+        REFERENCE_CHANNEL_IDS.companyForum,
+        REFERENCE_AGENTS.mina.pubkey,
+        "Company forum update.",
+        todayAt(9, 45),
+        KIND_FORUM_POST,
+      ),
+    ],
+    [REFERENCE_CHANNEL_IDS.ayaDm]: [
+      message(
+        "c1-aya-dm-unread-1",
+        REFERENCE_CHANNEL_IDS.ayaDm,
+        REFERENCE_AGENTS.aya.pubkey,
+        "The latest update is ready.",
+        todayAt(9, 45),
+        KIND_STREAM_MESSAGE_V2,
+      ),
+    ],
+  };
+}
+
 function todayAt(hours: number, minutes: number): number {
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
@@ -1139,7 +1225,22 @@ export function seedReferenceSidebarStorage(
   storage.setItem(
     `buzz.channel-read-state.v2:${selfPubkey}`,
     JSON.stringify({
-      [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
+      ...(sidebarShell
+        ? {
+            [REFERENCE_CHANNEL_IDS.oliveStudio]: new Date(
+              todayAt(9, 0) * 1_000,
+            ).toISOString(),
+            [REFERENCE_CHANNEL_IDS.sales]: new Date(
+              todayAt(9, 10) * 1_000,
+            ).toISOString(),
+            [REFERENCE_CHANNEL_IDS.companyForum]: new Date(
+              todayAt(9, 0) * 1_000,
+            ).toISOString(),
+            [REFERENCE_CHANNEL_IDS.ayaDm]: new Date(
+              todayAt(9, 0) * 1_000,
+            ).toISOString(),
+          }
+        : { [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt() }),
     }),
   );
   storage.setItem(
@@ -1173,6 +1274,7 @@ export function seedReferenceSidebarStorage(
     groups: {
       starred: "recent",
       channels: "recent",
+      ...(sidebarShell ? { dms: "recent" } : {}),
       "section:reference-client-work": "recent",
     },
   });

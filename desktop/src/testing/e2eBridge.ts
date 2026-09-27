@@ -61,6 +61,7 @@ import {
   referenceCommunityId,
   referenceSalesMessages,
   referenceSidebarChannelSeeds,
+  referenceSidebarUnreadMessages,
   referenceOliveHouseMessages,
   referenceSalesRecordEvents,
   seedReferenceSidebarStorage,
@@ -4691,8 +4692,10 @@ function applyReferenceWorkspace(config: E2eConfig): void {
               : seed.id === REFERENCE_CHANNEL_IDS.minaDm
                 ? referenceSalesLastMessageAt()
                 : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
-                  ? referenceChannelLastMessageAt(10)
-                  : null
+                  ? referenceChannelLastMessageAt(5)
+                  : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+                    ? referenceChannelLastMessageAt(5)
+                    : null
         : seed.id === REFERENCE_CHANNEL_IDS.sales
           ? referenceSalesLastMessageAt()
           : null,
@@ -4730,6 +4733,14 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  if (sidebarShell) {
+    for (const [channelId, events] of Object.entries(
+      referenceSidebarUnreadMessages(self),
+    )) {
+      mockMessages.set(channelId, events);
+    }
+    setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
+  }
   for (const event of referenceBusinessRecordEvents(self, {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
