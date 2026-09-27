@@ -154,7 +154,7 @@ class VerifyCodePage extends HookConsumerWidget {
       title: 'Check your email',
       description: emailDescription,
       titleTopSpacing: 0,
-      descriptionChildrenSpacing: 17,
+      descriptionChildrenSpacing: 18,
       footer: AccountActionButton(
         label: 'Continue',
         isLoading: auth.isLoading,
@@ -200,8 +200,6 @@ class VerifyCodePage extends HookConsumerWidget {
               remainingSecs: remainingSecs.value,
             )!,
           ),
-        if (notice.value || statusTitle != null)
-          const SizedBox(height: Grid.quarter),
         AccountCodeInput(
           key: ValueKey(codeKey.value),
           label: _isReset

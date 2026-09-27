@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/misc.dart';
 import 'package:buzz/features/auth/account_action_button.dart';
 import 'package:buzz/features/auth/account_auth_provider.dart';
+import 'package:buzz/features/auth/account_auth_failure_copy.dart';
 import 'package:buzz/features/auth/account_auth_types.dart';
+import 'package:buzz/features/auth/account_code_status_callout.dart';
 import 'package:buzz/features/auth/account_flow_palette.dart';
 import 'package:buzz/features/auth/account_flow_result_page.dart';
 import 'package:buzz/features/auth/auth_entry_page.dart';
@@ -16,10 +18,70 @@ import 'package:buzz/features/auth/verify_code_page.dart';
 import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_route_scope.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/shared/theme/theme.dart';
 
 import '../../helpers/widget_helpers.dart';
 
 void main() {
+  test('expired auth failure summary uses r19 email-code copy', () {
+    expect(
+      accountAuthFailureCopy(
+        const AccountAuthFailure(AccountAuthFailureKind.codeExpired),
+      ),
+      'This code has expired. Resend a code to continue. Your email is kept.',
+    );
+  });
+
+  testWidgets('dark verification failure callouts use the r19 surface', (
+    tester,
+  ) async {
+    _prepareMobileViewport(tester);
+    final cases = [
+      (
+        title: 'This code has expired.',
+        detail: 'Resend a code to continue. Your email is kept.',
+      ),
+      (
+        title: 'That code isn’t right.',
+        detail: '2 attempts left. Check the six digits and try again.',
+      ),
+      (
+        title: 'Too many attempts.',
+        detail: 'Try again in 30s. You can resend a code after the wait.',
+      ),
+    ];
+
+    for (final scenario in cases) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: ThemeMode.dark,
+          home: Scaffold(
+            body: AccountCodeStatusCallout(
+              title: scenario.title,
+              detail: scenario.detail,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(AccountCodeStatusCallout), findsOneWidget);
+      expect(find.text(scenario.title), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((widget) {
+          if (widget is! Container || widget.decoration is! BoxDecoration) {
+            return false;
+          }
+          return (widget.decoration! as BoxDecoration).color ==
+              const Color(0xff373244);
+        }),
+        findsOneWidget,
+      );
+    }
+  });
+
   testWidgets('loading account action keeps an accessible label', (
     tester,
   ) async {
@@ -267,9 +329,9 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
       await _pumpFormResult(tester);
-      expect(find.text('That code has expired'), findsOneWidget);
+      expect(find.text('This code has expired.'), findsOneWidget);
       expect(
-        find.text('Request a new code. Your account details are kept.'),
+        find.text('Resend a code to continue. Your email is kept.'),
         findsOneWidget,
       );
       final disabledContinue = tester.widget<FilledButton>(
@@ -290,7 +352,7 @@ void main() {
       );
       expect(auth.lastVerifyResendCooldownSecs, 30);
       expect(
-        tester.getTopLeft(find.text('That code has expired')).dy,
+        tester.getTopLeft(find.text('This code has expired.')).dy,
         lessThan(tester.getTopLeft(find.byType(TextField).first).dy),
       );
 
@@ -381,9 +443,9 @@ void main() {
     expect(find.text('Resend code'), findsOneWidget);
     expect(find.text('Resend code in 2s'), findsNothing);
     expect(find.text('Too many attempts.'), findsNothing);
-    expect(find.text('That code has expired'), findsOneWidget);
+    expect(find.text('This code has expired.'), findsOneWidget);
     expect(
-      find.text('Request a new code. Your account details are kept.'),
+      find.text('Resend a code to continue. Your email is kept.'),
       findsOneWidget,
     );
 
@@ -470,8 +532,8 @@ void main() {
           status: AccountAuthStatus.failed,
           failure: AccountAuthFailure(AccountAuthFailureKind.codeExpired),
         ),
-        title: 'That code has expired',
-        detail: 'Request a new code. Your account details are kept.',
+        title: 'This code has expired.',
+        detail: 'Resend a code to continue. Your email is kept.',
         resend: 'Resend code',
       ),
       (

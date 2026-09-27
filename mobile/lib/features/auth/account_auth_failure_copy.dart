@@ -14,7 +14,7 @@ String accountAuthFailureCopy(
   AccountAuthFailureKind.identityTaken =>
     'This identity is already linked to an account.',
   AccountAuthFailureKind.codeExpired =>
-    'That code has expired. Request a new code. Your account details are kept.',
+    'This code has expired. Resend a code to continue. Your email is kept.',
   AccountAuthFailureKind.wrongCode =>
     failure.attemptsLeft == null
         ? 'That code isn’t right. Check the six digits and try again.'
@@ -49,7 +49,7 @@ String accountAuthFailureCopy(
 /// Title for a verification or reset code status callout.
 String? accountCodeStatusTitle(AccountAuthFailure failure) =>
     switch (failure.kind) {
-      AccountAuthFailureKind.codeExpired => 'That code has expired',
+      AccountAuthFailureKind.codeExpired => 'This code has expired.',
       AccountAuthFailureKind.wrongCode => 'That code isn’t right.',
       AccountAuthFailureKind.tooManyAttempts => 'Too many attempts.',
       AccountAuthFailureKind.unavailable => 'Couldn’t verify your code.',
@@ -62,7 +62,7 @@ String? accountCodeStatusDetail(
   int? remainingSecs,
 }) => switch (failure.kind) {
   AccountAuthFailureKind.codeExpired =>
-    'Request a new code. Your account details are kept.',
+    'Resend a code to continue. Your email is kept.',
   AccountAuthFailureKind.wrongCode =>
     failure.attemptsLeft == null
         ? 'Check the six digits and try again.'
