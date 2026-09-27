@@ -14,7 +14,7 @@ const UPLOADED_PNG_DESCRIPTOR = {
 
 async function openAvatarEditor(
   page: import("@playwright/test").Page,
-  options: { holdCamera?: boolean } = {},
+  options: { holdCamera?: boolean; uploadDelayMs?: number } = {},
 ) {
   if (options.holdCamera) {
     await installFakeCamera(page, { holdCamera: true });
@@ -23,6 +23,7 @@ async function openAvatarEditor(
   }
   await installMockBridge(page, {
     uploadDescriptors: [UPLOADED_PNG_DESCRIPTOR],
+    uploadDelayMs: options.uploadDelayMs,
   });
   await page.goto("/");
   await openSettings(page, "profile");
@@ -110,7 +111,7 @@ test.describe("R19 profile avatar editor", () => {
   test("saving a captured photo requires the designed confirmation", async ({
     page,
   }) => {
-    await openAvatarEditor(page);
+    await openAvatarEditor(page, { uploadDelayMs: 1_000 });
     const dialog = page.getByTestId("profile-avatar-dialog");
 
     await dialog.getByTestId("avatar-camera-open").click();

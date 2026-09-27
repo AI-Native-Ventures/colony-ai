@@ -17,7 +17,9 @@ async function openR17AgentDefaultsSettings(
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
   await page.getByTestId("settings-group-agents-group").click();
-  await expect(page.getByTestId("settings-agents")).toBeVisible();
+  await expect(
+    page.getByTestId("settings-inner-agent-defaults"),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
 }
 
