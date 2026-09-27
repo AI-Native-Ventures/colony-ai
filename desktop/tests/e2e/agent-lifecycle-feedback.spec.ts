@@ -13,6 +13,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/screenshots-lifecycle";
 
@@ -30,7 +31,7 @@ const CASCADE_AGENT_B_PUBKEY = "bb".repeat(32);
  */
 async function openAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
     timeout: 10_000,
   });
@@ -75,7 +76,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 01: persona delete confirm dialog — "Also deletes 2 agent instance(s)."
+  // Shot 01: persona delete confirm dialog  -  "Also deletes 2 agent instance(s)."
   // Seeds a custom persona with two linked managed agents so instanceCount = 2.
   // Triggers the delete confirm from the persona's "..." actions menu.
   test("01-delete-cascade-copy", async ({ page }) => {
@@ -136,7 +137,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 02: global config save with restarts — "Saved. Restarted 2 agents."
+  // Shot 02: global config save with restarts  -  "Saved. Restarted 2 agents."
   // The mock is configured to return restarted_count=2 so the card shows the
   // restart-count feedback.
   test("02-save-restarted", async ({ page }) => {
@@ -173,7 +174,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 03: global config save with no restarts — plain "Saved."
+  // Shot 03: global config save with no restarts  -  plain "Saved."
   // The default mock returns restarted_count=0. The old text
   // "Running agents keep their current settings until restarted." must be absent.
   test("03-save-plain", async ({ page }) => {
@@ -215,7 +216,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 04: persona delete confirm dialog — singular "Also deletes 1 agent instance."
+  // Shot 04: persona delete confirm dialog  -  singular "Also deletes 1 agent instance."
   // One linked instance → singular copy (no extra "s").
   test("04-delete-cascade-singular", async ({ page }) => {
     await installMockBridge(page, {
@@ -262,7 +263,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 05: persona delete confirm dialog — zero linked instances.
+  // Shot 05: persona delete confirm dialog  -  zero linked instances.
   // No managed agents linked to the persona → "Also deletes…" line absent.
   test("05-delete-cascade-zero-instances", async ({ page }) => {
     await installMockBridge(page, {
@@ -295,7 +296,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     await expect(dialog).not.toContainText("Also deletes");
   });
 
-  // Shot 06: global config save — singular "Saved. Restarted 1 agent."
+  // Shot 06: global config save  -  singular "Saved. Restarted 1 agent."
   test("06-save-restarted-singular", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
@@ -323,7 +324,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     });
   });
 
-  // Shot 07: global config save — partial failure "M couldn't restart".
+  // Shot 07: global config save  -  partial failure "M couldn't restart".
   test("07-save-failed-restart", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
@@ -348,7 +349,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
     // Partial failure copy (zero restarted): singular agent + Agents page prompt.
     await expect(
       card.getByText(
-        "Saved. 1 agent couldn't restart — check the Agents page.",
+        /Saved\. 1 agent couldn't restart.*check the Agents page\./,
       ),
     ).toBeVisible({ timeout: 5_000 });
 
@@ -359,7 +360,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
   });
 
   // Shot 08: an edit made while a save is in flight must survive the save
-  // resolving — the card keeps the newer value and stays dirty instead of
+  // resolving  -  the card keeps the newer value and stays dirty instead of
   // clobbering it with the older response.
   test("08-save-race-keeps-newer-edit", async ({ page }) => {
     await installMockBridge(page, {

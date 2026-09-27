@@ -17,6 +17,7 @@
 
 import { expect, test } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ async function openEditAgentDialog(
   agentName: string,
 ) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const agentButton = page.getByRole("button", {
     name: `${agentName} agent profile`,
@@ -151,7 +152,7 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
 }) => {
   // Save GOOSE_MAX_TOKENS = 16384 in the global Agent Defaults settings via
   // the UI, then open a Goose agent's edit dialog. The max-output-tokens input
-  // must show "Inherit (16384)" — the globally-saved value surfaced via the
+  // must show "Inherit (16384)"  -  the globally-saved value surfaced via the
   // inherited placeholder.
   await installMockBridge(page, {
     globalAgentConfig: {
@@ -198,7 +199,7 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
   // agent. We use the app's Back link rather than page.goto("/") to preserve
   // the in-memory mock state (page.goto causes a full reload that resets it).
   await page.getByRole("button", { name: "Back to app" }).click();
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   const agentButton = page.getByRole("button", {
     name: "Tyler Agent agent profile",
   });
@@ -212,7 +213,7 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
     timeout: 10_000,
   });
 
-  // Wait for the provider field — signals the catalog and dialog have settled.
+  // Wait for the provider field  -  signals the catalog and dialog have settled.
   await expect(page.locator("#edit-agent-llm-provider")).toBeVisible({
     timeout: 10_000,
   });
@@ -234,7 +235,7 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
 }) => {
   // Scenario: catalog takes 5 seconds to respond (simulates slow discovery).
   // The per-agent edit dialog opens. While the catalog is still in flight,
-  // saved tuning env vars must not be dropped from view — they appear as
+  // saved tuning env vars must not be dropped from view  -  they appear as
   // generic env rows (no hiddenKeys applied yet). Once the catalog settles,
   // the structured numeric controls replace the generic rows.
   await installMockBridge(page, {
@@ -286,7 +287,7 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
   // the catalog query fires when the dialog opens and takes ~5 seconds).
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
 
-  // While loading: structured numeric controls must NOT be visible yet —
+  // While loading, structured numeric controls must not be visible yet.
   // the catalog-settling gate withholds them.
   await expect(page.getByTestId("numeric-max-output-tokens-input")).toHaveCount(
     0,
@@ -306,7 +307,7 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
     ),
   ).toBeVisible();
 
-  // After the catalog settles (allow up to 8 s — 5 s delay + margin):
+  // After the catalog settles (allow up to 8 s  -  5 s delay + margin):
   // structured controls appear, replacing the generic rows.
   await expect(page.getByTestId("numeric-max-output-tokens-input")).toBeVisible(
     { timeout: 8_000 },
@@ -321,7 +322,7 @@ test("failed_catalog_per_agent_saved_tuning_values_remain_visible_as_generic_row
 }) => {
   // Scenario: catalog discovery fails (network error / IPC rejection).
   // The per-agent edit dialog opens. The saved tuning env vars must remain
-  // visible as generic rows — the error state must never produce the
+  // visible as generic rows  -  the error state must never produce the
   // "unsupported" no-controls state that would hide persisted values.
   await installMockBridge(page, {
     acpRuntimesError: true,
@@ -352,12 +353,12 @@ test("failed_catalog_per_agent_saved_tuning_values_remain_visible_as_generic_row
   await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
 
-  // Structured numeric controls must NOT render (catalog errored — no runtime).
+  // Structured numeric controls must NOT render (catalog errored  -  no runtime).
   await expect(page.getByTestId("numeric-max-output-tokens-input")).toHaveCount(
     0,
   );
 
-  // Saved tuning values must still be visible as generic env rows — the error
+  // Saved tuning values must still be visible as generic env rows  -  the error
   // state must never hide persisted values with no editor to replace them.
   await expect(
     page.locator(

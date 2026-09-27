@@ -61,6 +61,31 @@ void main() {
     },
   );
 
+  test('wrong verification code retains the resend cooldown', () async {
+    final responses = <http.Response>[
+      http.Response(
+        '{"status":"verification_sent","retry_after_secs":30}',
+        202,
+      ),
+      http.Response('{"error":"wrong_code","attempts_left":2}', 422),
+    ];
+    final container = _container((_) async => responses.removeAt(0));
+    addTearDown(container.dispose);
+    final notifier = container.read(accountAuthProvider.notifier);
+
+    await notifier.signUp(
+      displayName: 'Lerato Molefe',
+      email: 'person@example.com',
+      password: 'generated-password-10',
+    );
+    await notifier.verifyCode(email: 'person@example.com', code: '000000');
+
+    final state = container.read(accountAuthProvider);
+    expect(state.failure?.kind, AccountAuthFailureKind.wrongCode);
+    expect(state.failure?.attemptsLeft, 2);
+    expect(state.retryAfterSecs, 30);
+  });
+
   test(
     'verify persists the returned identity through auth secure storage',
     () async {
@@ -224,12 +249,14 @@ void main() {
       await notifier.checkPasswordResetCode(
         email: 'person@example.com',
         code: '000000',
+        resendCooldownSecs: 23,
       );
       expect(
         container.read(accountAuthProvider).failure?.kind,
         AccountAuthFailureKind.wrongCode,
       );
       expect(container.read(accountAuthProvider).failure?.attemptsLeft, 2);
+      expect(container.read(accountAuthProvider).retryAfterSecs, 23);
 
       await notifier.resendCode(
         email: 'person@example.com',

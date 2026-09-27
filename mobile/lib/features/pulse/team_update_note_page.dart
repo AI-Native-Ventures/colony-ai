@@ -135,7 +135,7 @@ class _NoteHeader extends StatelessWidget {
           IconButton(
             onPressed: onBack,
             tooltip: 'Back',
-            icon: const Icon(LucideIcons.arrowLeft, size: 19),
+            icon: const Icon(LucideIcons.chevronLeft, size: 19),
           ),
           const SizedBox(width: Grid.half),
           Expanded(
@@ -163,7 +163,7 @@ class _NoteHeader extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(LucideIcons.ellipsis, size: 18),
+          Icon(LucideIcons.ellipsis, size: 18, color: tokens.muted),
         ],
       ),
     );

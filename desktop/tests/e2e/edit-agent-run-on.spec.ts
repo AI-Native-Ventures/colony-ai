@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const SHOTS = "test-results/edit-agent-run-on";
@@ -29,7 +30,7 @@ async function openEditDialog(
   agentName: string,
 ) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
