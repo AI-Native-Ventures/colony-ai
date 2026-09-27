@@ -692,7 +692,10 @@ test("project sidebar rows open the home channel and nest extra channels", async
 
   await page.getByTestId("sidebar-project-buzz").click();
   await expect(page.getByTestId("project-home-context-panel")).toBeVisible();
-  await page.getByTestId("add-project-repository").click();
+  await page
+    .getByTestId("project-home-context-codebase")
+    .getByRole("button", { name: "Add repository", exact: true })
+    .click();
   await expect(page.getByTestId("attach-project-repository")).toBeVisible();
   await page.getByTestId("create-project-repository").click();
   await page.getByTestId("add-project-repository-name").fill("mobile-app");
@@ -722,7 +725,10 @@ test("project sidebar rows open the home channel and nest extra channels", async
     addedEvents.find((event) => event.kind === 30617)?.tags,
   ).toContainEqual(["buzz-channel", "cf63feec-21bb-5bf0-a2f8-0e4c3de8ec73"]);
 
-  await page.getByTestId("add-project-repository").click();
+  await page
+    .getByTestId("project-home-context-codebase")
+    .getByRole("button", { name: "Add repository", exact: true })
+    .click();
   await page.getByTestId("attach-project-repository").click();
   await expect(
     page.getByTestId("attach-project-repository-dialog"),
