@@ -1069,6 +1069,11 @@
           "selector": "[data-testid=settings-moderation]"
         },
         {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid^=moderation-group-]"
+        },
+        {
           "type": "click",
           "target": "app",
           "selector": "[data-testid=moderation-resolve-trigger]"

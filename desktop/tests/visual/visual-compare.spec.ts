@@ -266,6 +266,15 @@ test.describe("visual comparison captures", () => {
               body: r17VoiceNoteWav,
             }),
         );
+        const moderationReports = entry.appMockData?.moderationReports;
+        if (Array.isArray(moderationReports)) {
+          await appPage.route("**/moderation/reports**", (route) =>
+            route.fulfill({ json: moderationReports }),
+          );
+          await appPage.route("**/moderation/audit**", (route) =>
+            route.fulfill({ json: [] }),
+          );
+        }
         await appPage.clock.install({
           time: new Date("2026-09-23T12:00:00+02:00"),
         });
