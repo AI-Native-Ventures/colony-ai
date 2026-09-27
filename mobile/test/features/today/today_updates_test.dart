@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:hooks_riverpod/misc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -246,6 +247,7 @@ void main() {
     expect(reviewTop, lessThan(replyTop));
     expect(replyTop, lessThan(researchTop));
     expect(find.text('Maya · September journal'), findsOneWidget);
+    expect(find.text('Scout · Olive Studio prospects'), findsOneWidget);
     expect(find.text('1'), findsNWidgets(2));
   });
 
@@ -266,6 +268,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
+    expect(find.byIcon(LucideIcons.arrowLeft), findsNothing);
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.ellipsis)).color,
+      MobileDesignTokens.light.muted,
+    );
     expect(find.text('Review the campaign'), findsOneWidget);
     expect(find.text('Message campaign-studio…'), findsOneWidget);
     expect(

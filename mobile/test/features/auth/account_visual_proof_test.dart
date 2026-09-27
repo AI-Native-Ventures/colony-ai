@@ -172,6 +172,7 @@ final _screenCases = <_ScreenCase>[
     () => const VerifyCodePage(email: 'lerato@example.com'),
     initialAuthState: AccountAuthState(
       status: AccountAuthStatus.failed,
+      retryAfterSecs: 27,
       failure: AccountAuthFailure(
         AccountAuthFailureKind.wrongCode,
         attemptsLeft: 2,
@@ -205,6 +206,58 @@ final _screenCases = <_ScreenCase>[
       email: 'lerato@example.com',
       purpose: AccountCodePurpose.reset,
     ),
+  ),
+  _ScreenCase(
+    'reset-expired',
+    () => const VerifyCodePage(
+      email: 'lerato@example.com',
+      purpose: AccountCodePurpose.reset,
+    ),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      codePurpose: AccountCodePurpose.reset,
+      failure: AccountAuthFailure(AccountAuthFailureKind.codeExpired),
+    ),
+  ),
+  _ScreenCase(
+    'reset-wrong',
+    () => const VerifyCodePage(
+      email: 'lerato@example.com',
+      purpose: AccountCodePurpose.reset,
+    ),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      codePurpose: AccountCodePurpose.reset,
+      retryAfterSecs: 27,
+      failure: AccountAuthFailure(
+        AccountAuthFailureKind.wrongCode,
+        attemptsLeft: 2,
+      ),
+    ),
+  ),
+  _ScreenCase(
+    'reset-locked',
+    () => const VerifyCodePage(
+      email: 'lerato@example.com',
+      purpose: AccountCodePurpose.reset,
+    ),
+    initialAuthState: AccountAuthState(
+      status: AccountAuthStatus.failed,
+      codePurpose: AccountCodePurpose.reset,
+      failure: AccountAuthFailure(
+        AccountAuthFailureKind.tooManyAttempts,
+        retryAfterSecs: 60,
+      ),
+      retryAfterSecs: 60,
+    ),
+  ),
+  _ScreenCase(
+    'reset-resent',
+    () => const VerifyCodePage(
+      email: 'lerato@example.com',
+      purpose: AccountCodePurpose.reset,
+    ),
+    resendOnMount: true,
   ),
   _ScreenCase(
     'new-password',
@@ -276,7 +329,7 @@ class _VisualProofAccountAuth extends AccountAuthNotifier {
       status: AccountAuthStatus.verificationSent,
       email: email,
       codePurpose: purpose,
-      retryAfterSecs: 30,
+      retryAfterSecs: 28,
     );
   }
 }

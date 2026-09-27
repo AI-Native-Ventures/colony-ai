@@ -50,6 +50,9 @@ class VerifyCodePage extends HookConsumerWidget {
     final statusFailure = lockWaitElapsed
         ? const AccountAuthFailure(AccountAuthFailureKind.codeExpired)
         : failure;
+    final statusTitle = statusFailure == null
+        ? null
+        : accountCodeStatusTitle(statusFailure);
     final isExpired =
         failure?.kind == AccountAuthFailureKind.codeExpired || lockWaitElapsed;
     final isWrongCode = failure?.kind == AccountAuthFailureKind.wrongCode;
@@ -77,7 +80,11 @@ class VerifyCodePage extends HookConsumerWidget {
       if (_isReset) {
         await ref
             .read(accountAuthProvider.notifier)
-            .checkPasswordResetCode(email: normalisedEmail, code: code.value);
+            .checkPasswordResetCode(
+              email: normalisedEmail,
+              code: code.value,
+              resendCooldownSecs: remainingSecs.value,
+            );
         if (!context.mounted) return;
         var result = ref.read(accountAuthProvider);
         remainingSecs.value = result.retryAfterSecs ?? 0;
@@ -102,7 +109,11 @@ class VerifyCodePage extends HookConsumerWidget {
 
       await ref
           .read(accountAuthProvider.notifier)
-          .verifyCode(email: normalisedEmail, code: code.value);
+          .verifyCode(
+            email: normalisedEmail,
+            code: code.value,
+            resendCooldownSecs: remainingSecs.value,
+          );
       if (!context.mounted) return;
       final result = ref.read(accountAuthProvider);
       remainingSecs.value = result.retryAfterSecs ?? 0;
@@ -143,10 +154,11 @@ class VerifyCodePage extends HookConsumerWidget {
       title: 'Check your email',
       description: emailDescription,
       titleTopSpacing: 0,
-      descriptionChildrenSpacing: 17,
+      descriptionChildrenSpacing: 18,
       footer: AccountActionButton(
         label: 'Continue',
         isLoading: auth.isLoading,
+        solidWhenDisabled: true,
         onPressed:
             auth.isLoading || code.value.length != 6 || isExpired || isLocked
             ? null
@@ -173,7 +185,21 @@ class VerifyCodePage extends HookConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: Grid.xs),
+        if (notice.value)
+          const AccountCodeStatusCallout(
+            title: 'A new code is on its way.',
+            detail:
+                'Use the latest email. Your previous code is no longer valid.',
+            isSuccess: true,
+          ),
+        if (statusFailure != null && statusTitle != null)
+          AccountCodeStatusCallout(
+            title: statusTitle,
+            detail: accountCodeStatusDetail(
+              statusFailure,
+              remainingSecs: remainingSecs.value,
+            )!,
+          ),
         AccountCodeInput(
           key: ValueKey(codeKey.value),
           label: _isReset
@@ -191,26 +217,8 @@ class VerifyCodePage extends HookConsumerWidget {
             color: AccountFlowPalette.muted(brightness),
           ),
         ),
-        if (notice.value)
-          const AccountCodeStatusCallout(
-            title: 'A new code is on its way.',
-            detail:
-                'Use the latest email. Your previous code is no longer valid.',
-            isSuccess: true,
-          ),
         if (statusFailure != null &&
-            accountCodeStatusTitle(statusFailure) != null) ...[
-          const SizedBox(height: Grid.xs),
-          AccountCodeStatusCallout(
-            title: accountCodeStatusTitle(statusFailure)!,
-            detail: accountCodeStatusDetail(
-              statusFailure,
-              remainingSecs: remainingSecs.value,
-            )!,
-          ),
-        ],
-        if (statusFailure != null &&
-            accountCodeStatusTitle(statusFailure) == null &&
+            statusTitle == null &&
             statusFailure.kind != AccountAuthFailureKind.resendCooldown)
           AccountAuthErrorText(failure: statusFailure),
         const SizedBox(height: Grid.xl + Grid.half),
