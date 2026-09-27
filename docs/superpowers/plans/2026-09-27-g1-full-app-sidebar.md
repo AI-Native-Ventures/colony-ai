@@ -22,15 +22,15 @@
 ## Task 1: Record the new navigation contract in E2E coverage
 
 - [ ] Inventory sidebar-specific selectors in `desktop/tests/e2e`, `desktop/src/**/*.test.*`, and `mobile/test` for Inbox, Projects, Work, Agent work, Channels, Forums, Direct messages, Software Factory, Saved for later, Settings, AI spend & power, and the sidebar test IDs.
-- [ ] Update the sidebar smoke expectations to assert the approved visible order, Activity label, Saved for later placement, hidden unavailable routes, and nested Software Factory destinations.
+- [ ] Update the sidebar smoke expectations to assert the approved visible order, Activity label, Saved for later as an Activity child, hidden unavailable routes, and nested Software Factory destinations.
 - [ ] Add assertions for independent disclosure state, `aria-expanded`, keyboard activation, and collapsed whole-sidebar state. Keep existing unread, starring, custom-section, sorting, drag, mark-read, and community-rail assertions intact.
 - [ ] Run the affected test once to confirm the new expectations fail against the old hierarchy.
 
 ## Task 2: Compose the approved full-app navigation
 
 - [ ] Add a reusable disclosure group in `desktop/src/features/sidebar/ui/SidebarNavigationGroup.tsx` with props `{ label: string; testId: string; defaultExpanded: boolean; children: React.ReactNode }`. Render a native button with `aria-expanded`, a stable `data-testid`, a chevron, and a controlled region. Toggle on click, Enter, and Space through native button semantics.
-- [ ] Reorder `AppSidebar.tsx` to render Today, Activity and its Inbox/Saved for later children, Conversations with the existing Channels, Forums, and Direct messages sections, Company with only routes that currently exist, Business collapsed with unavailable destinations omitted, Software Factory with its existing Projects and Shared compute destinations, Library collapsed with only existing routes, then the existing footer.
-- [ ] Keep the Activity row connected to `onSelectHome` and `homeBadgeCount`; keep Inbox filters and feed data unchanged. Connect Saved for later to the existing reminders route.
+- [ ] Reorder `AppSidebar.tsx` to render Today, Activity with a Saved for later child, Conversations with the existing Channels, Forums, and Direct messages sections, Company with only routes that currently exist, Business collapsed with unavailable destinations omitted, Software Factory with its existing Projects and Shared compute destinations, Library collapsed with only existing routes, then the existing footer.
+- [ ] Keep the Activity row connected to `onSelectHome` and `homeBadgeCount`; keep Inbox filters and feed data unchanged. Connect Saved for later to the existing Reminders filter in the Activity feed.
 - [ ] Keep channels, forums, and DMs rendered from current queries and user-defined state. Preserve each section's current callbacks and data test IDs.
 - [ ] Keep missing Company and Business destinations absent until their route lands. Keep agent directory, profile tabs, create-agent, teams, and Power/usage surfaces outside this slice.
 
