@@ -15,7 +15,7 @@
         "buzz-accent-color": "#3b82f6",
         "buzz-glass-background": "false",
         "buzz-glass-opacity": "65",
-        "buzz-prominent-active-tab": "true",
+        "buzz-prominent-active-tab": "false",
         "buzz.appearance.fontSize": "default",
         "buzz.appearance.conversationDensity": "comfortable",
         "buzz-sidebar-width": "244"

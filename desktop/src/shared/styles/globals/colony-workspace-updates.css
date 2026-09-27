@@ -799,28 +799,36 @@
   )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:hover,
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:focus-visible {
   background-color: rgb(255 255 255 / 33%);
   color: #6c5c75;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > * {
   color: inherit;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > span {
   color: #6c5c75;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > kbd {
@@ -829,13 +837,19 @@
   line-height: 1.5;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"],
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:hover,
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:focus-visible {
   border-color: #c9b0d416;
@@ -843,14 +857,18 @@
   color: #c2accd;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > span {
   color: #c2accd;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > kbd {

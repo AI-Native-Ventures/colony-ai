@@ -82,7 +82,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const mutedColor = await resolveSidebarColor(
     page,
     "color",
-    "hsl(var(--colony-sidebar-foreground) / 0.68)",
+    "var(--colony-sidebar-muted-foreground)",
   );
   const secondaryTextColor = await resolveSidebarColor(
     page,
@@ -181,7 +181,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
       (searchBox.y + searchBox.height),
   ).toBe(13);
   for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
-    expect(Math.abs(rowBox.x - searchBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
     // Linux CI reserves a classic scrollbar gutter while macOS uses an
     // overlay scrollbar. Compare each row to its usable scroll area so the
     // alignment check remains platform-independent.

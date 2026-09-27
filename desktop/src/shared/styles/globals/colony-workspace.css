@@ -52,15 +52,6 @@
   font-weight: 600;
 }
 
-.colony-sidebar-brand-mark-dot {
-  position: absolute;
-  right: 0.3125rem;
-  bottom: 0;
-  color: #9674a0;
-  font-size: inherit;
-  line-height: inherit;
-}
-
 :root.dark:has([data-colony-workspace-route="true"])
   .colony-sidebar-brand-mark {
   border-color: #dfc5ea20;
@@ -646,6 +637,13 @@
   --text-2xs: calc(var(--buzz-type-rem) * 0.6875);
   --text-3xs: calc(var(--buzz-type-rem) * 0.5);
   --colony-sidebar-section-font-size: calc(var(--buzz-type-rem) * 0.625);
+  --colony-sidebar-foreground: 253.85 14.94% 17.06%;
+  --colony-sidebar-muted-foreground: #79747f;
+}
+
+:root.dark:has([data-colony-full-app-shell="true"]) {
+  --colony-sidebar-foreground: 270 21.74% 90.98%;
+  --colony-sidebar-muted-foreground: #aaa3b4;
 }
 
 :root[data-buzz-sidebar]:has([data-colony-full-app-shell="true"])
@@ -687,7 +685,7 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   [data-testid="sidebar-pinned-header"] {
-  padding: 0.9375rem 0.5rem 0.625rem;
+  padding: 1.3125rem 0.5rem 0.625rem;
 }
 
 :root:has([data-colony-full-app-shell="true"])
@@ -695,7 +693,26 @@
   .colony-sidebar-brand {
   height: auto;
   min-height: 2rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.9375rem;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  .colony-sidebar-brand-mark {
+  width: 2rem;
+  height: 2rem;
+  border-color: rgb(255 255 255 / 50%);
+  border-radius: 0.5625rem;
+  background: rgb(255 255 255 / 50%);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+:root.dark:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  .colony-sidebar-brand-mark {
+  border-color: rgb(255 255 255 / 12%);
+  background: rgb(255 255 255 / 12%);
 }
 
 :root:has([data-colony-full-app-shell="true"])
@@ -711,7 +728,7 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   .sidebar-company-context {
-  color: hsl(var(--colony-sidebar-foreground) / 0.66);
+  color: var(--colony-sidebar-muted-foreground);
   font-size: calc(var(--buzz-type-rem) * 0.625);
   font-weight: 400;
 }
@@ -722,7 +739,7 @@
   flex: 1;
   width: auto;
   gap: 0.5625rem;
-  padding: 0 0.1875rem 0 0.3125rem;
+  padding: 0 0.1875rem 0 0.375rem;
   color: hsl(var(--colony-sidebar-foreground));
 }
 
@@ -737,9 +754,9 @@
   .app-sidebar-full-shell
   [data-testid="sidebar-pinned-header"]
   [data-testid="open-search"] {
-  width: 100%;
+  width: auto;
   height: 2.125rem;
-  margin: 0 0.1875rem;
+  margin: 0 0.25rem;
   border: 1px solid rgb(137 123 151 / 12.5%);
   border-radius: 0.4375rem;
   background: rgb(255 255 255 / 25%);
@@ -910,6 +927,18 @@
   [data-sidebar="menu-button"]
   > svg.sidebar-muted-content {
   opacity: 0.45;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  :is(
+    [data-sidebar="group-label"],
+    [data-sidebar-section-title],
+    .sidebar-navigation-group-toggle,
+    .sidebar-company-context,
+    [data-testid="sidebar-profile-user-status"]
+  ) {
+  color: var(--colony-sidebar-muted-foreground);
 }
 
 :root:has([data-colony-full-app-shell="true"])

@@ -127,8 +127,7 @@ export function AppSidebarPinnedHeader({
             type="button"
           >
             <span aria-hidden="true" className="colony-sidebar-brand-mark">
-              {communityInitial}
-              <span className="colony-sidebar-brand-mark-dot">·</span>
+              {communityInitial}.
             </span>
             <span className="sidebar-company-name min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
               <span className="block truncate">
