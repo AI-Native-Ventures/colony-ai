@@ -130,11 +130,11 @@ function expandManifest(source) {
       ...(variant
         ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
         : {}),
-      referencePrefs: mergeStorageSeeds(
+      referencePrefs: mergeStorageSeed(
         defaults.referencePrefs,
         entry.referencePrefs,
       ),
-      appPrefs: mergeStorageSeeds(defaults.appPrefs, entry.appPrefs),
+      appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
       appMockData: {
         ...(defaults.appMockData ?? {}),
         ...(entry.appMockData ?? {}),
@@ -144,17 +144,13 @@ function expandManifest(source) {
   );
 }
 
-function mergeStorageSeeds(base = {}, override = {}) {
+function mergeStorageSeed(base = {}, override = {}) {
   return {
-    localStorage: {
-      ...(base.localStorage ?? {}),
-      ...(override.localStorage ?? {}),
-    },
-    sessionStorage: {
-      ...(base.sessionStorage ?? {}),
-      ...(override.sessionStorage ?? {}),
-    },
-    cookies: { ...(base.cookies ?? {}), ...(override.cookies ?? {}) },
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
   };
 }
 

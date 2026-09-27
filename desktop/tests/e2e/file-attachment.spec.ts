@@ -172,7 +172,10 @@ test("opening edit during an immediate photo upload preserves the draft", async 
         __BUZZ_E2E__?: { mock?: { uploadDelayMs?: number } };
       }
     ).__BUZZ_E2E__;
-    if (e2e?.mock) e2e.mock.uploadDelayMs = 1_000;
+    // Long enough that the edit click below lands while the upload is still
+    // in flight: with 1s, opening the message menu on a slow host outlasted
+    // the upload, so the edit entered normally and the premise never held.
+    if (e2e?.mock) e2e.mock.uploadDelayMs = 4_000;
   });
   await page.getByTestId("channel-general").click();
   await choosePhoto(page);
@@ -186,7 +189,7 @@ test("opening edit during an immediate photo upload preserves the draft", async 
   await expect(page.getByTestId("edit-target")).toHaveCount(0);
   await expect(page.getByTestId("upload-progress")).toBeVisible();
   await expect(page.getByTestId("upload-progress")).toHaveCount(0, {
-    timeout: 5_000,
+    timeout: 10_000,
   });
   await expect(page.getByTestId("message-composer")).toContainText(
     "quarterly-report.pdf",

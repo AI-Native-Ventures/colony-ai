@@ -40,8 +40,13 @@ fn probe_codex_acp_version_uses_augmented_path_for_env_shebang_interpreter() {
         .expect("join augmented PATH")
         .to_string_lossy()
         .into_owned();
+    // The shims were just written: retry a spawn that races ETXTBSY or a slow
+    // host (see fresh_script.rs). A PATH regression still fails every attempt.
+    let (version, _) = super::fresh_script::probe_until_version(|| {
+        probe_codex_acp_version_with_path(&shim_path, Some(&augmented_path))
+    });
     assert_eq!(
-        probe_codex_acp_version_with_path(&shim_path, Some(&augmented_path)),
+        version,
         Some((1, 1, 2)),
         "the injected augmented PATH should allow /usr/bin/env to find node"
     );

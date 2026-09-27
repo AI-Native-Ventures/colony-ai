@@ -8,6 +8,7 @@ import {
   hasNestedThreadBranches,
   type MainTimelineEntry,
 } from "@/features/messages/lib/threadPanel";
+import { createThreadReplySender } from "@/features/messages/lib/threadReplyBroadcast";
 import {
   hasSameMessageAuthor,
   isWithinGroupingWindow,
@@ -143,6 +144,16 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
 const EMPTY_THREAD_REPLIES: MainTimelineEntry[] = [];
 const THREAD_PANEL_SUMMARY_INDENT_OFFSET_REM = 0;
 
+function parseWorkspaceThreadContext(content: string) {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = lines[0]?.match(/^#{1,3}\s+(.+)$/)?.[1];
+  if (!title) return null;
+  return { title, description: lines.slice(1).join(" ") };
+}
+
 export function MessageThreadPanel({
   channel,
   channelId,
@@ -226,6 +237,25 @@ export function MessageThreadPanel({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
+  const [broadcastControl, setBroadcastControl] = React.useState({
+    channelId,
+    threadHeadId,
+    enabled: false,
+  });
+  const alsoSendToChannel =
+    broadcastControl.channelId === channelId &&
+    broadcastControl.threadHeadId === threadHeadId &&
+    broadcastControl.enabled;
+  const handleBroadcastControlChange = React.useCallback(
+    (enabled: boolean) => {
+      setBroadcastControl({ channelId, threadHeadId, enabled });
+    },
+    [channelId, threadHeadId],
+  );
+  const handleThreadReplySend = React.useMemo(
+    () => createThreadReplySender(onSend, alsoSendToChannel),
+    [alsoSendToChannel, onSend],
+  );
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
@@ -235,6 +265,9 @@ export function MessageThreadPanel({
   // conditional activity accessory (agent working and/or someone typing).
   const hasComposerBottomActivity =
     activityAccessoryVisible || threadTypingPubkeys.length > 0;
+  const workspaceThreadContext = workspaceChrome
+    ? parseWorkspaceThreadContext(threadHead?.body ?? "")
+    : null;
 
   // Live ref so onCaptureSendContext can read reply state at submit time
   // (before any async mention-flow awaits change navigation state).
@@ -442,6 +475,7 @@ export function MessageThreadPanel({
         index > 0 && entry.message.id === firstUnreadReplyId;
       const isContinuation =
         !isHuddleTranscript &&
+        !workspaceChrome &&
         !startsUnreadSection &&
         entry.summary === null &&
         hasSameMessageAuthor(previousGroupMessage, entry.message) &&
@@ -471,6 +505,7 @@ export function MessageThreadPanel({
     hoveredCollapseBranchId,
     isHuddleTranscript,
     threadHead,
+    workspaceChrome,
   ]);
 
   const {
@@ -537,58 +572,71 @@ export function MessageThreadPanel({
             className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-1 pt-0")}
             data-testid="message-thread-head"
           >
-            <div className="rounded-2xl">
-              <MessageThreadRow
-                actionBarPlacement="inside"
-                channelId={channelId}
-                currentPubkey={currentPubkey}
-                huddleMemberPubkeys={huddleMemberPubkeys}
-                huddleMemberPubkeysPending={huddleMemberPubkeysPending}
-                isFollowingThread={isFollowingThread}
-                isUnread={isMessageUnreadById?.(threadHead.id)}
-                message={threadHead}
-                onDelete={
-                  onDelete &&
-                  canManageMessageForCurrentUser(
-                    threadHead,
-                    currentPubkey,
-                    profiles,
-                  )
-                    ? onDelete
-                    : undefined
-                }
-                onEdit={
-                  onEdit &&
-                  canManageMessageForCurrentUser(
-                    threadHead,
-                    currentPubkey,
-                    profiles,
-                  )
-                    ? onEdit
-                    : undefined
-                }
-                onFollowThread={
-                  onFollowThread ? (_msg) => onFollowThread() : undefined
-                }
-                onMarkUnread={onMarkUnread}
-                onMarkRead={onMarkRead}
-                onToggleReaction={onToggleReaction}
-                onUnfollowThread={
-                  onUnfollowThread ? (_msg) => onUnfollowThread() : undefined
-                }
-                profiles={profiles}
-                searchQuery={
-                  searchMessageId === threadHead.id ? searchQuery : undefined
-                }
-                showDepthGuides={shouldShowThreadBranchGuides}
-                videoReviewCommentRootId={videoReviewPresentation?.commentRootIdsByMessageId.get(
-                  threadHead.id,
-                )}
-                videoReviewContext={videoReviewPresentation?.contextsByMessageId.get(
-                  threadHead.id,
-                )}
-              />
-            </div>
+            {workspaceThreadContext ? (
+              <section
+                aria-label="Thread context"
+                className="colony-workspace-thread-context"
+                data-testid="workspace-thread-context"
+              >
+                <h2>{workspaceThreadContext.title}</h2>
+                {workspaceThreadContext.description ? (
+                  <p>{workspaceThreadContext.description}</p>
+                ) : null}
+              </section>
+            ) : (
+              <div className="rounded-2xl">
+                <MessageThreadRow
+                  actionBarPlacement="inside"
+                  channelId={channelId}
+                  currentPubkey={currentPubkey}
+                  huddleMemberPubkeys={huddleMemberPubkeys}
+                  huddleMemberPubkeysPending={huddleMemberPubkeysPending}
+                  isFollowingThread={isFollowingThread}
+                  isUnread={isMessageUnreadById?.(threadHead.id)}
+                  message={threadHead}
+                  onDelete={
+                    onDelete &&
+                    canManageMessageForCurrentUser(
+                      threadHead,
+                      currentPubkey,
+                      profiles,
+                    )
+                      ? onDelete
+                      : undefined
+                  }
+                  onEdit={
+                    onEdit &&
+                    canManageMessageForCurrentUser(
+                      threadHead,
+                      currentPubkey,
+                      profiles,
+                    )
+                      ? onEdit
+                      : undefined
+                  }
+                  onFollowThread={
+                    onFollowThread ? (_msg) => onFollowThread() : undefined
+                  }
+                  onMarkUnread={onMarkUnread}
+                  onMarkRead={onMarkRead}
+                  onToggleReaction={onToggleReaction}
+                  onUnfollowThread={
+                    onUnfollowThread ? (_msg) => onUnfollowThread() : undefined
+                  }
+                  profiles={profiles}
+                  searchQuery={
+                    searchMessageId === threadHead.id ? searchQuery : undefined
+                  }
+                  showDepthGuides={shouldShowThreadBranchGuides}
+                  videoReviewCommentRootId={videoReviewPresentation?.commentRootIdsByMessageId.get(
+                    threadHead.id,
+                  )}
+                  videoReviewContext={videoReviewPresentation?.contextsByMessageId.get(
+                    threadHead.id,
+                  )}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -602,7 +650,11 @@ export function MessageThreadPanel({
         ) : null}
 
         <div
-          className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-3 pt-0")}
+          className={cn(
+            THREAD_PANEL_MESSAGE_GUTTER_CLASS,
+            "pb-3",
+            workspaceThreadContext ? "pt-3" : "pt-0",
+          )}
           data-testid="message-thread-replies"
         >
           <ThreadReplyRegion
@@ -859,9 +911,24 @@ export function MessageThreadPanel({
               onCaptureSendContext={onCaptureSendContext}
               onEditLastOwnMessage={onEditLastOwnMessage}
               onEditSave={onEditSave}
-              onSend={onSend}
+              onSend={handleThreadReplySend}
               placeholder={
                 isHuddleTranscript ? "Message the huddle" : "Reply in thread…"
+              }
+              footerContent={
+                workspaceChrome && !isHuddleTranscript ? (
+                  <label className="colony-thread-crosspost">
+                    <input
+                      checked={alsoSendToChannel}
+                      data-testid="thread-broadcast-reply"
+                      onChange={(event) =>
+                        handleBroadcastControlChange(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>Also send to #{channelName}</span>
+                  </label>
+                ) : undefined
               }
               profiles={profiles}
               recentMentionPubkeys={recentMentionPubkeys}

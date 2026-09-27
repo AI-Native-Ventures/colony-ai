@@ -9,14 +9,15 @@ import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
+# r18/r19 account entry: create, sign in, or pair an existing identity.
+# Google sign-in lives on the create and sign-in screens, not the landing.
 ACCOUNT_ENTRY_LABELS = (
-    "Welcome to Buzz",
-    "Create account",
-    "Continue with Google",
-    "Sign in",
-    "Advanced: use an existing Nostr identity",
+    "A HOME FOR YOUR BUSINESS",
+    "Create an account",
+    "I already have an account",
+    "Pair with my desktop",
 )
-PAIRING_LABELS = ("Scan a QR code",)
+PAIRING_LABELS = ("Scan QR code", "Enter a code instead")
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 PACKAGE_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
 CLASS_RE = re.compile(
@@ -201,17 +202,17 @@ def run_self_test() -> None:
     package = "ventures.ainative.colony.dogfood"
     activity = f"{package}/xyz.block.buzz.mobile.MainActivity"
     valid_account_xml = f"""<hierarchy package=\"{package}\">
-  <node class=\"android.view.View\" content-desc=\"Welcome to Buzz\" />
-  <node class=\"android.widget.Button\" content-desc=\"Create account\" />
-  <node class=\"android.widget.Button\" content-desc=\"Continue with Google\" />
-  <node class=\"android.widget.Button\" content-desc=\"Sign in\" />
-  <node class=\"android.widget.Button\" clickable=\"true\" bounds=\"[10,20][290,80]\" content-desc=\"Advanced: use an existing Nostr identity\" />
+  <node class=\"android.view.View\" content-desc=\"A HOME FOR YOUR BUSINESS\" />
+  <node class=\"android.widget.Button\" content-desc=\"Create an account\" />
+  <node class=\"android.widget.Button\" content-desc=\"I already have an account\" />
+  <node class=\"android.widget.Button\" clickable=\"true\" bounds=\"[10,20][290,80]\" content-desc=\"Pair with my desktop\" />
 </hierarchy>"""
     valid_pairing_xml = f"""<hierarchy package=\"{package}\">
-  <node class=\"android.widget.Button\" content-desc=\"Scan a QR code\" />
+  <node class=\"android.widget.Button\" content-desc=\"Scan QR code\" />
+  <node class=\"android.widget.Button\" content-desc=\"Enter a code instead\" />
 </hierarchy>"""
     wrong_package_xml = valid_account_xml.replace(package, "com.android.launcher3")
-    invalid_xml = f'<hierarchy package="{package}"><node content-desc="Welcome to Buzz">'
+    invalid_xml = f'<hierarchy package="{package}"><node content-desc="A HOME FOR YOUR BUSINESS">'
     valid_foreground = (
         f"mCurrentFocus=Window{{abc u0 {activity}}}"
     )
@@ -246,12 +247,12 @@ Window #9 Window{{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherAct
     assert labeled_tap_point(
         valid_account_xml,
         package,
-        "Advanced: use an existing Nostr identity",
+        "Pair with my desktop",
     ) == (150, 50)
     assert labeled_tap_point(
         wrong_package_xml,
         package,
-        "Advanced: use an existing Nostr identity",
+        "Pair with my desktop",
     ) is None
     assert foreground_has_package(valid_foreground, package)
     assert not foreground_has_package(wrong_foreground, package)
@@ -270,7 +271,7 @@ Window #9 Window{{def u0 com.google.android.apps.nexuslauncher/.NexusLauncherAct
     print("android-runtime-proof-parser self-test passed")
     print("wrong-package account labels: old assertion would pass; parser rejected")
     print("account-first and pairing screens: exact labels accepted only per screen")
-    print("Advanced tap target: clickable app-owned bounds returned; wrong package rejected")
+    print("Pair-with-desktop tap target: clickable app-owned bounds returned; wrong package rejected")
     print("wrong foreground: UI labels valid; foreground assertion rejected")
     print("API-35 visible window: expected package accepted; wrong package rejected")
     print("ambiguous visible/conflicting foreground: rejected")

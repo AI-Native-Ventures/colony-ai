@@ -480,6 +480,8 @@ function CommunityApp({
       relayUrl: transaction.relayUrl,
       token: transaction.token,
       reposDir: transaction.reposDir,
+      businessCommunityId: transaction.businessCommunityId,
+      clientChannelId: transaction.clientChannelId,
       pubkey: currentPubkey ?? undefined,
       addedAt: new Date().toISOString(),
     });

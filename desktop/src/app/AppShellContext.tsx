@@ -10,6 +10,12 @@ import type { CreateChannelKind } from "@/features/sidebar/lib/useCreateChannelF
 const EMPTY_SET = new Set<string>();
 
 type AppShellContextValue = {
+  navigationHistory: {
+    canGoBack: boolean;
+    canGoForward: boolean;
+    goBack: () => void;
+    goForward: () => void;
+  };
   markAllChannelsRead: () => void;
   markChannelRead: (
     channelId: string,
@@ -88,6 +94,12 @@ type AppShellContextValue = {
 };
 
 const AppShellContext = React.createContext<AppShellContextValue>({
+  navigationHistory: {
+    canGoBack: false,
+    canGoForward: false,
+    goBack: () => {},
+    goForward: () => {},
+  },
   markAllChannelsRead: () => {},
   markChannelRead: () => {},
   markChannelUnread: () => {},

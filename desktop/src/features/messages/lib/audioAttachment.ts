@@ -3,6 +3,7 @@ export type AudioAttachmentImetaEntry = {
   filename?: string;
   m?: string;
   size?: number;
+  transcript?: string;
 };
 
 export type ResolvedAudioAttachment = {
@@ -61,7 +62,7 @@ export function resolveAudioAttachment(
 
 export function formatVoiceNoteDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const rounded = Math.floor(seconds);
+  const rounded = Math.round(seconds);
   const minutes = Math.floor(rounded / 60);
   return `${minutes}:${String(rounded % 60).padStart(2, "0")}`;
 }

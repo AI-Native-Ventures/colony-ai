@@ -18,7 +18,9 @@ import 'verify_code_page.dart';
 
 /// Email, password, and Google sign-in screen.
 class SignInPage extends HookConsumerWidget {
-  const SignInPage({super.key});
+  final WidgetBuilder? pairIdentityPageBuilder;
+
+  const SignInPage({this.pairIdentityPageBuilder, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,7 +45,10 @@ class SignInPage extends HookConsumerWidget {
       if (result.status == AccountAuthStatus.verificationSent) {
         Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => VerifyCodePage(email: result.email ?? email.text),
+            builder: (_) => VerifyCodePage(
+              email: result.email ?? email.text,
+              pairIdentityPageBuilder: pairIdentityPageBuilder,
+            ),
           ),
         );
       }
@@ -58,6 +63,15 @@ class SignInPage extends HookConsumerWidget {
       Navigator.of(
         context,
       ).push<void>(MaterialPageRoute<void>(builder: (_) => page));
+    }
+
+    void pairWithDesktop() {
+      final builder = pairIdentityPageBuilder;
+      if (builder == null) return;
+      ref.read(accountAuthProvider.notifier).reset();
+      Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute<void>(builder: builder));
     }
 
     return AccountPageScaffold(
@@ -104,7 +118,11 @@ class SignInPage extends HookConsumerWidget {
           child: TextButton(
             onPressed: auth.isLoading
                 ? null
-                : () => openPage(const RequestPasswordResetPage()),
+                : () => openPage(
+                    RequestPasswordResetPage(
+                      pairIdentityPageBuilder: pairIdentityPageBuilder,
+                    ),
+                  ),
             child: const Text('Forgot password?'),
           ),
         ),
@@ -123,8 +141,19 @@ class SignInPage extends HookConsumerWidget {
           label: 'New to Colony? Create an account',
           onPressed: auth.isLoading
               ? null
-              : () => openPage(const CreateAccountPage()),
+              : () => openPage(
+                  CreateAccountPage(
+                    pairIdentityPageBuilder: pairIdentityPageBuilder,
+                  ),
+                ),
         ),
+        if (pairIdentityPageBuilder != null) ...[
+          const SizedBox(height: 32),
+          TextButton(
+            onPressed: auth.isLoading ? null : pairWithDesktop,
+            child: const Text('Pair with my desktop'),
+          ),
+        ],
       ],
     );
   }

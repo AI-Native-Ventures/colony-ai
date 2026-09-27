@@ -16,7 +16,11 @@ export type AccountAuthVerificationSent = {
  * The auth feature owns transport, NIP-98 signing, OAuth, and error parsing.
  */
 export type AccountAuthClient = {
-  signUp(email: string, password: string): Promise<AccountAuthVerificationSent>;
+  signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+  ): Promise<AccountAuthVerificationSent>;
   verifyEmail(email: string, code: string): Promise<AccountAuthRecord>;
   resendCode(
     email: string,
@@ -25,6 +29,7 @@ export type AccountAuthClient = {
   signIn(email: string, password: string): Promise<AccountAuthRecord>;
   signInWithGoogle(): Promise<AccountAuthRecord>;
   requestReset(email: string): Promise<AccountAuthVerificationSent>;
+  checkResetCode(email: string, code: string): Promise<void>;
   confirmReset(
     email: string,
     code: string,

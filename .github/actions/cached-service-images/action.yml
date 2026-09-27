@@ -1,0 +1,85 @@
+name: Cached service images
+description: >-
+  Restore the Postgres, Redis, MinIO and AWS CLI images used by docker
+  compose from the Actions cache and point compose at them. Registries are
+  only contacted on a cache miss, so anonymous pull limits (public.ecr.aws
+  "Data limit exceeded", Docker Hub "toomanyrequests") no longer fail
+  integration jobs. The key includes the ISO week, so floating tags such as
+  postgres:17-alpine pick up upstream patch releases weekly.
+runs:
+  using: composite
+  steps:
+    - name: Resolve pinned image references
+      id: refs
+      shell: bash
+      run: |
+        set -euo pipefail
+        # `config --images <service>` also lists dependency images (minio-init
+        # depends on minio), so read each service's own image from the JSON.
+        config="$(docker compose config --format json)"
+        postgres="$(jq -r '.services.postgres.image' <<<"$config")"
+        redis="$(jq -r '.services.redis.image' <<<"$config")"
+        minio="$(jq -r '.services.minio.image' <<<"$config")"
+        init="$(jq -r '.services["minio-init"].image' <<<"$config")"
+        for ref in "$postgres" "$redis" "$minio" "$init"; do
+          if [ -z "$ref" ] || [ "$ref" = "null" ]; then
+            echo "Could not resolve a pinned service image from docker compose" >&2
+            exit 1
+          fi
+        done
+        echo "postgres=$postgres" >> "$GITHUB_OUTPUT"
+        echo "redis=$redis" >> "$GITHUB_OUTPUT"
+        echo "minio=$minio" >> "$GITHUB_OUTPUT"
+        echo "init=$init" >> "$GITHUB_OUTPUT"
+        refs_hash="$(printf '%s\n' "$postgres" "$redis" "$minio" "$init" | sha256sum | cut -c1-16)"
+        echo "key=buzz-service-images-v2-${refs_hash}-$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+    - name: Restore service image cache
+      id: cache
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: /tmp/buzz-service-images.tar
+        key: ${{ steps.refs.outputs.key }}
+    - name: Load cached service images
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: docker load --input /tmp/buzz-service-images.tar
+    - name: Pull pinned service images
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        POSTGRES_REF: ${{ steps.refs.outputs.postgres }}
+        REDIS_REF: ${{ steps.refs.outputs.redis }}
+        MINIO_REF: ${{ steps.refs.outputs.minio }}
+        INIT_REF: ${{ steps.refs.outputs.init }}
+      run: |
+        set -euo pipefail
+        pull() {
+          for attempt in 1 2 3 4 5; do
+            if docker pull --quiet "$1"; then return 0; fi
+            echo "docker pull $1 failed (attempt $attempt)" >&2
+            sleep $((attempt * 20))
+          done
+          return 1
+        }
+        pull "$POSTGRES_REF"
+        pull "$REDIS_REF"
+        pull "$MINIO_REF"
+        pull "$INIT_REF"
+        # Tag references (postgres, redis) survive docker save/load as-is.
+        # docker load drops repository digests, so cache the digest-pinned
+        # content under local tags that compose can use without re-resolving.
+        docker tag "$MINIO_REF" buzz-ci/minio:pinned
+        docker tag "$INIT_REF" buzz-ci/minio-init:pinned
+        docker save --output /tmp/buzz-service-images.tar \
+          "$POSTGRES_REF" "$REDIS_REF" buzz-ci/minio:pinned buzz-ci/minio-init:pinned
+    - name: Save service image cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: /tmp/buzz-service-images.tar
+        key: ${{ steps.refs.outputs.key }}
+    - name: Point docker compose at the cached images
+      shell: bash
+      run: |
+        echo "BUZZ_MINIO_IMAGE=buzz-ci/minio:pinned" >> "$GITHUB_ENV"
+        echo "BUZZ_MINIO_INIT_IMAGE=buzz-ci/minio-init:pinned" >> "$GITHUB_ENV"

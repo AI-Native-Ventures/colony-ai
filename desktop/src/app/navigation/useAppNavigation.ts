@@ -104,6 +104,12 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSupervision = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -132,6 +138,17 @@ export function useAppNavigation() {
       commitNavigation(
         {
           to: "/projects",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goFactory = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/factory",
         },
         behavior,
       ),
@@ -481,8 +498,10 @@ export function useAppNavigation() {
     goNewWorkflowForChannel,
     goProject,
     goProjects,
+    goFactory,
     goPulse,
     goProfile,
+    goSupervision,
     goSettings,
     goWorkflow,
     goWorkflows,

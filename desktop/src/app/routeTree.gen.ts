@@ -7,18 +7,32 @@
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
 import { Route as todayRouteImport } from "./routes/today";
+import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
 import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
+import { Route as powerRouteImport } from "./routes/power";
+import { Route as factoryRouteImport } from "./routes/factory";
 import { Route as agentsRouteImport } from "./routes/agents";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
+import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
+import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
+import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
+import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
+import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
+import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
+import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
+import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
@@ -29,6 +43,11 @@ const workflowsRoute = workflowsRouteImport.update({
 const todayRoute = todayRouteImport.update({
   id: "/today",
   path: "/today",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const supervisionRoute = supervisionRouteImport.update({
+  id: "/supervision",
+  path: "/supervision",
   getParentRoute: () => rootRouteImport,
 } as any);
 const settingsRoute = settingsRouteImport.update({
@@ -51,6 +70,16 @@ const projectsRoute = projectsRouteImport.update({
   path: "/projects",
   getParentRoute: () => rootRouteImport,
 } as any);
+const powerRoute = powerRouteImport.update({
+  id: "/power",
+  path: "/power",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const factoryRoute = factoryRouteImport.update({
+  id: "/factory",
+  path: "/factory",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const agentsRoute = agentsRouteImport.update({
   id: "/agents",
   path: "/agents",
@@ -71,14 +100,49 @@ const todayDotupdatesRoute = todayDotupdatesRouteImport.update({
   path: "/today/updates",
   getParentRoute: () => rootRouteImport,
 } as any);
+const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
+  id: "/today/reviews-empty",
+  path: "/today/reviews-empty",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   id: "/projects/$projectId",
   path: "/projects/$projectId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const navigationDotstartRoute = navigationDotstartRouteImport.update({
+  id: "/navigation/start",
+  path: "/navigation/start",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const navigationDothistoryRoute = navigationDothistoryRouteImport.update({
+  id: "/navigation/history",
+  path: "/navigation/history",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const factoryDotstatesRoute = factoryDotstatesRouteImport.update({
+  id: "/factory/states",
+  path: "/factory/states",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const factoryDotsessionsRoute = factoryDotsessionsRouteImport.update({
+  id: "/factory/sessions",
+  path: "/factory/sessions",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const factoryDotprojectsRoute = factoryDotprojectsRouteImport.update({
+  id: "/factory/projects",
+  path: "/factory/projects",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const factoryDotplansRoute = factoryDotplansRouteImport.update({
+  id: "/factory/plans",
+  path: "/factory/plans",
   getParentRoute: () => rootRouteImport,
 } as any);
 const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
@@ -91,6 +155,29 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const factoryDotreviewDotrunIdRoute =
+  factoryDotreviewDotrunIdRouteImport.update({
+    id: "/factory/review/$runId",
+    path: "/factory/review/$runId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const factoryDotprojectDotprojectIdRoute =
+  factoryDotprojectDotprojectIdRouteImport.update({
+    id: "/factory/project/$projectId",
+    path: "/factory/project/$projectId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const factoryDotplanDotplanIdRoute = factoryDotplanDotplanIdRouteImport.update({
+  id: "/factory/plan/$planId",
+  path: "/factory/plan/$planId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const channelsDotpinsDotchannelIdRoute =
+  channelsDotpinsDotchannelIdRouteImport.update({
+    id: "/channels/pins/$channelId",
+    path: "/channels/pins/$channelId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -101,53 +188,95 @@ const channelsDotchannelIdDotpostsDotpostIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/factory": typeof factoryRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/channels/from-template": typeof channelsDotfromTemplateRoute;
+  "/factory/plans": typeof factoryDotplansRoute;
+  "/factory/projects": typeof factoryDotprojectsRoute;
+  "/factory/sessions": typeof factoryDotsessionsRoute;
+  "/factory/states": typeof factoryDotstatesRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
+  "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
+  "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/factory": typeof factoryRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/channels/from-template": typeof channelsDotfromTemplateRoute;
+  "/factory/plans": typeof factoryDotplansRoute;
+  "/factory/projects": typeof factoryDotprojectsRoute;
+  "/factory/sessions": typeof factoryDotsessionsRoute;
+  "/factory/states": typeof factoryDotstatesRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
+  "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
+  "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/factory": typeof factoryRoute;
+  "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
+  "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/channels/from-template": typeof channelsDotfromTemplateRoute;
+  "/factory/plans": typeof factoryDotplansRoute;
+  "/factory/projects": typeof factoryDotprojectsRoute;
+  "/factory/sessions": typeof factoryDotsessionsRoute;
+  "/factory/states": typeof factoryDotstatesRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/navigation/history": typeof navigationDothistoryRoute;
+  "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
+  "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
+  "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
@@ -155,70 +284,126 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/agents"
+    | "/factory"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/channels/from-template"
+    | "/factory/plans"
+    | "/factory/projects"
+    | "/factory/sessions"
+    | "/factory/states"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
     | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
+    | "/factory/plan/$planId"
+    | "/factory/project/$projectId"
+    | "/factory/review/$runId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/agents"
+    | "/factory"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/channels/from-template"
+    | "/factory/plans"
+    | "/factory/projects"
+    | "/factory/sessions"
+    | "/factory/states"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
     | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
+    | "/factory/plan/$planId"
+    | "/factory/project/$projectId"
+    | "/factory/review/$runId"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
     | "/"
     | "/agents"
+    | "/factory"
+    | "/power"
     | "/projects"
     | "/pulse"
     | "/reminders"
     | "/settings"
+    | "/supervision"
     | "/today"
     | "/workflows"
     | "/channels/$channelId"
     | "/channels/from-template"
+    | "/factory/plans"
+    | "/factory/projects"
+    | "/factory/sessions"
+    | "/factory/states"
     | "/messages/new"
+    | "/navigation/history"
+    | "/navigation/start"
     | "/projects/$projectId"
+    | "/today/reviews-empty"
     | "/today/updates"
     | "/workflows/$workflowId"
+    | "/channels/pins/$channelId"
+    | "/factory/plan/$planId"
+    | "/factory/project/$projectId"
+    | "/factory/review/$runId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   agentsRoute: typeof agentsRoute;
+  factoryRoute: typeof factoryRoute;
+  powerRoute: typeof powerRoute;
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
   remindersRoute: typeof remindersRoute;
   settingsRoute: typeof settingsRoute;
+  supervisionRoute: typeof supervisionRoute;
   todayRoute: typeof todayRoute;
   workflowsRoute: typeof workflowsRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   channelsDotfromTemplateRoute: typeof channelsDotfromTemplateRoute;
+  factoryDotplansRoute: typeof factoryDotplansRoute;
+  factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
+  factoryDotsessionsRoute: typeof factoryDotsessionsRoute;
+  factoryDotstatesRoute: typeof factoryDotstatesRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
+  navigationDothistoryRoute: typeof navigationDothistoryRoute;
+  navigationDotstartRoute: typeof navigationDotstartRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
+  todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
+  channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
+  factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
+  factoryDotprojectDotprojectIdRoute: typeof factoryDotprojectDotprojectIdRoute;
+  factoryDotreviewDotrunIdRoute: typeof factoryDotreviewDotrunIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -236,6 +421,13 @@ declare module "@tanstack/react-router" {
       path: "/today";
       fullPath: "/today";
       preLoaderRoute: typeof todayRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/supervision": {
+      id: "/supervision";
+      path: "/supervision";
+      fullPath: "/supervision";
+      preLoaderRoute: typeof supervisionRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/settings": {
@@ -266,6 +458,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof projectsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/power": {
+      id: "/power";
+      path: "/power";
+      fullPath: "/power";
+      preLoaderRoute: typeof powerRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory": {
+      id: "/factory";
+      path: "/factory";
+      fullPath: "/factory";
+      preLoaderRoute: typeof factoryRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/agents": {
       id: "/agents";
       path: "/agents";
@@ -294,6 +500,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayDotupdatesRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/today/reviews-empty": {
+      id: "/today/reviews-empty";
+      path: "/today/reviews-empty";
+      fullPath: "/today/reviews-empty";
+      preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/projects/$projectId": {
       id: "/projects/$projectId";
       path: "/projects/$projectId";
@@ -301,11 +514,53 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/navigation/start": {
+      id: "/navigation/start";
+      path: "/navigation/start";
+      fullPath: "/navigation/start";
+      preLoaderRoute: typeof navigationDotstartRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/navigation/history": {
+      id: "/navigation/history";
+      path: "/navigation/history";
+      fullPath: "/navigation/history";
+      preLoaderRoute: typeof navigationDothistoryRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/messages/new": {
       id: "/messages/new";
       path: "/messages/new";
       fullPath: "/messages/new";
       preLoaderRoute: typeof messagesDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/states": {
+      id: "/factory/states";
+      path: "/factory/states";
+      fullPath: "/factory/states";
+      preLoaderRoute: typeof factoryDotstatesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/sessions": {
+      id: "/factory/sessions";
+      path: "/factory/sessions";
+      fullPath: "/factory/sessions";
+      preLoaderRoute: typeof factoryDotsessionsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/projects": {
+      id: "/factory/projects";
+      path: "/factory/projects";
+      fullPath: "/factory/projects";
+      preLoaderRoute: typeof factoryDotprojectsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/plans": {
+      id: "/factory/plans";
+      path: "/factory/plans";
+      fullPath: "/factory/plans";
+      preLoaderRoute: typeof factoryDotplansRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/channels/from-template": {
@@ -322,6 +577,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/factory/review/$runId": {
+      id: "/factory/review/$runId";
+      path: "/factory/review/$runId";
+      fullPath: "/factory/review/$runId";
+      preLoaderRoute: typeof factoryDotreviewDotrunIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/project/$projectId": {
+      id: "/factory/project/$projectId";
+      path: "/factory/project/$projectId";
+      fullPath: "/factory/project/$projectId";
+      preLoaderRoute: typeof factoryDotprojectDotprojectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/factory/plan/$planId": {
+      id: "/factory/plan/$planId";
+      path: "/factory/plan/$planId";
+      fullPath: "/factory/plan/$planId";
+      preLoaderRoute: typeof factoryDotplanDotplanIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/channels/pins/$channelId": {
+      id: "/channels/pins/$channelId";
+      path: "/channels/pins/$channelId";
+      fullPath: "/channels/pins/$channelId";
+      preLoaderRoute: typeof channelsDotpinsDotchannelIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -335,18 +618,32 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   agentsRoute: agentsRoute,
+  factoryRoute: factoryRoute,
+  powerRoute: powerRoute,
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
   remindersRoute: remindersRoute,
   settingsRoute: settingsRoute,
+  supervisionRoute: supervisionRoute,
   todayRoute: todayRoute,
   workflowsRoute: workflowsRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   channelsDotfromTemplateRoute: channelsDotfromTemplateRoute,
+  factoryDotplansRoute: factoryDotplansRoute,
+  factoryDotprojectsRoute: factoryDotprojectsRoute,
+  factoryDotsessionsRoute: factoryDotsessionsRoute,
+  factoryDotstatesRoute: factoryDotstatesRoute,
   messagesDotnewRoute: messagesDotnewRoute,
+  navigationDothistoryRoute: navigationDothistoryRoute,
+  navigationDotstartRoute: navigationDotstartRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
+  todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
+  channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
+  factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,
+  factoryDotprojectDotprojectIdRoute: factoryDotprojectDotprojectIdRoute,
+  factoryDotreviewDotrunIdRoute: factoryDotreviewDotrunIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

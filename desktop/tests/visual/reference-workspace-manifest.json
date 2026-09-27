@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "defaults": {
+    "referencePrefs": {
+      "localStorage": {
+        "colony-settings-review-v1": {
+          "version": 1,
+          "businesses": {
+            "Lerato Social": {
+              "mode": "light",
+              "style": "default",
+              "color1": "#895AF6",
+              "color2": "#5A9CF6",
+              "accent": "Blue",
+              "glass": false,
+              "opacity": 65,
+              "prominent": true,
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          },
+          "conversations": {
+            "links": "compact",
+            "threads": "split",
+            "size": "large"
+          }
+        }
+      },
+      "sessionStorage": {}
+    },
+    "appPrefs": {
+      "localStorage": {
+        "buzz-theme": "buzz",
+        "buzz-follow-system": "false",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "true",
+        "buzz.appearance.fontSize": "larger",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz-sidebar-width": "220",
+        "buzz.channels.threadViewMode": "split"
+      },
+      "sessionStorage": {},
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "actions": [],
+    "appMockData": {
+      "referenceWorkspace": true
+    }
+  },
+  "cases": [
+    {
+      "id": "sales-light-1728",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#channel/sales",
+      "appRoute": "/#/channels/1e1a7000-0000-4000-8000-000000000001",
+      "appReadySelector": "[data-testid=message-row]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "sales-light-1440",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#channel/sales",
+      "appRoute": "/#/channels/1e1a7000-0000-4000-8000-000000000001",
+      "appReadySelector": "[data-testid=message-row]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "sales-dark-1728",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#channel/sales",
+      "appRoute": "/#/channels/1e1a7000-0000-4000-8000-000000000001",
+      "appReadySelector": "[data-testid=message-row]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "sales-dark-1440",
+      "referenceInventoryRoute": "channel/sales",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#channel/sales",
+      "appRoute": "/#/channels/1e1a7000-0000-4000-8000-000000000001",
+      "appReadySelector": "[data-testid=message-row]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    }
+  ]
+}

@@ -12,7 +12,9 @@ import 'verify_code_page.dart';
 
 /// Requests a password reset code without revealing whether an email exists.
 class RequestPasswordResetPage extends HookConsumerWidget {
-  const RequestPasswordResetPage({super.key});
+  final WidgetBuilder? pairIdentityPageBuilder;
+
+  const RequestPasswordResetPage({this.pairIdentityPageBuilder, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,6 +34,7 @@ class RequestPasswordResetPage extends HookConsumerWidget {
             builder: (_) => VerifyCodePage(
               email: email.text.trim(),
               purpose: AccountCodePurpose.reset,
+              pairIdentityPageBuilder: pairIdentityPageBuilder,
             ),
           ),
         );

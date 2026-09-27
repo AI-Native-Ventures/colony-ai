@@ -11,6 +11,7 @@ class _MessageList extends HookConsumerWidget {
   final Set<String> initialForcedUnreadMessageIds;
   final bool hasInitialUnread;
   final String channelId;
+  final bool isDirectMessage;
   final String? currentPubkey;
   final bool isMember;
   final bool isArchived;
@@ -30,6 +31,7 @@ class _MessageList extends HookConsumerWidget {
     required this.initialForcedUnreadMessageIds,
     required this.hasInitialUnread,
     required this.channelId,
+    required this.isDirectMessage,
     required this.currentPubkey,
     required this.isMember,
     required this.isArchived,
@@ -41,6 +43,12 @@ class _MessageList extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final dayHeadingNow = ref.watch(conversationDayHeadingNowProvider);
+    final fallbackFocusNode = useMemoized(FocusNode.new);
+    useEffect(() => fallbackFocusNode.dispose, [fallbackFocusNode]);
+    final composerHasFocus = useListenable(
+      composerFocusNode ?? fallbackFocusNode,
+    ).hasFocus;
     final appView = View.of(context);
     final localSendAnimations = ref.watch(
       localMessageSendAnimationProvider(channelId),
@@ -330,7 +338,10 @@ class _MessageList extends HookConsumerWidget {
           .toDouble();
       setStickyDateHeader(
         StickyDateHeaderState(
-          label: formatDayHeading(activeDayTimestamp),
+          label: formatConversationDayHeading(
+            activeDayTimestamp,
+            now: dayHeadingNow,
+          ),
           translateY: (translateY * 2).round() / 2,
         ),
         activeDayTimestamp: activeDayTimestamp,
@@ -470,6 +481,47 @@ class _MessageList extends HookConsumerWidget {
             latestIsAtBoundary()) {
           return;
         }
+        final viewportHeight = timelineViewportHeight.value;
+        final oldestIndex = displayEntries.length - 1;
+        final visiblePositions = itemPositionsListener.itemPositions.value
+            .where((position) => position.index < displayEntries.length)
+            .fold<Map<int, ItemPosition>>(
+              <int, ItemPosition>{},
+              (positions, position) => positions..[position.index] = position,
+            );
+        final oldestPosition = visiblePositions[oldestIndex];
+        final latestPosition = visiblePositions[0];
+        if (!composerHasFocus &&
+            oldestIndex >= 0 &&
+            viewportHeight > 0 &&
+            visiblePositions.length == displayEntries.length &&
+            oldestPosition != null &&
+            latestPosition != null) {
+          final contentTop =
+              viewportHeight * (1 - oldestPosition.itemTrailingEdge);
+          final contentBottom =
+              viewportHeight * (1 - latestPosition.itemLeadingEdge);
+          final contentHeight = contentBottom - contentTop;
+          final listTopInset = frostedAppBarHeight(
+            context,
+            titleContentHeight: appBarTitleContentHeight,
+          );
+          final availableHeight =
+              viewportHeight - listTopInset - timelineBottomInset;
+          if (contentHeight <= availableHeight + 1) {
+            final oldestHeight =
+                viewportHeight *
+                (oldestPosition.itemTrailingEdge -
+                    oldestPosition.itemLeadingEdge);
+            final topAlignedPosition =
+                1 - (listTopInset + oldestHeight) / viewportHeight;
+            itemScrollController.jumpTo(
+              index: oldestIndex,
+              alignment: topAlignedPosition.clamp(0.0, 1.0).toDouble(),
+            );
+            return;
+          }
+        }
         // A dock or keyboard resize is a layout correction, not a navigation
         // action. Keeping it instant avoids restarting a smooth scroll for
         // every position report while the viewport settles.
@@ -595,7 +647,8 @@ class _MessageList extends HookConsumerWidget {
             currentPubkey: currentPubkey,
             isMember: isMember,
             isArchived: isArchived,
-            initialMessageId: initialMessageId,
+            initialMessageId: initialMessageId ?? threadHead.id,
+            highlightInitialMessage: initialMessageId != null,
           ),
         );
         final navigator = Navigator.of(context);
@@ -764,8 +817,8 @@ class _MessageList extends HookConsumerWidget {
               itemPositionsListener: itemPositionsListener,
               reverse: true,
               padding: EdgeInsets.only(
-                left: Grid.gutter,
-                right: Grid.gutter,
+                left: Grid.xs,
+                right: Grid.xs,
                 top: frostedAppBarHeight(
                   context,
                   titleContentHeight: appBarTitleContentHeight,
@@ -829,7 +882,10 @@ class _MessageList extends HookConsumerWidget {
                       children: [
                         if (showDayDivider)
                           DayDivider(
-                            label: formatDayHeading(message.createdAt),
+                            label: formatConversationDayHeading(
+                              message.createdAt,
+                              now: dayHeadingNow,
+                            ),
                             dayTimestamp: message.createdAt,
                             stickyDayTimestamp: stickyDayTimestamp,
                           ),
@@ -851,8 +907,11 @@ class _MessageList extends HookConsumerWidget {
                           _MessageBubble(
                             message: message,
                             showAuthor: showAuthor,
+                            followsDayDivider: showDayDivider,
+                            followsThreadSummary: prevEntry?.summary != null,
                             channelNames: channelNamesMap,
                             currentChannelId: channelId,
+                            isDirectMessage: isDirectMessage,
                             currentPubkey: currentPubkey,
                             allMessages: allMessages,
                             isMember: isMember,
@@ -871,6 +930,8 @@ class _MessageList extends HookConsumerWidget {
                               isArchived: isArchived,
                             ),
                         ],
+                        if (isDirectMessage && index == 0)
+                          const SizedBox(height: 70),
                       ],
                     ),
                   ),
@@ -888,7 +949,7 @@ class _MessageList extends HookConsumerWidget {
                   context,
                   titleContentHeight: appBarTitleContentHeight,
                 ) +
-                Grid.twelve,
+                Grid.gutter,
             child: StickyDateHeader(
               key: const ValueKey('channel-sticky-date-header'),
               state: stickyDateHeaderState,

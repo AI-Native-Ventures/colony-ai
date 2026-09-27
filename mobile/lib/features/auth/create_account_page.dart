@@ -18,7 +18,9 @@ import 'verify_code_page.dart';
 
 /// Email and password signup screen.
 class CreateAccountPage extends HookConsumerWidget {
-  const CreateAccountPage({super.key});
+  final WidgetBuilder? pairIdentityPageBuilder;
+
+  const CreateAccountPage({this.pairIdentityPageBuilder, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,7 +45,11 @@ class CreateAccountPage extends HookConsumerWidget {
       }
       await ref
           .read(accountAuthProvider.notifier)
-          .signUp(email: email.text, password: password.text);
+          .signUp(
+            displayName: name.text,
+            email: email.text,
+            password: password.text,
+          );
       if (!context.mounted) return;
       final result = ref.read(accountAuthProvider);
       if (result.status == AccountAuthStatus.verificationSent) {
@@ -61,9 +67,12 @@ class CreateAccountPage extends HookConsumerWidget {
 
     void openSignIn() {
       ref.read(accountAuthProvider.notifier).reset();
-      Navigator.of(
-        context,
-      ).push<void>(MaterialPageRoute<void>(builder: (_) => const SignInPage()));
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              SignInPage(pairIdentityPageBuilder: pairIdentityPageBuilder),
+        ),
+      );
     }
 
     return AccountPageScaffold(

@@ -17,6 +17,10 @@ export type Community = {
    * `REPOS` directory inside the nest.
    */
   reposDir?: string;
+  /** Self provisioning business id used by the native Factory scope. */
+  businessCommunityId?: string;
+  /** Optional NIP-29 client channel id for a narrower Factory scope. */
+  clientChannelId?: string;
   /**
    * @deprecated Never read. Kept on the type so old localStorage entries
    * deserialise without errors. New entries never set this field, and

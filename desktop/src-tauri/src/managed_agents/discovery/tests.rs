@@ -628,7 +628,7 @@ fn probe_codex_acp_version_parses_full_semver_output() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let version = probe_codex_acp_version(&bin);
+    let (version, _) = fresh_script::probe_fresh_script(&bin);
     let _ = std::fs::remove_dir_all(dir);
 
     assert_eq!(
@@ -639,6 +639,8 @@ fn probe_codex_acp_version_parses_full_semver_output() {
 }
 
 mod codex_version;
+#[cfg(unix)]
+mod fresh_script;
 
 #[cfg(unix)]
 #[test]
@@ -802,7 +804,6 @@ fn probe_codex_acp_version_returns_none_for_hung_direct_child() {
 #[test]
 fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
     use std::os::unix::fs::PermissionsExt;
-    use std::time::Instant;
 
     // Simulate a process that forks a background child which inherits stdout
     // and stays alive, while the parent writes version and exits 0.
@@ -824,9 +825,7 @@ fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let start = Instant::now();
-    let version = probe_codex_acp_version(&bin);
-    let elapsed = start.elapsed();
+    let (version, elapsed) = fresh_script::probe_fresh_script(&bin);
     let _ = std::fs::remove_dir_all(dir);
 
     // Must return within ~1 s: non-blocking read, no waiting for descendant.

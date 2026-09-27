@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:buzz/features/home/home_page.dart';
 import 'package:buzz/shared/business/mobile_business_entry_points.dart';
 import 'package:buzz/shared/navigation/mobile_navigation.dart';
@@ -13,6 +15,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 MobileRouteRegistry buildTestRoutes({
   MobileRouteBuilder<MobileShellRouteContext>? todayBuilder,
+  MobileRouteBuilder<MobileShellRouteContext>? chatBuilder,
+  MobileRouteBuilder<MobileShellRouteContext>? companyBuilder,
   MobileRouteBuilder<NoMobileRouteArguments>? searchBuilder,
 }) => MobileRouteRegistry.empty()
     .register(
@@ -23,7 +27,9 @@ MobileRouteRegistry buildTestRoutes({
     )
     .register(
       MobileRoutes.chats,
-      (_, context) => _DestinationPage('Chats', context),
+      chatBuilder ??
+          ((BuildContext _, MobileShellRouteContext context) =>
+              _DestinationPage('Chats', context)),
     )
     .register(
       MobileRoutes.activity,
@@ -31,7 +37,9 @@ MobileRouteRegistry buildTestRoutes({
     )
     .register(
       MobileRoutes.business,
-      (_, context) => _DestinationPage('Business', context),
+      companyBuilder ??
+          ((BuildContext _, MobileShellRouteContext context) =>
+              _DestinationPage('Company', context)),
     )
     .register(
       MobileRoutes.search,
@@ -75,6 +83,7 @@ Widget buildShellCapture({
       child: MobileShell(
         destination: destination,
         onDestinationSelected: (_) {},
+        showBrandBar: false,
         child: ColoredBox(color: tokens.canvas),
       ),
     ),
@@ -82,35 +91,31 @@ Widget buildShellCapture({
 }
 
 void main() {
-  test('exposes all frozen Business destinations through shared routes', () {
+  test('exposes only the approved route-backed Company destinations', () {
     expect(MobileBusinessSection.values.map((section) => section.label), [
-      'Business',
-      'Team & tools',
-      'Manage',
+      'Run the company',
+      'Grow the business',
     ]);
     expect(MobileBusinessEntryPoints.all.map((entry) => entry.route.path), [
-      'social/calendar',
-      'website/home',
-      'clients/home',
-      'money/home',
-      'discovery/search',
-      'agents/roster',
-      'factory/home',
-      'work/files',
-      'blocks/catalog',
-      'credits/balance',
-      'settings/home',
+      'team',
+      'goals',
+      'work',
+      'workflows',
+      'business/discovery',
+      'business/social',
+      'business/website',
+      'business/money',
     ]);
   });
 
-  testWidgets('renders four primary destinations and marks the selection', (
+  testWidgets('renders three primary destinations and marks the selection', (
     tester,
   ) async {
     await tester.pumpWidget(
       buildHome(routes: buildTestRoutes(), unreadActivity: true),
     );
 
-    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
     expect(
       find.byKey(const ValueKey('mobile-bottom-navigation')),
       findsOneWidget,
@@ -118,7 +123,11 @@ void main() {
     expect(
       tester.widget<Semantics>(find.byKey(const ValueKey('mobile-nav-today'))),
       isA<Semantics>()
-          .having((semantics) => semantics.properties.label, 'label', 'Today')
+          .having(
+            (semantics) => semantics.properties.label,
+            'label',
+            'Today, unread',
+          )
           .having((semantics) => semantics.properties.onTap, 'onTap', isNotNull)
           .having(
             (semantics) => semantics.properties.selected,
@@ -128,24 +137,24 @@ void main() {
     );
     expect(
       tester
-          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-chats')))
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-chat')))
           .properties
           .label,
-      'Chats',
+      'Chat',
     );
     expect(
       tester
-          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-activity')))
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-company')))
           .properties
           .label,
-      'Activity, unread',
+      'Company',
     );
     expect(
       tester
-          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-business')))
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-today')))
           .properties
           .label,
-      'Business',
+      'Today, unread',
     );
     expect(find.text('Today route 0'), findsOneWidget);
   });
@@ -155,13 +164,24 @@ void main() {
   ) async {
     await tester.pumpWidget(buildHome(routes: buildTestRoutes()));
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
     await tester.pumpAndSettle();
-    expect(find.text('Activity route 0'), findsOneWidget);
+    expect(find.text('Chats route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-company')));
+    await tester.pumpAndSettle();
+    expect(find.text('Company route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
+    await tester.pumpAndSettle();
+    expect(find.text('Chats route 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
     await tester.pump();
-    expect(find.text('Activity route 1'), findsOneWidget);
+    expect(find.text('Chats route 1'), findsOneWidget);
   });
 
   testWidgets('gives selection haptics only when the destination changes', (
@@ -183,18 +203,52 @@ void main() {
     await tester.pump();
     expect(hapticCalls, isEmpty);
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.selectionClick');
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-activity')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
 
-    await tester.tap(find.byKey(const ValueKey('mobile-nav-business')));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-company')));
     await tester.pump();
     expect(hapticCalls, hasLength(2));
+  });
+
+  testWidgets('keeps Activity reachable from Today and pops back to Today', (
+    tester,
+  ) async {
+    final routes = buildTestRoutes(
+      todayBuilder: (_, routeContext) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () =>
+              unawaited(MobileNavigation.openActivity(context, routeContext)),
+          child: const Text('Open Activity'),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.text('Open Activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Activity route 0'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open Activity'), findsOneWidget);
+    expect(find.text('Activity route 0'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('keeps Search callable through the shared route scope', (
@@ -260,6 +314,47 @@ void main() {
     expect(find.text('Updates route'), findsOneWidget);
   });
 
+  testWidgets('keeps tab routes inside the shell and handles back locally', (
+    tester,
+  ) async {
+    final routes = buildTestRoutes(
+      chatBuilder: (_, _) => Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const Center(child: Text('Channel detail')),
+            ),
+          ),
+          child: const Text('Open channel'),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildHome(routes: routes));
+    await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open channel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Channel detail'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open channel'), findsOneWidget);
+    expect(find.text('Channel detail'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+  });
+
   testWidgets('builds a shell at the requested mobile viewport', (
     tester,
   ) async {
@@ -311,10 +406,7 @@ void main() {
     await tester.pumpWidget(
       buildShellCapture(destination: destination, brightness: brightness),
     );
-    expect(
-      tester.getSize(find.byKey(const ValueKey('mobile-brand-bar'))).height,
-      MobileShell.brandBarHeight,
-    );
+    expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
     expect(
       tester
           .getSize(find.byKey(const ValueKey('mobile-bottom-navigation')))
@@ -333,6 +425,31 @@ void main() {
       );
       debugPrint('Captured $outputPath/${destination.name}.png');
     }
+  });
+
+  testWidgets('keeps the tabs above the phone bottom safe area', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    addTearDown(() {
+      tester.view.resetPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(buildHome(routes: buildTestRoutes()));
+
+    final navigationRect = tester.getRect(
+      find.byKey(const ValueKey('mobile-bottom-navigation')),
+    );
+    expect(navigationRect.top, 844 - 34 - MobileShell.navigationBarHeight);
+    expect(navigationRect.bottom, 844);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('mobile-nav-chat'))).bottom,
+      lessThanOrEqualTo(844 - 34),
+    );
   });
 }
 

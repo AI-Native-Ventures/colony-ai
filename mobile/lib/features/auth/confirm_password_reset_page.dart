@@ -14,7 +14,13 @@ import 'account_flow_result_page.dart';
 
 /// Sets and confirms a password after a reset code was entered.
 class ConfirmPasswordResetPage extends HookConsumerWidget {
-  const ConfirmPasswordResetPage({required this.email, super.key});
+  final WidgetBuilder? pairIdentityPageBuilder;
+
+  const ConfirmPasswordResetPage({
+    required this.email,
+    this.pairIdentityPageBuilder,
+    super.key,
+  });
 
   final String email;
 
@@ -39,11 +45,23 @@ class ConfirmPasswordResetPage extends HookConsumerWidget {
           AccountAuthStatus.resetComplete) {
         await Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => const AccountFlowResultPage(
+            builder: (_) => AccountFlowResultPage(
               kind: AccountFlowResultKind.passwordUpdated,
+              pairIdentityPageBuilder: pairIdentityPageBuilder,
             ),
           ),
         );
+      } else {
+        final failure = ref.read(accountAuthProvider).failure;
+        if (failure != null &&
+            const {
+              AccountAuthFailureKind.codeExpired,
+              AccountAuthFailureKind.wrongCode,
+              AccountAuthFailureKind.tooManyAttempts,
+              AccountAuthFailureKind.resendCooldown,
+            }.contains(failure.kind)) {
+          Navigator.of(context).pop();
+        }
       }
     }
 

@@ -24,6 +24,7 @@ on:
       - "scripts/auth-e2e/**"
       - "scripts/reconcile-schema-after-pgschema.sql"
       - "scripts/start-relay-for-tests.sh"
+      - ".github/actions/cached-service-images/**"
   workflow_dispatch:
 
 permissions:
@@ -51,6 +52,11 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
         with:
           save-if: ${{ github.event_name != 'pull_request' }}
+
+      - name: Restore cached service images
+        # start-relay-for-tests.sh runs docker compose itself; restore the
+        # pinned images first so it does not pull anonymously.
+        uses: ./.github/actions/cached-service-images
 
       - name: Run account auth E2E
         shell: bash

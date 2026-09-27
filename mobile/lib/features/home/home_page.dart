@@ -36,9 +36,14 @@ class HomePage extends HookConsumerWidget {
       MobileShellDestination.today,
     });
     final todayReselection = useValueNotifier(0);
-    final chatsReselection = useValueNotifier(0);
-    final activityReselection = useValueNotifier(0);
-    final businessReselection = useValueNotifier(0);
+    final chatReselection = useValueNotifier(0);
+    final companyReselection = useValueNotifier(0);
+    final tabNavigatorKeys = useMemoized(
+      () => List.generate(
+        MobileShellDestination.values.length,
+        (_) => GlobalKey<NavigatorState>(),
+      ),
+    );
 
     MobileShellRouteContext routeContext(ValueListenable<int> tabReselection) =>
         MobileShellRouteContext(
@@ -52,44 +57,53 @@ class HomePage extends HookConsumerWidget {
       MobileRoutes.today,
       routeContext(todayReselection),
     );
-    final chatsPage = _buildPage(
+    final chatPage = _buildPage(
       context,
       MobileRoutes.chats,
-      routeContext(chatsReselection),
+      routeContext(chatReselection),
     );
-    final activityPage = _buildPage(
-      context,
-      MobileRoutes.activity,
-      routeContext(activityReselection),
-    );
-    final businessPage = _buildPage(
+    final companyPage = _buildPage(
       context,
       MobileRoutes.business,
-      routeContext(businessReselection),
+      routeContext(companyReselection),
     );
 
-    Widget pageFor(MobileShellDestination destination, Widget? page) =>
-        visited.value.contains(destination)
-        ? page ?? const SizedBox.shrink()
-        : const SizedBox.shrink();
+    Widget pageFor(MobileShellDestination destination, Widget page) {
+      if (!visited.value.contains(destination)) {
+        return const SizedBox.shrink();
+      }
+
+      final navigatorKey =
+          tabNavigatorKeys[MobileShellDestination.values.indexOf(destination)];
+      return NavigatorPopHandler<void>(
+        enabled: selected.value == destination,
+        onPopWithResult: (_) {
+          navigatorKey.currentState?.maybePop();
+        },
+        child: Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (settings) =>
+              MaterialPageRoute<void>(settings: settings, builder: (_) => page),
+        ),
+      );
+    }
 
     return MobileRouteScope(
       registry: routeRegistry,
       child: MobileShell(
         destination: selected.value,
         hasUnreadActivity: hasUnreadInbox,
+        showBrandBar: false,
         overlayBuilder: overlayBuilder,
         onDestinationSelected: (next) {
           if (next == selected.value) {
             switch (next) {
               case MobileShellDestination.today:
                 todayReselection.value++;
-              case MobileShellDestination.chats:
-                chatsReselection.value++;
-              case MobileShellDestination.activity:
-                activityReselection.value++;
-              case MobileShellDestination.business:
-                businessReselection.value++;
+              case MobileShellDestination.chat:
+                chatReselection.value++;
+              case MobileShellDestination.company:
+                companyReselection.value++;
             }
             return;
           }
@@ -106,9 +120,8 @@ class HomePage extends HookConsumerWidget {
                 index: MobileShellDestination.values.indexOf(selected.value),
                 children: [
                   pageFor(MobileShellDestination.today, todayPage),
-                  pageFor(MobileShellDestination.chats, chatsPage),
-                  pageFor(MobileShellDestination.activity, activityPage),
-                  pageFor(MobileShellDestination.business, businessPage),
+                  pageFor(MobileShellDestination.chat, chatPage),
+                  pageFor(MobileShellDestination.company, companyPage),
                 ],
               ),
             ),
@@ -118,9 +131,9 @@ class HomePage extends HookConsumerWidget {
     );
   }
 
-  Widget? _buildPage<TArguments>(
+  Widget _buildPage<TArguments>(
     BuildContext context,
     MobileRoute<TArguments> route,
     TArguments arguments,
-  ) => routeRegistry.maybeBuild(context, route, arguments);
+  ) => routeRegistry.build(context, route, arguments);
 }

@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:app_badge_plus/app_badge_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:intl/intl.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -10,40 +12,84 @@ import 'package:uuid/uuid.dart';
 import 'features/age_gate/age_restriction_page.dart';
 import 'features/age_gate/age_signal_provider.dart';
 import 'features/activity/activity_page.dart';
+import 'features/activity/activity_home_page.dart';
 import 'features/activity/activity_provider.dart';
+import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
 import 'features/auth/account_claim_prompt.dart';
+import 'features/auth/account_claim_status_provider.dart';
 import 'features/auth/auth_entry_page.dart';
+import 'features/auth/request_password_reset_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
 import 'features/channels/channels_page.dart';
 import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
-import 'features/invites/invite_create_page.dart';
+import 'features/home/company_hub_page.dart';
+import 'features/today/today_models.dart';
+import 'features/today/today_page.dart';
 import 'features/invites/invite_join_provider.dart';
 import 'features/pairing/pairing_page.dart';
 import 'features/pairing/pairing_provider.dart';
-import 'features/pulse/pulse_page.dart';
+import 'features/pulse/team_update_compose_page.dart';
+import 'features/pulse/team_update_note_page.dart';
+import 'features/pulse/pulse_actions.dart';
+import 'features/pulse/pulse_provider.dart';
+import 'features/pulse/team_updates_page.dart';
 import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
 import 'features/channels/deep_link_dispatcher.dart';
+import 'features/channels/compose_bar.dart';
+import 'features/channels/message_content.dart';
+import 'features/channels/channel_forum_route.dart';
+import 'features/forum/forum_new_post_page.dart';
+import 'features/forum/forum_posts_view.dart';
+import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
+import 'features/profile/user_profile_sheet.dart';
+import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
-import 'features/profile/settings_profile_header.dart';
-import 'features/profile/profile_edit_page.dart';
-import 'features/profile/profile_text_editor.dart';
-import 'features/settings/settings_page.dart';
+import 'features/profile/profile_avatar_page.dart';
+import 'features/profile/profile_image_page.dart';
+import 'features/profile/profile_avatar_crop_route_page.dart';
+import 'features/profile/profile_avatar_emoji_page.dart';
+import 'features/profile/profile_avatar_capture_page.dart';
+import 'features/profile/profile_avatar_review_page.dart';
+import 'features/profile/profile_avatar_state_page.dart';
+import 'features/profile/profile_status_emoji_page.dart';
+import 'features/profile/profile_status_page.dart';
+import 'features/profile/profile_status_saved_page.dart';
+import 'features/profile/user_status_provider.dart';
+import 'features/settings/appearance_display_preference.dart';
+import 'features/settings/appearance_settings_pages.dart';
+import 'features/settings/personal_settings_home_page.dart';
+import 'features/settings/profile_settings_page.dart';
+import 'features/settings/settings_devices_page.dart';
+import 'features/settings/settings_device_page.dart';
+import 'features/settings/settings_feedback_page.dart';
+import 'features/settings/settings_feedback_failed_page.dart';
+import 'features/settings/settings_feedback_sent_page.dart';
+import 'features/settings/settings_export_page.dart';
+import 'features/settings/settings_export_failed_page.dart';
+import 'features/settings/settings_notifications_page.dart';
+import 'features/settings/settings_privacy_page.dart';
+import 'features/settings/settings_clear_cache_page.dart';
+import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
+import 'shared/community/community_icon_provider.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/navigation/mobile_route.dart';
+import 'shared/navigation/mobile_navigation.dart';
 import 'shared/navigation/mobile_routes.dart';
 import 'shared/push/push_subscription_provider.dart';
 import 'shared/push/push_relay_capability_provider.dart';
 import 'shared/relay/relay.dart';
+import 'shared/profile/user_cache_provider.dart';
+import 'shared/utils/string_utils.dart';
 import 'shared/read_state/read_state_provider.dart';
 import 'shared/theme/theme.dart';
 import 'shared/shell/mobile_shell.dart';
@@ -60,23 +106,452 @@ const _starterChannels = [
 ];
 
 /// App composition is the only layer that knows concrete feature pages.
-/// Today and Business builders are registered by their feature slices when
-/// their W00 data contracts are integrated.
-final _mobileRouteRegistry = MobileRouteRegistry.empty()
+final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     .register(MobileRoutes.chats, (context, routeContext) {
       return ChannelsPage(
         settingsPageBuilder: routeContext.settingsPageBuilder,
         tabReselection: routeContext.tabReselection,
         onSettingsTransitionProgress: routeContext.onSettingsTransitionProgress,
+        routeRegistry: _mobileRouteRegistry,
       );
     })
+    .register(MobileRoutes.today, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final profile = ref.watch(profileProvider).asData?.value;
+          final communityIcon = community == null
+              ? null
+              : ref
+                    .watch(communityIconProvider(community.relayUrl))
+                    .asData
+                    ?.value;
+          final activityAsync = ref.watch(activityProvider);
+          final needsAction =
+              activityAsync.asData?.value.needsAction ?? const <FeedItem>[];
+          if (needsAction.isNotEmpty) {
+            ref
+                .read(userCacheProvider.notifier)
+                .preload(needsAction.map((item) => item.pubkey).toList());
+          }
+          final reviewItems = activityAsync.whenData(
+            (feed) => [
+              for (final item in feed.needsAction) _todayReviewItem(ref, item),
+            ],
+          );
+          final notesAsync = ref.watch(globalNotesProvider);
+          final latestNote = notesAsync.asData?.value
+              .where((note) => note.replyParentId == null)
+              .firstOrNull;
+          final noteAuthor = latestNote == null
+              ? null
+              : ref.watch(
+                  userCacheProvider.select((cache) => cache[latestNote.pubkey]),
+                );
+          if (latestNote != null && noteAuthor == null) {
+            ref.read(userCacheProvider.notifier).get(latestNote.pubkey);
+          }
+          final teamUpdate = notesAsync.whenData((notes) {
+            final note = notes
+                .where((candidate) => candidate.replyParentId == null)
+                .firstOrNull;
+            if (note == null) return null;
+            final firstParagraph = note.content
+                .trim()
+                .split(RegExp(r'\n\s*\n'))
+                .firstOrNull
+                ?.replaceAll('\n', ' ')
+                .trim();
+            final title = firstParagraph?.isNotEmpty == true
+                ? firstParagraph!
+                : 'Team update';
+            final author =
+                _firstName(noteAuthor?.displayName) ?? shortPubkey(note.pubkey);
+            final time = DateFormat('HH:mm').format(
+              DateTime.fromMillisecondsSinceEpoch(note.createdAt * 1000),
+            );
+            return TodayTeamUpdate(
+              id: note.id,
+              title: title,
+              subtitle: '$author shared an update · $time',
+              initials: noteAuthor?.initials ?? _pubkeyInitial(note.pubkey),
+            );
+          });
+
+          return TodayPage(
+            communityName: community?.name,
+            communityIconUrl: communityIcon,
+            profileName: profile?.displayName,
+            reviewItems: reviewItems,
+            teamUpdate: teamUpdate,
+            updatesPageBuilder: (_, published) =>
+                TeamUpdatesPage(initiallyPublished: published),
+            onOpenReview: (itemId) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ActivityPage(initialItemId: itemId),
+              ),
+            ),
+            onOpenActivity: (activityContext) => unawaited(
+              MobileNavigation.openActivity(activityContext, routeContext),
+            ),
+            onOpenUpdate: (noteId) =>
+                MobileNavigation.openUpdateNote(context, noteId),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.activity, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final communityIcon = community == null
+              ? null
+              : ref
+                    .watch(communityIconProvider(community.relayUrl))
+                    .asData
+                    ?.value;
+          return ActivityHomePage(
+            communityName: community?.name,
+            communityIconUrl: communityIcon,
+            currentUser: ref.watch(profileProvider).asData?.value,
+            tabReselection: routeContext.tabReselection,
+            updatesPageBuilder: (_, published) =>
+                TeamUpdatesPage(initiallyPublished: published),
+            onOpenItem: (item) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ActivityPage(initialItemId: item.id),
+              ),
+            ),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.business, (context, routeContext) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final community = ref.watch(activeCommunityProvider).value;
+          final profile = ref.watch(profileProvider).asData?.value;
+          return CompanyHubPage(
+            routeRegistry: _mobileRouteRegistry,
+            settingsPageBuilder: routeContext.settingsPageBuilder,
+            companyName: community?.name,
+            identityInitials: profile?.initials,
+            identityLabel: profile?.label,
+            identityAvatarUrl: profile?.avatarUrl,
+            onOpenQuickActions: () =>
+                ChannelQuickActionsLauncher.openFromHome(ref),
+          );
+        },
+      );
+    })
+    .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
     .register(
-      MobileRoutes.activity,
-      (context, routeContext) =>
-          ActivityPage(tabReselection: routeContext.tabReselection),
+      MobileRoutes.updateNote,
+      (context, noteId) => buildTeamUpdateNoteRoute(noteId),
     )
-    .register(MobileRoutes.updates, (context, _) => const PulsePage())
-    .register(MobileRoutes.search, (context, _) => const SearchPage());
+    .register(
+      MobileRoutes.updateCompose,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.compose),
+    )
+    .register(
+      MobileRoutes.updateDraft,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.draft),
+    )
+    .register(
+      MobileRoutes.updateFailed,
+      (context, _) => _teamUpdateComposer(TeamUpdateComposeMode.failed),
+    )
+    .register(
+      MobileRoutes.updatePublished,
+      (context, _) => const TeamUpdatesPage(initiallyPublished: true),
+    )
+    .register(MobileRoutes.search, (context, _) => const SearchPage())
+    .register(
+      MobileRoutes.profileStatus,
+      (context, _) => const ProfileStatusPage(),
+    )
+    .register(
+      MobileRoutes.profileStatusEmoji,
+      (context, selectedEmoji) =>
+          ProfileStatusEmojiPage(selectedEmoji: selectedEmoji),
+    )
+    .register(
+      MobileRoutes.profileStatusSaved,
+      (context, _) => const ProfileStatusSavedPage(),
+    )
+    .register(
+      MobileRoutes.settingsHome,
+      (context, _) => Consumer(
+        builder: (context, ref, _) => _personalSettingsHomePage(ref),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsProfile,
+      (context, _) => Consumer(
+        builder: (context, ref, _) {
+          final profile = ref.watch(profileProvider).asData?.value;
+          final account = ref.watch(accountProfileProvider).asData?.value;
+          final status = ref.watch(userStatusProvider).asData?.value;
+          final profileName = profile?.displayName?.trim() ?? '';
+          final displayName = profileName.isEmpty
+              ? 'Your profile'
+              : profileName;
+          return ProfileSettingsPage(
+            displayName: displayName,
+            avatarUrl: profile?.avatarUrl,
+            email: account?.email,
+            statusLabel: status == null || status.isEmpty
+                ? 'Set a status'
+                : '${status.emoji} ${status.text}'.trim(),
+            onSaveDisplayName: ref
+                .read(profileProvider.notifier)
+                .updateDisplayName,
+          );
+        },
+      ),
+    )
+    .register(
+      MobileRoutes.settingsAppearance,
+      (context, _) => const AppearanceSettingsPage(),
+    )
+    .register(
+      MobileRoutes.settingsPreferences,
+      (context, _) => const PersonalPreferencesPage(),
+    )
+    .register(
+      MobileRoutes.settingsThemes,
+      (context, _) => const ThemeCatalogPage(),
+    )
+    .register(
+      MobileRoutes.settingsThemePreview,
+      (context, themeName) => ThemePreviewPage(themeName: themeName),
+    )
+    .register(
+      MobileRoutes.settingsThemeApplied,
+      (context, themeName) => ThemeAppliedPage(themeName: themeName),
+    )
+    .register(
+      MobileRoutes.settingsDevices,
+      (context, _) => SettingsDevicesPage(
+        currentDeviceName: _currentDeviceName,
+        onOpenCurrentDevice: () => MobileNavigation.push<String, Object?>(
+          context,
+          MobileRoutes.settingsDevice,
+          'current',
+        ),
+        onLinkAnotherDevice: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => const PairingPage()),
+        ),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsDevice,
+      (context, _) => Consumer(
+        builder: (context, ref, _) => SettingsDevicePage(
+          deviceName: _currentDeviceName,
+          communityName: ref.watch(activeCommunityProvider).asData?.value?.name,
+        ),
+      ),
+    )
+    .register(
+      MobileRoutes.settingsNotifications,
+      (context, _) => const SettingsNotificationsPage(),
+    )
+    .register(
+      MobileRoutes.settingsPrivacy,
+      (context, _) => const SettingsPrivacyPage(),
+    )
+    .register(
+      MobileRoutes.settingsClearCache,
+      (context, _) => const SettingsClearCachePage(),
+    )
+    .register(
+      MobileRoutes.settingsExport,
+      (context, _) => const SettingsExportPage(),
+    )
+    .register(
+      MobileRoutes.settingsExportFailed,
+      (context, _) => const SettingsExportFailedPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedback,
+      (context, _) => const SettingsFeedbackPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedbackSent,
+      (context, _) => const SettingsFeedbackSentPage(),
+    )
+    .register(
+      MobileRoutes.settingsFeedbackFailed,
+      (context, _) => const SettingsFeedbackFailedPage(),
+    )
+    .register(
+      MobileRoutes.settingsSaveFailed,
+      (context, _) => const SettingsSaveFailedPage(),
+    )
+    .register(
+      MobileRoutes.accountForgot,
+      (context, _) => RequestPasswordResetPage(
+        pairIdentityPageBuilder: (_) => const PairingPage(),
+      ),
+    )
+    .register(
+      MobileRoutes.profileAvatar,
+      (context, _) => const ProfileAvatarPage(),
+    )
+    .register(
+      MobileRoutes.profileImage,
+      (context, _) => const ProfileImagePage(),
+    )
+    .register(
+      MobileRoutes.profileCrop,
+      (context, bytes) => ProfileAvatarCropRoutePage(imageBytes: bytes),
+    )
+    .register(
+      MobileRoutes.profileInvalid,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.invalid),
+    )
+    .register(
+      MobileRoutes.profileSaving,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.saving),
+    )
+    .register(
+      MobileRoutes.profileSaved,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.saved),
+    )
+    .register(
+      MobileRoutes.profileFailed,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.failed),
+    )
+    .register(
+      MobileRoutes.profileAvatarCapture,
+      (context, _) => const ProfileAvatarCapturePage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarCameraDenied,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.cameraDenied),
+    )
+    .register(
+      MobileRoutes.profileAvatarEmoji,
+      (context, _) => const ProfileAvatarEmojiPage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarReview,
+      (context, _) => const ProfileAvatarReviewPage(),
+    )
+    .register(
+      MobileRoutes.profileAvatarSaved,
+      (context, _) =>
+          const ProfileAvatarStatePage(state: ProfileAvatarState.avatarSaved),
+    )
+    .register(ChannelForumRoutes.posts, (context, arguments) {
+      return ForumPostsView(
+        channelId: arguments.channelId,
+        channelName: arguments.channelName,
+        currentPubkey: arguments.currentPubkey,
+        isMember: arguments.isMember,
+        isArchived: arguments.isArchived,
+        presentation: _forumPresentation(),
+      );
+    })
+    .register(ChannelForumRoutes.newPost, (context, arguments) {
+      return ForumNewPostPage(
+        channelId: arguments.channelId,
+        channelName: arguments.channelName,
+        memberCount: arguments.memberCount,
+        presentation: _forumPresentation(),
+      );
+    });
+
+final _currentDeviceName = switch (defaultTargetPlatform) {
+  TargetPlatform.iOS => 'This iPhone',
+  TargetPlatform.android => 'This phone',
+  _ => 'This device',
+};
+
+ForumPresentationFactories _forumPresentation() => ForumPresentationFactories(
+  composeBarBuilder:
+      ({
+        required channelId,
+        required channelName,
+        required hintText,
+        required onSend,
+        draftKeyOverride,
+        postEditorMode = false,
+        allowEmptySend = false,
+        enabled = true,
+        submitController,
+        onBodyChanged,
+        onAttachmentCountChanged,
+        onSubmissionChanged,
+        onFailure,
+      }) => ComposeBar(
+        channelId: channelId,
+        channelName: channelName,
+        hintText: hintText,
+        onSend: onSend,
+        draftKeyOverride: draftKeyOverride,
+        postEditorMode: postEditorMode,
+        allowEmptySend: allowEmptySend,
+        enabled: enabled,
+        submitController: submitController,
+        onBodyChanged: onBodyChanged,
+        onAttachmentCountChanged: onAttachmentCountChanged,
+        onSubmissionChanged: onSubmissionChanged,
+        onFailure: onFailure,
+      ),
+  messageContentBuilder: (context, content) => MessageContent(
+    content: content.content,
+    mentionNames: content.mentionNames,
+    agentMentionPubkeys: content.agentMentionPubkeys,
+    tags: content.tags,
+    baseStyle: content.baseStyle,
+    maxLines: content.maxLines,
+    onMentionTap: content.onMentionTap,
+  ),
+  openProfile: showUserProfileSheet,
+  currentUserName: (ref) => ref.watch(profileProvider).value?.displayName,
+);
+
+/// Builds the production page for a team update note route.
+Widget buildTeamUpdateNoteRoute(String noteId) =>
+    TeamUpdateNotePage(noteId: noteId, onReviewCampaign: null);
+
+TodayReviewItem _todayReviewItem(WidgetRef ref, FeedItem item) {
+  final author = ref.watch(
+    userCacheProvider.select((cache) => cache[item.pubkey.toLowerCase()]),
+  );
+  if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
+  return TodayReviewItem(
+    id: item.id,
+    title: item.displayContent,
+    subtitle: item.channelName.isEmpty
+        ? '${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review'
+        : '${item.channelName} · ${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review',
+    initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+  );
+}
+
+String _pubkeyInitial(String pubkey) =>
+    pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?';
+
+String? _firstName(String? name) {
+  final normalized = name?.trim();
+  if (normalized == null || normalized.isEmpty) return null;
+  return normalized.split(RegExp(r'\s+')).first;
+}
+
+Widget _teamUpdateComposer(TeamUpdateComposeMode mode) => Consumer(
+  builder: (context, ref, _) => TeamUpdateComposePage(
+    mode: mode,
+    onPublish: (content) => publishNote(ref, content: content),
+  ),
+);
 
 final _inviteRelayConnectedProvider = FutureProvider.family<void, String>((
   ref,
@@ -332,6 +807,14 @@ class App extends HookConsumerWidget {
     final communityTheme = ageSignalState != AgeSignalState.restricted
         ? ref.watch(communityThemeProvider)
         : defaultCommunityTheme;
+    final displayPreference = ref.watch(appearanceDisplayPreferenceProvider);
+    final baseVisualDensity = displayPreference.density.visualDensity;
+    final effectiveVisualDensity = VisualDensity(
+      horizontal: baseVisualDensity.horizontal,
+      vertical:
+          baseVisualDensity.vertical +
+          (displayPreference.largerTapTargets ? 1 : 0),
+    );
     final themeMode = communityTheme.mode;
     final accentIndex = effectiveAccentIndex(
       communityTheme.theme,
@@ -421,25 +904,39 @@ class App extends HookConsumerWidget {
         mobileTokens: isBuzzTheme(schemeName)
             ? MobileDesignTokens.light
             : MobileDesignTokens.fromColorScheme(lightScheme),
-      ),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
         mobileTokens: isBuzzTheme(schemeName)
             ? MobileDesignTokens.dark
             : MobileDesignTokens.fromColorScheme(darkScheme),
-      ),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
       // route that was pushed while the store signal request was in flight.
-      builder: (context, child) => switch (ageSignalState) {
-        AgeSignalState.restricted => const AgeRestrictionPage(),
-        _ => AppMarkdownTheme(
-          child: MobileHuddleShell(
-            navigatorKey: _mobileRootNavigatorKey,
-            child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) {
+        final appContent = switch (ageSignalState) {
+          AgeSignalState.restricted => const AgeRestrictionPage(),
+          _ => AppMarkdownTheme(
+            child: MobileHuddleShell(
+              navigatorKey: _mobileRootNavigatorKey,
+              child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+            ),
           ),
-        ),
+        };
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            disableAnimations:
+                mediaQuery.disableAnimations || displayPreference.reduceMotion,
+            textScaler: applyAppearanceTextSize(
+              mediaQuery.textScaler,
+              displayPreference.textSize,
+            ),
+          ),
+          child: appContent,
+        );
       },
       home: authState.when(
         loading: () => const _SplashScreen(),
@@ -457,13 +954,16 @@ class App extends HookConsumerWidget {
                   ChannelQuickActionsLauncher(
                     visible:
                         shellContext.destination ==
-                        MobileShellDestination.chats,
+                            MobileShellDestination.chat ||
+                        shellContext.destination ==
+                            MobileShellDestination.company,
                     navigationBarHeight: shellContext.navigationBarHeight,
                     navigationBarBottomGap:
                         shellContext.navigationBarHeight + Grid.half,
                     navigationBarWidth: shellContext.navigationBarWidth,
                     systemBottomInset: shellContext.bottomInset,
                     rightInset: Grid.xs,
+                    routeRegistry: _mobileRouteRegistry,
                   ),
             ),
           ),
@@ -485,18 +985,19 @@ class _SettingsPageContent extends ConsumerWidget {
   const _SettingsPageContent();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return SettingsPage(
-      profileHeader: const SettingsProfileHeader(),
-      profileEditPageBuilder: (_) =>
-          const ProfileEditPage(startInPhotoEditor: true),
-      onEditDisplayName: showProfileDisplayNameEditor,
-      onEditProfileDescription: showProfileDescriptionEditor,
-      invitePageBuilder: (_) => const CommunityInvitePage(),
-      identityRecoveryPageBuilder: (_) =>
-          const PairingPage(addingCommunity: true, identityRecoveryOnly: true),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) =>
+      _personalSettingsHomePage(ref);
+}
+
+Widget _personalSettingsHomePage(WidgetRef ref) {
+  final profile = ref.watch(profileProvider).asData?.value;
+  final account = ref.watch(accountProfileProvider).asData?.value;
+  final profileName = profile?.displayName?.trim() ?? '';
+  return PersonalSettingsHomePage(
+    displayName: profileName.isEmpty ? 'Your profile' : profileName,
+    email: account?.email,
+    avatarUrl: profile?.avatarUrl,
+  );
 }
 
 class _SplashScreen extends StatelessWidget {

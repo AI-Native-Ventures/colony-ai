@@ -12,7 +12,7 @@ const _pairingAuthOkTimeout = Duration(seconds: 8);
 /// Ephemeral WebSocket connection for NIP-AB pairing.
 ///
 /// Uses ephemeral keys for NIP-42 auth (not the stored user keys).
-/// Single-use — disposed after the pairing session completes.
+/// Single-use and disposed after the pairing session completes.
 class PairingAuthException implements Exception {
   final String message;
 

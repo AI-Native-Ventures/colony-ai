@@ -1,11 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import UPNG from "upng-js";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { compareImages } from "../../scripts/visualComparison.mjs";
+import type { VisualFixtureSeed } from "../../src/testing/e2eBridge";
 
 type StorageSeed = {
   localStorage?: Record<string, unknown>;
@@ -14,17 +15,10 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type:
-    | "click"
-    | "hover"
-    | "fill"
-    | "selectOption"
-    | "setInputFiles"
-    | "waitFor";
+  type: "click" | "hover" | "select";
   target?: "reference" | "app" | "both";
   selector: string;
   value?: string;
-  state?: "attached" | "detached" | "visible" | "hidden";
   timeoutMs?: number;
   options?: Record<string, unknown>;
 };
@@ -34,15 +28,16 @@ type VisualCase = {
   referenceUrl: string;
   referencePrefs: StorageSeed;
   referenceInventoryRoute?: string;
+  referenceIgnoreSelectors?: string[];
   appRoute: string;
   appPrefs: StorageSeed;
   appMockData?: Record<string, unknown>;
-  audioInputDevices?: Array<{
-    deviceId: string;
-    groupId: string;
-    kind: "audioinput";
-    label: string;
+  appActiveTurns?: Array<{
+    agentPubkey: string;
+    channelId: string;
+    turnId: string;
   }>;
+  fixtureVariant?: "reviews-empty";
   viewport: "1728x1117" | "1440x900";
   theme: "light" | "dark";
   actions: VisualAction[];
@@ -50,15 +45,21 @@ type VisualCase = {
     | string
     | { x: number; y: number; width: number; height: number }
     | { selector: string }
-    | { referenceSelector: string; appSelector?: string };
+    | {
+        referenceSelector: string;
+        appSelector?: string;
+        width?: number;
+        height?: number;
+        normalizeAppRootToReference?: boolean;
+      };
   referenceReadySelector?: string;
   referenceCanvas?: boolean;
   appReadySelector?: string;
-  appPostActionReadySelector?: string;
-  clearAppFocus?: boolean;
+  appPreActionsReadySelector?: string;
 };
 
 type VisualManifest = {
+  fixture?: string;
   matrix?: {
     viewports: VisualCase["viewport"][];
     themes: VisualCase["theme"][];
@@ -83,6 +84,11 @@ type VisualManifest = {
   >;
 };
 
+type VisualFixture = {
+  appMockData?: Record<string, unknown>;
+  activeTurns?: VisualCase["appActiveTurns"];
+};
+
 const manifestPath = process.env.VISUAL_COMPARE_MANIFEST;
 const outputRoot = process.env.VISUAL_COMPARE_OUTPUT_DIR;
 const appBaseUrl = process.env.VISUAL_COMPARE_APP_BASE_URL;
@@ -95,6 +101,20 @@ if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
 const manifest = JSON.parse(
   await readFile(manifestPath, "utf8"),
 ) as VisualManifest;
+const manifestFixture = manifest.fixture
+  ? (JSON.parse(
+      await readFile(
+        path.resolve(path.dirname(manifestPath), manifest.fixture),
+        "utf8",
+      ),
+    ) as VisualFixture)
+  : null;
+const r17Fixture = JSON.parse(
+  await readFile(new URL("./fixtures/g1-r17.json", import.meta.url), "utf8"),
+) as VisualFixtureSeed;
+const r17VoiceNoteWav = await readFile(
+  new URL("./fixtures/sample-note.wav", import.meta.url),
+);
 const manropeFont = await readFile(
   new URL(
     "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
@@ -117,11 +137,11 @@ const cases = templates.flatMap((entry) =>
     ...(variant
       ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
       : {}),
-    referencePrefs: mergeStorageSeeds(
+    referencePrefs: mergeStorageSeed(
       defaults.referencePrefs,
       entry.referencePrefs,
     ),
-    appPrefs: mergeStorageSeeds(defaults.appPrefs, entry.appPrefs),
+    appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
     appMockData: {
       ...(defaults.appMockData ?? {}),
       ...(entry.appMockData ?? {}),
@@ -129,6 +149,16 @@ const cases = templates.flatMap((entry) =>
     actions: entry.actions ?? defaults.actions ?? [],
   })),
 ) as VisualCase[];
+
+function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
+  return {
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
+}
 
 test.describe("visual comparison captures", () => {
   test.describe.configure({ mode: "serial" });
@@ -141,21 +171,30 @@ test.describe("visual comparison captures", () => {
         deviceScaleFactor: 1,
         colorScheme: entry.theme,
         timezoneId: "Africa/Johannesburg",
+        // The reference is a South African business and renders 24-hour
+        // times; match its locale so time formatting is not a false diff.
+        locale: "en-ZA",
       } as const;
       const referenceContext = await browser.newContext(contextOptions);
       const appContext = await browser.newContext(contextOptions);
 
       try {
         const referencePage = await referenceContext.newPage();
+        await referencePage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         // Keep the frozen reference files untouched while applying the owner
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch({ timeout: 30_000 });
+          const response = await route.fetch();
           const stylesheet = await response.text();
+          const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+            .map((selector) => `${selector} { display: none !important; }`)
+            .join("\n");
           await route.fulfill({
             response,
-            body: stylesheet.replace(/\bSatoshi\b/g, "Manrope"),
+            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
           });
         });
         await referencePage.route(
@@ -191,71 +230,81 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
-        if (
-          entry.theme === "dark" &&
-          new URL(entry.referenceUrl).pathname.includes("/desktop/")
-        ) {
-          await referencePage.locator("#dark").click();
-        }
         if (entry.referenceCanvas) {
           await fitReferenceCanvas(referencePage, width, height);
         }
 
         const appPage = await appContext.newPage();
+        await appPage.route(
+          "https://example.invalid/voice-note-r17.wav",
+          (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "audio/x-wav",
+              body: r17VoiceNoteWav,
+            }),
+        );
+        await appPage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
         const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
         await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
-        if (entry.audioInputDevices) {
-          await appPage.addInitScript((devices) => {
-            const mediaDevices = navigator.mediaDevices;
-            if (!mediaDevices) return;
-            Object.defineProperty(mediaDevices, "enumerateDevices", {
-              configurable: true,
-              value: async () =>
-                devices.map((device) => ({
-                  ...device,
-                  toJSON: () => ({}),
-                })),
-            });
-          }, entry.audioInputDevices);
-        }
-        const mockData = { ...(entry.appMockData ?? {}) };
-        const moderationReports = mockData.moderationReports;
-        delete mockData.moderationReports;
-        await installMockBridge(appPage, mockData, {
-          skipCommunitySeed: Object.hasOwn(
-            entry.appPrefs.localStorage ?? {},
-            "buzz-communities",
-          ),
-        });
-        await appPage.route(
-          "https://example.com/e2e/visual-settings-emoji/**",
-          async (route) => {
-            const filename = new URL(route.request().url()).pathname
-              .split("/")
-              .at(-1);
-            const color = entry.theme === "dark" ? "#f4f4f5" : "#27272a";
-            const artwork: Record<string, string> = {
-              "celebrate.svg": `<path d="M16 2 20 11 30 12 22.5 19 25 29 16 23.5 7 29 9.5 19 2 12 12 11Z" fill="${color}"/>`,
-              "approved.svg": `<path d="m5 17 7 7L27 8" fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>`,
-              "colony.svg": `<g fill="${color}"><circle cx="16" cy="7" r="4"/><circle cx="24" cy="12" r="4"/><circle cx="24" cy="21" r="4"/><circle cx="16" cy="25" r="4"/><circle cx="8" cy="21" r="4"/><circle cx="8" cy="12" r="4"/><circle cx="16" cy="16" r="3"/></g>`,
-            };
-            await route.fulfill({
-              contentType: "image/svg+xml",
-              body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${artwork[filename ?? ""] ?? ""}</svg>`,
-            });
-          },
-        );
-        if (Array.isArray(moderationReports)) {
-          await appPage.route("**/moderation/reports**", (route) =>
-            route.fulfill({ json: moderationReports }),
+        if (manifestFixture) {
+          // Manifests with their own fixture (w07 agents) seed only that data.
+          await installMockBridge(
+            appPage,
+            entry.appMockData ?? manifestFixture.appMockData,
           );
-          await appPage.route("**/moderation/audit**", (route) =>
-            route.fulfill({ json: [] }),
+        } else {
+          await appPage.addInitScript(
+            ({ pubkey }) => {
+              localStorage.setItem(
+                `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+                JSON.stringify({
+                  version: 1,
+                  groups: {
+                    dms: "recent",
+                    starred: "recent",
+                    "section:client-work": "recent",
+                  },
+                }),
+              );
+            },
+            { pubkey: r17Fixture.identity.pubkey },
           );
+          const visualFixture = {
+            ...r17Fixture,
+            today: {
+              ...r17Fixture.today,
+              ...(entry.fixtureVariant === "reviews-empty"
+                ? { businessReviews: [], reviewsEmpty: true }
+                : {}),
+            },
+          };
+          await installMockBridge(appPage, {
+            ...(entry.appMockData ?? {}),
+            visualFixture,
+          });
         }
-        await appPage.goto(appUrl, {
-          waitUntil: "domcontentloaded",
-        });
+        if (entry.referenceInventoryRoute === "navigation/history") {
+          const channelUrl = new URL(
+            "/#/channels/c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+            appBaseUrl,
+          ).toString();
+          await appPage.goto(channelUrl, { waitUntil: "domcontentloaded" });
+          await appPage.goto(
+            new URL("/#/navigation/history", appBaseUrl).toString(),
+            { waitUntil: "domcontentloaded" },
+          );
+          await appPage.goto(new URL("/#/workflows", appBaseUrl).toString(), {
+            waitUntil: "domcontentloaded",
+          });
+          await appPage.goBack({ waitUntil: "domcontentloaded" });
+        } else {
+          await appPage.goto(appUrl, {
+            waitUntil: "domcontentloaded",
+          });
+        }
         await appPage.waitForLoadState("load");
 
         await waitForCaptureReady(
@@ -266,13 +315,84 @@ test.describe("visual comparison captures", () => {
         await waitForCaptureReady(
           appPage,
           "Manrope Variable",
-          entry.appReadySelector,
+          entry.appPreActionsReadySelector ?? entry.appReadySelector,
         );
-        if (entry.id.startsWith("desktop-06-")) {
-          await appPage.getByTestId("settings-profile-avatar-context").click();
-          await appPage.getByTestId("profile-avatar-edit").waitFor({
-            state: "visible",
+        const activeTurns =
+          entry.appActiveTurns ?? manifestFixture?.activeTurns ?? [];
+        if (activeTurns.length > 0) {
+          await appPage.waitForFunction(
+            () =>
+              typeof (
+                window as Window & {
+                  __BUZZ_E2E_SEED_ACTIVE_TURNS__?: unknown;
+                }
+              ).__BUZZ_E2E_SEED_ACTIVE_TURNS__ === "function",
+            null,
+            { timeout: 10_000 },
+          );
+          await appPage.evaluate((turns) => {
+            const seed = (
+              window as Window & {
+                __BUZZ_E2E_SEED_ACTIVE_TURNS__?: (turn: {
+                  agentPubkey: string;
+                  channelId: string;
+                  turnId: string;
+                }) => void;
+              }
+            ).__BUZZ_E2E_SEED_ACTIVE_TURNS__;
+            for (const turn of turns) seed?.(turn);
+          }, activeTurns);
+        }
+        if (entry.referenceInventoryRoute === "today/updates") {
+          const contactList = await appPage.evaluate(async () => {
+            const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+            if (!invoke) throw new Error("The visual mock bridge is missing.");
+            const identity = (await invoke("get_identity")) as {
+              pubkey: string;
+            };
+            const result = (await invoke("get_contact_list", {
+              pubkey: identity.pubkey,
+            })) as { tags: string[][] };
+            return { pubkey: identity.pubkey, tags: result.tags };
           });
+          expect(contactList).toEqual({
+            pubkey: r17Fixture.identity.pubkey,
+            tags: r17Fixture.followedPubkeys?.map((pubkey) => ["p", pubkey]),
+          });
+          const followButtons = appPage.locator(".colony-update-follow");
+          await expect(followButtons).toHaveCount(2);
+          await expect
+            .poll(() => followButtons.allTextContents())
+            .toEqual(["Following", "Following"]);
+        }
+        if (entry.referenceInventoryRoute === "channel/sales") {
+          const crossPostControl = appPage.getByRole("checkbox", {
+            name: "Also send to #Sales",
+          });
+          await expect(crossPostControl).toBeVisible();
+          await expect(crossPostControl).not.toBeChecked();
+          const previewMessage = appPage.locator(
+            '[data-message-id="r17-sales-aya"]',
+          );
+          await expect(
+            previewMessage.locator(
+              '.message-markdown > p > a[href="https://example.com/independent-brands"]',
+            ),
+          ).toHaveCount(0);
+          await expect(
+            previewMessage.locator(
+              ".message-markdown [data-link-preview-list]",
+            ),
+          ).toHaveCount(1);
+          const threadPanel = appPage.locator(
+            '[data-testid="message-thread-panel"]',
+          );
+          await expect(
+            threadPanel.locator('[data-testid="message-author"]'),
+          ).toHaveCount(2);
+          await expect(
+            appPage.locator('[data-testid="voice-note-playback-waveform"]'),
+          ).toHaveAttribute("data-waveform-state", "ready");
         }
         await performActions(entry.actions, referencePage, appPage);
         await waitForCaptureReady(
@@ -283,14 +403,8 @@ test.describe("visual comparison captures", () => {
         await waitForCaptureReady(
           appPage,
           "Manrope Variable",
-          entry.appPostActionReadySelector ?? entry.appReadySelector,
+          entry.appReadySelector,
         );
-        if (entry.clearAppFocus) {
-          await appPage.evaluate(() => {
-            const activeElement = document.activeElement;
-            if (activeElement instanceof HTMLElement) activeElement.blur();
-          });
-        }
         const referenceGeometry = await inspectPageGeometry(
           referencePage,
           width,
@@ -301,10 +415,6 @@ test.describe("visual comparison captures", () => {
         const clip = await resolveClip(entry.clip, referencePage, appPage);
         const caseDir = path.join(outputRoot, entry.id);
         await mkdir(caseDir, { recursive: true });
-        await writeFile(
-          path.join(caseDir, "geometry.json"),
-          `${JSON.stringify({ referenceGeometry, appGeometry, clip }, null, 2)}\n`,
-        );
         const referenceBuffer = await referencePage.screenshot({
           path: path.join(caseDir, "reference.png"),
           ...(clip ? { clip: clip.reference } : {}),
@@ -396,14 +506,6 @@ async function seedStorage(
   }, seed);
 }
 
-function mergeStorageSeeds(base: StorageSeed = {}, override: StorageSeed = {}) {
-  return {
-    localStorage: { ...base.localStorage, ...override.localStorage },
-    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
-    cookies: { ...base.cookies, ...override.cookies },
-  };
-}
-
 async function waitForCaptureReady(
   page: import("@playwright/test").Page,
   expectedFont: string,
@@ -416,38 +518,6 @@ async function waitForCaptureReady(
     // Faces load lazily on first use; request the expected face explicitly.
     await document.fonts.load(`400 14px "${family}"`);
     await document.fonts.ready;
-    const backgroundUrls = new Set<string>();
-    for (const element of document.querySelectorAll<HTMLElement>("*")) {
-      const background = getComputedStyle(element).backgroundImage;
-      for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
-        const url = new URL(match[1], location.href);
-        if (
-          url.origin === location.origin &&
-          /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.pathname)
-        ) {
-          backgroundUrls.add(url.href);
-        }
-      }
-    }
-    const failedBackgroundUrls = (
-      await Promise.all(
-        [...backgroundUrls].map(async (url) => {
-          const image = new Image();
-          image.src = url;
-          try {
-            await image.decode();
-            return null;
-          } catch {
-            return url;
-          }
-        }),
-      )
-    ).filter((url): url is string => url !== null);
-    if (failedBackgroundUrls.length > 0) {
-      throw new Error(
-        `Could not decode CSS background images: ${failedBackgroundUrls.join(", ")}`,
-      );
-    }
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
@@ -535,24 +605,6 @@ async function inspectPageGeometry(
   expectedHeight: number,
 ) {
   const geometry = await page.evaluate(() => {
-    function summarizeBackgroundImage(value: string) {
-      const fieldAsset = value.match(/colony-field-(?:light|dark)\.svg/);
-      if (fieldAsset) {
-        return { kind: fieldAsset[0], length: value.length };
-      }
-      if (value === "none") return { kind: "none", length: 0 };
-      if (value.includes("data:image/svg+xml")) {
-        return { kind: "inline-svg", length: value.length };
-      }
-      if (value.startsWith("linear-gradient(")) {
-        return { kind: "gradient", length: value.length };
-      }
-      return {
-        kind: value.length > 160 ? "other-long" : value,
-        length: value.length,
-      };
-    }
-
     const bounds = (element: Element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -565,6 +617,8 @@ async function inspectPageGeometry(
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       devicePixelRatio: window.devicePixelRatio,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize,
+      bodyFontSize: getComputedStyle(document.body).fontSize,
       document: {
         bounds: bounds(document.documentElement),
         scrollWidth: document.documentElement.scrollWidth,
@@ -577,18 +631,156 @@ async function inspectPageGeometry(
       },
       visualElements: [
         "#topbar",
-        ".topbar-title",
-        ".topbar-title > .icon",
-        ".topbar-title > strong",
-        ".topbar-title > span",
         "#sidebar",
+        "#sidebar .sidebar-head",
+        "#sidebar .sidebar-collapse",
+        "#sidebar .business-switch",
+        "#sidebar .business-mark",
+        "#sidebar .business-mark > span",
+        "#sidebar .business-switch strong",
+        "#sidebar .sidebar-search",
+        "#sidebar .sidebar-search span",
+        "#sidebar .sidebar-search kbd",
+        "#sidebar .nav-item",
+        "#sidebar .nav-label",
+        "#sidebar .section-heading",
+        "#sidebar .section-toggle",
+        "#sidebar .section-heading:nth-of-type(2) .section-toggle",
+        "#sidebar .section-toggle > span:not(.icon)",
+        "#sidebar .section-heading > button:not(.section-toggle)",
+        "#sidebar .profile-row",
+        "#sidebar .profile-row > .avatar",
+        "#sidebar .profile-row strong",
+        "#sidebar .px-status-button",
         "#surface",
-        ".app-shell",
-        ".w20-settings-shell",
-        ".ap-page",
-        ".w20-appearance",
-        ".ap-heading",
-        ".ap-heading h1",
+        ".studio-page",
+        ".studio-heading",
+        ".today-studio-grid",
+        ".cx-agent-attention",
+        ".cx-agent-attention .cx-row",
+        ".agency-attention-row",
+        ".agency-attention-row h3",
+        ".agency-attention-row p",
+        ".agency-attention-row small",
+        ".attention-art",
+        ".studio-section",
+        ".studio-section > h2",
+        ".studio-section-heading",
+        ".studio-section-heading h2",
+        ".studio-section-heading > span",
+        ".waiting-record",
+        ".waiting-record strong",
+        ".waiting-record p",
+        ".waiting-record small",
+        ".coverage-entry",
+        ".r17-today-page",
+        ".r17-today-heading",
+        ".r17-today-grid",
+        ".r17-today-left",
+        ".r17-today-attention-row",
+        ".r17-today-attention-copy strong",
+        ".r17-today-attention-copy small",
+        ".r17-today-business-heading",
+        ".r17-today-business-heading h2",
+        ".r17-today-review-row",
+        ".r17-today-review-copy small",
+        ".r17-today-review-copy strong",
+        ".r17-today-art",
+        ".r17-today-art-frame",
+        ".r17-today-right",
+        ".r17-today-section",
+        ".r17-today-section-heading h2",
+        ".r17-today-section-heading > span",
+        ".r17-today-waiting-record",
+        ".r17-today-waiting-record strong",
+        ".r17-today-waiting-record p",
+        ".r17-today-waiting-record small",
+        ".r17-today-money-record",
+        ".r17-today-money-record small",
+        ".colony-workspace-topbar",
+        ".studio-page",
+        ".studio-heading",
+        ".studio-actions > a",
+        ".studio-scroll",
+        ".studio-empty",
+        ".studio-empty > svg",
+        ".studio-empty h2",
+        ".studio-empty p",
+        ".colony-channel-pins-screen",
+        ".colony-channel-pins-content",
+        ".colony-channel-pins-heading",
+        ".colony-channel-pins-heading h1",
+        ".colony-channel-pins-heading button",
+        ".colony-channel-pins-empty",
+        ".colony-channel-pins-empty > svg",
+        ".colony-channel-pins-empty h2",
+        ".colony-channel-pins-empty p",
+        ".colony-channel-route-content",
+        "header[data-testid=chat-header] > div",
+        "header[data-testid=chat-header] > div > div:first-child",
+        "header[data-testid=chat-header] > div > div:last-child",
+        ".colony-channel-header-actions",
+        ".colony-channel-header-actions > button",
+        ".colony-channel-header-actions [data-testid=channel-pins-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-start-huddle-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-management-trigger]",
+        ".channel-pane",
+        ".thread-pane",
+        ".channel-header",
+        ".channel-header > div:first-child",
+        ".heading-actions",
+        ".heading-actions > a",
+        ".tabs",
+        ".agency-tabs",
+        ".agency-tabs > a",
+        ".message-list",
+        ".day-divider",
+        ".day-divider p",
+        ".voice-player",
+        ".message",
+        ".message-meta",
+        ".message-meta strong",
+        ".message-body",
+        ".message-body p",
+        ".message-author",
+        ".message-avatar",
+        ".channel-composer",
+        ".channel-composer .composer",
+        ".channel-composer .composer textarea",
+        ".channel-composer .composer-footer",
+        ".thread-pane .channel-composer",
+        ".thread-pane .channel-composer .composer",
+        ".thread-pane .channel-composer .composer textarea",
+        ".thread-pane .channel-composer .composer-footer",
+        "[data-testid=app-sidebar]",
+        "[data-testid=sidebar-pinned-header]",
+        ".colony-sidebar-brand",
+        "[data-testid=sidebar-business-switcher]",
+        ".colony-sidebar-brand-mark",
+        "[data-testid=sidebar-business-switcher] > span:nth-child(2)",
+        "[data-testid=sidebar-pinned-header] [data-sidebar=trigger]",
+        "[data-testid=open-search]",
+        "[data-testid=sidebar-primary-menu] [data-sidebar=menu-button]",
+        "[data-testid=app-sidebar] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label]",
+        "[data-testid=stream-list-section-label] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label] + div",
+        "[data-testid=section-actions-channels-quick-create]",
+        "[data-testid=section-actions-channels]",
+        "[data-testid=section-title-client-work]",
+        "[data-testid=section-title-client-work] + div",
+        "[data-testid=section-actions-client-work-quick-create]",
+        "[data-testid=section-actions-client-work]",
+        "[data-testid=starred-list-section-label]",
+        "[data-testid=starred-list-section-label] > span[aria-hidden=true]",
+        "[data-testid=forum-list-section-label]",
+        "[data-testid=dm-list-section-label]",
+        "[data-testid=sidebar-team-section]",
+        "[data-testid=sidebar-team-section] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-profile-card]",
+        ".colony-sidebar-profile-row",
+        "[data-testid=sidebar-profile-avatar-button]",
+        "[data-testid=sidebar-theme-toggle]",
         "[data-testid=settings-theme-preview] > div",
         "[data-testid=settings-theme-preview] h2",
         "[data-testid=settings-theme-preview] p",
@@ -622,130 +814,60 @@ async function inspectPageGeometry(
         ".d17-preview-footer > .primary",
         ".d17-preview-button",
         ".d17-applied-button",
-        ".ap-appearance-grid",
-        ".ap-controls-scroll",
-        ".ap-named-themes",
-        ".ap-style-option",
-        ".ap-mini",
-        ".ap-preview-column",
-        ".ap-desktop",
-        ".ap-live-window",
-        ".ap-live-compose",
-        ".ap-live-compose > span",
-        ".ap-live-compose > span > span",
-        ".ap-live-compose > span > svg",
-        ".ap-foot",
-        ".ap-back",
-        ".ap-nav-title",
-        ".ap-search",
-        ".ap-nav-group",
-        ".ap-nav-item",
-        ".ap-nav-person",
-        ".w20-nav-back",
-        ".w20-nav-title",
-        ".w20-search",
-        ".w20-nav-group",
-        ".w20-nav-item",
-        ".w20-nav-person",
-        ".w20-settings-topbar",
-        ".w20-topbar-history",
-        ".w20-topbar-title",
-        ".w20-topbar-title > svg",
-        ".w20-topbar-title > span",
-        "[data-testid=settings-profile-avatar]",
-        ".w20-topbar-title > strong",
-        ".w20-inner-tabs",
-        ".studio-page",
-        ".studio-heading",
-        ".studio-heading h1",
-        ".studio-scroll",
-        ".cx-two",
-        ".cx-two > section",
-        ".cx-two > aside",
-        ".studio-section",
-        ".studio-section-heading",
-        ".studio-section-heading h2",
-        ".studio-facts",
-        ".studio-facts dt",
-        ".studio-facts dd",
-        ".studio-page .field",
-        ".studio-page .field label",
-        ".studio-page .field input",
-        ".studio-page .field select",
-        ".studio-page .dialog-actions",
-        ".studio-page .primary",
-        ".studio-page .text-button",
-        ".w20-account-profile h1",
-        ".w20-account-profile-card",
-        ".w20-account-profile-card h2",
-        ".w20-account-field",
-        ".w20-account-field-label",
-        ".w20-account-control",
-        ".w20-account-email-link",
-        ".w20-account-save",
-        ".w20-account-card-action",
-        "[data-testid=settings-account-profile-card]",
-        "[data-testid=settings-account-business-card]",
-        "body",
-        "#root",
-        "#app",
-        ".w20-settings-sidebar",
-        "[data-sidebar=sidebar]",
-        "[data-buzz-gradient-layer]",
-        ".buzz-theme-gradient-layer",
-        ".buzz-theme-gradient-underlay",
-        ".buzz-theme-gradient-layer-light",
-        ".buzz-theme-gradient-layer-dark",
-        ".colony-workspace-topbar",
-        ".colony-channel-route-content",
-        ".channel-pane",
-        ".thread-pane",
-        ".channel-header",
-        ".tabs",
-        ".narrow",
-        ".narrow .row",
-        ".narrow .row strong",
-        ".narrow .row p",
-        ".narrow > h3",
-        ".narrow .field",
-        ".narrow .field label",
-        ".narrow .field textarea",
-        ".narrow .field select",
-        ".narrow .notice",
-        ".narrow .btn",
-        "[data-testid=moderation-action-form]",
-        "[data-testid=moderation-action-reason]",
-        "[data-testid=moderation-action-select]",
-        "[data-testid=moderation-action-failed]",
-        "[data-testid=moderation-confirm-action]",
-        ".settings-moderation-failure__title",
-        ".settings-moderation-failure__reported",
-        ".settings-moderation-failure__reported-title",
-        ".settings-moderation-failure__reported-detail",
-        ".settings-moderation-failure__field",
-        ".settings-moderation-failure__label",
-        ".settings-moderation-failure__notice",
-        ".settings-moderation-failure__notice-title",
-        ".settings-moderation-failure__notice-detail",
-        ".settings-moderation-failure__confirm",
-        ".message-list",
-        ".channel-composer",
-        ".channel-composer .composer",
-        ".channel-composer .composer textarea",
-        ".channel-composer .composer-footer",
-        "[data-testid=app-sidebar]",
         "[data-testid=app-top-chrome]",
         "[data-buzz-content-surface]",
         "[data-testid=chat-header]",
         "[data-testid=chat-title]",
         "[data-testid=channel-drop-zone]",
         "[data-testid=channel-composer-overlay]",
+        "[data-testid=thread-composer-overlay]",
+        "[data-testid=thread-composer-overlay] > div",
+        "[data-testid=thread-composer-overlay] .composer-dock",
         "[data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] .colony-message-composer-footer-content",
+        "[data-testid=thread-composer-overlay] [data-testid=message-input-scroll]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer-toolbar]",
+        "[data-testid=thread-composer-overlay] [data-testid=send-message]",
         "[data-testid=message-input-scroll]",
         "[data-testid=message-composer-toolbar]",
+        "[data-testid=message-row]",
+        "[data-testid=message-header]",
+        "[data-testid=message-author]",
+        "[data-testid=message-timestamp]",
+        "[data-testid=message-body]",
+        "[data-testid=message-avatar]",
+        "[data-testid=system-message-row]",
+        "[data-testid=message-agent-owner]",
         "[data-testid=channel-view-tabs]",
+        "[data-testid=channel-view-tabs] > span:nth-child(1)",
+        "[data-testid=channel-view-tabs] > span:nth-child(2)",
+        "[data-testid=channel-view-tabs] > span:nth-child(3)",
+        "[data-testid=channel-view-tabs] > span:nth-child(4)",
+        "[data-testid=channel-view-tabs] > span:nth-child(5)",
+        "[data-testid=open-search] > span:first-of-type",
+        "[data-testid=open-search] > kbd",
+        "[data-testid=sidebar-profile-name]",
+        "[data-testid=sidebar-profile-user-status]",
+        ".colony-composer-submit-hint",
         "[data-testid=message-timeline]",
+        "[data-testid=message-timeline-day-group]",
+        "[data-testid=message-timeline-day-divider]",
+        "[data-testid=message-timeline-day-divider] p",
+        "[data-testid=message-timeline-sticky-day-divider]",
+        "[data-testid=message-timeline-sticky-day-divider-content]",
+        "[data-testid=message-timeline-sticky-day-divider-content] p",
+        "[data-testid=audio-message-attachment]",
+        ".colony-voice-note-card",
+        ".colony-voice-note-waveform-bar",
+        ".colony-voice-note-waveform-active",
         "[data-testid=message-thread-panel]",
+        ".colony-channel-topbar",
+        ".colony-channel-header",
+        ".colony-thread-panel-title",
+        "[data-testid=message-thread-panel] [data-testid=message-thread-title]",
+        "[data-testid=thread-composer-overlay] .colony-thread-crosspost",
+        ".colony-composer-submit-hint",
       ].map((selector) => {
         const element = document.querySelector(selector);
         if (!element) return { selector, count: 0 };
@@ -761,204 +883,175 @@ async function inspectPageGeometry(
             height: rect.height,
           },
           display: style.display,
+          text: element.textContent?.trim() ?? "",
           color: style.color,
           backgroundColor: style.backgroundColor,
           fontFamily: style.fontFamily,
           fontSize: style.fontSize,
           fontWeight: style.fontWeight,
           lineHeight: style.lineHeight,
-          letterSpacing: style.letterSpacing,
+          width: style.width,
+          height: style.height,
           padding: style.padding,
-          margin: style.margin,
-          borderRadius: style.borderRadius,
+          boxSizing: style.boxSizing,
+          transform: style.transform,
+          zoom: style.zoom,
           opacity: style.opacity,
+          visibility: style.visibility,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          zIndex: style.zIndex,
+          position: style.position,
           overflowY: style.overflowY,
           scrollHeight: element.scrollHeight,
           scrollWidth: element.scrollWidth,
         };
       }),
-      appearanceSamples: [
-        ".ap-back",
-        ".ap-nav-title",
-        ".ap-search",
-        ".ap-search input",
-        ".ap-nav-group h2",
-        ".ap-nav-item",
-        ".ap-nav-person",
-        ".ap-nav-person > .avatar",
-        ".ap-nav-person > span:last-child",
-        ".ap-nav-person > span:last-child small",
-        ".topbar-title > span",
-        ".ap-heading",
-        ".ap-controls-scroll",
-        ".d17-browse",
-        ".ap-named-themes",
-        ".ap-section",
-        ".ap-row",
-        ".ap-style-row",
-        ".ap-colours",
-        ".ap-accents",
-        ".ap-preview-label",
-        ".ap-desktop",
-        ".ap-live-window",
-        ".ap-live-body",
-        ".ap-foot",
-        ".w20-nav-back",
-        ".w20-nav-title",
-        ".w20-nav-search",
-        ".w20-nav-search input",
-        ".w20-nav-heading",
-        ".w20-nav-item",
-        ".w20-nav-person",
-        ".w20-nav-person-avatar",
-        ".w20-topbar-title > span",
-        "[data-testid=settings-profile-avatar]",
-        ".w20-nav-person > div",
-        ".w20-nav-person > div small",
-        ".studio-page .field",
-        ".studio-page .field label",
-        ".studio-page .field input",
-        ".studio-page .field select",
-        ".studio-page .dialog-actions",
-        ".studio-page .primary",
-        ".studio-page .text-button",
-        ".w20-account-field",
-        ".w20-account-field-label",
-        ".w20-account-control",
-        ".w20-account-email-link",
-        ".w20-account-save",
-        ".w20-account-card-action",
-        ".d17-catalog",
-        ".d17-catalog-tools",
-        "#d17-theme-search",
-        ".d17-filter",
-        ".d17-theme-grid",
-        ".d17-theme-tile",
-        ".d17-theme-mini",
-        ".d17-theme-mini > i",
-        ".d17-theme-mini > span",
-        ".d17-theme-mini b",
-        ".d17-theme-mini em",
-        ".d17-theme-mini small",
-        "[data-testid=settings-theme-catalog]",
-        "#theme-catalog-search",
-        "[data-testid^=theme-catalog-]",
-        ".w20-theme-card-preview",
-        ".w20-theme-card-preview > div",
-        ".w20-theme-card-preview p",
-      ].map((selector) => ({
-        selector,
-        items: [...document.querySelectorAll(selector)].map((element) => {
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return {
-            label:
-              element.querySelector(":scope > h2")?.textContent?.trim() ??
-              element
-                .querySelector(":scope > div > strong, :scope > span > strong")
-                ?.textContent?.trim() ??
-              element
-                .querySelector(":scope > div:first-child > strong")
-                ?.textContent?.trim() ??
-              element.getAttribute("aria-label") ??
-              element.className.toString().split(" ")[0],
-            bounds: {
-              x: rect.x,
-              y: rect.y,
-              width: rect.width,
-              height: rect.height,
-            },
-            fontSize: style.fontSize,
-            fontWeight: style.fontWeight,
-            lineHeight: style.lineHeight,
-            letterSpacing: style.letterSpacing,
-            color: style.color,
-            backgroundColor: style.backgroundColor,
-            fontFamily: style.fontFamily,
-            padding: style.padding,
-            margin: style.margin,
-            gap: style.gap,
-            borderRadius: style.borderRadius,
-          };
-        }),
-      })),
-      fieldLayers: [document.body, ...document.querySelectorAll("*")]
-        .map((element) => {
-          const style = getComputedStyle(element);
-          if (!style.backgroundImage.includes("colony-field")) return null;
-          const rect = element.getBoundingClientRect();
-          return {
-            element:
-              element.id ||
-              element.getAttribute("data-testid") ||
-              element.className.toString().split(" ")[0] ||
-              element.tagName.toLowerCase(),
-            bounds: {
-              x: rect.x,
-              y: rect.y,
-              width: rect.width,
-              height: rect.height,
-            },
-            backgroundImage: summarizeBackgroundImage(style.backgroundImage),
-            backgroundSize: style.backgroundSize,
-            backgroundPosition: style.backgroundPosition,
-            backgroundRepeat: style.backgroundRepeat,
-            backgroundOrigin: style.backgroundOrigin,
-            backgroundClip: style.backgroundClip,
-            backgroundAttachment: style.backgroundAttachment,
-            backgroundBlendMode: style.backgroundBlendMode,
-            backgroundColor: style.backgroundColor,
-            boxSizing: style.boxSizing,
-            padding: style.padding,
-            border: style.border,
-            borderRadius: style.borderRadius,
-            position: style.position,
-            zIndex: style.zIndex,
-            transform: style.transform,
-            opacity: style.opacity,
-            filter: style.filter,
-            mixBlendMode: style.mixBlendMode,
-          };
-        })
-        .filter((element) => element !== null),
-      backgroundSamples: [
-        "html",
-        "body",
-        "#root",
-        "#app",
-        ".app-frame",
-        ".w20-settings-sidebar",
-        "[data-sidebar=sidebar]",
-        ".w20-settings-shell",
-        "[data-buzz-gradient-layer]",
-        ".buzz-theme-gradient-layer",
-        ".buzz-theme-gradient-underlay",
-        ".buzz-theme-gradient-layer-light",
-        ".buzz-theme-gradient-layer-dark",
-      ].map((selector) => {
-        const element = document.querySelector(selector);
-        if (!element) return { selector, count: 0 };
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
+      timelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-row"], article.message',
+        ),
+      ).map((element) => {
+        const rect = bounds(element);
+        const body = element.querySelector<HTMLElement>(
+          '[data-testid="message-body"], .message-body',
+        );
+        const meta = element.querySelector<HTMLElement>(
+          '[data-testid="message-meta"], .message-meta',
+        );
         return {
-          selector,
-          count: document.querySelectorAll(selector).length,
-          bounds: {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-          },
-          backgroundImage: summarizeBackgroundImage(style.backgroundImage),
-          backgroundSize: style.backgroundSize,
-          backgroundPosition: style.backgroundPosition,
-          backgroundColor: style.backgroundColor,
-          transform: style.transform,
-          opacity: style.opacity,
-          filter: style.filter,
-          mixBlendMode: style.mixBlendMode,
+          bounds: rect,
+          text:
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 140) ??
+            "",
+          bodyBounds: body ? bounds(body) : null,
+          metaBounds: meta ? bounds(meta) : null,
+          children: Array.from(element.querySelectorAll<HTMLElement>("*"))
+            .filter(
+              (child) =>
+                child.parentElement === element ||
+                child.matches(
+                  "[data-testid], [class*='preview'], [class*='thread']",
+                ),
+            )
+            .slice(0, 16)
+            .map((child) => ({
+              tag: child.tagName,
+              className: child.className?.toString() ?? "",
+              testId: child.dataset.testid ?? null,
+              text:
+                child.textContent?.trim().replace(/\s+/g, " ").slice(0, 90) ??
+                "",
+              bounds: bounds(child),
+            })),
+          bodyChildren: body
+            ? Array.from(body.querySelectorAll<HTMLElement>("*"))
+                .filter(
+                  (child) =>
+                    child.children.length === 0 || child.dataset.testid,
+                )
+                .slice(0, 20)
+                .map((child) => ({
+                  tag: child.tagName,
+                  className: child.className?.toString() ?? "",
+                  testId: child.dataset.testid ?? null,
+                  text:
+                    child.textContent
+                      ?.trim()
+                      .replace(/\s+/g, " ")
+                      .slice(0, 90) ?? "",
+                  bounds: bounds(child),
+                }))
+            : [],
         };
       }),
+      sidebarChildren: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="sidebar-scroll-content"] > *',
+        ),
+      ).map((element) => ({
+        testId: element.dataset.testid ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
+        order: getComputedStyle(element).order,
+      })),
+      channelTabPaint: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="channel-view-tabs"] > span',
+        ),
+      ).map((element) => {
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textRect = range.getBoundingClientRect();
+        const ancestors: Array<Record<string, string>> = [];
+        let ancestor: HTMLElement | null = element;
+        while (ancestor && ancestors.length < 5) {
+          const ancestorStyle = getComputedStyle(ancestor);
+          ancestors.push({
+            tag: ancestor.tagName,
+            className: ancestor.className.toString(),
+            color: ancestorStyle.color,
+            opacity: ancestorStyle.opacity,
+            visibility: ancestorStyle.visibility,
+            display: ancestorStyle.display,
+            textIndent: ancestorStyle.textIndent,
+            overflow: ancestorStyle.overflow,
+            clipPath: ancestorStyle.clipPath,
+            filter: ancestorStyle.filter,
+            mixBlendMode: ancestorStyle.mixBlendMode,
+            textShadow: ancestorStyle.textShadow,
+            webkitTextFillColor: ancestorStyle.getPropertyValue(
+              "-webkit-text-fill-color",
+            ),
+          });
+          ancestor = ancestor.parentElement;
+        }
+        const hitStack = document
+          .elementsFromPoint(
+            textRect.x + textRect.width / 2,
+            textRect.y + textRect.height / 2,
+          )
+          .map((hit) => `${hit.tagName}.${(hit as HTMLElement).className}`);
+        return {
+          text: element.textContent?.trim() ?? "",
+          textRect: {
+            x: textRect.x,
+            y: textRect.y,
+            width: textRect.width,
+            height: textRect.height,
+          },
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          color: style.color,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          textStroke: style.getPropertyValue("-webkit-text-stroke-color"),
+          textShadow: style.textShadow,
+          textIndent: style.textIndent,
+          clipPath: style.clipPath,
+          filter: style.filter,
+          mixBlendMode: style.mixBlendMode,
+          animations: element
+            .getAnimations()
+            .map((animation) => animation.playState),
+          ancestors,
+          hitStack,
+        };
+      }),
+      messageTimelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-timeline"] [data-testid="message-row"]',
+        ),
+      ).map((element) => ({
+        id: element.dataset.messageId ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 180) ?? "",
+      })),
     };
   });
   if (
@@ -992,25 +1085,11 @@ async function performActions(
         await locator.click(options);
       } else if (action.type === "hover") {
         await locator.hover(options);
-      } else if (action.type === "fill") {
-        if (action.value === undefined)
-          throw new Error("A fill visual action needs a value.");
-        await locator.fill(action.value, options);
-      } else if (action.type === "selectOption") {
-        if (action.value === undefined)
-          throw new Error("A selectOption visual action needs a value.");
-        await locator.selectOption(action.value, options);
-      } else if (action.type === "setInputFiles") {
-        const file = await createAvatarFixture(
-          action.value ?? "avatar.png",
-          referencePage,
-        );
-        await locator.setInputFiles(file, options);
-      } else if (action.type === "waitFor") {
-        await locator.waitFor({
-          state: action.state ?? "visible",
-          timeout: action.timeoutMs ?? 10_000,
-        });
+      } else if (action.type === "select") {
+        if (action.value === undefined) {
+          throw new Error("Select visual actions need a value.");
+        }
+        await locator.selectOption(action.value);
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }
@@ -1019,65 +1098,6 @@ async function performActions(
       await runOnPage(referencePage);
     if (target === "app" || target === "both") await runOnPage(appPage);
   }
-}
-
-async function createAvatarFixture(
-  name: string,
-  referencePage: import("@playwright/test").Page,
-) {
-  if (name.endsWith(".txt")) {
-    return {
-      name,
-      mimeType: "text/plain",
-      buffer: Buffer.from("unsupported avatar file"),
-    };
-  }
-  const cropAvatar = referencePage.locator(".crop-circle").first();
-  const profileAvatar = referencePage.locator(".row .avatar").first();
-  const targetAvatar =
-    (await cropAvatar.count()) > 0 ? cropAvatar : profileAvatar;
-  if ((await targetAvatar.count()) > 0) {
-    return {
-      name,
-      mimeType: "image/png",
-      buffer: await targetAvatar.screenshot({ animations: "disabled" }),
-    };
-  }
-  const width = 128;
-  const height = 128;
-  const pixels = new Uint8Array(width * height * 4);
-  for (let index = 0; index < pixels.length; index += 4) {
-    pixels[index] = 236;
-    pixels[index + 1] = 229;
-    pixels[index + 2] = 237;
-    pixels[index + 3] = 255;
-  }
-  const glyphs = [
-    [0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11110],
-    [0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001],
-  ];
-  glyphs.forEach((glyph, glyphIndex) => {
-    glyph.forEach((row, y) => {
-      for (let x = 0; x < 5; x += 1) {
-        if ((row & (1 << (4 - x))) === 0) continue;
-        for (let py = 0; py < 4; py += 1) {
-          for (let px = 0; px < 4; px += 1) {
-            const pixelX = 26 + glyphIndex * 24 + x * 4 + px;
-            const pixelY = 50 + y * 4 + py;
-            const offset = (pixelY * width + pixelX) * 4;
-            pixels[offset] = 121;
-            pixels[offset + 1] = 102;
-            pixels[offset + 2] = 130;
-          }
-        }
-      }
-    });
-  });
-  return {
-    name,
-    mimeType: "image/png",
-    buffer: Buffer.from(UPNG.encode([pixels.buffer], width, height, 0)),
-  };
 }
 
 async function resolveClip(
@@ -1097,10 +1117,37 @@ async function resolveClip(
     return { reference: box, app: box };
   }
   if (typeof clip === "object" && "referenceSelector" in clip) {
-    const reference = await locatorBox(referencePage, clip.referenceSelector);
-    const app = clip.appSelector
+    const referenceBox = await locatorBox(
+      referencePage,
+      clip.referenceSelector,
+    );
+    if (clip.normalizeAppRootToReference && clip.appSelector) {
+      await appPage
+        .locator(clip.appSelector)
+        .first()
+        .evaluate(
+          (element, bounds) => {
+            const root = element as HTMLElement;
+            root.style.width = `${bounds.width}px`;
+            root.style.minWidth = `${bounds.width}px`;
+            root.style.maxWidth = `${bounds.width}px`;
+            root.style.height = `${bounds.height}px`;
+            root.style.minHeight = "0";
+            root.style.maxHeight = `${bounds.height}px`;
+            root.style.flex = "none";
+          },
+          { width: referenceBox.width, height: referenceBox.height },
+        );
+    }
+    const appBox = clip.appSelector
       ? await locatorBox(appPage, clip.appSelector)
-      : reference;
+      : referenceBox;
+    const width = clip.width ?? Math.min(referenceBox.width, appBox.width);
+    const height = clip.height ?? Math.min(referenceBox.height, appBox.height);
+    const reference = { ...referenceBox, width, height };
+    const app = { ...appBox, width, height };
+    assertClipBox(reference);
+    assertClipBox(app);
     return { reference, app };
   }
   const selector = typeof clip === "string" ? clip : clip.selector;

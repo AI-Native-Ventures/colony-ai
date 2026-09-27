@@ -12,7 +12,7 @@ import 'account_page_scaffold.dart';
 import 'create_account_page.dart';
 import 'sign_in_page.dart';
 
-/// First-run account choices. Existing identity pairing is composed by the app.
+/// First-run account choices. Identity pairing is composed by the app.
 class AuthEntryPage extends HookConsumerWidget {
   const AuthEntryPage({required this.advancedIdentityPageBuilder, super.key});
 
@@ -42,7 +42,11 @@ class AuthEntryPage extends HookConsumerWidget {
             label: 'Create an account',
             onPressed: auth.isLoading
                 ? null
-                : () => openPage(const CreateAccountPage()),
+                : () => openPage(
+                    CreateAccountPage(
+                      pairIdentityPageBuilder: advancedIdentityPageBuilder,
+                    ),
+                  ),
             isLoading: false,
           ),
           const SizedBox(height: 6),
@@ -58,7 +62,11 @@ class AuthEntryPage extends HookConsumerWidget {
               ),
               onPressed: auth.isLoading
                   ? null
-                  : () => openPage(const SignInPage()),
+                  : () => openPage(
+                      SignInPage(
+                        pairIdentityPageBuilder: advancedIdentityPageBuilder,
+                      ),
+                    ),
               child: const Text('I already have an account'),
             ),
           ),
@@ -74,7 +82,7 @@ class AuthEntryPage extends HookConsumerWidget {
                       ),
                     );
                   },
-            child: const Text('Advanced: use an existing Nostr identity'),
+            child: const Text('Pair with my desktop'),
           ),
         ],
       ),

@@ -281,6 +281,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
             _channelDetailsHeaderFrostMaxBlurSigma * headerFrostProgress.value,
         showBottomDivider: headerFrostProgress.value > 0,
         bottomDividerOpacity: 0.07 * headerFrostProgress.value,
+        horizontalInset: Grid.xs - Grid.half,
         title: AnimatedSwitcher(
           duration: reducedMotion
               ? Duration.zero

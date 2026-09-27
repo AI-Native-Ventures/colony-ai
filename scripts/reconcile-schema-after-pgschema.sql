@@ -197,6 +197,24 @@ BEGIN
     END IF;
 END $$;
 
+-- pgschema does not execute the write-fence attachment declaration for the
+-- post-0029 conversion claim table. Attach it after desired-state DDL and fail
+-- bootstrap if the live catalog does not contain the guard.
+SELECT attach_community_write_fence('business_proposal_conversion_claims');
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = 'business_proposal_conversion_claims'::regclass
+          AND tgname = 'community_write_fence_business_proposal_conversion_claims'
+          AND NOT tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'business_proposal_conversion_claims must have its community write fence after pgschema apply';
+    END IF;
+END $$;
+
 -- pgschema does not apply operator-global registry seed rows. These accounts
 -- span all communities on a deployment and must never enter tenant deletion.
 INSERT INTO _operator_global_tables (table_name, reason) VALUES

@@ -55,6 +55,9 @@ export function parseImetaTags(
         case "filename":
           entry.filename = val;
           break;
+        case "transcript":
+          entry.transcript = val;
+          break;
       }
     }
     if (entry.url) map.set(entry.url, entry as ParsedImetaEntry);

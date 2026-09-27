@@ -19,6 +19,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 import { waitForAnimations } from "../helpers/animations";
 import { selectSettingsSection } from "../helpers/settings";
 
@@ -84,7 +85,7 @@ test.describe("agent provider dropdown screenshots", () => {
 
     await waitForAnimations(page);
 
-    // Screenshot the card — provider select is closed but the assertion above
+    // Screenshot the card  -  provider select is closed but the assertion above
     // proves both Databricks options are present in the option list.
     await page
       .getByTestId("settings-global-agent-config")
@@ -100,8 +101,8 @@ test.describe("agent provider dropdown screenshots", () => {
   // → the zero-value option reads "Default (medium)" instead of bare "Inherit".
   //
   // Using databricks_v2 here (rather than no provider) makes this card
-  // visually distinct from shot 01 — the provider select shows "Databricks v2"
-  // as the selected value — so the two PNG hashes differ.
+  // visually distinct from shot 01  -  the provider select shows "Databricks v2"
+  // as the selected value  -  so the two PNG hashes differ.
   test("02-effort-default-label", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
@@ -158,10 +159,7 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
-    await expect(page.getByTestId("agents-library-personas")).toBeVisible({
-      timeout: 10_000,
-    });
+    await openAgentTemplatesView(page);
 
     // Open the persona's actions menu (visible for non-builtin personas).
     const actionsBtn = page.getByRole("button", {
@@ -177,7 +175,7 @@ test.describe("agent provider dropdown screenshots", () => {
 
     await dialog.getByRole("tab", { name: "Customize for this agent" }).click();
 
-    // Regression: the runtime trigger must not be empty — the auto-seed effect
+    // Regression: the runtime trigger must not be empty  -  the auto-seed effect
     // must have run and selected the app default (buzz-agent in the mock catalog).
     const runtimeTrigger = dialog.locator("#persona-runtime");
     await expect(runtimeTrigger).toBeVisible({ timeout: 8_000 });
@@ -195,7 +193,7 @@ test.describe("agent provider dropdown screenshots", () => {
     // (see discover_agent_models in e2eBridge.ts). A zero-model discovery
     // regression would leave the list empty and this assertion would fail.
     // The picker is a searchable command popover portaled outside the dialog
-    // whose items render as buttons — query at page level.
+    // whose items render as buttons  -  query at page level.
     await modelCombobox.click();
     await expect(
       page.getByRole("button", { name: /Claude Opus 4\.6/i }),
@@ -231,7 +229,7 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await openAgentTemplatesView(page);
     await page
       .getByRole("button", { name: "Open actions for Codex Definition" })
       .click();

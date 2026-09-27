@@ -15,7 +15,7 @@ const T0 = new Date("2026-06-18T12:00:00.000Z");
 
 // Past both thresholds: FRAME_GAP_PAUSE_MS (20s) and REMOVE_AFTER_MS (25s).
 // Several 5s prune ticks fire across this span, so shouldPausePrune is what
-// keeps the badges alive — not the absence of a prune tick.
+// keeps the badges alive, not the absence of a prune tick.
 const FRAME_GAP_MS = 30_000;
 
 type SeedInput = {
@@ -38,6 +38,7 @@ async function openAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForBridge(page);
   await page.getByTestId("open-agents-view").click();
+  await page.getByRole("button", { name: "Templates", exact: true }).click();
   await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
     timeout: 10_000,
   });
@@ -98,7 +99,7 @@ test.describe("active turn badge resilience", () => {
 
     await openAgentsView(page);
 
-    // Both agents working across channels — the healthy multi-agent state.
+    // Both agents working across channels is the healthy multi-agent state.
     await seedTurns(page, [
       {
         agentPubkey: AGENT_PAUL,
@@ -122,7 +123,7 @@ test.describe("active turn badge resilience", () => {
 
     // The profile panel surfaces active turns via the live-activity embed only
     // where an agent session can open (channel surfaces). In the Agents view
-    // the store-driven working state shows as sidebar channel badges — the
+    // the store-driven working state shows as sidebar channel badges; the
     // same activeAgentTurnsStore this test exercises.
     const generalBadge = page.getByTestId("channel-working-general");
     const engineeringBadge = page.getByTestId("channel-working-engineering");

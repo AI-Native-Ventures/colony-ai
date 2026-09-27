@@ -14,7 +14,11 @@ export type { AuthAccount, VerificationSent } from "./authApi";
 
 /** Operations exposed to onboarding and persistent account prompts. */
 export type AuthService = {
-  signUp(email: string, password: string): Promise<VerificationSent>;
+  signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+  ): Promise<VerificationSent>;
   verifyEmail(email: string, code: string): Promise<AuthAccount>;
   resendCode(
     email: string,
@@ -23,6 +27,7 @@ export type AuthService = {
   signIn(email: string, password: string): Promise<AuthAccount>;
   signInWithGoogle(): Promise<AuthAccount>;
   requestReset(email: string): Promise<VerificationSent>;
+  checkResetCode(email: string, code: string): Promise<void>;
   confirmReset(
     email: string,
     code: string,
@@ -143,9 +148,11 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   }
 
   return {
-    async signUp(email, password) {
+    async signUp(email, password, displayName) {
       const { api } = await apiFor();
-      return api.signUp(email.trim(), password);
+      return displayName === undefined
+        ? api.signUp(email.trim(), password)
+        : api.signUp(email.trim(), password, displayName);
     },
 
     async verifyEmail(email, code) {
@@ -182,6 +189,11 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     async requestReset(email) {
       const { api } = await apiFor();
       return api.requestReset(email.trim());
+    },
+
+    async checkResetCode(email, code) {
+      const { api } = await apiFor();
+      return api.checkResetCode(email.trim(), code);
     },
 
     async confirmReset(email, code, newPassword) {

@@ -34,12 +34,12 @@ export type AppSidebarProps = {
   isCreatingChannel: boolean;
   isCreatingForum: boolean;
   profile?: Profile;
-  projectsOverviewActive: boolean;
   relayConnectionCard: ReturnType<typeof useSidebarRelayConnectionCard>;
   selfPresenceStatus: PresenceStatus;
   showSidebarCollapseButton: boolean;
   errorMessage?: string;
   selectedChannelId: string | null;
+  suppressTodaySelection?: boolean;
   selectedView:
     | "today"
     | "home"
@@ -48,7 +48,9 @@ export type AppSidebarProps = {
     | "agents"
     | "workflows"
     | "pulse"
-    | "projects";
+    | "projects"
+    | "factory"
+    | "pins";
   unreadChannelCounts: ReadonlyMap<string, number>;
   unreadChannelIds: ReadonlySet<string>;
   highPriorityUnreadChannelIds: ReadonlySet<string>;
@@ -89,7 +91,7 @@ export type AppSidebarProps = {
   onCreateAgent: () => void;
   onSelectAgents: () => void;
   onSelectToday: () => void;
-  onSelectProjects: () => void;
+  onSelectFactory: () => void;
   onSelectWorkflows: () => void;
   onSelectHome: () => void;
   onSelectChannel: (channelId: string) => void;

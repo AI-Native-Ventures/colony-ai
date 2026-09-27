@@ -620,6 +620,7 @@ export function MachineOnboardingFlow({
             source: "first-community",
             firstCommunityPage: "owned",
             relayUrl: businessCommunityRelayUrl(selected),
+            businessCommunityId: selected.id,
             communityName:
               readOnboardingBusinessProfile(selected.id)?.name ||
               selected.name ||
@@ -685,6 +686,7 @@ export function MachineOnboardingFlow({
             source: "first-community",
             firstCommunityPage: "create",
             relayUrl: businessCommunityRelayUrl(createdCommunity),
+            businessCommunityId: createdCommunity.id,
             communityName:
               businessProfile.name ||
               createdCommunity.name ||

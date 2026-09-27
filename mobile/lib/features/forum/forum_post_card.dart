@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -6,14 +7,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
-import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/modal_presentation.dart';
-import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/utils/string_utils.dart';
-import '../profile/user_profile_sheet.dart';
 import '../../shared/profile/user_profile.dart';
 import 'forum_models.dart';
+import 'forum_presentation.dart';
 
 /// Card displaying a forum post preview in the posts list.
 ///
@@ -24,6 +23,7 @@ class ForumPostCard extends HookConsumerWidget {
   final String? currentPubkey;
   final VoidCallback onTap;
   final void Function(String eventId)? onDelete;
+  final ForumPresentationFactories? presentation;
 
   const ForumPostCard({
     super.key,
@@ -31,6 +31,7 @@ class ForumPostCard extends HookConsumerWidget {
     required this.currentPubkey,
     required this.onTap,
     this.onDelete,
+    this.presentation,
   });
 
   @override
@@ -55,9 +56,6 @@ class ForumPostCard extends HookConsumerWidget {
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
     final displayName = profile?.label ?? shortPubkey(post.pubkey);
-    final isAgent =
-        ref.watch(agentMentionPubkeysProvider(post.channelId)).contains(pk) ||
-        profile?.ownerPubkey != null;
     final profileMentionNames = ref.watch(
       userCacheProvider.select(
         (cache) => _buildMentionNames(post.mentionPubkeys, cache),
@@ -89,146 +87,110 @@ class ForumPostCard extends HookConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
-    final preview = post.content.length > 200
-        ? '${post.content.substring(0, 200)}...'
-        : post.content;
     final summary = post.threadSummary;
+    final contentParts = _splitForumPostContent(post.content);
+    final latestParticipant = summary?.participants.firstOrNull?.toLowerCase();
+    final latestProfile = latestParticipant == null
+        ? null
+        : ref.watch(
+            userCacheProvider.select((cache) => cache[latestParticipant]),
+          );
+    final footerAuthor = latestProfile?.label ?? displayName;
+    final footerTimestamp = summary?.lastReplyAt ?? post.createdAt;
+    final footerTime = _forumDayLabel(footerTimestamp);
+    final contentSpec = ForumMessageContentSpec(
+      content: contentParts.body,
+      mentionNames: mentionNames,
+      agentMentionPubkeys: agentMentionPubkeys,
+      tags: post.tags,
+      maxLines: 3,
+      baseStyle: messageBodyTextStyle.copyWith(
+        color: context.mobileTokens.muted,
+        fontSize: 12,
+        height: 1.5,
+      ),
+      onMentionTap: presentation == null
+          ? null
+          : (pubkey) => presentation!.openProfile(context, pubkey),
+    );
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: () => _showActions(context),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(Grid.twelve),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(Radii.lg),
-          border: Border.all(
-            color: context.colors.outlineVariant.withValues(alpha: 0.5),
+    return Semantics(
+      customSemanticsActions: {
+        CustomSemanticsAction(label: 'Message actions'): () =>
+            _showActions(context),
+      },
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: () => _showActions(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          decoration: BoxDecoration(
+            color: context.mobileTokens.paper,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: context.mobileTokens.line),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Author row
-            Row(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => showUserProfileSheet(context, post.pubkey),
-                  child: _PostAvatar(
-                    profile: profile,
-                    pubkey: post.pubkey,
-                    isAgent: isAgent,
-                  ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TEAM NOTE',
+                style: context.textTheme.labelSmall?.copyWith(
+                  color: context.mobileTokens.muted,
+                  fontSize: 10,
+                  letterSpacing: 0.35,
                 ),
-                const SizedBox(width: Grid.xxs),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => showUserProfileSheet(context, post.pubkey),
-                    child: Text(
-                      displayName,
-                      maxLines: 1,
-                      style: messageUsernameTextStyle,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Grid.xxs),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: Grid.xxl),
-                  child: Text(
-                    formatRelativeTime(post.createdAt),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: messageTimestampTextStyle.copyWith(
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Grid.half),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    onPressed: () => _showActions(context),
-                    icon: Icon(
-                      LucideIcons.ellipsis,
-                      size: 16,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+              ),
+              if (contentParts.title.isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Text(
+                  contentParts.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.titleSmall?.copyWith(
+                    color: context.mobileTokens.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.4,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: Grid.xxs),
-
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white, Colors.white, Colors.transparent],
-                stops: [0.0, 0.75, 1.0],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 120),
-                child: IgnorePointer(
-                  child: MessageContent(
-                    content: preview,
-                    mentionNames: mentionNames,
-                    agentMentionPubkeys: agentMentionPubkeys,
-                    tags: post.tags,
-                    baseStyle: messageBodyTextStyle.copyWith(
-                      color: context.colors.onSurface,
-                    ),
+              if (contentParts.body.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 62),
+                  child: IgnorePointer(
+                    child:
+                        presentation?.messageContentBuilder(
+                          context,
+                          contentSpec,
+                        ) ??
+                        Text(
+                          contentParts.body,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: contentSpec.baseStyle,
+                        ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: Grid.xxs),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'} · $footerAuthor · $footerTime',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.labelSmall?.copyWith(
+                    color: context.mobileTokens.action,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
-            ),
-
-            // Thread summary
-            if (summary != null && summary.replyCount > 0) ...[
-              const SizedBox(height: Grid.xxs),
-              Row(
-                children: [
-                  Icon(
-                    LucideIcons.messageSquare,
-                    size: 14,
-                    color: context.colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: Grid.half),
-                  Text(
-                    '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}',
-                    style: context.textTheme.labelSmall?.copyWith(
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                  ),
-                  if (summary.lastReplyAt != null) ...[
-                    const SizedBox(width: Grid.half),
-                    Text(
-                      '\u00b7',
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: context.colors.onSurfaceVariant.withValues(
-                          alpha: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Grid.half),
-                    Text(
-                      'last ${formatRelativeTime(summary.lastReplyAt!)}',
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: context.colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -313,37 +275,32 @@ class ForumPostCard extends HookConsumerWidget {
   }
 }
 
-class _PostAvatar extends StatelessWidget {
-  final UserProfile? profile;
-  final String pubkey;
-  final bool isAgent;
+({String title, String body}) _splitForumPostContent(String content) {
+  final normalized = content.trim();
+  final firstLineBreak = normalized.indexOf('\n');
+  if (firstLineBreak < 0) return (title: '', body: normalized);
+  return (
+    title: normalized.substring(0, firstLineBreak).trim(),
+    body: normalized.substring(firstLineBreak + 1).trim(),
+  );
+}
 
-  const _PostAvatar({
-    required this.profile,
-    required this.pubkey,
-    required this.isAgent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final initial =
-        profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
-    final avatarUrl = profile?.avatarUrl;
-
-    return AvatarImage(
-      imageUrl: avatarUrl,
-      radius: 14,
-      backgroundColor: context.colors.primaryContainer,
-      fallback: Text(
-        initial,
-        style: context.textTheme.labelSmall?.copyWith(
-          color: context.colors.onPrimaryContainer,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      isAgent: isAgent,
-    );
+String _forumDayLabel(int timestamp) {
+  final date = DateTime.fromMillisecondsSinceEpoch(
+    timestamp * 1000,
+    isUtc: true,
+  ).toLocal();
+  final now = DateTime.now();
+  if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    return 'Today';
   }
+  final yesterday = now.subtract(const Duration(days: 1));
+  if (date.year == yesterday.year &&
+      date.month == yesterday.month &&
+      date.day == yesterday.day) {
+    return 'Yesterday';
+  }
+  return '${date.month}/${date.day}';
 }
 
 Map<String, String> _buildMentionNames(

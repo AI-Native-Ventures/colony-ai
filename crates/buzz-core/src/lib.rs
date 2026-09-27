@@ -7,8 +7,12 @@
 
 /// NIP-AM: Agent Turn Metric — payload type and encrypt/decrypt helpers.
 pub mod agent_turn_metric;
+/// Colony business-record schemas, scoped identifiers, and version checks.
+pub mod business_records;
 /// Channel and membership enums shared across crates.
 pub mod channel;
+/// Typed content and validation for company records (goals and asks).
+pub mod company_records;
 /// NIP-AE Agent Engrams — slug grammar, conversation key, d-tag derivation,
 /// body parse/serialize, envelope build/validate, head selection.
 pub mod engram;

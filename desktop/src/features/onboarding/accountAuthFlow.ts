@@ -22,6 +22,9 @@ export type AccountAuthFailureCode =
   | "email_taken"
   | "identity_taken"
   | "code_expired"
+  | "wrong_code"
+  | "too_many_attempts"
+  | "resend_cooldown"
   | "weak_password"
   | "rate_limited"
   | "unreachable"
@@ -195,6 +198,9 @@ function normalizedFailureCode(raw: unknown): AccountAuthFailureCode {
     case "email_taken":
     case "identity_taken":
     case "code_expired":
+    case "wrong_code":
+    case "too_many_attempts":
+    case "resend_cooldown":
     case "weak_password":
     case "rate_limited":
       return raw;
@@ -225,11 +231,14 @@ export function normalizeAccountAuthFailure(
     readErrorField(error, "retryAfterSecs");
   const remainingAttempts =
     readErrorField(error, "remainingAttempts") ??
+    readErrorField(error, "attempts_left") ??
     readErrorField(error, "remaining_attempts");
 
   return {
     code,
-    ...(code === "rate_limited" &&
+    ...((code === "rate_limited" ||
+      code === "too_many_attempts" ||
+      code === "resend_cooldown") &&
     typeof retryAfter === "number" &&
     Number.isFinite(retryAfter)
       ? { retryAfterSecs: Math.max(0, Math.floor(retryAfter)) }
@@ -261,6 +270,18 @@ export function accountAuthFailureMessage(
       return "This identity is already linked to an account. Sign in instead.";
     case "code_expired":
       return "This code has expired. Request a new one to continue.";
+    case "wrong_code":
+      return failure.remainingAttempts === undefined
+        ? "That code isn’t right. Check the six digits and try again."
+        : `That code isn’t right. ${failure.remainingAttempts} ${failure.remainingAttempts === 1 ? "attempt" : "attempts"} left. Check the six digits and try again.`;
+    case "too_many_attempts":
+      return failure.retryAfterSecs && failure.retryAfterSecs > 0
+        ? `Too many attempts. Try again in ${failure.retryAfterSecs}s. You can resend a code after the wait.`
+        : "Too many attempts. The wait is over. Resend a fresh code to continue.";
+    case "resend_cooldown":
+      return failure.retryAfterSecs && failure.retryAfterSecs > 0
+        ? `Resend code in ${failure.retryAfterSecs}s.`
+        : "Resend code when the countdown ends.";
     case "weak_password":
       return "Use a password with at least 10 characters.";
     case "rate_limited":

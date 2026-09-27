@@ -69,7 +69,7 @@ index e02dfd0b3db60faff2cc705d7ce0aa51cb958f5a..b12677a356f748ebccf6e16cb781efe1
                      });
                  }
 -                f[i] = R(e.C() + t, s), o && u();
-+                f[i] = R((o ? R(f[i], s) : e.C()) + t, s), o && u();
++                f[i] = R(R(f[i], s) + t, s), o && u();
              }), n[1](!0);
          },
          v() {
@@ -167,7 +167,7 @@ index 110ac3858a002a6cdb698da2b56350bc1bf609d2..db83efc83fb3b6d7aa07d83b7463d6ed
                      });
                  }
 -                u[i] = W(e.C() + t, s), o && f();
-+                u[i] = W((o ? W(u[i], s) : e.C()) + t, s), o && f();
++                u[i] = W(W(u[i], s) + t, s), o && f();
              }), r[1](!0);
          },
          v() {

@@ -36,8 +36,8 @@ class UserProfile {
   /// Short label: display name, or the compact npub form of the public key.
   ///
   /// Blank display names (empty or whitespace-only) fall back to the compact
-  /// npub too — relay profiles can carry them — so a valid identity never
-  /// renders an empty label, like [initial]. Nonblank names render as
+  /// npub form because relay profiles can carry them. A valid identity then
+  /// never renders an empty label, like [initial]. Nonblank names render as
   /// authored: trim only tests blankness, so authored padding survives
   /// (unlike [initial], which reads the trimmed padding).
   String get label {
@@ -52,6 +52,14 @@ class UserProfile {
     // Hex-derived (not npub-derived) so unnamed identities keep distinct
     // initials instead of every npub rendering `N`.
     return pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?';
+  }
+
+  /// Up to two display-name initials for compact community avatars.
+  String get initials {
+    final name = displayName?.trim();
+    if (name == null || name.isEmpty) return initial;
+    final words = name.split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    return words.take(2).map((word) => word[0].toUpperCase()).join();
   }
 }
 

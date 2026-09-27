@@ -15,7 +15,13 @@ enum AccountFlowResultKind { emailVerified, passwordUpdated }
 
 /// Confirmation screen used after the account service accepts a code flow.
 class AccountFlowResultPage extends ConsumerWidget {
-  const AccountFlowResultPage({required this.kind, super.key});
+  final WidgetBuilder? pairIdentityPageBuilder;
+
+  const AccountFlowResultPage({
+    required this.kind,
+    this.pairIdentityPageBuilder,
+    super.key,
+  });
 
   final AccountFlowResultKind kind;
 
@@ -30,7 +36,11 @@ class AccountFlowResultPage extends ConsumerWidget {
           if (passwordUpdated) {
             ref.read(accountAuthProvider.notifier).reset();
             await Navigator.of(context).pushAndRemoveUntil<void>(
-              MaterialPageRoute<void>(builder: (_) => const SignInPage()),
+              MaterialPageRoute<void>(
+                builder: (_) => SignInPage(
+                  pairIdentityPageBuilder: pairIdentityPageBuilder,
+                ),
+              ),
               (_) => false,
             );
           } else {
