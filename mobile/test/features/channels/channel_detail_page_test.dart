@@ -3127,7 +3127,7 @@ void main() {
                 pubkey: 'agent',
                 role: 'bot',
                 joinedAt: DateTime(2025),
-                displayName: 'Agent',
+                displayName: 'Scout',
               ),
             ],
           ),
@@ -3139,53 +3139,56 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.byType(IdentityRow), findsNWidgets(3));
-        expect(find.text('You · Owner', findRichText: true), findsOneWidget);
-        expect(find.text('Alice · Member', findRichText: true), findsOneWidget);
-        expect(find.text('Agent · Agent', findRichText: true), findsOneWidget);
-        expect(find.text('Member'), findsNothing);
-        expect(find.text('Owner'), findsNothing);
-        expect(find.text('People · 2'), findsNothing);
-        expect(find.text('Agents · 1'), findsNothing);
-        expect(find.text('PEOPLE — 2'), findsNothing);
-        expect(find.text('BOTS — 1'), findsNothing);
+        expect(find.text('In this conversation'), findsOneWidget);
+        for (final (pubkey, name, details) in [
+          ('self', 'You', 'Owner'),
+          ('alice', 'Alice', 'Member'),
+          ('agent', 'Scout', 'Agent'),
+        ]) {
+          final row = find.byKey(ValueKey('channel-details-member-$pubkey'));
+          expect(
+            find.descendant(of: row, matching: find.text(name)),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: row, matching: find.text(details)),
+            findsOneWidget,
+          );
+        }
+        final agentRow = find.byKey(
+          const ValueKey('channel-details-member-agent'),
+        );
+        expect(
+          tester
+              .widget<IdentityAvatar>(
+                find.descendant(
+                  of: agentRow,
+                  matching: find.byType(IdentityAvatar),
+                ),
+              )
+              .kind,
+          IdentityKind.agent,
+        );
+        expect(find.text('People'), findsNothing);
+        expect(find.text('Agents'), findsNothing);
 
         final aliceRow = find.byKey(
           const ValueKey('channel-details-member-alice'),
         );
-        final aliceText = tester.widget<Text>(
-          find.descendant(
-            of: aliceRow,
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Text &&
-                  widget.textSpan?.toPlainText() == 'Alice · Member',
-            ),
-          ),
+        final aliceIdentity = tester.widget<IdentityAvatar>(
+          find.descendant(of: aliceRow, matching: find.byType(IdentityAvatar)),
         );
-        final aliceSpans = (aliceText.textSpan! as TextSpan).children!;
-        expect(
-          aliceSpans.last.style?.fontSize,
-          AppTheme.light().textTheme.bodySmall?.fontSize,
-        );
-        expect(
-          tester
-              .widget<AvatarImage>(
-                find.descendant(
-                  of: aliceRow,
-                  matching: find.byType(AvatarImage),
-                ),
-              )
-              .radius,
-          20,
-        );
+        expect(aliceIdentity.initials, 'A');
+        expect(aliceIdentity.kind, IdentityKind.person);
+        expect(aliceIdentity.size, 39);
         expect(
           find.descendant(
             of: aliceRow,
-            matching: find.byIcon(LucideIcons.chevronRight),
+            matching: find.byIcon(Icons.chevron_right),
           ),
           findsOneWidget,
         );
-        expect(tester.getSize(aliceRow).height, 40 + (Grid.xxs * 2));
+        expect(tester.getSize(aliceRow).height, 39 + 28);
 
         await tester.tap(aliceRow);
         await tester.pumpAndSettle();
@@ -3524,15 +3527,16 @@ void main() {
       final firstMemberRow = previews.first;
       final firstMemberTitle = find.descendant(
         of: firstMemberRow,
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Text && widget.textSpan != null,
-        ),
+        matching: find.text('You'),
       );
       expect(
         tester.getTopLeft(find.text('See all')).dx,
         closeTo(tester.getTopLeft(firstMemberTitle).dx, 0.1),
       );
-      expect(tester.getSize(seeAllRow).height, 40 + (Grid.xxs * 2));
+      expect(
+        tester.getSize(seeAllRow).height,
+        MobileLayoutTokens.minimumRowHeight + (Grid.xxs * 2),
+      );
 
       // Identity display in the preview rows: unnamed members keep distinct
       // hex-keyed avatar initials (the compact-npub label would render `N`
@@ -4047,7 +4051,7 @@ void main() {
 
       expect(updatedName, 'renamed');
       expect(updatedDescription, 'A new description');
-      expect(find.text('renamed'), findsOneWidget);
+      expect(find.text('Renamed'), findsOneWidget);
       expect(find.text('A new description'), findsOneWidget);
     });
 
@@ -4126,7 +4130,10 @@ void main() {
         aliceTimestamp.style?.fontSize,
         conversationTimestampTextStyle.fontSize,
       );
-      expect(aliceTimestamp.style?.fontWeight, FontWeight.w400);
+      expect(
+        aliceTimestamp.style?.fontWeight,
+        conversationTimestampTextStyle.fontWeight,
+      );
       expect(
         aliceTimestamp.style?.fontSize,
         lessThan(aliceText.style!.fontSize!),
@@ -4204,14 +4211,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<ColoredBox>(
-              find.byKey(const ValueKey('message-avatar-surface')),
-            )
-            .color,
-        Colors.transparent,
+      final animatedAvatar = tester.widget<IdentityAvatar>(
+        find.byType(IdentityAvatar),
       );
+      expect(animatedAvatar.kind, IdentityKind.person);
+      expect(animatedAvatar.imageUrl, posterUrl);
       expect(tester.widget<MediaImage>(find.byType(MediaImage)).url, posterUrl);
       expect(
         find.byKey(const ValueKey('progressive-animated-avatar-animation')),
@@ -4741,10 +4745,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        findRichText('2 replies · Last reply ${formatMessageTime(1200)}'),
-        findsOneWidget,
-      );
+      expect(findRichText('Thread head · 2 replies'), findsOneWidget);
       expect(find.byIcon(LucideIcons.chevronRight), findsNothing);
       final replyAvatars = find.descendant(
         of: find.byKey(const ValueKey('thread-summary-root')),
@@ -4764,7 +4765,7 @@ void main() {
         summaryPadding.padding,
         const EdgeInsets.only(
           left: conversationReplyIndent,
-          top: Grid.fourteen,
+          top: Grid.half,
           bottom: Grid.half,
         ),
       );
@@ -4807,7 +4808,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final summaryText = tester.widget<RichText>(findRichText('3 replies'));
-      expect(summaryText.maxLines, 2);
+      expect(summaryText.maxLines, 1);
       expect(summaryText.overflow, TextOverflow.ellipsis);
       expect(tester.takeException(), isNull);
     });
@@ -11082,7 +11083,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('secret'), findsOneWidget);
+      expect(find.text('# secret'), findsOneWidget);
       expect(find.byIcon(LucideIcons.lock), findsOneWidget);
     });
   });

@@ -412,7 +412,10 @@ class ChannelDetailsPage extends HookConsumerWidget {
                   ),
                 AppListRowRaw(
                   key: const ValueKey('channel-details-members-row'),
-                  leading: const SizedBox.square(dimension: 40),
+                  leading: const SizedBox(
+                    width: Grid.eighteen,
+                    height: MobileLayoutTokens.minimumRowHeight,
+                  ),
                   title: Text('See all', style: context.textTheme.bodyLarge),
                   trailing: const _ChannelDetailsChevron(),
                   onTap: openMembers,
@@ -650,10 +653,12 @@ class _ChannelMemberPreviewRow extends StatelessWidget {
     // Self/named initials come from the visible label; unnamed members stay
     // keyed to the hex public key so the compact-npub label doesn't render
     // `N` for everyone.
-    final initials = _channelMemberInitials(
-      label,
-      fallback: member.pubkey.isNotEmpty ? member.pubkey[0].toUpperCase() : '?',
-    );
+    final pubkeyInitial = member.pubkey.isNotEmpty
+        ? member.pubkey[0].toUpperCase()
+        : '?';
+    final initials = isSelf || hasName
+        ? _channelMemberInitials(label, fallback: pubkeyInitial)
+        : pubkeyInitial;
     final roleLabel = _channelMemberRoleLabel(member.role);
     return IdentityRow(
       name: label,
