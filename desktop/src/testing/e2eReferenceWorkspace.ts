@@ -103,7 +103,7 @@ function todayAt(hours: number, minutes: number): number {
 }
 
 export function referenceSalesLastMessageAt(): string {
-  return new Date(todayAt(9, 50) * 1_000).toISOString();
+  return new Date((todayAt(9, 50) + 1) * 1_000).toISOString();
 }
 
 /** The frozen r19 Today screen records used by the mock bridge. */
@@ -254,7 +254,7 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   return [
     {
       id: unreadRootId,
-      pubkey: REFERENCE_AGENTS.aya.pubkey,
+      pubkey: selfPubkey,
       created_at: todayAt(8, 50),
       kind: 9,
       tags: [["h", channelId]],
@@ -264,7 +264,7 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
     {
       id: REFERENCE_SALES_UNREAD_REPLY_ID,
       pubkey: REFERENCE_AGENTS.aya.pubkey,
-      created_at: todayAt(9, 44),
+      created_at: todayAt(9, 50) + 1,
       kind: 9,
       tags: [
         ["h", channelId],

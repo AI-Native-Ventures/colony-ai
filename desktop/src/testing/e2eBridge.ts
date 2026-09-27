@@ -16000,7 +16000,7 @@ export function maybeInstallE2eTauriMocks() {
         const results: UnreadCatchUpChannelResult[] =
           request.request.channels.map((channel) => {
             const events = getMockMessageStore(channel.id);
-            const activityRows =
+            const observedEvents =
               referenceWorkspaceActive &&
               channel.id === REFERENCE_CHANNEL_IDS.sales
                 ? events
@@ -16012,21 +16012,20 @@ export function maybeInstallE2eTauriMocks() {
                     )
                     .map((event) => ({
                       id: event.id,
-                      kind: event.kind,
-                      pubkey: event.pubkey,
-                      content: event.content,
                       createdAt: event.created_at,
-                      channelId: channel.id,
-                      channelName: "Sales",
-                      tags: [...event.tags],
+                      rootId: getThreadReferenceFromTags(event.tags)
+                        .rootEventId,
+                      highPriority: true,
+                      countsTowardBadge: true,
+                      countsTowardAppBadge: false,
                     }))
                 : [];
             return {
               status: "success",
               channelId: channel.id,
-              observedEvents: [],
+              observedEvents,
               maxTrigger: 0,
-              activityRows,
+              activityRows: [],
               discovered: {
                 participated: [],
                 authored: events
