@@ -1,9 +1,11 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
+import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
   ListTodo,
   LayoutTemplate,
+  Search,
   Settings as SettingsIcon,
   Workflow,
   Zap,
@@ -166,6 +168,7 @@ export function AppSidebar({
   onStarChannel,
   onUnstarChannel,
 }: AppSidebarProps) {
+  const { pathname } = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
@@ -932,12 +935,39 @@ export function AppSidebar({
 
                   <SidebarNavigationGroup
                     defaultExpanded={false}
-                    expandForActiveRoute={selectedView === "clients"}
+                    expandForActiveRoute={
+                      selectedView === "business" || selectedView === "clients"
+                    }
                     label="Business"
                     testId="sidebar-nav-business"
                   >
-                    {onSelectClients ? (
-                      <SidebarMenu>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          className="sidebar-navigation-child pl-7"
+                          data-testid="sidebar-business-discovery"
+                          isActive={
+                            pathname === "/discovery" ||
+                            pathname === "/campaign"
+                          }
+                          tooltip="Discovery"
+                        >
+                          <a
+                            aria-current={
+                              pathname === "/discovery" ||
+                              pathname === "/campaign"
+                                ? "page"
+                                : undefined
+                            }
+                            href="#/discovery"
+                          >
+                            <Search className="h-4 w-4" />
+                            <SidebarMenuLabel>Discovery</SidebarMenuLabel>
+                          </a>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      {onSelectClients ? (
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             className="sidebar-navigation-child pl-7"
@@ -951,8 +981,8 @@ export function AppSidebar({
                             <SidebarMenuLabel>Clients</SidebarMenuLabel>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
-                      </SidebarMenu>
-                    ) : null}
+                      ) : null}
+                    </SidebarMenu>
                   </SidebarNavigationGroup>
 
                   <SidebarSoftwareFactoryGroup

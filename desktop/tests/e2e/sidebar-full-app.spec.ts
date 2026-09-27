@@ -70,7 +70,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   }
 });
 
-test("Company Work and Business Clients open their existing routes", async ({
+test("Company Work and Business destinations open existing routes", async ({
   page,
 }) => {
   await page.goto("/");
@@ -83,6 +83,16 @@ test("Company Work and Business Clients open their existing routes", async ({
 
   await page.getByTestId("sidebar-activity-button").click();
   await page.getByTestId("sidebar-nav-business-toggle").click();
+  const discovery = page.getByTestId("sidebar-business-discovery");
+  await expect(discovery).toBeVisible();
+  await discovery.click();
+  await expect(page).toHaveURL(/#\/discovery$/);
+  await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+  await expect(page.getByTestId("sidebar-nav-business-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+
   const clients = page.getByTestId("sidebar-business-clients");
   await expect(clients).toBeVisible();
   await clients.click();
