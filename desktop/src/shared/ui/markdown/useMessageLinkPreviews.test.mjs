@@ -8,6 +8,7 @@ import { mergeMessageLinkPreviews } from "./useMessageLinkPreviews.ts";
 const OWNER = "a".repeat(64);
 const EVENT_ID = "b".repeat(64);
 const ENTITY_HREF = `buzz://pr?id=${EVENT_ID}&owner=${OWNER}&d=buzz-world`;
+const GOAL_HREF = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
 const EXTERNAL_HREF = "https://example.com/story";
 const RELAY_ORIGIN = "https://relay.example";
 
@@ -28,11 +29,12 @@ function snapshotTag(href, title, siteName) {
 }
 
 test("Buzz entity links do not create message preview cards", () => {
-  const content = `${ENTITY_HREF} then ${EXTERNAL_HREF}`;
+  const content = `${ENTITY_HREF} ${GOAL_HREF} then ${EXTERNAL_HREF}`;
   const candidates = extractSupportedLinkPreviews(content, RELAY_ORIGIN);
   const snapshots = parseLinkPreviewSnapshots(
     [
       snapshotTag(ENTITY_HREF, "Forged sender title", "Definitely Real Buzz"),
+      snapshotTag(GOAL_HREF, "Goal title", "Buzz"),
       snapshotTag(EXTERNAL_HREF, "External story", "Example"),
     ],
     content,
