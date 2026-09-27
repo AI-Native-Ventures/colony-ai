@@ -7894,7 +7894,7 @@ function filterMockGoalEvents(filter: MockFilter): RelayEvent[] {
 }
 
 /** Project-scoped publishes (PR/issue comments, NIP-34 status events) carry
- * a repo-address `a` tag instead of a channel `h` tag — store them with the
+ * a repo-address `a` tag instead of a channel `h` tag. Store them with the
  * seeded project events so refetches see them. */
 function isMockProjectScopedEvent(event: RelayEvent): boolean {
   const hasRepoAddressTag = event.tags.some(

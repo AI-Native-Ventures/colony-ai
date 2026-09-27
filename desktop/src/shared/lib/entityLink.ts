@@ -239,7 +239,7 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
   }
   const isCoordinateHost = host === "repo" || host === "project";
 
-  // Require empty/root path — path segments are reserved for future versioning.
+  // Require an empty or root path. Path segments are reserved for future versioning.
   if (parsed.pathname !== "" && parsed.pathname !== "/") {
     return { ok: false, reason: "unexpected-path" };
   }
