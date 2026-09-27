@@ -11,6 +11,7 @@ on:
       - ".github/workflows/android-interop.yml"
       - "scripts/interop/android-interop-*"
       - "scripts/start-relay-for-tests.sh"
+      - ".github/actions/cached-service-images/**"
       - "scripts/reconcile-schema-after-pgschema.sql"
       - "schema/schema.sql"
       - "justfile"
@@ -33,6 +34,7 @@ on:
       - ".github/workflows/android-interop.yml"
       - "scripts/interop/android-interop-*"
       - "scripts/start-relay-for-tests.sh"
+      - ".github/actions/cached-service-images/**"
       - "scripts/reconcile-schema-after-pgschema.sql"
       - "schema/schema.sql"
       - "justfile"
@@ -157,6 +159,11 @@ jobs:
           just mobile-build-android
           test -s "$APK_PATH"
           sha256sum "$APK_PATH"
+
+      - name: Restore cached service images
+        # start-relay-for-tests.sh runs docker compose itself; restore the
+        # pinned images first so it does not pull anonymously.
+        uses: ./.github/actions/cached-service-images
 
       - name: Start and seed the disposable relay
         shell: bash

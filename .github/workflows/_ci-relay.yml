@@ -585,6 +585,10 @@ jobs:
         with:
           name: desktop-e2e-relay
           path: target/ci
+      - name: Restore cached service images
+        # start-relay-for-tests.sh runs docker compose itself; restore the
+        # pinned images first so it does not pull anonymously.
+        uses: ./.github/actions/cached-service-images
       - name: Start relay
         run: |
           chmod +x ./target/ci/buzz-relay ./target/ci/git-credential-nostr
