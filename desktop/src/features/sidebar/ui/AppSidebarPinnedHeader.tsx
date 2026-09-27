@@ -1,4 +1,11 @@
-import { Bot, BriefcaseBusiness, Folders, House, Inbox } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  BriefcaseBusiness,
+  Folders,
+  House,
+  Inbox,
+} from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
@@ -17,6 +24,7 @@ import { ProtectedBestieSidebarEntry } from "@protected-feature-components";
 import { Button } from "@/shared/ui/button";
 import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
 import { useSidebar } from "@/shared/ui/sidebar";
+import colonyIcon from "../assets/colony-icon-v2.svg";
 
 type SidebarSelectedView =
   | "today"
@@ -27,10 +35,12 @@ type SidebarSelectedView =
   | "workflows"
   | "pulse"
   | "projects"
+  | "factory"
   | "pins";
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;
+  factoryView?: boolean;
   channelLabels: Record<string, string>;
   currentChannelId?: string | null;
   currentPubkey?: string;
@@ -40,6 +50,7 @@ type AppSidebarPinnedHeaderProps = {
   onOpenDm: (input: { pubkeys: string[] }) => Promise<void>;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;
   onSelectChannel: (channelId: string) => void;
+  onReturnToWorkspace?: () => void;
   searchChannels: Channel[];
   searchFocusRequest: number;
   showSidebarCollapseButton: boolean;
@@ -52,15 +63,15 @@ type AppSidebarPrimaryMenuProps = {
   onSelectToday: () => void;
   onSelectAgents: () => void;
   onSelectHome: () => void;
-  onSelectProjects: () => void;
+  onSelectFactory: () => void;
   onSelectWorkflows: () => void;
-  projectsOverviewActive: boolean;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
 
 export function AppSidebarPinnedHeader({
   activeCommunityName,
+  factoryView = false,
   channelLabels,
   currentChannelId,
   currentPubkey,
@@ -70,6 +81,7 @@ export function AppSidebarPinnedHeader({
   onOpenDm,
   onOpenSearchResult,
   onSelectChannel,
+  onReturnToWorkspace,
   searchChannels,
   searchFocusRequest,
   showSidebarCollapseButton,
@@ -86,23 +98,42 @@ export function AppSidebarPinnedHeader({
       data-testid="sidebar-pinned-header"
     >
       <div className="colony-sidebar-brand mb-2 flex h-10 items-center gap-2">
-        <button
-          aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
-          data-testid="sidebar-business-switcher"
-          onClick={() =>
-            window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
-          }
-          type="button"
-        >
-          <span aria-hidden="true" className="colony-sidebar-brand-mark">
-            {communityInitial}
-            <span className="colony-sidebar-brand-mark-dot">·</span>
-          </span>
-          <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
-            {activeCommunityName || "No community"}
-          </span>
-        </button>
+        {factoryView ? (
+          <div
+            className="flex min-w-0 flex-1 items-center gap-2 px-1"
+            data-testid="factory-sidebar-brand"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              className="h-[26px] w-[26px] rounded-md"
+              src={colonyIcon}
+            />
+            <span className="min-w-0 truncate text-xl font-bold tracking-[-0.055em] text-sidebar-foreground">
+              colony
+            </span>
+          </div>
+        ) : (
+          <button
+            aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+            data-testid="sidebar-business-switcher"
+            onClick={() =>
+              window.dispatchEvent(
+                new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT),
+              )
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="colony-sidebar-brand-mark">
+              {communityInitial}
+              <span className="colony-sidebar-brand-mark-dot">·</span>
+            </span>
+            <span className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground">
+              {activeCommunityName || "No community"}
+            </span>
+          </button>
+        )}
         {showSidebarCollapseButton ? (
           <Button
             aria-label="Toggle Sidebar"
@@ -117,21 +148,36 @@ export function AppSidebarPinnedHeader({
           </Button>
         ) : null}
       </div>
-      <TopbarSearch
-        channelLabels={channelLabels}
-        channels={searchChannels}
-        currentChannelId={currentChannelId}
-        currentPubkey={currentPubkey}
-        focusRequest={searchFocusRequest}
-        onOpenChannel={onSelectChannel}
-        onOpenResult={onOpenSearchResult}
-        onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
-        onBrowseChannels={onBrowseChannels}
-        onCreateAgent={onCreateAgent}
-        onCreateChannel={onCreateChannel}
-        scopeFocusRequest={scopeSearchFocusRequest}
-        suggestionChannels={suggestionChannels}
-      />
+      {factoryView ? (
+        <button
+          className="fx-sidebar-workspace-link"
+          data-testid="factory-return-to-workspace"
+          onClick={onReturnToWorkspace}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" />
+          <span>
+            <strong>{activeCommunityName}</strong>
+            <small>Business workspace</small>
+          </span>
+        </button>
+      ) : (
+        <TopbarSearch
+          channelLabels={channelLabels}
+          channels={searchChannels}
+          currentChannelId={currentChannelId}
+          currentPubkey={currentPubkey}
+          focusRequest={searchFocusRequest}
+          onOpenChannel={onSelectChannel}
+          onOpenResult={onOpenSearchResult}
+          onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
+          onBrowseChannels={onBrowseChannels}
+          onCreateAgent={onCreateAgent}
+          onCreateChannel={onCreateChannel}
+          scopeFocusRequest={scopeSearchFocusRequest}
+          suggestionChannels={suggestionChannels}
+        />
+      )}
     </div>
   );
 }
@@ -141,9 +187,8 @@ export function AppSidebarPrimaryMenu({
   onSelectToday,
   onSelectAgents,
   onSelectHome,
-  onSelectProjects,
+  onSelectFactory,
   onSelectWorkflows,
-  projectsOverviewActive,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
@@ -217,10 +262,10 @@ export function AppSidebarPrimaryMenu({
           <FeatureGate feature="projects">
             <SidebarMenuItem>
               <SidebarMenuButton
-                data-testid="open-projects-view"
-                isActive={selectedView === "projects" && projectsOverviewActive}
-                onClick={onSelectProjects}
-                tooltip="Projects"
+                data-testid="open-factory-view"
+                isActive={selectedView === "factory"}
+                onClick={onSelectFactory}
+                tooltip="Software Factory"
                 type="button"
               >
                 <Folders className="h-4 w-4" />

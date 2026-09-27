@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
 import { installMockBridge } from "../helpers/bridge";
 
 const TERM = 'section[aria-label="Buzz Term"]';
@@ -176,7 +178,7 @@ test("project terminal button opens Buzz Term for the repository", async ({
   await installTerminalBackend(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
     .locator(

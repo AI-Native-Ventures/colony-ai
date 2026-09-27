@@ -48,6 +48,13 @@ import type {
   RelayEvent,
 } from "@/shared/api/types";
 import type {
+  FactoryRun,
+  FactoryRunDraft,
+  FactoryRunEvent,
+  FactoryRunSnapshot,
+  FactoryScope,
+} from "@/shared/api/factoryRuntime";
+import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "@/features/onboarding/accountAuthClient";
@@ -147,6 +154,22 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+};
+
+export type MockFactoryProjectSeed = {
+  dtag: string;
+  name: string;
+  description: string;
+  repositoryDtag: string;
+  repositoryName: string;
+  cloneUrl: string;
+};
+
+export type MockFactoryRunSeed = {
+  run: FactoryRun;
+  events?: FactoryRunEvent[];
+  draft?: string | null;
+  hasMore?: boolean;
 };
 
 type MockManagedAgentRuntimeSeed = {
@@ -281,6 +304,14 @@ type E2eConfig = {
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
     /** Advertised HEAD for the first mock project without adding that branch. */
     projectHeadBranch?: string;
+    /** Project announcements used only by Factory E2E fixtures. */
+    factoryProjects?: MockFactoryProjectSeed[];
+    /** Host Factory records used only by Factory E2E fixtures. */
+    factoryRuns?: MockFactoryRunSeed[];
+    /** Run ids whose snapshot reads fail, exercising reconnect states. */
+    factorySnapshotFailureRunIds?: string[];
+    /** Local checkout paths returned by the E2E filesystem boundary. */
+    factoryLocalRepositories?: Array<{ name: string; path: string }>;
     /** Override the repository access channel for project authorization states. */
     projectAccessChannelId?: string;
     /** Make remote project snapshots fail with this git-facing message. */
@@ -6598,6 +6629,57 @@ function mulberry32(seed: number) {
 
 let mockProjectEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
+let mockFactoryRuns: FactoryRun[] = [];
+let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
+let mockFactoryDrafts = new Map<string, FactoryRunDraft>();
+
+function resetMockFactoryRuntime(config?: E2eConfig) {
+  const seeds = config?.mock?.factoryRuns ?? [];
+  mockFactoryRuns = seeds.map((seed) => structuredClone(seed.run));
+  mockFactorySnapshots = new Map(
+    seeds.map((seed) => [
+      seed.run.id,
+      {
+        run: structuredClone(seed.run),
+        events: structuredClone(seed.events ?? []),
+        draft: seed.draft ?? null,
+        hasMore: seed.hasMore ?? false,
+      },
+    ]),
+  );
+  mockFactoryDrafts = new Map(
+    seeds
+      .filter(
+        (seed): seed is MockFactoryRunSeed & { draft: string } =>
+          typeof seed.draft === "string",
+      )
+      .map((seed) => [
+        seed.run.id,
+        {
+          runId: seed.run.id,
+          draft: seed.draft,
+          updatedAt: seed.run.updatedAt,
+        },
+      ]),
+  );
+}
+
+function getMockFactorySnapshot(
+  runId: string,
+  afterSequence = 0,
+): FactoryRunSnapshot {
+  const run = mockFactoryRuns.find((item) => item.id === runId);
+  if (!run) throw new Error("Factory run is not available in this scope.");
+  const stored = mockFactorySnapshots.get(runId);
+  return {
+    run: structuredClone(run),
+    events: structuredClone(
+      stored?.events.filter((event) => event.sequence > afterSequence) ?? [],
+    ),
+    draft: mockFactoryDrafts.get(runId)?.draft ?? stored?.draft ?? null,
+    hasMore: stored?.hasMore ?? false,
+  };
+}
 
 function readMockProjectBranches(): Record<string, Record<string, string>> {
   try {
@@ -6629,6 +6711,47 @@ function writeMockProjectBranch(
 }
 
 function buildMockProjectEvents(): RelayEvent[] {
+  const factoryProjects = getConfig()?.mock?.factoryProjects;
+  if (factoryProjects) {
+    const config = getConfig();
+    const owner = getMockMemberPubkey(config);
+    const now = Math.floor(Date.now() / 1000);
+    return factoryProjects.flatMap((project, index) => {
+      const repositoryAddress = `${KIND_REPO_ANNOUNCEMENT}:${owner}:${project.repositoryDtag}`;
+      return [
+        createMockEvent(
+          KIND_REPO_ANNOUNCEMENT,
+          project.description,
+          [
+            ["d", project.repositoryDtag],
+            ["name", project.repositoryName],
+            ["description", project.description],
+            ["default-branch", "main"],
+            ["clone", project.cloneUrl],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+        createMockEvent(
+          KIND_PROJECT_ANNOUNCEMENT,
+          "",
+          [
+            ["d", project.dtag],
+            ["name", project.name],
+            ["description", project.description],
+            ["a", repositoryAddress],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+      ];
+    });
+  }
+
   if (window.__BUZZ_E2E_EMPTY_PROJECTS__) {
     return [];
   }
@@ -12002,6 +12125,7 @@ export function maybeInstallE2eTauriMocks() {
   resetMockRelayMembers(config);
   resetMockRelayAgents(config);
   resetMockManagedAgents(config);
+  resetMockFactoryRuntime(config);
   resetMockPersonas(config);
   resetMockTeams(config);
   seedMockSearchProfiles(config);
@@ -13697,7 +13821,7 @@ export function maybeInstallE2eTauriMocks() {
           }
         );
       case "list_project_local_repositories":
-        return [];
+        return activeConfig?.mock?.factoryLocalRepositories ?? [];
       case "open_project_repository_folder":
         return null;
       case "push_project_local_repository": {
@@ -14583,6 +14707,129 @@ export function maybeInstallE2eTauriMocks() {
             },
           ],
         };
+      }
+      case "factory_run_list":
+        return mockFactoryRuns.map((run) => structuredClone(run));
+      case "factory_run_snapshot":
+      case "factory_run_reattach": {
+        const { runId, afterSequence = 0 } = payload as {
+          runId: string;
+          afterSequence?: number;
+        };
+        if (activeConfig?.mock?.factorySnapshotFailureRunIds?.includes(runId)) {
+          throw new Error("Factory session is reconnecting.");
+        }
+        return getMockFactorySnapshot(runId, afterSequence);
+      }
+      case "factory_run_detach":
+        return true;
+      case "factory_run_cancel": {
+        const { runId } = payload as { runId: string };
+        const run = mockFactoryRuns.find((item) => item.id === runId);
+        if (!run)
+          throw new Error("Factory run is not available in this scope.");
+        run.status = "cancelled";
+        run.updatedAt = new Date().toISOString();
+        const snapshot = mockFactorySnapshots.get(runId);
+        if (snapshot) snapshot.run = structuredClone(run);
+        return structuredClone(run);
+      }
+      case "factory_run_create": {
+        const { input } = payload as {
+          input: {
+            projectId?: string | null;
+            repositoryId?: string | null;
+            checkoutPath: string;
+            agentId: string;
+            parentRunId?: string | null;
+            operationKey: string;
+            prompt: string;
+          };
+        };
+        const now = new Date().toISOString();
+        const communities = JSON.parse(
+          window.localStorage.getItem("buzz-communities") ?? "[]",
+        ) as Array<{
+          id: string;
+          relayUrl?: string;
+          businessCommunityId?: string;
+          clientChannelId?: string | null;
+        }>;
+        const activeCommunityId = window.localStorage.getItem(
+          "buzz-active-community-id",
+        );
+        const community = communities.find(
+          (item) => item.id === activeCommunityId,
+        );
+        const scope: FactoryScope = {
+          relayUrl: community?.relayUrl ?? getRelayWsUrl(activeConfig),
+          identityPubkey: getMockMemberPubkey(activeConfig),
+          businessCommunityId:
+            community?.businessCommunityId ?? community?.id ?? "e2e-business",
+          clientChannelId: community?.clientChannelId ?? null,
+        };
+        const run: FactoryRun = {
+          id: `e2e-factory-run-${crypto.randomUUID()}`,
+          scope,
+          projectId: input.projectId ?? null,
+          repositoryId: input.repositoryId ?? null,
+          checkoutPath: input.checkoutPath,
+          agentId: input.agentId,
+          harnessId:
+            activeConfig?.mock?.managedAgents?.find(
+              (agent) => agent.pubkey === input.agentId,
+            )?.runtime ?? "local",
+          parentRunId: input.parentRunId ?? null,
+          status: "queued",
+          createdAt: now,
+          updatedAt: now,
+          acpSessionId: null,
+          error: null,
+        };
+        mockFactoryRuns.unshift(run);
+        const promptEvent: FactoryRunEvent = {
+          sequence: 1,
+          runId: run.id,
+          createdAt: now,
+          kind: "user_prompt",
+          payload: { text: input.prompt },
+          scope,
+        };
+        mockFactorySnapshots.set(run.id, {
+          run: structuredClone(run),
+          events: [promptEvent],
+          draft: null,
+          hasMore: false,
+        });
+        return structuredClone(run);
+      }
+      case "factory_run_get_draft": {
+        const { runId } = payload as { runId: string };
+        return structuredClone(mockFactoryDrafts.get(runId) ?? null);
+      }
+      case "factory_run_set_draft": {
+        const { input } = payload as {
+          input: { runId: string; draft: string };
+        };
+        if (!mockFactoryRuns.some((run) => run.id === input.runId)) {
+          throw new Error("Factory run is not available in this scope.");
+        }
+        const draft = {
+          runId: input.runId,
+          draft: input.draft,
+          updatedAt: new Date().toISOString(),
+        };
+        mockFactoryDrafts.set(input.runId, draft);
+        const snapshot = mockFactorySnapshots.get(input.runId);
+        if (snapshot) snapshot.draft = input.draft;
+        return structuredClone(draft);
+      }
+      case "factory_run_delete": {
+        const { runId } = payload as { runId: string };
+        mockFactoryRuns = mockFactoryRuns.filter((run) => run.id !== runId);
+        mockFactorySnapshots.delete(runId);
+        mockFactoryDrafts.delete(runId);
+        return undefined;
       }
       case "list_managed_agents":
         return handleListManagedAgents(activeConfig);

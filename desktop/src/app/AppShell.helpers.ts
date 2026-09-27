@@ -11,6 +11,7 @@ export type AppView =
   | "workflows"
   | "pulse"
   | "projects"
+  | "factory"
   | "pins";
 
 const WINDOW_DRAG_HANDLE_HEIGHT = 44;
@@ -278,6 +279,13 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "projects",
+    };
+  }
+
+  if (pathname === "/factory" || pathname.startsWith("/factory/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "factory",
     };
   }
 

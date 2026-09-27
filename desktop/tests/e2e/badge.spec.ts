@@ -135,7 +135,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
     primaryMenu.getByRole("button", { name: "Inbox", exact: true }),
     page.getByTestId("open-workflows-view"),
-    page.getByTestId("open-projects-view"),
+    page.getByTestId("open-factory-view"),
     page.getByTestId("open-agents-view"),
   ];
 
