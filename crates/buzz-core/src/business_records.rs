@@ -41,6 +41,10 @@ pub enum BusinessRecordError {
 pub enum BusinessCommand {
     /// Party identity mutation.
     PartyAction(PartyAction),
+    /// Business service catalog mutation.
+    ServiceAction(ServiceAction),
+    /// Prospect qualification, save, or pipeline mutation.
+    ProspectAction(ProspectAction),
     /// Client relationship mutation.
     ClientAction(ClientAction),
     /// Work-item mutation.
@@ -125,6 +129,208 @@ pub struct PartyAction {
     pub expected_head_event_id: Option<String>,
     /// Replacement party identity data.
     pub party: PartyRecord,
+}
+
+/// Editable terms for one agency service offering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ServiceRecord {
+    /// Stable service UUID.
+    pub service_id: Uuid,
+    /// Service name shown in the catalog and proposals.
+    pub name: String,
+    /// Short service scope.
+    pub description: String,
+    /// ISO 4217 currency code.
+    pub currency: String,
+    /// Monthly fee in minor currency units.
+    pub monthly_fee_minor: i64,
+    /// Number of social posts included each month.
+    pub posts_per_month: u16,
+    /// Included revision rounds.
+    pub revision_rounds: u8,
+}
+
+/// Relay-authored current business service head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ServiceHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable service UUID.
+    pub service_id: Uuid,
+    /// Whether this service is available or archived.
+    pub status: String,
+    /// Current service terms.
+    pub service: ServiceRecord,
+    /// Event id of the member action that produced this head.
+    pub source_action_event_id: String,
+}
+
+/// Member request to create, update, archive, or restore a service.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ServiceAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable service UUID.
+    pub service_id: Uuid,
+    /// Requested mutation.
+    pub action: RecordAction,
+    /// Expected current service head id, absent only for creation.
+    pub expected_head_event_id: Option<String>,
+    /// Replacement service terms.
+    pub service: ServiceRecord,
+}
+
+/// Current stage of a prospect in the sales pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProspectStage {
+    /// Prospect has been qualified for a conversation.
+    Qualified,
+    /// A conversation is active.
+    InConversation,
+    /// A proposal has been sent.
+    Proposal,
+    /// The prospect accepted and converted.
+    Won,
+    /// The opportunity was lost and may be reopened.
+    Lost,
+}
+
+/// Qualification outcome recorded for a prospect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProspectQualification {
+    /// Not yet reviewed.
+    Unreviewed,
+    /// Fits the service and is worth pursuing.
+    Qualified,
+    /// Does not fit the current service.
+    NotFit,
+}
+
+/// Evidence collected for a prospect, with its observation time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectEvidence {
+    /// Evidence title.
+    pub title: String,
+    /// HTTPS source URL.
+    pub url: String,
+    /// Short source excerpt.
+    pub excerpt: String,
+    /// Unix time when the source was checked.
+    pub observed_at: i64,
+}
+
+/// Activity kind for a qualification or contact note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProspectActivityKind {
+    /// Internal qualification note.
+    Note,
+    /// A contact attempt, without sending anything through this event.
+    Contact,
+}
+
+/// Relay-stamped immutable prospect activity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectActivity {
+    /// Stable activity UUID.
+    pub activity_id: Uuid,
+    /// Activity type.
+    pub activity_kind: ProspectActivityKind,
+    /// Note content.
+    pub content: String,
+    /// Member pubkey that authored this activity.
+    pub author_pubkey: String,
+    /// Unix time from the signed source event.
+    pub created_at: i64,
+}
+
+/// Member-supplied fields for a prospect head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectRecordInput {
+    /// Stable prospect UUID.
+    pub prospect_id: Uuid,
+    /// Party identity shared with proposals and client conversion.
+    pub party: PartyRecord,
+    /// Industry taxonomy label.
+    pub industry: String,
+    /// Vertical taxonomy label.
+    pub vertical: String,
+    /// Prospect website, if known.
+    pub website: Option<String>,
+    /// Geographic area, if known.
+    pub location: Option<String>,
+    /// Business contact email, if known.
+    pub email: Option<String>,
+    /// Business contact phone, if known.
+    pub phone: Option<String>,
+    /// Source evidence and observation times.
+    pub evidence: Vec<ProspectEvidence>,
+    /// Time the prospect's current details were last checked.
+    pub last_verified_at: Option<i64>,
+    /// Qualification outcome.
+    pub qualification: ProspectQualification,
+    /// Whether this prospect is saved for follow-up.
+    pub saved: bool,
+    /// Current pipeline stage.
+    pub stage: ProspectStage,
+    /// Optional reason the opportunity was lost.
+    pub lost_reason: Option<String>,
+}
+
+/// Optional append to a prospect's immutable activity history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectActivityInput {
+    /// Stable activity UUID.
+    pub activity_id: Uuid,
+    /// Activity type.
+    pub activity_kind: ProspectActivityKind,
+    /// Note content.
+    pub content: String,
+}
+
+/// Relay-authored complete prospect head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable prospect UUID.
+    pub prospect_id: Uuid,
+    /// Whether this prospect is active or archived.
+    pub status: String,
+    /// Current prospect fields.
+    pub prospect: ProspectRecordInput,
+    /// Immutable notes and contact activity.
+    pub activities: Vec<ProspectActivity>,
+    /// Event id of the member action that produced this head.
+    pub source_action_event_id: String,
+}
+
+/// Member request to create or update a prospect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable prospect UUID.
+    pub prospect_id: Uuid,
+    /// Requested mutation.
+    pub action: RecordAction,
+    /// Expected current prospect head id, absent only for creation.
+    pub expected_head_event_id: Option<String>,
+    /// Replacement prospect fields.
+    pub prospect: ProspectRecordInput,
+    /// One optional new activity entry to append.
+    pub activity: Option<ProspectActivityInput>,
 }
 
 /// Relay-authored canonical client relationship head content.
@@ -387,6 +593,23 @@ pub struct ProposalAcceptance {
     pub work_item_id: Uuid,
     /// Stable draft-invoice UUID to create or link during conversion.
     pub draft_invoice_id: Uuid,
+    /// Evidence captured when the named acceptor confirmed this exact version.
+    #[serde(default)]
+    pub evidence: Option<ProposalAcceptanceEvidence>,
+}
+
+/// Human-readable evidence tied to an exact proposal acceptance event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProposalAcceptanceEvidence {
+    /// Name entered by the person accepting the proposal.
+    pub accepted_by_name: String,
+    /// Unix time shown and confirmed in the acceptance form.
+    pub accepted_at: i64,
+    /// Evidence reference recorded with the acceptance.
+    pub evidence_reference: String,
+    /// Confirms acceptance of the exact displayed scope, price, and revision.
+    pub exact_terms_confirmed: bool,
 }
 
 /// Relay-authored receipt for a completed proposal conversion claim.
@@ -467,6 +690,11 @@ pub fn proposal_version_d_tag(community_id: Uuid, proposal_id: Uuid, revision: u
     )
 }
 
+/// Build the namespaced d-tag for a prospect record.
+pub fn prospect_d_tag(community_id: Uuid, prospect_id: Uuid) -> String {
+    business_d_tag(community_id, "prospect", prospect_id)
+}
+
 /// Build the immutable d-tag for one client deliverable revision.
 pub fn deliverable_version_d_tag(client_id: Uuid, deliverable_id: Uuid, revision: u32) -> String {
     format!(
@@ -518,6 +746,24 @@ pub fn validate_business_command_scope(
     match command {
         BusinessCommand::PartyAction(value) => {
             validate_business_d_tag(d_tag, community_id, "party", value.party_id)
+        }
+        BusinessCommand::ServiceAction(value) => {
+            if value.service.service_id != value.service_id {
+                return Err(BusinessRecordError::InvalidContent);
+            }
+            validate_business_d_tag(d_tag, community_id, "service", value.service_id)
+        }
+        BusinessCommand::ProspectAction(value) => {
+            if value.prospect.prospect_id != value.prospect_id
+                || value.prospect.party.party_id.is_nil()
+            {
+                return Err(BusinessRecordError::InvalidContent);
+            }
+            if d_tag == prospect_d_tag(community_id, value.prospect_id) {
+                Ok(())
+            } else {
+                Err(BusinessRecordError::DTagMismatch)
+            }
         }
         BusinessCommand::ClientAction(value) => {
             validate_client_channel(value.client_id, channel_id)?;
@@ -613,6 +859,8 @@ pub fn parse_business_command(
 
     let command = match kind {
         crate::kind::KIND_PARTY_ACTION => parse!(PartyAction, PartyAction)?,
+        crate::kind::KIND_SERVICE_ACTION => parse!(ServiceAction, ServiceAction)?,
+        crate::kind::KIND_PROSPECT_ACTION => parse!(ProspectAction, ProspectAction)?,
         crate::kind::KIND_CLIENT_ACTION => parse!(ClientAction, ClientAction)?,
         crate::kind::KIND_WORK_ITEM_ACTION => parse!(WorkItemAction, WorkItemAction)?,
         crate::kind::KIND_PROPOSAL_VERSION => parse!(ProposalVersion, ProposalVersion)?,
@@ -624,6 +872,8 @@ pub fn parse_business_command(
 
     let schema_version = match &command {
         BusinessCommand::PartyAction(value) => value.schema_version,
+        BusinessCommand::ServiceAction(value) => value.schema_version,
+        BusinessCommand::ProspectAction(value) => value.schema_version,
         BusinessCommand::ClientAction(value) => value.schema_version,
         BusinessCommand::WorkItemAction(value) => value.schema_version,
         BusinessCommand::ProposalVersion(value) => value.schema_version,
@@ -640,6 +890,39 @@ pub fn parse_business_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn example_prospect_action() -> ProspectAction {
+        let party_id = Uuid::from_u128(11);
+        let prospect_id = Uuid::from_u128(12);
+        ProspectAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            prospect_id,
+            action: RecordAction::Create,
+            expected_head_event_id: None,
+            prospect: ProspectRecordInput {
+                prospect_id,
+                party: PartyRecord {
+                    party_id,
+                    party_type: "organization".into(),
+                    display_name: "Example Studio".into(),
+                    external_ids: Vec::new(),
+                },
+                industry: "Professional Services".into(),
+                vertical: "Marketing Agency".into(),
+                website: Some("https://example.test".into()),
+                location: Some("Cape Town".into()),
+                email: None,
+                phone: None,
+                evidence: Vec::new(),
+                last_verified_at: None,
+                qualification: ProspectQualification::Unreviewed,
+                saved: false,
+                stage: ProspectStage::Qualified,
+                lost_reason: None,
+            },
+            activity: None,
+        }
+    }
 
     fn version(event_id: &str, digest: &str) -> DeliverablePointer {
         DeliverablePointer {
@@ -744,5 +1027,82 @@ mod tests {
             business_d_tag(id, "proposal", other),
             format!("business:{id}:proposal:{other}")
         );
+    }
+
+    #[test]
+    fn service_and_prospect_commands_parse_and_bind_to_business_coordinates() {
+        let community_id = Uuid::from_u128(20);
+        let service_id = Uuid::from_u128(21);
+        let service = ServiceAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            service_id,
+            action: RecordAction::Create,
+            expected_head_event_id: None,
+            service: ServiceRecord {
+                service_id,
+                name: "Monthly social content".into(),
+                description: "Planning and publishing".into(),
+                currency: "ZAR".into(),
+                monthly_fee_minor: 25_000,
+                posts_per_month: 12,
+                revision_rounds: 2,
+            },
+        };
+        let parsed_service = parse_business_command(
+            crate::kind::KIND_SERVICE_ACTION,
+            &serde_json::to_string(&service).expect("serialize service action"),
+        )
+        .expect("parse service action");
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &business_d_tag(community_id, "service", service_id),
+                &parsed_service,
+            ),
+            Ok(())
+        );
+
+        let prospect = example_prospect_action();
+        let parsed_prospect = parse_business_command(
+            crate::kind::KIND_PROSPECT_ACTION,
+            &serde_json::to_string(&prospect).expect("serialize prospect action"),
+        )
+        .expect("parse prospect action");
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &prospect_d_tag(community_id, prospect.prospect_id),
+                &parsed_prospect,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &prospect_d_tag(community_id, Uuid::from_u128(99)),
+                &parsed_prospect,
+            ),
+            Err(BusinessRecordError::DTagMismatch)
+        );
+    }
+
+    #[test]
+    fn proposal_acceptance_without_new_evidence_remains_parseable() {
+        let json = serde_json::json!({
+            "schemaVersion": BUSINESS_RECORD_SCHEMA_VERSION,
+            "proposalId": Uuid::from_u128(1),
+            "proposalVersionEventId": "a".repeat(64),
+            "proposalVersionDigest": "b".repeat(64),
+            "conversionId": Uuid::from_u128(2),
+            "clientId": Uuid::from_u128(3),
+            "workItemId": Uuid::from_u128(4),
+            "draftInvoiceId": Uuid::from_u128(5)
+        });
+        let acceptance: ProposalAcceptance =
+            serde_json::from_value(json).expect("deserialize legacy acceptance");
+        assert_eq!(acceptance.evidence, None);
     }
 }

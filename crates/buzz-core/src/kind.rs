@@ -660,6 +660,8 @@ pub const KIND_CONTENT_POST_HEAD: u32 = 30639;
 pub const KIND_SITE_HEAD: u32 = 30640;
 /// Current client invoice head.
 pub const KIND_INVOICE_HEAD: u32 = 30641;
+/// Current business-level prospect head.
+pub const KIND_PROSPECT_HEAD: u32 = 30642;
 
 // Member-authored actions and immutable versions. The 47000 band was empty in
 // the full target registry at allocation time. These events are channel-scoped.
@@ -725,6 +727,8 @@ pub const KIND_MONEY_ADJUSTMENT: u32 = 47028;
 pub const KIND_RECONCILIATION: u32 = 47029;
 /// Follow-up draft linked to an invoice or outstanding balance.
 pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
+/// Requested change to a prospect qualification or pipeline record.
+pub const KIND_PROSPECT_ACTION: u32 = 47031;
 
 // Company records (docs/company-records.md). Goals are community-wide; asks
 // live in channel threads. Heads are relay-signed like business heads.
@@ -772,9 +776,11 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_CONTENT_POST_HEAD,
     KIND_SITE_HEAD,
     KIND_INVOICE_HEAD,
+    KIND_PROSPECT_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
+    KIND_PROSPECT_ACTION,
     KIND_PROPOSAL_VERSION,
     KIND_PROPOSAL_ACCEPTANCE,
     KIND_PROPOSAL_CONVERSION_RECEIPT,
@@ -826,6 +832,7 @@ pub const fn is_business_relay_only_kind(kind: u32) -> bool {
             | KIND_CONTENT_POST_HEAD
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
+            | KIND_PROSPECT_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
     )
 }
@@ -836,6 +843,8 @@ pub const fn is_business_command_kind(kind: u32) -> bool {
         kind,
         KIND_PARTY_ACTION
             | KIND_CLIENT_ACTION
+            | KIND_SERVICE_ACTION
+            | KIND_PROSPECT_ACTION
             | KIND_WORK_ITEM_ACTION
             | KIND_PROPOSAL_VERSION
             | KIND_PROPOSAL_ACCEPTANCE
@@ -989,9 +998,11 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_CONTENT_POST_HEAD,
     KIND_SITE_HEAD,
     KIND_INVOICE_HEAD,
+    KIND_PROSPECT_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
+    KIND_PROSPECT_ACTION,
     KIND_PROPOSAL_VERSION,
     KIND_PROPOSAL_ACCEPTANCE,
     KIND_PROPOSAL_CONVERSION_RECEIPT,
@@ -1086,6 +1097,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_APPROVAL_DENY
             | KIND_PARTY_ACTION
             | KIND_CLIENT_ACTION
+            | KIND_SERVICE_ACTION
+            | KIND_PROSPECT_ACTION
             | KIND_WORK_ITEM_ACTION
             | KIND_PROPOSAL_VERSION
             | KIND_PROPOSAL_ACCEPTANCE
@@ -1120,6 +1133,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_CONTENT_POST_HEAD
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
+            | KIND_PROSPECT_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
             | KIND_GOAL_HEAD
             | KIND_ASK_HEAD
