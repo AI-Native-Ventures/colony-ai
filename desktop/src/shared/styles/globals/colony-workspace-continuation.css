@@ -774,7 +774,11 @@ button.colony-today-attention-row:hover {
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="app-sidebar"]
-  [data-testid$="-quick-create"] {
+  :is(
+    [data-testid="section-actions-channels-quick-create"],
+    [data-testid="section-actions-forums-quick-create"],
+    [data-testid="section-actions-dms-quick-create"]
+  ) {
   opacity: 1;
 }
 

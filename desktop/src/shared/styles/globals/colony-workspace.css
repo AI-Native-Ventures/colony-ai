@@ -415,7 +415,12 @@
   display: none;
 }
 
-:root:has([data-colony-workspace-route="true"]) [data-testid$="-quick-create"] {
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="section-actions-channels-quick-create"],
+    [data-testid="section-actions-forums-quick-create"],
+    [data-testid="section-actions-dms-quick-create"]
+  ) {
   opacity: 1;
 }
 
