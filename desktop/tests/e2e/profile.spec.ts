@@ -13,7 +13,6 @@ import {
   openSettings,
   selectSettingsSection,
 } from "../helpers/settings";
-import { expectEmojiMartStylesInstalled } from "../helpers/css";
 import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
