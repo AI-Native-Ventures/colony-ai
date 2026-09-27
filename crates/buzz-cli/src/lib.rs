@@ -2441,6 +2441,7 @@ mod tests {
     fn command_inventory_is_stable() {
         let expected_groups: Vec<&str> = vec![
             "agents",
+            "asks",
             "canvas",
             "channels",
             "credits",
@@ -2514,6 +2515,10 @@ mod tests {
                 "draft-update",
                 "unarchive"
             ]
+        );
+        assert_eq!(
+            names(&cmd, "asks"),
+            vec!["cancel", "create", "list", "respond"]
         );
         assert_eq!(
             names(&cmd, "messages"),
@@ -2657,6 +2662,7 @@ mod tests {
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
             ("agents", 5),
+            ("asks", 4),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),

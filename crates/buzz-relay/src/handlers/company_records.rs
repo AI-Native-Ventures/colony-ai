@@ -126,12 +126,14 @@ async fn handle_ask_action(
             persist_ask_command(
                 tenant,
                 state,
-                event,
-                channel_id,
-                &d_tag,
-                head_event,
-                None,
-                Some(thread_meta),
+                AskCommandWrite {
+                    command: event,
+                    channel_id,
+                    d_tag: &d_tag,
+                    head: head_event,
+                    previous_head: None,
+                    thread_meta: Some(thread_meta),
+                },
             )
             .await
         }
@@ -169,12 +171,14 @@ async fn handle_ask_action(
             persist_ask_command(
                 tenant,
                 state,
-                event,
-                channel_id,
-                &d_tag,
-                head_event,
-                Some(current),
-                None,
+                AskCommandWrite {
+                    command: event,
+                    channel_id,
+                    d_tag: &d_tag,
+                    head: head_event,
+                    previous_head: Some(current),
+                    thread_meta: None,
+                },
             )
             .await
         }
@@ -243,26 +247,40 @@ async fn handle_ask_response(
     persist_ask_command(
         tenant,
         state,
-        event,
-        channel_id,
-        &d_tag,
-        head_event,
-        Some(current),
-        None,
+        AskCommandWrite {
+            command: event,
+            channel_id,
+            d_tag: &d_tag,
+            head: head_event,
+            previous_head: Some(current),
+            thread_meta: None,
+        },
     )
     .await
+}
+
+struct AskCommandWrite<'a> {
+    command: Event,
+    channel_id: Uuid,
+    d_tag: &'a str,
+    head: Event,
+    previous_head: Option<StoredEvent>,
+    thread_meta: Option<ThreadMetadataOwned>,
 }
 
 async fn persist_ask_command(
     tenant: &TenantContext,
     state: &Arc<AppState>,
-    command: Event,
-    channel_id: Uuid,
-    d_tag: &str,
-    head: Event,
-    previous_head: Option<StoredEvent>,
-    thread_meta: Option<ThreadMetadataOwned>,
+    write: AskCommandWrite<'_>,
 ) -> Result<IngestResult, IngestError> {
+    let AskCommandWrite {
+        command,
+        channel_id,
+        d_tag,
+        head,
+        previous_head,
+        thread_meta,
+    } = write;
     before_ask_persist_for_test(d_tag).await;
     let mut tx = state
         .db
