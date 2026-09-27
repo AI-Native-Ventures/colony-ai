@@ -38,6 +38,7 @@ type SidebarSelectedView =
   | "projects"
   | "business"
   | "factory"
+  | "goals"
   | "pins";
 
 type AppSidebarPinnedHeaderProps = {
