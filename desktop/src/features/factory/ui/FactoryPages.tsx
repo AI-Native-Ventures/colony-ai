@@ -2,8 +2,8 @@ import * as React from "react";
 import {
   Bot,
   ChevronRight,
+  ClipboardList,
   CircleAlert,
-  FolderGit2,
   GitBranch,
   MoreHorizontal,
   Plus,
@@ -92,7 +92,7 @@ export function ProjectDetail({
   agents,
   snapshots,
   localRepositories,
-  onAddAgent,
+  onStartSession,
   onCancelRun,
   onOpenRun,
   onOpenPlan,
@@ -107,7 +107,7 @@ export function ProjectDetail({
     { events: Array<{ sequence: number; kind: string; payload: unknown }> }
   >;
   localRepositories: Array<{ name: string; path: string }>;
-  onAddAgent: () => void;
+  onStartSession: () => void;
   onCancelRun: (runId: string) => void;
   onOpenRun: (runId: string) => void;
   onOpenPlan: (planId: string) => void;
@@ -196,9 +196,13 @@ export function ProjectDetail({
         />
       ) : null}
       <div className="fx-section-label">
-        <h3>Agent sessions</h3>
-        <button className="fx-text-button" onClick={onAddAgent} type="button">
-          Add agent <Plus aria-hidden="true" />
+        <h3>Sessions</h3>
+        <button
+          className="fx-text-button"
+          onClick={onStartSession}
+          type="button"
+        >
+          Start session <Plus aria-hidden="true" />
         </button>
       </div>
       <SessionList
@@ -233,7 +237,7 @@ export function PlansList({
           type="button"
         >
           <span className="fx-plan-icon">
-            <FolderGit2 aria-hidden="true" />
+            <ClipboardList aria-hidden="true" />
           </span>
           <div>
             <strong>{plan.title}</strong>
@@ -249,11 +253,7 @@ export function PlansList({
             </p>
           </div>
           <span className="fx-pill">
-            {plan.status === "approved"
-              ? "Approved"
-              : plan.status === "review"
-                ? "Changes requested"
-                : "Plan review"}
+            {plan.status === "approved" ? "Approved" : "Plan review"}
           </span>
           <ChevronRight aria-hidden="true" />
         </button>

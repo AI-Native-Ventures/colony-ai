@@ -154,7 +154,7 @@ export function StartRunDialog({
       !busy,
   );
   return (
-    <Modal title="Add an agent session" onClose={onClose}>
+    <Modal title="Start a session" onClose={onClose}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -237,12 +237,12 @@ export function StartRunDialog({
           </label>
         </div>
         <label>
-          Parent agent
+          Parent session
           <select
             onChange={(event) => setParentRunId(event.currentTarget.value)}
             value={parentRunId}
           >
-            <option value="">No parent agent</option>
+            <option value="">No parent session</option>
             {runs
               .filter(
                 (run) => run.status === "running" || run.status === "waiting",

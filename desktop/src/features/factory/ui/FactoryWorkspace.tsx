@@ -432,7 +432,7 @@ function FactoryConnected({
           onClick={() => setStartDialogOpen(true)}
           type="button"
         >
-          <Plus aria-hidden="true" /> Add agent
+          <Plus aria-hidden="true" /> Start session
         </button>
       </header>
 
@@ -484,7 +484,7 @@ function FactoryConnected({
               <LayoutGrid aria-hidden="true" />
               {selectedTab?.name ?? "Build desk"}
               <b>·</b>
-              {sessionsForTab.length} agents across{" "}
+              {sessionsForTab.length} sessions across{" "}
               {
                 new Set(
                   sessionsForTab.map((run) => run.projectId).filter(Boolean),
@@ -594,7 +594,7 @@ function FactoryConnected({
               agents={localAgents}
               snapshots={runsState.snapshots}
               localRepositories={localRepositories}
-              onAddAgent={() => setStartDialogOpen(true)}
+              onStartSession={() => setStartDialogOpen(true)}
               onCancelRun={(runId) => void runsState.cancelRun(runId)}
               onOpenRun={(runId) =>
                 go(`/factory/review/${encodeURIComponent(runId)}`)

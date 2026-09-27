@@ -80,7 +80,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
     const snapshot = titleQueries[index]?.data;
     if (snapshot) snapshots.set(run.id, snapshot);
   }
-  const [agentFilter, setAgentFilter] = React.useState("");
+  const [sessionFilter, setSessionFilter] = React.useState("");
   const [plans, setPlans] = React.useState<FactoryPlanRecord[]>([]);
   const [planLoadError, setPlanLoadError] = React.useState<string | null>(null);
 
@@ -125,7 +125,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
       ),
     ]),
   );
-  const normalizedFilter = agentFilter.trim().toLocaleLowerCase();
+  const normalizedFilter = sessionFilter.trim().toLocaleLowerCase();
   const matchingRunIds = new Set<string>();
   if (!normalizedFilter) {
     for (const run of visibleRuns) matchingRunIds.add(run.id);
@@ -202,7 +202,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
           <button
             aria-label={`${runTitles.get(run.id) ?? run.harnessId}, ${status.label}`}
             className="fx-sidebar-run"
-            data-testid="factory-agent-tree-item"
+            data-testid="factory-session-tree-item"
             onClick={() => openRun(run)}
             style={{ paddingLeft: `${8 + depth * 14}px` }}
             type="button"
@@ -249,10 +249,10 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
       </div>
       <div className="fx-sidebar-tree-head">
         <span>
-          Agents <b>{matchingRunIds.size}</b>
+          Sessions <b>{matchingRunIds.size}</b>
         </span>
         <button
-          aria-label="New agent"
+          aria-label="New session"
           className="fx-sidebar-icon-button"
           onClick={bringInAgent}
           type="button"
@@ -263,10 +263,10 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
       <label className="fx-sidebar-search">
         <Search aria-hidden="true" />
         <input
-          aria-label="Filter workspace agents"
-          onChange={(event) => setAgentFilter(event.currentTarget.value)}
-          placeholder="Find an agent..."
-          value={agentFilter}
+          aria-label="Search Factory sessions"
+          onChange={(event) => setSessionFilter(event.currentTarget.value)}
+          placeholder="Find a session..."
+          value={sessionFilter}
         />
       </label>
       {runsQuery.error ? (
@@ -274,7 +274,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
           {runsQuery.error instanceof Error ? runsQuery.error.message : ""}
         </div>
       ) : null}
-      <ul aria-label="Workspace agents" className="fx-sidebar-runs">
+      <ul aria-label="Factory sessions" className="fx-sidebar-runs">
         {(runsByParent.get(null) ?? []).map((run) =>
           renderRun(run, 0, new Set()),
         )}
@@ -318,7 +318,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
           type="button"
         >
           <Bot aria-hidden="true" />
-          Bring in an agent
+          Start session
         </button>
         <button
           className="fx-sidebar-action fx-sidebar-all-sessions"

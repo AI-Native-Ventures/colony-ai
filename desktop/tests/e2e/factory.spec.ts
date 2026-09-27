@@ -153,7 +153,7 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     [
       {
         kind: "user_prompt",
-        text: "Let's build the client approval experience from our agreed plan. Keep the API, interface and access checks in separate working copies.",
+        text: "Task: Client portal build\n\nLet's build the client approval experience from our agreed plan. Keep the API, interface and access checks in separate working copies.",
       },
       {
         kind: "assistant_output",
@@ -173,7 +173,10 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     null,
     "run-building",
     [
-      { kind: "user_prompt", text: "Build the version-aware approval API." },
+      {
+        kind: "user_prompt",
+        text: "Task: Approval API\n\nBuild the version-aware approval API.",
+      },
       {
         kind: "assistant_output",
         text: "The approval record includes the content version and client. I am checking the stale-version path before wiring up the response.",
@@ -188,7 +191,10 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     "Waiting for the API contract.",
     "run-building",
     [
-      { kind: "user_prompt", text: "Build the client review interface." },
+      {
+        kind: "user_prompt",
+        text: "Task: Client review experience\n\nBuild the client review interface.",
+      },
       {
         kind: "assistant_output",
         text: "I need the API contract before connecting the approval action.",
@@ -205,7 +211,7 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     [
       {
         kind: "user_prompt",
-        text: "Check client membership and review access.",
+        text: "Task: Access and review QA\n\nCheck client membership and review access.",
       },
     ],
   ),
@@ -219,7 +225,7 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     [
       {
         kind: "user_prompt",
-        text: "Make the service offer easy to understand.",
+        text: "Task: Services page\n\nMake the service offer easy to understand.",
       },
       {
         kind: "assistant_output",
@@ -234,7 +240,12 @@ const SCREENSHOT_RUNS: MockFactoryRunSeed[] = [
     "ops",
     "The local worker exited with an error.",
     null,
-    [{ kind: "user_prompt", text: "Fix the monthly reporting export." }],
+    [
+      {
+        kind: "user_prompt",
+        text: "Task: Reporting export\n\nFix the monthly reporting export.",
+      },
+    ],
   ),
   runRecord("s-ops", "Monthly reporting export", "done", "ops"),
 ];
@@ -354,28 +365,35 @@ test("Factory routes use real project and run records", async ({ page }) => {
     deskTabs.getByRole("tab", { name: /Build desk/ }),
   ).toHaveAttribute("aria-selected", "true");
 
-  const agentTree = page.getByRole("list", { name: "Workspace agents" });
+  const sessionTree = page.getByRole("list", { name: "Factory sessions" });
+  await expect(sessionTree).toBeVisible();
   await expect(
-    agentTree.locator("[data-testid='factory-agent-tree-item']"),
+    page.getByRole("button", { name: "New agent", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Add agent", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    sessionTree.locator("[data-testid='factory-session-tree-item']"),
   ).toHaveCount(8);
   await expect(
-    agentTree.locator('[data-depth="1"]').getByRole("button", {
+    sessionTree.locator('[data-depth="1"]').getByRole("button", {
       name: "Inspect the API response contract, Waiting",
     }),
   ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Filter workspace agents" })
+    .getByRole("textbox", { name: "Search Factory sessions" })
     .fill("Inspect the API response");
   await expect(
-    agentTree.locator("[data-testid='factory-agent-tree-item']"),
+    sessionTree.locator("[data-testid='factory-session-tree-item']"),
   ).toHaveCount(2);
-  await expect(agentTree.locator('[data-depth="0"]')).toHaveCount(1);
+  await expect(sessionTree.locator('[data-depth="0"]')).toHaveCount(1);
   await expect(
-    agentTree.getByRole("button", {
+    sessionTree.getByRole("button", {
       name: "Update the services page, Running",
     }),
   ).toHaveCount(0);
-  await page.getByRole("textbox", { name: "Filter workspace agents" }).fill("");
+  await page.getByRole("textbox", { name: "Search Factory sessions" }).fill("");
 
   const navigation = page.getByRole("navigation", { name: "Factory views" });
   await expect(
@@ -421,6 +439,10 @@ test("Factory routes use real project and run records", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Client portal" }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agent sessions" }),
+  ).toHaveCount(0);
   await expect(
     page.getByText("lerato-social/client-portal", { exact: true }),
   ).toBeVisible();
@@ -526,9 +548,9 @@ test("Factory start stores the prompt and leaving the destination only detaches"
   await page
     .getByTestId("factory-workspace")
     .locator("header")
-    .getByRole("button", { name: "Add agent" })
+    .getByRole("button", { name: "Start session" })
     .click();
-  const dialog = page.getByRole("dialog", { name: "Add an agent session" });
+  const dialog = page.getByRole("dialog", { name: "Start a session" });
   await dialog.getByLabel("Task").fill("Build the portal search");
   await dialog.getByLabel("Project").selectOption(`30621:${OWNER}:portal`);
   await dialog.getByLabel("Harness").selectOption(AGENT);
@@ -824,6 +846,11 @@ test("Factory route screenshots cover both reference sizes and themes", async ({
       await expect(
         page.getByRole("heading", { name: "Plans that keep moving" }),
       ).toBeVisible();
+      await expect(
+        page
+          .locator(".fx-plan-row")
+          .filter({ hasText: "Refresh the services experience" }),
+      ).toContainText("Plan review");
       await capture("plans");
       await page
         .locator(".fx-plan-row")
