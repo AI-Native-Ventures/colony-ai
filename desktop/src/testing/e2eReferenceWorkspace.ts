@@ -20,6 +20,9 @@ import {
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_INVOICE_HEAD,
+  KIND_INVOICE_VERSION,
+  KIND_PAYMENT,
   KIND_STREAM_MESSAGE,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -55,6 +58,14 @@ export const REFERENCE_CHANNEL_IDS = {
 
 export const REFERENCE_SERVICE_ID = "1e1a7000-0000-4000-9000-000000000021";
 export const REFERENCE_PROPOSAL_ID = "1e1a7000-0000-4000-9000-000000000022";
+export const REFERENCE_MONEY_INVOICE_IDS = {
+  oliveAugustPaid: "3e3a7000-0000-4000-8000-000000000021",
+  cedarAugustPaid: "3e3a7000-0000-4000-8000-000000000022",
+  olivePaid: "3e3a7000-0000-4000-8000-000000000026",
+  cedarPartial: "3e3a7000-0000-4000-8000-000000000027",
+  oliveIssued: "3e3a7000-0000-4000-8000-000000000028",
+  northlineDraft: "3e3a7000-0000-4000-8000-000000000029",
+} as const;
 
 export const REFERENCE_PROSPECT_IDS = {
   "the-olive-house": "1e1a7000-0000-4000-9000-000000001001",
@@ -336,6 +347,231 @@ export function referenceBusinessRecordEvents(
           ],
         ],
         content: "",
+        sig: REFERENCE_EVENT_SIGNATURE,
+      });
+    }
+  }
+  events.push(...referenceMoneyRecordEvents(selfPubkey, index));
+  return events;
+}
+
+function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
+  const events: RelayEvent[] = [];
+  let index = firstIndex;
+  const seeds = [
+    {
+      clientId: REFERENCE_CHANNEL_IDS.oliveHouse,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.oliveAugustPaid,
+      proposalId: "3e3a7000-0000-4000-9000-000000000021",
+      description: "August retainer",
+      amountMinor: 600_000,
+      issuedAt: new Date("2026-08-01T12:00:00+02:00").getTime() / 1_000,
+      dueAt: new Date("2026-08-07T12:00:00+02:00").getTime() / 1_000,
+      status: "issued" as const,
+      collectedMinor: 600_000,
+      paymentDate: new Date("2026-08-05T12:00:00+02:00").getTime() / 1_000,
+    },
+    {
+      clientId: REFERENCE_CHANNEL_IDS.cedarCafe,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.cedarAugustPaid,
+      proposalId: "3e3a7000-0000-4000-9000-000000000022",
+      description: "August retainer",
+      amountMinor: 390_000,
+      issuedAt: new Date("2026-08-01T12:00:00+02:00").getTime() / 1_000,
+      dueAt: new Date("2026-08-07T12:00:00+02:00").getTime() / 1_000,
+      status: "issued" as const,
+      collectedMinor: 390_000,
+      paymentDate: new Date("2026-08-08T12:00:00+02:00").getTime() / 1_000,
+    },
+    {
+      clientId: REFERENCE_CHANNEL_IDS.oliveHouse,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.olivePaid,
+      proposalId: "3e3a7000-0000-4000-9000-000000000026",
+      description: "September social media retainer",
+      amountMinor: 650_000,
+      issuedAt: new Date("2026-09-01T12:00:00+02:00").getTime() / 1_000,
+      dueAt: new Date("2026-09-07T12:00:00+02:00").getTime() / 1_000,
+      status: "issued" as const,
+      collectedMinor: 650_000,
+      paymentDate: new Date("2026-09-04T12:00:00+02:00").getTime() / 1_000,
+    },
+    {
+      clientId: REFERENCE_CHANNEL_IDS.cedarCafe,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.cedarPartial,
+      proposalId: "3e3a7000-0000-4000-9000-000000000027",
+      description: "September social media retainer",
+      amountMinor: 450_000,
+      issuedAt: new Date("2026-09-01T12:00:00+02:00").getTime() / 1_000,
+      dueAt: new Date("2026-09-20T12:00:00+02:00").getTime() / 1_000,
+      status: "issued" as const,
+      collectedMinor: 150_000,
+      paymentDate: new Date("2026-09-10T12:00:00+02:00").getTime() / 1_000,
+    },
+    {
+      clientId: REFERENCE_CHANNEL_IDS.oliveHouse,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.oliveIssued,
+      proposalId: "3e3a7000-0000-4000-9000-000000000028",
+      description: "Spring campaign · additional creative",
+      amountMinor: 320_000,
+      issuedAt: new Date("2026-09-18T12:00:00+02:00").getTime() / 1_000,
+      dueAt: new Date("2026-09-30T12:00:00+02:00").getTime() / 1_000,
+      status: "issued" as const,
+      collectedMinor: 0,
+      paymentDate: null,
+    },
+    {
+      clientId: REFERENCE_CHANNEL_IDS.northline,
+      invoiceId: REFERENCE_MONEY_INVOICE_IDS.northlineDraft,
+      proposalId: "3e3a7000-0000-4000-9000-000000000029",
+      description: "First monthly retainer",
+      amountMinor: 850_000,
+      issuedAt: null,
+      dueAt: new Date("2026-10-01T12:00:00+02:00").getTime() / 1_000,
+      status: "draft" as const,
+      collectedMinor: 0,
+      paymentDate: null,
+    },
+  ];
+  for (const seed of seeds) {
+    const dTag = `client:${seed.clientId}:invoice:${seed.invoiceId}`;
+    const proposalVersionEventId = referenceEventId(index++);
+    const initialVersionId = referenceEventId(index++);
+    const initialHeadId = referenceEventId(index++);
+    const line = {
+      serviceId: null,
+      description: seed.description,
+      quantityHundredths: 100,
+      unitAmountMinor: seed.amountMinor,
+    };
+    const draftVersion = {
+      schemaVersion: 1,
+      clientId: seed.clientId,
+      invoiceId: seed.invoiceId,
+      version: 1,
+      previousVersionEventId: null,
+      proposalVersionEventId,
+      expectedHeadEventId: null,
+      action: "proposal_acceptance",
+      currency: "ZAR",
+      lines: [line],
+      totalMinor: seed.amountMinor,
+      status: "draft",
+      dueAt: seed.dueAt,
+      voidReason: null,
+    };
+    const draftHead = {
+      schemaVersion: 1,
+      clientId: seed.clientId,
+      invoiceId: seed.invoiceId,
+      proposalId: seed.proposalId,
+      proposalVersionEventId,
+      currency: "ZAR",
+      lines: [line],
+      totalMinor: seed.amountMinor,
+      creditedMinor: 0,
+      writtenOffMinor: 0,
+      collectedMinor: seed.collectedMinor,
+      outstandingMinor: seed.amountMinor - seed.collectedMinor,
+      paymentEvidenceCount: seed.paymentDate ? 1 : 0,
+      version: 1,
+      currentVersionEventId: initialVersionId,
+      status: "draft",
+      dueAt: seed.dueAt,
+      issuedAt: null,
+      sourceEventId: initialVersionId,
+    };
+    events.push({
+      id: initialVersionId,
+      pubkey: selfPubkey,
+      created_at: seed.issuedAt ?? REFERENCE_RECORD_TIME,
+      kind: KIND_INVOICE_VERSION,
+      tags: [
+        ["h", seed.clientId],
+        ["d", `${dTag}:version:1`],
+      ],
+      content: JSON.stringify(draftVersion),
+      sig: REFERENCE_EVENT_SIGNATURE,
+    });
+    if (seed.status === "draft") {
+      events.push({
+        id: initialHeadId,
+        pubkey: selfPubkey,
+        created_at: REFERENCE_RECORD_TIME,
+        kind: KIND_INVOICE_HEAD,
+        tags: [
+          ["h", seed.clientId],
+          ["d", dTag],
+        ],
+        content: JSON.stringify(draftHead),
+        sig: REFERENCE_EVENT_SIGNATURE,
+      });
+      continue;
+    }
+    const issueVersionId = referenceEventId(index++);
+    const issueHeadId = referenceEventId(index++);
+    const issueVersion = {
+      ...draftVersion,
+      version: 2,
+      previousVersionEventId: initialVersionId,
+      expectedHeadEventId: initialHeadId,
+      action: "issue",
+      status: "issued",
+    };
+    events.push({
+      id: issueVersionId,
+      pubkey: selfPubkey,
+      created_at: seed.issuedAt ?? REFERENCE_RECORD_TIME,
+      kind: KIND_INVOICE_VERSION,
+      tags: [
+        ["h", seed.clientId],
+        ["d", `${dTag}:version:2`],
+      ],
+      content: JSON.stringify(issueVersion),
+      sig: REFERENCE_EVENT_SIGNATURE,
+    });
+    events.push({
+      id: issueHeadId,
+      pubkey: selfPubkey,
+      created_at: seed.issuedAt ?? REFERENCE_RECORD_TIME,
+      kind: KIND_INVOICE_HEAD,
+      tags: [
+        ["h", seed.clientId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify({
+        ...draftHead,
+        version: 2,
+        currentVersionEventId: issueVersionId,
+        status: "issued",
+        issuedAt: seed.issuedAt,
+        sourceEventId: issueVersionId,
+      }),
+      sig: REFERENCE_EVENT_SIGNATURE,
+    });
+    if (seed.paymentDate !== null) {
+      const paymentId = `4e4a7000-0000-4000-8000-${seed.invoiceId.slice(-12)}`;
+      events.push({
+        id: referenceEventId(index++),
+        pubkey: selfPubkey,
+        created_at: seed.paymentDate,
+        kind: KIND_PAYMENT,
+        tags: [
+          ["h", seed.clientId],
+          ["d", `client:${seed.clientId}:payment:${paymentId}`],
+        ],
+        content: JSON.stringify({
+          schemaVersion: 1,
+          clientId: seed.clientId,
+          invoiceId: seed.invoiceId,
+          paymentId,
+          provider: "manual",
+          providerReference: null,
+          amountMinor: seed.collectedMinor,
+          currency: "ZAR",
+          occurredAt: seed.paymentDate,
+          evidenceRef: `receipt:${seed.invoiceId.slice(-4)}`,
+          expectedInvoiceHeadEventId: issueHeadId,
+        }),
         sig: REFERENCE_EVENT_SIGNATURE,
       });
     }

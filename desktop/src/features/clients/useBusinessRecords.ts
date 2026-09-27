@@ -10,6 +10,11 @@ import {
   KIND_DELIVERABLE_VERSION,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
+import {
+  moneyRecordService,
+  MONEY_RECORD_KINDS,
+  type MoneyWorkspaceRecords,
+} from "@/features/money/lib/moneyRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import type { Channel, RelayEvent } from "@/shared/api/types";
@@ -197,6 +202,50 @@ export function useClientDirectoryQuery() {
     channelsQuery,
     clientChannels,
     liveError: live.error,
+  };
+}
+
+export function moneyRecordsQueryKey(
+  relayUrl: string | null,
+  pubkey: string | null,
+  channelIds: readonly string[],
+) {
+  return [
+    ...businessRecordScope(relayUrl, pubkey),
+    "money-records",
+    channelListKey(channelIds),
+  ] as const;
+}
+
+export function useMoneyRecordsQuery(enabled = true) {
+  const directoryQuery = useClientDirectoryQuery();
+  const { pubkey, relayUrl } = useRecordContext();
+  const channelIds = React.useMemo(
+    () =>
+      (directoryQuery.data ?? []).map((record) => record.value.clientId).sort(),
+    [directoryQuery.data],
+  );
+  const scopeEnabled =
+    enabled && directoryQuery.isSuccess && Boolean(pubkey && relayUrl);
+  const live = useBusinessRecordLiveScope(
+    channelIds,
+    MONEY_RECORD_KINDS,
+    scopeEnabled,
+    relayUrl,
+    pubkey,
+  );
+  const query = useQuery<MoneyWorkspaceRecords>({
+    queryKey: moneyRecordsQueryKey(relayUrl, pubkey, channelIds),
+    enabled: scopeEnabled && live.ready,
+    queryFn: () => moneyRecordService.list(channelIds),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  return {
+    ...query,
+    directoryQuery,
+    liveError: live.error,
+    liveReady: live.ready,
   };
 }
 
