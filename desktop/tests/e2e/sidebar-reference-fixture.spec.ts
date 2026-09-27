@@ -42,12 +42,37 @@ test("company shell fixture supplies the approved sidebar rows", async ({
     sidebar.getByTestId("channel-unread-olive-studio"),
     2,
   );
+  await expect(sidebar.getByTestId("channel-unread-olive-studio")).toHaveCSS(
+    "height",
+    "17px",
+  );
   await expectUnreadCount(sidebar.getByTestId("channel-unread-sales"), 3);
   await expectUnreadCount(
     sidebar.getByTestId("channel-unread-Company forum"),
     1,
   );
   await expectUnreadCount(sidebar.getByTestId("channel-unread-Aya"), 1);
+  await expect(sidebar.getByTestId("channel-avatar-Mina")).toHaveCSS(
+    "width",
+    "18px",
+  );
+  await expect(sidebar.getByTestId("channel-presence-Mina")).toBeVisible();
+  const minaRow = sidebar.getByTestId("channel-Mina");
+  const [minaRowBounds, minaAvatarBounds, minaPresenceBounds] =
+    await Promise.all([
+      minaRow.boundingBox(),
+      sidebar.getByTestId("channel-avatar-Mina").boundingBox(),
+      sidebar.getByTestId("channel-presence-Mina").boundingBox(),
+    ]);
+  expect(minaRowBounds).not.toBeNull();
+  expect(minaAvatarBounds).not.toBeNull();
+  expect(minaPresenceBounds).not.toBeNull();
+  expect(minaPresenceBounds?.x).toBeGreaterThan(
+    (minaAvatarBounds?.x ?? 0) + (minaAvatarBounds?.width ?? 0),
+  );
+  expect(minaPresenceBounds?.x).toBeGreaterThanOrEqual(
+    (minaRowBounds?.x ?? 0) + (minaRowBounds?.width ?? 0) - 30,
+  );
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-profile-user-status")).toContainText(
     "Set a status",

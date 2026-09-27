@@ -583,16 +583,25 @@ test("shows presence in sidebar, DM header, and member list", async ({
     "Online",
   );
   await expect(page.getByTestId("channel-presence-alice-tyler")).toBeVisible();
-  const dmAvatarMask = page.getByTestId("channel-avatar-alice-tyler-mask");
-  await expect(dmAvatarMask).toHaveCSS("border-radius", "0px");
-  await expect(dmAvatarMask).toHaveCSS("clip-path", /polygon\(/);
-  await expect
-    .poll(() =>
-      dmAvatarMask.evaluate(
-        (element) => getComputedStyle(element).clipPath.split(",").length,
-      ),
-    )
-    .toBeGreaterThan(100);
+  const dmAvatar = page.getByTestId("channel-avatar-alice-tyler");
+  await expect(dmAvatar).toHaveCSS("width", "18px");
+  await expect(dmAvatar).toHaveCSS("height", "18px");
+  await expect(dmAvatar).toHaveClass(/rounded-squircle/);
+  const dmRow = page.getByTestId("channel-alice-tyler");
+  const [rowBounds, avatarBounds, presenceBounds] = await Promise.all([
+    dmRow.boundingBox(),
+    dmAvatar.boundingBox(),
+    page.getByTestId("channel-presence-alice-tyler").boundingBox(),
+  ]);
+  expect(rowBounds).not.toBeNull();
+  expect(avatarBounds).not.toBeNull();
+  expect(presenceBounds).not.toBeNull();
+  expect(presenceBounds?.x).toBeGreaterThan(
+    (avatarBounds?.x ?? 0) + (avatarBounds?.width ?? 0),
+  );
+  expect(presenceBounds?.x).toBeGreaterThanOrEqual(
+    (rowBounds?.x ?? 0) + (rowBounds?.width ?? 0) - 30,
+  );
 
   await page.getByTestId("channel-alice-tyler").click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");

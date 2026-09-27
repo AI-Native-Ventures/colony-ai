@@ -14,11 +14,9 @@ import { formatElapsed } from "@/features/agents/ui/agentSessionUtils";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { getEphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
 import { EphemeralChannelBadge } from "@/features/channels/ui/EphemeralChannelBadge";
-import {
-  DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
-  ProfileAvatarWithStatus,
-  scaleProfileAvatarStatusGeometry,
-} from "@/features/profile/ui/ProfileAvatarWithStatus";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { getPresenceLabel } from "@/features/presence/lib/presence";
+import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
 import type { Channel, PresenceStatus } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { useNow } from "@/shared/lib/useNow";
@@ -46,12 +44,6 @@ const SIDEBAR_ROW_ACTION_REPLACED_BADGE_CLASS =
   "max-md:opacity-0 md:group-focus-within/menu-item:opacity-0 md:group-hover/menu-item:opacity-0";
 const SIDEBAR_ROW_ICON_ACTION_CLASS =
   "flex size-6 items-center justify-center p-1 text-sidebar-foreground/45 transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring peer-data-[active=true]/menu-button:text-sidebar-active-foreground/75 peer-data-[active=true]/menu-button:hover:text-sidebar-active-foreground [&>svg]:size-4 [&>svg]:shrink-0";
-const DM_AVATAR_SIZE = 24;
-const DM_AVATAR_STATUS_GEOMETRY = scaleProfileAvatarStatusGeometry(
-  DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
-  DM_AVATAR_SIZE,
-);
-
 function formatUnreadCount(count: number): string {
   return count > 99 ? "99+" : String(count);
 }
@@ -166,12 +158,10 @@ function DmChannelIcon({
   channelName,
   isPair,
   participants,
-  presenceStatus,
 }: {
   channelName: string;
   isPair: boolean;
   participants?: SidebarDmParticipant[];
-  presenceStatus?: PresenceStatus;
 }) {
   const primaryParticipant = participants?.[0];
 
@@ -195,18 +185,13 @@ function DmChannelIcon({
 
   if (isPair || !participants || participants.length <= 1) {
     return (
-      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
-        <ProfileAvatarWithStatus
-          avatarClassName="bg-sidebar-accent/80 text-2xs text-sidebar-foreground shadow-none"
+      <span className="relative flex h-[1.125rem] w-[1.125rem] shrink-0 items-center justify-center">
+        <ProfileAvatar
           avatarUrl={primaryParticipant.avatarUrl}
-          className="h-6 w-6"
-          geometry={DM_AVATAR_STATUS_GEOMETRY}
+          className="h-[1.125rem] w-[1.125rem] bg-sidebar-accent/80 text-3xs text-sidebar-foreground shadow-none"
           iconClassName="h-3.5 w-3.5"
           label={primaryParticipant.label}
-          shape={primaryParticipant.isAgent ? "squircle" : "circle"}
-          size={DM_AVATAR_SIZE}
-          status={presenceStatus}
-          statusTestId={`channel-presence-${channelName}`}
+          shape="squircle"
           testId={`channel-avatar-${channelName}`}
         />
       </span>
@@ -220,12 +205,10 @@ function SidebarChannelIcon({
   channel,
   className,
   dmParticipants,
-  presenceStatus,
 }: {
   channel: Channel;
   className?: string;
   dmParticipants?: SidebarDmParticipant[];
-  presenceStatus?: PresenceStatus;
 }) {
   if (channel.channelType === "dm") {
     return (
@@ -233,12 +216,6 @@ function SidebarChannelIcon({
         channelName={channel.name}
         isPair={channel.participantPubkeys.length === 2}
         participants={dmParticipants}
-        presenceStatus={
-          dmParticipants?.length === 1 ||
-          channel.participantPubkeys.length === 2
-            ? presenceStatus
-            : undefined
-        }
       />
     );
   }
@@ -316,7 +293,6 @@ export function ChannelMenuButton({
           channel.channelType === "dm" ? undefined : inactiveContentOpacity
         }
         dmParticipants={dmParticipants}
-        presenceStatus={presenceStatus}
       />
       <span
         className={cn(
@@ -348,6 +324,16 @@ export function ChannelMenuButton({
           pubkey={dmParticipants[0].pubkey}
           testId={`channel-agent-provenance-${channel.id}`}
         />
+      ) : null}
+      {channel.channelType === "dm" && presenceStatus ? (
+        <span
+          aria-label={getPresenceLabel(presenceStatus)}
+          className="ml-auto inline-flex shrink-0 items-center"
+          data-testid={`channel-presence-${channel.name}`}
+          role="img"
+        >
+          <PresenceDot className="h-[5px] w-[5px]" status={presenceStatus} />
+        </span>
       ) : null}
       {activeWorking ? (
         <ChannelWorkingBadge

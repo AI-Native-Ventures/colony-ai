@@ -43,6 +43,23 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(conversations.getByTestId("channel-general")).toBeVisible();
   await expect(conversations.getByTestId("forum-list")).toBeVisible();
   await expect(conversations.getByTestId("dm-list")).toBeVisible();
+  for (const [section, list] of [
+    ["channels", "stream-list"],
+    ["forums", "forum-list"],
+    ["dms", "dm-list"],
+  ]) {
+    await expect(page.getByTestId(`section-actions-${section}`)).toBeVisible();
+    await expect(page.getByTestId(`${list}-section-label`)).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  }
+  await expect(
+    page.getByTestId("section-actions-channels-quick-create"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("section-actions-dms-quick-create"),
+  ).toHaveCount(0);
   await expect(page.getByTestId("open-workflows-view")).toBeVisible();
   await expect(page.getByTestId("sidebar-company-work")).toBeVisible();
   await expect(page.getByTestId("open-factory-view")).toBeVisible();
@@ -131,6 +148,37 @@ test("navigation groups collapse independently with the keyboard", async ({
   await expect(business).toHaveAttribute("aria-expanded", "true");
   await expect(company).toHaveAttribute("aria-expanded", "false");
   await expect(library).toHaveAttribute("aria-expanded", "false");
+});
+
+test("conversation groups collapse independently with the keyboard", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const channels = page.getByTestId("stream-list-section-label");
+  const forums = page.getByTestId("forum-list-section-label");
+  const directMessages = page.getByTestId("dm-list-section-label");
+  await expect(channels).toHaveAttribute("aria-expanded", "true");
+  await expect(forums).toHaveAttribute("aria-expanded", "true");
+  await expect(directMessages).toHaveAttribute("aria-expanded", "true");
+
+  await channels.focus();
+  await page.keyboard.press("Enter");
+  await expect(channels).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("stream-list")).toBeHidden();
+  await expect(page.getByTestId("forum-list")).toBeVisible();
+
+  await forums.focus();
+  await page.keyboard.press("Space");
+  await expect(forums).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("forum-list")).toBeHidden();
+  await expect(page.getByTestId("dm-list")).toBeVisible();
+
+  await directMessages.focus();
+  await page.keyboard.press("Enter");
+  await expect(directMessages).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("dm-list")).toBeHidden();
+  await expect(page.getByTestId("stream-list")).toBeHidden();
 });
 
 test("Saved for later remains under Activity and keeps the reminder filter", async ({
