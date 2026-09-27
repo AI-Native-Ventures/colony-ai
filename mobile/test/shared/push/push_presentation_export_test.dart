@@ -18,9 +18,17 @@ void main() {
   final calls = <MethodCall>[];
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  final retryWaits = <Duration>[];
+
+  // Sign every large fixture once per file, outside any single test's budget.
+  setUpAll(() => _profileBatch(256));
+  setUpAll(() => _channelBatch(512));
+  setUpAll(() => _membershipBatch(512));
 
   setUp(() {
     calls.clear();
+    retryWaits.clear();
+    debugPushNativeRetryWait = (delay) async => retryWaits.add(delay);
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     pushPresentationCacheError.value = null;
     pushPresentationExportError.value = null;
@@ -30,6 +38,7 @@ void main() {
     });
   });
   tearDown(() {
+    debugPushNativeRetryWait = Future<void>.delayed;
     messenger.setMockMethodCallHandler(_channel, null);
     debugDefaultTargetPlatformOverride = null;
     pushPresentationCacheError.value = null;
@@ -49,27 +58,14 @@ void main() {
           observations.listen((name) {
             if (name != caller) workerReads++;
           });
-          final events = [
-            for (var i = 0; i <= limit; i++)
-              _signed(
-                profiles ? 0 : 39000,
-                100,
-                channelID: 'channel-$i',
-                secretKey: profiles
-                    ? (i + 1).toRadixString(16).padLeft(64, '0')
-                    : _secret,
-              ),
-          ];
+          final events = profiles ? _profileBatch(limit) : _channelBatch(limit);
           events[0] = _ObservedVerificationEvent(
             events[0],
             observations.sendPort,
           );
           final memberships = profiles
               ? <NostrEvent>[]
-              : [
-                  for (var i = 0; i <= limit; i++)
-                    _signed(39002, 100, channelID: 'channel-$i'),
-                ];
+              : _membershipBatch(limit);
           var failed = false;
           final successfulChunks = <Map>[];
           messenger.setMockMethodCallHandler(_channel, (call) async {
@@ -135,6 +131,7 @@ void main() {
             reason: 'native retries must not repeat signature verification',
           );
           expect(pushPresentationExportError.value, isNull);
+          expect(retryWaits, [const Duration(milliseconds: 250)]);
         },
       );
     }
@@ -145,23 +142,8 @@ void main() {
       'permanent first ${profiles ? "profile" : "channel"} chunk failure exhausts retries and stops export',
       () async {
         final limit = profiles ? 256 : 512;
-        final events = [
-          for (var i = 0; i <= limit; i++)
-            _signed(
-              profiles ? 0 : 39000,
-              100,
-              channelID: 'channel-$i',
-              secretKey: profiles
-                  ? (i + 1).toRadixString(16).padLeft(64, '0')
-                  : _secret,
-            ),
-        ];
-        final memberships = profiles
-            ? <NostrEvent>[]
-            : [
-                for (var i = 0; i <= limit; i++)
-                  _signed(39002, 100, channelID: 'channel-$i'),
-              ];
+        final events = profiles ? _profileBatch(limit) : _channelBatch(limit);
+        final memberships = profiles ? <NostrEvent>[] : _membershipBatch(limit);
         messenger.setMockMethodCallHandler(_channel, (call) async {
           calls.add(call);
           if (call.arguments['communityId'] == 'failed-community') {
@@ -187,6 +169,7 @@ void main() {
           hasLength(6),
           reason: 'initial attempt plus five retries, with no later chunk',
         );
+        expect(retryWaits, _fullRetrySchedule);
         expect(
           pushPresentationCacheError.value,
           contains(profiles ? 'profile_cache_failed' : 'channel_cache_failed'),
@@ -210,10 +193,7 @@ void main() {
   }
 
   test('native retry budget is shared across all chunks', () async {
-    final events = [
-      for (var i = 1; i <= 257; i++)
-        _signed(0, 100, secretKey: i.toRadixString(16).padLeft(64, '0')),
-    ];
+    final events = _profileBatch(256);
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
       final rows = call.arguments['events'] as List;
@@ -239,6 +219,7 @@ void main() {
       1,
     ]);
     expect(pushPresentationExportError.value, contains('profile_cache_failed'));
+    expect(retryWaits, _fullRetrySchedule);
   });
 
   test(
@@ -280,24 +261,11 @@ void main() {
       'large ${profiles ? "profile" : "channel"} exports fit native bounds',
       () async {
         final limit = profiles ? 256 : 512;
-        final events = [
-          for (var i = 0; i <= limit; i++)
-            _signed(
-              profiles ? 0 : 39000,
-              100,
-              channelID: 'channel-$i',
-              secretKey: profiles
-                  ? (i + 1).toRadixString(16).padLeft(64, '0')
-                  : _secret,
-            ),
-        ];
+        final events = profiles ? _profileBatch(limit) : _channelBatch(limit);
         // Deliberately reverse roster order: each chunk must pair by channel ID.
         final memberships = profiles
             ? <NostrEvent>[]
-            : [
-                for (var i = limit; i >= 0; i--)
-                  _signed(39002, 100, channelID: 'channel-$i'),
-              ];
+            : _membershipBatch(limit).reversed.toList();
         final received = <dynamic>[];
         final receivedMemberships = <dynamic>[];
         messenger.setMockMethodCallHandler(_channel, (call) async {
@@ -541,6 +509,51 @@ void main() {
     },
   );
 }
+
+const _fullRetrySchedule = [
+  Duration(milliseconds: 250),
+  Duration(milliseconds: 500),
+  Duration(milliseconds: 1000),
+  Duration(milliseconds: 2000),
+  Duration(milliseconds: 4000),
+];
+
+// Pure-Dart signing dominates this file's runtime, so each large batch is
+// signed once. Callers get a fresh list they may mutate.
+final _batches = <String, List<NostrEvent>>{};
+
+/// One more distinct signed profile than [limit], spanning two native writes.
+List<NostrEvent> _profileBatch(int limit) => [
+  ..._batches.putIfAbsent(
+    'profiles-$limit',
+    () => [
+      for (var i = 0; i <= limit; i++)
+        _signed(0, 100, secretKey: (i + 1).toRadixString(16).padLeft(64, '0')),
+    ],
+  ),
+];
+
+/// One more channel metadata event than [limit], spanning two native writes.
+List<NostrEvent> _channelBatch(int limit) => [
+  ..._batches.putIfAbsent(
+    'channels-$limit',
+    () => [
+      for (var i = 0; i <= limit; i++)
+        _signed(39000, 100, channelID: 'channel-$i'),
+    ],
+  ),
+];
+
+/// Membership events pairing each channel in [_channelBatch].
+List<NostrEvent> _membershipBatch(int limit) => [
+  ..._batches.putIfAbsent(
+    'memberships-$limit',
+    () => [
+      for (var i = 0; i <= limit; i++)
+        _signed(39002, 100, channelID: 'channel-$i'),
+    ],
+  ),
+];
 
 NostrEvent _signed(
   int kind,
