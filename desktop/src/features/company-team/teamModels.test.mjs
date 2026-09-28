@@ -34,7 +34,7 @@ function position(pubkey, managerPubkey, status = "active") {
 function signedPosition(head, tags = [["d", memberPositionDTag(head.pubkey)]]) {
   return finalizeEvent(
     {
-      kind: 30645,
+      kind: 30646,
       created_at: 1_790_000_000,
       content: JSON.stringify(head),
       tags,

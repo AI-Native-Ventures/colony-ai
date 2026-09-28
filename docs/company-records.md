@@ -27,7 +27,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30642 | Goal head | Relay signed, replaceable |
 | 30643 | Ask head | Relay signed, replaceable |
 | 30634 | Shared work item head | Relay signed, replaceable |
-| 30645 | Member position head | Relay signed, replaceable |
+| 30646 | Member position head | Relay signed, replaceable |
 | 47006 | Shared work item action | Brokered |
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
@@ -243,9 +243,9 @@ the viewer may not read renders "Goal unavailable".
 
 ## Member positions
 
-Every community member may have one relay-signed kind 30645 head, addressed by
+Every community member may have one relay-signed kind 30646 head, addressed by
 `company:member:<lowercase-pubkey>`. The relay determines the community from the
-request host. Kind 47035 commands and kind 30645 heads carry no `h` tag and are
+request host. Kind 47035 commands and kind 30646 heads carry no `h` tag and are
 community-wide. The kind integers are mirrored in the Rust, desktop, and mobile
 registries. This batch does not add mobile Team screens.
 

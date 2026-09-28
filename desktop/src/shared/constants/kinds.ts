@@ -186,7 +186,7 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
 // joins the thread timeline kinds together with its card renderer.
 export const KIND_GOAL_HEAD = 30642;
 export const KIND_ASK_HEAD = 30643;
-export const KIND_MEMBER_POSITION_HEAD = 30645;
+export const KIND_MEMBER_POSITION_HEAD = 30646;
 export const KIND_GOAL_ACTION = 47031;
 export const KIND_ASK_ACTION = 47032;
 export const KIND_ASK_RESPONSE = 47033;

@@ -76,7 +76,7 @@ pub struct MemberPositionAction {
     pub reason: Option<String>,
 }
 
-/// Relay-signed current member position (kind 30645).
+/// Relay-signed current member position (kind 30646).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct MemberPositionHead {
