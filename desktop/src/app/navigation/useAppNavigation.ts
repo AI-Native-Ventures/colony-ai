@@ -202,7 +202,8 @@ export function useAppNavigation() {
     (parentGoalId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/goals/new",
+          to: "/goals/$goalId",
+          params: { goalId: "new" },
           search: { parent: parentGoalId },
         },
         behavior,
@@ -375,7 +376,8 @@ export function useAppNavigation() {
     (clientId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work",
+          to: "/$workSurface",
+          params: { workSurface: "work" },
           search: clientId ? { client: clientId } : {},
         },
         behavior,
@@ -398,7 +400,13 @@ export function useAppNavigation() {
 
   const goCompanyWork = React.useCallback(
     (behavior?: NavigationBehavior) =>
-      commitNavigation({ to: "/company-work" }, behavior),
+      commitNavigation(
+        {
+          to: "/$workSurface",
+          params: { workSurface: "company-work" },
+        },
+        behavior,
+      ),
     [commitNavigation],
   );
 
@@ -409,7 +417,8 @@ export function useAppNavigation() {
     ) =>
       commitNavigation(
         {
-          to: "/work/new",
+          to: "/work/$workId",
+          params: { workId: "new" },
           search,
         },
         behavior,
@@ -425,8 +434,8 @@ export function useAppNavigation() {
     ) =>
       commitNavigation(
         {
-          to: "/work/from-chat/$messageId",
-          params: { messageId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "from-chat", resourceId: messageId },
           search,
         },
         behavior,
@@ -438,8 +447,8 @@ export function useAppNavigation() {
     (workItemId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work/detail/$workItemId",
-          params: { workItemId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "detail", resourceId: workItemId },
         },
         behavior,
       ),
@@ -450,8 +459,8 @@ export function useAppNavigation() {
     (workItemId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work/edit/$workItemId",
-          params: { workItemId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "edit", resourceId: workItemId },
         },
         behavior,
       ),
@@ -462,8 +471,8 @@ export function useAppNavigation() {
     (workItemId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work/status/$workItemId",
-          params: { workItemId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "status", resourceId: workItemId },
         },
         behavior,
       ),
@@ -474,8 +483,8 @@ export function useAppNavigation() {
     (workItemId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work/verify/$workItemId",
-          params: { workItemId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "verify", resourceId: workItemId },
         },
         behavior,
       ),
@@ -486,8 +495,8 @@ export function useAppNavigation() {
     (workItemId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work/archive/$workItemId",
-          params: { workItemId },
+          to: "/work/$screen/$resourceId",
+          params: { screen: "archive", resourceId: workItemId },
         },
         behavior,
       ),
