@@ -1,7 +1,7 @@
 # Colony company record contracts
 
-Status: company layer batch 1 contract (Asks, Goals) plus the reserved company
-work item shape for batch 2. Schema version: `1`. Design baseline:
+Status: company layer batch 1 contract (Asks, Goals) plus the batch 2 company
+work item contract. Schema version: `1`. Design baseline:
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
 (approved 27 September 2026) and owner decisions C1 to C6 and D1 to D3.
 
@@ -26,9 +26,11 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | ---: | --- | --- |
 | 30642 | Goal head | Relay signed, replaceable |
 | 30643 | Ask head | Relay signed, replaceable |
+| 30634 | Shared work item head | Relay signed, replaceable |
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
 | 47033 | Ask response | Brokered, append only |
+| 47006 | Shared work item action | Brokered |
 
 ## Scope and storage
 
@@ -224,22 +226,58 @@ links) and messages render it as a card that opens that exact goal, sub-goals
 included. A reference to a deleted goal renders the deleted marker; a reference
 the viewer may not read renders "Goal unavailable".
 
-## Company work items (reserved, batch 2)
+## Company work items
 
-Company work items are commitments inside conversations. They extend the
-business work item records (kinds 30634 and 47006) rather than adding a
-parallel record, so client work and company work share one model. The fields
-below are reserved; the relay rejects them until the batch 2 broker lands, after
-the W11 client work lane merges.
+Company work items are commitments inside conversations. They use the same
+work item head and action kinds as client work (30634 and 47006); they do not
+create a second work record. Client work keeps its `clientId` field and
+`client:<channel-uuid>:work:<work-item-uuid>` coordinate.
 
-- Coordinate `company:<community-uuid>:work:<work-item-uuid>`, scoped to the
-  channel where the commitment was made.
-- Added fields: `requesterPubkey`, `doneCondition`, `goalId`,
-  `sourceEventId` (the message it was created from), `threadRootEventId`.
-- Status adds `active`, `paused`, `blocked`, `done_unverified` and
-  `done_verified`. An owner can move their own item to `done_unverified` only;
-  `done_verified` needs a verification by a reviewer with authority, with
-  `verdict` (`pass` or `revision_requested`), `reason` and evidence.
+Company work uses `company:work:<work-item-uuid>`. The relay derives the
+community from the host, as it does for goals. Each company work head and
+action has exactly one `h` tag containing the channel UUID where the commitment
+lives. The `h` tag controls channel access. Moving an item to another
+conversation changes `threadRootEventId`, never `workItemId` or the `d` tag.
+
+The company work head contains the shared work item fields `schemaVersion`,
+`workItemId`, `title`, `status`, `assignedPubkeys`, `approverPubkeys`, and
+`deliverables`, plus `requesterPubkey`, `doneCondition`, optional `goalId`,
+`sourceEventId`, optional `threadRootEventId`, `evidence`, and
+`sourceActionEventId`. `sourceEventId` is the original message when the item is
+created from a conversation. When the item is created from the approved
+standalone Work form, `sourceEventId` and `threadRootEventId` are absent because
+that form selects a conversation but has no source-message or thread picker.
+If a chat message is the source, both values are required and the relay checks
+that the source and thread are in the tagged channel. Once set, `sourceEventId`
+is immutable. `threadRootEventId` may change when the item moves to another
+thread.
+
+An optional `goalId` must resolve to a non-deleted, non-archived goal in the
+same community. Goal deletion is refused while any company work head still
+references that goal, including an archived work item. The work form filters
+out archived and deleted goals.
+
+Linking or unlinking work uses the existing exact-head `update` action and
+changes only that item's `goalId`. The goal detail selector sends one kind
+47006 action per changed work item, in sequence. These actions are independent:
+an accepted link remains saved if a later action fails. The client reports each
+item's result, keeps failed desired selections available for retry, and reports
+the operation as incomplete until every requested change succeeds.
+
+Company work statuses are `active`, `paused`, `blocked`, `done_unverified`,
+`done_verified`, and `archived`. The assigned owner may set an item to
+`active`, `paused`, `blocked`, or `done_unverified`. A status action cannot set
+`done_verified`. Verification is a distinct action against the exact current
+head. It is allowed to a community owner or admin, or to the item's requester,
+and requires `verdict` (`pass` or `revision_requested`), a non-empty `reason`,
+and non-empty evidence. `pass` sets `done_verified`; `revision_requested`
+returns the item to `active`. The relay records the signed reviewer and the
+verification evidence on the next kind 30634 head.
+
+Company work actions require channel membership and an exact current head for
+every action except create. The relay stores the member action and emits the
+relay-signed kind 30634 head in one transaction. Client work validation and
+W11 behavior remain unchanged.
 
 ## Proof boundaries
 
