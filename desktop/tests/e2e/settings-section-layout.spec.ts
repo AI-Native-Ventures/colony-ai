@@ -188,7 +188,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     });
 
   expect(titleFontSize).toBe("27.2px");
-  expect(breadcrumbLineHeights).toEqual(["18px", "18px"]);
+  expect(breadcrumbLineHeights).toEqual(["21px", "21px"]);
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
   for (const expected of [
