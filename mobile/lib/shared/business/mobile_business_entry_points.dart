@@ -34,14 +34,6 @@ abstract final class MobileBusinessRoutes {
     'business/discovery',
   );
 
-  /// Destination for social publishing.
-  static const social = MobileRoute<NoMobileRouteArguments>('business/social');
-
-  /// Destination for the business website.
-  static const website = MobileRoute<NoMobileRouteArguments>(
-    'business/website',
-  );
-
   /// Destination for business finances.
   static const money = MobileRoute<NoMobileRouteArguments>('business/money');
 }
@@ -93,27 +85,15 @@ abstract final class MobileBusinessEntryPoints {
     section: MobileBusinessSection.growBusiness,
     route: MobileBusinessRoutes.discovery,
   );
-  static const social = MobileBusinessEntryPoint(
-    label: 'Social',
-    description: 'Create & publish',
-    section: MobileBusinessSection.growBusiness,
-    route: MobileBusinessRoutes.social,
-  );
-  static const website = MobileBusinessEntryPoint(
-    label: 'Website',
-    description: 'Your place online',
-    section: MobileBusinessSection.growBusiness,
-    route: MobileBusinessRoutes.website,
-  );
   static const money = MobileBusinessEntryPoint(
     label: 'Money',
-    description: 'Revenue & costs',
+    description: 'Invoices & payments',
     section: MobileBusinessSection.growBusiness,
     route: MobileBusinessRoutes.money,
   );
 
   static const runCompany = [team, goals, work, workflows];
-  static const growBusiness = [discovery, social, website, money];
+  static const growBusiness = [discovery, money];
   static const all = [...runCompany, ...growBusiness];
 
   static List<MobileBusinessEntryPoint> availableIn(
