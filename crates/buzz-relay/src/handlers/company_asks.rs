@@ -12,9 +12,9 @@ use uuid::Uuid;
 use buzz_core::company_members::{MemberKind, MemberPositionAction, MemberPositionActionKind};
 use buzz_core::company_records::{
     ask_resolution_denied_reason, parse_company_command, validate_ask_action, validate_ask_d_tag,
-    validate_ask_response, AskAction, AskActionKind, AskCancellation, AskHead, AskRecord,
-    AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, CommunityRole,
-    CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
+    validate_ask_response, AskAction, AskActionKind, AskCancellation, AskCategory, AskHead,
+    AskRecord, AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus,
+    CommunityRole, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE};
 use buzz_core::tenant::TenantContext;
