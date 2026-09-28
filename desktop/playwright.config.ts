@@ -188,6 +188,7 @@ export default defineConfig({
         "**/w07-agents-smoke.spec.ts",
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
+        "**/money.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

@@ -5,6 +5,10 @@ import {
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_INVOICE_VERSION,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
+  KIND_PAYMENT,
   KIND_WORK_ITEM_ACTION,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -27,6 +31,12 @@ import {
   computeDeliverableContentDigest,
   computeDeliverableDigests,
 } from "./businessRecordDigests";
+import {
+  moneyAdjustmentDTag,
+  moneyFollowUpDTag,
+  moneyInvoiceVersionDTag,
+  moneyPaymentDTag,
+} from "@/features/money/lib/moneyRecords";
 export {
   buildWorkItemReferenceMessageTemplate,
   buildWorkItemReferenceTag,
@@ -57,6 +67,10 @@ const MUTATION_KINDS = new Set([
   KIND_WORK_ITEM_ACTION,
   KIND_DELIVERABLE_VERSION,
   KIND_DELIVERABLE_APPROVAL,
+  KIND_INVOICE_VERSION,
+  KIND_PAYMENT,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
 ]);
 
 export type RecordAction = "create" | "update" | "archive" | "restore";
@@ -815,6 +829,40 @@ function clientScopeFromTemplate(
         "deliverable approval",
       );
       expectedDTag = deliverableApprovalDTag(commandClientId, versionEventId);
+      break;
+    }
+    case KIND_INVOICE_VERSION: {
+      const commandClientId = readUuid(record, "clientId", "invoice version");
+      const invoiceId = readUuid(record, "invoiceId", "invoice version");
+      if (
+        !Number.isSafeInteger(record.version) ||
+        (record.version as number) < 1
+      ) {
+        throw new Error("invoice version must be a positive integer");
+      }
+      expectedDTag = moneyInvoiceVersionDTag(
+        commandClientId,
+        invoiceId,
+        record.version as number,
+      );
+      break;
+    }
+    case KIND_PAYMENT: {
+      const commandClientId = readUuid(record, "clientId", "payment evidence");
+      const paymentId = readUuid(record, "paymentId", "payment evidence");
+      expectedDTag = moneyPaymentDTag(commandClientId, paymentId);
+      break;
+    }
+    case KIND_MONEY_ADJUSTMENT: {
+      const commandClientId = readUuid(record, "clientId", "money adjustment");
+      const adjustmentId = readUuid(record, "adjustmentId", "money adjustment");
+      expectedDTag = moneyAdjustmentDTag(commandClientId, adjustmentId);
+      break;
+    }
+    case KIND_MONEY_FOLLOW_UP: {
+      const commandClientId = readUuid(record, "clientId", "money follow-up");
+      const followUpId = readUuid(record, "followUpId", "money follow-up");
+      expectedDTag = moneyFollowUpDTag(commandClientId, followUpId);
       break;
     }
     default:

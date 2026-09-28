@@ -2,6 +2,7 @@ import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
   ChevronDown,
+  CircleDollarSign,
   FileText,
   KanbanSquare,
   ListTodo,
@@ -23,12 +24,14 @@ const BUSINESS_DESTINATIONS = [
   ["/pipeline", "Pipeline", KanbanSquare],
   ["/sales/proposals", "Proposals", FileText],
   ["/sales/service", "Services", BriefcaseBusiness],
+  ["/money", "Money", CircleDollarSign],
 ] as const;
 
 /** Whether `pathname` is the destination at `href` or one of its detail routes. */
 function isDestinationPath(pathname: string, href: string): boolean {
   return (
     pathname === href ||
+    (href === "/money" && pathname.startsWith("/money/")) ||
     (href === "/sales/proposals" && pathname.startsWith("/sales/proposal/")) ||
     (href === "/leads" && pathname.startsWith("/sales/lead/"))
   );
