@@ -191,19 +191,8 @@ test.describe("visual comparison captures", () => {
           time: new Date("2026-09-23T12:00:00+02:00"),
         });
         // Keep the frozen reference files untouched while applying the owner
-        // typeface decision in memory. The reference font request is served
-        // with its Manrope file and its family alias is normalized here.
-        await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch({ timeout: 30_000 });
-          const stylesheet = await response.text();
-          const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
-            .map((selector) => `${selector} { display: none !important; }`)
-            .join("\n");
-          await route.fulfill({
-            response,
-            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
-          });
-        });
+        // typeface decision in memory. The old font URL receives Manrope bytes
+        // so its rendered glyphs use the frozen owner-selected typeface.
         await referencePage.route(
           /satoshi-variable\.woff2(?:\?.*)?$/,
           async (route) => {
@@ -214,6 +203,9 @@ test.describe("visual comparison captures", () => {
             });
           },
         );
+        const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+          .map((selector) => `${selector} { display: none !important; }`)
+          .join("\n");
         await seedStorage(
           referencePage,
           entry.referencePrefs,
@@ -237,6 +229,9 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (ignoredShellStyles) {
+          await referencePage.addStyleTag({ content: ignoredShellStyles });
+        }
         if (entry.referenceCanvas && entry.theme === "dark") {
           await referencePage.locator("#dark").click();
           await expect(referencePage.locator("#canvas")).toHaveClass(
