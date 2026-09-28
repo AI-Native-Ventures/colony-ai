@@ -363,23 +363,23 @@ class _ParentGoalStrip extends StatelessWidget {
               Icon(
                 LucideIcons.target,
                 color: tokens.action,
-                size: Grid.xs + Grid.half,
+                size: MobileLayoutTokens.goalReferenceIconSize,
               ),
-              const SizedBox(width: Grid.xxs),
+              const SizedBox(width: Grid.ten),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Part of',
-                      style: context.mobileTypography.goalParentReferenceLabel
+                      style: context.mobileTypography.goalReferenceLabel
                           .copyWith(color: tokens.action),
                     ),
                     Text(
                       record.head.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: context.mobileTypography.goalParentReferenceTitle
+                      style: context.mobileTypography.goalReferenceTitle
                           .copyWith(color: tokens.action),
                     ),
                   ],

@@ -843,6 +843,15 @@ void main() {
               find.text('A client-approved October campaign'),
               findsOneWidget,
             );
+            final banner = tester.getRect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+            );
+            debugPrint(
+              'VISUAL_CHANNEL_GOAL_BANNER ${size.key} $mode rect=$banner',
+            );
+            expect(banner.left, 21);
+            expect(banner.width, size.value.width - 42);
+            expect(banner.height, closeTo(57.6, 1));
             await expectLater(
               find.byKey(captureKey),
               matchesGoldenFile('channel-goal-banner.png'),

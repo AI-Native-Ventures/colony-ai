@@ -20,8 +20,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     required this.companyEntryDescription,
     required this.goalCardTitle,
     required this.goalCardChip,
-    required this.goalParentReferenceLabel,
-    required this.goalParentReferenceTitle,
+    required this.goalReferenceLabel,
+    required this.goalReferenceTitle,
     required this.goalSectionTitle,
     required this.goalDetailTitle,
     required this.goalMetric,
@@ -83,8 +83,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     companyEntryDescription: companyEntryDescriptionTextStyle,
     goalCardTitle: goalCardTitleTextStyle,
     goalCardChip: goalCardChipTextStyle,
-    goalParentReferenceLabel: goalParentReferenceLabelTextStyle,
-    goalParentReferenceTitle: goalParentReferenceTitleTextStyle,
+    goalReferenceLabel: goalReferenceLabelTextStyle,
+    goalReferenceTitle: goalReferenceTitleTextStyle,
     goalSectionTitle: goalSectionTitleTextStyle,
     goalDetailTitle: goalDetailTitleTextStyle,
     goalMetric: goalMetricTextStyle,
@@ -130,11 +130,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
   /// Typography for labels and status chips on goal cards.
   final TextStyle goalCardChip;
 
-  /// Typography for the label in a goal parent reference strip.
-  final TextStyle goalParentReferenceLabel;
+  /// Typography for the secondary label in a goal reference row.
+  final TextStyle goalReferenceLabel;
 
-  /// Typography for the parent goal name in its reference strip.
-  final TextStyle goalParentReferenceTitle;
+  /// Typography for the goal title in a goal reference row.
+  final TextStyle goalReferenceTitle;
 
   /// Typography for goal section headings.
   final TextStyle goalSectionTitle;
@@ -188,8 +188,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     TextStyle? companyEntryDescription,
     TextStyle? goalCardTitle,
     TextStyle? goalCardChip,
-    TextStyle? goalParentReferenceLabel,
-    TextStyle? goalParentReferenceTitle,
+    TextStyle? goalReferenceLabel,
+    TextStyle? goalReferenceTitle,
     TextStyle? goalSectionTitle,
     TextStyle? goalDetailTitle,
     TextStyle? goalMetric,
@@ -218,10 +218,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
         companyEntryDescription ?? this.companyEntryDescription,
     goalCardTitle: goalCardTitle ?? this.goalCardTitle,
     goalCardChip: goalCardChip ?? this.goalCardChip,
-    goalParentReferenceLabel:
-        goalParentReferenceLabel ?? this.goalParentReferenceLabel,
-    goalParentReferenceTitle:
-        goalParentReferenceTitle ?? this.goalParentReferenceTitle,
+    goalReferenceLabel: goalReferenceLabel ?? this.goalReferenceLabel,
+    goalReferenceTitle: goalReferenceTitle ?? this.goalReferenceTitle,
     goalSectionTitle: goalSectionTitle ?? this.goalSectionTitle,
     goalDetailTitle: goalDetailTitle ?? this.goalDetailTitle,
     goalMetric: goalMetric ?? this.goalMetric,
@@ -281,14 +279,14 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
       )!,
       goalCardTitle: TextStyle.lerp(goalCardTitle, other.goalCardTitle, t)!,
       goalCardChip: TextStyle.lerp(goalCardChip, other.goalCardChip, t)!,
-      goalParentReferenceLabel: TextStyle.lerp(
-        goalParentReferenceLabel,
-        other.goalParentReferenceLabel,
+      goalReferenceLabel: TextStyle.lerp(
+        goalReferenceLabel,
+        other.goalReferenceLabel,
         t,
       )!,
-      goalParentReferenceTitle: TextStyle.lerp(
-        goalParentReferenceTitle,
-        other.goalParentReferenceTitle,
+      goalReferenceTitle: TextStyle.lerp(
+        goalReferenceTitle,
+        other.goalReferenceTitle,
         t,
       )!,
       goalSectionTitle: TextStyle.lerp(

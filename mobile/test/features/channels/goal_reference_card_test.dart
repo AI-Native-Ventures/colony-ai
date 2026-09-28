@@ -11,6 +11,7 @@ import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nostr/nostr.dart' as nostr;
 
 const _goalId = '123e4567-e89b-12d3-a456-426614174000';
@@ -100,6 +101,21 @@ void main() {
     final banner = find.byKey(const ValueKey('channel-shared-goal:$_goalId'));
     expect(banner, findsOneWidget);
     expect(find.text('Every client plan, ready on time'), findsOneWidget);
+    expect(find.byIcon(LucideIcons.chevronRight), findsNothing);
+    final title = tester.widget<Text>(
+      find.text('Every client plan, ready on time'),
+    );
+    final subtitle = tester.widget<Text>(find.text('Shared goal · On track'));
+    expect(title.style?.fontSize, 11);
+    expect(title.style?.height, 1.6);
+    expect(title.style?.fontWeight, FontWeight.w700);
+    expect(subtitle.style?.fontSize, 10);
+    expect(subtitle.style?.height, 1.6);
+    expect(subtitle.style?.color, title.style?.color);
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.target)).size,
+      MobileLayoutTokens.goalReferenceIconSize,
+    );
     await tester.tap(banner);
     expect(openedGoalId, _goalId);
   });

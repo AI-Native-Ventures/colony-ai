@@ -105,7 +105,12 @@ class ChannelGoalBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Grid.gutter, 0, Grid.gutter, Grid.xxs),
+      padding: const EdgeInsets.fromLTRB(
+        MobileLayoutTokens.goalContentHorizontalInset,
+        0,
+        MobileLayoutTokens.goalContentHorizontalInset,
+        MobileLayoutTokens.goalReferenceBannerBottomGap,
+      ),
       child: Semantics(
         button: true,
         label: 'Open shared goal ${record.head.title}',
@@ -125,8 +130,12 @@ class ChannelGoalBanner extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(LucideIcons.target, color: tokens.action),
-                    const SizedBox(width: Grid.xxs),
+                    Icon(
+                      LucideIcons.target,
+                      color: tokens.action,
+                      size: MobileLayoutTokens.goalReferenceIconSize,
+                    ),
+                    const SizedBox(width: Grid.ten),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,21 +144,19 @@ class ChannelGoalBanner extends StatelessWidget {
                             record.head.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.mobileTypography.identityName
-                                .copyWith(color: tokens.ink),
+                            style: context.mobileTypography.goalReferenceTitle
+                                .copyWith(color: tokens.action),
                           ),
                           Text(
                             _channelGoalSubtitle(record.head),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.mobileTypography.metadata.copyWith(
-                              color: tokens.muted,
-                            ),
+                            style: context.mobileTypography.goalReferenceLabel
+                                .copyWith(color: tokens.action),
                           ),
                         ],
                       ),
                     ),
-                    Icon(LucideIcons.chevronRight, color: tokens.muted),
                   ],
                 ),
               ),

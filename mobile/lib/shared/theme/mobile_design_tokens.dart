@@ -222,6 +222,12 @@ abstract final class MobileLayoutTokens {
   /// Horizontal inset for Goals content and headers.
   static const goalContentHorizontalInset = 21.0;
 
+  /// Target icon size in shared goal reference rows.
+  static const goalReferenceIconSize = 20.0;
+
+  /// Space after the shared goal banner before channel messages.
+  static const goalReferenceBannerBottomGap = 22.0;
+
   /// Visible square size for the Goals header actions.
   static const goalHeaderButtonSize = 42.0;
 
