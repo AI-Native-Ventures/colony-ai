@@ -246,11 +246,24 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goGoalWorkLink = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/link/$goalId",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goNewGoal = React.useCallback(
     (parentGoalId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/goals/new",
+          to: "/goals/$goalId",
+          params: { goalId: "new" },
           search: { parent: parentGoalId },
         },
         behavior,
@@ -423,7 +436,8 @@ export function useAppNavigation() {
     (clientId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work",
+          to: "/$workSurface",
+          params: { workSurface: "work" },
           search: clientId ? { client: clientId } : {},
         },
         behavior,
@@ -438,6 +452,111 @@ export function useAppNavigation() {
           to: "/work/$workId",
           params: { workId: workItemId },
           search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWork = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/$workSurface",
+          params: { workSurface: "company-work" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewCompanyWork = React.useCallback(
+    (
+      search: { channel?: string; goal?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: "new" },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkFromChat = React.useCallback(
+    (
+      messageId: string,
+      search: { channel: string; threadRoot: string; goal?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "from-chat", resourceId: messageId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkDetail = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "detail", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkEdit = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "edit", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkStatus = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "status", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkVerify = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "verify", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkArchive = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "archive", resourceId: workItemId },
         },
         behavior,
       ),
@@ -767,6 +886,7 @@ export function useAppNavigation() {
     goGoalDelete,
     goGoalProgress,
     goGoalReference,
+    goGoalWorkLink,
     goGoals,
     goTeam,
     goTeamOrg,
@@ -795,6 +915,14 @@ export function useAppNavigation() {
     goWorkflows,
     goWork,
     goWorkItem,
+    goCompanyWork,
+    goNewCompanyWork,
+    goCompanyWorkFromChat,
+    goCompanyWorkDetail,
+    goCompanyWorkEdit,
+    goCompanyWorkStatus,
+    goCompanyWorkVerify,
+    goCompanyWorkArchive,
     openSearchHit,
   };
 }

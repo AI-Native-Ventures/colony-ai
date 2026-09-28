@@ -249,6 +249,9 @@ enum Cmd {
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
+    /// Create and manage company work items
+    #[command(subcommand)]
+    Work(WorkCmd),
     /// Review client invoices and record money evidence
     #[command(subcommand)]
     Money(MoneyCmd),
@@ -1242,6 +1245,82 @@ pub enum TeamCmd {
         /// Clear the manager and report directly to the company owner
         #[arg(long, conflicts_with = "manager")]
         clear_manager: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WorkCmd {
+    /// Create a company work item in a conversation channel
+    Create {
+        /// Channel UUID where the commitment lives
+        #[arg(long)]
+        channel: String,
+        /// CompanyWorkItemInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Update the editable fields of a company work item
+    Update {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// CompanyWorkItemInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Change status to active, paused, blocked, or done_unverified
+    Status {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// Target status
+        #[arg(long)]
+        status: String,
+        /// Why the status changed
+        #[arg(long)]
+        reason: String,
+    },
+    /// Verify submitted work with a verdict and evidence
+    Verify {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// One of: pass, revision_requested
+        #[arg(long)]
+        verdict: String,
+        /// Why the reviewer chose this verdict
+        #[arg(long)]
+        reason: String,
+        /// Evidence checked by the reviewer
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Archive a company work item
+    Archive {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Restore an archived company work item
+    Restore {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// List current company work heads
+    List {
+        /// Restrict results to one conversation channel
+        #[arg(long)]
+        channel: Option<String>,
+        /// Maximum current work heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current company work head
+    Get {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
     },
 }
 
@@ -2599,6 +2678,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
@@ -2790,6 +2870,7 @@ mod tests {
             "team",
             "upload",
             "users",
+            "work",
             "workflows",
         ];
 
@@ -2909,6 +2990,10 @@ mod tests {
             vec!["approve", "create", "delete", "get", "list", "runs", "trigger", "update"]
         );
         assert_eq!(
+            names(&cmd, "work"),
+            vec!["archive", "create", "get", "list", "restore", "status", "update", "verify"]
+        );
+        assert_eq!(
             names(&cmd, "goals"),
             vec![
                 "archive", "create", "delete", "get", "list", "progress", "restore", "status",
@@ -3019,6 +3104,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
+            ("work", 8),
             ("workflows", 8),
         ];
 
