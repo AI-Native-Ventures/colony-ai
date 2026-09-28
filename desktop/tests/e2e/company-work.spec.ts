@@ -305,3 +305,54 @@ test("company work keeps entered fields after a rejected create", async ({
     "Retain this launch brief",
   );
 });
+
+test("company work creation is reachable in form order from the keyboard", async ({
+  page,
+}) => {
+  await installCompanyWorkMock(page);
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await page
+    .getByTestId("chat-header")
+    .getByRole("button", { name: "Join" })
+    .click();
+  await page.goto("/#/work/new");
+
+  await page
+    .getByTestId("company-work-conversation")
+    .selectOption(GENERAL_CHANNEL_ID);
+  await page.getByTestId("company-work-title").fill("Keyboard launch brief");
+  await page
+    .getByTestId("company-work-done-condition")
+    .fill("A reviewer approves the launch brief.");
+  await page
+    .getByTestId("company-work-owner")
+    .selectOption(TEST_IDENTITIES.tyler.pubkey);
+  await page
+    .getByTestId("company-work-requester")
+    .selectOption(TEST_IDENTITIES.tyler.pubkey);
+  await expect(
+    page.getByRole("button", { name: "Create commitment" }),
+  ).toBeEnabled();
+
+  const focusOrder = [
+    page.getByTestId("company-work-done-condition"),
+    page.getByTestId("company-work-owner"),
+    page.getByTestId("company-work-requester"),
+    page.getByTestId("company-work-goal"),
+    page.getByTestId("company-work-conversation"),
+    page.getByTestId("company-work-evidence"),
+    page.getByRole("button", { name: "Create commitment" }),
+    page.getByRole("button", { name: "Cancel" }),
+  ];
+  await page.getByTestId("company-work-title").focus();
+  for (const control of focusOrder) {
+    await page.keyboard.press("Tab");
+    await expect(control).toBeFocused();
+  }
+
+  await page.getByRole("button", { name: "Create commitment" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Keyboard launch brief",
+  );
+});
