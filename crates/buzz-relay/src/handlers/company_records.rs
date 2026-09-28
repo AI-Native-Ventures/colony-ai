@@ -27,9 +27,24 @@ use crate::state::AppState;
 
 const MAX_CURRENT_GOAL_HEADS: i64 = 10_000;
 
+/// Dispatches company ask and goal commands to their record handlers.
+pub async fn handle(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: Event,
+    auth: IngestAuth,
+) -> Result<IngestResult, IngestError> {
+    match u32::from(event.kind.as_u16()) {
+        buzz_core::kind::KIND_ASK_ACTION | buzz_core::kind::KIND_ASK_RESPONSE => {
+            super::company_asks::handle(tenant, state, event, auth).await
+        }
+        _ => handle_goal_action(tenant, state, event, auth).await,
+    }
+}
+
 /// Handles a member-signed company goal action (kind 47031).
 #[datastore_span(name = "company_goal_action", system = "postgresql")]
-pub async fn handle(
+async fn handle_goal_action(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

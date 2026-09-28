@@ -1505,6 +1505,21 @@ pub(crate) async fn insert_event_with_thread_metadata_tx(
     ))
 }
 
+/// Insert an event and its optional thread metadata in a caller-owned
+/// transaction.
+///
+/// Callers that also persist related records can use this entry point to keep
+/// the event, reply counters, and those records in one atomic write.
+pub async fn insert_event_with_thread_metadata_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    community_id: CommunityId,
+    event: &Event,
+    channel_id: Option<Uuid>,
+    thread_meta: Option<ThreadMetadataParams<'_>>,
+) -> Result<(StoredEvent, bool)> {
+    insert_event_with_thread_metadata_tx(tx, community_id, event, channel_id, thread_meta).await
+}
+
 /// Atomically insert an event and its optional thread metadata.
 ///
 /// `insert_event` and `insert_thread_metadata` calls could leave reply counters
