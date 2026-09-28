@@ -102,8 +102,6 @@ void main() {
       'work',
       'workflows',
       'business/discovery',
-      'business/social',
-      'business/website',
       'business/money',
     ]);
   });

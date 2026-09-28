@@ -4,6 +4,8 @@
 //! outer tenant, client groups are private NIP-29 channels, and every d-tag is
 //! namespaced so NIP-33 coordinates cannot collide across clients.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -11,6 +13,14 @@ use uuid::Uuid;
 
 /// Current business-record JSON schema version.
 pub const BUSINESS_RECORD_SCHEMA_VERSION: u8 = 1;
+/// Longest work item title, in characters.
+pub const MAX_WORK_ITEM_TITLE_CHARS: usize = 180;
+/// Longest company work item done condition, in characters.
+pub const MAX_WORK_ITEM_DONE_CONDITION_CHARS: usize = 1000;
+/// Longest company work item evidence text, in characters.
+pub const MAX_WORK_ITEM_EVIDENCE_CHARS: usize = 2000;
+/// Longest company work item status or verification reason, in characters.
+pub const MAX_WORK_ITEM_REASON_CHARS: usize = 1000;
 
 /// Errors returned while parsing or binding a business-record event.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -33,6 +43,9 @@ pub enum BusinessRecordError {
     /// A version or digest is not a 32-byte lowercase hexadecimal value.
     #[error("invalid event id or SHA-256 digest")]
     InvalidHexReference,
+    /// A business field breaks a contract rule.
+    #[error("invalid business record: {0}")]
+    Invalid(&'static str),
 }
 
 /// Member-authored business command content parsed by the relay broker.
@@ -49,6 +62,8 @@ pub enum BusinessCommand {
     ClientAction(ClientAction),
     /// Work-item mutation.
     WorkItemAction(WorkItemAction),
+    /// Company work-item mutation using the shared work item kinds.
+    CompanyWorkItemAction(CompanyWorkItemAction),
     /// Immutable proposal revision.
     ProposalVersion(ProposalVersion),
     /// Exact-version proposal acceptance and conversion request.
@@ -494,6 +509,189 @@ pub struct WorkItemAction {
     pub expected_head_event_id: Option<String>,
     /// Replacement work-item head content.
     pub head: WorkItemHeadInput,
+}
+
+/// Lifecycle status for a company work item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanyWorkStatus {
+    /// Work is in progress.
+    Active,
+    /// Work is intentionally paused.
+    Paused,
+    /// Work cannot proceed without help or a decision.
+    Blocked,
+    /// The owner says the done condition is met, pending review.
+    DoneUnverified,
+    /// An authorized reviewer accepted the submitted evidence.
+    DoneVerified,
+    /// Work is archived and retained for reference.
+    Archived,
+}
+
+/// A company work item action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanyWorkItemActionKind {
+    /// Create a company work item.
+    Create,
+    /// Replace editable company work item fields.
+    Update,
+    /// Change the work item's progress status.
+    SetStatus,
+    /// Submit a reviewer verdict for an item awaiting verification.
+    Verify,
+    /// Archive a company work item.
+    Archive,
+    /// Restore an archived company work item.
+    Restore,
+}
+
+/// Result recorded when an authorized reviewer checks completed work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanyWorkVerdict {
+    /// The evidence meets the done condition.
+    Pass,
+    /// More work is required.
+    RevisionRequested,
+}
+
+/// Verification evidence stored with the relay-authored work item head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyWorkVerification {
+    /// Reviewer decision.
+    pub verdict: CompanyWorkVerdict,
+    /// Why the decision was made.
+    pub reason: String,
+    /// Evidence checked by the reviewer.
+    pub evidence: String,
+    /// Pubkey of the member who signed the verification action.
+    pub reviewer_pubkey: String,
+    /// Time at which the relay recorded the verification.
+    pub reviewed_at: String,
+    /// Member action that produced this verification.
+    pub source_action_event_id: String,
+}
+
+/// Relay-authored company work item head using kind 30634.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyWorkItemHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable work item UUID.
+    pub work_item_id: Uuid,
+    /// Short work title.
+    pub title: String,
+    /// Current work state.
+    pub status: CompanyWorkStatus,
+    /// Exactly one responsible owner for this commitment.
+    pub assigned_pubkeys: Vec<String>,
+    /// Existing work item reviewer list, used by deliverable workflows.
+    pub approver_pubkeys: Vec<String>,
+    /// Current deliverable pointers shared with client work items.
+    pub deliverables: Vec<DeliverablePointer>,
+    /// Person who requested the commitment.
+    pub requester_pubkey: String,
+    /// Plain-language condition that means the work is done.
+    pub done_condition: String,
+    /// Optional live company goal linked to this work item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_id: Option<Uuid>,
+    /// Original source message, absent only for standalone Work creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_event_id: Option<String>,
+    /// Current conversation thread root, absent only for standalone creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root_event_id: Option<String>,
+    /// Current deliverable or evidence note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    /// Reason from the most recent status action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_reason: Option<String>,
+    /// Latest reviewer decision, if one has been recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<CompanyWorkVerification>,
+    /// Member action that produced this current head.
+    pub source_action_event_id: String,
+}
+
+/// Member-supplied editable fields for a company work item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyWorkItemInput {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable work item UUID.
+    pub work_item_id: Uuid,
+    /// Short work title.
+    pub title: String,
+    /// Current work state. Status changes use a status action.
+    pub status: CompanyWorkStatus,
+    /// Exactly one responsible owner for this commitment.
+    pub assigned_pubkeys: Vec<String>,
+    /// Existing work item reviewer list, used by deliverable workflows.
+    pub approver_pubkeys: Vec<String>,
+    /// Current deliverable pointers shared with client work items.
+    pub deliverables: Vec<DeliverablePointer>,
+    /// Person who requested the commitment.
+    pub requester_pubkey: String,
+    /// Plain-language condition that means the work is done.
+    pub done_condition: String,
+    /// Optional live company goal linked to this work item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_id: Option<Uuid>,
+    /// Original source message, absent only for standalone Work creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_event_id: Option<String>,
+    /// Current conversation thread root, absent only for standalone creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root_event_id: Option<String>,
+    /// Current deliverable or evidence note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+}
+
+/// Verification payload on a company work-item action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyWorkVerificationInput {
+    /// Reviewer decision.
+    pub verdict: CompanyWorkVerdict,
+    /// Why the decision was made.
+    pub reason: String,
+    /// Evidence checked by the reviewer.
+    pub evidence: String,
+}
+
+/// Member request to mutate a company work item using kind 47006.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyWorkItemAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable work-item UUID.
+    pub work_item_id: Uuid,
+    /// Requested mutation.
+    pub action: CompanyWorkItemActionKind,
+    /// Exact current head event id; omitted only on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Replacement fields for create and update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<CompanyWorkItemInput>,
+    /// Target for set_status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<CompanyWorkStatus>,
+    /// Required explanation for set_status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Required verdict and evidence for verify.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<CompanyWorkVerificationInput>,
 }
 
 /// Immutable client deliverable version content.
@@ -963,6 +1161,23 @@ pub fn client_d_tag(client_id: Uuid, record_type: &str, record_id: Uuid) -> Stri
     format!("client:{client_id}:{record_type}:{record_id}")
 }
 
+/// Build the company-wide coordinate for one channel-scoped company work item.
+pub fn company_work_d_tag(work_item_id: Uuid) -> String {
+    format!("company:work:{work_item_id}")
+}
+
+/// Check a supplied d-tag against the company work-item coordinate.
+pub fn validate_company_work_d_tag(
+    actual: &str,
+    work_item_id: Uuid,
+) -> Result<(), BusinessRecordError> {
+    if actual == company_work_d_tag(work_item_id) {
+        Ok(())
+    } else {
+        Err(BusinessRecordError::DTagMismatch)
+    }
+}
+
 /// Build a d-tag for a prospect or business-level record before client conversion.
 pub fn business_d_tag(community_id: Uuid, record_type: &str, record_id: Uuid) -> String {
     format!("business:{community_id}:{record_type}:{record_id}")
@@ -1144,6 +1359,10 @@ pub fn validate_business_command_scope(
             }
             validate_client_d_tag(d_tag, value.client_id, "work", value.work_item_id)
         }
+        BusinessCommand::CompanyWorkItemAction(value) => {
+            validate_company_work_item_action(value)?;
+            validate_company_work_d_tag(d_tag, value.work_item_id)
+        }
         BusinessCommand::ProposalVersion(value) => {
             if d_tag == proposal_version_d_tag(community_id, value.proposal_id, value.revision) {
                 Ok(())
@@ -1218,6 +1437,213 @@ pub fn validate_hex_reference(value: &str) -> Result<(), BusinessRecordError> {
     }
 }
 
+/// Validate a company work-item action's shape and payload rules.
+pub fn validate_company_work_item_action(
+    action: &CompanyWorkItemAction,
+) -> Result<(), BusinessRecordError> {
+    if action.schema_version != BUSINESS_RECORD_SCHEMA_VERSION {
+        return Err(BusinessRecordError::UnsupportedSchemaVersion);
+    }
+    if action.work_item_id.is_nil() {
+        return Err(BusinessRecordError::Invalid("workItemId must not be nil"));
+    }
+    if let Some(expected) = action.expected_head_event_id.as_deref() {
+        validate_hex_reference(expected)?;
+    }
+
+    let no_payloads = action.head.is_none()
+        && action.status.is_none()
+        && action.reason.is_none()
+        && action.verification.is_none();
+    match action.action {
+        CompanyWorkItemActionKind::Create => {
+            if action.expected_head_event_id.is_some()
+                || action.status.is_some()
+                || action.reason.is_some()
+                || action.verification.is_some()
+            {
+                return Err(BusinessRecordError::Invalid(
+                    "create must contain only a head and must omit expectedHeadEventId",
+                ));
+            }
+            let head = action
+                .head
+                .as_ref()
+                .ok_or(BusinessRecordError::Invalid("create head is required"))?;
+            validate_company_work_item_input(action.work_item_id, head)?;
+            if head.status != CompanyWorkStatus::Active {
+                return Err(BusinessRecordError::Invalid(
+                    "company work items must be created as active",
+                ));
+            }
+            if head.source_event_id.is_some() != head.thread_root_event_id.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "sourceEventId and threadRootEventId must be supplied together",
+                ));
+            }
+        }
+        CompanyWorkItemActionKind::Update => {
+            require_company_work_expected_head(action)?;
+            if action.status.is_some() || action.reason.is_some() || action.verification.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "update must contain only a head and expectedHeadEventId",
+                ));
+            }
+            let head = action
+                .head
+                .as_ref()
+                .ok_or(BusinessRecordError::Invalid("update head is required"))?;
+            validate_company_work_item_input(action.work_item_id, head)?;
+            if head.source_event_id.is_some() != head.thread_root_event_id.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "sourceEventId and threadRootEventId must be supplied together",
+                ));
+            }
+        }
+        CompanyWorkItemActionKind::SetStatus => {
+            require_company_work_expected_head(action)?;
+            if action.head.is_some() || action.verification.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "set_status cannot contain head or verification payloads",
+                ));
+            }
+            if !matches!(
+                action.status,
+                Some(
+                    CompanyWorkStatus::Active
+                        | CompanyWorkStatus::Paused
+                        | CompanyWorkStatus::Blocked
+                        | CompanyWorkStatus::DoneUnverified
+                )
+            ) {
+                return Err(BusinessRecordError::Invalid(
+                    "set_status target must be active, paused, blocked, or done_unverified",
+                ));
+            }
+            validate_work_item_reason(action.reason.as_deref())?;
+        }
+        CompanyWorkItemActionKind::Verify => {
+            require_company_work_expected_head(action)?;
+            if action.head.is_some() || action.status.is_some() || action.reason.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "verify must contain only a verification and expectedHeadEventId",
+                ));
+            }
+            let verification = action
+                .verification
+                .as_ref()
+                .ok_or(BusinessRecordError::Invalid("verification is required"))?;
+            validate_work_item_reason(Some(&verification.reason))?;
+            validate_work_item_evidence(Some(&verification.evidence))?;
+        }
+        CompanyWorkItemActionKind::Archive | CompanyWorkItemActionKind::Restore => {
+            require_company_work_expected_head(action)?;
+            if !no_payloads {
+                return Err(BusinessRecordError::Invalid(
+                    "archive and restore cannot contain a work-item payload",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_company_work_expected_head(
+    action: &CompanyWorkItemAction,
+) -> Result<(), BusinessRecordError> {
+    if action.expected_head_event_id.is_some() {
+        Ok(())
+    } else {
+        Err(BusinessRecordError::Invalid(
+            "expectedHeadEventId is required for this action",
+        ))
+    }
+}
+
+fn validate_company_work_item_input(
+    work_item_id: Uuid,
+    head: &CompanyWorkItemInput,
+) -> Result<(), BusinessRecordError> {
+    if head.schema_version != BUSINESS_RECORD_SCHEMA_VERSION {
+        return Err(BusinessRecordError::UnsupportedSchemaVersion);
+    }
+    if head.work_item_id != work_item_id || head.work_item_id.is_nil() {
+        return Err(BusinessRecordError::Invalid(
+            "head.workItemId must match workItemId",
+        ));
+    }
+    if head.title.trim().is_empty() || head.title.chars().count() > MAX_WORK_ITEM_TITLE_CHARS {
+        return Err(BusinessRecordError::Invalid(
+            "title must contain 1 to 180 characters",
+        ));
+    }
+    if head.done_condition.trim().is_empty()
+        || head.done_condition.chars().count() > MAX_WORK_ITEM_DONE_CONDITION_CHARS
+    {
+        return Err(BusinessRecordError::Invalid(
+            "doneCondition must contain 1 to 1000 characters",
+        ));
+    }
+    validate_hex_reference(&head.requester_pubkey)?;
+    if head.assigned_pubkeys.len() != 1 {
+        return Err(BusinessRecordError::Invalid(
+            "company work items require exactly one owner",
+        ));
+    }
+    validate_unique_pubkeys(&head.assigned_pubkeys)?;
+    validate_unique_pubkeys(&head.approver_pubkeys)?;
+    if let Some(goal_id) = head.goal_id {
+        if goal_id.is_nil() {
+            return Err(BusinessRecordError::Invalid("goalId must not be nil"));
+        }
+    }
+    for event_id in [
+        head.source_event_id.as_deref(),
+        head.thread_root_event_id.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        validate_hex_reference(event_id)?;
+    }
+    validate_work_item_evidence(head.evidence.as_deref())?;
+    Ok(())
+}
+
+fn validate_unique_pubkeys(pubkeys: &[String]) -> Result<(), BusinessRecordError> {
+    let mut unique = BTreeSet::new();
+    for pubkey in pubkeys {
+        validate_hex_reference(pubkey)?;
+        if !unique.insert(pubkey) {
+            return Err(BusinessRecordError::Invalid(
+                "pubkey lists must not contain duplicates",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_work_item_reason(reason: Option<&str>) -> Result<(), BusinessRecordError> {
+    let reason = reason.ok_or(BusinessRecordError::Invalid("reason is required"))?;
+    if reason.trim().is_empty() || reason.chars().count() > MAX_WORK_ITEM_REASON_CHARS {
+        return Err(BusinessRecordError::Invalid(
+            "reason must contain 1 to 1000 characters",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_work_item_evidence(evidence: Option<&str>) -> Result<(), BusinessRecordError> {
+    if let Some(evidence) = evidence {
+        if evidence.trim().is_empty() || evidence.chars().count() > MAX_WORK_ITEM_EVIDENCE_CHARS {
+            return Err(BusinessRecordError::Invalid(
+                "evidence must contain 1 to 2000 characters",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Return whether an approval still targets the current deliverable version.
 ///
 /// A later version changes the work head's current event id, so all earlier
@@ -1259,7 +1685,7 @@ pub fn parse_business_command(
         crate::kind::KIND_SERVICE_ACTION => parse!(ServiceAction, ServiceAction)?,
         crate::kind::KIND_PROSPECT_ACTION => parse_boxed!(ProspectAction, ProspectAction)?,
         crate::kind::KIND_CLIENT_ACTION => parse!(ClientAction, ClientAction)?,
-        crate::kind::KIND_WORK_ITEM_ACTION => parse!(WorkItemAction, WorkItemAction)?,
+        crate::kind::KIND_WORK_ITEM_ACTION => parse_work_item_action(content)?,
         crate::kind::KIND_PROPOSAL_VERSION => parse!(ProposalVersion, ProposalVersion)?,
         crate::kind::KIND_PROPOSAL_ACCEPTANCE => parse!(ProposalAcceptance, ProposalAcceptance)?,
         crate::kind::KIND_DELIVERABLE_VERSION => parse!(DeliverableVersion, DeliverableVersion)?,
@@ -1277,6 +1703,7 @@ pub fn parse_business_command(
         BusinessCommand::ProspectAction(value) => value.schema_version,
         BusinessCommand::ClientAction(value) => value.schema_version,
         BusinessCommand::WorkItemAction(value) => value.schema_version,
+        BusinessCommand::CompanyWorkItemAction(value) => value.schema_version,
         BusinessCommand::ProposalVersion(value) => value.schema_version,
         BusinessCommand::ProposalAcceptance(value) => value.schema_version,
         BusinessCommand::DeliverableVersion(value) => value.schema_version,
@@ -1290,6 +1717,20 @@ pub fn parse_business_command(
         return Err(BusinessRecordError::UnsupportedSchemaVersion);
     }
     Ok(command)
+}
+
+fn parse_work_item_action(content: &str) -> Result<BusinessCommand, BusinessRecordError> {
+    let value =
+        serde_json::from_str::<Value>(content).map_err(|_| BusinessRecordError::InvalidContent)?;
+    if value.get("clientId").is_some() {
+        serde_json::from_value::<WorkItemAction>(value)
+            .map(BusinessCommand::WorkItemAction)
+            .map_err(|_| BusinessRecordError::InvalidContent)
+    } else {
+        serde_json::from_value::<CompanyWorkItemAction>(value)
+            .map(BusinessCommand::CompanyWorkItemAction)
+            .map_err(|_| BusinessRecordError::InvalidContent)
+    }
 }
 
 #[cfg(test)]
@@ -1353,6 +1794,42 @@ mod tests {
             media_digest: digest.to_owned(),
             decision: ApprovalDecision::Approved,
             note: None,
+        }
+    }
+
+    fn company_work_input(work_item_id: Uuid) -> CompanyWorkItemInput {
+        CompanyWorkItemInput {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id,
+            title: "Prepare the launch plan".into(),
+            status: CompanyWorkStatus::Active,
+            assigned_pubkeys: vec!["a".repeat(64)],
+            approver_pubkeys: Vec::new(),
+            deliverables: Vec::new(),
+            requester_pubkey: "b".repeat(64),
+            done_condition: "The launch plan is approved by the team.".into(),
+            goal_id: Some(Uuid::from_u128(8)),
+            source_event_id: None,
+            thread_root_event_id: None,
+            evidence: None,
+        }
+    }
+
+    fn company_work_action(
+        work_item_id: Uuid,
+        action: CompanyWorkItemActionKind,
+        expected_head_event_id: Option<String>,
+        head: Option<CompanyWorkItemInput>,
+    ) -> CompanyWorkItemAction {
+        CompanyWorkItemAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id,
+            action,
+            expected_head_event_id,
+            head,
+            status: None,
+            reason: None,
+            verification: None,
         }
     }
 
@@ -1772,5 +2249,139 @@ mod tests {
         assert!(parsed.tax_lines.is_empty());
         assert_eq!(parsed.seller_tax_number, None);
         assert_eq!(parsed.customer_tax_number, None);
+    }
+
+    #[test]
+    fn client_work_item_actions_keep_the_existing_payload_shape() {
+        let client_id = Uuid::from_u128(50);
+        let work_item_id = Uuid::from_u128(51);
+        let action = WorkItemAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            work_item_id,
+            action: RecordAction::Create,
+            expected_head_event_id: None,
+            head: WorkItemHeadInput {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                client_id,
+                work_item_id,
+                title: "Existing client work".into(),
+                status: "open".into(),
+                assigned_pubkeys: Vec::new(),
+                approver_pubkeys: Vec::new(),
+                deliverables: Vec::new(),
+            },
+        };
+        let parsed = parse_business_command(
+            crate::kind::KIND_WORK_ITEM_ACTION,
+            &serde_json::to_string(&action).expect("serialize client work action"),
+        )
+        .expect("parse client work action");
+        assert!(matches!(parsed, BusinessCommand::WorkItemAction(_)));
+    }
+
+    #[test]
+    fn company_work_requires_a_single_owner_and_chat_source_pair() {
+        let work_item_id = Uuid::from_u128(43);
+        let mut action = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Create,
+            None,
+            Some(company_work_input(work_item_id)),
+        );
+        assert_eq!(validate_company_work_item_action(&action), Ok(()));
+
+        let head = action.head.as_mut().expect("create head");
+        head.assigned_pubkeys.push("c".repeat(64));
+        assert!(validate_company_work_item_action(&action).is_err());
+
+        {
+            let head = action.head.as_mut().expect("create head");
+            head.assigned_pubkeys.truncate(1);
+            head.source_event_id = Some("d".repeat(64));
+        }
+        assert!(validate_company_work_item_action(&action).is_err());
+        action
+            .head
+            .as_mut()
+            .expect("create head")
+            .thread_root_event_id = Some("e".repeat(64));
+        assert_eq!(validate_company_work_item_action(&action), Ok(()));
+    }
+
+    #[test]
+    fn company_work_updates_keep_the_source_and_thread_root_pair() {
+        let work_item_id = Uuid::from_u128(45);
+        let mut action = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Update,
+            Some("ab".repeat(32)),
+            Some(company_work_input(work_item_id)),
+        );
+        action.head.as_mut().unwrap().source_event_id = Some("ef".repeat(32));
+        assert!(validate_company_work_item_action(&action).is_err());
+    }
+
+    #[test]
+    fn company_work_uses_a_host_scoped_coordinate_and_shared_kind() {
+        let work_item_id = Uuid::from_u128(42);
+        let action = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Create,
+            None,
+            Some(company_work_input(work_item_id)),
+        );
+        let parsed = parse_business_command(
+            crate::kind::KIND_WORK_ITEM_ACTION,
+            &serde_json::to_string(&action).expect("serialize company work action"),
+        )
+        .expect("parse company work action");
+        assert!(matches!(parsed, BusinessCommand::CompanyWorkItemAction(_)));
+        assert_eq!(validate_company_work_item_action(&action), Ok(()));
+        assert_eq!(
+            company_work_d_tag(work_item_id),
+            format!("company:work:{work_item_id}")
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                Uuid::from_u128(10),
+                Uuid::from_u128(11),
+                &company_work_d_tag(work_item_id),
+                &parsed,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                Uuid::from_u128(12),
+                Uuid::from_u128(11),
+                &company_work_d_tag(Uuid::from_u128(99)),
+                &parsed,
+            ),
+            Err(BusinessRecordError::DTagMismatch)
+        );
+    }
+
+    #[test]
+    fn verification_requires_reason_evidence_and_an_exact_head() {
+        let work_item_id = Uuid::from_u128(44);
+        let mut action = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Verify,
+            Some("f".repeat(64)),
+            None,
+        );
+        action.verification = Some(CompanyWorkVerificationInput {
+            verdict: CompanyWorkVerdict::Pass,
+            reason: "The done condition is met.".into(),
+            evidence: "Approved plan and calendar are attached.".into(),
+        });
+        assert_eq!(validate_company_work_item_action(&action), Ok(()));
+
+        action.verification.as_mut().expect("verification").evidence = " ".into();
+        assert!(validate_company_work_item_action(&action).is_err());
+        action.verification.as_mut().expect("verification").evidence = "Reviewed attachment".into();
+        action.expected_head_event_id = None;
+        assert!(validate_company_work_item_action(&action).is_err());
     }
 }

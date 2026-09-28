@@ -9,13 +9,14 @@ use chrono::{SecondsFormat, Utc};
 use nostr::Event;
 use uuid::Uuid;
 
+use buzz_core::business_records::{validate_company_work_d_tag, CompanyWorkItemHead};
 use buzz_core::company_records::{
     goal_d_tag, goal_parent_creates_cycle, parse_company_command, validate_goal_action,
     validate_goal_d_tag, validate_goal_progress, CompanyCommand, GoalAction, GoalActionKind,
     GoalHead, GoalRecord, GoalStatus, RecordedGoalProgress, COMPANY_RECORD_SCHEMA_VERSION,
     MAX_GOAL_DEPTH,
 };
-use buzz_core::kind::{KIND_GOAL_ACTION, KIND_GOAL_HEAD};
+use buzz_core::kind::{KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_WORK_ITEM_HEAD};
 use buzz_core::tenant::TenantContext;
 use buzz_core::StoredEvent;
 use buzz_datastore_tracing::datastore_span;
@@ -26,6 +27,7 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
 const MAX_CURRENT_GOAL_HEADS: i64 = 10_000;
+const MAX_CURRENT_COMPANY_WORK_HEADS: i64 = 10_000;
 
 /// Dispatches company ask and goal commands to their record handlers.
 pub async fn handle(
@@ -210,6 +212,7 @@ async fn handle_goal_action(
 
     if action.action == GoalActionKind::Delete {
         ensure_no_live_subgoals(tenant, state, action.goal_id).await?;
+        ensure_no_company_work_items(tenant, state, action.goal_id).await?;
     }
 
     let head = next_goal_head(&event, &action, current.as_ref(), &actor_pubkey)?;
@@ -488,6 +491,62 @@ async fn ensure_no_live_subgoals(
         Err(conflict(format!(
             "goal has non-deleted sub-goals: {}",
             dependents.join(", ")
+        )))
+    }
+}
+
+async fn ensure_no_company_work_items(
+    tenant: &TenantContext,
+    state: &AppState,
+    goal_id: Uuid,
+) -> Result<(), IngestError> {
+    let mut query = EventQuery::for_community(tenant.community());
+    query.kinds = Some(vec![KIND_WORK_ITEM_HEAD as i32]);
+    query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
+    query.limit = Some(MAX_CURRENT_COMPANY_WORK_HEADS + 1);
+    let rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(internal)?;
+    if rows.len() as i64 > MAX_CURRENT_COMPANY_WORK_HEADS {
+        return Err(IngestError::Internal(format!(
+            "error: company work exceeds the supported {} current heads",
+            MAX_CURRENT_COMPANY_WORK_HEADS
+        )));
+    }
+
+    let mut linked = Vec::new();
+    for stored in rows {
+        let d_tag = stored
+            .event
+            .tags
+            .iter()
+            .find(|tag| tag.kind().to_string() == "d")
+            .and_then(|tag| tag.as_slice().get(1).cloned())
+            .ok_or_else(|| {
+                IngestError::Internal("error: relay-signed work head has no d tag".into())
+            })?;
+        if !d_tag.starts_with("company:work:") {
+            continue;
+        }
+        let head =
+            serde_json::from_str::<CompanyWorkItemHead>(&stored.event.content).map_err(|_| {
+                IngestError::Internal("error: stored company work head is invalid".into())
+            })?;
+        validate_company_work_d_tag(&d_tag, head.work_item_id)
+            .map_err(|error| internal(format!("stored company work d tag: {error}")))?;
+        if head.goal_id == Some(goal_id) {
+            linked.push(format!("{} ({})", head.title, head.work_item_id));
+        }
+    }
+
+    if linked.is_empty() {
+        Ok(())
+    } else {
+        Err(conflict(format!(
+            "goal has linked company work items: {}",
+            linked.join(", ")
         )))
     }
 }
