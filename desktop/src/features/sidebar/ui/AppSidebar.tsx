@@ -3,12 +3,9 @@ import * as React from "react";
 import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
-  ListTodo,
   LayoutTemplate,
   Search,
   Settings as SettingsIcon,
-  Target,
-  Workflow,
   Zap,
 } from "lucide-react";
 import { FeatureGate } from "@/shared/features";
@@ -54,6 +51,7 @@ import {
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
 import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
+import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
 import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
 import {
   ChannelGroupSection,
@@ -884,64 +882,12 @@ export function AppSidebar({
                     </SidebarMenu>
                   </SidebarNavigationGroup>
 
-                  <SidebarNavigationGroup
-                    defaultExpanded
-                    expandForActiveRoute={
-                      selectedView === "goals" ||
-                      selectedView === "work" ||
-                      selectedView === "workflows"
-                    }
-                    label="Company"
-                    testId="sidebar-nav-company"
-                  >
-                    <SidebarMenu>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-company-goals"
-                          isActive={selectedView === "goals"}
-                          onClick={onSelectGoals}
-                          tooltip="Goals"
-                          type="button"
-                        >
-                          <Target className="h-4 w-4" />
-                          <SidebarMenuLabel>Goals</SidebarMenuLabel>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                    <SidebarMenu>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-company-work"
-                          isActive={selectedView === "work"}
-                          onClick={onSelectWork}
-                          tooltip="Work"
-                          type="button"
-                        >
-                          <ListTodo className="h-4 w-4" />
-                          <SidebarMenuLabel>Work</SidebarMenuLabel>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                    <FeatureGate feature="workflows">
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="text-xs pl-7"
-                            data-testid="open-workflows-view"
-                            isActive={selectedView === "workflows"}
-                            onClick={onSelectWorkflows}
-                            tooltip="Workflows"
-                            type="button"
-                          >
-                            <Workflow className="h-4 w-4" />
-                            <SidebarMenuLabel>Workflows</SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </FeatureGate>
-                  </SidebarNavigationGroup>
+                  <SidebarCompanyGroup
+                    onSelectGoals={onSelectGoals}
+                    onSelectWork={onSelectWork}
+                    onSelectWorkflows={onSelectWorkflows}
+                    selectedView={selectedView}
+                  />
 
                   <SidebarNavigationGroup
                     defaultExpanded={false}
