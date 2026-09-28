@@ -1469,7 +1469,8 @@ mod postgres_tests {
         let (_, denied) = response_for(&fixture, &outside, &head, AskType::Question).await;
         assert!(matches!(
             denied,
-            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
+            Err(IngestError::AuthFailed(message))
+                if message.contains("Only members of this conversation can answer")
         ));
 
         let addressed = ask_record(

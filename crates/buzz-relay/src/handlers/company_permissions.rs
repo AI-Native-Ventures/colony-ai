@@ -813,10 +813,21 @@ mod postgres_tests {
             expected_head_event_id: Some(granted.event.id.to_hex()),
             ..update
         };
-        assert!(matches!(
-            send(&fixture, &fixture.owner, &stale).await,
-            Err(IngestError::Rejected(message)) if message.contains("current head")
-        ));
+        let stale_result = send(&fixture, &fixture.owner, &stale).await;
+        assert!(
+            matches!(
+                &stale_result,
+                Err(IngestError::Rejected(message))
+                    if message.contains("current head")
+                        || message.contains("permission changed before the action could commit")
+            ),
+            "stale permission update must fail with a head conflict, got {stale_result:?}"
+        );
+        assert_eq!(
+            current(&fixture, permission_id).await.event.id.to_hex(),
+            updated.event.id.to_hex(),
+            "stale permission update must leave the current head unchanged"
+        );
 
         let revoke = ToolPermissionAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
