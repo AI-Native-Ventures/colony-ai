@@ -4,7 +4,6 @@ import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
   CircleDollarSign,
-  LayoutTemplate,
   Search,
   Settings as SettingsIcon,
   Zap,
@@ -51,6 +50,7 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
+import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
 import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
 import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
 import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
@@ -982,32 +982,7 @@ export function AppSidebar({
                     scope={factoryScope}
                   />
 
-                  <SidebarNavigationGroup
-                    defaultExpanded={false}
-                    label="Library"
-                    testId="sidebar-nav-library"
-                  >
-                    <FeatureGate feature="channel-templates">
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="text-xs pl-7"
-                            data-testid="sidebar-blocks-templates"
-                            onClick={() =>
-                              onSelectSettings("channel-templates")
-                            }
-                            tooltip="Blocks & templates"
-                            type="button"
-                          >
-                            <LayoutTemplate className="h-4 w-4" />
-                            <SidebarMenuLabel>
-                              Blocks &amp; templates
-                            </SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </FeatureGate>
-                  </SidebarNavigationGroup>
+                  <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
 
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
