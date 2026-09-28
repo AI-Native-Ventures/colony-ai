@@ -284,7 +284,11 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     })
     .register(
       MobileRoutes.creditsBalance,
-      (context, _) => const CreditsBalancePage(),
+      (context, _) => Consumer(
+        builder: (context, ref, _) => CreditsBalancePage(
+          communityName: ref.watch(activeCommunityProvider).value?.name,
+        ),
+      ),
     )
     .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
     .register(

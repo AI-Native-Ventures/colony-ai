@@ -8,14 +8,23 @@ import '../../shared/widgets/mobile_flow_app_bar.dart';
 import 'credits_api.dart';
 
 class CreditsBalancePage extends ConsumerWidget {
-  const CreditsBalancePage({super.key});
+  const CreditsBalancePage({this.communityName, super.key});
+
+  final String? communityName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final overview = ref.watch(creditsOverviewProvider);
+    final failure = overview.asError?.error;
+    final isUnavailable =
+        failure is CreditsFailure &&
+        failure.kind == CreditsFailureKind.unavailable;
     return Scaffold(
       backgroundColor: context.mobileTokens.canvas,
-      appBar: const MobileFlowAppBar(title: 'Colony credits'),
+      appBar: MobileFlowAppBar(
+        title: isUnavailable ? 'Credits' : 'Colony credits',
+        subtitle: isUnavailable ? communityName : null,
+      ),
       body: overview.when(
         loading: () => const Center(
           child: CircularProgressIndicator(semanticsLabel: 'Loading credits'),
@@ -377,6 +386,61 @@ class _CreditsUnavailable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
+    if (failure case CreditsFailure(kind: CreditsFailureKind.unavailable)) {
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(30, 56, 30, 24),
+          child: Column(
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  color: tokens.soft,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  LucideIcons.briefcaseBusiness,
+                  size: 22,
+                  color: tokens.action,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Credits could not load',
+                textAlign: TextAlign.center,
+                style: context.mobileTypography.companyHubTitle.copyWith(
+                  color: tokens.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'The connected source is unavailable. Existing work is kept, and missing data is not shown as zero.',
+                textAlign: TextAlign.center,
+                style: context.mobileTypography.conversation.copyWith(
+                  color: tokens.muted,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 33),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: FilledButton(
+                  key: const ValueKey('credits-retry'),
+                  onPressed: onRetry,
+                  style: mobileFlowActionButtonStyle(context),
+                  child: const Text('Retry connection'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final message = switch (failure) {
       CreditsFailure(kind: CreditsFailureKind.accountNotLinked) =>
         'Link an account to view credits.',

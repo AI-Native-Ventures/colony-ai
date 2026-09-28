@@ -803,66 +803,77 @@ class _HuddleLobbyPage extends ConsumerWidget {
             Navigator.of(context).maybePop();
           },
         ),
-        body: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            Grid.gutter,
-            26,
-            Grid.gutter,
-            Grid.gutter,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'A quick conversation.',
-                style: context.mobileTypography.companyHubTitle.copyWith(
-                  color: tokens.ink,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.7,
-                ),
+        body: LayoutBuilder(
+          builder: (context, _) {
+            final content = Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Grid.gutter,
+                26,
+                Grid.gutter,
+                Grid.gutter,
               ),
-              const SizedBox(height: Grid.xs),
-              Text(
-                '$channelName · $starterName started this huddle',
-                style: context.mobileTypography.conversation.copyWith(
-                  color: tokens.muted,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'A quick conversation.',
+                    style: context.mobileTypography.flowTitle.copyWith(
+                      color: tokens.ink,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: Grid.xs),
+                  Text(
+                    '$channelName · $starterName started this huddle',
+                    style: context.mobileTypography.conversation.copyWith(
+                      color: tokens.muted,
+                    ),
+                  ),
+                  const SizedBox(height: Grid.gutter),
+                  if (participantProfiles.isNotEmpty)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final itemWidth = (constraints.maxWidth - Grid.sm) / 2;
+                        return Wrap(
+                          spacing: Grid.sm,
+                          runSpacing: Grid.md,
+                          children: [
+                            for (final entry in participantProfiles)
+                              SizedBox(
+                                width: itemWidth,
+                                child: _HuddleLobbyParticipant(
+                                  member: entry.member,
+                                  profile: entry.profile,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  if (participantProfiles.isNotEmpty)
+                    const SizedBox(height: Grid.xxl)
+                  else
+                    const Spacer(),
+                  Center(
+                    child: TextButton(
+                      key: const ValueKey('huddle-open-channel'),
+                      onPressed: () {
+                        presentationController.hide();
+                        Navigator.of(context).maybePop();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: tokens.action,
+                      ),
+                      child: const Text('Open channel'),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: Grid.xxl),
-              if (participantProfiles.isNotEmpty)
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final itemWidth = (constraints.maxWidth - Grid.sm) / 2;
-                    return Wrap(
-                      spacing: Grid.sm,
-                      runSpacing: Grid.md,
-                      children: [
-                        for (final entry in participantProfiles)
-                          SizedBox(
-                            width: itemWidth,
-                            child: _HuddleLobbyParticipant(
-                              member: entry.member,
-                              profile: entry.profile,
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              const Spacer(),
-              Center(
-                child: TextButton(
-                  key: const ValueKey('huddle-open-channel'),
-                  onPressed: () {
-                    presentationController.hide();
-                    Navigator.of(context).maybePop();
-                  },
-                  style: TextButton.styleFrom(foregroundColor: tokens.action),
-                  child: const Text('Open channel'),
-                ),
-              ),
-            ],
-          ),
+            );
+            if (participantProfiles.isEmpty) return content;
+            return SingleChildScrollView(child: content);
+          },
         ),
         bottomNavigationBar: DecoratedBox(
           decoration: BoxDecoration(
@@ -872,7 +883,7 @@ class _HuddleLobbyPage extends ConsumerWidget {
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 7),
               child: SizedBox(
                 height: 44,
                 child: FilledButton(

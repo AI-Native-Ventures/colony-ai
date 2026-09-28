@@ -7,12 +7,14 @@ import '../theme/theme.dart';
 class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
   const MobileFlowAppBar({
     required this.title,
+    this.subtitle,
     this.backLabel = 'Back',
     this.onBack,
     super.key,
   });
 
   final String title;
+  final String? subtitle;
   final String backLabel;
   final VoidCallback? onBack;
 
@@ -31,12 +33,27 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
       scrolledUnderElevation: 0,
       toolbarHeight: MobileLayoutTokens.appBarHeight - 1,
       titleSpacing: 16,
-      title: Text(
-        title,
-        style: context.textTheme.titleSmall?.copyWith(
-          color: tokens.ink,
-          fontWeight: FontWeight.w700,
-        ),
+      title: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: context.textTheme.titleSmall?.copyWith(
+              color: tokens.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (subtitle?.trim().isNotEmpty == true)
+            Text(
+              subtitle!.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.mobileTypography.metadata.copyWith(
+                color: tokens.muted,
+              ),
+            ),
+        ],
       ),
       leadingWidth: 60,
       leading: Padding(
