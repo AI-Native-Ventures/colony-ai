@@ -2628,6 +2628,7 @@ mod tests {
             "social",
             "upload",
             "users",
+            "work",
             "workflows",
         ];
 
@@ -2747,6 +2748,10 @@ mod tests {
             vec!["approve", "create", "delete", "get", "list", "runs", "trigger", "update"]
         );
         assert_eq!(
+            names(&cmd, "work"),
+            vec!["archive", "create", "get", "list", "restore", "status", "update", "verify"]
+        );
+        assert_eq!(
             names(&cmd, "goals"),
             vec![
                 "archive", "create", "delete", "get", "list", "progress", "restore", "status",
@@ -2852,6 +2857,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
+            ("work", 8),
             ("workflows", 8),
         ];
 
