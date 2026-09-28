@@ -377,7 +377,9 @@
   order: 5;
 }
 
-:root:has([data-colony-workspace-route="true"])
+:root:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="sidebar-scroll-content"]
   > :has([data-testid="dm-list-section-label"]):not(
     :has([data-testid="dm-list"])
