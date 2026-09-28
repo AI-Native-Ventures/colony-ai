@@ -249,9 +249,9 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(detail.getByText("Verification passed")).toBeVisible();
   await page.reload();
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  const rejoinButton = page
-    .getByTestId("chat-header")
-    .getByRole("button", { name: "Join" });
+  const rejoinButton = page.getByRole("button", {
+    name: "Join to participate",
+  });
   await expect(rejoinButton).toBeVisible();
   await rejoinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
@@ -294,10 +294,7 @@ test("company work keeps entered fields after a rejected create", async ({
   const failureMessage = "The relay rejected this work item. Try again.";
   await installCompanyWorkMock(page, [failureMessage]);
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  await page
-    .getByTestId("chat-header")
-    .getByRole("button", { name: "Join" })
-    .click();
+  await page.getByRole("button", { name: "Join to participate" }).click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
   await page.goto("/#/work/new");
 
@@ -354,10 +351,7 @@ test("company work creation is reachable in form order from the keyboard", async
 }) => {
   await installCompanyWorkMock(page);
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  await page
-    .getByTestId("chat-header")
-    .getByRole("button", { name: "Join" })
-    .click();
+  await page.getByRole("button", { name: "Join to participate" }).click();
   await page.goto("/#/work/new");
 
   await page
