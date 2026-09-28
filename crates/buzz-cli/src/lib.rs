@@ -2722,6 +2722,7 @@ mod tests {
             "mem",
             "messages",
             "moderation",
+            "money",
             "notes",
             "pack",
             "patches",
