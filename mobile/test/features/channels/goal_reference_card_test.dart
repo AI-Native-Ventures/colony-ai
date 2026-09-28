@@ -104,6 +104,20 @@ void main() {
     expect(openedGoalId, _goalId);
   });
 
+  testWidgets('formats the linked goal due date with its full month', (
+    tester,
+  ) async {
+    final linked = _record(
+      status: 'active',
+      linkedChannelIds: [_channelId],
+      dueDate: '2030-09-30',
+    );
+    await tester.pumpWidget(_bannerApp(records: [linked]));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shared goal · Due 30 September'), findsOneWidget);
+  });
+
   testWidgets('hides the banner for unlinked and deleted goals', (
     tester,
   ) async {
@@ -178,6 +192,7 @@ Widget _bannerApp({
 GoalHeadRecord _record({
   required String status,
   List<String> linkedChannelIds = const [],
+  String? dueDate,
 }) {
   final content = jsonEncode({
     'schemaVersion': 1,
@@ -192,6 +207,7 @@ GoalHeadRecord _record({
         'ownerPubkey': _ownerPubkey,
         'doneCondition': 'Every active client has an approved plan.',
         'linkedChannelIds': linkedChannelIds,
+        ...?dueDate != null ? {'dueDate': dueDate} : null,
       },
     'sourceActionEventId': List.filled(64, 'f').join(),
   });

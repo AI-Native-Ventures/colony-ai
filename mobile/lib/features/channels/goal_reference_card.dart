@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/business/mobile_business_entry_points.dart';
@@ -199,21 +200,7 @@ String _channelGoalSubtitle(GoalHead head) {
   if (dueDate != null && dueDate.isNotEmpty) {
     final parsed = DateTime.tryParse(dueDate);
     if (parsed != null) {
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      return 'Shared goal · Due ${parsed.day} ${months[parsed.month - 1]}';
+      return 'Shared goal · Due ${DateFormat('d MMMM').format(parsed)}';
     }
   }
   return 'Shared goal · ${head.status.displayLabel}';
