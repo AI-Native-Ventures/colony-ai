@@ -9,6 +9,9 @@ abstract final class MobileRoutes {
   static const chats = MobileRoute<MobileShellRouteContext>('channels');
   static const activity = MobileRoute<MobileShellRouteContext>('activity');
   static const business = MobileRoute<MobileShellRouteContext>('business');
+  static const creditsBalance = MobileRoute<NoMobileRouteArguments>(
+    'credits/balance',
+  );
   static const updates = MobileRoute<NoMobileRouteArguments>('updates/feed');
   static const updateNote = MobileRoute<String>('updates/note');
   static const updateCompose = MobileRoute<NoMobileRouteArguments>(

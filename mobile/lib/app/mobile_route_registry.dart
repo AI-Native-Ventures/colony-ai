@@ -283,7 +283,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       );
     })
     .register(
-      MobileBusinessRoutes.money,
+      MobileRoutes.creditsBalance,
       (context, _) => const CreditsBalancePage(),
     )
     .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
