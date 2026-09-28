@@ -1713,6 +1713,7 @@ pub(crate) fn author_only_filters_authorized(filters: &[Filter], authed_pubkey_h
 #[cfg(test)]
 mod tests {
     use super::*;
+    use buzz_core::kind::KIND_ASK_HEAD;
     use nostr::{Alphabet, Filter, SingleLetterTag};
 
     #[test]
@@ -1794,7 +1795,7 @@ mod tests {
             uuid::Uuid::new_v4(),
         ));
         query.channel_id = Some(channel);
-        query.limit = Some(usize::MAX);
+        query.limit = Some(i64::MAX);
         apply_reader_channel_scope(&mut query, &filter, Some(channel), &[], true);
 
         assert_eq!(query.channel_id, None);

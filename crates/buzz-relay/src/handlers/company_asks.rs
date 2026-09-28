@@ -1906,6 +1906,7 @@ mod postgres_tests {
                 AskType::Choice => buzz_core::company_records::AskOutcome::Chosen,
                 AskType::Checklist => buzz_core::company_records::AskOutcome::Confirmed,
                 AskType::Verdict => buzz_core::company_records::AskOutcome::Approved,
+                AskType::ToolConsent => buzz_core::company_records::AskOutcome::Answered,
             };
             if ask_type == AskType::Choice {
                 wrong.option_id = Some("not-an-option".into());

@@ -562,8 +562,8 @@ mod postgres_tests {
     use std::time::Duration;
 
     use buzz_core::company_records::{
-        ToolPermissionCommandKind, ToolPermissionScope, ToolPermissionScopeKind,
-        ToolPermissionVerb, COMPANY_RECORD_SCHEMA_VERSION,
+        tool_permission_d_tag, ToolPermissionCommandKind, ToolPermissionScope,
+        ToolPermissionScopeKind, ToolPermissionVerb, COMPANY_RECORD_SCHEMA_VERSION,
     };
     use buzz_core::tenant::CommunityId;
     use nostr::{EventBuilder, Kind, Tag};

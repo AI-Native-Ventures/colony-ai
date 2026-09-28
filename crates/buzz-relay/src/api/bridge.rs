@@ -2635,7 +2635,7 @@ mod postgres_tests {
             &filter, &relay, None
         ));
 
-        let detail_filter = filter.custom_tags(
+        let detail_filter = filter.clone().custom_tags(
             nostr::SingleLetterTag::lowercase(nostr::Alphabet::D),
             ["channel:9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50:ask:7245ba1a-e078-42ef-b896-00be34a94f11"],
         );
@@ -2645,7 +2645,7 @@ mod postgres_tests {
             Some("owner")
         ));
 
-        let mismatched_detail_filter = filter.custom_tags(
+        let mismatched_detail_filter = filter.clone().custom_tags(
             nostr::SingleLetterTag::lowercase(nostr::Alphabet::H),
             [uuid::Uuid::new_v4().to_string()],
         );
