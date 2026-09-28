@@ -94,35 +94,48 @@ test("pending continuation keeps Sending next to its timestamp", async ({
   await pendingRow.screenshot({ path: `${SHOTS}/pending-message-inline.png` });
 });
 
-test("profile hover uses the channel hover surface", async ({ page }) => {
-  await installMockBridge(page);
-  await page.goto("/");
-
+async function expectProfileHoverToMatchChannel(
+  page: import("@playwright/test").Page,
+  expectedHoverSurface: string,
+) {
   const profile = page.getByTestId("sidebar-profile-card");
   const channel = page.getByTestId("channel-random");
   await expect(page.locator("html")).toHaveAttribute("data-buzz-sidebar", "");
-  const hoverSurface = await channel.evaluate((element) => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "var(--buzz-hover-surface)";
-    element.append(probe);
-    const color = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return color;
-  });
-  // Equal unfinished (transparent) surfaces must not satisfy hover parity.
-  expect(hoverSurface).not.toMatch(/^(transparent|rgba\(.*,\s*0\))$/);
   await channel.hover();
-  // Observe the semantic endpoint, not an intermediate transition sample or
-  // the shared animation helper's timeout-as-success ceiling.
-  await expect(channel).toHaveCSS("background-color", hoverSurface);
+  await expect(channel).toHaveCSS("background-color", expectedHoverSurface);
   const channelHoverColor = await channel.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
   await profile.hover();
   await expect(profile).toHaveCSS("background-color", channelHoverColor);
+}
+
+test("profile hover uses the light channel hover surface", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("buzz-theme", "buzz");
+  });
+  await installMockBridge(page);
+  await page.goto("/");
+
+  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.31)");
 
   await waitForAnimations(page);
   await page
     .getByTestId("app-sidebar")
-    .screenshot({ path: `${SHOTS}/profile-hover.png` });
+    .screenshot({ path: `${SHOTS}/profile-hover-light.png` });
+});
+
+test("profile hover uses the dark channel hover surface", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("buzz-theme", "buzz-dark");
+  });
+  await installMockBridge(page);
+  await page.goto("/");
+
+  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.075)");
+
+  await waitForAnimations(page);
+  await page
+    .getByTestId("app-sidebar")
+    .screenshot({ path: `${SHOTS}/profile-hover-dark.png` });
 });

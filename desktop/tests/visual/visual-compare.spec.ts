@@ -355,6 +355,20 @@ test.describe("visual comparison captures", () => {
           "Manrope Variable",
           entry.appPreActionsReadySelector ?? entry.appReadySelector,
         );
+        if (entry.appMockData?.referenceSidebarShell === true) {
+          for (const [channelName, count] of [
+            ["olive-studio", 2],
+            ["sales", 3],
+            ["Company forum", 1],
+            ["Aya", 1],
+          ] as const) {
+            await expect(
+              appPage.getByTestId(`channel-unread-${channelName}`),
+            ).toHaveText(
+              `${count} unread notification${count === 1 ? "" : "s"}`,
+            );
+          }
+        }
         const activeTurns =
           entry.appActiveTurns ?? manifestFixture?.activeTurns ?? [];
         if (activeTurns.length > 0) {
@@ -459,38 +473,20 @@ test.describe("visual comparison captures", () => {
               appPage.getByText(unavailableDestination, { exact: true }),
             ).toHaveCount(0);
           }
-          const businessDestinations = appPage.getByTestId(
-            "sidebar-business-destinations",
+          await expect(
+            appPage.getByTestId("sidebar-nav-business-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          await expect(
+            appPage.getByTestId("sidebar-nav-library-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          const channelActions = appPage.getByTestId(
+            "section-actions-channels",
           );
-          for (const destination of ["Discovery", "Leads", "Pipeline"]) {
-            await expect(
-              businessDestinations.getByRole("link", {
-                name: destination,
-                exact: true,
-              }),
-            ).toBeVisible();
-          }
-          const clientsDestination = appPage.getByTestId(
-            "sidebar-business-clients",
-          );
-          await expect(clientsDestination).toBeVisible();
-          await expect(clientsDestination).toContainText("Clients");
-          const browseChannels = appPage.getByTestId("sidebar-browse-channels");
-          await expect(browseChannels).toHaveCount(1);
-          await expect(browseChannels).toContainText("+Browse channels");
-          const browseChannelsBounds = await browseChannels.boundingBox();
-          const forumsBounds = await appPage
-            .getByTestId("forum-list-section-label")
-            .boundingBox();
-          expect(browseChannelsBounds).not.toBeNull();
-          expect(forumsBounds).not.toBeNull();
-          expect(browseChannelsBounds?.y).toBeLessThan(forumsBounds?.y ?? 0);
-          const browseToForumsGap =
-            (forumsBounds?.y ?? 0) -
-            ((browseChannelsBounds?.y ?? 0) +
-              (browseChannelsBounds?.height ?? 0));
-          expect(browseToForumsGap).toBeGreaterThan(4);
-          expect(browseToForumsGap).toBeLessThan(24);
+          await channelActions.click();
+          await expect(
+            appPage.getByRole("menuitem", { name: /^Browse channels/ }),
+          ).toBeVisible();
+          await appPage.keyboard.press("Escape");
           const channelTabs = appPage.getByTestId("channel-view-tabs");
           await expect(
             appPage.getByText("Open design review map", { exact: true }),
@@ -1030,6 +1026,31 @@ async function inspectPageGeometry(
         "#sidebar .profile-row > .avatar",
         "#sidebar .profile-row strong",
         "#sidebar .px-status-button",
+        ".full-sidebar",
+        ".company-switch",
+        ".business-mark",
+        ".business-mark > span",
+        ".nav-search",
+        ".nav-search span",
+        ".nav-search kbd",
+        ".full-sidebar .nav-item",
+        ".full-sidebar nav",
+        ".full-sidebar nav > .nav-link",
+        ".full-sidebar .group-toggle",
+        ".full-sidebar .conversation-list",
+        ".full-sidebar .conversation-heading",
+        ".full-sidebar .conversation-heading > button:first-child",
+        ".full-sidebar .conversation-browse",
+        ".full-sidebar .conversation-link",
+        ".full-sidebar .nav-utility",
+        ".full-sidebar .sidebar-bottom",
+        ".full-sidebar .section-heading",
+        ".full-sidebar .section-toggle",
+        ".full-sidebar .section-heading > button:not(.section-toggle)",
+        ".full-sidebar .profile-row",
+        ".full-sidebar .profile-row > .avatar",
+        ".full-sidebar .profile-row strong",
+        ".full-sidebar .px-status-button",
         "#surface",
         ".w20-settings-sidebar",
         ".w20-settings-topbar",
@@ -1151,7 +1172,29 @@ async function inspectPageGeometry(
         "[data-testid=sidebar-business-switcher] > span:nth-child(2)",
         "[data-testid=sidebar-pinned-header] [data-sidebar=trigger]",
         "[data-testid=open-search]",
+        "[data-testid=sidebar-primary-menu]",
         "[data-testid=sidebar-primary-menu] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-activity-button]",
+        ".sidebar-navigation-group-toggle",
+        ".sidebar-navigation-group-content",
+        "[data-testid=sidebar-scroll-content]",
+        "[data-testid=sidebar-nav-conversations]",
+        "[data-testid=sidebar-nav-conversations] .sidebar-navigation-group-toggle",
+        "[data-testid=stream-list-section-label]",
+        "[data-testid=stream-list] [data-sidebar=menu-button]",
+        "[data-testid=forum-list-section-label]",
+        "[data-testid=forum-list] [data-sidebar=menu-button]",
+        "[data-testid=dm-list-section-label]",
+        "[data-testid=dm-list] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-company]",
+        "[data-testid=sidebar-nav-company] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-company] .sidebar-navigation-group-toggle",
+        "[data-testid=sidebar-nav-business]",
+        "[data-testid=sidebar-nav-business] .sidebar-navigation-group-toggle",
+        "[data-testid=sidebar-software-factory-group] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-library]",
+        "[data-testid=sidebar-nav-library] .sidebar-navigation-group-toggle",
+        "[data-sidebar=footer] [data-sidebar=menu-button]",
         "[data-testid=app-sidebar] [data-sidebar-section-title]",
         "[data-testid=stream-list-section-label]",
         "[data-testid=stream-list-section-label] [data-sidebar-section-title]",
@@ -1169,6 +1212,7 @@ async function inspectPageGeometry(
         "[data-testid=sidebar-team-section]",
         "[data-testid=sidebar-team-section] [data-sidebar=menu-button]",
         "[data-testid=sidebar-profile-card]",
+        "[data-testid=sidebar-profile-user-status]",
         ".colony-sidebar-profile-row",
         "[data-testid=sidebar-profile-avatar-button]",
         "[data-testid=sidebar-theme-toggle]",
@@ -1378,6 +1422,46 @@ async function inspectPageGeometry(
           element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
         order: getComputedStyle(element).order,
       })),
+      sidebarRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          [
+            ".full-sidebar .nav-link",
+            ".full-sidebar .group-toggle",
+            ".full-sidebar .conversation-heading",
+            ".full-sidebar .conversation-link",
+            ".full-sidebar .nav-utility",
+            ".full-sidebar .sidebar-bottom",
+            ".app-sidebar-full-shell .sidebar-navigation-group-toggle",
+            '.app-sidebar-full-shell [data-testid$="-section-label"]',
+            '.app-sidebar-full-shell [data-sidebar="menu-button"]',
+            '.app-sidebar-full-shell [data-testid="sidebar-profile-card"]',
+            '.app-sidebar-full-shell [data-sidebar="footer"]',
+          ].join(","),
+        ),
+      )
+        .filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            getComputedStyle(element).display !== "none",
+        )
+        .map((element) => {
+          const style = getComputedStyle(element);
+          return {
+            className: element.className.toString(),
+            testId: element.dataset.testid ?? null,
+            text:
+              element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ??
+              "",
+            bounds: bounds(element),
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight,
+            color: style.color,
+            backgroundColor: style.backgroundColor,
+            padding: style.padding,
+            margin: style.margin,
+          };
+        }),
       channelTabPaint: Array.from(
         document.querySelectorAll<HTMLElement>(
           '[data-testid="channel-view-tabs"] > span',

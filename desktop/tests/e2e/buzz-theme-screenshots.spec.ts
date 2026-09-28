@@ -95,16 +95,21 @@ async function resolveSidebarColor(
 }
 
 async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
-  const mutedColor =
-    mode === "light" ? "rgb(121, 108, 129)" : "rgb(182, 164, 192)";
+  const mutedColor = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-muted-foreground)",
+  );
   const secondaryTextColor = await resolveSidebarColor(
     page,
     "color",
-    "var(--buzz-muted-foreground)",
+    "var(--colony-sidebar-muted-foreground)",
   );
-  const searchSurface =
-    mode === "light" ? "rgba(255, 255, 255, 0.33)" : "rgba(47, 34, 59, 0.2)";
-  const rowHoverSurface = "rgba(255, 255, 255, 0.33)";
+  const searchSurface = "rgba(255, 255, 255, 0.25)";
+  const rowHoverSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.31)"
+      : "rgba(255, 255, 255, 0.075)";
   const directMessageHoverSurface = await resolveSidebarColor(
     page,
     "background-color",
@@ -136,31 +141,32 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await expect(search.locator("span").first()).toHaveClass(
     /text-sidebar-foreground\/55/,
   );
-  await expect(pinnedHeader).toHaveCSS("padding-top", "14px");
-  await expect(pinnedHeader).toHaveCSS("padding-bottom", "13px");
+  await expect(pinnedHeader).toHaveCSS("padding-top", "21px");
+  await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
   await expect(pinnedHeader).toHaveCSS("margin-right", "3px");
-  await expect(pinnedHeader).toHaveCSS("padding-left", "7px");
-  await expect(pinnedHeader).toHaveCSS("padding-right", "6px");
+  await expect(pinnedHeader).toHaveCSS("padding-left", "8px");
+  await expect(pinnedHeader).toHaveCSS("padding-right", "8px");
   await expect(sidebarScroller).toHaveCSS("padding-left", "0px");
   await expect(sidebarScroller).toHaveCSS("padding-right", "0px");
-  await expect(scrollContent).toHaveCSS("padding-left", "3px");
-  await expect(scrollContent).toHaveCSS("padding-right", "3px");
+  await expect(scrollContent).toHaveCSS("padding-left", "6px");
+  await expect(scrollContent).toHaveCSS("padding-right", "6px");
   const pinnedSpacerColor = await pinnedHeader.evaluate(
     (element) => getComputedStyle(element, "::before").backgroundColor,
   );
   expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
-  await expect(sidebarScroller.getByTestId("open-agents-view")).toBeVisible();
+  const activityButton = page.getByTestId("sidebar-activity-button");
+  await expect(
+    sidebarScroller.getByTestId("sidebar-activity-button"),
+  ).toBeVisible();
   await sidebarScroller.evaluate((element) => {
     element.scrollTop = 0;
   });
   const searchBox = await search.boundingBox();
   const pinnedHeaderBox = await pinnedHeader.boundingBox();
   const primaryMenuBox = await primaryMenu.boundingBox();
-  const primaryRowBox = await page
-    .getByTestId("open-agents-view")
-    .boundingBox();
+  const primaryRowBox = await activityButton.boundingBox();
   const activeRowBox = await page.getByTestId("channel-general").boundingBox();
   const hoverRowBox = await page.getByTestId("channel-random").boundingBox();
   const scrollContentBox = await scrollContent.evaluate((element) => {
@@ -184,15 +190,16 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     throw new Error("Sidebar search or primary navigation geometry is missing");
   }
   expect(
-    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 13),
+    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 10),
   ).toBeLessThanOrEqual(1);
   expect(
     pinnedHeaderBox.y +
       pinnedHeaderBox.height -
       (searchBox.y + searchBox.height),
-  ).toBe(13);
-  for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
-    expect(Math.abs(rowBox.x - searchBox.x)).toBeLessThanOrEqual(1);
+  ).toBe(10);
+  expect(Math.abs(primaryRowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
+  for (const rowBox of [activeRowBox, hoverRowBox]) {
+    expect(Math.abs(rowBox.x - (searchBox.x - 1))).toBeLessThanOrEqual(1);
     // Linux CI reserves a classic scrollbar gutter while macOS uses an
     // overlay scrollbar. Compare each row to its usable scroll area so the
     // alignment check remains platform-independent.
@@ -213,7 +220,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   );
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "700",
+    "650",
   );
   await expect(
     page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
@@ -238,9 +245,8 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   });
   const hoverChannelLabel = hoverChannel.locator("[data-sidebar-row-label]");
   const hoverChannelIcon = hoverChannel.locator("svg").first();
-  const agentsButton = page.getByTestId("open-agents-view");
-  const agentsLabel = agentsButton.locator('[data-sidebar="menu-label"]');
-  const agentsIcon = agentsButton.locator("svg").first();
+  const activityLabel = activityButton.locator('[data-sidebar="menu-label"]');
+  const activityIcon = activityButton.locator("svg").first();
   const sidebarForeground = await page
     .getByTestId("app-sidebar")
     .evaluate((element) => getComputedStyle(element).color);
@@ -251,13 +257,13 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     (element) => getComputedStyle(element).color,
   );
   expect(channelForeground).toBe(directMessageForeground);
-  await expect(agentsButton).toHaveCSS("color", sidebarForeground);
-  await expect(hoverChannelLabel).toHaveCSS("opacity", "0.8");
+  await expect(activityButton).toHaveCSS("color", sidebarForeground);
+  await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
   await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
   await expect(firstDmButton).toHaveCSS("opacity", "1");
-  await expect(firstDmLabel).toHaveCSS("opacity", "0.8");
-  await expect(agentsLabel).toHaveCSS("opacity", "0.8");
-  await expect(agentsIcon).toHaveCSS("opacity", "0.8");
+  await expect(firstDmLabel).toHaveCSS("opacity", "1");
+  await expect(activityLabel).toHaveCSS("opacity", "1");
+  await expect(activityIcon).toHaveCSS("opacity", "0.8");
   await firstDmItem.hover();
   await expect(closeDmButton).toBeVisible();
   await closeDmButton.hover();
@@ -363,6 +369,8 @@ async function expectBuzzGradientPaint(
     return {
       isDark: root.classList.contains("dark"),
       theme: root.getAttribute("data-buzz-theme"),
+      hasFullAppShell:
+        document.querySelector('[data-colony-full-app-shell="true"]') !== null,
       hasWorkspaceChrome:
         document.querySelector('[data-colony-workspace-route="true"]') !== null,
       surfaceImage: appStyles?.backgroundImage ?? "",
@@ -379,6 +387,21 @@ async function expectBuzzGradientPaint(
 
   expect(paint.theme).toBe(mode === "light" ? "buzz" : "buzz-dark");
   expect(paint.isDark).toBe(mode === "dark");
+  if (paint.hasFullAppShell) {
+    if (mode === "light") {
+      expect(paint.underlayImage).toContain("colony-field-light.svg");
+    } else {
+      expect(paint.underlayImage).toBe(
+        "linear-gradient(145deg, rgb(69, 55, 75), rgb(35, 40, 55))",
+      );
+    }
+    expect(paint.lightImage).toBe("none");
+    expect(paint.darkImage).toBe("none");
+    expect(paint.lightOpacity).toBe("0");
+    expect(paint.darkOpacity).toBe("0");
+    return paint.underlayImage;
+  }
+
   if (paint.hasWorkspaceChrome) {
     expect(paint.surfaceImage).toContain(
       mode === "light" ? "colony-field-light.svg" : "colony-field-dark.svg",

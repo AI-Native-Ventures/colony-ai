@@ -163,6 +163,8 @@ type MockBridgeOptions = {
   userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Match the company shell review's conversation rows and empty badge state. */
+  referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */
   referenceWorkspaceRole?: "owner" | "admin" | "member";
   /** Override record statuses to exercise reference workspace boundaries. */

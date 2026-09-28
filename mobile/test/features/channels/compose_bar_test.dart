@@ -3446,15 +3446,17 @@ void main() {
       );
     });
 
-    testWidgets('renders all five permalink types as composer chips', (
+    testWidgets('renders all six permalink types as composer chips', (
       tester,
     ) async {
       final owner = 'ab' * 32;
       final id = 'cd' * 32;
       const channelId = '580ca78b-9dae-46f3-8854-bd671853ba32';
+      const goalId = '123e4567-e89b-12d3-a456-426614174000';
       final urls = [
         'buzz://message?channel=$channelId&id=$id',
         'buzz://channel/$channelId',
+        'buzz://goal/$goalId',
         'buzz://repo?owner=$owner&d=buzz',
         'buzz://pr?id=$id&owner=$owner&d=buzz',
         'buzz://issue?id=$id&owner=$owner&d=buzz',
@@ -3491,7 +3493,7 @@ void main() {
                 'composer-buzz-link-chip:',
               ),
         ),
-        findsNWidgets(5),
+        findsNWidgets(6),
       );
       expect(
         find.byKey(
@@ -3501,6 +3503,10 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('composer-buzz-link-chip:engineering')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('composer-buzz-link-chip:Goal · 123e4567')),
         findsOneWidget,
       );
       expect(

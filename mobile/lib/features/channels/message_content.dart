@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../shared/clipboard_utils.dart';
+import '../../shared/company/goals/goal_records.dart';
 import '../../shared/mentions/mention_bindings.dart';
 import '../../shared/mentions/mention_tags.dart';
 import '../../shared/deeplink/deep_link.dart';
@@ -28,6 +29,7 @@ import '../../shared/custom_emoji/custom_emoji_render.dart';
 import '../../shared/emoji/emoji_data_provider.dart';
 import '../../shared/emoji/emoji_only.dart';
 import 'channels_provider.dart';
+import 'goal_reference_card.dart';
 import 'media_viewer_page.dart';
 import 'message_content/link_normalizer.dart';
 import 'message_media.dart';
@@ -424,6 +426,8 @@ class MessageContent extends HookConsumerWidget {
       return _buildMedia(context, url, imeta);
     }
     final uri = Uri.tryParse(url);
+    final goalId = uri == null ? null : parseGoalReferenceUri(uri);
+    if (goalId != null) return GoalReferenceCard(goalId: goalId);
     final buzzLink = uri?.scheme == 'buzz'
         ? parseBuzzDeepLink(uri!) ?? parseEntityDeepLink(uri)
         : null;

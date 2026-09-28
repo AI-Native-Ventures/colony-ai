@@ -50,6 +50,8 @@ import 'package:buzz/features/channels/thread_replies_provider.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
+import 'package:buzz/shared/company/goals/goal_repository.dart';
+import 'package:buzz/shared/company/goals/goal_records.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
@@ -90,6 +92,9 @@ const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
 const _otherChannelId = '22222222-3333-4444-8555-666666666666';
 const _otherHuddleChannelId = '9e875211-ae90-45df-8da9-7e9ace84ca9d';
+const _goalBannerCaptureId = '423e4567-e89b-12d3-a456-426614174000';
+const _goalBannerCaptureSecret =
+    '2222222222222222222222222222222222222222222222222222222222222222';
 
 final _mutableHuddleMembersProvider =
     NotifierProvider<_MutableHuddleMembersNotifier, List<ChannelMember>>(
@@ -272,6 +277,7 @@ Widget _buildTestable({
   HuddleHumanCountLoader? huddleHumanCountLoader,
   List<NostrEvent> huddleLifecycle = const [],
   String? huddleCurrentPubkey,
+  List<GoalHeadRecord> goalRecords = const [],
   http.Client? mediaClient,
   Widget? home,
   Brightness? brightness,
@@ -340,6 +346,7 @@ Widget _buildTestable({
             ? huddleMembers
             : ref.watch(_mutableHuddleMembersProvider),
       ),
+      goalHeadsProvider.overrideWith((ref) async => goalRecords),
       if (forumPostsResponse != null)
         forumPostsProvider(
           _channelId,
@@ -618,6 +625,7 @@ Widget _buildNavigationTestable({
       channelMembersProvider(
         channelB.id,
       ).overrideWith((ref) async => const <ChannelMember>[]),
+      goalHeadsProvider.overrideWith((ref) async => const []),
       userCacheProvider.overrideWith(() => _FakeUserCacheNotifier({})),
       profileProvider.overrideWith(() => _FakeProfileNotifier()),
       channelsProvider.overrideWith(
@@ -772,6 +780,93 @@ void main() {
         context.appColors.channelInfoHeroGradient,
       );
     });
+
+    testWidgets(
+      'captures the v5 channel goal banner at both sizes and themes',
+      (tester) async {
+        const captureScreenshots = bool.fromEnvironment('CAPTURE_M3B_GOALS');
+        if (!captureScreenshots) return;
+
+        final fontLoader = FontLoader('Manrope')
+          ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+        await fontLoader.load();
+        final iconFontLoader =
+            FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(
+              rootBundle.load(
+                'packages/lucide_icons_flutter/assets/lucide.ttf',
+              ),
+            );
+        await iconFontLoader.load();
+
+        const captureSizes = {
+          '390x844': Size(390, 844),
+          '412x915': Size(412, 915),
+        };
+        const captureKey = ValueKey('m3b-channel-goal-banner-capture');
+        final goal = _goalBannerCaptureRecord();
+
+        for (final size in captureSizes.entries) {
+          tester.view.physicalSize = size.value;
+          tester.view.devicePixelRatio = 1;
+          tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+          tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+          for (final brightness in [Brightness.light, Brightness.dark]) {
+            final mode = brightness == Brightness.light ? 'light' : 'dark';
+            final output = Directory(
+              '/tmp/m3b-goals-visual-sheets/${size.key}/$mode',
+            );
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = _CaptureFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+              output.path,
+            );
+
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: const [],
+                goalRecords: [goal],
+                channel: _testChannel,
+                brightness: brightness,
+                disableAnimations: true,
+                captureKey: captureKey,
+                showCaptureSystemBars: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+              findsOneWidget,
+            );
+            expect(
+              find.text('A client-approved October campaign'),
+              findsOneWidget,
+            );
+            final banner = tester.getRect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+            );
+            debugPrint(
+              'VISUAL_CHANNEL_GOAL_BANNER ${size.key} $mode rect=$banner',
+            );
+            expect(banner.left, 21);
+            expect(banner.width, size.value.width - 42);
+            expect(banner.height, closeTo(57.6, 1));
+            await expectLater(
+              find.byKey(captureKey),
+              matchesGoldenFile('channel-goal-banner.png'),
+            );
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+            goldenFileComparator = previousComparator;
+          }
+        }
+        tester.view.resetPadding();
+        tester.view.resetViewPadding();
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      },
+    );
 
     testWidgets('captures v5 conversation routes at both sizes and themes', (
       tester,
@@ -11438,6 +11533,7 @@ void main() {
             channelsProvider.overrideWith(
               () => _FakeChannelsNotifier([_testChannel]),
             ),
+            goalHeadsProvider.overrideWith((ref) async => const []),
             relayClientProvider.overrideWithValue(
               RelayClient(baseUrl: 'http://localhost:3000'),
             ),
@@ -16660,6 +16756,44 @@ class _R19ForumCaptureMediaUploadService extends MediaUploadService {
     uploaded: DateTime.utc(2026, 9, 26).millisecondsSinceEpoch ~/ 1000,
     filename: pickedFile.name,
   );
+}
+
+GoalHeadRecord _goalBannerCaptureRecord() {
+  const title = 'A client-approved October campaign';
+  final dueDate = DateTime.now().add(const Duration(days: 2));
+  final dueDateValue =
+      '${dueDate.year.toString().padLeft(4, '0')}-'
+      '${dueDate.month.toString().padLeft(2, '0')}-'
+      '${dueDate.day.toString().padLeft(2, '0')}';
+  final content = jsonEncode({
+    'schemaVersion': 1,
+    'goalId': _goalBannerCaptureId,
+    'status': 'active',
+    'title': title,
+    'goal': {
+      'schemaVersion': 1,
+      'goalId': _goalBannerCaptureId,
+      'title': title,
+      'ownerPubkey':
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'doneCondition': 'Every campaign has an owner and approved direction.',
+      'linkedChannelIds': [_channelId],
+      'dueDate': dueDateValue,
+    },
+    'sourceActionEventId': List.filled(64, 'f').join(),
+  });
+  final signed = nostr.Event.from(
+    kind: EventKind.goalHead,
+    content: content,
+    tags: [
+      ['d', goalDTag(_goalBannerCaptureId)],
+    ],
+    secretKey: _goalBannerCaptureSecret,
+    createdAt: 1791800000,
+    verify: false,
+  );
+  final event = NostrEvent.fromJson(signed.toMap());
+  return parseGoalHeadEvent(event, event.pubkey)!;
 }
 
 class _CaptureFileComparator extends LocalFileComparator {

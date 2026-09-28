@@ -6,7 +6,10 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
-import { showAgentTemplates } from "../helpers/agentWorkspace";
+import {
+  openAgentsDirectoryView,
+  showAgentTemplates,
+} from "../helpers/agentWorkspace";
 
 type CatalogMember = {
   memberKey: string;
@@ -71,10 +74,7 @@ function createTeamCatalogEvent(input: {
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await showAgentTemplates(page);
 }
 
@@ -197,7 +197,7 @@ test("adding another member's team records its catalog provenance", async ({
   ).toBeVisible();
 
   // The copy carries a fresh local id, so only the stored coordinate links it
-  // back to Alice's publication — that link is what stops a second copy.
+  // back to Alice's publication - that link is what stops a second copy.
   const teams = await listMockTeams(page);
   const added = teams.find((team) => team.name === "Alice’s Review Crew");
   expect(added).toMatchObject({
@@ -239,7 +239,7 @@ test("a head that moved while the dialog was open is rejected", async ({
   await page.getByTestId(`community-catalog-team-${entryKey}`).click();
 
   // Republish the coordinate without notifying subscribers: the dialog keeps
-  // rendering — and keeps holding — the superseded event id.
+  // rendering - and keeps holding - the superseded event id.
   await page.evaluate(
     ({ ownerPubkey, teamDTag }) => {
       const replace = (
@@ -293,7 +293,7 @@ test("at an equal timestamp the lower-id head is canonical and a superseding hea
   // carry valid signatures (the read path verifies them), so the relay's
   // tie-break decides: `created_at DESC, id ASC` makes the lower-id event
   // canonical. Because the signed `id` is content-derived, we cannot pin it to
-  // a literal — we sign both, sort by id, and derive the expected canonical
+  // a literal - we sign both, sort by id, and derive the expected canonical
   // name from whichever id sorts first.
   const SAME_TIMESTAMP = 1_721_760_000;
   const crew = createTeamCatalogEvent({
@@ -373,7 +373,7 @@ test("sharing a team publishes it to the catalog and unsharing retracts it", asy
   page,
 }) => {
   // The own head is published through the same signature-verified read path as
-  // foreign heads, so the viewer must hold a real key to sign it — seed one.
+  // foreign heads, so the viewer must hold a real key to sign it - seed one.
   await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
     personas: [

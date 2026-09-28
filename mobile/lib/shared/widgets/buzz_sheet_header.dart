@@ -17,6 +17,7 @@ class BuzzSheetHeader extends StatelessWidget {
     this.leading,
     this.trailing,
     this.showDragHandle = false,
+    this.centerTitle = true,
   });
 
   final String? title;
@@ -24,44 +25,59 @@ class BuzzSheetHeader extends StatelessWidget {
   final Widget? leading;
   final Widget? trailing;
   final bool showDragHandle;
+  final bool centerTitle;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(
+      padding: EdgeInsets.only(
         top: Grid.xxs,
-        left: Grid.gutter,
-        right: Grid.gutter,
-        bottom: Grid.xs,
+        left: centerTitle ? Grid.gutter : Grid.scrollInset,
+        right: centerTitle ? Grid.gutter : Grid.scrollInset,
+        bottom: centerTitle ? Grid.xs : 0,
       ),
       child: SizedBox(
-        height: buzzNavigationRowHeight,
+        height: centerTitle
+            ? buzzNavigationRowHeight
+            : buzzNavigationRowHeight + Grid.xs + Grid.half,
         child: Stack(
           alignment: Alignment.topCenter,
           children: [
             if (showDragHandle) const _SheetDragHandle(),
             if (title case final title?)
               Positioned(
-                left: 64,
+                left: centerTitle ? 64 : 0,
                 right: 64,
                 bottom: 0,
                 height: 44,
-                child: Center(
+                child: Align(
+                  alignment: centerTitle
+                      ? Alignment.center
+                      : Alignment.centerLeft,
                   child: Text(
                     title,
                     key: titleKey ?? const ValueKey('buzz-sheet-title'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: context.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    textAlign: centerTitle ? TextAlign.center : TextAlign.start,
+                    style:
+                        (centerTitle
+                                ? context.textTheme.titleSmall
+                                : context.mobileTypography.sheetHeaderTitle)
+                            ?.copyWith(
+                              color: centerTitle
+                                  ? null
+                                  : context.mobileTokens.ink,
+                              fontWeight: centerTitle
+                                  ? FontWeight.w600
+                                  : FontWeight.w700,
+                            ),
                   ),
                 ),
               ),
             Align(
               alignment: Alignment.bottomRight,
-              child: trailing ?? const _SheetCloseButton(),
+              child: trailing ?? _SheetCloseButton(centerTitle: centerTitle),
             ),
             if (leading case final leading?)
               Align(alignment: Alignment.bottomLeft, child: leading),
@@ -73,7 +89,9 @@ class BuzzSheetHeader extends StatelessWidget {
 }
 
 class _SheetCloseButton extends StatelessWidget {
-  const _SheetCloseButton();
+  const _SheetCloseButton({required this.centerTitle});
+
+  final bool centerTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +108,9 @@ class _SheetCloseButton extends StatelessWidget {
         onPressed: closeSheet,
         width: buzzNavigationActionSize,
         height: buzzNavigationActionSize,
-        foregroundColor: context.colors.primary,
+        foregroundColor: centerTitle
+            ? context.colors.primary
+            : context.mobileTokens.ink,
       );
     }
 
@@ -102,7 +122,9 @@ class _SheetCloseButton extends StatelessWidget {
         style: IconButton.styleFrom(
           padding: EdgeInsets.zero,
           backgroundColor: context.colors.surfaceContainerHighest,
-          foregroundColor: context.colors.primary,
+          foregroundColor: centerTitle
+              ? context.colors.primary
+              : context.mobileTokens.ink,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.dialog),
           ),

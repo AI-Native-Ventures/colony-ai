@@ -53,12 +53,15 @@ import {
   REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
+  referenceChannelLastMessageAt,
   referenceChannelSeeds,
   referenceHomeInboxItems,
   referenceSalesLastMessageAt,
   referenceBusinessRecordEvents,
   referenceCommunityId,
   referenceSalesMessages,
+  referenceSidebarChannelSeeds,
+  referenceSidebarUnreadMessages,
   referenceOliveHouseMessages,
   referenceSalesRecordEvents,
   seedReferenceSidebarStorage,
@@ -379,6 +382,8 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Match only the row data shown in the approved C1 shell snapshot. */
+    referenceSidebarShell?: boolean;
     /** Override the current member role in reference client channels. */
     referenceWorkspaceRole?: "owner" | "admin" | "member";
     /** Override record statuses to exercise reference workspace boundaries. */
@@ -4808,6 +4813,7 @@ let referenceWorkspaceActive = false;
  */
 function applyReferenceWorkspace(config: E2eConfig): void {
   referenceWorkspaceActive = true;
+  const sidebarShell = config.mock?.referenceSidebarShell === true;
   window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__ = {
     channelId: REFERENCE_CHANNEL_IDS.sales,
     label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
@@ -4838,11 +4844,14 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       has_profile_event: true,
     });
   }
-  const channels = referenceChannelSeeds().map((seed) =>
+  const channelSeeds = sidebarShell
+    ? referenceSidebarChannelSeeds()
+    : referenceChannelSeeds();
+  const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
       name: seed.name,
-      channel_type: "stream",
+      channel_type: seed.channelType ?? "stream",
       visibility:
         seed.visibility ??
         (seed.id === REFERENCE_CHANNEL_IDS.oliveHouse ||
@@ -4853,8 +4862,21 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       description: seed.description,
       topic: null,
       purpose: null,
-      last_message_at:
-        seed.id === REFERENCE_CHANNEL_IDS.sales
+      last_message_at: sidebarShell
+        ? seed.id === REFERENCE_CHANNEL_IDS.oliveStudio
+          ? referenceSalesLastMessageAt()
+          : seed.id === REFERENCE_CHANNEL_IDS.marketing
+            ? referenceChannelLastMessageAt(10)
+            : seed.id === REFERENCE_CHANNEL_IDS.sales
+              ? referenceChannelLastMessageAt(20)
+              : seed.id === REFERENCE_CHANNEL_IDS.minaDm
+                ? referenceSalesLastMessageAt()
+                : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
+                  ? referenceChannelLastMessageAt(5)
+                  : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+                    ? referenceChannelLastMessageAt(5)
+                    : null
+        : seed.id === REFERENCE_CHANNEL_IDS.sales
           ? referenceSalesLastMessageAt()
           : null,
       archived_at: null,
@@ -4874,9 +4896,31 @@ function applyReferenceWorkspace(config: E2eConfig): void {
           createMockMember(pubkey, "member", 1200),
         ),
       ],
+      ...(seed.channelType === "dm"
+        ? {
+            participant_pubkeys: [self, ...seed.agentMembers],
+            participants: [
+              REFERENCE_SELF_NAME,
+              ...seed.agentMembers.map(
+                (pubkey) =>
+                  Object.values(REFERENCE_AGENTS).find(
+                    (agent) => agent.pubkey === pubkey,
+                  )?.name ?? "",
+              ),
+            ],
+          }
+        : {}),
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  if (sidebarShell) {
+    for (const [channelId, events] of Object.entries(
+      referenceSidebarUnreadMessages(self),
+    )) {
+      mockMessages.set(channelId, events);
+    }
+    setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
+  }
   for (const event of referenceBusinessRecordEvents(self, {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
@@ -4895,7 +4939,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     store.push(event);
     mockMessages.set(channelId, store);
   }
-  seedReferenceSidebarStorage(self);
+  seedReferenceSidebarStorage(self, { sidebarShell });
   mockBusinessRecordEvents.clear();
   const communityId = referenceCommunityId();
   if (communityId) {
@@ -9958,7 +10002,10 @@ async function handleGetFeed(
 
   if (!isRelayMode(config) && referenceWorkspaceActive) {
     const now = Math.floor(Date.now() / 1000);
-    const unreadItems = referenceHomeInboxItems();
+    const unreadItems =
+      config?.mock?.referenceSidebarShell === true
+        ? []
+        : referenceHomeInboxItems();
     return {
       feed: {
         mentions: [],
@@ -17525,11 +17572,17 @@ export function maybeInstallE2eTauriMocks() {
                         null,
                   )
                 : [];
-            const observedEvents = unreadReplies.map((event) => ({
+            const sidebarFixtureEvents = referenceWorkspaceActive
+              ? events.filter((event) => event.id.startsWith("c1-"))
+              : [];
+            const observedEvents = [
+              ...unreadReplies,
+              ...sidebarFixtureEvents,
+            ].map((event) => ({
               id: event.id,
               createdAt: event.created_at,
               rootId: getThreadReferenceFromTags(event.tags).rootEventId,
-              highPriority: true,
+              highPriority: unreadReplies.includes(event),
               countsTowardBadge: true,
               countsTowardAppBadge: false,
             }));

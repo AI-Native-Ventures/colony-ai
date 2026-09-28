@@ -26,6 +26,8 @@ export default defineConfig({
         "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
+        "**/sidebar-full-app.spec.ts",
+        "**/sidebar-reference-fixture.spec.ts",
         "**/tooltip-semantics.spec.ts",
         "**/search-scope-screenshots.spec.ts",
         "**/onboarding-docked-cta-screenshots.spec.ts",

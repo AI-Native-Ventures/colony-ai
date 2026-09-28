@@ -35,6 +35,26 @@ test("legacy project routes remain separate from the Factory destination", () =>
   );
 });
 
+test("company goal routes select the Company Goals destination", () => {
+  for (const pathname of [
+    "/goals",
+    "/goals/new",
+    "/goals/goal-1",
+    "/goals/goal-1/edit",
+    "/goals/goal-1/progress",
+    "/goals/goal-1/archive",
+    "/goals/goal-1/delete",
+    "/goals/goal-1/share",
+    "/goals/goal-1/subgoal",
+    "/goals/reference",
+  ]) {
+    assert.deepEqual(deriveShellRoute(pathname), {
+      selectedChannelId: null,
+      selectedView: "goals",
+    });
+  }
+});
+
 test("deriveShellRoute identifies the designed channel pins page", () => {
   assert.deepEqual(deriveShellRoute("/channels/pins/channel-id"), {
     selectedChannelId: null,

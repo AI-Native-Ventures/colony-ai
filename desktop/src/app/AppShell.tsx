@@ -160,11 +160,13 @@ export function AppShell() {
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
-    goAgents,
     goChannel,
     goHome,
+    goSavedForLater,
+    goPower,
     goNewMessage,
     goFactory,
+    goGoals,
     goClients,
     goWork,
     goToday,
@@ -901,6 +903,12 @@ export function AppShell() {
                           errorMessage={channelsErrorMessage}
                           fallbackDisplayName={identityQuery.data?.displayName}
                           homeBadgeCount={homeBadgeCount + dueReminderBadge}
+                          isPowerActive={location.pathname === "/power"}
+                          isSavedForLaterActive={
+                            location.pathname === "/" &&
+                            (location.search as { filter?: unknown }).filter ===
+                              "reminders"
+                          }
                           addCommunityPrefill={addCommunityDialog.prefill}
                           isAddCommunityOpen={addCommunityDialog.open}
                           relayConnectionCard={relayConnectionCard}
@@ -959,8 +967,9 @@ export function AppShell() {
                               });
                             await goChannel(directMessage.id);
                           }}
-                          onSelectAgents={() => void goAgents()}
                           onSelectToday={() => void goToday()}
+                          onSelectSavedForLater={() => void goSavedForLater()}
+                          onSelectPower={() => void goPower()}
                           onSelectChannel={handleSidebarChannelSelect}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}
@@ -970,6 +979,7 @@ export function AppShell() {
                           ]}
                           onSelectHome={() => void goHome()}
                           onSelectFactory={() => void goFactory()}
+                          onSelectGoals={() => void goGoals()}
                           onSelectClients={() => void goClients()}
                           onSelectWork={() => void goWork()}
                           onSelectSettings={handleOpenSettings}
@@ -985,7 +995,7 @@ export function AppShell() {
                             })
                           }
                           profile={profileQuery.data}
-                          showSidebarCollapseButton={!showAppTopChrome}
+                          showSidebarCollapseButton
                           suppressTodaySelection={location.pathname.startsWith(
                             "/navigation/",
                           )}

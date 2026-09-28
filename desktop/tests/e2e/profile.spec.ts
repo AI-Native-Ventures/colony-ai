@@ -1808,7 +1808,7 @@ test("renders the nine settings groups with one internal account bar", async ({
 
   const inboxNavButton = page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" });
+    .getByRole("button", { name: "Activity", exact: true });
   await expect(inboxNavButton).toBeVisible();
 
   await openSettings(page);
@@ -1994,7 +1994,7 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
 
   await page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" })
+    .getByRole("button", { name: "Activity", exact: true })
     .click();
   await expectHomeView(page);
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
@@ -2371,4 +2371,22 @@ test("settings subtitles share the Appearance secondary color", async ({
       new Set([secondaryColor]),
     );
   }
+
+  await page.goto("/");
+  await page.getByTestId("sidebar-nav-library-toggle").click();
+  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
+  await expect(blocksAndTemplates).toBeVisible();
+  await expect(blocksAndTemplates).toHaveCount(1);
+  await blocksAndTemplates.click();
+  const templatePanel = page.getByTestId("settings-panel-channel-templates");
+  await expect(templatePanel).toBeVisible();
+  const templateSubtitles = templatePanel.locator("[data-settings-subcopy]");
+  await expect(templateSubtitles.first()).toBeVisible();
+  await expect
+    .poll(async () =>
+      templateSubtitles.evaluateAll((elements) => [
+        ...new Set(elements.map((element) => getComputedStyle(element).color)),
+      ]),
+    )
+    .toEqual([secondaryColor]);
 });

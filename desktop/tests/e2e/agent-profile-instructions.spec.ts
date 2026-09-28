@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 async function readStoredPrompt(page: import("@playwright/test").Page) {
   return page.evaluate(async () => {
@@ -32,10 +33,7 @@ test("profile instructions cancel and save through the managed config path", asy
     ],
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await page
     .getByRole("button", { name: "Open Profile editor agent profile" })
     .click();
