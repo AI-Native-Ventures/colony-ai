@@ -122,9 +122,8 @@ pub(super) async fn handle(
     if let Some(manager_pubkey) = manager_pubkey.as_ref() {
         let manager_kind =
             member_kind_in_transaction(&mut tx, community_id, manager_pubkey).await?;
-        if !matches!(manager_kind, Some(MemberKind::Employee))
-            && !(manager_kind == Some(MemberKind::Human)
-                && memberships.contains_key(manager_pubkey))
+        if !(matches!(manager_kind, Some(MemberKind::Employee))
+            || manager_kind == Some(MemberKind::Human) && memberships.contains_key(manager_pubkey))
         {
             return Err(invalid("manager is not a member or managed employee"));
         }
@@ -349,8 +348,8 @@ pub(crate) async fn prepare_member_position_proposal(
         .map_err(internal)?;
     for pubkey in &locked_pubkeys {
         let member_kind = member_kind_in_transaction(tx, community_id, pubkey).await?;
-        if !matches!(member_kind, Some(MemberKind::Employee))
-            && !(member_kind == Some(MemberKind::Human) && members.contains(pubkey))
+        if !(matches!(member_kind, Some(MemberKind::Employee))
+            || member_kind == Some(MemberKind::Human) && members.contains(pubkey))
         {
             return Err(invalid("member or manager is not in this community"));
         }
