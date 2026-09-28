@@ -558,7 +558,7 @@ fn internal(error: impl std::fmt::Display) -> IngestError {
 }
 
 #[cfg(test)]
-mod tests {
+mod postgres_tests {
     use std::time::Duration;
 
     use buzz_core::company_records::{
