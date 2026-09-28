@@ -422,6 +422,8 @@ type E2eConfig = {
     acpAuthMethodsError?: string;
     /** When set, workflow updates fail with this message. */
     workflowUpdateError?: string;
+    /** When set, workflow status changes fail with this message. */
+    workflowStatusError?: string;
     /** When set, workflow deletion fails with this message. */
     workflowDeleteError?: string;
     /** Reject workflow run creation with this message. */
@@ -4369,6 +4371,16 @@ type MockWorkflow = {
   updated_at: number;
 };
 
+type MockWorkflowDraft = {
+  id: string;
+  revision: string;
+  name: string;
+  owner_pubkey: string;
+  channel_id: string;
+  definition: Record<string, unknown>;
+  updated_at: number;
+};
+
 type RawWorkflowTraceEntry = {
   step_id: string;
   status: string;
@@ -4412,15 +4424,19 @@ type MockWorkflowApproval = {
 };
 
 const mockWorkflows: MockWorkflow[] = [];
+const mockWorkflowDrafts: MockWorkflowDraft[] = [];
 let mockWorkflowRuns: RawWorkflowRun[] = [];
 const mockWorkflowApprovals: MockWorkflowApproval[] = [];
 let mockWorkflowIdCounter = 0;
+let mockWorkflowRevisionCounter = 0;
 
 function resetMockWorkflows(config: E2eConfig | null) {
   mockWorkflows.length = 0;
+  mockWorkflowDrafts.length = 0;
   mockWorkflowRuns = [];
   mockWorkflowApprovals.length = 0;
   mockWorkflowIdCounter = 0;
+  mockWorkflowRevisionCounter = 0;
   const activePubkey = getMockMemberPubkey(config ?? undefined);
   for (const seed of config?.mock?.workflowApprovals ?? []) {
     const channelId = mockChannels.find(
@@ -4502,6 +4518,161 @@ function handleGetWorkflow(args: { workflowId: string }) {
   const workflow = mockWorkflows.find((w) => w.id === args.workflowId);
   if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
   return workflow;
+}
+
+function handleGetWorkflowDraft(args: { workflowId: string }) {
+  return (
+    mockWorkflowDrafts.find((draft) => draft.id === args.workflowId) ?? null
+  );
+}
+
+function handleSaveWorkflowDraft(args: {
+  workflowId: string;
+  channelId: string;
+  yamlDefinition: string;
+  expectedRevision: string | null;
+}) {
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (active && active.owner_pubkey !== MOCK_IDENTITY_PUBKEY) {
+    throw new Error("only the workflow owner can edit its draft");
+  }
+  const current = mockWorkflowDrafts.find(
+    (draft) => draft.id === args.workflowId,
+  );
+  if (
+    (current && current.revision !== args.expectedRevision) ||
+    (!current && args.expectedRevision !== null)
+  ) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const draft: MockWorkflowDraft = {
+    id: args.workflowId,
+    revision: `mock-draft-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+    name:
+      typeof definition.name === "string" ? definition.name : args.workflowId,
+    owner_pubkey: MOCK_IDENTITY_PUBKEY,
+    channel_id: args.channelId,
+    definition,
+    updated_at: now,
+  };
+  if (current) {
+    Object.assign(current, draft);
+    return current;
+  }
+  mockWorkflowDrafts.push(draft);
+  return draft;
+}
+
+function handlePublishWorkflowDraft(args: {
+  workflowId: string;
+  draftRevision: string;
+  expectedActiveRevision?: string | null;
+}) {
+  const draft = mockWorkflowDrafts.find(
+    (value) => value.id === args.workflowId,
+  );
+  if (!draft || draft.revision !== args.draftRevision) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (
+    (active && active.revision !== args.expectedActiveRevision) ||
+    (!active && args.expectedActiveRevision != null)
+  ) {
+    throw new Error(
+      "active workflow changed since it was loaded; refresh and try again",
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const workflow: MockWorkflow = active
+    ? {
+        ...active,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        updated_at: now,
+      }
+    : {
+        id: args.workflowId,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        owner_pubkey: draft.owner_pubkey,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      };
+  if (active) Object.assign(active, workflow);
+  else mockWorkflows.push(workflow);
+  return { ...workflow, webhook_secret: null };
+}
+
+function handleSetWorkflowStatus(args: {
+  workflowId: string;
+  status: "active" | "paused";
+}) {
+  const configuredError = window.__BUZZ_E2E__?.mock?.workflowStatusError;
+  if (configuredError) throw new Error(configuredError);
+  const workflow = mockWorkflows.find((value) => value.id === args.workflowId);
+  if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
+  workflow.status = args.status === "paused" ? "disabled" : "active";
+  return args.status;
+}
+
+function handlePreviewWorkflow(args: { yamlDefinition: string }) {
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const steps = Array.isArray(definition.steps) ? definition.steps : [];
+  return {
+    preview: true,
+    side_effects: false,
+    steps: steps.map((value) => {
+      const step = value as Record<string, unknown>;
+      const action =
+        step.action === "request_approval"
+          ? "Would request approval"
+          : step.action === "ask_agent"
+            ? "Would ask an agent and wait for a reply"
+            : "Would run the step";
+      const paths =
+        step.action === "request_approval"
+          ? [
+              "Approved: continue to the next step",
+              "Denied: stop the run",
+              "Changes requested: no revision action is currently supported",
+              "Step failure: stop the run as failed",
+            ]
+          : step.action === "ask_agent"
+            ? [
+                "Reply in the request thread: continue to the next step",
+                "No reply before timeout: stop the run as timed out",
+                "Step failure: stop the run as failed",
+              ]
+            : ["Step failure: stop the run as failed"];
+      return {
+        step_id: String(step.id ?? ""),
+        outcome: "would_run",
+        action,
+        definition: step,
+        paths,
+        note: null,
+      };
+    }),
+  };
 }
 
 function handleCreateWorkflow(args: {
@@ -17117,9 +17288,29 @@ export function maybeInstallE2eTauriMocks() {
         return handleGetWorkflow(
           payload as Parameters<typeof handleGetWorkflow>[0],
         );
+      case "get_workflow_draft":
+        return handleGetWorkflowDraft(
+          payload as Parameters<typeof handleGetWorkflowDraft>[0],
+        );
       case "create_workflow":
         return handleCreateWorkflow(
           payload as Parameters<typeof handleCreateWorkflow>[0],
+        );
+      case "save_workflow_draft":
+        return handleSaveWorkflowDraft(
+          payload as Parameters<typeof handleSaveWorkflowDraft>[0],
+        );
+      case "publish_workflow_draft":
+        return handlePublishWorkflowDraft(
+          payload as Parameters<typeof handlePublishWorkflowDraft>[0],
+        );
+      case "set_workflow_status":
+        return handleSetWorkflowStatus(
+          payload as Parameters<typeof handleSetWorkflowStatus>[0],
+        );
+      case "preview_workflow":
+        return handlePreviewWorkflow(
+          payload as Parameters<typeof handlePreviewWorkflow>[0],
         );
       case "update_workflow":
         return handleUpdateWorkflow(

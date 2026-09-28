@@ -6,6 +6,11 @@ copies the active definition JSON and its SHA-256 version into
 `workflow_runs`, so publish, pause, and resume do not change the definition a
 run is executing.
 
+Draft events may contain incomplete builder state, including an empty step
+list while a workflow is being assembled. Saving a draft only requires a YAML
+object. Publishing parses the draft with the workflow schema and rejects any
+definition that is not runnable. An incomplete draft never becomes active.
+
 ## Triggers
 
 Supported triggers are `message_posted`, `reaction_added`, `diff_posted`,

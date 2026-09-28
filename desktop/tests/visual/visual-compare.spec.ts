@@ -163,14 +163,34 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch({ timeout: 30_000 });
+          const requestedUrl = new URL(route.request().url());
+          const r19TypographyRequest = requestedUrl.pathname.endsWith(
+            "/20260927-company-v7/20260926-r19/typography.css",
+          );
+          const response = await route.fetch({
+            timeout: 30_000,
+            ...(r19TypographyRequest
+              ? {
+                  url: new URL(
+                    "/20260926-r19/typography.css",
+                    requestedUrl,
+                  ).toString(),
+                }
+              : {}),
+          });
           const stylesheet = await response.text();
+          const correctedTypography = r19TypographyRequest
+            ? stylesheet.replace(
+                /url\((["']?)assets\//g,
+                `url($1${new URL("/20260926-r19/assets/", requestedUrl)}`,
+              )
+            : stylesheet;
           const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
             .map((selector) => `${selector} { display: none !important; }`)
             .join("\n");
           await route.fulfill({
             response,
-            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
+            body: `${correctedTypography.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
           });
         });
         await referencePage.route(
