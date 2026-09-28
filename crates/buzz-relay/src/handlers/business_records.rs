@@ -1257,11 +1257,10 @@ pub async fn handle(
                     "invoice changed before the follow-up was reviewed",
                 ));
             }
+            let now = chrono::Utc::now().timestamp();
             if invoice.status != InvoiceStatus::Issued
                 || invoice.outstanding_minor <= 0
-                || !invoice
-                    .due_at
-                    .is_some_and(|due_at| due_at < chrono::Utc::now().timestamp())
+                || invoice.due_at.is_none_or(|due_at| due_at >= now)
             {
                 return Err(conflict(
                     "follow-ups require an issued overdue invoice balance",

@@ -33,6 +33,27 @@ struct InvoiceSnapshot {
     head: InvoiceHead,
 }
 
+struct PaymentInput {
+    channel: String,
+    invoice: String,
+    amount_minor: i64,
+    provider: String,
+    provider_reference: Option<String>,
+    currency: Option<String>,
+    occurred_at: Option<i64>,
+    evidence_ref: String,
+}
+
+struct AdjustmentInput {
+    channel: String,
+    invoice: String,
+    adjustment_type: MoneyAdjustmentArg,
+    amount_minor: i64,
+    occurred_at: Option<i64>,
+    reason: String,
+    evidence_ref: String,
+}
+
 /// Route a `buzz money` command.
 pub async fn dispatch(command: MoneyCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
@@ -49,14 +70,16 @@ pub async fn dispatch(command: MoneyCmd, client: &BuzzClient) -> Result<(), CliE
         }) => {
             record_payment(
                 client,
-                &channel,
-                &invoice,
-                amount_minor,
-                provider,
-                provider_reference,
-                currency,
-                occurred_at,
-                evidence_ref,
+                PaymentInput {
+                    channel,
+                    invoice,
+                    amount_minor,
+                    provider,
+                    provider_reference,
+                    currency,
+                    occurred_at,
+                    evidence_ref,
+                },
             )
             .await
         }
@@ -71,13 +94,15 @@ pub async fn dispatch(command: MoneyCmd, client: &BuzzClient) -> Result<(), CliE
         }) => {
             create_adjustment(
                 client,
-                &channel,
-                &invoice,
-                adjustment_type,
-                amount_minor,
-                occurred_at,
-                reason,
-                evidence_ref,
+                AdjustmentInput {
+                    channel,
+                    invoice,
+                    adjustment_type,
+                    amount_minor,
+                    occurred_at,
+                    reason,
+                    evidence_ref,
+                },
             )
             .await
         }
@@ -305,17 +330,17 @@ async fn transition_invoice(
     .await
 }
 
-async fn record_payment(
-    client: &BuzzClient,
-    channel: &str,
-    invoice: &str,
-    amount_minor: i64,
-    provider: String,
-    provider_reference: Option<String>,
-    currency: Option<String>,
-    occurred_at: Option<i64>,
-    evidence_ref: String,
-) -> Result<(), CliError> {
+async fn record_payment(client: &BuzzClient, input: PaymentInput) -> Result<(), CliError> {
+    let PaymentInput {
+        channel,
+        invoice,
+        amount_minor,
+        provider,
+        provider_reference,
+        currency,
+        occurred_at,
+        evidence_ref,
+    } = input;
     validate_positive_amount(amount_minor)?;
     if evidence_ref.trim().is_empty() || evidence_ref.len() > 2_000 {
         return Err(CliError::Usage(
@@ -335,7 +360,7 @@ async fn record_payment(
         ));
     }
 
-    let snapshot = fetch_invoice(client, channel, invoice).await?;
+    let snapshot = fetch_invoice(client, &channel, &invoice).await?;
     if snapshot.head.status != InvoiceStatus::Issued {
         return Err(CliError::Usage(
             "payment evidence requires an issued invoice".into(),
@@ -374,16 +399,16 @@ async fn record_payment(
     .await
 }
 
-async fn create_adjustment(
-    client: &BuzzClient,
-    channel: &str,
-    invoice: &str,
-    adjustment_type: MoneyAdjustmentArg,
-    amount_minor: i64,
-    occurred_at: Option<i64>,
-    reason: String,
-    evidence_ref: String,
-) -> Result<(), CliError> {
+async fn create_adjustment(client: &BuzzClient, input: AdjustmentInput) -> Result<(), CliError> {
+    let AdjustmentInput {
+        channel,
+        invoice,
+        adjustment_type,
+        amount_minor,
+        occurred_at,
+        reason,
+        evidence_ref,
+    } = input;
     validate_positive_amount(amount_minor)?;
     let occurred_at = occurred_at.unwrap_or_else(|| Utc::now().timestamp());
     if occurred_at <= 0 {
@@ -402,7 +427,7 @@ async fn create_adjustment(
         ));
     }
 
-    let snapshot = fetch_invoice(client, channel, invoice).await?;
+    let snapshot = fetch_invoice(client, &channel, &invoice).await?;
     if snapshot.head.status != InvoiceStatus::Issued {
         return Err(CliError::Usage(
             "adjustments require an issued invoice".into(),
@@ -602,11 +627,10 @@ async fn fetch_follow_up(
 }
 
 fn ensure_overdue_invoice(head: &InvoiceHead) -> Result<(), CliError> {
+    let now = Utc::now().timestamp();
     if head.status != InvoiceStatus::Issued
         || head.outstanding_minor <= 0
-        || !head
-            .due_at
-            .is_some_and(|due_at| due_at < Utc::now().timestamp())
+        || head.due_at.is_none_or(|due_at| due_at >= now)
     {
         return Err(CliError::Usage(
             "follow-ups require an issued overdue invoice balance".into(),
