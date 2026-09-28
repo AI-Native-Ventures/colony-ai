@@ -190,6 +190,8 @@ type MockBridgeOptions = {
   companyAskRelayPrivateKeyHex?: string;
   /** Reject these ask response publishes in order, then accept them. */
   askResponseErrors?: string[];
+  /** Reject these ask create publishes in order, then accept them. */
+  askActionErrors?: string[];
   /** Pending workflow approval rows used by Today E2E coverage. */
   workflowApprovals?: Array<{
     workflowId: string;

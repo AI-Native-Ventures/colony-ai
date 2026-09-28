@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useChannelMembersQuery } from "@/features/channels/hooks";
+import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useRelayAgentsQuery } from "@/features/agents/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -12,8 +13,10 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
+import { mapSpecializedAskCard } from "../askCardMapping";
 import type {
   AskHead,
   AskHeadRecord,
@@ -136,6 +139,7 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const ask = record.head.ask;
+  const specializedVariant = mapSpecializedAskCard(ask);
   const currentHeadId = record.event.id;
 
   React.useEffect(() => {
@@ -354,7 +358,7 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
           ? "Recording…"
           : error
             ? "Retry response"
-            : "Record response"}
+            : (specializedVariant?.submitLabel ?? "Record response")}
       </Button>
     </form>
   );
@@ -430,6 +434,7 @@ export function AskCard({
     queryState === undefined,
   );
   const { query, relaySelfQuery, liveState } = queryState ?? localQueryState;
+  const channelsQuery = useChannelsQuery();
   const membersQuery = useChannelMembersQuery(channelId, Boolean(channelId));
   const membershipQuery = useMyRelayMembershipQuery();
   const agentsQuery = useRelayAgentsQuery({ enabled: Boolean(channelId) });
@@ -574,33 +579,124 @@ export function AskCard({
     : head.status === "resolved" && head.resolution
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
+  const specializedVariant = mapSpecializedAskCard(head.ask);
+  const asker = resolveUserLabel({
+    pubkey: head.askerPubkey,
+    currentPubkey,
+    profiles,
+  });
+  const askerProfile = profiles?.[normalizePubkey(head.askerPubkey)];
+  const askerIsAgent =
+    askerProfile?.isAgent === true ||
+    agentsQuery.data?.some(
+      (agent) =>
+        normalizePubkey(agent.pubkey) === normalizePubkey(head.askerPubkey),
+    ) === true;
+  const channelName =
+    channelsQuery.data?.find((channel) => channel.id === channelId)?.name ??
+    "conversation";
+  const needsYou = head.status === "open" && checksReady && !deniedReason;
+  const decisionHeading =
+    head.status === "open"
+      ? "Decision requested"
+      : head.status === "resolved"
+        ? "Decision recorded"
+        : "Decision withdrawn";
 
   return (
     <section
       aria-label={`${typeLabel(head.ask.type)} ask`}
-      className="colony-ask-card"
+      className={`colony-ask-card${specializedVariant ? ` colony-ask-card-${specializedVariant.kind}` : ""}`}
       data-ask-id={askId}
+      data-ask-variant={specializedVariant?.kind}
       data-testid="ask-card"
     >
-      <div className="colony-ask-meta">
-        <span
-          className={`colony-ask-status colony-ask-status-${isOverdue ? "overdue" : head.status}`}
-          data-testid="ask-status"
-        >
-          {statusText}
-        </span>
-        <span>{head.ask.type}</span>
-        {head.ask.decideBy ? (
-          <span>
-            Decide by {formatAskDate(head.ask.decideBy) ?? head.ask.decideBy}
+      {specializedVariant ? (
+        <>
+          <header className="colony-ask-special-header">
+            <div className="colony-ask-special-identity">
+              <span aria-hidden="true">
+                <UserAvatar
+                  avatarUrl={askerProfile?.avatarUrl ?? null}
+                  displayName={asker}
+                  size="md"
+                />
+              </span>
+              <div>
+                <h3>{decisionHeading}</h3>
+                <p>
+                  Proposed by {asker} ·{" "}
+                  {askerIsAgent ? "AI employee" : "Person"} · #{channelName} ·{" "}
+                  {new Intl.DateTimeFormat("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).format(new Date(Date.parse(head.createdAt)))}
+                </p>
+              </div>
+            </div>
+            <span
+              className={`colony-ask-status colony-ask-status-${isOverdue ? "overdue" : head.status}`}
+              data-testid="ask-status"
+            >
+              {needsYou ? "Needs you" : statusText}
+            </span>
+          </header>
+          <dl className="colony-ask-special-context">
+            <div>
+              <dt>Addressed to</dt>
+              <dd>
+                {head.ask.addresseePubkey
+                  ? resolveUserLabel({
+                      pubkey: head.ask.addresseePubkey,
+                      currentPubkey,
+                      profiles,
+                      preferResolvedSelfLabel: Boolean(
+                        profiles?.[normalizePubkey(head.ask.addresseePubkey)],
+                      ),
+                    })
+                  : "Owner or administrator"}
+              </dd>
+            </div>
+            <div>
+              <dt>Can decide</dt>
+              <dd>Owner or administrator</dd>
+            </div>
+            <div>
+              <dt>Deadline</dt>
+              <dd>
+                {head.ask.decideBy
+                  ? (formatAskDate(head.ask.decideBy) ?? head.ask.decideBy)
+                  : "No deadline"}
+              </dd>
+            </div>
+          </dl>
+        </>
+      ) : (
+        <div className="colony-ask-meta">
+          <span
+            className={`colony-ask-status colony-ask-status-${isOverdue ? "overdue" : head.status}`}
+            data-testid="ask-status"
+          >
+            {statusText}
           </span>
-        ) : null}
-      </div>
+          <span>{head.ask.type}</span>
+          {head.ask.decideBy ? (
+            <span>
+              Decide by {formatAskDate(head.ask.decideBy) ?? head.ask.decideBy}
+            </span>
+          ) : null}
+        </div>
+      )}
+      {specializedVariant ? (
+        <p className="colony-ask-special-kind">
+          {specializedVariant.decisionTitle}
+        </p>
+      ) : null}
       <h2>{head.ask.title}</h2>
       {head.ask.body ? (
         <p className="colony-ask-body">{head.ask.body}</p>
       ) : null}
-      {head.ask.addresseePubkey ? (
+      {!specializedVariant && head.ask.addresseePubkey ? (
         <p className="colony-ask-addressed">
           Addressed to{" "}
           {resolveUserLabel({
