@@ -257,6 +257,13 @@ same community. Goal deletion is refused while any company work head still
 references that goal, including an archived work item. The work form filters
 out archived and deleted goals.
 
+Linking or unlinking work uses the existing exact-head `update` action and
+changes only that item's `goalId`. The goal detail selector sends one kind
+47006 action per changed work item, in sequence. These actions are independent:
+an accepted link remains saved if a later action fails. The client reports each
+item's result, keeps failed desired selections available for retry, and reports
+the operation as incomplete until every requested change succeeds.
+
 Company work statuses are `active`, `paused`, `blocked`, `done_unverified`,
 `done_verified`, and `archived`. The assigned owner may set an item to
 `active`, `paused`, `blocked`, or `done_unverified`. A status action cannot set

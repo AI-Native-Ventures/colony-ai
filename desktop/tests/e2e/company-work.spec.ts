@@ -11,6 +11,10 @@ import { seedActiveIdentity } from "../helpers/onboarding";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const GOAL_ID = "e1a2b3c4-d5e6-4789-8abc-1234567890ab";
+const LINK_FAILURE_WORK_ID = "7a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+const LINK_SUCCESS_WORK_ID = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+
+type SeedWorkItem = { workItemId: string; title: string; goalId?: string };
 
 function goalHeadEvent(relaySecret: Uint8Array, ownerPubkey: string) {
   return finalizeEvent(
@@ -38,6 +42,37 @@ function goalHeadEvent(relaySecret: Uint8Array, ownerPubkey: string) {
   );
 }
 
+function companyWorkHeadEvent(
+  relaySecret: Uint8Array,
+  ownerPubkey: string,
+  workItem: SeedWorkItem,
+) {
+  return finalizeEvent(
+    {
+      kind: 30634,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", GENERAL_CHANNEL_ID],
+        ["d", `company:work:${workItem.workItemId}`],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        workItemId: workItem.workItemId,
+        title: workItem.title,
+        status: "active",
+        assignedPubkeys: [ownerPubkey],
+        approverPubkeys: [],
+        deliverables: [],
+        requesterPubkey: ownerPubkey,
+        doneCondition: `The work for ${workItem.title} is complete.`,
+        ...(workItem.goalId ? { goalId: workItem.goalId } : {}),
+        sourceActionEventId: "c".repeat(64),
+      }),
+    },
+    relaySecret,
+  );
+}
+
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
   channelName: string,
@@ -59,12 +94,15 @@ async function waitForMockLiveSubscription(
 async function installCompanyWorkMock(
   page: import("@playwright/test").Page,
   companyWorkActionErrors: string[] = [],
+  workItems: SeedWorkItem[] = [],
 ) {
   const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
   await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
-    companyWorkEvents: [],
+    companyWorkEvents: workItems.map((workItem) =>
+      companyWorkHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey, workItem),
+    ),
     companyWorkActionErrors,
     companyWorkRelayPrivateKey: bytesToHex(relaySecret),
     goalEvents: [goalHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey)],
@@ -107,6 +145,10 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(
     page.getByTestId(`goal-reference-card-${GOAL_ID}`),
   ).toBeVisible();
+  const newMessagesButton = page.getByRole("button", {
+    name: /new messages/,
+  });
+  if (await newMessagesButton.isVisible()) await newMessagesButton.click();
   await page
     .getByTestId(`create-company-work-from-message-${sourceEventId}`)
     .click();
@@ -249,9 +291,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(detail.getByText("Verification passed")).toBeVisible();
   await page.reload();
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  const rejoinButton = page.getByRole("button", {
-    name: "Join to participate",
-  });
+  const rejoinButton = page.getByRole("button", { name: "Join", exact: true });
   await expect(rejoinButton).toBeVisible({ timeout: 30_000 });
   await rejoinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
@@ -284,8 +324,71 @@ test("company work keeps its chat source, review history, and goal link", async 
     goalDetail.getByTestId(`company-work-row-${workItemId}`),
   ).toContainText("Review final launch brief");
   await goalDetail.getByRole("button", { name: "Link work" }).click();
-  await expect(page.getByTestId("company-work-form")).toBeVisible();
-  await expect(page.getByTestId("company-work-goal")).toHaveValue(GOAL_ID);
+  await expect(page.getByTestId("goal-work-link-form")).toBeVisible();
+  await expect(
+    page.getByTestId(`goal-work-link-checkbox-${workItemId}`),
+  ).toBeChecked();
+});
+
+test("goal work links retain and retry only the failed exact-head action", async ({
+  page,
+}) => {
+  const headConflict =
+    "conflict: company work item changed; retry from its latest head";
+  await installCompanyWorkMock(
+    page,
+    [headConflict],
+    [
+      { workItemId: LINK_FAILURE_WORK_ID, title: "A review the launch plan" },
+      { workItemId: LINK_SUCCESS_WORK_ID, title: "B approve the final brief" },
+    ],
+  );
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  const joinButton = page.getByRole("button", {
+    name: "Join to participate",
+  });
+  await expect(joinButton).toBeVisible({ timeout: 30_000 });
+  await joinButton.click();
+  await page.goto(`/#/goals/link/${GOAL_ID}`);
+
+  const form = page.getByTestId("goal-work-link-form");
+  await expect(form).toBeVisible();
+  const failedCheckbox = page.getByTestId(
+    `goal-work-link-checkbox-${LINK_FAILURE_WORK_ID}`,
+  );
+  const successfulCheckbox = page.getByTestId(
+    `goal-work-link-checkbox-${LINK_SUCCESS_WORK_ID}`,
+  );
+  await failedCheckbox.focus();
+  await page.keyboard.press("Space");
+  await successfulCheckbox.focus();
+  await page.keyboard.press("Space");
+
+  const saveButton = page.getByRole("button", { name: "Save work links" });
+  await saveButton.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(
+    page.getByTestId(`goal-work-link-error-${LINK_FAILURE_WORK_ID}`),
+  ).toContainText("company work item changed");
+  await expect(
+    page.getByTestId(`goal-work-link-item-${LINK_SUCCESS_WORK_ID}`),
+  ).toContainText("Saved");
+  await expect(
+    page.getByTestId("goal-work-link-partial-failure"),
+  ).toContainText("Some work links could not be saved");
+  await expect(failedCheckbox).toBeChecked();
+  await expect(successfulCheckbox).toBeChecked();
+
+  await page.getByRole("button", { name: "Retry failed links" }).click();
+  await expect(page).toHaveURL(new RegExp(`/goals/${GOAL_ID}$`));
+  const goalDetail = page.getByTestId("goal-detail");
+  await expect(
+    goalDetail.getByTestId(`company-work-row-${LINK_FAILURE_WORK_ID}`),
+  ).toBeVisible();
+  await expect(
+    goalDetail.getByTestId(`company-work-row-${LINK_SUCCESS_WORK_ID}`),
+  ).toBeVisible();
 });
 
 test("company work keeps entered fields after a rejected create", async ({

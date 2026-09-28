@@ -167,8 +167,10 @@ Company work uses the same 30634 head and 47006 action kinds, but has no
 `clientId`. Its coordinate is `company:work:<work-item-uuid>` and its single
 `h` tag is the channel where the commitment lives. The company is resolved from
 the relay host. The company work fields and state transitions are defined in
-[company-records.md](company-records.md#company-work-items). This separate
-scope preserves the existing client work payload and W11 behavior.
+[company-records.md](company-records.md#company-work-items). A goal link changes
+through one exact-head company work `update` action for that item. Multi-select
+clients send separate actions and report partial failures per item. This
+separate scope preserves the existing client work payload and W11 behavior.
 
 ### Service action, kind 47002
 

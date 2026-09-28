@@ -32,6 +32,7 @@ export const routes = rootRoute("root.tsx", [
   route("/projects/$projectId", "projects.$projectId.tsx"),
   route("/goals", "goals.tsx"),
   route("/goals/new", "goals.new.tsx"),
+  route("/goals/link/$goalId", "goals.link.$goalId.tsx"),
   route("/goals/reference", "goals.reference.tsx"),
   route("/goals/$goalId", "goals.$goalId.tsx"),
   route("/goals/$goalId/edit", "goals.$goalId.edit.tsx"),

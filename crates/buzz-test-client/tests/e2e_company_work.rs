@@ -704,11 +704,25 @@ async fn company_work_requires_live_goal_links_and_linked_work_blocks_goal_delet
 
     for goal_id in [archived_goal_id, deleted_goal_id] {
         let work_item_id = Uuid::new_v4();
-        let action = CompanyWorkItemAction {
+        let create_unlinked = CompanyWorkItemAction {
             schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
             work_item_id,
             action: CompanyWorkItemActionKind::Create,
             expected_head_event_id: None,
+            head: Some(work_input(work_item_id, &admin, &admin, None, None, None)),
+            status: None,
+            reason: None,
+            verification: None,
+        };
+        assert_accepted(&submit_work_action(&admin, &channel_id, &create_unlinked).await);
+        let (head_id, unlinked_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+        assert_eq!(unlinked_head.goal_id, None);
+
+        let link_to_unavailable_goal = CompanyWorkItemAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id,
+            action: CompanyWorkItemActionKind::Update,
+            expected_head_event_id: Some(head_id),
             head: Some(work_input(
                 work_item_id,
                 &admin,
@@ -721,6 +735,8 @@ async fn company_work_requires_live_goal_links_and_linked_work_blocks_goal_delet
             reason: None,
             verification: None,
         };
-        assert_rejected(&submit_work_action(&admin, &channel_id, &action).await);
+        assert_rejected(&submit_work_action(&admin, &channel_id, &link_to_unavailable_goal).await);
+        let (_, unchanged_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+        assert_eq!(unchanged_head.goal_id, None);
     }
 }

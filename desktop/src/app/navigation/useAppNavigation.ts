@@ -186,6 +186,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goGoalWorkLink = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/link/$goalId",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goNewGoal = React.useCallback(
     (parentGoalId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -780,6 +792,7 @@ export function useAppNavigation() {
     goGoalDelete,
     goGoalProgress,
     goGoalReference,
+    goGoalWorkLink,
     goGoals,
     goNewGoal,
     goEditGoal,

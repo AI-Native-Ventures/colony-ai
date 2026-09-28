@@ -54,6 +54,7 @@ import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sa
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as goalsDotlinkDotgoalIdRouteImport } from "./routes/goals.link.$goalId";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
 import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
@@ -322,6 +323,11 @@ const salesDotleadDotprospectIdRoute =
     path: "/sales/lead/$prospectId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const goalsDotlinkDotgoalIdRoute = goalsDotlinkDotgoalIdRouteImport.update({
+  id: "/goals/link/$goalId",
+  path: "/goals/link/$goalId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const goalsDotgoalIdDotsubgoalRoute =
   goalsDotgoalIdDotsubgoalRouteImport.update({
     id: "/goals/$goalId/subgoal",
@@ -442,6 +448,7 @@ export interface FileRoutesByFullPath {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -505,6 +512,7 @@ export interface FileRoutesByTo {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -569,6 +577,7 @@ export interface FileRoutesById {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -634,6 +643,7 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -697,6 +707,7 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -760,6 +771,7 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -824,6 +836,7 @@ export interface RootRouteChildren {
   goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
   goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
   goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
+  goalsDotlinkDotgoalIdRoute: typeof goalsDotlinkDotgoalIdRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
@@ -1182,6 +1195,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/goals/link/$goalId": {
+      id: "/goals/link/$goalId";
+      path: "/goals/link/$goalId";
+      fullPath: "/goals/link/$goalId";
+      preLoaderRoute: typeof goalsDotlinkDotgoalIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/goals/$goalId/subgoal": {
       id: "/goals/$goalId/subgoal";
       path: "/goals/$goalId/subgoal";
@@ -1320,6 +1340,7 @@ const rootRouteChildren: RootRouteChildren = {
   goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
   goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
   goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
+  goalsDotlinkDotgoalIdRoute: goalsDotlinkDotgoalIdRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,

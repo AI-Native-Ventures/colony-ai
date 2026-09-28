@@ -108,11 +108,11 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
     goGoalArchive,
     goGoalDelete,
     goGoalProgress,
+    goGoalWorkLink,
     goGoals,
     goNewGoal,
     goChannel,
     goShareGoal,
-    goNewCompanyWork,
   } = useAppNavigation();
   const record = goalQuery.data;
   const head = record?.head;
@@ -403,22 +403,7 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
                 </span>
               </h2>
               <Button
-                onClick={() => {
-                  const linkedChannel = goal.linkedChannelIds.find(
-                    (channelId) =>
-                      channels.some(
-                        (candidate) =>
-                          candidate.id === channelId &&
-                          candidate.channelType === "stream" &&
-                          candidate.isMember &&
-                          candidate.archivedAt === null,
-                      ),
-                  );
-                  void goNewCompanyWork({
-                    goal: goalId,
-                    ...(linkedChannel ? { channel: linkedChannel } : {}),
-                  });
-                }}
+                onClick={() => void goGoalWorkLink(goalId)}
                 variant="ghost"
               >
                 Link work
