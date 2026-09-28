@@ -893,6 +893,161 @@
       }
     },
     {
+      "id": "desktop-08-catalog",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/catalog",
+      "appRoute": "/#/settings?section=settings/themes",
+      "routeLabel": "Theme catalog",
+      "appReadySelector": "[data-testid=settings-theme-catalog]",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-custom",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/custom",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Custom theme",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": true,
+            "customLight": ["#efb3d5", "#84a5f4"],
+            "customDark": ["#efb3d5", "#84a5f4"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=appearance-theme-custom]"
+        }
+      ],
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-compact",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/compact",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Compact conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "compact",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-comfortable",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/comfortable",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Comfortable conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-spacious",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/spacious",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Spacious conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "spacious",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-saved",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/saved",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Appearance saved",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": true,
+            "customLight": ["#efb3d5", "#84a5f4"],
+            "customDark": ["#efb3d5", "#84a5f4"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
       "id": "desktop-11-library",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#11/library",
       "appRoute": "/#/settings?section=voice",
