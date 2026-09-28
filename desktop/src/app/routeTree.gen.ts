@@ -51,14 +51,14 @@ import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sa
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
+import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
 import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
 import { Route as goalsDotgoalIdDoteditRouteImport } from "./routes/goals.$goalId.edit";
 import { Route as goalsDotgoalIdDotdeleteRouteImport } from "./routes/goals.$goalId.delete";
 import { Route as goalsDotgoalIdDotarchiveRouteImport } from "./routes/goals.$goalId.archive";
-import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
-import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
 import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
@@ -300,6 +300,18 @@ const salesDotleadDotprospectIdRoute =
     path: "/sales/lead/$prospectId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const moneyDotrevenueDotinvoiceIdRoute =
+  moneyDotrevenueDotinvoiceIdRouteImport.update({
+    id: "/money/revenue/$invoiceId",
+    path: "/money/revenue/$invoiceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotinvoiceDotinvoiceIdRoute =
+  moneyDotinvoiceDotinvoiceIdRouteImport.update({
+    id: "/money/invoice/$invoiceId",
+    path: "/money/invoice/$invoiceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const goalsDotgoalIdDotsubgoalRoute =
   goalsDotgoalIdDotsubgoalRouteImport.update({
     id: "/goals/$goalId/subgoal",
@@ -331,16 +343,6 @@ const goalsDotgoalIdDotarchiveRoute =
   goalsDotgoalIdDotarchiveRouteImport.update({
     id: "/goals/$goalId/archive",
     path: "/goals/$goalId/archive",
-const moneyDotrevenueDotinvoiceIdRoute =
-  moneyDotrevenueDotinvoiceIdRouteImport.update({
-    id: "/money/revenue/$invoiceId",
-    path: "/money/revenue/$invoiceId",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const moneyDotinvoiceDotinvoiceIdRoute =
-  moneyDotinvoiceDotinvoiceIdRouteImport.update({
-    id: "/money/invoice/$invoiceId",
-    path: "/money/invoice/$invoiceId",
     getParentRoute: () => rootRouteImport,
   } as any);
 const factoryDotreviewDotrunIdRoute =
@@ -1142,6 +1144,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/money/revenue/$invoiceId": {
+      id: "/money/revenue/$invoiceId";
+      path: "/money/revenue/$invoiceId";
+      fullPath: "/money/revenue/$invoiceId";
+      preLoaderRoute: typeof moneyDotrevenueDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/invoice/$invoiceId": {
+      id: "/money/invoice/$invoiceId";
+      path: "/money/invoice/$invoiceId";
+      fullPath: "/money/invoice/$invoiceId";
+      preLoaderRoute: typeof moneyDotinvoiceDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/goals/$goalId/subgoal": {
       id: "/goals/$goalId/subgoal";
       path: "/goals/$goalId/subgoal";
@@ -1182,18 +1198,6 @@ declare module "@tanstack/react-router" {
       path: "/goals/$goalId/archive";
       fullPath: "/goals/$goalId/archive";
       preLoaderRoute: typeof goalsDotgoalIdDotarchiveRouteImport;
-    "/money/revenue/$invoiceId": {
-      id: "/money/revenue/$invoiceId";
-      path: "/money/revenue/$invoiceId";
-      fullPath: "/money/revenue/$invoiceId";
-      preLoaderRoute: typeof moneyDotrevenueDotinvoiceIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/money/invoice/$invoiceId": {
-      id: "/money/invoice/$invoiceId";
-      path: "/money/invoice/$invoiceId";
-      fullPath: "/money/invoice/$invoiceId";
-      preLoaderRoute: typeof moneyDotinvoiceDotinvoiceIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/factory/review/$runId": {
