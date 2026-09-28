@@ -21,10 +21,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('opens the designed account route from personal settings', (
+  testWidgets('shows business entry and opens account from personal settings', (
     tester,
   ) async {
     final prefs = await _prefs();
+    var businessOpened = false;
     await tester.pumpWidget(
       _testApp(
         prefs: prefs,
@@ -32,12 +33,12 @@ void main() {
           MobileRoutes.settingsProfile,
           (context, _) => const Scaffold(body: Text('Profile route opened')),
         ),
-        child: const PersonalSettingsHomePage(
+        child: PersonalSettingsHomePage(
           displayName: 'Lerato Molefe',
           email: 'lerato@example.com',
           avatarUrl: null,
           communityName: 'Lerato Social',
-          onOpenBusiness: _noop,
+          onOpenBusiness: () => businessOpened = true,
           onOpenAgents: _noop,
         ),
       ),
@@ -47,7 +48,19 @@ void main() {
     expect(find.text('A little more you.'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Preferences'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Business'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Business'), findsOneWidget);
+    await tester.tap(find.text('Business'));
+    expect(businessOpened, isTrue);
+    await tester.scrollUntilVisible(
+      find.text('Account'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     final editButton = tester.widget<TextButton>(
       find.widgetWithText(TextButton, 'Edit'),
     );
