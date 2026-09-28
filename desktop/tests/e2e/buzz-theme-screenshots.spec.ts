@@ -844,7 +844,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   });
   expect(prominentTextStyle).toEqual({
     color: prominentForeground,
-    fontWeight: subtleTextStyle.fontWeight,
+    fontWeight: "700",
   });
 
   await openAppearance(page, "light");
@@ -861,6 +861,11 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   await page.getByTestId("settings-close").click();
   await page.getByTestId("channel-general").click();
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
+  const restoredTextStyle = await activeRow.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return { color: styles.color, fontWeight: styles.fontWeight };
+  });
+  expect(restoredTextStyle).toEqual(subtleTextStyle);
 });
 
 test("prominent channel and direct-message rows share one flat active state", async ({
@@ -907,7 +912,7 @@ for (const { hoverSurface, mode, theme } of [
     theme: "buzz-dark",
   },
 ]) {
-  test(`non-prominent ${theme} selection matches production`, async ({
+  test(`non-prominent ${theme} selection uses the subtle C1 style`, async ({
     page,
   }) => {
     await seedTheme(page, theme);
@@ -935,7 +940,10 @@ for (const { hoverSurface, mode, theme } of [
       "var(--colony-sidebar-foreground)",
     );
     await expect(activeRow).toHaveCSS("background-color", subtleSurface);
-    await expect(activeRow).toHaveCSS("box-shadow", "none");
+    await expect(activeRow).toHaveCSS(
+      "box-shadow",
+      "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
+    );
     await expect(activeRow).toHaveCSS("font-weight", "700");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", subtleSurface);
@@ -1048,7 +1056,9 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  expect(searchBox.y - backToAppBox.y).toBe(70);
+  // The merged C1 sidebar positions Search 12px lower than the W20-only
+  // capture while the Back to app control stays in the settings top chrome.
+  expect(searchBox.y - backToAppBox.y).toBe(82);
 
   // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
   // padding and surface margin, plus the measured bottom inset.
