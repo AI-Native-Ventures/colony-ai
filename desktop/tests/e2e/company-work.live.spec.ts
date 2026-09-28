@@ -112,9 +112,9 @@ test.describe("company work local relay journey", () => {
     await seedCommunities(page, relayA, relayB);
     await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
 
-    const joinButton = page
-      .getByTestId("chat-header")
-      .getByRole("button", { name: "Join" });
+    const joinButton = page.getByRole("button", {
+      name: "Join to participate",
+    });
     if (await joinButton.isVisible().catch(() => false)) {
       await joinButton.click();
     }
