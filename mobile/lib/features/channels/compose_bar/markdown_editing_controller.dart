@@ -323,7 +323,7 @@ class _MarkdownEditingController extends TextEditingController {
     TextStyle style,
   ) {
     final expression = RegExp(
-      r'''buzz://(?:message\?|channel/|(?:repo|pr|issue)\?)[^\s<>"']+''',
+      r'''buzz://(?:message\?|channel/|goal/|(?:repo|pr|issue)\?)[^\s<>"']+''',
       caseSensitive: false,
     );
     final matches = expression.allMatches(source).toList();
@@ -392,6 +392,11 @@ class _MarkdownEditingController extends TextEditingController {
   (IconData, String, String)? _composerLinkPresentation(String raw) {
     final uri = Uri.tryParse(raw);
     if (uri == null) return null;
+    final goalId = parseGoalReferenceUri(uri);
+    if (goalId != null) {
+      final shortId = goalId.substring(0, 8);
+      return (LucideIcons.target, 'Goal · $shortId', 'Company goal $shortId');
+    }
     final link = parseBuzzDeepLink(uri) ?? parseEntityDeepLink(uri);
     return switch (link) {
       ChannelDeepLink(:final channelId) => (
