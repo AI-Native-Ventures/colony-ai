@@ -240,6 +240,12 @@ enum Cmd {
     /// Create, trigger, and manage workflows
     #[command(subcommand)]
     Workflows(WorkflowsCmd),
+    /// Create, cancel, answer, and list company asks
+    #[command(subcommand)]
+    Asks(AsksCmd),
+    /// Create and manage company goals
+    #[command(subcommand)]
+    Goals(GoalsCmd),
     /// Read the activity feed
     #[command(subcommand)]
     Feed(FeedCmd),
@@ -1038,6 +1044,146 @@ pub enum WorkflowsCmd {
         /// Optional note to include with the approval/denial
         #[arg(long)]
         note: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AsksCmd {
+    /// List current ask heads in a channel
+    List {
+        /// Channel UUID
+        #[arg(long)]
+        channel: String,
+    },
+    /// Create an ask from an AskRecord JSON object, or read it from stdin with '-'
+    Create {
+        /// Channel UUID containing the thread
+        #[arg(long)]
+        channel: String,
+        /// AskRecord JSON with askId and threadRootEventId, or '-' for stdin
+        #[arg(long)]
+        ask: String,
+    },
+    /// Cancel an open ask at its exact current head
+    Cancel {
+        /// Channel UUID containing the ask
+        #[arg(long)]
+        channel: String,
+        /// Ask UUID
+        #[arg(long)]
+        ask: String,
+        /// Current kind 30643 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for cancelling, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
+    },
+    /// Respond to an open ask at its exact current head
+    Respond {
+        /// Channel UUID containing the ask
+        #[arg(long)]
+        channel: String,
+        /// Ask UUID
+        #[arg(long)]
+        ask: String,
+        /// Current kind 30643 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Ask outcome: approved, rejected, revision_requested, answered, chosen, confirmed, pass, fail
+        #[arg(long, value_parser = ["approved", "rejected", "revision_requested", "answered", "chosen", "confirmed", "pass", "fail"])]
+        outcome: String,
+        /// Decision reason, or '-' to read from stdin
+        #[arg(long)]
+        reason: Option<String>,
+        /// Question answer, or '-' to read from stdin
+        #[arg(long)]
+        answer: Option<String>,
+        /// Selected choice option ID
+        #[arg(long)]
+        option_id: Option<String>,
+        /// JSON array of checklist item IDs, or '-' to read from stdin
+        #[arg(long)]
+        checked_item_ids: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GoalsCmd {
+    /// Create a company goal from a JSON GoalRecord
+    Create {
+        /// GoalRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Update the editable fields of a goal
+    Update {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Updated GoalRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Record progress with evidence
+    Progress {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// GoalProgress JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        progress: String,
+        /// Optional explicit status to save with this progress update
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Explicitly set a goal to active, off_pace, or achieved
+    Status {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// One of: active, off_pace, achieved
+        #[arg(long)]
+        status: String,
+        /// Why the status changed
+        #[arg(long)]
+        reason: String,
+    },
+    /// Archive a goal
+    Archive {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Optional reason for the archive
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Restore an archived goal to active
+    Restore {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+    },
+    /// Delete a goal when it has no non-deleted sub-goals
+    Delete {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Optional reason for the deletion
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// List current company goal heads
+    List {
+        /// Maximum current goal heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current goal head
+    Get {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
     },
 }
 
@@ -2212,6 +2358,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Dms(sub) => commands::dms::dispatch(sub, &client).await,
         Cmd::Users(sub) => commands::users::dispatch(sub, &client, &cli.format).await,
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
+        Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
+        Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
@@ -2376,6 +2524,7 @@ mod tests {
     fn command_inventory_is_stable() {
         let expected_groups: Vec<&str> = vec![
             "agents",
+            "asks",
             "canvas",
             "channels",
             "credits",
@@ -2383,6 +2532,7 @@ mod tests {
             "emoji",
             "feed",
             "gifs",
+            "goals",
             "issues",
             "media",
             "mem",
@@ -2451,6 +2601,10 @@ mod tests {
             ]
         );
         assert_eq!(
+            names(&cmd, "asks"),
+            vec!["cancel", "create", "list", "respond"]
+        );
+        assert_eq!(
             names(&cmd, "messages"),
             vec![
                 "delete",
@@ -2511,6 +2665,13 @@ mod tests {
         assert_eq!(
             names(&cmd, "workflows"),
             vec!["approve", "create", "delete", "get", "list", "runs", "trigger", "update"]
+        );
+        assert_eq!(
+            names(&cmd, "goals"),
+            vec![
+                "archive", "create", "delete", "get", "list", "progress", "restore", "status",
+                "update"
+            ]
         );
         assert_eq!(names(&cmd, "feed"), vec!["get"]);
         assert_eq!(
@@ -2592,11 +2753,13 @@ mod tests {
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
             ("agents", 5),
+            ("asks", 4),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),
             ("emoji", 5),
             ("feed", 1),
+            ("goals", 9),
             ("issues", 6),
             ("media", 1),
             ("messages", 8),

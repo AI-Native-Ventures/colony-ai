@@ -308,5 +308,7 @@ void exactMentionTests() {
       '@Scout hello',
     );
     expect(find.textContaining('is ambiguous'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 250));
   });
 }

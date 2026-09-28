@@ -29,6 +29,7 @@ class MobileRouteScope extends InheritedWidget {
     final registry = of(context).registry;
     return Navigator.of(context).push<TResult>(
       MaterialPageRoute<TResult>(
+        settings: RouteSettings(name: route.path),
         builder: (routeContext) => MobileRouteScope(
           registry: registry,
           child: registry.build(routeContext, route, arguments),

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
+import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const MOCK_PUBKEY = "deadbeef".repeat(8);
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
@@ -111,7 +112,7 @@ test.describe("channel muting", () => {
     );
   });
 
-  test("03 — muted channel with a top-level @mention is emphasized", async ({
+  test("03 - muted channel with a top-level @mention shows its unread count", async ({
     page,
   }) => {
     await seedMuteState(page, ENGINEERING_CHANNEL_ID);
@@ -151,7 +152,11 @@ test.describe("channel muting", () => {
 
     await expect(page.getByTestId("channel-engineering")).toHaveCSS(
       "font-weight",
-      "700",
+      "450",
+    );
+    await expectUnreadBadgeCount(
+      page.getByTestId("channel-unread-engineering"),
+      1,
     );
     await expect(
       page.getByTestId("channel-unread-dot-engineering"),

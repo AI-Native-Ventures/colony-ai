@@ -24,6 +24,10 @@ function seedSortState(page: Page, groups: Record<string, string>) {
 
 async function openApp(page: Page) {
   await page.goto("/");
+  const conversations = page.getByTestId("sidebar-nav-conversations");
+  await expect(conversations.getByTestId("stream-list")).toBeVisible();
+  await expect(conversations.getByTestId("forum-list")).toBeVisible();
+  await expect(conversations.getByTestId("dm-list")).toBeVisible();
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 }
@@ -98,7 +102,7 @@ function streamNames(page: Page) {
 }
 
 test.describe("per-group channel sort", () => {
-  test("01 — Channels group defaults to A–Z", async ({ page }) => {
+  test("01 - Channels group defaults to A–Z", async ({ page }) => {
     await installMockBridge(page);
     await openApp(page);
 
@@ -107,7 +111,7 @@ test.describe("per-group channel sort", () => {
     expect(names).toEqual(sorted);
   });
 
-  test("02 — sort trigger switches Channels to Recent and persists", async ({
+  test("02 - sort trigger switches Channels to Recent and persists", async ({
     page,
   }) => {
     await installMockBridge(page);
@@ -131,7 +135,7 @@ test.describe("per-group channel sort", () => {
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/01-channels-sort-ingress.png` });
     await trigger.click();
-    // Sort is now a submenu flyout — open it before the radio items render.
+    // Sort is now a submenu flyout - open it before the radio items render.
     await page.getByRole("menuitem", { name: "Sort" }).click();
     await expect(
       page.getByRole("menuitemradio", { name: "Recent" }),
@@ -188,7 +192,7 @@ test.describe("per-group channel sort", () => {
       .toEqual(["all-replies", "deep-history"]);
   });
 
-  test("03 — group preferences are independent (seeded Channels=recent leaves Forums A–Z)", async ({
+  test("03 - group preferences are independent (seeded Channels=recent leaves Forums A–Z)", async ({
     page,
   }) => {
     await seedSortState(page, { channels: "recent" });
@@ -208,7 +212,7 @@ test.describe("per-group channel sort", () => {
     await page.screenshot({ path: `${SHOTS}/04-independent-groups.png` });
   });
 
-  test("04 — Forum Recent survives authoritative reload", async ({ page }) => {
+  test("04 - Forum Recent survives authoritative reload", async ({ page }) => {
     await seedSortState(page, { forums: "recent" });
     await installMockBridge(page);
     await openApp(page);
@@ -224,7 +228,7 @@ test.describe("per-group channel sort", () => {
       .toEqual(["watercooler", "announcements"]);
   });
 
-  test("05 — DM group has its own sort trigger", async ({ page }) => {
+  test("05 - DM group has its own sort trigger", async ({ page }) => {
     await installMockBridge(page);
     await openApp(page);
 
@@ -234,7 +238,7 @@ test.describe("per-group channel sort", () => {
     const trigger = page.getByTestId("section-actions-dms");
     await expect(trigger).toBeVisible();
     await trigger.click();
-    // Sort is now a submenu flyout — open it before the radio items render.
+    // Sort is now a submenu flyout - open it before the radio items render.
     await page.getByRole("menuitem", { name: "Sort" }).click();
     await expect(
       page.getByRole("menuitemradio", { name: "A–Z" }),

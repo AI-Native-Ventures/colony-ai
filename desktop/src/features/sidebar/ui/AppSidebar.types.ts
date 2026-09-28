@@ -28,12 +28,13 @@ export type AppSidebarProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
   homeBadgeCount: number;
+  isSavedForLaterActive: boolean;
+  isPowerActive: boolean;
   isAddCommunityOpen?: boolean;
   isLoading: boolean;
   isCreatingChannel: boolean;
   isCreatingForum: boolean;
   profile?: Profile;
-  projectsOverviewActive: boolean;
   relayConnectionCard: ReturnType<typeof useSidebarRelayConnectionCard>;
   selfPresenceStatus: PresenceStatus;
   showSidebarCollapseButton: boolean;
@@ -47,8 +48,13 @@ export type AppSidebarProps = {
     | "messages"
     | "agents"
     | "workflows"
+    | "clients"
+    | "work"
     | "pulse"
     | "projects"
+    | "business"
+    | "factory"
+    | "goals"
     | "pins";
   unreadChannelCounts: ReadonlyMap<string, number>;
   unreadChannelIds: ReadonlySet<string>;
@@ -88,10 +94,14 @@ export type AppSidebarProps = {
   ) => void;
   onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onCreateAgent: () => void;
-  onSelectAgents: () => void;
   onSelectToday: () => void;
-  onSelectProjects: () => void;
+  onSelectSavedForLater: () => void;
+  onSelectFactory: () => void;
+  onSelectGoals: () => void;
+  onSelectPower: () => void;
   onSelectWorkflows: () => void;
+  onSelectClients?: () => void;
+  onSelectWork: () => void;
   onSelectHome: () => void;
   onSelectChannel: (channelId: string) => void;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;

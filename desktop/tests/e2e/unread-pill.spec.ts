@@ -218,12 +218,12 @@ test.describe("unread pill & divider", () => {
     await page.getByTestId("channel-random").click();
     await expect(page.getByTestId("chat-title")).toHaveText("random");
 
-    // Forced channel unread uses channel-name emphasis, not the thread dot.
+    // A manually unread row keeps regular text weight and shows its unread dot.
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "700",
+      "450",
     );
-    await expect(page.getByTestId("channel-unread-dot-general")).toHaveCount(0);
+    await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
 
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");

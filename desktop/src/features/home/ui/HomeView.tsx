@@ -75,6 +75,7 @@ import { Button } from "@/shared/ui/button";
 import { HomeMembersSidebarOverlay } from "./HomeMembersSidebarOverlay";
 
 const INBOX_SEARCH_KEYS = [
+  "filter",
   "item",
   "profile",
   "profileTab",
@@ -86,6 +87,7 @@ type HomeViewProps = {
   isLoading?: boolean;
   errorMessage?: string;
   currentPubkey?: string;
+  initialFilter?: InboxFilter;
   availableChannelIds: ReadonlySet<string>;
   onOpenContext: (
     channelId: string,
@@ -100,6 +102,7 @@ export function HomeView({
   isLoading = false,
   errorMessage,
   currentPubkey,
+  initialFilter,
   availableChannelIds,
   onOpenContext,
   onRefresh,
@@ -109,11 +112,16 @@ export function HomeView({
   const isNarrowHomeViewport =
     homeInboxWidthPx > 0 &&
     homeInboxWidthPx < INBOX_SINGLE_COLUMN_BREAKPOINT_PX;
-  const [filter, setFilter] = React.useState<InboxFilter>("all");
+  const [filter, setFilter] = React.useState<InboxFilter>(
+    initialFilter ?? "all",
+  );
+  React.useEffect(() => {
+    setFilter(initialFilter ?? "all");
+  }, [initialFilter]);
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   // Explicit selections are mirrored to the URL (`?item=`), so back/forward
   // restores the detail pane each history entry was showing and reloads
-  // restore it from the URL. Default/automatic selection stays local-only —
+  // restore it from the URL. Default/automatic selection stays local-only -
   // background data loads must never trigger navigations.
   const { applyPatch: applyInboxSearchPatch, values: inboxSearchValues } =
     useHistorySearchState(INBOX_SEARCH_KEYS);
@@ -409,7 +417,7 @@ export function HomeView({
   );
   // selectedConversationId: prefer the InboxItem-derived conversationId (stable
   // group key). Fall back to deriving it from the latched FeedItem when the
-  // anchored event is no longer present in any group's items — this keeps the
+  // anchored event is no longer present in any group's items - this keeps the
   // correct row selected (by conversationId) even after the anchor event has
   // been displaced from groupItems by a newer representative.
   const latchedConversationId = activeLatchedItem
@@ -551,6 +559,9 @@ export function HomeView({
       setSelectedDraftKey(null);
       setSelectedReminderId(null);
       setFilter(nextFilter);
+      applyInboxSearchPatch({
+        filter: nextFilter === "all" ? null : nextFilter,
+      });
 
       if (
         nextFilter === "reminders" ||

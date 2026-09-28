@@ -128,11 +128,14 @@ export const KIND_PAYMENT = 47027;
 export const KIND_MONEY_ADJUSTMENT = 47028;
 export const KIND_RECONCILIATION = 47029;
 export const KIND_MONEY_FOLLOW_UP = 47030;
+export const KIND_PROSPECT_ACTION = 47034;
+export const KIND_PROSPECT_HEAD = 30644;
 
 export const BUSINESS_RECORD_EVENT_KINDS = [
   KIND_PARTY_HEAD,
   KIND_CLIENT_HEAD,
   KIND_SERVICE_HEAD,
+  KIND_PROSPECT_HEAD,
   KIND_PROPOSAL_HEAD,
   KIND_WORK_ITEM_HEAD,
   KIND_KNOWLEDGE_DOCUMENT_HEAD,
@@ -145,6 +148,7 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
   KIND_PARTY_ACTION,
   KIND_CLIENT_ACTION,
   KIND_SERVICE_ACTION,
+  KIND_PROSPECT_ACTION,
   KIND_PROPOSAL_VERSION,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_CONVERSION_RECEIPT,
@@ -175,6 +179,23 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
   KIND_MONEY_FOLLOW_UP,
 ] as const;
 
+// Company records (docs/company-records.md). Goals are community-wide; asks
+// live in channel threads. Heads are relay-signed. Kind 47032 (ask create)
+// joins the thread timeline kinds together with its card renderer.
+export const KIND_GOAL_HEAD = 30642;
+export const KIND_ASK_HEAD = 30643;
+export const KIND_GOAL_ACTION = 47031;
+export const KIND_ASK_ACTION = 47032;
+export const KIND_ASK_RESPONSE = 47033;
+
+export const COMPANY_RECORD_EVENT_KINDS = [
+  KIND_GOAL_HEAD,
+  KIND_ASK_HEAD,
+  KIND_GOAL_ACTION,
+  KIND_ASK_ACTION,
+  KIND_ASK_RESPONSE,
+] as const;
+
 // Human-visible "new content" message kinds. Used as the unread trigger set
 // (sidebar badges, catch-up queries) and as the Home-feed mention query.
 // Reactions, edits, diffs, deletions, and system messages are deliberately
@@ -185,6 +206,7 @@ export const CHANNEL_MESSAGE_EVENT_KINDS = [
   KIND_STREAM_MESSAGE_V2,
   KIND_FORUM_POST,
   KIND_FORUM_COMMENT,
+  KIND_ASK_ACTION,
 ] as const;
 
 // Keep this in sync with the Home-feed mention query in buzz-db.
@@ -239,6 +261,7 @@ export const CHANNEL_TIMELINE_CONTENT_KINDS = [
   KIND_JOB_CANCEL, // 43005
   KIND_JOB_ERROR, // 43006
   KIND_HUDDLE_STARTED, // 48100 — huddle session card
+  KIND_ASK_ACTION, // 47032, ask create card in its thread
 ] as const;
 
 // Timeline kinds that are NOT conversational: relay-signed system rows

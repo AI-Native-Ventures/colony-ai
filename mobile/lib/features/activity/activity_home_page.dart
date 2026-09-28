@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/profile/user_cache_provider.dart';
-import '../../shared/profile/user_profile.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import 'activity_provider.dart';
@@ -19,25 +21,22 @@ typedef ActivityUpdatesPageBuilder =
 
 class ActivityHomePage extends HookConsumerWidget {
   const ActivityHomePage({
-    required this.communityName,
-    required this.currentUser,
     required this.onOpenItem,
+    this.onComposeUpdate,
     required this.updatesPageBuilder,
-    this.communityIconUrl,
     this.tabReselection,
     super.key,
   });
 
-  final String? communityName;
-  final UserProfile? currentUser;
-  final String? communityIconUrl;
   final ValueChanged<FeedItem> onOpenItem;
+  final ValueChanged<BuildContext>? onComposeUpdate;
   final ActivityUpdatesPageBuilder updatesPageBuilder;
   final ValueListenable<int>? tabReselection;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = useState(ActivityHomeSection.forYou);
+    final feed = ref.watch(activityProvider);
     final items = [...ref.watch(inboxItemsProvider)]
       ..sort((left, right) {
         final actionOrder = (right.isActionRequired ? 1 : 0).compareTo(
@@ -83,9 +82,8 @@ class ActivityHomePage extends HookConsumerWidget {
           SafeArea(
             bottom: false,
             child: _ActivityHeader(
-              communityName: communityName,
-              communityIconUrl: communityIconUrl,
-              currentUser: currentUser,
+              onBack: () => unawaited(Navigator.of(context).maybePop()),
+              onComposeUpdate: onComposeUpdate,
             ),
           ),
           _ActivityTabs(
@@ -97,8 +95,11 @@ class ActivityHomePage extends HookConsumerWidget {
                 ? updatesPageBuilder(context, false)
                 : _ActivityContent(
                     items: items,
+                    feed: feed,
                     scrollController: scrollController,
                     onOpenItem: onOpenItem,
+                    onRetry: () =>
+                        ref.read(activityProvider.notifier).refresh(),
                   ),
           ),
         ],
@@ -108,35 +109,52 @@ class ActivityHomePage extends HookConsumerWidget {
 }
 
 class _ActivityHeader extends StatelessWidget {
-  const _ActivityHeader({
-    this.communityName,
-    this.communityIconUrl,
-    this.currentUser,
-  });
+  const _ActivityHeader({required this.onBack, this.onComposeUpdate});
 
-  final String? communityName;
-  final String? communityIconUrl;
-  final UserProfile? currentUser;
+  final VoidCallback onBack;
+  final ValueChanged<BuildContext>? onComposeUpdate;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
-    final workspace = _initials(communityName);
     return Container(
       height: 66,
-      padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
+      padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
       decoration: BoxDecoration(
         color: tokens.paper,
         border: Border(bottom: BorderSide(color: tokens.line)),
       ),
       child: Row(
         children: [
-          _RoundedImageOrInitials(
-            imageUrl: communityIconUrl,
-            initials: workspace,
-            size: 34,
-            backgroundColor: const Color(0xffe4ede5),
-            foregroundColor: const Color(0xff63826c),
+          Semantics(
+            button: true,
+            label: 'Back to Today',
+            onTap: onBack,
+            child: ExcludeSemantics(
+              child: Material(
+                color: tokens.paper,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Radii.button),
+                  side: BorderSide(color: tokens.line),
+                ),
+                child: InkWell(
+                  key: const ValueKey('activity-back-to-today'),
+                  customBorder: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.button),
+                  ),
+                  onTap: onBack,
+                  child: SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: Icon(
+                      LucideIcons.chevronLeft,
+                      size: 20,
+                      color: tokens.ink,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: Grid.xxs),
           Expanded(
@@ -145,16 +163,13 @@ class _ActivityHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Activity',
-                  style: context.textTheme.titleMedium?.copyWith(
+                  'Updates',
+                  style: context.mobileTypography.companyHubTitle.copyWith(
                     color: tokens.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.35,
                   ),
                 ),
                 Text(
-                  'Mentions, replies and approvals',
+                  'The company, moving together',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.textTheme.bodySmall?.copyWith(
@@ -165,84 +180,26 @@ class _ActivityHeader extends StatelessWidget {
               ],
             ),
           ),
-          _RoundedImageOrInitials(
-            imageUrl: currentUser?.avatarUrl,
-            initials: currentUser?.initials ?? '?',
-            size: 34,
-            backgroundColor: const Color(0xffe8e2ec),
-            foregroundColor: const Color(0xff76657d),
+          IconButton(
+            key: const ValueKey('activity-new-team-update'),
+            tooltip: 'New team update',
+            onPressed: onComposeUpdate == null
+                ? null
+                : () => onComposeUpdate!(context),
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              side: BorderSide(color: tokens.line),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+              ),
+            ),
+            icon: const Icon(LucideIcons.plus),
           ),
         ],
       ),
     );
   }
-}
-
-class _RoundedImageOrInitials extends StatelessWidget {
-  const _RoundedImageOrInitials({
-    required this.imageUrl,
-    required this.initials,
-    required this.size,
-    required this.backgroundColor,
-    required this.foregroundColor,
-  });
-
-  final String? imageUrl;
-  final String initials;
-  final double size;
-  final Color backgroundColor;
-  final Color foregroundColor;
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(Radii.sm),
-    child: SizedBox(
-      width: size,
-      height: size,
-      child: imageUrl == null
-          ? _InitialsBox(
-              initials: initials,
-              backgroundColor: backgroundColor,
-              foregroundColor: foregroundColor,
-            )
-          : Image.network(
-              imageUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _InitialsBox(
-                initials: initials,
-                backgroundColor: backgroundColor,
-                foregroundColor: foregroundColor,
-              ),
-            ),
-    ),
-  );
-}
-
-class _InitialsBox extends StatelessWidget {
-  const _InitialsBox({
-    required this.initials,
-    required this.backgroundColor,
-    required this.foregroundColor,
-  });
-
-  final String initials;
-  final Color backgroundColor;
-  final Color foregroundColor;
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: backgroundColor,
-    child: Center(
-      child: Text(
-        initials,
-        style: context.textTheme.labelSmall?.copyWith(
-          color: foregroundColor,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ),
-  );
 }
 
 class _ActivityTabs extends StatelessWidget {
@@ -328,17 +285,54 @@ class _ActivityTab extends StatelessWidget {
 class _ActivityContent extends StatelessWidget {
   const _ActivityContent({
     required this.items,
+    required this.feed,
     required this.scrollController,
     required this.onOpenItem,
+    required this.onRetry,
   });
 
   final List<InboxItem> items;
+  final AsyncValue<HomeFeedResponse> feed;
   final ScrollController scrollController;
   final ValueChanged<FeedItem> onOpenItem;
+  final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) return const SizedBox.expand();
+    if (items.isEmpty) {
+      if (feed.isLoading) {
+        return const Center(child: CircularProgressIndicator.adaptive());
+      }
+      if (feed.hasError) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Failed to load activity',
+                style: context.textTheme.bodyMedium?.copyWith(
+                  color: context.mobileTokens.muted,
+                ),
+              ),
+              const SizedBox(height: Grid.xxs),
+              TextButton.icon(
+                onPressed: () => unawaited(onRetry()),
+                icon: const Icon(LucideIcons.refreshCcw, size: 16),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Text(
+          'No activity yet',
+          style: context.textTheme.bodyMedium?.copyWith(
+            color: context.mobileTokens.muted,
+          ),
+        ),
+      );
+    }
 
     return ListView.builder(
       controller: scrollController,
@@ -536,13 +530,4 @@ String? _firstName(String? name) {
   final normalized = name?.trim();
   if (normalized == null || normalized.isEmpty) return null;
   return normalized.split(RegExp(r'\s+')).first;
-}
-
-String _initials(String? name) {
-  final words = (name ?? '')
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((w) => w.isNotEmpty);
-  final result = words.take(2).map((word) => word[0]).join().toLowerCase();
-  return result.isEmpty ? '•' : result;
 }

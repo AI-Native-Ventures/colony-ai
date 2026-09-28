@@ -10,10 +10,19 @@
 pub(super) fn probe_fresh_script(
     bin: &std::path::Path,
 ) -> (Option<(u64, u64, u64)>, std::time::Duration) {
+    probe_until_version(|| super::super::probe_codex_acp_version(bin))
+}
+
+/// Runs `probe` up to three times while it reports `None`, for the same
+/// reasons as [`probe_fresh_script`]. Returns the last result and the elapsed
+/// time of the final attempt.
+pub(super) fn probe_until_version(
+    mut probe: impl FnMut() -> Option<(u64, u64, u64)>,
+) -> (Option<(u64, u64, u64)>, std::time::Duration) {
     let mut result = (None, std::time::Duration::ZERO);
     for _ in 0..3 {
         let start = std::time::Instant::now();
-        result = (super::super::probe_codex_acp_version(bin), start.elapsed());
+        result = (probe(), start.elapsed());
         if result.0.is_some() {
             break;
         }

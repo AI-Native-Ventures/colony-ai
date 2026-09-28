@@ -54,7 +54,7 @@ String resolveDmChannelDisplayLabel(Channel channel, {String? currentPubkey}) {
       : channel.name;
 }
 
-/// Avatar initial for the DM's visible counterpart.
+/// Avatar initials for the DM's visible counterpart.
 ///
 /// Mirrors [resolveDmChannelDisplayLabel]'s participant selection: the
 /// first participant that is not [currentPubkey], since member order does
@@ -64,7 +64,7 @@ String resolveDmChannelDisplayLabel(Channel channel, {String? currentPubkey}) {
 /// self-DM), the label names the current user too, so the avatar keys off
 /// that same first participant instead of its label's first character.
 ///
-/// A resolved display name keeps its name-derived initial. A label that
+/// A resolved display name keeps its name-derived initials. A label that
 /// fell back to the compact npub form of the participant's key is keyed to
 /// the hex public key instead — the npub form starts with `npub1`, so every
 /// unnamed participant would otherwise render `N`.
@@ -101,7 +101,12 @@ String dmAvatarInitial(Channel channel, {String? currentPubkey}) {
   if (pubkey.isNotEmpty && label == shortPubkey(pubkey)) {
     return pubkey[0].toUpperCase();
   }
-  return label.isNotEmpty ? label[0].toUpperCase() : '?';
+  final words = label
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty);
+  final initials = words.take(2).map((word) => word[0].toUpperCase()).join();
+  return initials.isNotEmpty ? initials : '?';
 }
 
 List<Channel> sortDmChannelsByDisplayLabel(

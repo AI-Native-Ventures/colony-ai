@@ -108,7 +108,10 @@ test.describe("list virtualization", () => {
       .getByTestId("sidebar-primary-menu")
       .getByRole("button", { name: "Today", exact: true })
       .click();
-    await page.getByRole("button", { name: "Team updates" }).click();
+    await expect(
+      page.getByRole("button", { name: "Team updates" }),
+    ).toHaveCount(0);
+    await page.goto("/#/today/updates");
 
     // The seeded feed overflows the viewport (30 notes), so the windowed list
     // renders a subset and the composer stays pinned. Wait for virtual rows.

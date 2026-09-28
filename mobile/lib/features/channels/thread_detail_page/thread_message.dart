@@ -6,6 +6,8 @@ class _ThreadMessage extends HookConsumerWidget {
   final String channelId;
   final String? currentPubkey;
   final bool showAuthor;
+  final bool followsDayDivider;
+  final double authorSpacing;
   final bool isHighlighted;
   final List<TimelineMessage>? allMessages;
   final bool isMember;
@@ -23,6 +25,8 @@ class _ThreadMessage extends HookConsumerWidget {
     required this.channelId,
     required this.currentPubkey,
     required this.showAuthor,
+    this.followsDayDivider = false,
+    this.authorSpacing = Grid.eighteen,
     this.isHighlighted = false,
     this.allMessages,
     this.isMember = false,
@@ -35,7 +39,18 @@ class _ThreadMessage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final presentation = ref.watch(
+      channelMessagePresentationProvider.select((items) => items[message.id]),
+    );
+    final workItemReference = workItemReferenceFromTags(
+      message.tags,
+      clientId: channelId,
+    );
     final pk = message.pubkey.toLowerCase();
+    ref.read(presenceCacheProvider.notifier).track([pk]);
+    final isOnline = ref.watch(
+      presenceCacheProvider.select((presence) => presence[pk] == 'online'),
+    );
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
@@ -121,7 +136,11 @@ class _ThreadMessage extends HookConsumerWidget {
           );
 
     return Padding(
-      padding: EdgeInsets.only(top: showAuthor ? Grid.xs : 0),
+      padding: conversationMessageVerticalPadding(
+        showAuthor: showAuthor,
+        followsDayDivider: followsDayDivider,
+        authorSpacing: authorSpacing,
+      ),
       child: DecoratedBox(
         key: ValueKey('thread-message-${message.id}'),
         decoration: BoxDecoration(
@@ -162,43 +181,49 @@ class _ThreadMessage extends HookConsumerWidget {
                               profile: profile,
                               pubkey: message.pubkey,
                               isAgent: isAgent,
+                              isOnline: isOnline,
                             ),
                           )
                         else
-                          const SizedBox(width: messageAvatarSize),
-                        const SizedBox(width: messageAvatarContentGap),
+                          const SizedBox(width: conversationAvatarSize),
+                        const SizedBox(width: conversationAvatarGap),
                         Expanded(
                           child: Padding(
-                            padding: EdgeInsets.only(
-                              top: showAuthor ? Grid.half : 0,
-                            ),
+                            padding: EdgeInsets.zero,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (showAuthor)
                                   Padding(
-                                    padding: const EdgeInsets.only(
-                                      bottom: Grid.quarter,
-                                    ),
+                                    padding: const EdgeInsets.only(bottom: 9),
                                     child: Row(
                                       children: [
                                         Expanded(
                                           child: MessageAuthorMeta(
                                             displayName: displayName,
-                                            username: messageUsernameLabel(
-                                              profile,
-                                            ),
+                                            username: isAgent
+                                                ? null
+                                                : messageUsernameLabel(profile),
                                             timestamp: formatMessageTime(
                                               message.createdAt,
                                             ),
-                                            nameColor: context.colors.onSurface,
+                                            nameColor: conversationInkColor(
+                                              context,
+                                            ),
                                             metadataColor:
-                                                context.colors.onSurfaceVariant,
+                                                conversationMutedColor(context),
                                             onAuthorTap: () =>
                                                 showUserProfileSheet(
                                                   context,
                                                   message.pubkey,
                                                 ),
+                                            badge: isAgent
+                                                ? const ConversationAgentBadge()
+                                                : null,
+                                            nameStyle:
+                                                conversationAuthorTextStyle,
+                                            timestampStyle:
+                                                conversationTimestampTextStyle,
                                             displayNameKey: ValueKey(
                                               'thread-message-author-${message.id}',
                                             ),
@@ -216,9 +241,9 @@ class _ThreadMessage extends HookConsumerWidget {
                                             '(edited)',
                                             style: context.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: context
-                                                      .colors
-                                                      .onSurfaceVariant,
+                                                  color: conversationMutedColor(
+                                                    context,
+                                                  ),
                                                   fontStyle: FontStyle.italic,
                                                 ),
                                           ),
@@ -232,8 +257,8 @@ class _ThreadMessage extends HookConsumerWidget {
                                   agentMentionPubkeys: agentMentionPubkeys,
                                   channelNames: channelNames,
                                   tags: message.tags,
-                                  baseStyle: messageBodyTextStyle.copyWith(
-                                    color: context.colors.onSurface,
+                                  baseStyle: conversationBodyTextStyle.copyWith(
+                                    color: conversationInkColor(context),
                                   ),
                                   scaleEmojiOnly: true,
                                   mediaCarouselTrailingOverflow: Grid.gutter,
@@ -281,6 +306,20 @@ class _ThreadMessage extends HookConsumerWidget {
                                   onMentionTap: (pubkey) =>
                                       showUserProfileSheet(context, pubkey),
                                 ),
+                                if (workItemReference != null)
+                                  DeliverableReferenceCard(
+                                    reference: workItemReference,
+                                    clientName:
+                                        channelNames[channelId] ?? channelId,
+                                  )
+                                else if (presentation?.deliverable
+                                    case final deliverable?)
+                                  DeliverablePreviewCard(data: deliverable),
+                                if (presentation?.quote case final quote?)
+                                  QuotedMessagePreview(
+                                    label: quote.label,
+                                    content: quote.content,
+                                  ),
                               ],
                             ),
                           ),
@@ -291,14 +330,15 @@ class _ThreadMessage extends HookConsumerWidget {
                   if (isThreadHead || message.reactions.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(
-                        left: messageAvatarSize + messageAvatarContentGap,
+                        left: conversationReplyIndent,
                       ),
                       child: ReactionRow(
                         messageId: message.id,
                         reactions: message.reactions,
                         onToggle: (emoji) =>
                             toggleReaction(ref, message, emoji),
-                        showAddButton: isMember && !isArchived,
+                        compact: true,
+                        showAddButton: !isThreadHead && isMember && !isArchived,
                         onAddReaction: () => showAddReactionPicker(
                           context: context,
                           ref: ref,

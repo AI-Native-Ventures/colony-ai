@@ -112,6 +112,7 @@ export function AppShell() {
   useTauriWindowDrag();
   useWebviewScrollBoundaryLock();
   const communitiesHook = useCommunities();
+  const location = useLocation();
   const {
     handleHuddleCompanionOpen,
     handleHuddleEnded,
@@ -128,6 +129,11 @@ export function AppShell() {
     showHuddleInMainApp,
     viewHuddleChannel,
   } = useHuddlePresentation();
+  const { selectedChannelId, selectedView } = React.useMemo(
+    () => deriveShellRoute(location.pathname),
+    [location.pathname],
+  );
+  const isFactoryRoute = selectedView === "factory";
   const hasCommunityRail = communitiesHook.communities.length > 1;
   const addCommunityDialog = useAddCommunityDialogState();
   const [isChannelManagementOpen, setIsChannelManagementOpen] =
@@ -141,15 +147,18 @@ export function AppShell() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = React.useState(false);
   const [isSendFeedbackOpen, setIsSendFeedbackOpen] = React.useState(false);
   const mainInsetRef = React.useRef<HTMLElement>(null);
-  const location = useLocation();
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
-    goAgents,
     goChannel,
     goHome,
+    goSavedForLater,
+    goPower,
     goNewMessage,
-    goProjects,
+    goFactory,
+    goGoals,
+    goClients,
+    goWork,
     goToday,
     goSettings,
     goWorkflows,
@@ -158,10 +167,6 @@ export function AppShell() {
   } = useAppNavigation();
   const { canGoBack, canGoForward, goBack, goForward } =
     useBackForwardControls();
-  const { selectedChannelId, selectedView } = React.useMemo(
-    () => deriveShellRoute(location.pathname),
-    [location.pathname],
-  );
   const {
     removeCommunity: handleRemoveCommunity,
     switchCommunity: handleSwitchCommunity,
@@ -174,11 +179,13 @@ export function AppShell() {
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
   const showAppTopChrome =
+    !isFactoryRoute &&
     !settingsOpen &&
     !isHuddleRoom &&
     selectedView !== "pins" &&
     location.pathname !== "/today" &&
     !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/asks/") &&
     !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
@@ -784,9 +791,12 @@ export function AppShell() {
                 !isHuddleRoom &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
+                  location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
-                  selectedView === "pins")
+                  selectedView === "pins" ||
+                  selectedView === "clients" ||
+                  selectedView === "work")
                   ? "true"
                   : undefined
               }
@@ -856,6 +866,12 @@ export function AppShell() {
                           errorMessage={channelsErrorMessage}
                           fallbackDisplayName={identityQuery.data?.displayName}
                           homeBadgeCount={homeBadgeCount + dueReminderBadge}
+                          isPowerActive={location.pathname === "/power"}
+                          isSavedForLaterActive={
+                            location.pathname === "/" &&
+                            (location.search as { filter?: unknown }).filter ===
+                              "reminders"
+                          }
                           addCommunityPrefill={addCommunityDialog.prefill}
                           isAddCommunityOpen={addCommunityDialog.open}
                           relayConnectionCard={relayConnectionCard}
@@ -902,8 +918,9 @@ export function AppShell() {
                               });
                             await goChannel(directMessage.id);
                           }}
-                          onSelectAgents={() => void goAgents()}
                           onSelectToday={() => void goToday()}
+                          onSelectSavedForLater={() => void goSavedForLater()}
+                          onSelectPower={() => void goPower()}
                           onSelectChannel={handleSidebarChannelSelect}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}
@@ -912,7 +929,10 @@ export function AppShell() {
                             scopeSearchFocusRequest,
                           ]}
                           onSelectHome={() => void goHome()}
-                          onSelectProjects={() => void goProjects()}
+                          onSelectFactory={() => void goFactory()}
+                          onSelectGoals={() => void goGoals()}
+                          onSelectClients={() => void goClients()}
+                          onSelectWork={() => void goWork()}
                           onSelectSettings={handleOpenSettings}
                           onSelectWorkflows={() => void goWorkflows()}
                           onSetPresenceStatus={(status) =>
@@ -926,13 +946,10 @@ export function AppShell() {
                             })
                           }
                           profile={profileQuery.data}
-                          showSidebarCollapseButton={!showAppTopChrome}
+                          showSidebarCollapseButton
                           suppressTodaySelection={location.pathname.startsWith(
                             "/navigation/",
                           )}
-                          projectsOverviewActive={
-                            location.pathname === "/projects"
-                          }
                           selfUserStatus={
                             deferredPubkey
                               ? (visibleUserStatus(

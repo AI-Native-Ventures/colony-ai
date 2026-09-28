@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../shared/relay/relay.dart';
@@ -26,7 +28,7 @@ class ForumPost {
   });
 
   factory ForumPost.fromJson(Map<String, dynamic> json) {
-    final rawSummary = json['thread_summary'] as Map<String, dynamic>?;
+    final threadSummary = _decodeThreadSummary(json['thread_summary']);
     return ForumPost(
       eventId: json['event_id'] as String,
       pubkey: json['pubkey'] as String,
@@ -37,9 +39,7 @@ class ForumPost {
       tags: (json['tags'] as List<dynamic>)
           .map((t) => (t as List<dynamic>).map((e) => e as String).toList())
           .toList(),
-      threadSummary: rawSummary != null
-          ? ForumThreadSummary.fromJson(rawSummary)
-          : null,
+      threadSummary: threadSummary,
     );
   }
 
@@ -61,6 +61,30 @@ class ForumPost {
     for (final tag in tags)
       if (tag.length >= 2 && tag[0] == 'p') tag[1],
   ];
+}
+
+ForumThreadSummary? _decodeThreadSummary(Object? rawSummary) {
+  if (rawSummary is! Map<String, dynamic>) return null;
+  final replyCount = rawSummary['reply_count'];
+  final descendantCount = rawSummary['descendant_count'];
+  final lastReplyAt = rawSummary['last_reply_at'];
+  final participants = rawSummary['participants'];
+  if ((replyCount != null && replyCount is! int) ||
+      (descendantCount != null && descendantCount is! int) ||
+      (lastReplyAt != null && lastReplyAt is! int) ||
+      (participants != null &&
+          (participants is! List ||
+              participants.any((value) => value is! String)))) {
+    return null;
+  }
+  return ForumThreadSummary(
+    replyCount: replyCount as int? ?? 0,
+    descendantCount: descendantCount as int? ?? 0,
+    lastReplyAt: lastReplyAt as int?,
+    participants: participants == null
+        ? const []
+        : List<String>.unmodifiable((participants as List).cast<String>()),
+  );
 }
 
 /// Summary of replies on a forum post.
@@ -180,9 +204,55 @@ class ForumPostsResponse {
   }
 
   /// Build from a list of kind:45001 events. Posts are sorted newest-first.
-  factory ForumPostsResponse.fromEvents(List<NostrEvent> events) {
-    final posts = events.map(ForumPost.fromEvent).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  factory ForumPostsResponse.fromEvents(
+    List<NostrEvent> events, {
+    List<NostrEvent> summaryEvents = const [],
+  }) {
+    final newestSummaryByRoot = <String, NostrEvent>{};
+    for (final event in summaryEvents) {
+      final rootId = event.getTagValue('e');
+      if (rootId == null) continue;
+      final previous = newestSummaryByRoot[rootId];
+      if (previous == null || event.createdAt >= previous.createdAt) {
+        newestSummaryByRoot[rootId] = event;
+      }
+    }
+    final summariesByRoot = <String, ForumThreadSummary>{};
+    for (final event in newestSummaryByRoot.values) {
+      final rootId = event.getTagValue('e');
+      if (rootId == null) continue;
+      final decoded = jsonDecode(event.content);
+      if (decoded is! Map<String, dynamic>) {
+        throw FormatException('Invalid thread summary for $rootId');
+      }
+      final descendants = (decoded['descendant_count'] as num?)?.toInt() ?? 0;
+      final participants = decoded['participants'];
+      summariesByRoot[rootId] = ForumThreadSummary(
+        replyCount: (decoded['reply_count'] as num?)?.toInt() ?? descendants,
+        descendantCount: descendants,
+        lastReplyAt: (decoded['last_reply_at'] as num?)?.toInt(),
+        participants: participants is List
+            ? participants.whereType<String>().toList()
+            : const [],
+      );
+    }
+    final posts =
+        events
+            .map(ForumPost.fromEvent)
+            .map(
+              (post) => ForumPost(
+                eventId: post.eventId,
+                pubkey: post.pubkey,
+                content: post.content,
+                kind: post.kind,
+                createdAt: post.createdAt,
+                channelId: post.channelId,
+                tags: post.tags,
+                threadSummary: summariesByRoot[post.eventId],
+              ),
+            )
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return ForumPostsResponse(posts: posts, nextCursor: null);
   }
 }

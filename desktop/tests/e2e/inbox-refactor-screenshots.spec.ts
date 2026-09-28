@@ -21,7 +21,7 @@ const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
 const DM_CHANNEL_ID = "f48efb06-0c93-5025-aac9-2e646bb6bfa8";
 
-// Mock bridge default pubkey — must match DEFAULT_MOCK_PUBKEY in bridge.ts.
+// Mock bridge default pubkey - must match DEFAULT_MOCK_PUBKEY in bridge.ts.
 const MOCK_PUBKEY = "deadbeef".repeat(8);
 const DRAFT_STORE_KEY = `buzz-drafts.v1:${MOCK_PUBKEY}`;
 const FONT_SIZE_STORAGE_KEY = "buzz.appearance.fontSize";
@@ -158,7 +158,7 @@ async function seedTwoDrafts(page: import("@playwright/test").Page) {
         storeKey,
         JSON.stringify({
           [`channel:${channelId}`]: draft(
-            "Drafting the release notes — will post once the checklist is signed off.",
+            "Drafting the release notes - will post once the checklist is signed off.",
             channelId,
             createdAt1,
           ),
@@ -206,7 +206,7 @@ test.describe("inbox refactor screenshots", () => {
     });
   });
 
-  test("01 — filter menu with Reminders/Drafts divider and counts", async ({
+  test("01 - filter menu with Reminders/Drafts divider and counts", async ({
     page,
   }) => {
     await patchCommunityPubkey(page);
@@ -229,9 +229,7 @@ test.describe("inbox refactor screenshots", () => {
     await page.screenshot({ path: `${SHOTS}/01-current-filters.png` });
   });
 
-  test("02 — Inbox label, inbox icon, and overflow controls", async ({
-    page,
-  }) => {
+  test("02 - Activity label, icon, and overflow controls", async ({ page }) => {
     await installMockBridge(page, { mode: "mock" });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -239,14 +237,14 @@ test.describe("inbox refactor screenshots", () => {
       timeout: 10_000,
     });
 
-    // The sidebar must be in frame — the label is the point of this shot.
-    const inboxButton = page
-      .getByTestId("sidebar-primary-menu")
-      .getByRole("button", { name: "Inbox", exact: true });
-    await expect(inboxButton).toBeVisible();
-    // Inbox is a destination, not a notification tray, so it carries the inbox
-    // glyph rather than a bell. Asserted because nothing else pins the icon.
-    await expect(inboxButton.locator("svg.lucide-inbox")).toHaveCount(1);
+    // The sidebar must be in frame - the label is the point of this shot.
+    const activityButton = page.getByTestId("sidebar-activity-button");
+    await expect(activityButton).toBeVisible();
+    // Activity is a destination with its check-list icon, not a notification
+    // tray. Asserted because nothing else pins the icon.
+    await expect(
+      activityButton.locator("svg.lucide-clipboard-check"),
+    ).toHaveCount(1);
 
     await page.getByTestId("inbox-options-trigger").click();
     await expect(page.getByText("Show unread only")).toBeVisible();
@@ -256,7 +254,7 @@ test.describe("inbox refactor screenshots", () => {
     await page.screenshot({ path: `${SHOTS}/02-current-controls.png` });
   });
 
-  test("03 — consecutive DMs group into one conversation row", async ({
+  test("03 - consecutive DMs group into one conversation row", async ({
     page,
   }) => {
     await installMockBridge(page, { mode: "mock" });
@@ -327,7 +325,7 @@ test.describe("inbox refactor screenshots", () => {
     await page.screenshot({ path: `${SHOTS}/03-grouped-dms.png` });
   });
 
-  test("04 — thread opens at the oldest unread reply", async ({ page }) => {
+  test("04 - thread opens at the oldest unread reply", async ({ page }) => {
     await seedConversationPreferences(page, "default", "comfortable");
     await installMockBridge(page, { mode: "mock" });
 
@@ -358,7 +356,7 @@ test.describe("inbox refactor screenshots", () => {
         });
 
         [
-          "Started on the changelog — first pass is up.",
+          "Started on the changelog - first pass is up.",
           "Verified the signed build on macOS.",
           "One open question on the version suffix.",
         ].forEach((content, index) => {
@@ -409,7 +407,7 @@ test.describe("inbox refactor screenshots", () => {
     );
     await expect(detail.getByTestId("message-unread-divider")).toBeVisible();
     await expect(page.getByTestId("home-inbox-selected-message")).toContainText(
-      "Started on the changelog — first pass is up.",
+      "Started on the changelog - first pass is up.",
     );
 
     const selectedMessage = page.getByTestId("home-inbox-selected-message");

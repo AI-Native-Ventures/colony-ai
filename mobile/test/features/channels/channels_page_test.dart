@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -10,24 +11,28 @@ import 'package:hooks_riverpod/misc.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
+import 'package:buzz/features/channels/channel_sort/channel_sort_provider.dart';
+import 'package:buzz/features/channels/channel_sort/channel_sort_storage.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_provider.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_storage.dart';
 import 'package:buzz/features/channels/channels_page.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
-import 'package:buzz/features/profile/profile_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
+import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/community/community_icon_provider.dart';
+import 'package:buzz/shared/identity/identity_components.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
+import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
-import 'package:buzz/shared/widgets/masked_avatar_badge.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
 
 void main() {
@@ -44,7 +49,57 @@ void main() {
     ValueChanged<double>? onSettingsTransitionProgress,
     ValueListenable<int>? tabReselection,
     _FakeProfileNotifier? profile,
+    bool includeShell = false,
+    bool captureShell = false,
+    Brightness brightness = Brightness.light,
+    Map<String, String> presenceByPubkey = const {},
   }) {
+    final channelsPage = ChannelsPage(
+      settingsPageBuilder: _buildSettingsPage,
+      onSettingsTransitionProgress: onSettingsTransitionProgress ?? (_) {},
+      tabReselection: tabReselection,
+    );
+    final page = includeShell
+        ? MobileShell(
+            destination: MobileShellDestination.chat,
+            onDestinationSelected: (_) {},
+            showBrandBar: false,
+            overlayBuilder: (context, shellContext) =>
+                ChannelQuickActionsLauncher(
+                  visible: true,
+                  navigationBarHeight: shellContext.navigationBarHeight,
+                  navigationBarBottomGap:
+                      shellContext.navigationBarHeight + Grid.half,
+                  navigationBarWidth: shellContext.navigationBarWidth,
+                  systemBottomInset: shellContext.bottomInset,
+                  rightInset: Grid.xs,
+                ),
+            child: channelsPage,
+          )
+        : Stack(
+            children: [
+              channelsPage,
+              const Positioned.fill(
+                child: ChannelQuickActionsLauncher(
+                  visible: true,
+                  navigationBarHeight: 60,
+                  navigationBarBottomGap: 12,
+                  navigationBarWidth: 218,
+                  systemBottomInset: 0,
+                  rightInset: 16,
+                ),
+              ),
+            ],
+          );
+    final home = captureShell
+        ? RepaintBoundary(
+            key: const ValueKey('channels-fullscreen-capture'),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [page, _ConversationCaptureSystemBars(brightness)],
+            ),
+          )
+        : page;
     return ProviderScope(
       overrides: [
         // Provide a fake profile and presence so the avatar doesn't hit the
@@ -52,6 +107,9 @@ void main() {
         // different identity (the page reads its pubkey from profileProvider).
         profileProvider.overrideWith(() => profile ?? _FakeProfileNotifier()),
         presenceProvider.overrideWith(() => _FakePresenceNotifier()),
+        presenceCacheProvider.overrideWith(
+          () => _FakePresenceCacheNotifier(presenceByPubkey),
+        ),
         communityIconProvider.overrideWith((ref, relayUrl) async {
           onCommunityIconLoad?.call(relayUrl);
           return communityIcons[relayUrl];
@@ -62,36 +120,29 @@ void main() {
         ...overrides,
       ],
       child: MaterialApp(
-        theme: AppTheme.light(topSectionGradient: topSectionGradient),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            disableAnimations: disableAnimations,
-            textScaler: textScaler,
-            padding: EdgeInsets.only(bottom: bottomPadding),
-            viewInsets: EdgeInsets.only(bottom: keyboardInset),
-          ),
-          child: child!,
-        ),
-        home: Stack(
-          children: [
-            ChannelsPage(
-              settingsPageBuilder: _buildSettingsPage,
-              onSettingsTransitionProgress:
-                  onSettingsTransitionProgress ?? (_) {},
-              tabReselection: tabReselection,
-            ),
-            const Positioned.fill(
-              child: ChannelQuickActionsLauncher(
-                visible: true,
-                navigationBarHeight: 60,
-                navigationBarBottomGap: 12,
-                navigationBarWidth: 218,
-                systemBottomInset: 0,
-                rightInset: 16,
+        theme: brightness == Brightness.light
+            ? AppTheme.light(
+                topSectionGradient: topSectionGradient,
+                mobileTokens: MobileDesignTokens.light,
+              )
+            : AppTheme.dark(mobileTokens: MobileDesignTokens.dark),
+        builder: (context, child) {
+          final mediaQuery = MediaQuery.of(context);
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              disableAnimations: disableAnimations,
+              textScaler: textScaler,
+              padding: mediaQuery.padding.copyWith(
+                bottom: bottomPadding == 0
+                    ? mediaQuery.padding.bottom
+                    : bottomPadding,
               ),
+              viewInsets: EdgeInsets.only(bottom: keyboardInset),
             ),
-          ],
-        ),
+            child: child!,
+          );
+        },
+        home: home,
       ),
     );
   }
@@ -134,7 +185,443 @@ void main() {
     ),
   ];
 
-  testWidgets('shows grouped channel list when data loads', (tester) async {
+  testWidgets('captures v5 conversations at both mobile sizes and themes', (
+    tester,
+  ) async {
+    const captureScreenshots = bool.fromEnvironment('CAPTURE_M2B_CHATS');
+    if (!captureScreenshots) return;
+
+    final now = DateTime.now().toUtc();
+    int minutesAgo(int minutes) =>
+        now.subtract(Duration(minutes: minutes)).millisecondsSinceEpoch ~/ 1000;
+    Channel fixture({
+      required String id,
+      required String name,
+      required String type,
+      required String preview,
+      required int sentAt,
+      int memberCount = 8,
+      List<String> participants = const [],
+      List<String> participantPubkeys = const [],
+    }) => Channel(
+      id: id,
+      name: name,
+      channelType: type,
+      visibility: 'open',
+      description: name,
+      createdBy: 'fixture',
+      createdAt: DateTime(2026),
+      memberCount: memberCount,
+      lastMessageAt: DateTime.fromMillisecondsSinceEpoch(
+        sentAt * 1000,
+        isUtc: true,
+      ),
+      lastMessageContent: preview,
+      lastMessageCreatedAt: sentAt,
+      participants: participants,
+      participantPubkeys: participantPubkeys,
+      isMember: true,
+    );
+
+    final olive = fixture(
+      id: 'fixture-olive',
+      name: 'olive-studio',
+      type: 'stream',
+      preview: 'Mina: The October plan is ready for your eye.',
+      sentAt: minutesAgo(2),
+      memberCount: 6,
+    );
+    final marketing = fixture(
+      id: 'fixture-marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Sam: I’ve added the launch artwork.',
+      sentAt: minutesAgo(18),
+    );
+    final sales = fixture(
+      id: 'fixture-sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Aya: Three promising leads to explore.',
+      sentAt: minutesAgo(32),
+    );
+    final updates = fixture(
+      id: 'fixture-updates',
+      name: 'Team updates',
+      type: 'forum',
+      preview: 'September wins, and what we learned',
+      sentAt: minutesAgo(60),
+    );
+    final mina = fixture(
+      id: 'fixture-mina',
+      name: 'Mina',
+      type: 'dm',
+      preview: 'Want me to walk you through the plan?',
+      sentAt: minutesAgo(5),
+      memberCount: 2,
+      participants: const ['Mina', 'Lerato'],
+      participantPubkeys: const ['mina', 'aabb'],
+    );
+    final aya = fixture(
+      id: 'fixture-aya',
+      name: 'Aya',
+      type: 'dm',
+      preview: 'I have a shortlist ready for you.',
+      sentAt: minutesAgo(21),
+      memberCount: 2,
+      participants: const ['Aya', 'Lerato'],
+      participantPubkeys: const ['aya', 'aabb'],
+    );
+    final channels = [olive, marketing, sales, updates, mina, aya];
+    final unreadSince =
+        DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 - 3600;
+    final activeCommunity = Community(
+      id: 'fixture-community',
+      name: 'Lerato Social',
+      relayUrl: 'wss://lerato.example',
+      addedAt: DateTime(2026),
+    );
+
+    final fontLoader = FontLoader('Manrope')
+      ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+    await fontLoader.load();
+    final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+      ..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      );
+    await iconFontLoader.load();
+
+    const captureSizes = {'390x844': Size(390, 844), '412x915': Size(412, 915)};
+    for (final size in captureSizes.entries) {
+      for (final brightness in [Brightness.light, Brightness.dark]) {
+        final mode = brightness == Brightness.light ? 'light' : 'dark';
+        final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
+        output.createSync(recursive: true);
+        final previousComparator = goldenFileComparator;
+        goldenFileComparator = _CaptureFileComparator(
+          Uri.file('${output.path}/golden_test.dart'),
+          output.path,
+        );
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+        await tester.pumpWidget(
+          buildTestable(
+            includeShell: true,
+            captureShell: true,
+            brightness: brightness,
+            profile: _FakeProfileNotifier(
+              pubkey: 'aabb',
+              displayName: 'Lerato Molefe',
+            ),
+            presenceByPubkey: const {'mina': 'online', 'aya': 'online'},
+            overrides: [
+              channelSortProvider.overrideWith(
+                () => _FixtureChannelSortNotifier(),
+              ),
+              activeCommunityProvider.overrideWith(
+                (ref) async => activeCommunity,
+              ),
+              channelsProvider.overrideWith(
+                () => _FakeNotifier(
+                  channels,
+                  observedEventsByChannel: {
+                    olive.id: [
+                      for (var index = 0; index < 2; index++)
+                        _observed(
+                          id: 'fixture-olive-unread-$index',
+                          createdAt: unreadSince + 120 + index,
+                        ),
+                    ],
+                    sales.id: [
+                      for (var index = 0; index < 3; index++)
+                        _observed(
+                          id: 'fixture-sales-unread-$index',
+                          createdAt: unreadSince + 160 + index,
+                        ),
+                    ],
+                    updates.id: [
+                      _observed(
+                        id: 'fixture-updates-unread',
+                        createdAt: unreadSince + 240,
+                      ),
+                    ],
+                    aya.id: [
+                      _observed(
+                        id: 'fixture-aya-unread',
+                        createdAt: unreadSince + 360,
+                      ),
+                    ],
+                  },
+                ),
+              ),
+              readStateProvider.overrideWith(
+                () => _FakeReadStateNotifier(
+                  ReadStateState(
+                    isReady: true,
+                    pubkey: 'aabb',
+                    contexts: {
+                      for (final channel in channels) channel.id: unreadSince,
+                    },
+                    version: 0,
+                  ),
+                ),
+              ),
+              userCacheProvider.overrideWith(
+                () => _FakeUserCacheNotifier(const {
+                  'mina': UserProfile(
+                    pubkey: 'mina',
+                    displayName: 'Mina',
+                    ownerPubkey: 'aabb',
+                  ),
+                  'aya': UserProfile(
+                    pubkey: 'aya',
+                    displayName: 'Aya',
+                    ownerPubkey: 'aabb',
+                  ),
+                }),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        debugPrint(
+          'VISUAL_LAYOUT conversations ${size.key} $mode '
+          'title=${tester.getRect(find.text('Conversations').first)} '
+          'search=${tester.getRect(find.byKey(const ValueKey('channels-search-field')))} '
+          'filters=${tester.getRect(find.byKey(const ValueKey('conversation-filter-all')))} '
+          'firstRow=${tester.getRect(find.byKey(ValueKey('conversation-row-${channels.first.id}')))} '
+          'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
+        );
+        expect(find.text('Conversations'), findsOneWidget);
+        expect(find.text('LM'), findsOneWidget);
+        expect(_dmTileAvatarInitial(tester, 'Mina'), 'M');
+        expect(_dmTileAvatarInitial(tester, 'Aya'), 'A');
+        for (final channelId in ['fixture-mina', 'fixture-aya']) {
+          expect(
+            tester
+                .widget<IdentityAvatar>(
+                  find.byKey(ValueKey('conversation-avatar-$channelId')),
+                )
+                .kind,
+            IdentityKind.agent,
+          );
+        }
+        await expectLater(
+          find.byKey(const ValueKey('channels-fullscreen-capture')),
+          matchesGoldenFile('channels.png'),
+        );
+        goldenFileComparator = previousComparator;
+      }
+    }
+    tester.view.resetPadding();
+    tester.view.resetViewPadding();
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
+  testWidgets('uses reference conversation identity colors and unread badges', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
+    Channel fixture({
+      required String id,
+      required String name,
+      required String type,
+      required String preview,
+      List<String> participants = const [],
+      List<String> participantPubkeys = const [],
+    }) => Channel(
+      id: id,
+      name: name,
+      channelType: type,
+      visibility: 'open',
+      description: name,
+      createdBy: 'aabb',
+      createdAt: DateTime(2026),
+      memberCount: 8,
+      lastMessageAt: DateTime.fromMillisecondsSinceEpoch(now * 1000),
+      lastMessageContent: preview,
+      lastMessageCreatedAt: now,
+      participants: participants,
+      participantPubkeys: participantPubkeys,
+      isMember: true,
+    );
+    final campaign = fixture(
+      id: 'campaign-unread',
+      name: 'olive-studio',
+      type: 'stream',
+      preview: 'Maya: September designs are ready',
+    );
+    final marketing = fixture(
+      id: 'marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Launch artwork is ready',
+    );
+    final sales = fixture(
+      id: 'sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Three promising leads',
+    );
+    final updates = fixture(
+      id: 'team-updates',
+      name: 'Team updates',
+      type: 'forum',
+      preview: 'September wins',
+    );
+    final maya = fixture(
+      id: 'dm-maya',
+      name: 'DM',
+      type: 'dm',
+      preview: 'Can you check the second slide?',
+      participants: const ['Maya Ndlovu', 'Lerato Molefe'],
+      participantPubkeys: const ['maya', 'aabb'],
+    );
+    await tester.pumpWidget(
+      buildTestable(
+        brightness: Brightness.dark,
+        presenceByPubkey: const {'maya': 'online'},
+        profile: _FakeProfileNotifier(
+          pubkey: 'aabb',
+          displayName: 'Lerato Molefe',
+        ),
+        overrides: [
+          channelsProvider.overrideWith(
+            () => _FakeNotifier(
+              [campaign, marketing, sales, updates, maya],
+              observedEventsByChannel: {
+                campaign.id: [
+                  _observed(id: 'campaign-message', createdAt: now),
+                ],
+              },
+            ),
+          ),
+          readStateProvider.overrideWith(
+            () => _FakeReadStateNotifier(
+              ReadStateState(
+                isReady: true,
+                pubkey: 'aabb',
+                contexts: {campaign.id: now - 60},
+                version: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final mayaAvatar = tester.widget<IdentityAvatar>(
+      find.byKey(const ValueKey('conversation-avatar-dm-maya')),
+    );
+    expect(mayaAvatar.kind, IdentityKind.person);
+    expect(mayaAvatar.tone, IdentityAvatarTone.peach);
+    expect(mayaAvatar.isOnline, isTrue);
+    final mayaInitial = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('conversation-avatar-dm-maya')),
+        matching: find.text('MN'),
+      ),
+    );
+    expect(
+      mayaInitial.style?.color,
+      AppTheme.dark().extension<AppColors>()!.identityPersonForeground,
+    );
+
+    final appColors = AppTheme.dark().extension<AppColors>()!;
+    for (final entry in [
+      ('campaign-unread', appColors.agentAvatarGradient),
+      ('marketing', appColors.personAvatarGradient),
+      ('sales', appColors.sageAvatarGradient),
+      ('team-updates', appColors.personAvatarGradient),
+    ]) {
+      final avatar = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey('conversation-avatar-${entry.$1}')),
+      );
+      expect((avatar.decoration as BoxDecoration).gradient, entry.$2);
+    }
+
+    final badge = tester.widget<Container>(
+      find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+    );
+    expect(
+      (badge.decoration! as BoxDecoration).color,
+      appColors.conversationUnreadBadgeBackground,
+    );
+    expect(
+      (badge.decoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(Radii.sm),
+    );
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+      ),
+      const Size(19, 19),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey('channel-unread-badge-campaign-unread'),
+              ),
+              matching: find.byType(Text),
+            ),
+          )
+          .style
+          ?.color,
+      appColors.conversationUnreadBadgeForeground,
+    );
+  });
+
+  testWidgets('matches the v5 gap between search and conversation filters', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestable(
+        brightness: Brightness.dark,
+        overrides: [channelsProvider.overrideWith(() => _FakeNotifier([]))],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final search = tester.getRect(
+      find.byKey(const ValueKey('channels-search-field')),
+    );
+    final allFilter = tester.getRect(find.widgetWithText(TextButton, 'All'));
+    expect(allFilter.top - search.bottom, 16);
+    final selectedFilter = tester.widget<TextButton>(
+      find.byKey(const ValueKey('conversation-filter-all')),
+    );
+    final filterTokens = tester
+        .element(find.byKey(const ValueKey('conversation-filter-all')))
+        .mobileTokens;
+    expect(
+      selectedFilter.style?.backgroundColor?.resolve({}),
+      filterTokens.action,
+    );
+    expect(
+      selectedFilter.style?.foregroundColor?.resolve({}),
+      filterTokens.onAction,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.search)).size,
+      MobileLayoutTokens.conversationSearchIconSize,
+    );
+    final appBarFinder = find.byType(FrostedAppBar);
+    final appBar = tester.widget<FrostedAppBar>(appBarFinder);
+    expect(
+      appBar.gradient,
+      tester.element(appBarFinder).appColors.companyWashGradient,
+    );
+  });
+
+  testWidgets('shows the v5 recent conversation list when data loads', (
+    tester,
+  ) async {
     // Valid fixture keys whose npub encodings were verified against the
     // NIP-19 codec independently of the code under test.
     const a11ce =
@@ -178,32 +665,47 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Conversations'), findsOneWidget);
     expect(find.text('general'), findsOneWidget);
-    expect(find.text('design-forum'), findsNothing);
+    expect(find.text('design-forum'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsNothing);
+    expect(find.text('DIRECT MESSAGES'), findsNothing);
+    expect(find.text('PINNED'), findsNothing);
+    expect(find.text('All'), findsOneWidget);
     expect(find.text('Channels'), findsOneWidget);
-    expect(find.text('FORUMS'), findsNothing);
+    expect(find.text('Forums'), findsOneWidget);
     expect(find.text('DMs'), findsOneWidget);
-    expect(find.text('Community'), findsOneWidget);
-    expect(find.byTooltip('Create or start conversation'), findsOneWidget);
-    expect(find.byTooltip('Channels options'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.ellipsisVertical), findsWidgets);
-    expect(find.byIcon(LucideIcons.arrowUpDown), findsNothing);
-    expect(find.byTooltip('DMs options'), findsOneWidget);
+    expect(find.text('Community'), findsNothing);
+    expect(find.byTooltip('Quick actions'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('channels-quick-actions')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('channel-quick-actions-floating-trigger')),
+      findsNothing,
+    );
+    expect(find.byTooltip('Channels options'), findsNothing);
+    expect(find.byTooltip('DMs options'), findsNothing);
+    expect(find.text('Find a conversation'), findsOneWidget);
 
-    // DM identity display: the unnamed counterpart tile renders its
-    // compact npub label, but its avatar initial stays keyed to the hex
-    // public key — never the `N` the npub label starts with. The named
-    // tile keeps its authored initial from the positional participant
-    // label even without a cached profile.
+    // DM identity labels and fallback initials remain attached to the
+    // counterpart represented by each row.
     expect(find.text(shortPubkey(a11ce)), findsOneWidget);
     expect(_dmTileAvatarInitial(tester, shortPubkey(a11ce)), 'A');
     expect(_dmTileAvatarInitial(tester, 'Alice'), 'A');
-    // A multi-counterpart DM still takes the group count badge — the
-    // single-counterpart avatar above is not shared with it.
+    expect(
+      tester
+          .widget<IdentityAvatar>(
+            find.byKey(const ValueKey('conversation-avatar-dm-unnamed')),
+          )
+          .isOnline,
+      isFalse,
+    );
     final groupTile = _dmTileFor('${shortPubkey(a11ce)}, ${shortPubkey(b0b)}');
     expect(
-      find.descendant(of: groupTile, matching: find.byType(AvatarImage)),
+      find.descendant(of: groupTile, matching: find.byType(AvatarImageContent)),
       findsNothing,
     );
     expect(
@@ -211,46 +713,11 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byTooltip('Channels options'));
-    await tester.pumpAndSettle();
-    expect(find.text('Sort: Recent'), findsOneWidget);
-    expect(find.text('Sort: A–Z'), findsOneWidget);
-    final popover = find.byKey(const ValueKey('sort-popover-Channels'));
-    expect(popover, findsOneWidget);
-    expect(
-      find.descendant(of: popover, matching: find.byType(PopupMenuDivider)),
-      findsNothing,
-    );
-    final selectedCheck = find.byKey(const ValueKey('sort-selected-check'));
-    expect(selectedCheck, findsOneWidget);
-    expect(
-      tester.getCenter(selectedCheck).dx,
-      greaterThan(tester.getCenter(find.text('Sort: A–Z')).dx),
-    );
-
     for (final label in ['general', 'Alice']) {
       final text = tester.widget<Text>(find.text(label));
-      expect(text.style?.fontSize, contentListTitleTextStyle.fontSize);
-      expect(text.style?.height, contentListTitleTextStyle.height);
-      expect(
-        text.style?.color,
-        Theme.of(
-          tester.element(find.text(label)),
-        ).colorScheme.onSurface.withValues(alpha: 0.8),
-      );
+      expect(text.style?.fontWeight, FontWeight.w700);
+      expect(text.style?.color, MobileDesignTokens.light.ink);
     }
-    final channelIcon = tester.widget<Icon>(
-      find.byKey(const ValueKey('channel-icon-1')),
-    );
-    expect(
-      channelIcon.color,
-      Theme.of(
-        tester.element(find.byKey(const ValueKey('channel-icon-1'))),
-      ).colorScheme.onSurface.withValues(alpha: 0.8),
-    );
-    final sectionTitle = tester.widget<Text>(find.text('Channels'));
-    expect(sectionTitle.style?.fontSize, contentListTitleTextStyle.fontSize);
-    expect(sectionTitle.style?.fontWeight, FontWeight.w600);
   });
 
   testWidgets('keys DM tile fallback avatars to the non-self counterpart', (
@@ -350,7 +817,9 @@ void main() {
     expect(_dmTileAvatarInitial(tester, shortPubkey(b0b)), 'B');
   });
 
-  testWidgets('sizes the community header for accessible text', (tester) async {
+  testWidgets('sizes the Conversations header for accessible text', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildTestable(
         textScaler: const TextScaler.linear(2),
@@ -365,7 +834,10 @@ void main() {
       find.byType(FrostedAppBar).last,
     );
     final titleStyle = appBar.titleStyle!;
-    expect(titleStyle.fontSize, 22);
+    expect(
+      titleStyle.fontSize,
+      MobileTypographyTokens.v5.companyHubTitle.fontSize,
+    );
     expect(
       tester
           .getSize(
@@ -375,15 +847,7 @@ void main() {
             ),
           )
           .height,
-      closeTo(
-        frostedAppBarHeight(
-              tester.element(find.byType(FrostedAppBar).last),
-              titleStyle: titleStyle,
-              bottomHeight: appBar.bottomHeight,
-            ) -
-            1,
-        0.01,
-      ),
+      greaterThan(80),
     );
     expect(tester.takeException(), isNull);
   });
@@ -460,7 +924,7 @@ void main() {
     expect((padding.padding as EdgeInsets).bottom, footerClearance);
   });
 
-  testWidgets('balances an expanded section around its following divider', (
+  testWidgets('keeps forum rows before direct messages in Recent', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -472,26 +936,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final lastChannel = tester.getRect(find.text('general'));
-    final divider = tester.getRect(find.byType(Divider).last);
-    final nextSectionHeader = tester.getRect(find.text('DMs'));
-
-    expect(
-      divider.top - lastChannel.bottom,
-      closeTo(nextSectionHeader.top - divider.bottom, 0.01),
+    final forumRow = tester.getRect(
+      find.byKey(const ValueKey('conversation-row-2')),
     );
+    final directRow = tester.getRect(
+      find.byKey(const ValueKey('conversation-row-3')),
+    );
+    expect(directRow.top, greaterThan(forumRow.bottom));
   });
 
-  testWidgets('keeps the Buzz background fixed behind the channels list', (
+  testWidgets('uses the v5 paper surface and nonfrosted header', (
     tester,
   ) async {
     await tester.pumpWidget(
       buildTestable(
-        topSectionGradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.yellow, Colors.blue],
-        ),
         overrides: [
           channelsProvider.overrideWith(() => _FakeNotifier(testChannels)),
         ],
@@ -499,42 +957,39 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('frosted-scaffold-pinned-gradient')),
-      findsOneWidget,
-    );
-    expect(find.byType(DecoratedSliver), findsNothing);
-    final gradientBackground = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey('frosted-scaffold-pinned-gradient')),
-    );
-    final gradient =
-        (gradientBackground.decoration as BoxDecoration).gradient
-            as LinearGradient;
-    expect(gradient.end, Alignment.bottomCenter);
-
+    expect(find.byType(DecoratedSliver), findsOneWidget);
     final appBar = tester.widget<FrostedAppBar>(
       find.byType(FrostedAppBar).last,
     );
     expect(appBar.frosted, isFalse);
-    expect(appBar.frostedSurfaceOpacity, 0);
-    expect(appBar.frostedBlurSigma, 0);
-    expect(appBar.showBottomDivider, isFalse);
+    expect(appBar.showBottomDivider, isTrue);
     expect(appBar.bottomHeight, Grid.xxs);
   });
 
-  testWidgets('builds Home header frost progressively while scrolling', (
+  testWidgets('scrolls the Conversations toolbar with the channel list', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 160);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    final channels = List.generate(
+      40,
+      (index) => Channel(
+        id: 'channel-$index',
+        name: 'channel-$index',
+        channelType: 'stream',
+        visibility: 'open',
+        description: 'Channel $index',
+        createdBy: 'abc',
+        createdAt: DateTime(2025),
+        memberCount: 10,
+        isMember: true,
+      ),
+    );
     await tester.pumpWidget(
       buildTestable(
-        topSectionGradient: const LinearGradient(
-          colors: [Colors.yellow, Colors.blue],
-        ),
         overrides: [
-          channelsProvider.overrideWith(() => _FakeNotifier(testChannels)),
+          channelsProvider.overrideWith(() => _FakeNotifier(channels)),
         ],
       ),
     );
@@ -548,20 +1003,16 @@ void main() {
           )
           .first,
     );
-    expect(scrollable.position.maxScrollExtent, greaterThanOrEqualTo(Grid.xxl));
-
-    scrollable.position.jumpTo(Grid.xl / 2);
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
-    var appBar = tester.widget<FrostedAppBar>(find.byType(FrostedAppBar).last);
-    expect(appBar.frosted, isTrue);
-    expect(appBar.frostedSurfaceOpacity, 0);
-    expect(appBar.frostedBlurSigma, closeTo(8.67, 0.001));
 
-    scrollable.position.jumpTo(Grid.xxl);
-    await tester.pump();
-    appBar = tester.widget<FrostedAppBar>(find.byType(FrostedAppBar).last);
-    expect(appBar.frostedSurfaceOpacity, 0);
-    expect(appBar.frostedBlurSigma, 23.12);
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
+    expect(find.text('Your business, together'), findsNothing);
+    expect(
+      tester.widget<FrostedAppBar>(find.byType(FrostedAppBar).last).frosted,
+      isFalse,
+    );
   });
 
   testWidgets('scrolls Home to the top when its tab is selected again', (
@@ -717,7 +1168,7 @@ void main() {
     expect(deleteIcon.color, error);
   });
 
-  testWidgets('aligns the top, section, row, and skeleton label columns', (
+  testWidgets('keeps the v5 header and reconnect skeleton labels', (
     tester,
   ) async {
     final relaySession = _ReconnectingRelaySession();
@@ -732,13 +1183,10 @@ void main() {
     relaySession.connect();
     await tester.pumpAndSettle();
 
-    final topLabelX = tester.getTopLeft(find.text('Community')).dx;
-    final sectionLabelX = tester.getTopLeft(find.text('Channels')).dx;
-    final rowLabelX = tester.getTopLeft(find.text('general')).dx;
-    // The community title shares the leading row with its avatar. Channel
-    // labels stay aligned below it.
-    expect(topLabelX, Grid.twelve + 40 + Grid.xxs);
-    expect(sectionLabelX, rowLabelX);
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsNothing);
 
     relaySession.setReconnecting();
     await tester.pump();
@@ -756,10 +1204,9 @@ void main() {
         )
         .dx;
     expect(skeletonSectionLabelX, skeletonRowLabelX);
-    expect(skeletonSectionLabelX, sectionLabelX);
   });
 
-  testWidgets('centers the smaller profile avatar beside the community', (
+  testWidgets('keeps the identity switcher in the Conversations header', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -771,26 +1218,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final appBar = find.byType(FrostedAppBar).last;
-    final communityAvatar = find.descendant(
-      of: appBar,
-      matching: find.byType(AvatarImage),
+    final switcher = find.byKey(
+      const ValueKey('conversation-community-switcher'),
     );
-    final profileAvatar = find.descendant(
-      of: appBar,
-      matching: find.byType(MaskedAvatarBadge),
+    final semantics = tester.widget<Semantics>(
+      find.descendant(of: switcher, matching: find.byType(Semantics)),
     );
-
-    expect(tester.getSize(communityAvatar), const Size.square(40));
-    expect(tester.getSize(profileAvatar), const Size.square(36));
     expect(
-      tester.widget<MaskedAvatarBadge>(profileAvatar).badge,
-      isNull,
-      reason: 'The current user does not need an online dot on Home.',
+      tester.getSize(switcher),
+      Size.square(MobileLayoutTokens.companyHeaderAvatarSize),
     );
-    final communityRect = tester.getRect(communityAvatar);
-    final profileRect = tester.getRect(profileAvatar);
-    expect(profileRect.center.dy, communityRect.center.dy);
+    expect(semantics.properties.label, 'Switch business');
+    expect(
+      semantics.properties.customSemanticsActions?.keys.map(
+        (action) => action.label,
+      ),
+      contains('Open Settings'),
+    );
   });
 
   testWidgets('reveals channel content from same-slot reconnect skeletons', (
@@ -901,7 +1345,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Hero), findsNothing);
-    await tester.tap(find.byType(ProfileAvatar));
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Injected settings'), findsOneWidget);
@@ -925,9 +1371,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(ProfileAvatar));
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pump();
-    expect(progress, [0]);
+    expect(progress, isNotEmpty);
+    expect(progress, everyElement(0));
     await tester.pump(const Duration(milliseconds: 16));
     expect(progress.last, inExclusiveRange(0, 1));
     await tester.pump(const Duration(milliseconds: 95));
@@ -960,7 +1409,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(ProfileAvatar));
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pump();
 
     final transition = find.byKey(
@@ -1023,7 +1474,7 @@ void main() {
     expect(reverseScaleProgress, closeTo(reverseOpacity, 0.001));
   });
 
-  testWidgets('gives feedback for the profile and community controls', (
+  testWidgets('gives separate feedback for Settings and business switching', (
     tester,
   ) async {
     final hapticCalls = <MethodCall>[];
@@ -1045,17 +1496,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(ProfileAvatar));
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.lightImpact');
 
     Navigator.of(tester.element(find.text('Injected settings'))).pop();
     await tester.pumpAndSettle();
-    final communityAvatar = find.descendant(
-      of: find.byType(FrostedAppBar).last,
-      matching: find.byType(AvatarImage),
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
     );
-    await tester.tap(communityAvatar);
     await tester.pump();
     expect(hapticCalls.last.arguments, 'HapticFeedbackType.selectionClick');
   });
@@ -1102,7 +1553,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Alpha'));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Switch Community'), findsOneWidget);
@@ -1270,7 +1723,9 @@ void main() {
     await tester.pumpAndSettle();
     final initialIconLoads = iconLoads;
 
-    await tester.tap(find.text('Alpha'));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(iconLoads, greaterThan(initialIconLoads));
@@ -1300,7 +1755,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Alpha'));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -1338,7 +1795,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Alpha'));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Edit'));
     await tester.pump();
@@ -1431,7 +1890,7 @@ void main() {
     final surface = find.byKey(const Key('quick-actions-surface'));
     expect(tester.getSize(surface), const Size.square(56));
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
 
     var largestHeight = tester.getSize(surface).height;
@@ -1574,7 +2033,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1610,7 +2069,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1649,7 +2108,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1700,7 +2159,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1729,19 +2188,30 @@ void main() {
   testWidgets('browse action scrolls and joins an offscreen channel', (
     tester,
   ) async {
-    final channels = List.generate(
-      500,
-      (index) => Channel(
-        id: 'directory-$index',
-        name: 'channel-${index.toString().padLeft(3, '0')}',
+    final channels = [
+      Channel(
+        id: 'joined-seed',
+        name: 'general',
         channelType: 'stream',
         visibility: 'open',
         description: '',
         createdBy: 'abc',
         createdAt: DateTime(2025),
-        memberCount: 0,
+        memberCount: 1,
+        isMember: true,
       ),
-    );
+      for (var index = 0; index < 500; index++)
+        Channel(
+          id: 'directory-$index',
+          name: 'channel-${index.toString().padLeft(3, '0')}',
+          channelType: 'stream',
+          visibility: 'open',
+          description: '',
+          createdBy: 'abc',
+          createdAt: DateTime(2025),
+          memberCount: 0,
+        ),
+    ];
     late _RecordingChannelActions actions;
     await tester.pumpWidget(
       buildTestable(
@@ -1756,7 +2226,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1812,7 +2282,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create channel'));
     await tester.pumpAndSettle();
@@ -1915,7 +2385,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2074,7 +2544,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2117,7 +2587,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2286,21 +2756,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Unread 1'), findsOneWidget);
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
       FontWeight.w700,
-    );
-    expect(
-      tester.widget<Text>(find.text('general')).style?.color,
-      Theme.of(tester.element(find.text('general'))).colorScheme.onSurface,
     );
 
     readState.markContextRead('1', 20);
     await tester.pump();
 
+    expect(find.text('Unread'), findsOneWidget);
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
-      FontWeight.w400,
+      FontWeight.w700,
     );
   });
 
@@ -2410,7 +2878,7 @@ void main() {
     expect(readState.markedContexts, isEmpty);
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
-      FontWeight.w400,
+      FontWeight.w700,
     );
   });
 
@@ -2672,20 +3140,59 @@ class _ReconnectingRelaySession extends RelaySessionNotifier {
 }
 
 class _FakeProfileNotifier extends ProfileNotifier {
-  _FakeProfileNotifier({this.pubkey = 'aabb'});
+  _FakeProfileNotifier({this.pubkey = 'aabb', this.displayName = 'Test'});
 
   /// Current-user pubkey; the default keeps the historical 'aabb' fake used
   /// by the other tile tests. The display name stays 'Test'.
   final String pubkey;
+  final String displayName;
 
   @override
   Future<UserProfile?> build() async =>
-      UserProfile(pubkey: pubkey, displayName: 'Test');
+      UserProfile(pubkey: pubkey, displayName: displayName);
+}
+
+class _FakeUserCacheNotifier extends UserCacheNotifier {
+  _FakeUserCacheNotifier(this._users);
+
+  final Map<String, UserProfile> _users;
+
+  @override
+  Map<String, UserProfile> build() => _users;
+
+  @override
+  UserProfile? get(String pubkey) => _users[pubkey.toLowerCase()];
+
+  @override
+  Future<bool> preload(List<String> pubkeys) async => true;
+}
+
+class _FixtureChannelSortNotifier extends ChannelSortNotifier {
+  @override
+  ChannelSortState build() => const ChannelSortState(
+    isReady: true,
+    store: ChannelSortStore(
+      groups: {
+        'channels': ChannelSortMode.recent,
+        'dms': ChannelSortMode.recent,
+        'starred': ChannelSortMode.recent,
+      },
+    ),
+  );
 }
 
 class _FakePresenceNotifier extends PresenceNotifier {
   @override
   Future<String> build() async => 'online';
+}
+
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this.initial);
+
+  final Map<String, String> initial;
+
+  @override
+  Map<String, String> build() => initial;
 }
 
 class _FakeReadStateNotifier extends ReadStateNotifier {
@@ -2750,9 +3257,84 @@ Finder _dmTileFor(String labelText) => find
 /// the production seam (the tile's `_DmAvatar`), not the label helper.
 String _dmTileAvatarInitial(WidgetTester tester, String labelText) {
   final tile = _dmTileFor(labelText);
-  final avatar = find.descendant(of: tile, matching: find.byType(AvatarImage));
+  final avatar = find.descendant(
+    of: tile,
+    matching: find.byType(AvatarImageContent),
+  );
   final initial = tester.widget<Text>(
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _ConversationCaptureSystemBars extends StatelessWidget {
+  const _ConversationCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

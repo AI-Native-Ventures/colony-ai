@@ -49,6 +49,34 @@
   line-height: 1rem;
 }
 
+:root:has([data-testid="channel-view-tabs"])
+  [data-testid="message-avatar"].colony-workspace-human-message-avatar
+  [data-testid="message-avatar-fallback"] {
+  background-color: #ece5ed;
+  color: #796782;
+}
+
+:root:has([data-testid="channel-view-tabs"])
+  [data-testid="message-avatar"].colony-workspace-agent-message-avatar
+  [data-testid="message-avatar-fallback"] {
+  background-color: #e3ebf4;
+  color: #617fa1;
+}
+
+:root.dark:has([data-testid="channel-view-tabs"])
+  [data-testid="message-avatar"].colony-workspace-human-message-avatar
+  [data-testid="message-avatar-fallback"] {
+  background-color: #453a4a;
+  color: #d1bfd8;
+}
+
+:root.dark:has([data-testid="channel-view-tabs"])
+  [data-testid="message-avatar"].colony-workspace-agent-message-avatar
+  [data-testid="message-avatar-fallback"] {
+  background-color: #29394d;
+  color: #9bb4d1;
+}
+
 .colony-updates-route {
   flex: 1;
 }
@@ -387,6 +415,8 @@
   [data-testid="sidebar-scroll-content"]
   > .colony-sidebar-browse-channels {
   order: 4;
+  margin-top: -0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -394,6 +424,7 @@
   [data-sidebar="menu-button"] {
   height: 2rem;
   padding-inline: 0.625rem;
+  padding-inline-start: 1.25rem;
   color: hsl(var(--colony-sidebar-foreground));
   font-size: var(--colony-text-compact);
 }
@@ -429,7 +460,39 @@
 
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"] {
+    padding-top: 1.375rem !important;
+  }
+
+  :root:has([data-testid="channel-view-tabs"]):has(
+      [data-testid="message-thread-panel"]
+    )
+    [data-testid="message-timeline"] {
     padding-top: 1.5rem !important;
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
+    [data-active-thread-root="true"]
+    [data-testid="message-row"] {
+    border-radius: 0.5rem;
+    background-color: hsl(var(--muted));
+    box-shadow: 0 0 0 0.5rem hsl(var(--muted));
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
+    [data-testid="message-thread-head"] {
+    padding-top: 1.4375rem !important;
+    padding-bottom: 0 !important;
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
+    [data-testid="message-thread-head"]
+    [data-testid="message-row"] {
+    margin-block-end: 0;
+  }
+
+  :root:has([data-testid="channel-view-tabs"])
+    [data-testid="message-thread-head-divider"] {
+    padding-top: 0.375rem !important;
   }
 
   :root:has([data-testid="channel-view-tabs"])
@@ -512,15 +575,8 @@
 
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"]
-    [data-testid="message-avatar"] {
-    width: 1.75rem;
-    height: 1.75rem;
-  }
-
-  :root:has([data-testid="channel-view-tabs"])
-    [data-testid="message-timeline"]
     [data-testid="message-row"] {
-    column-gap: 0.5625rem;
+    column-gap: 0.875rem;
     margin-block-end: 0.828125rem;
     padding-block: 0;
   }
@@ -528,9 +584,12 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-timeline"]
     [data-testid="message-avatar"] {
-    margin-inline-start: 0.25rem;
-    width: 1.625rem;
-    height: 1.625rem;
+    margin-inline-start: 0.1875rem;
+    margin-top: 0.0625rem;
+    width: 1.9375rem;
+    height: 1.9375rem;
+    border-radius: 0.625rem;
+    box-shadow: none;
   }
 
   :root:has([data-testid="channel-view-tabs"])
@@ -552,8 +611,24 @@
   :root:has([data-testid="channel-view-tabs"])
     [data-testid="message-thread-panel"]
     [data-testid="message-avatar"] {
-    width: 1.9375rem;
-    height: 1.9375rem;
+    width: 1.5625rem;
+    height: 1.5625rem;
+    border-radius: 0.4375rem;
+    box-shadow: none;
+  }
+
+  :root:has([data-testid="message-thread-panel"])
+    [data-testid="message-timeline"]
+    [data-testid="message-row"] {
+    column-gap: 0.5625rem;
+  }
+
+  :root:has([data-testid="message-thread-panel"])
+    [data-testid="message-timeline"]
+    [data-testid="message-avatar"] {
+    margin-inline-start: 0.25rem;
+    width: 1.625rem;
+    height: 1.625rem;
   }
 
   :root:has([data-testid="channel-view-tabs"])
@@ -714,34 +789,46 @@
   border-radius: 0.625rem;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"],
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:hover,
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:focus-visible {
   background-color: rgb(255 255 255 / 33%);
   color: #6c5c75;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > * {
   color: inherit;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > span {
   color: #6c5c75;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > kbd {
@@ -750,13 +837,19 @@
   line-height: 1.5;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"],
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:hover,
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]:focus-visible {
   border-color: #c9b0d416;
@@ -764,21 +857,27 @@
   color: #c2accd;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > span {
   color: #c2accd;
 }
 
-:root.dark:has([data-colony-workspace-route="true"])
+:root.dark:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"]
   > kbd {
   color: #a18aaf;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid$="-section-label"] {
   width: calc(100% - 1.625rem);
@@ -794,7 +893,9 @@
   line-height: 1.5;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid$="-section-label"]
   + div {
@@ -802,7 +903,9 @@
   flex-direction: row-reverse;
 }
 
-:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid$="-section-label"]
   > [data-sidebar-section-title] {

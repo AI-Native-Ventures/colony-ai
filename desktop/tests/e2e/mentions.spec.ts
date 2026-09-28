@@ -3692,8 +3692,8 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   // Publish-first: the message signs while start_managed_agent is still
   // pending behind the injected delay.
   await expect
-    .poll(async () => commandCount(await readCommandLog(page), "sign_event"))
-    .toBeGreaterThan(commandCount(baselineCommands, "sign_event"));
+    .poll(() => readOutgoingMentionPubkeys(page, "Loop in @fizz"))
+    .toContain(OUT_OF_CHANNEL_MANAGED_AGENT_PUBKEY);
   await expect
     .poll(async () =>
       commandCount(await readCommandLog(page), "start_managed_agent"),
@@ -3712,9 +3712,11 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   const startIndex = sendCommands.findIndex(
     (entry) => entry.command === "start_managed_agent",
   );
-  const sendIndex = sendCommands.findIndex(
-    (entry) => entry.command === "sign_event",
-  );
+  const sendIndex = sendCommands.findIndex((entry) => {
+    if (entry.command !== "sign_event") return false;
+    const payload = entry.payload as { content?: string } | undefined;
+    return payload?.content === "Loop in @fizz";
+  });
   expect(updateIndex).toBeGreaterThanOrEqual(0);
   expect(updateIndex).toBeLessThan(addIndex);
   expect(updateIndex).toBeLessThan(startIndex);

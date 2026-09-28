@@ -87,7 +87,9 @@ export function ChannelScreenHeader({
 
   const terminalPanel = useTerminalPanel();
   const terminalButton =
-    activeChannel && !referenceThreadPresentation ? (
+    activeChannel &&
+    !referenceThreadPresentation &&
+    actionsVariant !== "reference" ? (
       <Button
         aria-label={
           terminalPanel.mode === "closed" ? "Open Buzz Term" : "Hide Buzz Term"
@@ -144,7 +146,9 @@ export function ChannelScreenHeader({
 
   const header = (
     <ChatHeader
-      belowSystemChrome={!referenceThreadPresentation}
+      belowSystemChrome={
+        !referenceThreadPresentation && actionsVariant !== "reference"
+      }
       chromeWrapperRef={chromeWrapperRef}
       actions={actions}
       channelType={activeChannel?.channelType}
@@ -210,6 +214,9 @@ export function ChannelScreenHeader({
             />
           ) : null}
         </>
+      }
+      showDescription={
+        actionsVariant === "reference" && !referenceThreadPresentation
       }
       title={activeChannelTitle}
       titleClassName={

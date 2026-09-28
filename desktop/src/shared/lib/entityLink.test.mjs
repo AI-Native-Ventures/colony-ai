@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   buildCommitLink,
+  buildGoalLink,
   buildIssueLink,
   buildProjectLink,
   buildPullRequestLink,
@@ -68,6 +69,18 @@ test("builders reject invalid identifiers", () => {
   assert.throws(() =>
     buildPullRequestLink({ id: "short", owner: OWNER, dtag: "buzz-world" }),
   );
+  assert.throws(() => buildGoalLink("short"));
+});
+
+test("goal links use canonical active-community goal coordinates", () => {
+  const goalId = "ABCDEF01-2345-6789-ABCD-EF0123456789";
+  const link = buildGoalLink(goalId);
+  assert.equal(link, "buzz://goal/abcdef01-2345-6789-abcd-ef0123456789");
+  assert.deepEqual(parseEntityLink(link), {
+    ok: true,
+    value: { type: "goal", id: "abcdef01-2345-6789-abcd-ef0123456789" },
+  });
+  assert.equal(isEntityLink(link), true);
 });
 
 test("parseEntityLink round-trips built links", () => {
@@ -142,6 +155,11 @@ test("parseEntityLink rejects malformed links", () => {
     [`buzz://pr?id=${EVENT_ID}&owner=${OWNER}`, "invalid-dtag"],
     [`buzz://pr?owner=${OWNER}&d=repo`, "invalid-id"],
     [`buzz://issue?id=short&owner=${OWNER}&d=repo`, "invalid-id"],
+    ["buzz://goal/not-a-uuid", "invalid-goal-id"],
+    [
+      "buzz://goal/123e4567-e89b-12d3-a456-426614174000?tab=history",
+      "invalid-goal-id",
+    ],
   ];
   for (const [href, reason] of cases) {
     assert.deepEqual(parseEntityLink(href), { ok: false, reason }, href);

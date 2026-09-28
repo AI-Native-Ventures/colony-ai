@@ -9,6 +9,51 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color huddleControlSurface;
   final Color onHuddleDrawer;
 
+  /// Plum used by primary mobile actions.
+  final Color plum;
+
+  /// Shared lilac identity color.
+  final Color lilac;
+
+  /// Shared apricot identity color.
+  final Color apricot;
+
+  /// Text color for peach person avatars.
+  final Color identityPersonForeground;
+
+  /// Text color for sage person avatars.
+  final Color identitySageForeground;
+
+  /// Text color for agent avatars.
+  final Color identityAgentForeground;
+
+  /// Color for online identity indicators.
+  final Color identityPresence;
+
+  /// Warm gradient for the Company hub heading.
+  final Gradient companyWashGradient;
+
+  /// Light lilac-to-apricot gradient used by the channel information hero.
+  final Gradient channelInfoHeroGradient;
+
+  /// Foreground color used on the channel information hero gradient.
+  final Color channelInfoHeroForeground;
+
+  /// Fill used for unread counts in the conversation list.
+  final Color conversationUnreadBadgeBackground;
+
+  /// Text color used for unread counts in the conversation list.
+  final Color conversationUnreadBadgeForeground;
+
+  /// Gradient for peach person avatars.
+  final Gradient personAvatarGradient;
+
+  /// Gradient for sage person avatars.
+  final Gradient sageAvatarGradient;
+
+  /// Gradient for agent avatars.
+  final Gradient agentAvatarGradient;
+
   /// Gradient for the app's top section, non-null only under the Buzz themes.
   /// Carried on the theme rather than read from a provider so any surface can
   /// opt in via `context.appColors.topSectionGradient` — see
@@ -22,6 +67,21 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.huddleDrawerSurface,
     required this.huddleControlSurface,
     required this.onHuddleDrawer,
+    required this.plum,
+    required this.lilac,
+    required this.apricot,
+    required this.identityPersonForeground,
+    required this.identitySageForeground,
+    required this.identityAgentForeground,
+    required this.identityPresence,
+    required this.companyWashGradient,
+    required this.channelInfoHeroGradient,
+    required this.channelInfoHeroForeground,
+    required this.conversationUnreadBadgeBackground,
+    required this.conversationUnreadBadgeForeground,
+    required this.personAvatarGradient,
+    required this.sageAvatarGradient,
+    required this.agentAvatarGradient,
     this.topSectionGradient,
   });
 
@@ -33,6 +93,21 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? huddleDrawerSurface,
     Color? huddleControlSurface,
     Color? onHuddleDrawer,
+    Color? plum,
+    Color? lilac,
+    Color? apricot,
+    Color? identityPersonForeground,
+    Color? identitySageForeground,
+    Color? identityAgentForeground,
+    Color? identityPresence,
+    Gradient? companyWashGradient,
+    Gradient? channelInfoHeroGradient,
+    Color? channelInfoHeroForeground,
+    Color? conversationUnreadBadgeBackground,
+    Color? conversationUnreadBadgeForeground,
+    Gradient? personAvatarGradient,
+    Gradient? sageAvatarGradient,
+    Gradient? agentAvatarGradient,
     Gradient? topSectionGradient,
   }) => AppColors(
     success: success ?? this.success,
@@ -41,6 +116,30 @@ class AppColors extends ThemeExtension<AppColors> {
     huddleDrawerSurface: huddleDrawerSurface ?? this.huddleDrawerSurface,
     huddleControlSurface: huddleControlSurface ?? this.huddleControlSurface,
     onHuddleDrawer: onHuddleDrawer ?? this.onHuddleDrawer,
+    plum: plum ?? this.plum,
+    lilac: lilac ?? this.lilac,
+    apricot: apricot ?? this.apricot,
+    identityPersonForeground:
+        identityPersonForeground ?? this.identityPersonForeground,
+    identitySageForeground:
+        identitySageForeground ?? this.identitySageForeground,
+    identityAgentForeground:
+        identityAgentForeground ?? this.identityAgentForeground,
+    identityPresence: identityPresence ?? this.identityPresence,
+    companyWashGradient: companyWashGradient ?? this.companyWashGradient,
+    channelInfoHeroGradient:
+        channelInfoHeroGradient ?? this.channelInfoHeroGradient,
+    channelInfoHeroForeground:
+        channelInfoHeroForeground ?? this.channelInfoHeroForeground,
+    conversationUnreadBadgeBackground:
+        conversationUnreadBadgeBackground ??
+        this.conversationUnreadBadgeBackground,
+    conversationUnreadBadgeForeground:
+        conversationUnreadBadgeForeground ??
+        this.conversationUnreadBadgeForeground,
+    personAvatarGradient: personAvatarGradient ?? this.personAvatarGradient,
+    sageAvatarGradient: sageAvatarGradient ?? this.sageAvatarGradient,
+    agentAvatarGradient: agentAvatarGradient ?? this.agentAvatarGradient,
     topSectionGradient: topSectionGradient ?? this.topSectionGradient,
   );
 
@@ -62,6 +161,69 @@ class AppColors extends ThemeExtension<AppColors> {
         t,
       )!,
       onHuddleDrawer: Color.lerp(onHuddleDrawer, other.onHuddleDrawer, t)!,
+      plum: Color.lerp(plum, other.plum, t)!,
+      lilac: Color.lerp(lilac, other.lilac, t)!,
+      apricot: Color.lerp(apricot, other.apricot, t)!,
+      identityPersonForeground: Color.lerp(
+        identityPersonForeground,
+        other.identityPersonForeground,
+        t,
+      )!,
+      identitySageForeground: Color.lerp(
+        identitySageForeground,
+        other.identitySageForeground,
+        t,
+      )!,
+      identityAgentForeground: Color.lerp(
+        identityAgentForeground,
+        other.identityAgentForeground,
+        t,
+      )!,
+      identityPresence: Color.lerp(
+        identityPresence,
+        other.identityPresence,
+        t,
+      )!,
+      companyWashGradient: Gradient.lerp(
+        companyWashGradient,
+        other.companyWashGradient,
+        t,
+      )!,
+      channelInfoHeroGradient: Gradient.lerp(
+        channelInfoHeroGradient,
+        other.channelInfoHeroGradient,
+        t,
+      )!,
+      channelInfoHeroForeground: Color.lerp(
+        channelInfoHeroForeground,
+        other.channelInfoHeroForeground,
+        t,
+      )!,
+      conversationUnreadBadgeBackground: Color.lerp(
+        conversationUnreadBadgeBackground,
+        other.conversationUnreadBadgeBackground,
+        t,
+      )!,
+      conversationUnreadBadgeForeground: Color.lerp(
+        conversationUnreadBadgeForeground,
+        other.conversationUnreadBadgeForeground,
+        t,
+      )!,
+      personAvatarGradient: Gradient.lerp(
+        personAvatarGradient,
+        other.personAvatarGradient,
+        t,
+      )!,
+      sageAvatarGradient: Gradient.lerp(
+        sageAvatarGradient,
+        other.sageAvatarGradient,
+        t,
+      )!,
+      agentAvatarGradient: Gradient.lerp(
+        agentAvatarGradient,
+        other.agentAvatarGradient,
+        t,
+      )!,
       topSectionGradient: Gradient.lerp(
         topSectionGradient,
         other.topSectionGradient,

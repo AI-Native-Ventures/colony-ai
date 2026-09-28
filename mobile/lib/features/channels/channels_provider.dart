@@ -338,12 +338,17 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         _fetchLastMessageEvents(session, activeChannels),
       );
       final lastMessageMap = <String, int>{};
+      final latestEventByChannel = <String, NostrEvent>{};
       final mutedChannelIds = _mutedChannelIds();
       for (final event in events) {
         final channelId = event.channelId;
         if (channelId == null) continue;
         final channel = channelById[channelId];
         if (channel == null) continue;
+        final latest = latestEventByChannel[channelId];
+        if (latest == null || event.createdAt > latest.createdAt) {
+          latestEventByChannel[channelId] = event;
+        }
         if (!channel.isDm &&
             !shouldNotifyForEvent(
               event,
@@ -361,15 +366,47 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
 
       for (var i = 0; i < channels.length; i++) {
         final ts = lastMessageMap[channels[i].id];
-        if (ts != null) {
+        final latest = latestEventByChannel[channels[i].id];
+        if (ts != null || latest != null) {
           channels[i] = channels[i].copyWith(
-            lastMessageAt: DateTime.fromMillisecondsSinceEpoch(
-              ts * 1000,
-              isUtc: true,
-            ),
+            lastMessageAt: ts == null
+                ? channels[i].lastMessageAt
+                : DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true),
+            lastMessageContent: latest == null
+                ? channels[i].lastMessageContent
+                : _channelPreviewText(latest.content),
+            lastMessagePubkey: latest?.pubkey ?? channels[i].lastMessagePubkey,
+            lastMessageEventId: latest?.id ?? channels[i].lastMessageEventId,
+            lastMessageCreatedAt:
+                latest?.createdAt ?? channels[i].lastMessageCreatedAt,
           );
         }
       }
+    }
+
+    // A reconnect/backstop refresh does not fetch message history. Preserve its
+    // derived row metadata from the live channel snapshot, just as the live
+    // subscription preserves the last-message timestamp. New channels still
+    // begin with an empty preview.
+    final cachedById = {
+      for (final channel in state.value ?? const <Channel>[])
+        channel.id: channel,
+    };
+    for (var i = 0; i < channels.length; i++) {
+      final channel = channels[i];
+      final cached = cachedById[channel.id];
+      if (cached == null) continue;
+      channels[i] = channel.copyWith(
+        lastMessageAt: channel.lastMessageAt ?? cached.lastMessageAt,
+        lastMessageContent:
+            channel.lastMessageContent ?? cached.lastMessageContent,
+        lastMessagePubkey:
+            channel.lastMessagePubkey ?? cached.lastMessagePubkey,
+        lastMessageEventId:
+            channel.lastMessageEventId ?? cached.lastMessageEventId,
+        lastMessageCreatedAt:
+            channel.lastMessageCreatedAt ?? cached.lastMessageCreatedAt,
+      );
     }
 
     channels.sort((left, right) {
@@ -658,6 +695,27 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       final updated = List<Channel>.of(channels);
       final channel = updated[idx];
 
+      if (EventKind.channelMessageEventKinds.contains(event.kind) &&
+          (channel.lastMessageCreatedAt == null ||
+              event.createdAt >= channel.lastMessageCreatedAt!)) {
+        updated[idx] = channel.copyWith(
+          lastMessageContent: _channelPreviewText(event.content),
+          lastMessagePubkey: event.pubkey,
+          lastMessageEventId: event.id,
+          lastMessageCreatedAt: event.createdAt,
+        );
+      } else if ((event.kind == EventKind.deletion ||
+              event.kind == EventKind.nip29DeleteEvent) &&
+          event.getTagValue('e') == channel.lastMessageEventId) {
+        updated[idx] = channel.copyWith(
+          lastMessageContent: null,
+          lastMessagePubkey: null,
+          lastMessageEventId: null,
+          lastMessageCreatedAt: null,
+        );
+        unawaited(refresh());
+      }
+
       if (myPk != null && event.pubkey.toLowerCase() == myPk.toLowerCase()) {
         _recordSelfThreadInterest(event, myPk);
       }
@@ -679,7 +737,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         );
         if (channel.lastMessageAt == null ||
             eventTime.isAfter(channel.lastMessageAt!)) {
-          updated[idx] = channel.copyWith(lastMessageAt: eventTime);
+          updated[idx] = updated[idx].copyWith(lastMessageAt: eventTime);
         }
       }
 
@@ -691,6 +749,9 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     for (final entry in ref.read(channelMutesProvider).store.channels.entries)
       if (entry.value.muted) entry.key,
   };
+
+  String _channelPreviewText(String content) =>
+      content.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   Set<String> _followedRootIds() =>
       ref.read(threadFollowsProvider).followedRootIds;

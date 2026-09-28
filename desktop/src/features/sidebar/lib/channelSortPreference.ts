@@ -163,8 +163,8 @@ export function compareChannelsByName(left: Channel, right: Channel): number {
  * Sorts a single sidebar grouping's channels by the selected mode.
  *
  * `alpha` orders by name (id tie-breaker). `recent` orders by last message
- * time, newest first; channels without any message activity sink to the
- * bottom in alphabetical order so quiet channels stay stable and findable.
+ * time, newest first; equal activity and channels without activity keep their
+ * authored order so a quiet group remains predictable.
  */
 export function sortChannelsForSidebar(
   channels: Channel[],
@@ -181,6 +181,6 @@ export function sortChannelsForSidebar(
     }
     if (leftMs !== null && rightMs === null) return -1;
     if (leftMs === null && rightMs !== null) return 1;
-    return compareChannelsByName(left, right);
+    return 0;
   });
 }

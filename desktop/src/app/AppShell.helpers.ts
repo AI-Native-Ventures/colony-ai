@@ -9,8 +9,13 @@ export type AppView =
   | "messages"
   | "agents"
   | "workflows"
+  | "clients"
+  | "work"
   | "pulse"
   | "projects"
+  | "business"
+  | "factory"
+  | "goals"
   | "pins";
 
 const WINDOW_DRAG_HANDLE_HEIGHT = 44;
@@ -242,6 +247,18 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (
+    pathname === "/discovery" ||
+    pathname === "/leads" ||
+    pathname === "/pipeline" ||
+    pathname.startsWith("/sales/")
+  ) {
+    return {
+      selectedChannelId: null,
+      selectedView: "business",
+    };
+  }
+
   if (pathname === "/agents") {
     return {
       selectedChannelId: null,
@@ -274,10 +291,38 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (pathname === "/goals" || pathname.startsWith("/goals/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "goals",
+    };
+  }
+
+  if (pathname === "/clients" || pathname.startsWith("/clients/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "clients",
+    };
+  }
+
+  if (pathname === "/work" || pathname.startsWith("/work/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "work",
+    };
+  }
+
   if (pathname === "/projects" || pathname.startsWith("/projects/")) {
     return {
       selectedChannelId: null,
       selectedView: "projects",
+    };
+  }
+
+  if (pathname === "/factory" || pathname.startsWith("/factory/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "factory",
     };
   }
 

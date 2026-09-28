@@ -4,10 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { decode, npubEncode, nsecEncode } from "nostr-tools/nip19";
-import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
+import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools/pure";
 import { parse as yamlParse } from "yaml";
 import {
   mergeMockCustomHarnesses,
@@ -32,13 +33,40 @@ import {
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
 import {
+  businessDTag,
+  KIND_PARTY_HEAD,
+  KIND_PROPOSAL_ACCEPTANCE,
+  KIND_PROPOSAL_CONVERSION_RECEIPT,
+  KIND_PROPOSAL_HEAD,
+  KIND_PROPOSAL_VERSION,
+  KIND_PROSPECT_ACTION,
+  KIND_PROSPECT_HEAD,
+  KIND_SERVICE_ACTION,
+  KIND_SERVICE_HEAD,
+} from "@/features/discovery/businessRecordContract";
+import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
+  REFERENCE_HOME_VISUAL_FIXTURE,
+  REFERENCE_SALES_UNREAD_REPLY_ID,
+  REFERENCE_SALES_UNREAD_ROOT_ID,
+  REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
+  referenceChannelLastMessageAt,
   referenceChannelSeeds,
+  referenceHomeInboxItems,
+  referenceSalesLastMessageAt,
+  referenceBusinessRecordEvents,
+  referenceCommunityId,
   referenceSalesMessages,
+  referenceSidebarChannelSeeds,
+  referenceSidebarUnreadMessages,
+  referenceOliveHouseMessages,
+  referenceSalesRecordEvents,
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
+import { installReferenceDiscoveryProvider } from "./e2eReferenceDiscovery.ts";
 export { mockSearchHitMatches };
 import type { ConnectionState } from "@/shared/api/relayClientShared";
 import type {
@@ -47,6 +75,13 @@ import type {
   HomeFeedVisualFixture,
   RelayEvent,
 } from "@/shared/api/types";
+import type {
+  FactoryRun,
+  FactoryRunDraft,
+  FactoryRunEvent,
+  FactoryRunSnapshot,
+  FactoryScope,
+} from "@/shared/api/factoryRuntime";
 import type {
   AccountAuthClient,
   AccountAuthRecord,
@@ -65,10 +100,18 @@ import {
 } from "@/shared/api/customEmoji";
 import {
   KIND_AGENT_OBSERVER_FRAME,
+  KIND_ASK_ACTION,
+  KIND_ASK_HEAD,
+  KIND_ASK_RESPONSE,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
+  KIND_CLIENT_ACTION,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_GOAL_ACTION,
+  KIND_GOAL_HEAD,
   KIND_GIT_ISSUE,
   KIND_GIT_PATCH,
   KIND_GIT_PR_UPDATE,
@@ -89,6 +132,7 @@ import {
   KIND_TEXT_NOTE,
   KIND_TEAM_CATALOG,
   KIND_USER_STATUS,
+  KIND_WORK_ITEM_ACTION,
 } from "@/shared/constants/kinds";
 import type {
   RawAcpAuthMethodsResult,
@@ -147,6 +191,22 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+};
+
+export type MockFactoryProjectSeed = {
+  dtag: string;
+  name: string;
+  description: string;
+  repositoryDtag: string;
+  repositoryName: string;
+  cloneUrl: string;
+};
+
+export type MockFactoryRunSeed = {
+  run: FactoryRun;
+  events?: FactoryRunEvent[];
+  draft?: string | null;
+  hasMore?: boolean;
 };
 
 type MockManagedAgentRuntimeSeed = {
@@ -281,6 +341,14 @@ type E2eConfig = {
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
     /** Advertised HEAD for the first mock project without adding that branch. */
     projectHeadBranch?: string;
+    /** Project announcements used only by Factory E2E fixtures. */
+    factoryProjects?: MockFactoryProjectSeed[];
+    /** Host Factory records used only by Factory E2E fixtures. */
+    factoryRuns?: MockFactoryRunSeed[];
+    /** Run ids whose snapshot reads fail, exercising reconnect states. */
+    factorySnapshotFailureRunIds?: string[];
+    /** Local checkout paths returned by the E2E filesystem boundary. */
+    factoryLocalRepositories?: Array<{ name: string; path: string }>;
     /** Override the repository access channel for project authorization states. */
     projectAccessChannelId?: string;
     /** Make remote project snapshots fail with this git-facing message. */
@@ -297,6 +365,15 @@ type E2eConfig = {
     accountLinked?: boolean;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Match only the row data shown in the approved C1 shell snapshot. */
+    referenceSidebarShell?: boolean;
+    /** Override the current member role in reference client channels. */
+    referenceWorkspaceRole?: "owner" | "admin" | "member";
+    /** Override record statuses to exercise reference workspace boundaries. */
+    referenceWorkspaceClientStatus?: string;
+    referenceWorkspaceWorkStatus?: string;
+    /** Seed the r19 work-reference card in The Olive House client channel. */
+    referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -573,6 +650,10 @@ type E2eConfig = {
     // equals this is treated as a moderation DM (composer disabled). Absent →
     // fail open (no mod-DM detection), matching the Rust command's contract.
     relaySelf?: string | null;
+    /** Relay-signed company goal events for goals UI E2E coverage. */
+    goalEvents?: RelayEvent[];
+    /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+    goalRelayPrivateKey?: string;
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
@@ -583,6 +664,26 @@ type E2eConfig = {
     relayMembers?: Array<{
       pubkey: string;
       role: "owner" | "admin" | "member";
+    }>;
+    /** Verified relay-signed ask heads used by company ask E2E coverage. */
+    companyAskHeads?: RelayEvent[];
+    /** Ephemeral test key used to model relay-signed head updates after responses. */
+    companyAskRelayPrivateKeyHex?: string;
+    /** Reject these ask response publishes in order, then accept them. */
+    askResponseErrors?: string[];
+    /** Pending workflow approval rows used by Today E2E coverage. */
+    workflowApprovals?: Array<{
+      workflowId: string;
+      workflowName: string;
+      channelName: string;
+      runId: string;
+      approvalRef: string;
+      stepId: string;
+      stepIndex: number;
+      approverSpec: string;
+      approverPubkey?: string | null | "current";
+      expiresAt: string;
+      createdAt: number;
     }>;
     // Descriptors returned by the mocked `pick_and_upload_media` /
     // `upload_media_bytes` commands. Lets a spec drive the attachment flow
@@ -1191,6 +1292,7 @@ type MockFilter = {
   "#h"?: string[];
   "#p"?: string[];
   authors?: string[];
+  before_id?: string;
   ids?: string[];
   kinds?: number[];
   limit?: number;
@@ -1202,6 +1304,13 @@ type MockSocket = {
   handler: WsHandler;
   subscriptions: Map<string, MockSubscription>;
 };
+
+const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
+  KIND_CLIENT_ACTION,
+  KIND_WORK_ITEM_ACTION,
+  KIND_DELIVERABLE_VERSION,
+  KIND_DELIVERABLE_APPROVAL,
+]);
 
 function createMockRelayMembershipEvent(): RelayEvent {
   return createMockEvent(
@@ -1332,6 +1441,10 @@ async function writeClipboardFlavors({
 declare global {
   interface Window {
     __BUZZ_E2E__?: E2eConfig;
+    __BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__?: {
+      channelId: string;
+      label: string;
+    };
     /** The in-page relay is synthetic unless a relay-mode test opts in. */
     __BUZZ_E2E_USES_REAL_RELAY__?: boolean;
     /** Last payload written through the native clipboard command. */
@@ -1397,6 +1510,14 @@ declare global {
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
     }) => RelayEvent;
+    /** Sign and publish a mock relay ask head with the per-test relay key. */
+    __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: (input: {
+      channelId: string;
+      askId: string;
+      threadRootEventId: string;
+      content: string;
+      createdAt?: number;
+    }) => RelayEvent;
     /** Prepend `count` synthetic older messages to a channel's mock store so
      *  an older-history fetch has something to paginate. Mirrors how the real
      *  relay backfills history. Returns the created events. */
@@ -1458,10 +1579,17 @@ declare global {
     }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
+    /** Goal action kinds rejected once to exercise goal retry states. */
+    __BUZZ_E2E_REJECT_GOAL_ACTIONS__?: string[];
     /** Makes the mock relay reject project announcements as an unknown kind. */
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
     __BUZZ_E2E_FAIL_PROJECT_EVENT_ACK_KINDS__?: number[];
+    /** Reject business commands once to exercise conflict and permission UI. */
+    __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /**
      * Extra project events appended to the mock store on first access.
      * Use to seed standalone repositories (kind 30617) or other project-scoped
@@ -3478,6 +3606,7 @@ const mockChannels: MockChannel[] = [
 ];
 
 const mockMessages = new Map<string, RelayEvent[]>();
+const mockBusinessRecordEvents = new Map<string, RelayEvent[]>();
 const mockVisualThreadOnlyMessageIds = new Set<string>();
 const mockVisualContactLists = new Map<string, string[]>();
 
@@ -3610,6 +3739,7 @@ const mockUserStatuses: RelayEvent[] = [];
 const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
+const mockCompanyAskHeads: RelayEvent[] = [];
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
 const mockAuthResponses: Array<{ success: boolean; message: string }> = [];
@@ -4259,14 +4389,84 @@ type RawWorkflowRun = {
   created_at: number;
 };
 
+type MockWorkflowApproval = {
+  approval_ref: string;
+  workflow_id: string;
+  run_id: string;
+  step_id: string;
+  step_index: number;
+  approver_spec: string;
+  status: "pending" | "granted" | "denied" | "expired";
+  approver_pubkey: string | null;
+  note: string | null;
+  expires_at: string;
+  created_at: number;
+};
+
 const mockWorkflows: MockWorkflow[] = [];
 let mockWorkflowRuns: RawWorkflowRun[] = [];
+const mockWorkflowApprovals: MockWorkflowApproval[] = [];
 let mockWorkflowIdCounter = 0;
 
-function resetMockWorkflows() {
+function resetMockWorkflows(config: E2eConfig | null) {
   mockWorkflows.length = 0;
   mockWorkflowRuns = [];
+  mockWorkflowApprovals.length = 0;
   mockWorkflowIdCounter = 0;
+  const activePubkey = getMockMemberPubkey(config ?? undefined);
+  for (const seed of config?.mock?.workflowApprovals ?? []) {
+    const channelId = mockChannels.find(
+      (channel) => channel.name === seed.channelName,
+    )?.id;
+    if (!channelId) {
+      throw new Error(
+        `Mock workflow channel ${seed.channelName} was not found.`,
+      );
+    }
+    const createdAt = seed.createdAt;
+    const approverPubkey =
+      seed.approverPubkey === "current"
+        ? activePubkey
+        : (seed.approverPubkey ?? null);
+    const approverSpec =
+      seed.approverSpec === "current" ? activePubkey : seed.approverSpec;
+    mockWorkflows.push({
+      id: seed.workflowId,
+      revision: `mock-revision-${seed.workflowId}`,
+      name: seed.workflowName,
+      owner_pubkey: activePubkey,
+      channel_id: channelId,
+      definition: { name: seed.workflowName },
+      status: "active",
+      created_at: createdAt,
+      updated_at: createdAt,
+    });
+    mockWorkflowRuns.push({
+      id: seed.runId,
+      workflow_id: seed.workflowId,
+      status: "waiting_approval",
+      current_step: seed.stepIndex,
+      execution_trace: [],
+      started_at: createdAt,
+      completed_at: null,
+      error_code: null,
+      error_message: null,
+      created_at: createdAt,
+    });
+    mockWorkflowApprovals.push({
+      approval_ref: seed.approvalRef,
+      workflow_id: seed.workflowId,
+      run_id: seed.runId,
+      step_id: seed.stepId,
+      step_index: seed.stepIndex,
+      approver_spec: approverSpec,
+      status: "pending",
+      approver_pubkey: approverPubkey,
+      note: null,
+      expires_at: seed.expiresAt,
+      created_at: createdAt,
+    });
+  }
 }
 
 function parseWorkflowDefinition(
@@ -4459,8 +4659,44 @@ function handleGetWorkflowRuns(args: {
   };
 }
 
-function handleGetRunApprovals(_args: { workflowId: string; runId: string }) {
-  return { approvals: [] };
+function handleGetRunApprovals(args: { workflowId: string; runId: string }) {
+  return {
+    approvals: mockWorkflowApprovals
+      .filter(
+        (approval) =>
+          approval.workflow_id === args.workflowId &&
+          approval.run_id === args.runId,
+      )
+      .map((approval) => ({ ...approval })),
+  };
+}
+
+function handleWorkflowApprovalAction(
+  args: { token: string; note?: string | null },
+  status: "granted" | "denied",
+) {
+  const approval = mockWorkflowApprovals.find(
+    (candidate) => candidate.approval_ref === args.token,
+  );
+  if (!approval) throw new Error("Workflow approval was not found.");
+  if (approval.status !== "pending") {
+    throw new Error(`Workflow approval is already ${approval.status}.`);
+  }
+  approval.status = status;
+  approval.note = args.note ?? null;
+  const run = mockWorkflowRuns.find(
+    (candidate) => candidate.id === approval.run_id,
+  );
+  if (run) {
+    run.status = status === "granted" ? "completed" : "failed";
+    run.completed_at = Math.floor(Date.now() / 1_000);
+  }
+  return {
+    token: args.token,
+    status,
+    run_id: approval.run_id,
+    workflow_id: approval.workflow_id,
+  };
 }
 
 const mockProfiles = new Map<string, RawProfile>([
@@ -4536,7 +4772,14 @@ let referenceWorkspaceActive = false;
  */
 function applyReferenceWorkspace(config: E2eConfig): void {
   referenceWorkspaceActive = true;
+  const sidebarShell = config.mock?.referenceSidebarShell === true;
+  window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__ = {
+    channelId: REFERENCE_CHANNEL_IDS.sales,
+    label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  };
+  installReferenceDiscoveryProvider();
   const self = getMockMemberPubkey(config);
+  const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);
   const selfProfile = mockProfiles.get(self);
   if (selfProfile) {
@@ -4548,18 +4791,53 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   for (const agent of Object.values(REFERENCE_AGENTS)) {
     mockDisplayNames.set(agent.pubkey, agent.name);
     mockAgentPubkeys.add(agent.pubkey);
+    mockProfiles.set(agent.pubkey, {
+      pubkey: agent.pubkey,
+      display_name: agent.name,
+      name: agent.name,
+      avatar_url: null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: true,
+      has_profile_event: true,
+    });
   }
-  const channels = referenceChannelSeeds().map((seed) =>
+  const channelSeeds = sidebarShell
+    ? referenceSidebarChannelSeeds()
+    : referenceChannelSeeds();
+  const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
       name: seed.name,
-      channel_type: "stream",
-      visibility: "open",
+      channel_type: seed.channelType ?? "stream",
+      visibility:
+        seed.visibility ??
+        (seed.id === REFERENCE_CHANNEL_IDS.oliveHouse ||
+        seed.id === REFERENCE_CHANNEL_IDS.cedarCafe ||
+        seed.id === REFERENCE_CHANNEL_IDS.northline
+          ? "private"
+          : "open"),
       description: seed.description,
       topic: null,
       purpose: null,
-      last_message_at:
-        seed.id === REFERENCE_CHANNEL_IDS.sales ? isoMinutesAgo(30) : null,
+      last_message_at: sidebarShell
+        ? seed.id === REFERENCE_CHANNEL_IDS.oliveStudio
+          ? referenceSalesLastMessageAt()
+          : seed.id === REFERENCE_CHANNEL_IDS.marketing
+            ? referenceChannelLastMessageAt(10)
+            : seed.id === REFERENCE_CHANNEL_IDS.sales
+              ? referenceChannelLastMessageAt(20)
+              : seed.id === REFERENCE_CHANNEL_IDS.minaDm
+                ? referenceSalesLastMessageAt()
+                : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
+                  ? referenceChannelLastMessageAt(5)
+                  : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+                    ? referenceChannelLastMessageAt(5)
+                    : null
+        : seed.id === REFERENCE_CHANNEL_IDS.sales
+          ? referenceSalesLastMessageAt()
+          : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -4572,15 +4850,66 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       created_minutes_ago: 1440,
       updated_minutes_ago: 30,
       members: [
-        createMockMember(self, "owner", 1440),
+        createMockMember(self, selfRole, 1440),
         ...seed.agentMembers.map((pubkey) =>
           createMockMember(pubkey, "member", 1200),
         ),
       ],
+      ...(seed.channelType === "dm"
+        ? {
+            participant_pubkeys: [self, ...seed.agentMembers],
+            participants: [
+              REFERENCE_SELF_NAME,
+              ...seed.agentMembers.map(
+                (pubkey) =>
+                  Object.values(REFERENCE_AGENTS).find(
+                    (agent) => agent.pubkey === pubkey,
+                  )?.name ?? "",
+              ),
+            ],
+          }
+        : {}),
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
-  seedReferenceSidebarStorage(self);
+  if (sidebarShell) {
+    for (const [channelId, events] of Object.entries(
+      referenceSidebarUnreadMessages(self),
+    )) {
+      mockMessages.set(channelId, events);
+    }
+    setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
+  }
+  for (const event of referenceBusinessRecordEvents(self, {
+    clientStatus: config.mock?.referenceWorkspaceClientStatus,
+    workStatus: config.mock?.referenceWorkspaceWorkStatus,
+    workShare: config.mock?.referenceWorkspaceWorkShare,
+  })) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  for (const event of referenceOliveHouseMessages(self)) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  seedReferenceSidebarStorage(self, { sidebarShell });
+  mockBusinessRecordEvents.clear();
+  const communityId = referenceCommunityId();
+  if (communityId) {
+    for (const event of referenceSalesRecordEvents(self, communityId)) {
+      const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+      if (!channelId) continue;
+      const store = mockBusinessRecordEvents.get(channelId) ?? [];
+      store.push(event);
+      mockBusinessRecordEvents.set(channelId, store);
+    }
+  }
 }
 let directPanelRoot: Root | null = null;
 let directPanelContainer: HTMLDivElement | null = null;
@@ -4732,12 +5061,43 @@ function isRelayMode(config: E2eConfig | undefined): boolean {
   return config?.mode === "relay";
 }
 
+function getRelayCommunityUrl(config: E2eConfig | undefined): string | null {
+  if (!isRelayMode(config)) return null;
+  try {
+    const activeId = window.localStorage.getItem("buzz-active-community-id");
+    const communities = JSON.parse(
+      window.localStorage.getItem("buzz-communities") ?? "[]",
+    ) as Array<{ id?: unknown; relayUrl?: unknown }>;
+    const relayUrl = communities.find(
+      (community) => community.id === activeId,
+    )?.relayUrl;
+    return typeof relayUrl === "string" && relayUrl.trim()
+      ? relayUrl.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+let appliedRelayWsUrl: string | null = null;
+
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
+  const activeRelayWsUrl = appliedRelayWsUrl ?? getRelayCommunityUrl(config);
+  if (activeRelayWsUrl) {
+    return activeRelayWsUrl
+      .replace(/^wss:/i, "https:")
+      .replace(/^ws:/i, "http:");
+  }
   return config?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
 }
 
 function getRelayWsUrl(config: E2eConfig | undefined): string {
-  return config?.relayWsUrl ?? DEFAULT_RELAY_WS_URL;
+  return (
+    appliedRelayWsUrl ??
+    getRelayCommunityUrl(config) ??
+    config?.relayWsUrl ??
+    DEFAULT_RELAY_WS_URL
+  );
 }
 
 /**
@@ -5026,6 +5386,9 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
       channelId === REFERENCE_CHANNEL_IDS.sales
         ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
         : [];
+    if (channelId === REFERENCE_CHANNEL_IDS.sales) {
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_UNREAD_ROOT_ID);
+    }
     mockMessages.set(channelId, referenceSeeded);
     return referenceSeeded;
   }
@@ -5278,6 +5641,180 @@ function prependMockHistory(input: {
   return events;
 }
 
+function filterMockCompanyAskHeads(filter: MockFilter) {
+  const channelIds = filter["#h"];
+  const dTags = filter["#d"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+
+  return mockCompanyAskHeads
+    .filter((event) => {
+      if (
+        channelIds &&
+        !event.tags.some((tag) => tag[0] === "h" && channelIds.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (filter.since !== undefined && event.created_at < filter.since)
+        return false;
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      } else if (
+        filter.until !== undefined &&
+        event.created_at > filter.until
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function acceptMockAskResponse(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError = config?.mock?.askResponseErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
+  const coordinate =
+    coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
+  if (!channelId || !coordinate) {
+    reject("restricted: ask response needs one channel and ask coordinate");
+    return;
+  }
+
+  const headEvent = filterMockCompanyAskHeads({
+    kinds: [KIND_ASK_HEAD],
+    "#h": [channelId],
+    "#d": [coordinate],
+    limit: 10,
+  })[0];
+  if (!headEvent) {
+    reject("conflict: ask does not exist; current head is missing");
+    return;
+  }
+
+  let head: Record<string, unknown>;
+  let response: Record<string, unknown>;
+  try {
+    head = JSON.parse(headEvent.content);
+    response = JSON.parse(event.content);
+  } catch {
+    reject("invalid: ask response is not valid JSON");
+    return;
+  }
+  if (
+    response.askId !== head.askId ||
+    response.expectedHeadEventId !== headEvent.id
+  ) {
+    reject(`conflict: ask head changed; current head is ${headEvent.id}`);
+    return;
+  }
+  if (head.status !== "open") {
+    reject(
+      `conflict: ask is ${String(head.status)}; current head is ${headEvent.id}`,
+    );
+    return;
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for ask responses");
+    return;
+  }
+
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase() ||
+    headEvent.pubkey.toLowerCase() !== relayPubkey.toLowerCase()
+  ) {
+    reject("mock relay signer does not match the ask head signer");
+    return;
+  }
+
+  head.status = "resolved";
+  head.resolution = {
+    outcome: response.outcome,
+    ...(typeof response.reason === "string" ? { reason: response.reason } : {}),
+    ...(typeof response.answer === "string" ? { answer: response.answer } : {}),
+    ...(typeof response.optionId === "string"
+      ? { optionId: response.optionId }
+      : {}),
+    ...(Array.isArray(response.checkedItemIds)
+      ? { checkedItemIds: response.checkedItemIds }
+      : {}),
+    resolvedByPubkey: event.pubkey,
+    resolvedAt: new Date().toISOString(),
+    responseEventId: event.id,
+  };
+  head.cancellation = null;
+  head.sourceActionEventId = event.id;
+  const resolvedHead = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        headEvent.created_at + 1,
+      ),
+      tags: headEvent.tags,
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+    const candidate = mockCompanyAskHeads[index];
+    if (
+      candidate.tags.some((tag) => tag[0] === "h" && tag[1] === channelId) &&
+      candidate.tags.some((tag) => tag[0] === "d" && tag[1] === coordinate)
+    ) {
+      mockCompanyAskHeads.splice(index, 1);
+    }
+  }
+  mockCompanyAskHeads.push(resolvedHead);
+  emitMockLiveEvent(channelId, resolvedHead);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function emitMockHistory(
   socket: MockSocket,
   subId: string,
@@ -5285,9 +5822,35 @@ function emitMockHistory(
   filter: MockFilter,
 ) {
   const events = channelIds
-    .flatMap((channelId) => getMockMessageStore(channelId))
+    .flatMap((channelId) => [
+      ...getMockMessageStore(channelId),
+      ...(referenceWorkspaceActive
+        ? (mockBusinessRecordEvents.get(channelId) ?? [])
+        : []),
+    ])
     .filter((event) => {
+      if (filter.ids && !filter.ids.includes(event.id)) {
+        return false;
+      }
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
+        return false;
+      }
+      const dTags = filter["#d"];
+      if (
+        dTags &&
+        !dTags.some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      const addressTags = filter["#a"];
+      if (
+        addressTags &&
+        !addressTags.some((addressTag) =>
+          event.tags.some((tag) => tag[0] === "a" && tag[1] === addressTag),
+        )
+      ) {
         return false;
       }
       if (filter.since !== undefined && event.created_at < filter.since) {
@@ -5337,6 +5900,592 @@ function emitMockLiveEvent(channelId: string, event: RelayEvent) {
       }
     }
   }
+}
+
+function referenceBusinessStore(channelId: string): RelayEvent[] {
+  const current = mockBusinessRecordEvents.get(channelId);
+  if (current) return current;
+  const next: RelayEvent[] = [];
+  mockBusinessRecordEvents.set(channelId, next);
+  return next;
+}
+
+function businessDTagOf(event: RelayEvent): string | null {
+  return event.tags.find((tag) => tag[0] === "d")?.[1] ?? null;
+}
+
+function referenceBusinessRecord(
+  channelId: string,
+  kind: number,
+  dTag: string,
+): RelayEvent | null {
+  return (
+    referenceBusinessStore(channelId).find(
+      (event) => event.kind === kind && businessDTagOf(event) === dTag,
+    ) ?? null
+  );
+}
+
+function storeReferenceBusinessEvent(
+  channelId: string,
+  event: RelayEvent,
+  replaceCoordinate: boolean,
+  emitLive = true,
+): void {
+  const events = referenceBusinessStore(channelId);
+  const dTag = businessDTagOf(event);
+  if (replaceCoordinate && dTag) {
+    const index = events.findIndex(
+      (candidate) =>
+        candidate.kind === event.kind && businessDTagOf(candidate) === dTag,
+    );
+    if (index >= 0) events[index] = event;
+    else events.push(event);
+  } else if (!events.some((candidate) => candidate.id === event.id)) {
+    events.push(event);
+  }
+  if (emitLive) emitMockLiveEvent(channelId, event);
+}
+
+function referenceCommunityRecordId(): string {
+  return referenceCommunityId() ?? REFERENCE_CHANNEL_IDS.sales;
+}
+
+function referenceRecordEvent(
+  kind: number,
+  channelId: string,
+  dTag: string,
+  content: unknown,
+  source: RelayEvent,
+): RelayEvent {
+  return createMockEvent(
+    kind,
+    JSON.stringify(content),
+    [
+      ["h", channelId],
+      ["d", dTag],
+    ],
+    source.pubkey,
+    source.created_at,
+    mockEventId(),
+  );
+}
+
+type ReferenceServiceAction = {
+  schemaVersion: number;
+  serviceId: string;
+  action: "create" | "update" | "archive" | "restore";
+  expectedHeadEventId: string | null;
+  service: {
+    serviceId: string;
+    name: string;
+    description: string;
+    currency: string;
+    monthlyFeeMinor: number;
+    postsPerMonth: number;
+    revisionRounds: number;
+  };
+};
+
+type ReferenceProspectAction = {
+  schemaVersion: number;
+  prospectId: string;
+  action: "create" | "update" | "archive" | "restore";
+  expectedHeadEventId: string | null;
+  prospect: {
+    prospectId: string;
+    party: {
+      partyId: string;
+      partyType: string;
+      displayName: string;
+      externalIds: string[];
+    };
+    stage: string;
+    lostReason: string | null;
+    [key: string]: unknown;
+  };
+  activity: {
+    activityId: string;
+    activityKind: "note" | "contact";
+    content: string;
+    proposalId?: string | null;
+    proposalVersionEventId?: string | null;
+  } | null;
+};
+
+type ReferenceProposalVersion = {
+  schemaVersion: number;
+  proposalId: string;
+  prospectPartyId: string;
+  namedAcceptorPubkey: string;
+  revision: number;
+  previousVersionEventId: string | null;
+  expiresAt: number | null;
+  currency: string;
+  lines: Array<{
+    serviceId: string | null;
+    description: string;
+    quantityHundredths: number;
+    unitAmountMinor: number;
+  }>;
+  terms: string;
+};
+
+type ReferenceProposalAcceptance = {
+  schemaVersion: number;
+  proposalId: string;
+  proposalVersionEventId: string;
+  proposalVersionDigest: string;
+  conversionId: string;
+  clientId: string;
+  workItemId: string;
+  draftInvoiceId: string;
+  evidence: {
+    acceptedByName: string;
+    acceptedAt: number;
+    evidenceReference: string;
+    exactTermsConfirmed: boolean;
+  };
+};
+
+function parseMockBusinessContent<T>(event: RelayEvent): T | null {
+  try {
+    return JSON.parse(event.content) as T;
+  } catch {
+    return null;
+  }
+}
+
+function publishReferenceBusinessCommand(
+  event: RelayEvent,
+  socket: MockSocket,
+): boolean {
+  if (!referenceWorkspaceActive) return false;
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  const dTag = businessDTagOf(event);
+  if (!channelId || !dTag) {
+    sendWsText(socket.handler, [
+      "OK",
+      event.id,
+      false,
+      "invalid: W10 business command requires h and d tags",
+    ]);
+    return true;
+  }
+  const communityId = referenceCommunityRecordId();
+  const commandTime = event.created_at;
+  const shouldLoseAcceptanceAck =
+    event.kind === KIND_PROPOSAL_ACCEPTANCE &&
+    Boolean(
+      (
+        window as unknown as {
+          __BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__?: boolean;
+        }
+      ).__BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__,
+    );
+  if (shouldLoseAcceptanceAck) {
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__?: boolean;
+      }
+    ).__BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__ = false;
+  }
+  const fail = (reason: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, `invalid: ${reason}`]);
+  };
+  const record = <T>(kind: number, tag: string): T | null => {
+    const prior = referenceBusinessRecord(channelId, kind, tag);
+    return prior ? parseMockBusinessContent<T>(prior) : null;
+  };
+
+  if (event.kind === KIND_SERVICE_ACTION) {
+    const action = parseMockBusinessContent<ReferenceServiceAction>(event);
+    if (!action || action.serviceId !== action.service.serviceId) {
+      fail("service action is invalid");
+      return true;
+    }
+    const status = action.action === "archive" ? "archived" : "active";
+    const head = referenceRecordEvent(
+      KIND_SERVICE_HEAD,
+      channelId,
+      businessDTag(communityId, "service", action.serviceId),
+      {
+        schemaVersion: action.schemaVersion,
+        serviceId: action.serviceId,
+        status,
+        service: action.service,
+        sourceActionEventId: event.id,
+      },
+      event,
+    );
+    storeReferenceBusinessEvent(channelId, head, true);
+  } else if (event.kind === KIND_PROSPECT_ACTION) {
+    const action = parseMockBusinessContent<ReferenceProspectAction>(event);
+    if (
+      !action ||
+      action.prospectId !== action.prospect.prospectId ||
+      action.prospect.party.partyId !== action.prospectId
+    ) {
+      fail("prospect action is invalid");
+      return true;
+    }
+    const prospectDTag = businessDTag(
+      communityId,
+      "prospect",
+      action.prospectId,
+    );
+    const prior = record<{
+      activities: Array<Record<string, unknown>>;
+    }>(KIND_PROSPECT_HEAD, prospectDTag);
+    const activities = [...(prior?.activities ?? [])];
+    if (
+      action.activity &&
+      !activities.some(
+        (activity) => activity.activityId === action.activity?.activityId,
+      )
+    ) {
+      activities.push({
+        ...action.activity,
+        authorPubkey: event.pubkey,
+        createdAt: commandTime,
+      });
+    }
+    const partyDTag = businessDTag(
+      communityId,
+      "party",
+      action.prospect.party.partyId,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PARTY_HEAD,
+        channelId,
+        partyDTag,
+        {
+          schemaVersion: action.schemaVersion,
+          partyId: action.prospect.party.partyId,
+          status: "active",
+          party: action.prospect.party,
+          sourceActionEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PROSPECT_HEAD,
+        channelId,
+        prospectDTag,
+        {
+          schemaVersion: action.schemaVersion,
+          prospectId: action.prospectId,
+          status: action.action === "archive" ? "archived" : "active",
+          prospect: action.prospect,
+          activities,
+          sourceActionEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+  } else if (event.kind === KIND_PROPOSAL_VERSION) {
+    const version = parseMockBusinessContent<ReferenceProposalVersion>(event);
+    if (!version || version.revision < 1 || version.lines.length === 0) {
+      fail("proposal version is invalid");
+      return true;
+    }
+    storeReferenceBusinessEvent(channelId, event, false);
+    const headDTag = businessDTag(communityId, "proposal", version.proposalId);
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PROPOSAL_HEAD,
+        channelId,
+        headDTag,
+        {
+          schemaVersion: version.schemaVersion,
+          proposalId: version.proposalId,
+          currentVersionEventId: event.id,
+          currentVersionDigest: bytesToHex(
+            sha256(new TextEncoder().encode(event.content)),
+          ),
+          revision: version.revision,
+          sourceEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+  } else if (event.kind === KIND_PROPOSAL_ACCEPTANCE) {
+    const acceptance =
+      parseMockBusinessContent<ReferenceProposalAcceptance>(event);
+    if (!acceptance?.evidence?.exactTermsConfirmed) {
+      fail("acceptance evidence is required");
+      return true;
+    }
+    const proposalHead = record<{
+      currentVersionEventId: string;
+      currentVersionDigest: string;
+    }>(
+      KIND_PROPOSAL_HEAD,
+      businessDTag(communityId, "proposal", acceptance.proposalId),
+    );
+    const versionEvent = referenceBusinessStore(channelId).find(
+      (candidate) =>
+        candidate.kind === KIND_PROPOSAL_VERSION &&
+        candidate.id === acceptance.proposalVersionEventId,
+    );
+    const version = versionEvent
+      ? parseMockBusinessContent<ReferenceProposalVersion>(versionEvent)
+      : null;
+    if (
+      !proposalHead ||
+      !version ||
+      proposalHead.currentVersionEventId !==
+        acceptance.proposalVersionEventId ||
+      proposalHead.currentVersionDigest !== acceptance.proposalVersionDigest ||
+      version.namedAcceptorPubkey.toLowerCase() !== event.pubkey.toLowerCase()
+    ) {
+      fail(
+        "acceptance must target the current proposal version and named signer",
+      );
+      return true;
+    }
+    storeReferenceBusinessEvent(
+      channelId,
+      event,
+      false,
+      !shouldLoseAcceptanceAck,
+    );
+    const prospectEntry = referenceBusinessStore(channelId).find(
+      (candidate) => {
+        if (candidate.kind !== KIND_PROSPECT_HEAD) return false;
+        const content = parseMockBusinessContent<{
+          prospect?: { party?: { partyId?: string } };
+        }>(candidate);
+        return content?.prospect?.party?.partyId === version.prospectPartyId;
+      },
+    );
+    if (prospectEntry) {
+      const content = parseMockBusinessContent<{
+        schemaVersion: number;
+        prospectId: string;
+        status: string;
+        prospect: Record<string, unknown>;
+        activities: Array<Record<string, unknown>>;
+      }>(prospectEntry);
+      if (content) {
+        storeReferenceBusinessEvent(
+          channelId,
+          referenceRecordEvent(
+            KIND_PROSPECT_HEAD,
+            channelId,
+            businessDTag(communityId, "prospect", content.prospectId),
+            {
+              ...content,
+              prospect: {
+                ...content.prospect,
+                stage: "won",
+                lostReason: null,
+              },
+              sourceActionEventId: event.id,
+            },
+            event,
+          ),
+          true,
+          !shouldLoseAcceptanceAck,
+        );
+      }
+    }
+    const partyEvent = referenceBusinessStore(channelId).find((candidate) => {
+      if (candidate.kind !== KIND_PARTY_HEAD) return false;
+      const content = parseMockBusinessContent<{ partyId?: string }>(candidate);
+      return content?.partyId === version.prospectPartyId;
+    });
+    const party = partyEvent
+      ? parseMockBusinessContent<{
+          party?: { displayName?: string };
+          partyId?: string;
+        }>(partyEvent)
+      : null;
+    const conversionDTag = businessDTag(
+      communityId,
+      "conversion",
+      acceptance.conversionId,
+    );
+    const receipt = referenceRecordEvent(
+      KIND_PROPOSAL_CONVERSION_RECEIPT,
+      channelId,
+      conversionDTag,
+      {
+        schemaVersion: 1,
+        conversionId: acceptance.conversionId,
+        proposalId: acceptance.proposalId,
+        proposalVersionEventId: acceptance.proposalVersionEventId,
+        clientId: acceptance.clientId,
+        workItemId: acceptance.workItemId,
+        draftInvoiceId: acceptance.draftInvoiceId,
+        acceptanceEventId: event.id,
+      },
+      event,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      receipt,
+      true,
+      !shouldLoseAcceptanceAck,
+    );
+
+    const clientId = acceptance.clientId;
+    const clientDTag = `client:${clientId}:client:${clientId}`;
+    const workDTag = `client:${clientId}:work:${acceptance.workItemId}`;
+    const invoiceDTag = `client:${clientId}:invoice:${acceptance.draftInvoiceId}`;
+    const channelIndex = mockChannels.findIndex(
+      (candidate) => candidate.id === clientId,
+    );
+    if (channelIndex < 0) {
+      mockChannels.push(
+        createMockChannel({
+          id: clientId,
+          name: party?.party?.displayName ?? "New client",
+          channel_type: "stream",
+          visibility: "private",
+          description: "Service, production and review.",
+          topic: null,
+          purpose: null,
+          last_message_at: null,
+          archived_at: null,
+          created_by: event.pubkey,
+          topic_set_by: null,
+          topic_set_at: null,
+          purpose_set_by: null,
+          purpose_set_at: null,
+          topic_required: false,
+          max_members: null,
+          nip29_group_id: null,
+          created_minutes_ago: 0,
+          updated_minutes_ago: 0,
+          members: [createMockMember(event.pubkey, "owner", 0)],
+        }),
+      );
+    }
+    const clientHead = createMockEvent(
+      30631,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        partyId: version.prospectPartyId,
+        displayName: party?.party?.displayName ?? "New client",
+        approverPubkeys: [event.pubkey],
+        status: "active",
+        sourceActionEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", clientDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    const workItemHead = createMockEvent(
+      30634,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        workItemId: acceptance.workItemId,
+        title: `Proposal ${acceptance.proposalId}`,
+        status: "open",
+        assignedPubkeys: [],
+        approverPubkeys: [event.pubkey],
+        deliverables: [],
+        sourceEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", workDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    const invoiceTotal = version.lines.reduce(
+      (total, line) =>
+        total +
+        Math.floor((line.quantityHundredths * line.unitAmountMinor) / 100),
+      0,
+    );
+    const invoiceHead = createMockEvent(
+      30641,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        invoiceId: acceptance.draftInvoiceId,
+        proposalId: acceptance.proposalId,
+        proposalVersionEventId: acceptance.proposalVersionEventId,
+        currency: version.currency,
+        lines: version.lines,
+        totalMinor: invoiceTotal,
+        status: "draft",
+        sourceEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", invoiceDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    for (const head of [clientHead, workItemHead, invoiceHead]) {
+      const store = getMockMessageStore(clientId);
+      const index = store.findIndex(
+        (candidate) =>
+          candidate.kind === head.kind &&
+          businessDTagOf(candidate) === businessDTagOf(head),
+      );
+      if (index >= 0) store[index] = head;
+      else store.push(head);
+    }
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_CONVERSION_COUNTS__?: Record<string, number>;
+      }
+    ).__BUZZ_E2E_W10_CONVERSION_COUNTS__ = {
+      receipts: referenceBusinessStore(channelId).filter(
+        (candidate) =>
+          candidate.kind === KIND_PROPOSAL_CONVERSION_RECEIPT &&
+          businessDTagOf(candidate) === conversionDTag,
+      ).length,
+      clients: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30631,
+      ).length,
+      workItems: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30634,
+      ).length,
+      draftInvoices: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30641,
+      ).length,
+    };
+  } else {
+    return false;
+  }
+
+  if (shouldLoseAcceptanceAck) {
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__?: boolean;
+      }
+    ).__BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__ = true;
+    sendWsText(socket.handler, [
+      "OK",
+      event.id,
+      false,
+      "mock acceptance acknowledgement lost after commit",
+    ]);
+  } else {
+    sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  }
+  return true;
 }
 
 let mockObserverControlSeq = 0;
@@ -5924,6 +7073,7 @@ const TIMELINE_KINDS = new Set([
   43004,
   43005,
   43006,
+  KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
 ]);
 
@@ -6195,8 +7345,8 @@ async function handleGetChannelReconnectRepair(
   config: E2eConfig | undefined,
 ): Promise<RelayEvent[]> {
   const kinds = new Set([
-    5, 7, 9, 9005, 40001, 40002, 40003, 40008, 40099, 45001, 45003, 48100,
-    48101, 48102, 48103,
+    5, 7, 9, 9005, 40001, 40002, 40003, 40008, 40099, 45001, 45003, 47032,
+    48100, 48101, 48102, 48103,
   ]);
   const filter: Record<string, unknown> = {
     "#h": [args.channelId],
@@ -6269,7 +7419,13 @@ async function handleGetChannelWindow(
       // Exhaustion probe mirrors the relay's limit+1: more rows past the cursor
       // than the page cap means another page exists. next_cursor is the last
       // retained row.
-      const hasMore = afterCursor.length > cap;
+      const referenceViewportHasOlderHistory =
+        referenceWorkspaceActive &&
+        args.cursor == null &&
+        args.channelId === REFERENCE_CHANNEL_IDS.sales &&
+        REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY;
+      const hasMore =
+        afterCursor.length > cap || referenceViewportHasOlderHistory;
       const lastRow = rows[rows.length - 1];
       const nextCursor =
         hasMore && lastRow
@@ -6597,7 +7753,59 @@ function mulberry32(seed: number) {
 }
 
 let mockProjectEventStore: RelayEvent[] | null = null;
+let mockGoalEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
+let mockFactoryRuns: FactoryRun[] = [];
+let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
+let mockFactoryDrafts = new Map<string, FactoryRunDraft>();
+
+function resetMockFactoryRuntime(config?: E2eConfig) {
+  const seeds = config?.mock?.factoryRuns ?? [];
+  mockFactoryRuns = seeds.map((seed) => structuredClone(seed.run));
+  mockFactorySnapshots = new Map(
+    seeds.map((seed) => [
+      seed.run.id,
+      {
+        run: structuredClone(seed.run),
+        events: structuredClone(seed.events ?? []),
+        draft: seed.draft ?? null,
+        hasMore: seed.hasMore ?? false,
+      },
+    ]),
+  );
+  mockFactoryDrafts = new Map(
+    seeds
+      .filter(
+        (seed): seed is MockFactoryRunSeed & { draft: string } =>
+          typeof seed.draft === "string",
+      )
+      .map((seed) => [
+        seed.run.id,
+        {
+          runId: seed.run.id,
+          draft: seed.draft,
+          updatedAt: seed.run.updatedAt,
+        },
+      ]),
+  );
+}
+
+function getMockFactorySnapshot(
+  runId: string,
+  afterSequence = 0,
+): FactoryRunSnapshot {
+  const run = mockFactoryRuns.find((item) => item.id === runId);
+  if (!run) throw new Error("Factory run is not available in this scope.");
+  const stored = mockFactorySnapshots.get(runId);
+  return {
+    run: structuredClone(run),
+    events: structuredClone(
+      stored?.events.filter((event) => event.sequence > afterSequence) ?? [],
+    ),
+    draft: mockFactoryDrafts.get(runId)?.draft ?? stored?.draft ?? null,
+    hasMore: stored?.hasMore ?? false,
+  };
+}
 
 function readMockProjectBranches(): Record<string, Record<string, string>> {
   try {
@@ -6629,6 +7837,47 @@ function writeMockProjectBranch(
 }
 
 function buildMockProjectEvents(): RelayEvent[] {
+  const factoryProjects = getConfig()?.mock?.factoryProjects;
+  if (factoryProjects) {
+    const config = getConfig();
+    const owner = getMockMemberPubkey(config);
+    const now = Math.floor(Date.now() / 1000);
+    return factoryProjects.flatMap((project, index) => {
+      const repositoryAddress = `${KIND_REPO_ANNOUNCEMENT}:${owner}:${project.repositoryDtag}`;
+      return [
+        createMockEvent(
+          KIND_REPO_ANNOUNCEMENT,
+          project.description,
+          [
+            ["d", project.repositoryDtag],
+            ["name", project.repositoryName],
+            ["description", project.description],
+            ["default-branch", "main"],
+            ["clone", project.cloneUrl],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+        createMockEvent(
+          KIND_PROJECT_ANNOUNCEMENT,
+          "",
+          [
+            ["d", project.dtag],
+            ["name", project.name],
+            ["description", project.description],
+            ["a", repositoryAddress],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+      ];
+    });
+  }
+
   if (window.__BUZZ_E2E_EMPTY_PROJECTS__) {
     return [];
   }
@@ -6780,8 +8029,257 @@ function getMockProjectEventStore(): RelayEvent[] {
   return mockProjectEventStore;
 }
 
+function getMockGoalEventStore(): RelayEvent[] {
+  if (!mockGoalEventStore) {
+    const persisted = window.localStorage.getItem("buzz-e2e-goal-events-v1");
+    if (persisted) {
+      try {
+        const value: unknown = JSON.parse(persisted);
+        mockGoalEventStore = Array.isArray(value)
+          ? (value as RelayEvent[])
+          : structuredClone(getConfig()?.mock?.goalEvents ?? []);
+      } catch {
+        mockGoalEventStore = structuredClone(
+          getConfig()?.mock?.goalEvents ?? [],
+        );
+      }
+    } else {
+      mockGoalEventStore = structuredClone(getConfig()?.mock?.goalEvents ?? []);
+    }
+  }
+  return mockGoalEventStore;
+}
+
+function persistMockGoalEventStore(): void {
+  window.localStorage.setItem(
+    "buzz-e2e-goal-events-v1",
+    JSON.stringify(getMockGoalEventStore()),
+  );
+}
+
+function mockGoalHeadByDTag(dTag: string): RelayEvent | undefined {
+  return getMockGoalEventStore().find(
+    (event) =>
+      event.kind === KIND_GOAL_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function brokerMockGoalAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event)) return "invalid: goal action signature is invalid.";
+  if (event.tags.length !== 1 || event.tags[0]?.[0] !== "d") {
+    return "invalid: company goal action must have one d tag.";
+  }
+  const dTag = event.tags[0][1];
+  const coordinate = /^company:goal:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (!coordinate) return "invalid: company goal d tag is malformed.";
+
+  let action: {
+    schemaVersion?: number;
+    goalId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    goal?: Record<string, unknown>;
+    progress?: Record<string, unknown>;
+    status?: string;
+    reason?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return "invalid: goal action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.goalId?.toLowerCase() !== coordinate[1].toLowerCase()
+  ) {
+    return "invalid: goal action does not match its d tag.";
+  }
+  const rejectedActionIndex =
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.indexOf(action.action ?? "") ?? -1;
+  if (rejectedActionIndex >= 0) {
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.splice(rejectedActionIndex, 1);
+    return "conflict: mock goal action rejected.";
+  }
+
+  const existingEvent = mockGoalHeadByDTag(dTag);
+  let existing: Record<string, unknown> | null = null;
+  if (existingEvent) {
+    try {
+      existing = JSON.parse(existingEvent.content);
+    } catch {
+      return "error: stored mock goal head is invalid.";
+    }
+  }
+  if (action.action === "create") {
+    if (existingEvent) return "conflict: goal already exists.";
+    if (!action.goal) return "invalid: goal fields are required.";
+  } else {
+    if (!existingEvent || !existing) return "conflict: goal does not exist.";
+    if (action.expectedHeadEventId !== existingEvent.id) {
+      return `conflict: goal changed; current head is ${existingEvent.id}`;
+    }
+  }
+
+  const currentGoal = existing?.goal as Record<string, unknown> | undefined;
+  const currentStatus =
+    typeof existing?.status === "string" ? existing.status : "active";
+  let nextGoal = currentGoal;
+  let nextProgress = existing?.progress;
+  let nextStatus = currentStatus;
+  switch (action.action) {
+    case "create":
+    case "update":
+      nextGoal = action.goal;
+      break;
+    case "progress":
+      if (!action.progress || typeof action.progress.evidence !== "string") {
+        return "invalid: progress evidence is required.";
+      }
+      if (
+        action.status !== undefined &&
+        !["active", "off_pace", "achieved"].includes(action.status)
+      ) {
+        return "invalid: progress status is not supported.";
+      }
+      nextProgress = {
+        ...action.progress,
+        recordedByPubkey: event.pubkey,
+        recordedAt: new Date().toISOString(),
+      };
+      if (action.status) nextStatus = action.status;
+      break;
+    case "set_status":
+      if (!action.status || !action.reason) {
+        return "invalid: status and reason are required.";
+      }
+      nextStatus = action.status;
+      break;
+    case "archive":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      nextStatus = "archived";
+      break;
+    case "restore":
+      nextStatus = "active";
+      break;
+    case "delete":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      if (
+        getMockGoalEventStore().some((candidate) => {
+          if (candidate.kind !== KIND_GOAL_HEAD) return false;
+          try {
+            const candidateContent = JSON.parse(candidate.content) as {
+              status?: string;
+              goal?: { parentGoalId?: string };
+            };
+            return (
+              candidateContent.status !== "deleted" &&
+              candidateContent.goal?.parentGoalId === action.goalId
+            );
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return "conflict: goal has non-deleted sub-goals.";
+      }
+      nextGoal = undefined;
+      nextProgress = undefined;
+      nextStatus = "deleted";
+      break;
+    default:
+      return "invalid: unsupported goal action.";
+  }
+
+  const privateKey = getConfig()?.mock?.goalRelayPrivateKey;
+  if (!privateKey)
+    return "error: mock goal relay signing key is not configured.";
+  const relayPubkey = getPublicKey(hexToBytes(privateKey));
+  const configuredRelayPubkey = getConfig()?.mock?.relaySelf;
+  if (
+    configuredRelayPubkey &&
+    configuredRelayPubkey.toLowerCase() !== relayPubkey.toLowerCase()
+  ) {
+    return "error: mock goal relay key does not match relay self.";
+  }
+
+  const content = {
+    schemaVersion: 1,
+    goalId: action.goalId,
+    status: nextStatus,
+    title:
+      typeof nextGoal?.title === "string"
+        ? nextGoal.title
+        : typeof existing?.title === "string"
+          ? existing.title
+          : "",
+    ...(nextGoal ? { goal: nextGoal } : {}),
+    ...(nextProgress ? { progress: nextProgress } : {}),
+    sourceActionEventId: event.id,
+  };
+  const head = finalizeEvent(
+    {
+      kind: KIND_GOAL_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (existingEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    hexToBytes(privateKey),
+  );
+  const store = getMockGoalEventStore();
+  store.push(event);
+  if (existingEvent) {
+    const index = store.findIndex(
+      (candidate) => candidate.id === existingEvent.id,
+    );
+    if (index >= 0) store.splice(index, 1);
+  }
+  store.push(head);
+  persistMockGoalEventStore();
+  return null;
+}
+
+function filterMockGoalEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids ? new Set(filter.ids) : null;
+  return getMockGoalEventStore()
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.has(event.id)) return false;
+      if (
+        filter["#d"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        right.created_at - left.created_at || left.id.localeCompare(right.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 /** Project-scoped publishes (PR/issue comments, NIP-34 status events) carry
- * a repo-address `a` tag instead of a channel `h` tag — store them with the
+ * a repo-address `a` tag instead of a channel `h` tag. Store them with the
  * seeded project events so refetches see them. */
 function isMockProjectScopedEvent(event: RelayEvent): boolean {
   const hasRepoAddressTag = event.tags.some(
@@ -8444,6 +9942,28 @@ async function handleGetFeed(
         generated_at: now,
       },
       visual_fixture: visualFixture.today,
+    };
+  }
+
+  if (!isRelayMode(config) && referenceWorkspaceActive) {
+    const now = Math.floor(Date.now() / 1000);
+    const unreadItems =
+      config?.mock?.referenceSidebarShell === true
+        ? []
+        : referenceHomeInboxItems();
+    return {
+      feed: {
+        mentions: [],
+        needs_action: unreadItems,
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: unreadItems.length,
+        generated_at: now,
+      },
+      visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
     };
   }
 
@@ -11381,6 +12901,18 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (
+      filter.kinds?.some(
+        (kind) => kind === KIND_GOAL_ACTION || kind === KIND_GOAL_HEAD,
+      )
+    ) {
+      for (const event of filterMockGoalEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_PERSONA)) {
       const authors = filter.authors?.map((author) => author.toLowerCase());
       const sourceIds = filter["#d"];
@@ -11459,6 +12991,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_ASK_HEAD)) {
+      for (const event of filterMockCompanyAskHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     const channelIds = filter["#h"] ?? [];
     if (channelIds.length > 0 && subId.startsWith("history-")) {
       const closeReason = mockChannelHistoryCloses.shift();
@@ -11504,6 +13044,39 @@ function sendToMockSocket(args: {
 
   if (type === "EVENT") {
     const event = rest[0] as RelayEvent;
+    if (
+      referenceWorkspaceActive &&
+      REFERENCE_BUSINESS_COMMAND_KINDS.has(event.kind)
+    ) {
+      const rejections =
+        window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ ?? [];
+      const rejectionIndex = rejections.findIndex(
+        (candidate) => candidate.kind === event.kind,
+      );
+      if (rejectionIndex >= 0) {
+        const [rejection] = rejections.splice(rejectionIndex, 1);
+        sendWsText(socket.handler, ["OK", event.id, false, rejection.reason]);
+        return;
+      }
+    }
+
+    if (event.kind === KIND_ASK_RESPONSE) {
+      acceptMockAskResponse(socket, event, getConfig());
+      return;
+    }
+
+    if (
+      referenceWorkspaceActive &&
+      [
+        KIND_SERVICE_ACTION,
+        KIND_PROSPECT_ACTION,
+        KIND_PROPOSAL_VERSION,
+        KIND_PROPOSAL_ACCEPTANCE,
+      ].includes(event.kind)
+    ) {
+      publishReferenceBusinessCommand(event, socket);
+      return;
+    }
 
     if (event.kind === KIND_AGENT_OBSERVER_FRAME) {
       const frame = event.tags.find((tag) => tag[0] === "frame")?.[1];
@@ -11652,6 +13225,24 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_GOAL_ACTION) {
+      const error = brokerMockGoalAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const goalEvents = getMockGoalEventStore();
+      const actionEvent = goalEvents.find(
+        (candidate) => candidate.id === event.id,
+      );
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
+      if (actionEvent) emitMockGlobalEvent(actionEvent);
+      if (headEvent) emitMockGlobalEvent(headEvent);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
     if (isMockProjectScopedEvent(event)) {
       if (event.pubkey !== DEFAULT_MOCK_IDENTITY.pubkey) {
         sendWsText(socket.handler, [
@@ -11762,6 +13353,11 @@ export function maybeInstallE2eTauriMocks() {
   if (!config) {
     return;
   }
+  mockCompanyAskHeads.splice(
+    0,
+    mockCompanyAskHeads.length,
+    ...(config.mock?.companyAskHeads ?? []),
+  );
   if (!isRelayMode(config) && config.mock?.visualFixture) {
     seedVisualFixture(config.mock.visualFixture);
   }
@@ -12002,10 +13598,11 @@ export function maybeInstallE2eTauriMocks() {
   resetMockRelayMembers(config);
   resetMockRelayAgents(config);
   resetMockManagedAgents(config);
+  resetMockFactoryRuntime(config);
   resetMockPersonas(config);
   resetMockTeams(config);
   seedMockSearchProfiles(config);
-  resetMockWorkflows();
+  resetMockWorkflows(config);
   resetMockMesh();
   resetMockUserStatuses();
   resetMockPersonaCatalogEvents(config);
@@ -12141,6 +13738,49 @@ export function maybeInstallE2eTauriMocks() {
     refreshMockHuddleMembership(config);
     persistMockHuddle();
     await emitMockHuddleState();
+  };
+  window.__BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__ = ({
+    channelId,
+    askId,
+    threadRootEventId,
+    content,
+    createdAt,
+  }) => {
+    const privateKeyHex = config.mock?.companyAskRelayPrivateKeyHex;
+    if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+      throw new Error("The mock relay signer is unavailable.");
+    }
+    const relaySecret = hexToBytes(privateKeyHex);
+    const relayPubkey = getPublicKey(relaySecret);
+    if (relayPubkey.toLowerCase() !== config.mock?.relaySelf?.toLowerCase()) {
+      throw new Error("The mock relay signer does not match relaySelf.");
+    }
+    const coordinate = `channel:${channelId}:ask:${askId}`;
+    const event = finalizeEvent(
+      {
+        kind: KIND_ASK_HEAD,
+        created_at: createdAt ?? Math.floor(Date.now() / 1_000),
+        tags: [
+          ["h", channelId],
+          ["d", coordinate],
+          ["e", threadRootEventId],
+        ],
+        content,
+      },
+      relaySecret,
+    );
+    for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+      const candidate = mockCompanyAskHeads[index];
+      if (
+        candidate.tags.some((tag) => tag[0] === "h" && tag[1] === channelId) &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === coordinate)
+      ) {
+        mockCompanyAskHeads.splice(index, 1);
+      }
+    }
+    mockCompanyAskHeads.push(event);
+    emitMockLiveEvent(channelId, event);
+    return event;
   };
   window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ = ({
     channelName,
@@ -13406,9 +15046,17 @@ export function maybeInstallE2eTauriMocks() {
       case "apply_workspace": {
         const applyDelayMs = activeConfig?.mock?.applyCommunityDelayMs ?? 0;
         if (applyDelayMs > 0) {
-          return new Promise((resolve) =>
+          await new Promise((resolve) =>
             window.setTimeout(resolve, applyDelayMs),
           );
+        }
+        const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        if (
+          isRelayMode(activeConfig) &&
+          typeof relayUrl === "string" &&
+          relayUrl.trim().length > 0
+        ) {
+          appliedRelayWsUrl = relayUrl;
         }
         return;
       }
@@ -13697,7 +15345,7 @@ export function maybeInstallE2eTauriMocks() {
           }
         );
       case "list_project_local_repositories":
-        return [];
+        return activeConfig?.mock?.factoryLocalRepositories ?? [];
       case "open_project_repository_folder":
         return null;
       case "push_project_local_repository": {
@@ -14584,6 +16232,129 @@ export function maybeInstallE2eTauriMocks() {
           ],
         };
       }
+      case "factory_run_list":
+        return mockFactoryRuns.map((run) => structuredClone(run));
+      case "factory_run_snapshot":
+      case "factory_run_reattach": {
+        const { runId, afterSequence = 0 } = payload as {
+          runId: string;
+          afterSequence?: number;
+        };
+        if (activeConfig?.mock?.factorySnapshotFailureRunIds?.includes(runId)) {
+          throw new Error("Factory session is reconnecting.");
+        }
+        return getMockFactorySnapshot(runId, afterSequence);
+      }
+      case "factory_run_detach":
+        return true;
+      case "factory_run_cancel": {
+        const { runId } = payload as { runId: string };
+        const run = mockFactoryRuns.find((item) => item.id === runId);
+        if (!run)
+          throw new Error("Factory run is not available in this scope.");
+        run.status = "cancelled";
+        run.updatedAt = new Date().toISOString();
+        const snapshot = mockFactorySnapshots.get(runId);
+        if (snapshot) snapshot.run = structuredClone(run);
+        return structuredClone(run);
+      }
+      case "factory_run_create": {
+        const { input } = payload as {
+          input: {
+            projectId?: string | null;
+            repositoryId?: string | null;
+            checkoutPath: string;
+            agentId: string;
+            parentRunId?: string | null;
+            operationKey: string;
+            prompt: string;
+          };
+        };
+        const now = new Date().toISOString();
+        const communities = JSON.parse(
+          window.localStorage.getItem("buzz-communities") ?? "[]",
+        ) as Array<{
+          id: string;
+          relayUrl?: string;
+          businessCommunityId?: string;
+          clientChannelId?: string | null;
+        }>;
+        const activeCommunityId = window.localStorage.getItem(
+          "buzz-active-community-id",
+        );
+        const community = communities.find(
+          (item) => item.id === activeCommunityId,
+        );
+        const scope: FactoryScope = {
+          relayUrl: community?.relayUrl ?? getRelayWsUrl(activeConfig),
+          identityPubkey: getMockMemberPubkey(activeConfig),
+          businessCommunityId:
+            community?.businessCommunityId ?? community?.id ?? "e2e-business",
+          clientChannelId: community?.clientChannelId ?? null,
+        };
+        const run: FactoryRun = {
+          id: `e2e-factory-run-${crypto.randomUUID()}`,
+          scope,
+          projectId: input.projectId ?? null,
+          repositoryId: input.repositoryId ?? null,
+          checkoutPath: input.checkoutPath,
+          agentId: input.agentId,
+          harnessId:
+            activeConfig?.mock?.managedAgents?.find(
+              (agent) => agent.pubkey === input.agentId,
+            )?.runtime ?? "local",
+          parentRunId: input.parentRunId ?? null,
+          status: "queued",
+          createdAt: now,
+          updatedAt: now,
+          acpSessionId: null,
+          error: null,
+        };
+        mockFactoryRuns.unshift(run);
+        const promptEvent: FactoryRunEvent = {
+          sequence: 1,
+          runId: run.id,
+          createdAt: now,
+          kind: "user_prompt",
+          payload: { text: input.prompt },
+          scope,
+        };
+        mockFactorySnapshots.set(run.id, {
+          run: structuredClone(run),
+          events: [promptEvent],
+          draft: null,
+          hasMore: false,
+        });
+        return structuredClone(run);
+      }
+      case "factory_run_get_draft": {
+        const { runId } = payload as { runId: string };
+        return structuredClone(mockFactoryDrafts.get(runId) ?? null);
+      }
+      case "factory_run_set_draft": {
+        const { input } = payload as {
+          input: { runId: string; draft: string };
+        };
+        if (!mockFactoryRuns.some((run) => run.id === input.runId)) {
+          throw new Error("Factory run is not available in this scope.");
+        }
+        const draft = {
+          runId: input.runId,
+          draft: input.draft,
+          updatedAt: new Date().toISOString(),
+        };
+        mockFactoryDrafts.set(input.runId, draft);
+        const snapshot = mockFactorySnapshots.get(input.runId);
+        if (snapshot) snapshot.draft = input.draft;
+        return structuredClone(draft);
+      }
+      case "factory_run_delete": {
+        const { runId } = payload as { runId: string };
+        mockFactoryRuns = mockFactoryRuns.filter((run) => run.id !== runId);
+        mockFactorySnapshots.delete(runId);
+        mockFactoryDrafts.delete(runId);
+        return undefined;
+      }
       case "list_managed_agents":
         return handleListManagedAgents(activeConfig);
       case "get_agent_memory":
@@ -15362,6 +17133,16 @@ export function maybeInstallE2eTauriMocks() {
         return handleGetRunApprovals(
           payload as Parameters<typeof handleGetRunApprovals>[0],
         );
+      case "grant_approval":
+        return handleWorkflowApprovalAction(
+          payload as Parameters<typeof handleWorkflowApprovalAction>[0],
+          "granted",
+        );
+      case "deny_approval":
+        return handleWorkflowApprovalAction(
+          payload as Parameters<typeof handleWorkflowApprovalAction>[0],
+          "denied",
+        );
       case "plugin:webview|set_webview_zoom":
         window.__BUZZ_E2E_WEBVIEW_ZOOM__ = (payload as { value: number }).value;
         return;
@@ -15704,25 +17485,62 @@ export function maybeInstallE2eTauriMocks() {
           };
         };
         const results: UnreadCatchUpChannelResult[] =
-          request.request.channels.map((channel) => ({
-            status: "success",
-            channelId: channel.id,
-            observedEvents: [],
-            maxTrigger: 0,
-            activityRows: [],
-            discovered: {
-              participated: [],
-              authored: getMockMessageStore(channel.id)
-                .filter(
-                  (event) =>
-                    event.pubkey === request.request.selfPubkey &&
-                    getThreadReferenceFromTags(event.tags).parentEventId ===
-                      null,
-                )
-                .map((event) => event.id),
-              mentioned: [],
-            },
-          }));
+          request.request.channels.map((channel) => {
+            const events = getMockMessageStore(channel.id);
+            const unreadReplies =
+              referenceWorkspaceActive &&
+              channel.id === REFERENCE_CHANNEL_IDS.sales
+                ? events.filter(
+                    (event) =>
+                      event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                      getThreadReferenceFromTags(event.tags).parentEventId !==
+                        null,
+                  )
+                : [];
+            const sidebarFixtureEvents = referenceWorkspaceActive
+              ? events.filter((event) => event.id.startsWith("c1-"))
+              : [];
+            const observedEvents = [
+              ...unreadReplies,
+              ...sidebarFixtureEvents,
+            ].map((event) => ({
+              id: event.id,
+              createdAt: event.created_at,
+              rootId: getThreadReferenceFromTags(event.tags).rootEventId,
+              highPriority: unreadReplies.includes(event),
+              countsTowardBadge: true,
+              countsTowardAppBadge: false,
+            }));
+            const activityRows = unreadReplies.map((event) => ({
+              id: event.id,
+              kind: event.kind,
+              pubkey: event.pubkey,
+              content: event.content,
+              createdAt: event.created_at,
+              channelId: channel.id,
+              channelName: "Sales",
+              tags: [...event.tags],
+            }));
+            return {
+              status: "success",
+              channelId: channel.id,
+              observedEvents,
+              maxTrigger: 0,
+              activityRows,
+              discovered: {
+                participated: [],
+                authored: events
+                  .filter(
+                    (event) =>
+                      event.pubkey === request.request.selfPubkey &&
+                      getThreadReferenceFromTags(event.tags).parentEventId ===
+                        null,
+                  )
+                  .map((event) => event.id),
+                mentioned: [],
+              },
+            };
+          });
         // Keep this mock aligned with the complete Rust serde shape pinned by
         // `serialized_response_matches_the_typescript_contract`.
         return { channels: results };

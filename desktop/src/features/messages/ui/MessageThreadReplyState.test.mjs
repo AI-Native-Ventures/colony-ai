@@ -3,9 +3,9 @@
  * panel-owned ThreadReplyRegion dispatcher.
  *
  * Bug this pins: a terminal thread-replies fetch error used to fall through to
- * the "No replies in this branch yet" empty card, silently presenting a broken
+ * the empty Replies divider, silently presenting a broken
  * load as an authoritative empty branch with no recovery. The fix maps a
- * terminal error to the retry card and NEVER the empty card, and routes the
+ * terminal error to the retry card and NEVER the empty divider, and routes the
  * Retry button back to the query's refetch.
  *
  * Why this component, and why raw inputs: ThreadReplyRegion now owns BOTH the
@@ -77,7 +77,7 @@ async function renderRegion(props) {
   );
 }
 
-test("terminal error renders the retry card, never the empty card", async () => {
+test("terminal error renders the retry card, never the empty divider", async () => {
   const { screen } = await import("@testing-library/react");
   // Raw terminal-failure state: not pending, load errored, nothing to show.
   await renderRegion({ isError: true, onRetry: () => {} });
@@ -92,9 +92,9 @@ test("terminal error renders the retry card, never the empty card", async () => 
     "the async error card must be an alert live region for assistive tech",
   );
   assert.equal(
-    document.body.textContent.includes("No replies in this branch yet"),
-    false,
-    "a terminal error must NEVER render the empty state",
+    screen.queryByTestId("message-thread-replies-empty-divider"),
+    null,
+    "a terminal error must NEVER render the empty divider",
   );
 });
 
@@ -113,15 +113,15 @@ test("Retry button invokes the supplied refetch callback", async () => {
   assert.equal(retryCount, 1, "clicking Retry must call the refetch callback");
 });
 
-test("genuine empty surface renders the empty card, not the error card", async () => {
+test("genuine empty surface renders the Replies divider, not the error card", async () => {
   const { screen } = await import("@testing-library/react");
   // Load succeeded (no error), branch is genuinely empty.
   await renderRegion({});
 
-  assert.ok(
-    document.body.textContent.includes("No replies in this branch yet"),
-    "a genuine empty branch must render the empty card",
-  );
+  const divider = screen.getByTestId("message-thread-replies-empty-divider");
+  assert.ok(divider, "a genuine empty branch must render the Replies divider");
+  assert.equal(divider.textContent, "Replies");
+  assert.equal(divider.querySelectorAll("span").length, 3);
   assert.equal(
     screen.queryByTestId("message-thread-replies-error"),
     null,

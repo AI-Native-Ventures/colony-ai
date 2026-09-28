@@ -35,7 +35,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | ---: | --- | --- |
 | 30630 | Party head | Relay signed, replaceable |
 | 30631 | Client head | Relay signed, replaceable |
-| 30632 | Service head | Reserved |
+| 30632 | Service head | Relay signed, replaceable |
 | 30633 | Proposal head | Relay signed, replaceable |
 | 30634 | Work item head | Relay signed, replaceable |
 | 30635 | Knowledge document head | Reserved |
@@ -45,9 +45,10 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30639 | Content post head | Reserved |
 | 30640 | Site head | Reserved |
 | 30641 | Invoice head | Relay signed, replaceable draft invoice |
+| 30644 | Prospect head | Relay signed, replaceable |
 | 47000 | Party action | Brokered |
 | 47001 | Client action | Brokered |
-| 47002 | Service action | Reserved |
+| 47002 | Service action | Brokered |
 | 47003 | Proposal version | Brokered, immutable |
 | 47004 | Proposal acceptance | Brokered, exact version and conversion claim |
 | 47005 | Proposal conversion receipt | Relay signed, append only |
@@ -76,6 +77,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47028 | Money adjustment | Reserved |
 | 47029 | Reconciliation | Reserved |
 | 47030 | Money follow up | Reserved |
+| 47031 to 47033 | Company records | See [company records](company-records.md) |
+| 47034 | Prospect action | Brokered |
 
 All business kinds require an `h` tag and `MessagesWrite`. Relay-authored heads
 and receipts reject client submission. Reserved member kinds are rejected by
@@ -93,6 +96,8 @@ channel and binds the client UUID in the content to the `h` UUID.
 | --- | --- |
 | Party head or action | `business:<community-uuid>:party:<party-uuid>` |
 | Proposal head | `business:<community-uuid>:proposal:<proposal-uuid>` |
+| Service head or action | `business:<community-uuid>:service:<service-uuid>` |
+| Prospect head or action | `business:<community-uuid>:prospect:<prospect-uuid>` |
 | Proposal version revision `n` | `business:<community-uuid>:proposal:<proposal-uuid>:version:<n>` |
 | Conversion acceptance or receipt | `business:<community-uuid>:conversion:<conversion-uuid>` |
 | Client head or action | `client:<client-uuid>:client:<client-uuid>` |
@@ -154,6 +159,29 @@ member. A non-admin assigned member cannot change assignees, approvers, title,
 or deliverable pointers. Only a deliverable-version command can advance a
 deliverable pointer. Archive sets the work status to `archived`; restore sets
 it to `open`. The relay emits kind 30634.
+
+### Service action, kind 47002
+
+`ServiceAction` fields: `schemaVersion`, `serviceId`, `action`,
+`expectedHeadEventId`, and `service`. `service` contains `serviceId`, `name`,
+`description`, `currency`, `monthlyFeeMinor`, `postsPerMonth`, and
+`revisionRounds`. Only owners and admins of the internal business channel can
+manage services. The relay emits kind 30632.
+
+### Prospect action, kind 47034
+
+`ProspectAction` fields: `schemaVersion`, `prospectId`, `action`,
+`expectedHeadEventId`, `prospect`, and optional `activity`. `prospect` contains
+`prospectId`, the prospect `party`, `industry`, `vertical`, optional
+`fitScore`, `potentialMonthlyValueMinor`, `website`, `contactName`,
+`location`, `email`, `phone` and `lastVerifiedAt`, `evidence` (sourced
+evidence items), `qualification`, `saved`, `stage` (`qualified`,
+`in_conversation`, `proposal`, `won`, or `lost`), and `lostReason` for a lost
+prospect. Members, admins and owners of the internal business channel can
+manage prospects. The relay emits kind 30644 `ProspectHead` with the prospect, its
+status, the activity history and `sourceActionEventId`. Prospect records live
+in the internal business channel; see the W10 discovery plan for provider
+boundaries (OutScraper, Brave Search and Exa adapters are not active yet).
 
 ### Proposal version, kind 47003
 

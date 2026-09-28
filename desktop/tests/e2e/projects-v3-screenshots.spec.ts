@@ -1,5 +1,7 @@
 import { expect, type Locator, test } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
@@ -52,7 +54,7 @@ async function expectProjectContextGroups(
 
 async function openBuzzProject(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
     .locator(
@@ -72,7 +74,7 @@ test("repository-only relays keep the Repositories section available", async ({
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await expect(page.getByTestId("projects-page-tabs")).toBeVisible();
   await page.getByTestId("projects-section-repositories").click();
@@ -89,7 +91,7 @@ test("projects activity overview screenshot", async ({ page }) => {
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await expect(page.getByTestId("projects-page-tabs")).toBeVisible();
   const activityHeader = page.getByTestId("projects-page-header");
   await expect(activityHeader).toBeVisible();
@@ -120,7 +122,7 @@ test("submitted project context stays compact and expandable", async ({
 }) => {
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-prs").click();
   await page.getByRole("button", { name: "List layout" }).click();
   await page.getByTestId("projects-overview-chat-toggle").click();
@@ -153,6 +155,7 @@ test("sidebar project add flow browses before creating", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("sidebar-project-buzz")).toHaveCount(0);
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
 
@@ -775,24 +778,31 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     "aria-label",
     "Show project context",
   );
-  const [attachedContentSurfaceBounds, collapsedMainPaneBounds] =
-    await Promise.all([
-      appContentSurface.boundingBox(),
-      workspacePanel.boundingBox(),
-    ]);
+  const [
+    finalProjectContentPodBounds,
+    attachedContentSurfaceBounds,
+    collapsedMainPaneBounds,
+  ] = await Promise.all([
+    projectContentPod.boundingBox(),
+    appContentSurface.boundingBox(),
+    workspacePanel.boundingBox(),
+  ]);
+  expect(finalProjectContentPodBounds).not.toBeNull();
   expect(attachedContentSurfaceBounds).not.toBeNull();
   await expect(appContentSurface).toHaveCSS("box-shadow", "none");
   // The pod starts after the 1px frame border and wrapper inset, with an
   // 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
   expect(
-    (projectContentPodBounds?.x ?? 0) - (attachedContentSurfaceBounds?.x ?? 0),
+    (finalProjectContentPodBounds?.x ?? 0) -
+      (attachedContentSurfaceBounds?.x ?? 0),
   ).toBe(2);
   expect(
-    (projectContentPodBounds?.y ?? 0) - (attachedContentSurfaceBounds?.y ?? 0),
+    (finalProjectContentPodBounds?.y ?? 0) -
+      (attachedContentSurfaceBounds?.y ?? 0),
   ).toBe(2);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
-      (projectContentPodBounds?.height ?? 0),
+      (finalProjectContentPodBounds?.height ?? 0),
   ).toBe(11);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
@@ -1212,7 +1222,7 @@ test("projects v3 work-item list metadata", async ({ page }) => {
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await page.getByTestId("projects-section-all").click();
   await expectSinglePrimaryTextColumn(

@@ -43,7 +43,11 @@ class BuzzLoadingIndicator extends HookConsumerWidget {
       return animation.stop;
     }, [animation, reducedMotion]);
 
-    final spinnerColor = color ?? context.colors.primary;
+    final theme = Theme.of(context);
+    final spinnerColor =
+        color ??
+        theme.extension<MobileDesignTokens>()?.action ??
+        theme.colorScheme.primary;
     final strokeWidth = (size / 6).clamp(2.0, 4.0);
 
     return Semantics(

@@ -72,6 +72,26 @@ abstract final class EventKind {
   static const moneyAdjustment = 47028;
   static const reconciliation = 47029;
   static const moneyFollowUp = 47030;
+  static const prospectHead = 30644;
+  static const prospectAction = 47034;
+
+  /// Company records (docs/company-records.md): relay-signed goal and ask
+  /// heads plus the member commands that produce them.
+  static const goalHead = 30642;
+  static const askHead = 30643;
+  static const goalAction = 47031;
+  static const askAction = 47032;
+  static const askResponse = 47033;
+
+  /// Company-record event kinds, outside the chat timeline until ask cards
+  /// render in threads.
+  static const companyRecordKinds = [
+    goalHead,
+    askHead,
+    goalAction,
+    askAction,
+    askResponse,
+  ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.
   static const businessRecordKinds = [
@@ -118,6 +138,8 @@ abstract final class EventKind {
     moneyAdjustment,
     reconciliation,
     moneyFollowUp,
+    prospectHead,
+    prospectAction,
   ];
   static const streamMessageV2 = 40002;
   static const channelThreadSummary = 39005;

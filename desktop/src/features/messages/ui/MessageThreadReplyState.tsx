@@ -62,15 +62,21 @@ export function ThreadRepliesErrorCard({ onRetry }: { onRetry?: () => void }) {
  * Only ever painted off the committed render state, never the raw deferred list,
  * so it can't flash while a non-empty list streams in on the deferred commit.
  */
-export function ThreadRepliesEmptyCard() {
+export function ThreadRepliesEmptyDivider() {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 px-4 py-6 text-center">
-      <p className="text-sm font-medium text-foreground/80">
-        No replies in this branch yet
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Reply in the thread to continue this branch.
-      </p>
+    <div
+      className="flex items-center gap-3 py-1 text-2xs text-muted-foreground"
+      data-testid="message-thread-replies-empty-divider"
+    >
+      <span
+        aria-hidden="true"
+        className="min-w-0 flex-1 border-t border-dashed border-border/70"
+      />
+      <span>Replies</span>
+      <span
+        aria-hidden="true"
+        className="min-w-0 flex-1 border-t border-dashed border-border/70"
+      />
     </div>
   );
 }
@@ -122,6 +128,6 @@ export function ThreadReplyRegion({
   if (surface === "skeleton") return <>{renderSkeleton()}</>;
   if (surface === "list") return <>{renderList()}</>;
   if (surface === "error") return <ThreadRepliesErrorCard onRetry={onRetry} />;
-  if (surface === "empty") return <ThreadRepliesEmptyCard />;
+  if (surface === "empty") return <ThreadRepliesEmptyDivider />;
   return null;
 }

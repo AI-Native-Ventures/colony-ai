@@ -82,6 +82,15 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSavedForLater = React.useCallback(
+    () =>
+      commitNavigation({
+        to: "/",
+        search: { filter: "reminders" },
+      }),
+    [commitNavigation],
+  );
+
   const goToday = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -107,6 +116,12 @@ export function useAppNavigation() {
   const goSupervision = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
+  const goPower = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/power" }, behavior),
     [commitNavigation],
   );
 
@@ -138,6 +153,129 @@ export function useAppNavigation() {
       commitNavigation(
         {
           to: "/projects",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoals = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/goals" }, behavior),
+    [commitNavigation],
+  );
+
+  const goGoal = React.useCallback(
+    (
+      goalId: string,
+      behavior?: NavigationBehavior & { entityNavigationId?: string },
+    ) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId",
+          params: { goalId },
+          state: behavior?.entityNavigationId
+            ? { entityNavigationId: behavior.entityNavigationId }
+            : undefined,
+        },
+        {
+          ...behavior,
+          force: Boolean(behavior?.entityNavigationId),
+        },
+      ),
+    [commitNavigation],
+  );
+
+  const goNewGoal = React.useCallback(
+    (parentGoalId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/new",
+          search: { parent: parentGoalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goEditGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/edit",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalProgress = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/progress",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalArchive = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/archive",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalDelete = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/delete",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goShareGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/share",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalReference = React.useCallback(
+    (returnTo: {
+      pathname: string;
+      search: Record<string, unknown>;
+      state: Record<string, unknown>;
+    }) =>
+      commitNavigation({
+        to: "/goals/reference",
+        state: { goalReferenceReturnTo: returnTo },
+      }),
+    [commitNavigation],
+  );
+
+  const goFactory = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/factory",
         },
         behavior,
       ),
@@ -197,6 +335,49 @@ export function useAppNavigation() {
       commitNavigation(
         {
           to: "/workflows",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goClients = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/clients" }, behavior),
+    [commitNavigation],
+  );
+
+  const goClient = React.useCallback(
+    (clientId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/clients/$clientId",
+          params: { clientId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWork = React.useCallback(
+    (clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work",
+          search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWorkItem = React.useCallback(
+    (workItemId: string, clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: workItemId },
+          search: clientId ? { client: clientId } : {},
         },
         behavior,
       ),
@@ -347,6 +528,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAskDetail = React.useCallback(
+    (channelId: string, askId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/asks/$channelId/$askId",
+          params: { channelId, askId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goNewMessage = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -476,23 +669,40 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAskDetail,
     goChannel,
+    goClient,
+    goClients,
     goDuplicateWorkflow,
     goEditWorkflow,
     goForumPost,
     goHome,
+    goGoal,
+    goGoalArchive,
+    goGoalDelete,
+    goGoalProgress,
+    goGoalReference,
+    goGoals,
+    goNewGoal,
+    goEditGoal,
+    goShareGoal,
+    goSavedForLater,
+    goPower,
     goToday,
     goNewMessage,
     goNewWorkflow,
     goNewWorkflowForChannel,
     goProject,
     goProjects,
+    goFactory,
     goPulse,
     goProfile,
     goSupervision,
     goSettings,
     goWorkflow,
     goWorkflows,
+    goWork,
+    goWorkItem,
     openSearchHit,
   };
 }

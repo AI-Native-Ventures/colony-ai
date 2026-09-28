@@ -3,25 +3,16 @@ import 'package:buzz/features/channels/sticky_date_header.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-    'keeps the native iOS date compact and stationary during push-off',
+    'keeps the iOS date divider compact and stationary during push-off',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       final state = ValueNotifier(
         const StickyDateHeaderState(label: 'Yesterday'),
       );
-      const channel = MethodChannel('buzz/sticky_date_glass/42');
-      final methodCalls = <MethodCall>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
-        call,
-      ) async {
-        methodCalls.add(call);
-        return null;
-      });
       try {
         await tester.pumpWidget(
           MaterialApp(
@@ -30,35 +21,30 @@ void main() {
           ),
         );
 
-        var nativeView = tester.widget<UiKitView>(find.byType(UiKitView));
-        expect(nativeView.viewType, 'buzz/sticky_date_glass');
-        expect(nativeView.creationParams, <String, Object>{
-          'label': 'Yesterday',
-          'brightness': 'light',
-        });
+        expect(find.byType(UiKitView), findsNothing);
         expect(find.byType(BackdropFilter), findsNothing);
-        final nativeSurface = find.byKey(
-          const ValueKey('channel-sticky-date-header-surface'),
+        expect(find.text('Yesterday'), findsOneWidget);
+        final dateLabel = find.descendant(
+          of: find.byType(StickyDateHeader),
+          matching: find.byType(Text),
         );
         expect(
-          tester.getSize(nativeSurface).width,
+          tester.getSize(dateLabel).width,
           lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
         );
-        expect(
-          tester.getSize(nativeSurface).height,
-          StickyDateHeader.heightOf(
-            tester.element(find.byType(StickyDateHeader)),
-          ),
+        final stickyHeight = StickyDateHeader.heightOf(
+          tester.element(find.byType(StickyDateHeader)),
         );
+        expect(
+          tester.getSize(find.byType(StickyDateHeader)).height,
+          stickyHeight,
+        );
+        expect(tester.getSize(dateLabel).height, lessThan(stickyHeight));
         expect(
           find.byKey(const ValueKey('sticky-date-header-clip')),
           findsNothing,
         );
-        final initialSurfaceTop = tester.getTopLeft(nativeSurface).dy;
-        final stickyHeight = StickyDateHeader.heightOf(
-          tester.element(find.byType(StickyDateHeader)),
-        );
-
+        final initialSurfaceTop = tester.getTopLeft(dateLabel).dy;
         state.value = StickyDateHeaderState(
           label: 'Yesterday',
           translateY: -(stickyHeight + 5) / 2,
@@ -73,9 +59,9 @@ void main() {
           closeTo(0.5, 0.001),
         );
         expect(
-          tester.getTopLeft(nativeSurface).dy,
+          tester.getTopLeft(dateLabel).dy,
           closeTo(initialSurfaceTop, 0.01),
-          reason: 'Native glass must not cross the app-bar compositing edge.',
+          reason: 'The date label stays in place while the sticky row fades.',
         );
 
         state.value = StickyDateHeaderState(
@@ -92,24 +78,9 @@ void main() {
           0,
         );
 
-        nativeView.onPlatformViewCreated!(42);
-        await tester.pump();
-        expect(
-          methodCalls.lastWhere((call) => call.method == 'setLabel').arguments,
-          'Yesterday',
-        );
-
         state.value = const StickyDateHeaderState(label: 'Today');
         await tester.pump();
-        nativeView = tester.widget<UiKitView>(find.byType(UiKitView));
-        expect(nativeView.creationParams, <String, Object>{
-          'label': 'Today',
-          'brightness': 'light',
-        });
-        expect(
-          methodCalls.lastWhere((call) => call.method == 'setLabel').arguments,
-          'Today',
-        );
+        expect(find.text('Today'), findsOneWidget);
         expect(
           tester
               .widget<Opacity>(
@@ -122,34 +93,24 @@ void main() {
         messageActionBackdropActive.value = true;
         await tester.pump();
         expect(find.byType(UiKitView), findsNothing);
-        expect(find.byType(BackdropFilter), findsOneWidget);
+        expect(find.byType(BackdropFilter), findsNothing);
         expect(
           find.byKey(const ValueKey('sticky-date-header-clip')),
           findsNothing,
         );
         expect(
-          tester
-              .getSize(
-                find.byKey(
-                  const ValueKey('channel-sticky-date-header-surface'),
-                ),
-              )
-              .width,
+          tester.getSize(dateLabel).width,
           lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
         );
       } finally {
         messageActionBackdropActive.value = false;
-        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          channel,
-          null,
-        );
         state.dispose();
         debugDefaultTargetPlatformOverride = null;
       }
     },
   );
 
-  testWidgets('keeps the compact Flutter date surface on Android', (
+  testWidgets('keeps the compact Flutter date divider on Android', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -163,16 +124,17 @@ void main() {
       );
 
       expect(find.byType(UiKitView), findsNothing);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
       expect(find.text('Today'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('sticky-date-header-clip')),
         findsNothing,
       );
-      final flutterSurface = find.byKey(
-        const ValueKey('channel-sticky-date-header-surface'),
+      final dateLabel = find.descendant(
+        of: find.byType(StickyDateHeader),
+        matching: find.byType(Text),
       );
-      final initialSurfaceTop = tester.getTopLeft(flutterSurface).dy;
+      final initialSurfaceTop = tester.getTopLeft(dateLabel).dy;
       final stickyHeight = StickyDateHeader.heightOf(
         tester.element(find.byType(StickyDateHeader)),
       );
@@ -191,16 +153,12 @@ void main() {
         closeTo(0.5, 0.001),
       );
       expect(
-        tester.getTopLeft(flutterSurface).dy,
+        tester.getTopLeft(dateLabel).dy,
         closeTo(initialSurfaceTop, 0.01),
         reason: 'Android uses the same stationary date handoff as iOS.',
       );
       expect(
-        tester
-            .getSize(
-              find.byKey(const ValueKey('channel-sticky-date-header-surface')),
-            )
-            .width,
+        tester.getSize(dateLabel).width,
         lessThan(tester.getSize(find.byType(StickyDateHeader)).width),
       );
     } finally {

@@ -1,6 +1,8 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
 import type {
+  MockFactoryProjectSeed,
+  MockFactoryRunSeed,
   MockManagedAgentSeed,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
@@ -156,6 +158,13 @@ type MockBridgeOptions = {
   accountLinked?: boolean;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Match the company shell review's conversation rows and empty badge state. */
+  referenceSidebarShell?: boolean;
+  /** Override the current member role in reference client channels. */
+  referenceWorkspaceRole?: "owner" | "admin" | "member";
+  /** Override record statuses to exercise reference workspace boundaries. */
+  referenceWorkspaceClientStatus?: string;
+  referenceWorkspaceWorkStatus?: string;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
@@ -165,8 +174,40 @@ type MockBridgeOptions = {
   pocketVoiceImportResult?: "success" | "cancel" | "invalid";
   /** Advertised HEAD for the first mock project without adding that branch. */
   projectHeadBranch?: string;
+  /** Factory-only project announcements for focused Factory E2E coverage. */
+  factoryProjects?: MockFactoryProjectSeed[];
+  /** Native-like Factory runtime state for focused Factory E2E coverage. */
+  factoryRuns?: MockFactoryRunSeed[];
+  /** Run ids whose snapshot reads fail, exercising reconnect states. */
+  factorySnapshotFailureRunIds?: string[];
+  /** Local checkout paths returned by the E2E filesystem boundary. */
+  factoryLocalRepositories?: Array<{ name: string; path: string }>;
   /** Relay NIP-11 identity used to sign authoritative repository state. */
   relaySelf?: string | null;
+  /** Verified relay-signed ask heads used by company ask E2E coverage. */
+  companyAskHeads?: RelayEvent[];
+  /** Ephemeral test key used to model relay-signed head updates after responses. */
+  companyAskRelayPrivateKeyHex?: string;
+  /** Reject these ask response publishes in order, then accept them. */
+  askResponseErrors?: string[];
+  /** Pending workflow approval rows used by Today E2E coverage. */
+  workflowApprovals?: Array<{
+    workflowId: string;
+    workflowName: string;
+    channelName: string;
+    runId: string;
+    approvalRef: string;
+    stepId: string;
+    stepIndex: number;
+    approverSpec: string;
+    approverPubkey?: string | null | "current";
+    expiresAt: string;
+    createdAt: number;
+  }>;
+  /** Relay-signed company goal events for goals UI E2E coverage. */
+  goalEvents?: RelayEvent[];
+  /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+  goalRelayPrivateKey?: string;
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */
@@ -1027,16 +1068,37 @@ export async function installMockBridge(
 export async function installRelayBridge(
   page: Page,
   user: keyof typeof TEST_IDENTITIES = "tyler",
-  options?: { seedPreviewFeatures?: boolean },
+  options?: {
+    relayHttpUrl?: string;
+    relaySelf?: string | null;
+    relayRequiresMembership?: boolean;
+    seedPreviewFeatures?: boolean;
+    skipCommunitySeed?: boolean;
+  },
 ) {
+  const relayHttpUrl = options?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
+  const relayWsUrl = relayHttpUrl.replace(/^http/, "ws");
   await installBridge(page, {
     mode: "relay",
     user,
+    mock:
+      options?.relaySelf === undefined &&
+      options?.relayRequiresMembership === undefined
+        ? undefined
+        : {
+            ...(options?.relaySelf === undefined
+              ? {}
+              : { relaySelf: options.relaySelf }),
+            ...(options?.relayRequiresMembership === undefined
+              ? {}
+              : { relayRequiresMembership: options.relayRequiresMembership }),
+          },
     // Thread BUZZ_E2E_RELAY_URL into BOTH transports. The app defaults these to
     // :3000 in relay mode; without explicit wiring HTTP queries (channel list,
     // feed) miss an isolated relay and surface as "Failed to fetch".
-    relayHttpUrl: DEFAULT_RELAY_HTTP_URL,
-    relayWsUrl: DEFAULT_RELAY_WS_URL,
+    relayHttpUrl,
+    relayWsUrl,
+    skipCommunitySeed: options?.skipCommunitySeed,
     seedPreviewFeatures: options?.seedPreviewFeatures,
   });
 }
