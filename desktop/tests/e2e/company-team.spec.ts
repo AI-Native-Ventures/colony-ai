@@ -139,10 +139,16 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     `Reports to ${EMPLOYEE_NAME}`,
   );
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Responsibilities",
+  );
 
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
   await expect(page.getByTestId("agent-profile")).toBeVisible();
+  await expect(
+    page.getByTestId("company-employee-direct-reports"),
+  ).toContainText("alice");
   await page.getByRole("button", { name: "Pause employee" }).click();
   await expect(page.getByTestId("company-team-pause-screen")).toBeVisible();
   await page.getByLabel("Reason").fill("Reviewing the October workload.");

@@ -3,7 +3,6 @@ import { ArrowLeft } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   isManagedAgentActive,
   stopManagedAgentWithRules,
@@ -90,21 +89,6 @@ export function TeamMemberScreen({
     : member?.role === "owner"
       ? "Company owner"
       : "";
-  const directReports = React.useMemo(
-    () =>
-      otherMembers.filter(
-        (candidate) =>
-          candidate.position?.head.managerPubkey === member?.pubkey,
-      ),
-    [member?.pubkey, otherMembers],
-  );
-  const directReportPubkeys = React.useMemo(
-    () => directReports.map((candidate) => candidate.pubkey),
-    [directReports],
-  );
-  const directReportProfiles = useUsersBatchQuery(directReportPubkeys, {
-    enabled: directReportPubkeys.length > 0,
-  });
   const [titleInput, setTitleInput] = React.useState("");
   const [managerInput, setManagerInput] = React.useState("");
   const [reasonInput, setReasonInput] = React.useState("");
@@ -348,51 +332,6 @@ export function TeamMemberScreen({
           </button>
         </div>
         <div className="grid gap-10 py-6 md:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-          <section aria-labelledby="team-direct-reports-heading">
-            <h2
-              className="mb-5 text-base font-semibold"
-              id="team-direct-reports-heading"
-            >
-              Direct reports
-            </h2>
-            {directReports.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No direct reports.
-              </p>
-            ) : (
-              directReports.map((report) => {
-                const name =
-                  directReportProfiles.data?.profiles[
-                    report.pubkey
-                  ]?.displayName?.trim() ||
-                  report.fallbackName ||
-                  truncateNpub(report.pubkey);
-                return (
-                  <button
-                    className="flex min-h-16 w-full items-center gap-3 border-b border-border text-left"
-                    key={report.pubkey}
-                    onClick={() => void goTeamMember(report.pubkey)}
-                    type="button"
-                  >
-                    <ProfileAvatar
-                      avatarUrl={null}
-                      className="size-9 rounded-lg text-xs"
-                      label={name}
-                      shape="squircle"
-                    />
-                    <span>
-                      <span className="block text-sm font-medium">{name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {report.position?.head.title || ""}
-                        {report.position?.head.title ? " · " : ""}
-                        {report.kind === "employee" ? "Employee" : "Human"}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </section>
           <aside className="border-l border-border pl-8">
             <h2 className="mb-4 text-base font-semibold">Role and reporting</h2>
             <p className="mb-5 text-sm text-muted-foreground">
@@ -410,6 +349,19 @@ export function TeamMemberScreen({
                 Edit role and reporting
               </Button>
             ) : null}
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold">Responsibilities</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Contribute, discuss, own commitments and review outcomes.
+              </p>
+            </div>
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold">Manager actions</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Assign work, propose hires and raises, pause direct reports.
+                Money and sensitive access require an authorized human.
+              </p>
+            </div>
           </aside>
         </div>
       </main>
