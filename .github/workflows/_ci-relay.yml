@@ -323,7 +323,9 @@ jobs:
           docker exec -e PGPASSWORD=buzz_dev buzz-postgres \
             psql -U buzz -d buzz -qtA -c "
           INSERT INTO communities (id, host)
-          VALUES ('00000000-0000-4000-8000-00000000c0de', 'localhost:3000')
+          VALUES
+            ('00000000-0000-4000-8000-00000000c0de', 'localhost:3000'),
+            ('00000000-0000-4000-8000-00000000c0df', '127.0.0.1:3000')
           ON CONFLICT (lower(host)) DO NOTHING
           ;"
       - name: Start relay
@@ -360,6 +362,10 @@ jobs:
       - name: Seed desktop e2e data
         run: bash scripts/setup-desktop-test-data.sh
       - name: Desktop relay-backed e2e
+        env:
+          BUZZ_E2E_COMPANY_WORK_LIVE: "1"
+          BUZZ_E2E_COMPANY_WORK_RELAY_A: http://localhost:3000
+          BUZZ_E2E_COMPANY_WORK_RELAY_B: http://127.0.0.1:3000
         run: cd desktop && pnpm exec playwright test --project=integration --shard=${{ matrix.shard }}/2
       - name: Summarize flaky tests
         if: ${{ !cancelled() }}

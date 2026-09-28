@@ -87,7 +87,7 @@ async function seedCommunities(
 test.describe("company work local relay journey", () => {
   test.skip(
     !enabled,
-    "set BUZZ_E2E_COMPANY_WORK_LIVE=1 with two local disposable relays to run this gate",
+    "set BUZZ_E2E_COMPANY_WORK_LIVE=1 with two local relay host endpoints to run this gate",
   );
 
   test("creates, verifies, reloads, and isolates work across communities", async ({
