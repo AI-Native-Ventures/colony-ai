@@ -63,7 +63,7 @@ class BuzzSheetHeader extends StatelessWidget {
                     style:
                         (centerTitle
                                 ? context.textTheme.titleSmall
-                                : context.textTheme.titleMedium)
+                                : context.mobileTypography.sheetHeaderTitle)
                             ?.copyWith(
                               color: centerTitle
                                   ? null

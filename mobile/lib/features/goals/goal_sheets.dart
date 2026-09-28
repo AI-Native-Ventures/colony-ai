@@ -26,9 +26,9 @@ class GoalContextActionsSheet extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          Grid.gutter,
+          MobileLayoutTokens.goalContextActionHorizontalInset,
           0,
-          Grid.gutter,
+          MobileLayoutTokens.goalContextActionHorizontalInset,
           MobileLayoutTokens.goalContextActionBottomPadding,
         ),
         child: Column(
@@ -83,7 +83,9 @@ class _GoalContextActionRow extends StatelessWidget {
         child: SizedBox(
           height: MobileLayoutTokens.goalContextActionRowHeight,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
+            padding: const EdgeInsets.symmetric(
+              horizontal: MobileLayoutTokens.goalContextActionHorizontalInset,
+            ),
             child: Row(
               children: [
                 Icon(icon, size: Grid.xs, color: tokens.action),

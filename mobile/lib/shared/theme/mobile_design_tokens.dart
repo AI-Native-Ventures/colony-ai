@@ -219,6 +219,9 @@ abstract final class MobileLayoutTokens {
   /// Interior padding for a company goal card.
   static const goalCardPadding = 19.0;
 
+  /// Maximum line width for a goal card title.
+  static const goalCardTitleMaxWidth = 225.0;
+
   /// Gap between goal cards and the following section heading.
   static const goalSectionSpacing = 23.0;
 
@@ -248,6 +251,9 @@ abstract final class MobileLayoutTokens {
 
   /// Height of each action in the goal context sheet.
   static const goalContextActionRowHeight = 44.0;
+
+  /// Horizontal inset around actions in the goal context sheet.
+  static const goalContextActionHorizontalInset = 22.0;
 
   /// Space between the goal context sheet header and its first action.
   static const goalContextActionTopGap = 10.0;

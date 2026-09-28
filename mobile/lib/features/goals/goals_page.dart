@@ -317,12 +317,17 @@ class _GoalCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: MobileLayoutTokens.goalCardHeaderGap),
-                Text(
-                  head.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.mobileTypography.goalCardTitle.copyWith(
-                    color: tokens.ink,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: MobileLayoutTokens.goalCardTitleMaxWidth,
+                  ),
+                  child: Text(
+                    head.title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.mobileTypography.goalCardTitle.copyWith(
+                      color: tokens.ink,
+                    ),
                   ),
                 ),
                 if (goalProgressLabel(head) != null) ...[
@@ -377,11 +382,19 @@ class _GoalCard extends ConsumerWidget {
 }
 
 String? _goalCardMeta(GoalHead head) {
-  final progress = goalProgressLabel(head);
+  final progress = _goalCardProgressLabel(head);
   final dueDate = head.goal?.dueDate;
   final dueLabel = dueDate == null ? null : _cardDueDate(dueDate);
   if (progress != null && dueLabel != null) return '$progress · $dueLabel';
   return progress ?? dueLabel;
+}
+
+String? _goalCardProgressLabel(GoalHead head) {
+  final current = head.progress?.current;
+  final target = head.goal?.target;
+  if (current == null || target == null) return null;
+  final unit = target.unit.replaceFirst(RegExp(r'\s+approved$'), '');
+  return '$current / ${target.value} $unit';
 }
 
 String _cardDueDate(String dueDate) {

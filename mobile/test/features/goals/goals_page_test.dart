@@ -46,6 +46,10 @@ void main() {
       title: 'Every client plan, ready on time',
       ownerPubkey: _ownerPubkey,
       doneCondition: 'Each active client has an approved plan.',
+      target: '4',
+      targetUnit: 'plans approved',
+      current: '2',
+      dueDate: _captureDateAfter(2),
     );
     final child = _headRecord(
       goalId: _childGoalId,
@@ -76,6 +80,14 @@ void main() {
     expect(find.text('Olive Studio October campaign'), findsOneWidget);
     expect(find.text('Archived company goal'), findsOneWidget);
     expect(find.byTooltip('Create goal'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            RegExp(r'^2 / 4 plans · ').hasMatch(widget.data ?? ''),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('goal-card-$_goalId')));
     await tester.pumpAndSettle();
@@ -497,30 +509,32 @@ void main() {
     final records = [
       _headRecord(
         goalId: _goalId,
-        title: 'Every client launches with a clear approved plan',
+        title: 'Every client’s October plan, ready on time.',
         ownerPubkey: _ownerPubkey,
-        doneCondition: 'Each new client knows their owner and next step.',
-        target: '5',
-        current: '3',
-        dueDate: '2026-09-29',
+        doneCondition:
+            'Every active client has an approved calendar, creative direction and a named owner.',
+        target: '4',
+        targetUnit: 'plans approved',
+        current: '2',
+        dueDate: _captureDateAfter(2),
         linkedChannelIds: [_linkedChannelId],
       ),
       _headRecord(
         goalId: _childGoalId,
-        title: 'Cedar launch checklist',
+        title: 'Olive Studio’s October campaign',
         ownerPubkey: _childOwnerPubkey,
-        doneCondition: 'The client confirms the launch checklist.',
+        doneCondition: 'The client approves the October campaign.',
         parentGoalId: _goalId,
         status: 'off_pace',
-        dueDate: '2026-10-12',
+        dueDate: _captureDateAfter(0),
       ),
       _headRecord(
         goalId: _secondChildGoalId,
-        title: 'Bramble launch checklist',
+        title: 'Cedar, ready for launch',
         ownerPubkey: _secondChildOwnerPubkey,
         doneCondition: 'The project lead confirms the launch is ready.',
         parentGoalId: _goalId,
-        dueDate: '2026-10-13',
+        dueDate: _captureDateAfter(2),
       ),
     ];
     const captureSizes = {'390x844': Size(390, 844), '412x915': Size(412, 915)};
@@ -615,6 +629,18 @@ void main() {
             'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
             'header=${tester.getRect(title)} nav=$navLayout',
           );
+          if (route.name == 'goals') {
+            debugPrint(
+              'VISUAL_LIST ${size.key} $mode '
+              'companyHeading=${tester.getRect(find.text('Company goals'))} '
+              'companyCard=${tester.getRect(find.byKey(const ValueKey('goal-card-$_goalId')))} '
+              'goalTitle=${tester.getRect(find.text('Every client’s October plan, ready on time.'))} '
+              'progress=${tester.getRect(find.byKey(const ValueKey('goal-progress-track')))} '
+              'contributingHeading=${tester.getRect(find.text('Contributing goals'))} '
+              'firstSubgoal=${tester.getRect(find.byKey(const ValueKey('goal-card-$_childGoalId')))} '
+              'secondSubgoal=${tester.getRect(find.byKey(const ValueKey('goal-card-$_secondChildGoalId')))}',
+            );
+          }
           if (route.sheet == 'actions') {
             final discussionRow = find
                 .ancestor(
@@ -772,6 +798,7 @@ GoalHeadRecord _headRecord({
   String? parentGoalId,
   String status = 'active',
   String? target,
+  String targetUnit = 'plans',
   String? current,
   String? dueDate,
   List<String> linkedChannelIds = const [],
@@ -786,7 +813,9 @@ GoalHeadRecord _headRecord({
     'dueDate': ?dueDate,
   };
   if (parentGoalId != null) goal['parentGoalId'] = parentGoalId;
-  if (target != null) goal['target'] = {'value': target, 'unit': 'plans'};
+  if (target != null) {
+    goal['target'] = {'value': target, 'unit': targetUnit};
+  }
   final content = <String, Object?>{
     'schemaVersion': 1,
     'goalId': goalId,
@@ -818,6 +847,14 @@ GoalHeadRecord _headRecord({
   );
   final event = NostrEvent.fromJson(signed.toMap());
   return parseGoalHeadEvent(event, event.pubkey)!;
+}
+
+String _captureDateAfter(int days) {
+  final date = DateTime.now().add(Duration(days: days));
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
 }
 
 class _GoalCaptureFileComparator extends LocalFileComparator {
@@ -900,14 +937,14 @@ class _EmptyUserCache extends UserCacheNotifier {
 class _GoalCaptureUserCache extends UserCacheNotifier {
   @override
   Map<String, UserProfile> build() => const {
-    _ownerPubkey: UserProfile(pubkey: _ownerPubkey, displayName: 'Rosa Kim'),
+    _ownerPubkey: UserProfile(pubkey: _ownerPubkey, displayName: 'Lerato'),
     _childOwnerPubkey: UserProfile(
       pubkey: _childOwnerPubkey,
-      displayName: 'Milo Chen',
+      displayName: 'Mina',
     ),
     _secondChildOwnerPubkey: UserProfile(
       pubkey: _secondChildOwnerPubkey,
-      displayName: 'Tara Patel',
+      displayName: 'Noluthando',
     ),
   };
 }

@@ -115,6 +115,15 @@ const goalFormControlTextStyle = TextStyle(
   letterSpacing: 0,
 );
 
+/// Typography for left-aligned titles in mobile sheets.
+const sheetHeaderTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 20,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+  letterSpacing: -0.15,
+);
+
 const identityInitialsTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 12,

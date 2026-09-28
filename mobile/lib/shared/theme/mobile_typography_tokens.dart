@@ -25,6 +25,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     required this.goalBody,
     required this.goalFormLabel,
     required this.goalFormControl,
+    required this.sheetHeaderTitle,
     required this.identityInitials,
     required this.identityName,
     required this.identityDetails,
@@ -84,6 +85,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     goalBody: goalBodyTextStyle,
     goalFormLabel: goalFormLabelTextStyle,
     goalFormControl: goalFormControlTextStyle,
+    sheetHeaderTitle: sheetHeaderTitleTextStyle,
     identityInitials: identityInitialsTextStyle,
     identityName: identityNameTextStyle,
     identityDetails: identityDetailsTextStyle,
@@ -137,6 +139,9 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
   /// Typography for values and hints in goal form controls.
   final TextStyle goalFormControl;
 
+  /// Typography for left-aligned mobile sheet titles.
+  final TextStyle sheetHeaderTitle;
+
   /// Typography for identity initials.
   final TextStyle identityInitials;
 
@@ -173,6 +178,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     TextStyle? goalBody,
     TextStyle? goalFormLabel,
     TextStyle? goalFormControl,
+    TextStyle? sheetHeaderTitle,
     TextStyle? identityInitials,
     TextStyle? identityName,
     TextStyle? identityDetails,
@@ -199,6 +205,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     goalBody: goalBody ?? this.goalBody,
     goalFormLabel: goalFormLabel ?? this.goalFormLabel,
     goalFormControl: goalFormControl ?? this.goalFormControl,
+    sheetHeaderTitle: sheetHeaderTitle ?? this.sheetHeaderTitle,
     identityInitials: identityInitials ?? this.identityInitials,
     identityName: identityName ?? this.identityName,
     identityDetails: identityDetails ?? this.identityDetails,
@@ -266,6 +273,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
       goalFormControl: TextStyle.lerp(
         goalFormControl,
         other.goalFormControl,
+        t,
+      )!,
+      sheetHeaderTitle: TextStyle.lerp(
+        sheetHeaderTitle,
+        other.sheetHeaderTitle,
         t,
       )!,
       identityInitials: TextStyle.lerp(

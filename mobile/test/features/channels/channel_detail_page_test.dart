@@ -840,7 +840,7 @@ void main() {
               findsOneWidget,
             );
             expect(
-              find.text('Every client kickoff, ready to start'),
+              find.text('A client-approved October campaign'),
               findsOneWidget,
             );
             await expectLater(
@@ -16750,7 +16750,12 @@ class _R19ForumCaptureMediaUploadService extends MediaUploadService {
 }
 
 GoalHeadRecord _goalBannerCaptureRecord() {
-  const title = 'Every client kickoff, ready to start';
+  const title = 'A client-approved October campaign';
+  final dueDate = DateTime.now().add(const Duration(days: 2));
+  final dueDateValue =
+      '${dueDate.year.toString().padLeft(4, '0')}-'
+      '${dueDate.month.toString().padLeft(2, '0')}-'
+      '${dueDate.day.toString().padLeft(2, '0')}';
   final content = jsonEncode({
     'schemaVersion': 1,
     'goalId': _goalBannerCaptureId,
@@ -16762,9 +16767,9 @@ GoalHeadRecord _goalBannerCaptureRecord() {
       'title': title,
       'ownerPubkey':
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      'doneCondition': 'Each new client knows their owner and next step.',
+      'doneCondition': 'Every campaign has an owner and approved direction.',
       'linkedChannelIds': [_channelId],
-      'dueDate': '2026-10-13',
+      'dueDate': dueDateValue,
     },
     'sourceActionEventId': List.filled(64, 'f').join(),
   });
