@@ -815,13 +815,10 @@ mod postgres_tests {
         };
         let stale_result = send(&fixture, &fixture.owner, &stale).await;
         assert!(
-            matches!(
-                &stale_result,
-                Err(IngestError::Rejected(message))
-                    if message.contains("current head")
-                        || message.contains("permission changed before the action could commit")
-            ),
-            "stale permission update must fail with a head conflict, got {stale_result:?}"
+            matches!(&stale_result, Err(IngestError::Rejected(message))
+                if message.contains("current head")
+                    || message.contains("permission changed before the action could commit")),
+            "stale permission update must fail with a head conflict"
         );
         assert_eq!(
             current(&fixture, permission_id).await.event.id.to_hex(),
