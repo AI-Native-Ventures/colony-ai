@@ -132,12 +132,15 @@ import {
   KIND_PROJECT_ANNOUNCEMENT,
   KIND_REPO_ANNOUNCEMENT,
   KIND_REPO_STATE,
+  KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_EDIT,
+  KIND_STREAM_MESSAGE_V2,
   KIND_SYSTEM_MESSAGE,
   KIND_TEXT_NOTE,
   KIND_TEAM_CATALOG,
   KIND_USER_STATUS,
   KIND_WORK_ITEM_ACTION,
+  KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
 import type {
   RawAcpAuthMethodsResult,
@@ -668,6 +671,12 @@ type E2eConfig = {
     goalEvents?: RelayEvent[];
     /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
     goalRelayPrivateKey?: string;
+    /** Relay-signed company work events for company work UI E2E coverage. */
+    companyWorkEvents?: RelayEvent[];
+    /** Synthetic relay key used to broker company work actions in focused E2E tests. */
+    companyWorkRelayPrivateKey?: string;
+    /** Reject company work action publishes in order, then accept them. */
+    companyWorkActionErrors?: string[];
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
@@ -8243,6 +8252,7 @@ function mulberry32(seed: number) {
 
 let mockProjectEventStore: RelayEvent[] | null = null;
 let mockGoalEventStore: RelayEvent[] | null = null;
+let mockCompanyWorkEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
 let mockFactoryRuns: FactoryRun[] = [];
 let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
@@ -8676,6 +8686,21 @@ function brokerMockGoalAction(event: RelayEvent): string | null {
       ) {
         return "conflict: goal has non-deleted sub-goals.";
       }
+      if (
+        getMockCompanyWorkEventStore().some((candidate) => {
+          if (candidate.kind !== KIND_WORK_ITEM_HEAD) return false;
+          try {
+            const candidateContent = JSON.parse(candidate.content) as {
+              goalId?: string;
+            };
+            return candidateContent.goalId === action.goalId;
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return "conflict: goal has linked company work items.";
+      }
       nextGoal = undefined;
       nextProgress = undefined;
       nextStatus = "deleted";
@@ -8758,6 +8783,499 @@ function filterMockGoalEvents(filter: MockFilter): RelayEvent[] {
       if (filter.until !== undefined && event.created_at > filter.until) {
         return false;
       }
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        right.created_at - left.created_at || left.id.localeCompare(right.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+type MockCompanyWorkInput = {
+  schemaVersion: number;
+  workItemId: string;
+  title: string;
+  status: string;
+  assignedPubkeys: string[];
+  approverPubkeys: string[];
+  deliverables: unknown[];
+  requesterPubkey: string;
+  doneCondition: string;
+  goalId?: string;
+  sourceEventId?: string;
+  threadRootEventId?: string;
+  evidence?: string;
+};
+
+function findMockCompanyWorkMessage(eventId: string) {
+  for (const [channelId, events] of mockMessages) {
+    const event = events.find(
+      (candidate) =>
+        candidate.id === eventId &&
+        [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2].includes(candidate.kind),
+    );
+    if (event) return { channelId, event };
+  }
+  return null;
+}
+
+function mockCompanyWorkGoalIsLive(goalId: string): boolean {
+  const goalEvent = mockGoalHeadByDTag(`company:goal:${goalId}`);
+  if (!goalEvent) return false;
+  try {
+    const content: unknown = JSON.parse(goalEvent.content);
+    if (content === null || typeof content !== "object") return false;
+    const status = (content as { status?: unknown }).status;
+    return status !== "archived" && status !== "deleted";
+  } catch {
+    return false;
+  }
+}
+
+function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event))
+    return "invalid: company work action signature is invalid.";
+  if (
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: company work action must have one h tag and one d tag.";
+  }
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags[0]?.[1];
+  const dTag = dTags[0]?.[1];
+  const coordinate = /^company:work:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (
+    channelTags.length !== 1 ||
+    dTags.length !== 1 ||
+    !channelId ||
+    !coordinate
+  ) {
+    return "invalid: company work coordinate is malformed.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (channel?.channel_type !== "stream" || channel.archived_at !== null) {
+    return "restricted: company work requires an active stream conversation.";
+  }
+  if (
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of the work channel.";
+  }
+  if (
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of this community.";
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: company work action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: company work action content is not JSON.";
+  }
+  const workItemId = action.workItemId;
+  const actionKind = action.action;
+  if (
+    action.schemaVersion !== 1 ||
+    typeof workItemId !== "string" ||
+    workItemId.toLowerCase() !== coordinate[1].toLowerCase() ||
+    typeof actionKind !== "string"
+  ) {
+    return "invalid: company work action does not match its coordinate.";
+  }
+
+  const store = getMockCompanyWorkEventStore();
+  const existingEvent = mockCompanyWorkHeadByDTag(dTag);
+  if (
+    existingEvent &&
+    (
+      existingEvent.tags.find((tag) => tag[0] === "h")?.[1] ?? ""
+    ).toLowerCase() !== channelId.toLowerCase()
+  ) {
+    return "conflict: company work item belongs to another channel.";
+  }
+  let previous: Record<string, unknown> | null = null;
+  if (existingEvent) {
+    try {
+      const parsed: unknown = JSON.parse(existingEvent.content);
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        return "error: stored company work head is invalid.";
+      }
+      previous = parsed as Record<string, unknown>;
+    } catch {
+      return "error: stored company work head is invalid.";
+    }
+  }
+
+  const configuredRole = getConfig()?.mock?.relayRole;
+  const configuredMember = getConfig()?.mock?.relayMembers?.find(
+    (member) => member.pubkey.toLowerCase() === signer,
+  );
+  const communityAdmin =
+    configuredRole === "owner" ||
+    configuredRole === "admin" ||
+    configuredMember?.role === "owner" ||
+    configuredMember?.role === "admin";
+  const expectedHeadEventId = action.expectedHeadEventId;
+  if (actionKind === "create") {
+    if (existingEvent) return "conflict: company work item already exists.";
+    if (expectedHeadEventId !== undefined) {
+      return "invalid: create must not include an expected head.";
+    }
+  } else {
+    if (!existingEvent || !previous) {
+      return "conflict: company work item does not exist.";
+    }
+    if (expectedHeadEventId !== existingEvent.id) {
+      return "conflict: company work item changed; retry from its latest head.";
+    }
+  }
+
+  let next: Record<string, unknown>;
+  if (actionKind === "create" || actionKind === "update") {
+    const input = action.head;
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return "invalid: company work head is required.";
+    }
+    const head = input as unknown as MockCompanyWorkInput;
+    if (
+      head.schemaVersion !== 1 ||
+      typeof head.workItemId !== "string" ||
+      head.workItemId.toLowerCase() !== coordinate[1].toLowerCase() ||
+      typeof head.title !== "string" ||
+      !head.title.trim() ||
+      typeof head.doneCondition !== "string" ||
+      !head.doneCondition.trim() ||
+      !Array.isArray(head.assignedPubkeys) ||
+      head.assignedPubkeys.length !== 1 ||
+      !head.assignedPubkeys.every(
+        (pubkey) =>
+          typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey),
+      ) ||
+      !Array.isArray(head.approverPubkeys) ||
+      !Array.isArray(head.deliverables) ||
+      typeof head.requesterPubkey !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(head.requesterPubkey)
+    ) {
+      return "invalid: company work item fields are incomplete.";
+    }
+    if (actionKind === "create" && head.status !== "active") {
+      return "invalid: new company work items must start active.";
+    }
+    if (
+      actionKind === "update" &&
+      (!previous ||
+        head.status !== previous.status ||
+        JSON.stringify(head.deliverables) !==
+          JSON.stringify(previous.deliverables) ||
+        head.sourceEventId !== previous.sourceEventId)
+    ) {
+      return "invalid: work status, deliverables, or source message changed in an edit.";
+    }
+    const priorOwner = Array.isArray(previous?.assignedPubkeys)
+      ? previous.assignedPubkeys.some(
+          (pubkey) =>
+            typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+        )
+      : false;
+    const priorRequester = previous?.requesterPubkey === signer;
+    if (
+      actionKind === "update" &&
+      !priorOwner &&
+      !priorRequester &&
+      !communityAdmin
+    ) {
+      return "restricted: only the work owner, requester, or a community owner or admin can edit.";
+    }
+    if (
+      typeof head.goalId === "string" &&
+      (actionKind === "create" || head.goalId !== previous?.goalId) &&
+      !mockCompanyWorkGoalIsLive(head.goalId)
+    ) {
+      return "conflict: linked company goal is unavailable.";
+    }
+    if (
+      head.sourceEventId !== undefined ||
+      head.threadRootEventId !== undefined
+    ) {
+      if (
+        typeof head.sourceEventId !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(head.sourceEventId) ||
+        typeof head.threadRootEventId !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(head.threadRootEventId)
+      ) {
+        return "invalid: source message and thread root must be provided together.";
+      }
+      const source = findMockCompanyWorkMessage(head.sourceEventId);
+      const threadRoot = findMockCompanyWorkMessage(head.threadRootEventId);
+      if (
+        !source ||
+        !threadRoot ||
+        source.channelId.toLowerCase() !== channelId.toLowerCase() ||
+        threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()
+      ) {
+        return "invalid: source message or thread root is outside the work channel.";
+      }
+    }
+    next = {
+      schemaVersion: 1,
+      workItemId: coordinate[1].toLowerCase(),
+      title: head.title,
+      status: actionKind === "create" ? "active" : previous?.status,
+      assignedPubkeys: head.assignedPubkeys.map((pubkey) =>
+        pubkey.toLowerCase(),
+      ),
+      approverPubkeys: head.approverPubkeys,
+      deliverables: head.deliverables,
+      requesterPubkey: head.requesterPubkey.toLowerCase(),
+      doneCondition: head.doneCondition,
+      ...(head.goalId ? { goalId: head.goalId.toLowerCase() } : {}),
+      ...(head.sourceEventId
+        ? { sourceEventId: head.sourceEventId.toLowerCase() }
+        : {}),
+      ...(head.threadRootEventId
+        ? { threadRootEventId: head.threadRootEventId.toLowerCase() }
+        : {}),
+      ...(head.evidence ? { evidence: head.evidence } : {}),
+      ...(typeof previous?.statusReason === "string"
+        ? { statusReason: previous.statusReason }
+        : {}),
+      ...(previous?.verification
+        ? { verification: previous.verification }
+        : {}),
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "set_status") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const allowedStatuses = ["active", "paused", "blocked", "done_unverified"];
+    if (
+      !allowedStatuses.includes(String(action.status)) ||
+      typeof action.reason !== "string" ||
+      !action.reason.trim()
+    ) {
+      return "invalid: status and reason are required.";
+    }
+    if (!isOwner && !communityAdmin) {
+      return "restricted: only the work owner or a community owner or admin can change status.";
+    }
+    if (action.status === "done_unverified" && !isOwner) {
+      return "restricted: only the work owner can submit work for verification.";
+    }
+    if (["archived", "done_verified"].includes(String(previous.status))) {
+      return "conflict: this company work status cannot be changed.";
+    }
+    next = {
+      ...previous,
+      status: action.status,
+      statusReason: action.reason,
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "verify") {
+    if (previous?.status !== "done_unverified") {
+      return "conflict: company work item is not awaiting verification.";
+    }
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    const verification = action.verification;
+    if (!communityAdmin && !isRequester) {
+      return "restricted: only a community owner, admin, or requester can verify.";
+    }
+    if (
+      verification === null ||
+      typeof verification !== "object" ||
+      Array.isArray(verification)
+    ) {
+      return "invalid: company work verification is required.";
+    }
+    const input = verification as Record<string, unknown>;
+    if (
+      (input.verdict !== "pass" && input.verdict !== "revision_requested") ||
+      typeof input.reason !== "string" ||
+      !input.reason.trim() ||
+      typeof input.evidence !== "string" ||
+      !input.evidence.trim()
+    ) {
+      return "invalid: verification reason and evidence are required.";
+    }
+    next = {
+      ...previous,
+      status: input.verdict === "pass" ? "done_verified" : "active",
+      statusReason: input.reason,
+      verification: {
+        verdict: input.verdict,
+        reason: input.reason,
+        evidence: input.evidence,
+        reviewerPubkey: signer,
+        reviewedAt: new Date().toISOString(),
+        sourceActionEventId: event.id,
+      },
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "archive" || actionKind === "restore") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    if (!isOwner && !isRequester && !communityAdmin) {
+      return "restricted: only the work owner, requester, or a community owner or admin can archive or restore.";
+    }
+    if (actionKind === "restore" && previous.status !== "archived") {
+      return "conflict: only archived work can be restored.";
+    }
+    next = {
+      ...previous,
+      status: actionKind === "archive" ? "archived" : "active",
+      sourceActionEventId: event.id,
+    };
+  } else {
+    return "invalid: unsupported company work action.";
+  }
+
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey)
+    return "error: mock company work relay signing key is not configured.";
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_WORK_ITEM_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (existingEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify(next),
+    },
+    relaySecret,
+  );
+  store.push(event);
+  if (existingEvent) {
+    const index = store.findIndex(
+      (candidate) => candidate.id === existingEvent.id,
+    );
+    if (index >= 0) store.splice(index, 1);
+  }
+  store.push(headEvent);
+  persistMockCompanyWorkEventStore();
+  return null;
+}
+
+function getMockCompanyWorkEventStore(): RelayEvent[] {
+  if (!mockCompanyWorkEventStore) {
+    const persisted = window.localStorage.getItem(
+      "buzz-e2e-company-work-events-v1",
+    );
+    if (persisted) {
+      try {
+        const value: unknown = JSON.parse(persisted);
+        mockCompanyWorkEventStore = Array.isArray(value)
+          ? (value as RelayEvent[])
+          : structuredClone(getConfig()?.mock?.companyWorkEvents ?? []);
+      } catch {
+        mockCompanyWorkEventStore = structuredClone(
+          getConfig()?.mock?.companyWorkEvents ?? [],
+        );
+      }
+    } else {
+      mockCompanyWorkEventStore = structuredClone(
+        getConfig()?.mock?.companyWorkEvents ?? [],
+      );
+    }
+  }
+  return mockCompanyWorkEventStore;
+}
+
+function persistMockCompanyWorkEventStore(): void {
+  window.localStorage.setItem(
+    "buzz-e2e-company-work-events-v1",
+    JSON.stringify(getMockCompanyWorkEventStore()),
+  );
+}
+
+function mockCompanyWorkHeadByDTag(dTag: string): RelayEvent | undefined {
+  return getMockCompanyWorkEventStore().find(
+    (event) =>
+      event.kind === KIND_WORK_ITEM_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function filterMockCompanyWorkEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids ? new Set(filter.ids) : null;
+  return getMockCompanyWorkEventStore()
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.has(event.id)) return false;
+      if (
+        filter["#d"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (
+        filter["#h"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "h" && filter["#h"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since)
+        return false;
+      if (filter.until !== undefined && event.created_at > filter.until)
+        return false;
       return true;
     })
     .sort(
@@ -13402,6 +13920,24 @@ function sendToMockSocket(args: {
       return;
     }
 
+    const relaySelf = getConfig()?.mock?.relaySelf?.toLowerCase();
+    const companyWorkHeadQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_HEAD) &&
+        relaySelf &&
+        filter.authors?.some((author) => author.toLowerCase() === relaySelf),
+    );
+    const companyWorkHistoryQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_ACTION) &&
+        filter["#d"]?.some((dTag) => dTag.startsWith("company:work:")),
+    );
+    if (companyWorkHeadQuery || companyWorkHistoryQuery) {
+      for (const event of filterMockCompanyWorkEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_PERSONA)) {
       const authors = filter.authors?.map((author) => author.toLowerCase());
       const sourceIds = filter["#d"];
@@ -13742,6 +14278,32 @@ function sendToMockSocket(args: {
       const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
       if (actionEvent) emitMockGlobalEvent(actionEvent);
       if (headEvent) emitMockGlobalEvent(headEvent);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (
+      event.kind === KIND_WORK_ITEM_ACTION &&
+      event.tags.some(
+        (tag) => tag[0] === "d" && tag[1]?.startsWith("company:work:"),
+      )
+    ) {
+      const configuredError =
+        getConfig()?.mock?.companyWorkActionErrors?.shift();
+      if (configuredError) {
+        sendWsText(socket.handler, ["OK", event.id, false, configuredError]);
+        return;
+      }
+      const error = brokerMockCompanyWorkAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const channelId = getChannelIdFromTags(event.tags);
+      const headEvent = dTag ? mockCompanyWorkHeadByDTag(dTag) : undefined;
+      if (channelId && headEvent) emitMockLiveEvent(channelId, headEvent);
+      emitMockGlobalEvent(event);
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }

@@ -4,12 +4,15 @@
 //! authoritative registry used by `buzz-core` and the relay.
 
 use buzz_core::business_records::{
-    business_d_tag, client_d_tag, deliverable_approval_d_tag, deliverable_version_d_tag,
-    invoice_version_d_tag, money_adjustment_d_tag, money_follow_up_d_tag, payment_d_tag,
-    proposal_version_d_tag,
+    business_d_tag, client_d_tag, company_work_d_tag, deliverable_approval_d_tag,
+    deliverable_version_d_tag, invoice_version_d_tag, money_adjustment_d_tag,
+    money_follow_up_d_tag, payment_d_tag, proposal_version_d_tag,
+    validate_company_work_item_action,
 };
 pub use buzz_core::business_records::{
-    ApprovalDecision, ClientAction, ClientHead, ClientHeadInput, DeliverableApproval,
+    ApprovalDecision, ClientAction, ClientHead, ClientHeadInput, CompanyWorkItemAction,
+    CompanyWorkItemActionKind, CompanyWorkItemHead, CompanyWorkItemInput, CompanyWorkStatus,
+    CompanyWorkVerdict, CompanyWorkVerification, CompanyWorkVerificationInput, DeliverableApproval,
     DeliverablePointer, DeliverableVersion, DraftInvoiceHead, InvoiceHead, InvoiceStatus,
     InvoiceVersion, InvoiceVersionAction, MoneyAdjustment, MoneyAdjustmentType,
     MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead, MoneyFollowUpStatus,
@@ -71,6 +74,22 @@ pub fn build_work_item_action(action: &WorkItemAction) -> Result<EventBuilder, S
         KIND_WORK_ITEM_ACTION,
         action.client_id,
         client_d_tag(action.client_id, "work", action.work_item_id),
+        action,
+    )
+}
+
+/// Build a member-signed company work-item action in its conversation channel.
+pub fn build_company_work_item_action(
+    channel_id: Uuid,
+    action: &CompanyWorkItemAction,
+) -> Result<EventBuilder, SdkError> {
+    validate_company_work_item_action(action).map_err(|error| {
+        SdkError::InvalidInput(format!("company work item action is invalid: {error}"))
+    })?;
+    build(
+        KIND_WORK_ITEM_ACTION,
+        channel_id,
+        company_work_d_tag(action.work_item_id),
         action,
     )
 }
@@ -297,5 +316,66 @@ mod tests {
                 buzz_core::business_records::parse_business_command(kind, &event.content)
                     .expect("parse built money command");
         }
+    }
+
+    #[test]
+    fn company_work_action_builder_rejects_invalid_payloads() {
+        let action = CompanyWorkItemAction {
+            schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id: Uuid::from_u128(8),
+            action: CompanyWorkItemActionKind::Create,
+            expected_head_event_id: Some("01".repeat(32)),
+            head: None,
+            status: None,
+            reason: None,
+            verification: None,
+        };
+
+        assert!(build_company_work_item_action(Uuid::from_u128(7), &action).is_err());
+    }
+
+    #[test]
+    fn company_work_action_builder_uses_shared_kind_and_host_scoped_coordinate() {
+        let channel_id = Uuid::from_u128(7);
+        let work_item_id = Uuid::from_u128(8);
+        let action = CompanyWorkItemAction {
+            schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id,
+            action: CompanyWorkItemActionKind::Create,
+            expected_head_event_id: None,
+            head: Some(CompanyWorkItemInput {
+                schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+                work_item_id,
+                title: "Prepare the launch checklist".into(),
+                status: CompanyWorkStatus::Active,
+                assigned_pubkeys: vec!["ab".repeat(32)],
+                approver_pubkeys: Vec::new(),
+                deliverables: Vec::new(),
+                requester_pubkey: "cd".repeat(32),
+                done_condition: "Every launch task has an owner".into(),
+                goal_id: None,
+                source_event_id: None,
+                thread_root_event_id: None,
+                evidence: None,
+            }),
+            status: None,
+            reason: None,
+            verification: None,
+        };
+        let event = build_company_work_item_action(channel_id, &action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+
+        assert_eq!(event.kind, Kind::Custom(KIND_WORK_ITEM_ACTION as u16));
+        let tags = event.tags.iter().collect::<Vec<_>>();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].kind().to_string(), "h");
+        assert_eq!(tags[0].content(), Some(channel_id.to_string().as_str()));
+        assert_eq!(tags[1].kind().to_string(), "d");
+        assert_eq!(
+            tags[1].content(),
+            Some(company_work_d_tag(work_item_id).as_str())
+        );
     }
 }

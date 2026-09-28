@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use chrono::{SecondsFormat, Utc};
 use nostr::{Event, EventBuilder, Kind, Tag};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
@@ -14,14 +15,17 @@ use buzz_core::business_records::{
     approval_matches_current_version, business_d_tag, client_d_tag, invoice_head_d_tag,
     invoice_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
     money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
-    prospect_d_tag, validate_business_command_scope, validate_hex_reference, BusinessCommand,
-    ClientAction, ClientHead, DeliverablePointer, DeliverableVersion, InvoiceHead, InvoiceStatus,
-    InvoiceVersion, InvoiceVersionAction, MoneyAdjustment, MoneyAdjustmentType,
-    MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead, MoneyFollowUpStatus,
-    PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead, ProposalVersion,
-    ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction, ServiceAction,
-    ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
+    prospect_d_tag, validate_business_command_scope, validate_company_work_d_tag,
+    validate_company_work_item_action, validate_hex_reference, BusinessCommand, ClientAction,
+    ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind, CompanyWorkItemHead,
+    CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer, DeliverableVersion,
+    InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction, MoneyAdjustment,
+    MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead,
+    MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead,
+    ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
+    ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
+use buzz_core::company_records::{goal_d_tag, GoalHead, GoalStatus};
 use buzz_core::kind::*;
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
@@ -124,7 +128,11 @@ pub async fn handle(
 
     require_token_channel_scope(&auth, channel_id)?;
 
-    let _channel = get_private_stream_channel(state, tenant.community(), channel_id).await?;
+    let _channel = if matches!(&command, BusinessCommand::CompanyWorkItemAction(_)) {
+        get_company_work_stream_channel(state, tenant.community(), channel_id).await?
+    } else {
+        get_private_stream_channel(state, tenant.community(), channel_id).await?
+    };
     let actor = auth.pubkey().to_bytes().to_vec();
     let role = state
         .db
@@ -132,6 +140,16 @@ pub async fn handle(
         .await
         .map_err(internal)?
         .ok_or_else(|| forbidden("actor is not a member of the private business channel"))?;
+
+    let command = match command {
+        BusinessCommand::CompanyWorkItemAction(action) => {
+            return handle_company_work_item_action(
+                tenant, state, event, auth, channel_id, d_tag, action,
+            )
+            .await;
+        }
+        other => other,
+    };
 
     let community_business_channel =
         buzz_db::business_records::get_business_channel_id(&state.db, tenant.community())
@@ -748,6 +766,11 @@ pub async fn handle(
                 d_tag,
                 expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
             });
+        }
+        BusinessCommand::CompanyWorkItemAction(_) => {
+            return Err(IngestError::Internal(
+                "error: company work action bypassed its transactional broker".into(),
+            ));
         }
         BusinessCommand::ProposalVersion(version) => {
             require_member_or_admin(&role)?;
@@ -2359,6 +2382,28 @@ async fn get_private_stream_channel(
     Ok(channel)
 }
 
+async fn get_company_work_stream_channel(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+) -> Result<buzz_db::channel::ChannelRecord, IngestError> {
+    let channel = match state
+        .db
+        .get_channel_for_event_write(community_id, channel_id)
+        .await
+    {
+        Ok(channel) => channel,
+        Err(DbError::ChannelNotFound(_)) => {
+            return Err(invalid("company work channel does not exist"))
+        }
+        Err(error) => return Err(internal(error)),
+    };
+    if channel.channel_type != "stream" || channel.archived_at.is_some() {
+        return Err(forbidden("company work requires an active stream channel"));
+    }
+    Ok(channel)
+}
+
 fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     let h_tags = event
         .tags
@@ -2759,6 +2804,612 @@ fn validate_https_url(value: &str, field: &str) -> Result<(), IngestError> {
         return Err(invalid(format!("prospect {field} must use HTTPS")));
     }
     Ok(())
+}
+
+async fn handle_company_work_item_action(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: Event,
+    auth: IngestAuth,
+    channel_id: Uuid,
+    d_tag: String,
+    action: CompanyWorkItemAction,
+) -> Result<IngestResult, IngestError> {
+    validate_company_work_item_action(&action)
+        .map_err(|error| invalid(format!("company work action: {error}")))?;
+    validate_company_work_d_tag(&d_tag, action.work_item_id)
+        .map_err(|error| invalid(format!("company work d tag: {error}")))?;
+
+    let community_id = tenant.community();
+    let actor_pubkey = auth.pubkey().to_hex();
+    let mut tx = state
+        .db
+        .begin_event_write_transaction()
+        .await
+        .map_err(internal)?;
+    buzz_deletion::store(&state.db)
+        .guard_transaction(&mut tx, community_id)
+        .await
+        .map_err(|error| {
+            IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
+        })?;
+
+    let actor_pubkey_bytes = auth.pubkey().to_bytes();
+    let _channel_role = sqlx::query_scalar::<_, String>(
+        "SELECT cm.role::text FROM channel_members cm \
+         JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
+         WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
+           AND cm.removed_at IS NULL AND c.deleted_at IS NULL AND c.archived_at IS NULL \
+         FOR UPDATE OF cm, c",
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(actor_pubkey_bytes.as_slice())
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?
+    .ok_or_else(|| forbidden("actor is not a member of the work channel"))?;
+    let community_role = sqlx::query_scalar::<_, String>(
+        "SELECT role::text FROM relay_members WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(&actor_pubkey)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?;
+    // Company work is scoped to the active channel. A relay-members row adds
+    // community-wide owner or admin authority, but its absence does not revoke
+    // the channel member's ability to manage work in that channel.
+    let community_role = match community_role {
+        Some(role) => role,
+        None => "member".to_owned(),
+    };
+
+    let already_stored = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM events WHERE community_id = $1 AND id = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(event.id.to_bytes().as_slice())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(internal)?;
+    if already_stored {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(IngestResult {
+            event_id: event.id.to_hex(),
+            accepted: true,
+            message: "duplicate: already processed".into(),
+        });
+    }
+
+    let relay_pubkey = state.relay_keypair.public_key().to_bytes();
+    let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        &mut tx,
+        community_id,
+        KIND_WORK_ITEM_HEAD,
+        &relay_pubkey,
+        &d_tag,
+    )
+    .await
+    .map_err(internal)?;
+    let expected = action.expected_head_event_id.as_deref();
+    match (action.action, expected, current_head_id.as_deref()) {
+        (CompanyWorkItemActionKind::Create, None, None) => {}
+        (CompanyWorkItemActionKind::Create, _, Some(_)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("company work item already exists"));
+        }
+        (_, Some(expected), Some(actual)) if expected == hex::encode(actual) => {}
+        (_, Some(_), Some(_)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "company work item changed; retry from its latest head",
+            ));
+        }
+        (_, _, None) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("company work item does not exist"));
+        }
+        _ => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(invalid(
+                "expectedHeadEventId does not match the company work action",
+            ));
+        }
+    }
+
+    let current_stored =
+        current_head::<CompanyWorkItemHead>(state, community_id, KIND_WORK_ITEM_HEAD, &d_tag)
+            .await?;
+    if current_stored
+        .as_ref()
+        .map(|stored| stored.event.id.to_bytes().to_vec())
+        != current_head_id
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: company work head changed while its transaction lock was held".into(),
+        ));
+    }
+    if current_stored
+        .as_ref()
+        .is_some_and(|stored| stored.channel_id != Some(channel_id))
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(conflict("company work item belongs to another channel"));
+    }
+    let previous = current_stored
+        .as_ref()
+        .map(|stored| parse_content::<CompanyWorkItemHead>(&stored.event))
+        .transpose()?;
+    if previous
+        .as_ref()
+        .is_some_and(|head| head.work_item_id != action.work_item_id)
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: company work head does not match its d tag".into(),
+        ));
+    }
+
+    let next_goal_id = action.head.as_ref().and_then(|head| head.goal_id);
+    let goal_changes = previous.as_ref().and_then(|head| head.goal_id) != next_goal_id;
+    if action.action == CompanyWorkItemActionKind::Create
+        || (action.action == CompanyWorkItemActionKind::Update && goal_changes)
+    {
+        if let Some(goal_id) = next_goal_id {
+            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+                .bind(format!("company-goal-tree:{}", community_id.as_uuid()))
+                .execute(&mut *tx)
+                .await
+                .map_err(internal)?;
+            ensure_company_work_goal_is_live(state, community_id, goal_id).await?;
+        }
+    }
+
+    let actor_is_community_admin = is_community_admin(&community_role);
+    let next_head = match action.action {
+        CompanyWorkItemActionKind::Create => {
+            let input = action
+                .head
+                .ok_or_else(|| invalid("company work create head is required"))?;
+            ensure_company_work_people_are_members(
+                &mut tx,
+                community_id,
+                channel_id,
+                &input.requester_pubkey,
+                &input.assigned_pubkeys,
+            )
+            .await?;
+            validate_company_work_thread(
+                state,
+                community_id,
+                channel_id,
+                input.source_event_id.as_deref(),
+                input.thread_root_event_id.as_deref(),
+                true,
+            )
+            .await?;
+            CompanyWorkItemHead {
+                schema_version: input.schema_version,
+                work_item_id: input.work_item_id,
+                title: input.title,
+                status: CompanyWorkStatus::Active,
+                assigned_pubkeys: input.assigned_pubkeys,
+                approver_pubkeys: input.approver_pubkeys,
+                deliverables: input.deliverables,
+                requester_pubkey: input.requester_pubkey,
+                done_condition: input.done_condition,
+                goal_id: input.goal_id,
+                source_event_id: input.source_event_id,
+                thread_root_event_id: input.thread_root_event_id,
+                evidence: input.evidence,
+                status_reason: None,
+                verification: None,
+                source_action_event_id: event.id.to_hex(),
+            }
+        }
+        CompanyWorkItemActionKind::Update => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            let input = action
+                .head
+                .ok_or_else(|| invalid("company work update head is required"))?;
+            if input.status != previous.status {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid("status changes require a status action"));
+            }
+            if input.deliverables != previous.deliverables {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid(
+                    "company work actions cannot change deliverable version pointers",
+                ));
+            }
+            if input.source_event_id != previous.source_event_id {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid("sourceEventId cannot change after creation"));
+            }
+            ensure_company_work_people_are_members(
+                &mut tx,
+                community_id,
+                channel_id,
+                &input.requester_pubkey,
+                &input.assigned_pubkeys,
+            )
+            .await?;
+            validate_company_work_thread(
+                state,
+                community_id,
+                channel_id,
+                None,
+                input.thread_root_event_id.as_deref(),
+                false,
+            )
+            .await?;
+            CompanyWorkItemHead {
+                schema_version: input.schema_version,
+                work_item_id: input.work_item_id,
+                title: input.title,
+                status: previous.status,
+                assigned_pubkeys: input.assigned_pubkeys,
+                approver_pubkeys: input.approver_pubkeys,
+                deliverables: previous.deliverables.clone(),
+                requester_pubkey: input.requester_pubkey,
+                done_condition: input.done_condition,
+                goal_id: input.goal_id,
+                source_event_id: previous.source_event_id.clone(),
+                thread_root_event_id: input.thread_root_event_id,
+                evidence: input.evidence,
+                status_reason: previous.status_reason.clone(),
+                verification: previous.verification.clone(),
+                source_action_event_id: event.id.to_hex(),
+            }
+        }
+        CompanyWorkItemActionKind::SetStatus => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if matches!(
+                previous.status,
+                CompanyWorkStatus::Archived | CompanyWorkStatus::DoneVerified
+            ) {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("this company work item status cannot be changed"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            if !is_owner && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner or a community owner or admin can change status",
+                ));
+            }
+            let status = action
+                .status
+                .ok_or_else(|| invalid("company work status is required"))?;
+            if status == CompanyWorkStatus::DoneUnverified && !is_owner {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the assigned owner can submit work for verification",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = status;
+            next.status_reason = action.reason;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Verify => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status != CompanyWorkStatus::DoneUnverified {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item is not awaiting verification"));
+            }
+            if !actor_is_community_admin && previous.requester_pubkey != actor_pubkey {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only a community owner, admin, or the work requester can verify this item",
+                ));
+            }
+            let input = action
+                .verification
+                .ok_or_else(|| invalid("company work verification is required"))?;
+            let mut next = previous.clone();
+            next.status = match input.verdict {
+                buzz_core::business_records::CompanyWorkVerdict::Pass => {
+                    CompanyWorkStatus::DoneVerified
+                }
+                buzz_core::business_records::CompanyWorkVerdict::RevisionRequested => {
+                    CompanyWorkStatus::Active
+                }
+            };
+            next.status_reason = Some(input.reason.clone());
+            next.verification = Some(CompanyWorkVerification {
+                verdict: input.verdict,
+                reason: input.reason,
+                evidence: input.evidence,
+                reviewer_pubkey: actor_pubkey.clone(),
+                reviewed_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                source_action_event_id: event.id.to_hex(),
+            });
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Archive => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can archive this item",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = CompanyWorkStatus::Archived;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Restore => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if previous.status != CompanyWorkStatus::Archived
+                || (!is_owner && !is_requester && !actor_is_community_admin)
+            {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can restore archived work",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = CompanyWorkStatus::Active;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+    };
+
+    let next_event = relay_head_event(
+        KIND_WORK_ITEM_HEAD,
+        channel_id,
+        &d_tag,
+        &next_head,
+        current_stored.as_ref(),
+        state,
+    )?;
+    let (stored_action, inserted) = buzz_db::event::insert_event_in_transaction(
+        &mut tx,
+        community_id,
+        &event,
+        Some(channel_id),
+    )
+    .await
+    .map_err(internal)?;
+    if !inserted {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(IngestResult {
+            event_id: event.id.to_hex(),
+            accepted: true,
+            message: "duplicate: already processed".into(),
+        });
+    }
+
+    let precondition = current_head_id.as_deref().map_or(
+        ParameterizedReplacePrecondition::CreateOnly,
+        ParameterizedReplacePrecondition::ExpectedRevision,
+    );
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            &mut tx,
+            community_id,
+            &next_event,
+            &d_tag,
+            Some(channel_id),
+            precondition,
+        )
+        .await
+        .map_err(internal)?;
+    match replaced.status {
+        ParameterizedReplaceStatus::Inserted => {}
+        ParameterizedReplaceStatus::Duplicate => {
+            tx.rollback().await.map_err(internal)?;
+            return Ok(IngestResult {
+                event_id: event.id.to_hex(),
+                accepted: true,
+                message: "duplicate: already processed".into(),
+            });
+        }
+        ParameterizedReplaceStatus::RevisionMismatch
+        | ParameterizedReplaceStatus::RevisionMissing
+        | ParameterizedReplaceStatus::Superseded
+        | ParameterizedReplaceStatus::ReplayOnlyMiss => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "company work item changed before the action committed",
+            ));
+        }
+    }
+    tx.commit().await.map_err(internal)?;
+
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &stored_action,
+        KIND_WORK_ITEM_ACTION,
+        &actor_pubkey,
+        None,
+    )
+    .await;
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &replaced.event,
+        KIND_WORK_ITEM_HEAD,
+        &next_event.pubkey.to_hex(),
+        None,
+    )
+    .await;
+    Ok(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: String::new(),
+    })
+}
+
+async fn ensure_company_work_people_are_members(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    requester_pubkey: &str,
+    assigned_pubkeys: &[String],
+) -> Result<(), IngestError> {
+    let mut people = assigned_pubkeys.to_vec();
+    people.push(requester_pubkey.to_owned());
+    people.sort();
+    people.dedup();
+    for pubkey in people {
+        let pubkey_bytes = hex::decode(&pubkey).map_err(|_| invalid("work pubkey is invalid"))?;
+        let is_member = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM channel_members cm \
+             JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
+             WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
+               AND cm.removed_at IS NULL AND c.deleted_at IS NULL \
+               AND c.archived_at IS NULL)",
+        )
+        .bind(community_id.as_uuid())
+        .bind(channel_id)
+        .bind(&pubkey_bytes)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(internal)?;
+        if !is_member {
+            return Err(forbidden(
+                "work owner and requester must be members of the tagged channel",
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_company_work_goal_is_live(
+    state: &AppState,
+    community_id: CommunityId,
+    goal_id: Uuid,
+) -> Result<(), IngestError> {
+    let head = current_head::<GoalHead>(state, community_id, KIND_GOAL_HEAD, &goal_d_tag(goal_id))
+        .await?
+        .ok_or_else(|| conflict("linked company goal does not exist"))?;
+    let head: GoalHead = parse_content(&head.event)?;
+    if head.goal_id != goal_id
+        || head.goal.is_none()
+        || matches!(head.status, GoalStatus::Archived | GoalStatus::Deleted)
+    {
+        return Err(conflict("company work must reference a live company goal"));
+    }
+    Ok(())
+}
+
+async fn validate_company_work_thread(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    source_event_id: Option<&str>,
+    thread_root_event_id: Option<&str>,
+    require_source_relation: bool,
+) -> Result<(), IngestError> {
+    let root = match thread_root_event_id {
+        Some(root) => Some(load_company_work_message(state, community_id, channel_id, root).await?),
+        None => None,
+    };
+    let Some(source_event_id) = source_event_id else {
+        if require_source_relation && root.is_some() {
+            return Err(invalid(
+                "threadRootEventId requires a sourceEventId on create",
+            ));
+        }
+        return Ok(());
+    };
+    let source =
+        load_company_work_message(state, community_id, channel_id, source_event_id).await?;
+    if require_source_relation {
+        let root_id = thread_root_event_id
+            .ok_or_else(|| invalid("sourceEventId requires a threadRootEventId on create"))?;
+        if source_event_id != root_id
+            && !source.event.tags.iter().any(|tag| {
+                let values = tag.as_slice();
+                tag.kind().to_string() == "e" && values.get(1).is_some_and(|value| value == root_id)
+            })
+        {
+            return Err(invalid(
+                "threadRootEventId must be the source message or its thread root",
+            ));
+        }
+    }
+    if root.is_none() {
+        return Err(invalid("source message must have a thread root"));
+    }
+    Ok(())
+}
+
+async fn load_company_work_message(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    event_id: &str,
+) -> Result<StoredEvent, IngestError> {
+    let event_id_bytes =
+        hex::decode(event_id).map_err(|_| invalid("message event id is invalid"))?;
+    let mut query = EventQuery::for_community(community_id);
+    query.channel_id = Some(channel_id);
+    query.kinds = Some(vec![
+        KIND_STREAM_MESSAGE as i32,
+        KIND_STREAM_MESSAGE_V2 as i32,
+    ]);
+    query.ids = Some(vec![event_id_bytes]);
+    query.limit = Some(2);
+    let mut rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(internal)?;
+    if rows.len() > 1 {
+        return Err(IngestError::Internal(
+            "error: duplicate company work source message".into(),
+        ));
+    }
+    rows.pop()
+        .ok_or_else(|| invalid("source or thread message is unavailable in the tagged channel"))
 }
 
 fn validate_client_action(channel_id: Uuid, action: &ClientAction) -> Result<(), IngestError> {
@@ -3180,6 +3831,10 @@ fn digest_hex(value: &[u8]) -> String {
 }
 
 fn is_admin(role: &str) -> bool {
+    role == "owner" || role == "admin"
+}
+
+fn is_community_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
