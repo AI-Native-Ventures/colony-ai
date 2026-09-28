@@ -183,10 +183,12 @@ fn preview_paths(action: &ActionDef) -> Vec<String> {
             "Approved: continue to the next step".to_owned(),
             "Denied: stop the run".to_owned(),
             "Changes requested: no revision action is currently supported".to_owned(),
+            "Step failure: stop the run as failed".to_owned(),
         ],
         ActionDef::AskAgent { .. } => vec![
             "Reply in the request thread: continue to the next step".to_owned(),
             "No reply before timeout: stop the run as timed out".to_owned(),
+            "Step failure: stop the run as failed".to_owned(),
         ],
         _ => vec!["Step failure: stop the run as failed".to_owned()],
     }
@@ -1728,6 +1730,14 @@ mod tests {
             .paths
             .iter()
             .any(|path| path.starts_with("Changes requested:")));
+        assert!(preview.steps[0]
+            .paths
+            .iter()
+            .any(|path| path.starts_with("Step failure:")));
+        assert!(preview.steps[1]
+            .paths
+            .iter()
+            .any(|path| path.starts_with("Step failure:")));
     }
 
     #[tokio::test]
