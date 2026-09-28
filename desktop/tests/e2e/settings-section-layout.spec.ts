@@ -56,7 +56,8 @@ test("settings use nine groups, inner search, remembered sections, and return na
   await page.getByTestId("settings-group-blocks-templates").click();
   await expect(page.getByTestId("settings-inner-blocks")).toHaveCount(0);
   await page.getByTestId("settings-group-app-devices").click();
-  await expect(page.getByTestId("settings-inner-compute")).toHaveCount(0);
+  await selectSettingsSection(page, "compute");
+  await expect(page.getByTestId("settings-mesh-share-compute")).toBeVisible();
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(page.getByTestId("settings-view")).toHaveCount(0);
@@ -91,7 +92,6 @@ test("routes without a data-backed design fall back to Account profile", async (
 }) => {
   await installMockBridge(page);
   for (const section of [
-    "compute",
     "compute-hosts",
     "blocks",
     "business-defaults",

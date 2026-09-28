@@ -5,6 +5,7 @@ import {
   BellRing,
   Bot,
   ChevronDown,
+  Cpu,
   Download,
   FlaskConical,
   Keyboard,
@@ -66,6 +67,7 @@ import {
 import { ChannelTemplatesSettingsCard } from "./ChannelTemplatesSettingsCard";
 import { ExperimentalFeaturesCard } from "./ExperimentalFeaturesCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
+import { MeshComputeSettingsCard } from "@/features/mesh-compute/ui/MeshComputeSettingsCard";
 import { MobilePairingCard } from "./MobilePairingCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
@@ -104,6 +106,7 @@ export type SettingsSection =
   | "agent-defaults"
   | "harnesses"
   | "channel-templates"
+  | "compute"
   | "appearance"
   | "accessibility"
   | "business-profile"
@@ -226,6 +229,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
       { value: "experimental", label: "Experiments" },
+      { value: "compute", label: "Compute & hosts" },
     ],
   },
   {
@@ -265,6 +269,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "agent-defaults",
   "harnesses",
   "channel-templates",
+  "compute",
   "appearance",
   "accessibility",
   "business-profile",
@@ -362,6 +367,11 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     label: "Channel templates",
     icon: LayoutTemplate,
     featureGate: "channel-templates",
+  },
+  {
+    value: "compute",
+    label: "Compute",
+    icon: Cpu,
   },
   {
     value: "shortcuts",
@@ -1028,6 +1038,8 @@ export function renderSettingsSection(
       return <HarnessLifecycleSettingsPanel />;
     case "channel-templates":
       return <ChannelTemplatesSettingsCard />;
+    case "compute":
+      return <MeshComputeSettingsCard />;
     case "appearance":
       return (
         <AppearanceSettingsPanel

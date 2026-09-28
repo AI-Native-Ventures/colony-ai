@@ -122,7 +122,7 @@ The feedback states compare 540px-wide dialog crops. Their route means are 4.88%
 ### NEEDS_DESIGN
 
 - Desktop privacy settings: r19 contains the mobile `settings/privacy` screen only. There is no frozen desktop privacy route or state, so no desktop privacy UI was added.
-- Legacy Share compute controls: `MeshComputeSettingsCard` exposes model selection and local mesh start/stop controls, but neither the workspace Device page nor the r19 `desktop/#10` host list shows those controls or their lifecycle states. The existing smoke tests cover those behaviors. A design is needed before re-exposing the legacy panel in the redesigned settings.
+- Mesh sharing panel: `MeshComputeSettingsCard` exposes the shipped local model selection and mesh start/stop controls in the existing Compute settings section. The frozen compute screens show a host list and do not represent this panel. Design should decide whether the host list and local sharing panel share one screen.
 
 ### NEEDS_API
 
