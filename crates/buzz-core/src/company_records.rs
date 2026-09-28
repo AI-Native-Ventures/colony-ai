@@ -1454,7 +1454,7 @@ pub fn ask_resolution_denied_reason(
         resolver.community_role,
         Some(CommunityRole::Owner | CommunityRole::Admin)
     );
-    if !resolver.is_channel_member && !(ask.category.requires_authority() && authority_resolver) {
+    if !(resolver.is_channel_member || ask.category.requires_authority() && authority_resolver) {
         return Some("Only members of this conversation can answer");
     }
     if ask.category.requires_authority() {
