@@ -338,7 +338,7 @@ pub enum ToolPermissionStatus {
     Revoked,
 }
 
-/// Relay-authored canonical standing tool permission head (kind 30645).
+/// Relay-authored canonical standing tool permission head (kind 30646).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ToolPermissionHead {

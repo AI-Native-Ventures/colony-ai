@@ -745,7 +745,7 @@ pub const KIND_GOAL_HEAD: u32 = 30642;
 /// Relay-authored canonical ask head (channel-scoped).
 pub const KIND_ASK_HEAD: u32 = 30643;
 /// Relay-authored canonical standing tool permission head (community-wide).
-pub const KIND_TOOL_PERMISSION_HEAD: u32 = 30645;
+pub const KIND_TOOL_PERMISSION_HEAD: u32 = 30646;
 /// Member goal mutation, brokered.
 pub const KIND_GOAL_ACTION: u32 = 47031;
 /// Member ask create or cancel, brokered; the create is a thread item.
@@ -1208,7 +1208,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_THREAD_SUMMARY)); // 390
 const _: () = assert!(is_parameterized_replaceable(KIND_WINDOW_BOUNDS)); // 39006 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_GOAL_HEAD)); // 30642 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈ 30000–39999
-const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30645 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 
