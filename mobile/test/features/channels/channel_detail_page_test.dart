@@ -7045,6 +7045,7 @@ void main() {
           users: {
             'alice': const UserProfile(pubkey: 'alice', displayName: 'Alice'),
           },
+          relayConfigNotifier: _HuddleRelayConfigNotifier(),
         ),
       );
       await tester.pumpAndSettle();
