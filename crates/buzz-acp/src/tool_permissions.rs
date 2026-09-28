@@ -1224,169 +1224,175 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    #[ignore = "requires the live test relay and Postgres"]
-    async fn live_relay_managed_agent_consent_grant_and_revoke_lifecycle() {
-        let relay_url = live_relay_url();
-        let owner_keys = Keys::generate();
-        let agent_keys = Keys::generate();
-        let _pool = seed_live_relay_agent(&relay_url, &owner_keys, &agent_keys).await;
-        let owner = live_relay_client(&relay_url, owner_keys);
-        let agent = live_relay_client(&relay_url, agent_keys);
-        let channel_id = Uuid::new_v4();
-        let channel_value = channel_id.to_string();
-        let channel_name = format!("tool-consent-{channel_value}");
+    mod external_infra_live_relay_tests {
+        use super::*;
 
-        let create_channel = EventBuilder::new(Kind::Custom(9007), "")
-            .tags([
-                Tag::parse(["h", channel_value.as_str()]).expect("channel tag"),
-                Tag::parse(["name", channel_name.as_str()]).expect("channel name tag"),
-                Tag::parse(["channel_type", "stream"]).expect("channel type tag"),
-                Tag::parse(["visibility", "open"]).expect("channel visibility tag"),
-            ])
-            .sign_with_keys(&owner.keys)
-            .expect("sign channel create");
-        submit_live_relay_event(&owner, &create_channel, "channel creation").await;
+        #[tokio::test]
+        #[ignore = "requires the live relay network and PostgreSQL"]
+        async fn live_relay_managed_agent_consent_grant_and_revoke_lifecycle() {
+            let relay_url = live_relay_url();
+            let owner_keys = Keys::generate();
+            let agent_keys = Keys::generate();
+            let _pool = seed_live_relay_agent(&relay_url, &owner_keys, &agent_keys).await;
+            let owner = live_relay_client(&relay_url, owner_keys);
+            let agent = live_relay_client(&relay_url, agent_keys);
+            let channel_id = Uuid::new_v4();
+            let channel_value = channel_id.to_string();
+            let channel_name = format!("tool-consent-{channel_value}");
 
-        let agent_pubkey = agent.keys.public_key().to_hex();
-        let add_agent = EventBuilder::new(Kind::Custom(9000), "")
-            .tags([
-                Tag::parse(["h", channel_value.as_str()]).expect("channel tag"),
-                Tag::parse(["p", agent_pubkey.as_str()]).expect("agent member tag"),
-            ])
-            .sign_with_keys(&owner.keys)
-            .expect("sign channel member addition");
-        submit_live_relay_event(&owner, &add_agent, "managed agent channel membership").await;
+            let create_channel = EventBuilder::new(Kind::Custom(9007), "")
+                .tags([
+                    Tag::parse(["h", channel_value.as_str()]).expect("channel tag"),
+                    Tag::parse(["name", channel_name.as_str()]).expect("channel name tag"),
+                    Tag::parse(["channel_type", "stream"]).expect("channel type tag"),
+                    Tag::parse(["visibility", "open"]).expect("channel visibility tag"),
+                ])
+                .sign_with_keys(&owner.keys)
+                .expect("sign channel create");
+            submit_live_relay_event(&owner, &create_channel, "channel creation").await;
 
-        let root = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "Permission test")
-            .tag(Tag::parse(["h", channel_value.as_str()]).expect("channel message tag"))
-            .sign_with_keys(&agent.keys)
-            .expect("sign managed agent thread root");
-        submit_live_relay_event(&agent, &root, "managed agent thread root").await;
-        let context = ToolPermissionContext {
-            rest_client: agent.clone(),
-            channel_id,
-            thread_root_event_id: Some(root.id.to_hex()),
-        };
+            let agent_pubkey = agent.keys.public_key().to_hex();
+            let add_agent = EventBuilder::new(Kind::Custom(9000), "")
+                .tags([
+                    Tag::parse(["h", channel_value.as_str()]).expect("channel tag"),
+                    Tag::parse(["p", agent_pubkey.as_str()]).expect("agent member tag"),
+                ])
+                .sign_with_keys(&owner.keys)
+                .expect("sign channel member addition");
+            submit_live_relay_event(&owner, &add_agent, "managed agent channel membership").await;
 
-        let initial_context = context.clone();
-        let first_call = tokio::spawn(async move {
-            authorize_tool_call(&live_email_request(), Some(&initial_context)).await
-        });
-        let (first_ask_event, first_ask) = wait_for_open_tool_consent_ask(&owner, channel_id).await;
-        assert!(
-            !first_call.is_finished(),
-            "the first tool call must block for consent"
-        );
-        assert_eq!(
-            first_ask
-                .ask
-                .tool_consent
-                .as_ref()
-                .expect("tool consent preview")
-                .action_preview,
-            "Send this email to x@y.com (subject: Report ready): The report is ready."
-        );
-        resolve_live_tool_consent(
-            &owner,
-            channel_id,
-            &first_ask_event,
-            &first_ask,
-            AskOutcome::Approved,
-        )
-        .await;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(12), first_call)
-                .await
-                .expect("one-time approved tool call terminates")
-                .expect("one-time approved authorization task"),
-            ToolPermissionDecision::Allowed
-        );
-        assert!(
-            live_permission_heads(&agent).await.is_empty(),
-            "one-time ask approval must not create a standing permission"
-        );
+            let root =
+                EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "Permission test")
+                    .tag(Tag::parse(["h", channel_value.as_str()]).expect("channel message tag"))
+                    .sign_with_keys(&agent.keys)
+                    .expect("sign managed agent thread root");
+            submit_live_relay_event(&agent, &root, "managed agent thread root").await;
+            let context = ToolPermissionContext {
+                rest_client: agent.clone(),
+                channel_id,
+                thread_root_event_id: Some(root.id.to_hex()),
+            };
 
-        let permission_id = Uuid::new_v4();
-        let permission = ToolPermissionRecord {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            permission_id,
-            agent_pubkey: agent_pubkey.clone(),
-            action: ToolPermissionVerb::MessageOutsider
-                .permission_key()
-                .to_string(),
-            scope: ToolPermissionScope {
-                kind: ToolPermissionScopeKind::Channel,
-                id: channel_value,
-            },
-            expires_at: (Utc::now() + chrono::Duration::hours(1))
-                .to_rfc3339_opts(SecondsFormat::Secs, true),
-        };
-        let grant = ToolPermissionAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            permission_id,
-            action: ToolPermissionCommandKind::Grant,
-            expected_head_event_id: None,
-            permission: Some(permission),
-            reason: None,
-        };
-        let grant_event = buzz_sdk::company_records::build_tool_permission_action(&grant)
-            .expect("build standing grant")
-            .sign_with_keys(&owner.keys)
-            .expect("sign standing grant");
-        submit_live_relay_event(&owner, &grant_event, "standing permission grant").await;
-        let active_heads = live_permission_heads(&agent).await;
-        assert_eq!(
-            active_heads.len(),
-            1,
-            "one active permission head is visible"
-        );
-        assert_eq!(active_heads[0].1.status, ToolPermissionStatus::Active);
-        assert_eq!(
-            authorize_tool_call(&live_email_request(), Some(&context)).await,
-            ToolPermissionDecision::Allowed,
-            "an in-scope standing grant allows the next tool call without another ask"
-        );
-
-        let revoke = ToolPermissionAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            permission_id,
-            action: ToolPermissionCommandKind::Revoke,
-            expected_head_event_id: Some(active_heads[0].0.id.to_hex()),
-            permission: None,
-            reason: Some("Live relay revocation test".to_string()),
-        };
-        let revoke_event = buzz_sdk::company_records::build_tool_permission_action(&revoke)
-            .expect("build standing permission revoke")
-            .sign_with_keys(&owner.keys)
-            .expect("sign standing permission revoke");
-        submit_live_relay_event(&owner, &revoke_event, "standing permission revocation").await;
-        let revoked_heads = live_permission_heads(&agent).await;
-        assert_eq!(revoked_heads.len(), 1);
-        assert_eq!(revoked_heads[0].1.status, ToolPermissionStatus::Revoked);
-
-        let revoked_context = context.clone();
-        let after_revoke = tokio::spawn(async move {
-            authorize_tool_call(&live_email_request(), Some(&revoked_context)).await
-        });
-        let (reask_event, reask) = wait_for_open_tool_consent_ask(&owner, channel_id).await;
-        assert_ne!(reask.ask_id, first_ask.ask_id);
-        resolve_live_tool_consent(
-            &owner,
-            channel_id,
-            &reask_event,
-            &reask,
-            AskOutcome::Rejected,
-        )
-        .await;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(12), after_revoke)
-                .await
-                .expect("refused tool call terminates after revoked permission")
-                .expect("revoked authorization task"),
-            ToolPermissionDecision::Refused(
-                "tool consent was rejected or expired; the tool call was refused"
+            let initial_context = context.clone();
+            let first_call = tokio::spawn(async move {
+                authorize_tool_call(&live_email_request(), Some(&initial_context)).await
+            });
+            let (first_ask_event, first_ask) =
+                wait_for_open_tool_consent_ask(&owner, channel_id).await;
+            assert!(
+                !first_call.is_finished(),
+                "the first tool call must block for consent"
+            );
+            assert_eq!(
+                first_ask
+                    .ask
+                    .tool_consent
+                    .as_ref()
+                    .expect("tool consent preview")
+                    .action_preview,
+                "Send this email to x@y.com (subject: Report ready): The report is ready."
+            );
+            resolve_live_tool_consent(
+                &owner,
+                channel_id,
+                &first_ask_event,
+                &first_ask,
+                AskOutcome::Approved,
             )
-        );
+            .await;
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(12), first_call)
+                    .await
+                    .expect("one-time approved tool call terminates")
+                    .expect("one-time approved authorization task"),
+                ToolPermissionDecision::Allowed
+            );
+            assert!(
+                live_permission_heads(&agent).await.is_empty(),
+                "one-time ask approval must not create a standing permission"
+            );
+
+            let permission_id = Uuid::new_v4();
+            let permission = ToolPermissionRecord {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                permission_id,
+                agent_pubkey: agent_pubkey.clone(),
+                action: ToolPermissionVerb::MessageOutsider
+                    .permission_key()
+                    .to_string(),
+                scope: ToolPermissionScope {
+                    kind: ToolPermissionScopeKind::Channel,
+                    id: channel_value,
+                },
+                expires_at: (Utc::now() + chrono::Duration::hours(1))
+                    .to_rfc3339_opts(SecondsFormat::Secs, true),
+            };
+            let grant = ToolPermissionAction {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                permission_id,
+                action: ToolPermissionCommandKind::Grant,
+                expected_head_event_id: None,
+                permission: Some(permission),
+                reason: None,
+            };
+            let grant_event = buzz_sdk::company_records::build_tool_permission_action(&grant)
+                .expect("build standing grant")
+                .sign_with_keys(&owner.keys)
+                .expect("sign standing grant");
+            submit_live_relay_event(&owner, &grant_event, "standing permission grant").await;
+            let active_heads = live_permission_heads(&agent).await;
+            assert_eq!(
+                active_heads.len(),
+                1,
+                "one active permission head is visible"
+            );
+            assert_eq!(active_heads[0].1.status, ToolPermissionStatus::Active);
+            assert_eq!(
+                authorize_tool_call(&live_email_request(), Some(&context)).await,
+                ToolPermissionDecision::Allowed,
+                "an in-scope standing grant allows the next tool call without another ask"
+            );
+
+            let revoke = ToolPermissionAction {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                permission_id,
+                action: ToolPermissionCommandKind::Revoke,
+                expected_head_event_id: Some(active_heads[0].0.id.to_hex()),
+                permission: None,
+                reason: Some("Live relay revocation test".to_string()),
+            };
+            let revoke_event = buzz_sdk::company_records::build_tool_permission_action(&revoke)
+                .expect("build standing permission revoke")
+                .sign_with_keys(&owner.keys)
+                .expect("sign standing permission revoke");
+            submit_live_relay_event(&owner, &revoke_event, "standing permission revocation").await;
+            let revoked_heads = live_permission_heads(&agent).await;
+            assert_eq!(revoked_heads.len(), 1);
+            assert_eq!(revoked_heads[0].1.status, ToolPermissionStatus::Revoked);
+
+            let revoked_context = context.clone();
+            let after_revoke = tokio::spawn(async move {
+                authorize_tool_call(&live_email_request(), Some(&revoked_context)).await
+            });
+            let (reask_event, reask) = wait_for_open_tool_consent_ask(&owner, channel_id).await;
+            assert_ne!(reask.ask_id, first_ask.ask_id);
+            resolve_live_tool_consent(
+                &owner,
+                channel_id,
+                &reask_event,
+                &reask,
+                AskOutcome::Rejected,
+            )
+            .await;
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(12), after_revoke)
+                    .await
+                    .expect("refused tool call terminates after revoked permission")
+                    .expect("revoked authorization task"),
+                ToolPermissionDecision::Refused(
+                    "tool consent was rejected or expired; the tool call was refused"
+                )
+            );
+        }
     }
 }
