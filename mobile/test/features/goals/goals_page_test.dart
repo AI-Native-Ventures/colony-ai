@@ -236,37 +236,41 @@ void main() {
     expect(find.text('On track'), findsOneWidget);
   });
 
-  testWidgets(
-    'keeps archived state and retry available after restore failure',
-    (tester) async {
-      final archived = _headRecord(
-        goalId: _goalId,
-        title: 'Improve client handoff',
-        ownerPubkey: _ownerPubkey,
-        doneCondition: 'Each handoff has a clear owner and decision.',
-        status: 'archived',
-      );
-      await tester.pumpWidget(
-        _goalsApp(
-          records: [archived],
-          role: CommunityMemberRole.owner,
-          gateway: _FakeGoalGateway(throwOnPublish: true),
-          detailGoalId: _goalId,
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('propagates restore failure and leaves retry available', (
+    tester,
+  ) async {
+    final archived = _headRecord(
+      goalId: _goalId,
+      title: 'Improve client handoff',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'Each handoff has a clear owner and decision.',
+      status: 'archived',
+    );
+    await tester.pumpWidget(
+      _goalsApp(
+        records: [archived],
+        role: CommunityMemberRole.owner,
+        gateway: _FakeGoalGateway(throwOnPublish: true),
+        detailGoalId: _goalId,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final reportedErrors = <FlutterErrorDetails>[];
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) => reportedErrors.add(details);
+    try {
       await tester.tap(find.byKey(const ValueKey('goal-restore')));
       await tester.pumpAndSettle();
+    } finally {
+      FlutterError.onError = previousErrorHandler;
+    }
 
-      expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
-      expect(find.text('Changes were not saved'), findsOneWidget);
-      expect(
-        find.text('The goal is still archived. Try again.'),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('goal-restore')), findsOneWidget);
-    },
-  );
+    expect(reportedErrors, hasLength(1));
+    expect(reportedErrors.single.exception, isA<StateError>());
+    expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-restore')), findsOneWidget);
+  });
 
   testWidgets('does not expose restore to a regular member', (tester) async {
     final archived = _headRecord(

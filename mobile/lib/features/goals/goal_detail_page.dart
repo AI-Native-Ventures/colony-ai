@@ -82,7 +82,6 @@ class GoalDetailPage extends HookConsumerWidget {
     final community = ref.watch(activeCommunityProvider).asData?.value;
     final actor = ref.watch(myPubkeyProvider);
     final isSubmittingLifecycleAction = useState(false);
-    final lifecycleActionFailed = useState(false);
     final record = recordAsync.asData?.value;
     final goal = record?.head.goal;
     final parentId = goal?.parentGoalId;
@@ -165,12 +164,10 @@ class GoalDetailPage extends HookConsumerWidget {
                     record: value,
                     canRestore: canRestoreOrDeleteGoal(role?.name),
                     isSubmitting: isSubmittingLifecycleAction.value,
-                    saveFailed: lifecycleActionFailed.value,
                     onRestore: canRestoreOrDeleteGoal(role?.name)
                         ? () async {
                             if (isSubmittingLifecycleAction.value) return;
                             isSubmittingLifecycleAction.value = true;
-                            lifecycleActionFailed.value = false;
                             try {
                               await ref
                                   .read(goalRepositoryProvider)
@@ -186,10 +183,17 @@ class GoalDetailPage extends HookConsumerWidget {
                               ref.invalidate(
                                 goalHistoryProvider(value.head.goalId),
                               );
-                            } catch (_) {
-                              if (context.mounted) {
-                                lifecycleActionFailed.value = true;
-                              }
+                            } catch (error, stackTrace) {
+                              FlutterError.reportError(
+                                FlutterErrorDetails(
+                                  exception: error,
+                                  stack: stackTrace,
+                                  library: 'Colony mobile goals',
+                                  context: ErrorDescription(
+                                    'while restoring an archived goal',
+                                  ),
+                                ),
+                              );
                             } finally {
                               if (context.mounted) {
                                 isSubmittingLifecycleAction.value = false;
@@ -611,7 +615,6 @@ class _ArchivedGoalState extends StatelessWidget {
     required this.record,
     required this.canRestore,
     required this.isSubmitting,
-    required this.saveFailed,
     required this.onRestore,
     required this.onBackToGoals,
   });
@@ -619,7 +622,6 @@ class _ArchivedGoalState extends StatelessWidget {
   final GoalHeadRecord record;
   final bool canRestore;
   final bool isSubmitting;
-  final bool saveFailed;
   final VoidCallback? onRestore;
   final VoidCallback onBackToGoals;
 
@@ -667,14 +669,6 @@ class _ArchivedGoalState extends StatelessWidget {
           title: 'Archived',
           message: 'The active list now reflects this change.',
         ),
-        if (saveFailed) ...[
-          const SizedBox(height: Grid.sm),
-          _GoalLifecycleNotice(
-            title: 'Changes were not saved',
-            message: 'The goal is still archived. Try again.',
-            isError: true,
-          ),
-        ],
         if (canRestore) ...[
           const SizedBox(height: 30),
           FilledButton(
@@ -772,20 +766,14 @@ class _DeletedGoalState extends StatelessWidget {
 }
 
 class _GoalLifecycleNotice extends StatelessWidget {
-  const _GoalLifecycleNotice({
-    required this.title,
-    required this.message,
-    this.isError = false,
-  });
+  const _GoalLifecycleNotice({required this.title, required this.message});
 
   final String title;
   final String message;
-  final bool isError;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
-    final accentColor = isError ? tokens.error : const Color(0xFFA781B3);
     return Container(
       decoration: BoxDecoration(
         color: tokens.paper,
@@ -797,27 +785,24 @@ class _GoalLifecycleNotice extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-            child: Semantics(
-              liveRegion: isError,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: _goalLifecycleNoticeTitleStyle.copyWith(
-                      color: tokens.ink,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: _goalLifecycleNoticeTitleStyle.copyWith(
+                    color: tokens.ink,
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    message,
-                    style: _goalLifecycleNoticeMessageStyle.copyWith(
-                      color: tokens.muted,
-                    ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  message,
+                  style: _goalLifecycleNoticeMessageStyle.copyWith(
+                    color: tokens.muted,
                   ),
-                  const SizedBox(height: 12),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+              ],
             ),
           ),
           Positioned(
@@ -825,7 +810,7 @@ class _GoalLifecycleNotice extends StatelessWidget {
             bottom: 0,
             left: 0,
             child: ColoredBox(
-              color: accentColor,
+              color: const Color(0xFFA781B3),
               child: const SizedBox(width: 3),
             ),
           ),
