@@ -87,7 +87,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const secondaryTextColor = await resolveSidebarColor(
     page,
     "color",
-    "var(--buzz-muted-foreground)",
+    "var(--colony-sidebar-muted-foreground)",
   );
   const searchSurface = "rgba(255, 255, 255, 0.25)";
   const rowHoverSurface =
@@ -180,8 +180,9 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
       pinnedHeaderBox.height -
       (searchBox.y + searchBox.height),
   ).toBe(10);
-  for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
-    expect(Math.abs(rowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
+  expect(Math.abs(primaryRowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
+  for (const rowBox of [activeRowBox, hoverRowBox]) {
+    expect(Math.abs(rowBox.x - (searchBox.x - 1))).toBeLessThanOrEqual(1);
     // Linux CI reserves a classic scrollbar gutter while macOS uses an
     // overlay scrollbar. Compare each row to its usable scroll area so the
     // alignment check remains platform-independent.
