@@ -27,6 +27,7 @@ const _goalId = '123e4567-e89b-12d3-a456-426614174000';
 const _childGoalId = '223e4567-e89b-12d3-a456-426614174000';
 const _secondChildGoalId = '423e4567-e89b-12d3-a456-426614174000';
 const _archivedGoalId = '323e4567-e89b-12d3-a456-426614174000';
+const _linkedChannelId = '523e4567-e89b-12d3-a456-426614174000';
 const _relaySecret =
     '1111111111111111111111111111111111111111111111111111111111111111';
 const _ownerPubkey =
@@ -152,6 +153,54 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
+  testWidgets('goal actions open the discussion and related goal', (
+    tester,
+  ) async {
+    final record = _headRecord(
+      goalId: _goalId,
+      title: 'Improve client handoff',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'Each handoff has a clear owner and decision.',
+    );
+    final sharedGoal = _headRecord(
+      goalId: _childGoalId,
+      title: 'Confirm the next handoff',
+      ownerPubkey: _childOwnerPubkey,
+      doneCondition: 'The next handoff is confirmed.',
+      parentGoalId: _goalId,
+    );
+    var openedDiscussion = false;
+    await tester.pumpWidget(
+      _goalsApp(
+        records: [record, sharedGoal],
+        role: CommunityMemberRole.owner,
+        detailGoalId: _goalId,
+        onOpenDiscussion: () => openedDiscussion = true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Goal actions'), findsOneWidget);
+    await tester.tap(find.byTooltip('Goal actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Keep the context close.'), findsOneWidget);
+    expect(find.text('Open the discussion'), findsOneWidget);
+    expect(find.text('See the shared goal'), findsOneWidget);
+
+    await tester.tap(find.text('Open the discussion'));
+    await tester.pumpAndSettle();
+    expect(openedDiscussion, isTrue);
+    expect(find.text('Keep the context close.'), findsNothing);
+
+    await tester.tap(find.byTooltip('Goal actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('See the shared goal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sub-goal'), findsOneWidget);
+    expect(find.text('Confirm the next handoff'), findsOneWidget);
+    expect(find.text('Keep the context close.'), findsNothing);
+  });
+
   testWidgets(
     'target progress stays explicit and has no automatic achievement',
     (tester) async {
@@ -255,6 +304,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('goal-update-progress')));
     await tester.pumpAndSettle();
+    expect(find.text('Status'), findsOneWidget);
+    expect(find.text('What changed?'), findsOneWidget);
+    expect(find.text('Share progress or evidence…'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('goal-progress-status'))).height,
+      closeTo(MobileLayoutTokens.goalProgressStatusHeight, 0.5),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('goal-progress-evidence')))
+          .height,
+      closeTo(MobileLayoutTokens.goalFormMultilineHeight, 0.5),
+    );
     await tester.enterText(
       find.byKey(const ValueKey('goal-progress-evidence')),
       'The new checklist was used in two client reviews.',
@@ -297,6 +359,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Create goal'));
     await tester.pumpAndSettle();
+    expect(find.text('Goal'), findsOneWidget);
+    expect(find.text('What does done look like?'), findsOneWidget);
+    expect(find.text('What do you want to achieve?'), findsOneWidget);
+    expect(find.text('A clear, observable outcome'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('goal-create-title'))).height,
+      closeTo(MobileLayoutTokens.goalFormFieldHeight, 0.5),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('goal-create-done-condition')))
+          .height,
+      closeTo(MobileLayoutTokens.goalFormMultilineHeight, 0.5),
+    );
     await tester.enterText(
       find.byKey(const ValueKey('goal-create-title')),
       'Improve client handoff',
@@ -409,6 +485,9 @@ void main() {
     final fontLoader = FontLoader('Manrope')
       ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
     await fontLoader.load();
+    final materialIconFontLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await materialIconFontLoader.load();
     final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
@@ -418,12 +497,13 @@ void main() {
     final records = [
       _headRecord(
         goalId: _goalId,
-        title: 'Every client kickoff, ready to start',
+        title: 'Every client launches with a clear approved plan',
         ownerPubkey: _ownerPubkey,
         doneCondition: 'Each new client knows their owner and next step.',
         target: '5',
         current: '3',
         dueDate: '2026-09-29',
+        linkedChannelIds: [_linkedChannelId],
       ),
       _headRecord(
         goalId: _childGoalId,
@@ -446,9 +526,12 @@ void main() {
     const captureSizes = {'390x844': Size(390, 844), '412x915': Size(412, 915)};
     const captureKey = ValueKey('m3b-goal-fullscreen-capture');
     final routes = [
-      (name: 'goals', goalId: null),
-      (name: 'goal-detail', goalId: _goalId),
-      (name: 'sub-goal-detail', goalId: _childGoalId),
+      (name: 'goals', goalId: null, sheet: ''),
+      (name: 'goal-create', goalId: null, sheet: 'create'),
+      (name: 'goal-detail', goalId: _goalId, sheet: ''),
+      (name: 'goal-actions', goalId: _goalId, sheet: 'actions'),
+      (name: 'goal-progress', goalId: _goalId, sheet: 'progress'),
+      (name: 'sub-goal-detail', goalId: _childGoalId, sheet: ''),
     ];
 
     for (final size in captureSizes.entries) {
@@ -486,6 +569,19 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
+          switch (route.sheet) {
+            case 'create':
+              await tester.tap(find.byTooltip('Create goal'));
+              await tester.pumpAndSettle();
+            case 'actions':
+              await tester.tap(find.byTooltip('Goal actions'));
+              await tester.pumpAndSettle();
+            case 'progress':
+              await tester.tap(
+                find.byKey(const ValueKey('goal-update-progress')),
+              );
+              await tester.pumpAndSettle();
+          }
 
           if (route.goalId == null) {
             expect(find.text('Goals'), findsOneWidget);
@@ -519,6 +615,48 @@ void main() {
             'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
             'header=${tester.getRect(title)} nav=$navLayout',
           );
+          if (route.sheet == 'actions') {
+            final discussionRow = find
+                .ancestor(
+                  of: find.text('Open the discussion'),
+                  matching: find.byType(InkWell),
+                )
+                .first;
+            final sharedGoalRow = find
+                .ancestor(
+                  of: find.text('See the shared goal'),
+                  matching: find.byType(InkWell),
+                )
+                .first;
+            debugPrint(
+              'VISUAL_SHEET ${size.key} $mode '
+              'title=${tester.getRect(find.text('Keep the context close.'))} '
+              'discussion=${tester.getRect(discussionRow)} '
+              'goal=${tester.getRect(sharedGoalRow)}',
+            );
+          }
+          if (route.sheet == 'create') {
+            debugPrint(
+              'VISUAL_CREATE ${size.key} $mode '
+              'sheet=${tester.getRect(find.byKey(const ValueKey('buzz-sheet-surface')))} '
+              'header=${tester.getRect(find.byKey(const ValueKey('buzz-sheet-scroll-divider')))} '
+              'title=${tester.getRect(find.text('Give the team a direction.'))} '
+              'goal-label=${tester.getRect(find.text('Goal').last)} '
+              'owner=${tester.getRect(find.text('Owner: you. You can refine the plan with your team.'))} '
+              'goal=${tester.getRect(find.byKey(const ValueKey('goal-create-title')))} '
+              'done=${tester.getRect(find.byKey(const ValueKey('goal-create-done-condition')))} '
+              'submit=${tester.getRect(find.byKey(const ValueKey('goal-create-submit')))}',
+            );
+          }
+          if (route.sheet == 'progress') {
+            debugPrint(
+              'VISUAL_PROGRESS ${size.key} $mode '
+              'title=${tester.getRect(find.text('Update the goal'))} '
+              'status=${tester.getRect(find.byKey(const ValueKey('goal-progress-status')))} '
+              'evidence=${tester.getRect(find.byKey(const ValueKey('goal-progress-evidence')))} '
+              'submit=${tester.getRect(find.byKey(const ValueKey('goal-progress-submit')))}',
+            );
+          }
           await expectLater(
             find.byKey(captureKey),
             matchesGoldenFile('${route.name}.png'),
@@ -542,6 +680,8 @@ Widget _goalsApp({
   GoalRecordGateway? gateway,
   String? detailGoalId,
   Object? loadError,
+  VoidCallback? onOpenDiscussion,
+  VoidCallback? onShareInChat,
 }) {
   final routes = MobileRouteRegistry.empty().register(
     MobileBusinessRoutes.goalDetail,
@@ -567,7 +707,11 @@ Widget _goalsApp({
         child: Scaffold(
           body: detailGoalId == null
               ? const GoalsPage()
-              : GoalDetailPage(goalId: detailGoalId),
+              : GoalDetailPage(
+                  goalId: detailGoalId,
+                  onOpenDiscussion: onOpenDiscussion,
+                  onShareInChat: onShareInChat,
+                ),
         ),
       ),
     ),
@@ -581,7 +725,11 @@ Widget _goalsCaptureApp({
 }) {
   final routes = MobileRouteRegistry.empty().register(
     MobileBusinessRoutes.goalDetail,
-    (_, goalId) => GoalDetailPage(goalId: goalId, onShareInChat: () {}),
+    (_, goalId) => GoalDetailPage(
+      goalId: goalId,
+      onShareInChat: () {},
+      onOpenDiscussion: () {},
+    ),
   );
   return ProviderScope(
     overrides: [
@@ -626,6 +774,7 @@ GoalHeadRecord _headRecord({
   String? target,
   String? current,
   String? dueDate,
+  List<String> linkedChannelIds = const [],
 }) {
   final goal = <String, Object?>{
     'schemaVersion': 1,
@@ -633,7 +782,7 @@ GoalHeadRecord _headRecord({
     'title': title,
     'ownerPubkey': ownerPubkey,
     'doneCondition': doneCondition,
-    'linkedChannelIds': <String>[],
+    'linkedChannelIds': linkedChannelIds,
     'dueDate': ?dueDate,
   };
   if (parentGoalId != null) goal['parentGoalId'] = parentGoalId;

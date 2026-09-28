@@ -23,6 +23,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     required this.goalDetailTitle,
     required this.goalMetric,
     required this.goalBody,
+    required this.goalFormLabel,
+    required this.goalFormControl,
     required this.identityInitials,
     required this.identityName,
     required this.identityDetails,
@@ -80,6 +82,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     goalDetailTitle: goalDetailTitleTextStyle,
     goalMetric: goalMetricTextStyle,
     goalBody: goalBodyTextStyle,
+    goalFormLabel: goalFormLabelTextStyle,
+    goalFormControl: goalFormControlTextStyle,
     identityInitials: identityInitialsTextStyle,
     identityName: identityNameTextStyle,
     identityDetails: identityDetailsTextStyle,
@@ -127,6 +131,12 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
   /// Typography for goal descriptions and done conditions.
   final TextStyle goalBody;
 
+  /// Typography for labels in goal form sheets.
+  final TextStyle goalFormLabel;
+
+  /// Typography for values and hints in goal form controls.
+  final TextStyle goalFormControl;
+
   /// Typography for identity initials.
   final TextStyle identityInitials;
 
@@ -161,6 +171,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     TextStyle? goalDetailTitle,
     TextStyle? goalMetric,
     TextStyle? goalBody,
+    TextStyle? goalFormLabel,
+    TextStyle? goalFormControl,
     TextStyle? identityInitials,
     TextStyle? identityName,
     TextStyle? identityDetails,
@@ -185,6 +197,8 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     goalDetailTitle: goalDetailTitle ?? this.goalDetailTitle,
     goalMetric: goalMetric ?? this.goalMetric,
     goalBody: goalBody ?? this.goalBody,
+    goalFormLabel: goalFormLabel ?? this.goalFormLabel,
+    goalFormControl: goalFormControl ?? this.goalFormControl,
     identityInitials: identityInitials ?? this.identityInitials,
     identityName: identityName ?? this.identityName,
     identityDetails: identityDetails ?? this.identityDetails,
@@ -248,6 +262,12 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
       )!,
       goalMetric: TextStyle.lerp(goalMetric, other.goalMetric, t)!,
       goalBody: TextStyle.lerp(goalBody, other.goalBody, t)!,
+      goalFormLabel: TextStyle.lerp(goalFormLabel, other.goalFormLabel, t)!,
+      goalFormControl: TextStyle.lerp(
+        goalFormControl,
+        other.goalFormControl,
+        t,
+      )!,
       identityInitials: TextStyle.lerp(
         identityInitials,
         other.identityInitials,

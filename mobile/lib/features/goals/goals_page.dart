@@ -83,6 +83,7 @@ class GoalsPage extends HookConsumerWidget {
       isScrollControlled: true,
       title: 'Give the team a direction.',
       showDragHandle: true,
+      centerTitle: false,
       builder: (_) => GoalCreateSheet(
         actorPubkey: actorPubkey,
         onSubmit: (goal) async {

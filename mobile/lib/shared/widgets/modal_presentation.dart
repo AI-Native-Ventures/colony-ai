@@ -41,6 +41,7 @@ Future<T?> showBuzzModalBottomSheet<T>({
   bool enableDrag = true,
   bool? showDragHandle,
   bool showCloseButton = true,
+  bool centerTitle = true,
   bool useSafeArea = false,
   RouteSettings? routeSettings,
   AnimationController? transitionAnimationController,
@@ -75,6 +76,7 @@ Future<T?> showBuzzModalBottomSheet<T>({
             title: title,
             showCloseButton: showCloseButton,
             showDragHandle: showDragHandle == true,
+            centerTitle: centerTitle,
             surfaceColor: surfaceColor,
             child: builder(themedContext),
           ),
@@ -113,6 +115,7 @@ class _SheetContent extends StatelessWidget {
     required this.title,
     required this.showCloseButton,
     required this.showDragHandle,
+    required this.centerTitle,
     required this.surfaceColor,
   });
 
@@ -120,6 +123,7 @@ class _SheetContent extends StatelessWidget {
   final String? title;
   final bool showCloseButton;
   final bool showDragHandle;
+  final bool centerTitle;
   final Color surfaceColor;
 
   @override
@@ -129,7 +133,11 @@ class _SheetContent extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showCloseButton)
-            BuzzSheetHeader(title: title, showDragHandle: showDragHandle)
+            BuzzSheetHeader(
+              title: title,
+              showDragHandle: showDragHandle,
+              centerTitle: centerTitle,
+            )
           else if (showDragHandle)
             const Padding(
               padding: EdgeInsets.only(top: Grid.xxs, bottom: Grid.xs),
@@ -143,6 +151,7 @@ class _SheetContent extends StatelessWidget {
     return BuzzTitledSheetLayout(
       title: title!,
       showDragHandle: showDragHandle,
+      centerTitle: centerTitle,
       surfaceColor: surfaceColor,
       child: child,
     );

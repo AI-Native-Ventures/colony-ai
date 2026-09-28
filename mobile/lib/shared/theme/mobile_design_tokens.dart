@@ -246,6 +246,54 @@ abstract final class MobileLayoutTokens {
   /// Gap between the goal detail action buttons.
   static const goalActionsGap = 9.0;
 
+  /// Height of each action in the goal context sheet.
+  static const goalContextActionRowHeight = 44.0;
+
+  /// Space between the goal context sheet header and its first action.
+  static const goalContextActionTopGap = 10.0;
+
+  /// Gap between goal context sheet actions.
+  static const goalContextActionGap = 22.0;
+
+  /// Content padding below the last action in the goal context sheet.
+  static const goalContextActionBottomPadding = 35.0;
+
+  /// Height of the primary submit button inside a goal form sheet.
+  static const goalFormButtonHeight = 44.0;
+
+  /// Space below the progress sheet heading and before its first field.
+  static const goalProgressHeaderFieldGap = 25.0;
+
+  /// Gap between labeled controls in the goal progress sheet.
+  static const goalProgressFieldGap = 20.0;
+
+  /// Horizontal inset of the v5 goal form sheet content.
+  static const goalFormHorizontalInset = 22.0;
+
+  /// Space after the goal form sheet heading before the first field.
+  static const goalFormHeaderFieldGap = 26.0;
+
+  /// Vertical gap between labeled fields in goal forms.
+  static const goalFormFieldGap = 18.0;
+
+  /// Gap between goal progress evidence and its submit action.
+  static const goalProgressSubmitGap = 8.0;
+
+  /// Bottom content inset below the goal form action.
+  static const goalFormBottomPadding = 13.0;
+
+  /// Height of a single-line control in the goal form sheet.
+  static const goalFormFieldHeight = 41.0;
+
+  /// Height of the status control in the goal progress sheet.
+  static const goalProgressStatusHeight = 43.0;
+
+  /// Height of a multiline control in goal forms.
+  static const goalFormMultilineHeight = 71.0;
+
+  /// Vertical padding within a multiline goal form control.
+  static const goalFormMultilineVerticalPadding = 4.0;
+
   /// Vertical margin around goal detail actions.
   static const goalActionsMargin = 23.0;
 

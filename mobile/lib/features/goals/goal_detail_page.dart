@@ -20,10 +20,16 @@ import 'goal_sheets.dart';
 import 'goal_widgets.dart';
 
 class GoalDetailPage extends HookConsumerWidget {
-  const GoalDetailPage({required this.goalId, this.onShareInChat, super.key});
+  const GoalDetailPage({
+    required this.goalId,
+    this.onShareInChat,
+    this.onOpenDiscussion,
+    super.key,
+  });
 
   final String goalId;
   final VoidCallback? onShareInChat;
+  final VoidCallback? onOpenDiscussion;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,6 +54,7 @@ class GoalDetailPage extends HookConsumerWidget {
             )
             .toList() ??
         const <GoalHeadRecord>[];
+    final sharedGoal = parent ?? children.firstOrNull;
     final canUpdate =
         record != null &&
         record.head.status != GoalStatus.deleted &&
@@ -68,7 +75,7 @@ class GoalDetailPage extends HookConsumerWidget {
       return null;
     }, [pubkeys.join('\u0000')]);
 
-    return ColoredBox(
+    return Material(
       color: context.mobileTokens.canvas,
       child: Column(
         children: [
@@ -76,6 +83,15 @@ class GoalDetailPage extends HookConsumerWidget {
             title: goal?.parentGoalId == null ? 'Company goal' : 'Sub-goal',
             onBack: () => unawaited(Navigator.of(context).maybePop()),
             backLabel: 'Back',
+            action: onOpenDiscussion == null && sharedGoal == null
+                ? null
+                : () => _openContextActions(
+                    context,
+                    onOpenDiscussion: onOpenDiscussion,
+                    sharedGoalId: sharedGoal?.head.goalId,
+                  ),
+            actionLabel: 'Goal actions',
+            actionIcon: LucideIcons.ellipsis,
           ),
           Expanded(
             child: recordAsync.when(
@@ -112,6 +128,7 @@ class GoalDetailPage extends HookConsumerWidget {
       isScrollControlled: true,
       title: 'Update the goal',
       showDragHandle: true,
+      centerTitle: false,
       builder: (_) => GoalProgressSheet(
         record: record,
         onSubmit: (action) async {
@@ -123,6 +140,33 @@ class GoalDetailPage extends HookConsumerWidget {
       ref.invalidate(goalHeadsProvider);
       ref.invalidate(goalHistoryProvider(record.head.goalId));
     }
+  }
+
+  Future<void> _openContextActions(
+    BuildContext context, {
+    required VoidCallback? onOpenDiscussion,
+    required String? sharedGoalId,
+  }) async {
+    await showBuzzModalBottomSheet<void>(
+      context: context,
+      title: 'Keep the context close.',
+      showDragHandle: true,
+      centerTitle: false,
+      builder: (sheetContext) => GoalContextActionsSheet(
+        onOpenDiscussion: onOpenDiscussion == null
+            ? null
+            : () {
+                Navigator.of(sheetContext).pop();
+                onOpenDiscussion();
+              },
+        onSeeSharedGoal: sharedGoalId == null
+            ? null
+            : () {
+                Navigator.of(sheetContext).pop();
+                _openGoal(context, sharedGoalId);
+              },
+      ),
+    );
   }
 }
 

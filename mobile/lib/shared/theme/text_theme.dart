@@ -97,6 +97,24 @@ const goalBodyTextStyle = TextStyle(
   letterSpacing: 0,
 );
 
+/// Typography for labels in the goal create and progress sheets.
+const goalFormLabelTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 11,
+  fontWeight: FontWeight.w700,
+  height: 1.25,
+  letterSpacing: 0,
+);
+
+/// Typography for values and hints in the goal form controls.
+const goalFormControlTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 13,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+  letterSpacing: 0,
+);
+
 const identityInitialsTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 12,

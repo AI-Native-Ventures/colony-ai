@@ -264,10 +264,21 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       return Consumer(
         builder: (context, ref, _) {
           final goalAsync = ref.watch(goalHeadProvider(goalId));
+          final goalHeads =
+              ref.watch(goalHeadsProvider).asData?.value ?? const [];
+          final currentGoal = goalAsync.asData?.value;
+          final parentGoalId = currentGoal?.head.goal?.parentGoalId;
+          final parentGoal = parentGoalId == null
+              ? null
+              : goalHeads
+                    .where((record) => record.head.goalId == parentGoalId)
+                    .firstOrNull;
           final channels =
               ref.watch(channelsProvider).asData?.value ?? const [];
-          final linkedChannelIds =
-              goalAsync.asData?.value?.head.goal?.linkedChannelIds ?? const [];
+          final linkedChannelIds = <String>{
+            ...?currentGoal?.head.goal?.linkedChannelIds,
+            ...?parentGoal?.head.goal?.linkedChannelIds,
+          };
           final linkedChannels = channels
               .where(
                 (channel) =>
@@ -275,16 +286,10 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
               )
               .toList();
           VoidCallback? onShareInChat;
+          VoidCallback? onOpenDiscussion;
           if (linkedChannels.length == 1) {
             final channel = linkedChannels.single;
-            onShareInChat = () {
-              ref
-                  .read(composeDraftsProvider.notifier)
-                  .save(
-                    key: composeDraftKey(channel.id),
-                    channelId: channel.id,
-                    text: buildGoalLink(goalId),
-                  );
+            onOpenDiscussion = () {
               Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => ChannelDetailPage(
@@ -296,8 +301,22 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
                 ),
               );
             };
+            onShareInChat = () {
+              ref
+                  .read(composeDraftsProvider.notifier)
+                  .save(
+                    key: composeDraftKey(channel.id),
+                    channelId: channel.id,
+                    text: buildGoalLink(goalId),
+                  );
+              onOpenDiscussion!();
+            };
           }
-          return GoalDetailPage(goalId: goalId, onShareInChat: onShareInChat);
+          return GoalDetailPage(
+            goalId: goalId,
+            onShareInChat: onShareInChat,
+            onOpenDiscussion: onOpenDiscussion,
+          );
         },
       );
     })

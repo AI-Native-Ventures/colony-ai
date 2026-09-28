@@ -16,6 +16,7 @@ class GoalPageHeader extends StatelessWidget {
     this.backLabel = 'Back',
     this.action,
     this.actionLabel,
+    this.actionIcon = LucideIcons.plus,
     super.key,
   });
 
@@ -25,6 +26,7 @@ class GoalPageHeader extends StatelessWidget {
   final String backLabel;
   final VoidCallback? action;
   final String? actionLabel;
+  final IconData actionIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +83,7 @@ class GoalPageHeader extends StatelessWidget {
                 key: const ValueKey('goal-page-action'),
                 tooltip: actionLabel,
                 onPressed: action,
-                icon: const Icon(LucideIcons.plus, size: Grid.xs + Grid.half),
+                icon: Icon(actionIcon, size: Grid.xs + Grid.half),
                 style: _goalHeaderButtonStyle(context),
               ),
           ],
