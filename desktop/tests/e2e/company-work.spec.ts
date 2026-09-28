@@ -88,9 +88,9 @@ test("company work keeps its chat source, review history, and goal link", async 
 }) => {
   await installCompanyWorkMock(page);
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  const joinButton = page
-    .getByTestId("chat-header")
-    .getByRole("button", { name: "Join" });
+  const joinButton = page.getByRole("button", {
+    name: "Join to participate",
+  });
   await expect(joinButton).toBeVisible();
   await joinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
