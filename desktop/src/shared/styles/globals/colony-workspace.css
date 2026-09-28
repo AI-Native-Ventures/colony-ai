@@ -237,7 +237,9 @@
   color: inherit;
 }
 
-:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"])
+:root.dark[data-buzz-sidebar]:has([data-colony-workspace-route="true"]):not(
+    :has([data-colony-full-app-shell="true"])
+  )
   [data-testid="app-sidebar"]
   [data-testid="open-search"] {
   background-color: rgb(47 34 59 / 20%);
@@ -790,7 +792,7 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   [data-sidebar="content"] {
-  scrollbar-gutter: auto;
+  scrollbar-gutter: stable;
   scrollbar-width: none;
 }
 
