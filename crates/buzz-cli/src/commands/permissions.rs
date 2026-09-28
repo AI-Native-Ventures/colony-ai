@@ -160,7 +160,7 @@ fn verify_permission_head_event(event: &Value, relay_self: &str) -> Result<(), C
     Ok(())
 }
 
-fn tag_values<'a>(event: &'a nostr::Event, name: &str) -> Vec<String> {
+fn tag_values(event: &nostr::Event, name: &str) -> Vec<String> {
     event
         .tags
         .iter()

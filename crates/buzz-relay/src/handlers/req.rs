@@ -1195,7 +1195,7 @@ pub(crate) fn is_tool_consent_inbox_filter(
             .authors
             .as_ref()
             .is_some_and(|authors| authors.len() == 1 && authors.contains(relay_pubkey))
-        && filter.generic_tags.len() >= 1
+        && !filter.generic_tags.is_empty()
         && filter.generic_tags.len() <= 2
         && filter
             .generic_tags

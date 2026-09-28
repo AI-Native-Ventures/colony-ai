@@ -163,7 +163,7 @@ pub(super) async fn handle(
             }
         }
         ensure_managed_agent(state, tenant, &permission.agent_pubkey).await?;
-        validate_scope_exists(state, tenant, &permission).await?;
+        validate_scope_exists(state, tenant, permission).await?;
     }
 
     let head_event = relay_permission_head_event(&next, &d_tag, current_stored.as_ref(), state)?;
