@@ -2324,7 +2324,7 @@ async fn handle_company_work_item_action(
         "SELECT role::text FROM relay_members WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
     )
     .bind(community_id.as_uuid())
-    .bind(actor_pubkey_bytes.as_slice())
+    .bind(&actor_pubkey)
     .fetch_optional(&mut *tx)
     .await
     .map_err(internal)?
