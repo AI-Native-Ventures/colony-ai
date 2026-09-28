@@ -506,15 +506,10 @@ export function SettingsView({
               <ArrowRight aria-hidden="true" className="size-3.5" />
             </Button>
           </div>
-          <div
-            className="w20-topbar-title text-settings-topbar"
-            data-tauri-drag-region
-          >
+          <div className="w20-topbar-title" data-tauri-drag-region>
             <TopbarIcon aria-hidden="true" className="size-4" />
-            <span className="text-xs">Settings</span>
-            <span aria-hidden="true" className="text-xs">
-              /
-            </span>
+            <span>Settings</span>
+            <span aria-hidden="true">/</span>
             <strong className="truncate">{activeGroup.label}</strong>
           </div>
           <div className="flex-1" />

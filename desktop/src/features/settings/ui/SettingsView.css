@@ -470,7 +470,7 @@ body:has(.w20-settings-shell) {
   border-radius: 11px 11px 0 0;
   background: #fffefd;
   color: #79747f;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   cursor: default;
   user-select: none;
 }
@@ -734,7 +734,6 @@ body:has(.w20-settings-shell) {
 
 .w20-settings-shell:has([data-voice-library-route]) .w20-topbar-title strong {
   color: #79747f;
-  font-size: var(--text-xs);
   font-weight: 400;
 }
 
