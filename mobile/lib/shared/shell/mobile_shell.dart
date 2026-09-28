@@ -36,6 +36,7 @@ class MobileShell extends StatelessWidget {
     required this.child,
     this.showBrandBar = true,
     this.hasUnreadActivity = false,
+    this.showNavigationBar = true,
     this.overlayBuilder,
     super.key,
   });
@@ -49,6 +50,7 @@ class MobileShell extends StatelessWidget {
   final Widget child;
   final bool showBrandBar;
   final bool hasUnreadActivity;
+  final bool showNavigationBar;
   final MobileShellOverlayBuilder? overlayBuilder;
 
   @override
@@ -98,12 +100,14 @@ class MobileShell extends StatelessWidget {
               Expanded(child: child),
             ],
           ),
-          bottomNavigationBar: _MobileBottomNavigation(
-            destination: destination,
-            hasUnreadActivity: hasUnreadActivity,
-            onDestinationSelected: onDestinationSelected,
-            bottomInset: bottomInset,
-          ),
+          bottomNavigationBar: showNavigationBar
+              ? _MobileBottomNavigation(
+                  destination: destination,
+                  hasUnreadActivity: hasUnreadActivity,
+                  onDestinationSelected: onDestinationSelected,
+                  bottomInset: bottomInset,
+                )
+              : null,
         ),
         if (overlay != null) Positioned.fill(child: overlay),
       ],

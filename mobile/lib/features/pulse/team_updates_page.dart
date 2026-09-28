@@ -16,9 +16,14 @@ import 'pulse_provider.dart';
 import 'team_update_drafts_provider.dart';
 
 class TeamUpdatesPage extends HookConsumerWidget {
-  const TeamUpdatesPage({this.initiallyPublished = false, super.key});
+  const TeamUpdatesPage({
+    this.initiallyPublished = false,
+    this.showHeader = true,
+    super.key,
+  });
 
   final bool initiallyPublished;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,21 +46,348 @@ class TeamUpdatesPage extends HookConsumerWidget {
 
     Future<void> refresh() async {
       ref.invalidate(globalNotesProvider);
-      await ref.read(globalNotesProvider.future);
+      try {
+        await ref.read(globalNotesProvider.future);
+      } catch (_) {
+        // The provider retains the failure for the visible retry state.
+      }
     }
 
-    return BeeRefreshIndicator(
-      onRefresh: refresh,
-      child: _TeamUpdatesFeed(
-        notes: notes,
-        draft: draft?.status == TeamUpdateDraftStatus.published ? null : draft,
-        communityName: community?.name,
-        showPublishedNotice: published.value,
-        onOpenNote: (id) => MobileNavigation.openUpdateNote(context, id),
-        onOpenDraft: () => draft?.status == TeamUpdateDraftStatus.failed
-            ? MobileNavigation.openUpdateFailed(context)
-            : MobileNavigation.openUpdateDraft(context),
-        onCompose: openCompose,
+    final visibleDraft = draft?.status == TeamUpdateDraftStatus.published
+        ? null
+        : draft;
+    final page = notesAsync.when<Widget>(
+      loading: () => const Center(child: CircularProgressIndicator.adaptive()),
+      error: (_, _) => _TeamUpdatesUnavailable(
+        onRetry: refresh,
+        topPadding: showHeader ? 63 : 151,
+      ),
+      data: (_) => notes.isEmpty
+          ? _TeamUpdatesEmpty(
+              draft: visibleDraft,
+              onOpenDraft: () =>
+                  visibleDraft?.status == TeamUpdateDraftStatus.failed
+                  ? MobileNavigation.openUpdateFailed(context)
+                  : MobileNavigation.openUpdateDraft(context),
+              onCompose: openCompose,
+            )
+          : _TeamUpdatesFeed(
+              notes: notes,
+              draft: visibleDraft,
+              communityName: community?.name,
+              showPublishedNotice: published.value,
+              onOpenNote: (id) => MobileNavigation.openUpdateNote(context, id),
+              onOpenDraft: () =>
+                  visibleDraft?.status == TeamUpdateDraftStatus.failed
+                  ? MobileNavigation.openUpdateFailed(context)
+                  : MobileNavigation.openUpdateDraft(context),
+              onCompose: openCompose,
+            ),
+    );
+
+    return SafeArea(
+      top: showHeader,
+      bottom: false,
+      child: Column(
+        children: [
+          if (showHeader)
+            _TeamUpdatesHeader(
+              communityName: community?.name,
+              onBack: () => Navigator.of(context).maybePop(),
+              onCompose: openCompose,
+            ),
+          Expanded(
+            child: BeeRefreshIndicator(onRefresh: refresh, child: page),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamUpdatesHeader extends StatelessWidget {
+  const _TeamUpdatesHeader({
+    required this.communityName,
+    required this.onBack,
+    required this.onCompose,
+  });
+
+  final String? communityName;
+  final VoidCallback onBack;
+  final VoidCallback onCompose;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final name = communityName?.trim();
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
+      color: tokens.paper,
+      child: Row(
+        children: [
+          IconButton(
+            key: const ValueKey('team-updates-back'),
+            tooltip: 'Back',
+            onPressed: onBack,
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              fixedSize: const Size(42, 42),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                side: BorderSide(color: tokens.line),
+              ),
+            ),
+            icon: const Icon(LucideIcons.chevronLeft, size: 19),
+          ),
+          const SizedBox(width: Grid.xxs),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Team updates',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.titleMedium?.copyWith(
+                    color: tokens.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.45,
+                  ),
+                ),
+                Text(
+                  name?.isNotEmpty == true ? name! : 'Colony',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.bodySmall?.copyWith(
+                    color: tokens.muted,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('team-updates-compose'),
+            tooltip: 'Write a team note',
+            onPressed: onCompose,
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              fixedSize: const Size(42, 42),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                side: BorderSide(color: tokens.line),
+              ),
+            ),
+            icon: const Icon(LucideIcons.plus, size: 19),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamUpdatesEmpty extends StatelessWidget {
+  const _TeamUpdatesEmpty({
+    required this.draft,
+    required this.onOpenDraft,
+    required this.onCompose,
+  });
+
+  final TeamUpdateDraft? draft;
+  final VoidCallback onOpenDraft;
+  final VoidCallback onCompose;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(Grid.gutter, 15, Grid.gutter, Grid.gutter),
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 48),
+          decoration: BoxDecoration(
+            gradient: Theme.of(context).brightness == Brightness.dark
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xff4f365d), Color(0xff563f46)],
+                  )
+                : context.appColors.channelInfoHeroGradient,
+            borderRadius: BorderRadius.circular(27),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'YOUR TEAM’S JOURNAL',
+                style: context.textTheme.labelSmall?.copyWith(
+                  color: tokens.ink.withValues(alpha: 0.78),
+                  fontSize: 9,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: Grid.xxs),
+              Text(
+                'Start a\nconversation.',
+                style: context.mobileTypography.flowTitle.copyWith(
+                  color: tokens.ink,
+                  fontSize: 27,
+                  height: 1.15,
+                  letterSpacing: -0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 51),
+        Center(
+          child: Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+        ),
+        const SizedBox(height: Grid.sm),
+        Text(
+          'No team notes yet',
+          textAlign: TextAlign.center,
+          style: context.textTheme.titleLarge?.copyWith(
+            color: tokens.ink,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.65,
+          ),
+        ),
+        const SizedBox(height: Grid.xxs + 7),
+        Text(
+          'Share a useful update, a decision or something the team learned.',
+          textAlign: TextAlign.center,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: tokens.muted,
+            fontSize: 13,
+            height: 1.65,
+          ),
+        ),
+        if (draft != null) ...[
+          const SizedBox(height: Grid.sm),
+          _DraftRow(draft: draft!, onTap: onOpenDraft),
+        ],
+        const SizedBox(height: Grid.sm + 5),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: _TeamUpdatesAction(
+            label: 'Write a team note',
+            onPressed: onCompose,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TeamUpdatesUnavailable extends StatelessWidget {
+  const _TeamUpdatesUnavailable({
+    required this.onRetry,
+    required this.topPadding,
+  });
+
+  final Future<void> Function() onRetry;
+  final double topPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        Grid.gutter,
+        topPadding,
+        Grid.gutter,
+        Grid.gutter,
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+          const SizedBox(height: 13),
+          Text(
+            'Could not load team updates',
+            textAlign: TextAlign.center,
+            style: context.textTheme.titleLarge?.copyWith(
+              color: tokens.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.65,
+            ),
+          ),
+          const SizedBox(height: Grid.xxs + 10),
+          Text(
+            'The workspace connection is unavailable. This is not an empty list. Your local drafts are safe.',
+            textAlign: TextAlign.center,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: tokens.muted,
+              fontSize: 13,
+              height: 1.65,
+            ),
+          ),
+          const SizedBox(height: Grid.sm + 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: _TeamUpdatesAction(
+              label: 'Retry connection',
+              onPressed: () => unawaited(onRetry()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamUpdatesAction extends StatelessWidget {
+  const _TeamUpdatesAction({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: tokens.action,
+          foregroundColor: tokens.onAction,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.button),
+          ),
+          textStyle: context.textTheme.labelLarge?.copyWith(
+            color: tokens.onAction,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: Text(label),
       ),
     );
   }

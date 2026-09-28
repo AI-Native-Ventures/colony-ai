@@ -22,6 +22,9 @@ class AccountActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = !isLoading && onPressed != null;
+    final brightness = Theme.of(context).brightness;
+    final action = AccountFlowPalette.accent(brightness);
+    final onAction = AccountFlowPalette.onAccent(brightness);
     return Semantics(
       button: true,
       enabled: enabled,
@@ -33,14 +36,14 @@ class AccountActionButton extends StatelessWidget {
           width: double.infinity,
           child: FilledButton(
             style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
+              minimumSize: const Size.fromHeight(47),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
               disabledBackgroundColor: solidWhenDisabled
-                  ? AccountFlowPalette.action.withValues(alpha: 0.45)
+                  ? action.withValues(alpha: 0.45)
                   : null,
-              disabledForegroundColor: solidWhenDisabled ? Colors.white : null,
+              disabledForegroundColor: solidWhenDisabled ? onAction : null,
             ),
             onPressed: enabled ? onPressed : null,
             child: isLoading

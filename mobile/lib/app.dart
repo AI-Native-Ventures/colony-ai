@@ -205,15 +205,11 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
           return TodayPage(
             communityName: community?.name,
             profileName: profile?.displayName,
-            profileInitials: profile?.initials,
-            profileAvatarUrl: profile?.avatarUrl,
-            profilePubkey: profile?.pubkey,
             reviewItems: reviewItems,
             movingItems: movingItems,
             teamUpdate: teamUpdate,
             overviewMetrics: overviewMetrics,
-            onOpenUpdates: (updatesContext) =>
-                unawaited(MobileNavigation.openUpdates(updatesContext)),
+            onOpenUpdates: (_) => routeContext.onOpenTeamUpdates?.call(),
             onOpenReview: (itemId) => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => ActivityPage(initialItemId: itemId),
@@ -231,6 +227,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
                 MobileNavigation.openUpdateNote(context, noteId),
             onRetryActivity: () =>
                 ref.read(activityProvider.notifier).refresh(),
+            onOpenConversations: (_) => routeContext.onOpenChat?.call(),
           );
         },
       );
@@ -250,8 +247,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             container.invalidate(globalNotesProvider);
           }
         },
-        updatesPageBuilder: (_, published) =>
-            TeamUpdatesPage(initiallyPublished: published),
+        onOpenConversations: routeContext.onOpenChat,
         onOpenItem: (item) => Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => ActivityPage(initialItemId: item.id),
