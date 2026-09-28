@@ -491,7 +491,10 @@ test("Factory project creation opens the new project in Factory", async ({
 }) => {
   await bootFactoryPage(page, "/factory/projects");
 
-  await page.getByRole("button", { name: "Add project" }).click();
+  await page
+    .getByTestId("factory-workspace")
+    .getByRole("button", { name: "Add project" })
+    .click();
   const dialog = page.getByTestId("create-project-dialog");
   await expect(dialog).toBeVisible();
   await page.getByTestId("create-project-name").fill("Factory trial");

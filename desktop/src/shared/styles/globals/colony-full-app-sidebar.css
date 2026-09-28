@@ -577,6 +577,18 @@
 
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
+  [data-testid="sidebar-profile-card"]:hover {
+  background-color: rgb(255 255 255 / 31%);
+}
+
+:root.dark:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  [data-testid="sidebar-profile-card"]:hover {
+  background-color: rgb(255 255 255 / 7.5%);
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
   [data-testid="sidebar-profile-name"] {
   font-size: var(--text-2xs);
 }
