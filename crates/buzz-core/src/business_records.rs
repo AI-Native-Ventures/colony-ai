@@ -689,6 +689,16 @@ pub enum InvoiceVersionAction {
     Void,
 }
 
+/// Optional tax rule captured on an invoice version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct InvoiceTaxLine {
+    /// Display label supplied by the business, when present.
+    pub label: Option<String>,
+    /// Rate in integer basis points. One hundred basis points is one percent.
+    pub rate_basis_points: u32,
+}
+
 /// Relay-authored current invoice head created from an accepted proposal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -707,7 +717,16 @@ pub struct InvoiceHead {
     pub currency: String,
     /// Proposed invoice lines, still in draft state.
     pub lines: Vec<ProposalLine>,
-    /// Sum of line totals in minor currency units, rounded down from hundredths.
+    /// Optional tax rules captured by the business for this invoice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tax_lines: Vec<InvoiceTaxLine>,
+    /// Optional seller tax registration number captured on the invoice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seller_tax_number: Option<String>,
+    /// Optional customer tax registration number captured on the invoice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer_tax_number: Option<String>,
+    /// Gross invoice total in integer minor currency units.
     pub total_minor: i64,
     /// Total credit notes applied to this invoice in minor units.
     pub credited_minor: i64,
@@ -758,9 +777,18 @@ pub struct InvoiceVersion {
     pub action: InvoiceVersionAction,
     /// ISO 4217 currency code.
     pub currency: String,
-    /// Invoice line items, without tax fields.
+    /// Invoice line items before configured tax.
     pub lines: Vec<ProposalLine>,
-    /// Checked sum of line totals in minor units.
+    /// Optional tax rules captured by the business for this invoice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tax_lines: Vec<InvoiceTaxLine>,
+    /// Optional seller tax registration number captured on the invoice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seller_tax_number: Option<String>,
+    /// Optional customer tax registration number captured on the invoice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer_tax_number: Option<String>,
+    /// Checked gross sum of line totals and configured tax in minor units.
     pub total_minor: i64,
     /// Invoice lifecycle state after this operation.
     pub status: InvoiceStatus,
@@ -1002,6 +1030,37 @@ pub fn invoice_lines_total_minor(lines: &[ProposalLine]) -> Option<i64> {
             .checked_div(100)?;
         total.checked_add(line_total)
     })
+}
+
+/// Return checked tax in integer minor units, rounded per invoice line and tax rule.
+///
+/// Each line's net amount uses the existing hundredths quantity floor. Tax is
+/// then rounded to the nearest minor unit per line using half-up rounding.
+pub fn invoice_tax_total_minor(
+    lines: &[ProposalLine],
+    tax_lines: &[InvoiceTaxLine],
+) -> Option<i64> {
+    lines.iter().try_fold(0_i64, |total, line| {
+        let line_minor = i128::from(line.quantity_hundredths)
+            .checked_mul(i128::from(line.unit_amount_minor))?
+            .checked_div(100)?;
+        if line_minor < 0 {
+            return None;
+        }
+        let line_minor = i64::try_from(line_minor).ok()?;
+        tax_lines.iter().try_fold(total, |tax_total, tax_line| {
+            let tax_minor = i128::from(line_minor)
+                .checked_mul(i128::from(tax_line.rate_basis_points))?
+                .checked_add(5_000)?
+                .checked_div(10_000)?;
+            tax_total.checked_add(i64::try_from(tax_minor).ok()?)
+        })
+    })
+}
+
+/// Return the checked invoice gross total in integer minor units.
+pub fn invoice_total_minor(lines: &[ProposalLine], tax_lines: &[InvoiceTaxLine]) -> Option<i64> {
+    invoice_lines_total_minor(lines)?.checked_add(invoice_tax_total_minor(lines, tax_lines)?)
 }
 
 /// Return whether a currency uses the uppercase three-letter ISO code form.
@@ -1476,6 +1535,9 @@ mod tests {
                 quantity_hundredths: 100,
                 unit_amount_minor: 12_345,
             }],
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
             total_minor: 12_345,
             status: InvoiceStatus::Draft,
             due_at: Some(1_800_000_000),
@@ -1638,5 +1700,77 @@ mod tests {
         assert!(!is_iso_currency_code("zar"));
         assert!(!is_iso_currency_code("US"));
         assert!(!is_iso_currency_code("US1"));
+    }
+
+    #[test]
+    fn invoice_tax_rounds_half_up_for_each_line_and_rule() {
+        let lines = [
+            ProposalLine {
+                service_id: None,
+                description: "First one-minor line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+            ProposalLine {
+                service_id: None,
+                description: "Second one-minor line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+        ];
+        let taxes = [InvoiceTaxLine {
+            label: Some("Illustrative tax".into()),
+            rate_basis_points: 5_000,
+        }];
+        assert_eq!(invoice_tax_total_minor(&lines, &taxes), Some(2));
+        assert_eq!(invoice_total_minor(&lines, &taxes), Some(4));
+        assert_eq!(invoice_tax_total_minor(&lines, &[]), Some(0));
+        assert_eq!(
+            invoice_tax_total_minor(
+                &lines[..1],
+                &[InvoiceTaxLine {
+                    label: None,
+                    rate_basis_points: 4_999,
+                }]
+            ),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn legacy_invoice_version_without_tax_fields_defaults_to_no_tax() {
+        let invoice_version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id: Uuid::from_u128(31),
+            invoice_id: Uuid::from_u128(32),
+            version: 1,
+            previous_version_event_id: None,
+            proposal_version_event_id: Some("a".repeat(64)),
+            expected_head_event_id: None,
+            action: InvoiceVersionAction::ProposalAcceptance,
+            currency: "ZAR".into(),
+            lines: vec![ProposalLine {
+                service_id: None,
+                description: "Legacy line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1_000,
+            }],
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor: 1_000,
+            status: InvoiceStatus::Draft,
+            due_at: None,
+            void_reason: None,
+        };
+        let mut legacy = serde_json::to_value(invoice_version).expect("serialize version");
+        let object = legacy.as_object_mut().expect("object content");
+        object.remove("taxLines");
+        object.remove("sellerTaxNumber");
+        object.remove("customerTaxNumber");
+        let parsed: InvoiceVersion = serde_json::from_value(legacy).expect("legacy version");
+        assert!(parsed.tax_lines.is_empty());
+        assert_eq!(parsed.seller_tax_number, None);
+        assert_eq!(parsed.customer_tax_number, None);
     }
 }

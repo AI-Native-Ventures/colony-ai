@@ -13,6 +13,7 @@ import {
 import {
   deriveMoneyTotals,
   formatMoneyMinor,
+  invoiceTaxTotalMinor,
   type MoneyInvoiceHead,
   type MoneyWorkspaceRecords,
 } from "./lib/moneyRecords";
@@ -37,6 +38,7 @@ import {
   navigateMoney,
   periodForTimestamp,
   sumAdjustments,
+  totalLinesMinor,
 } from "./moneyUtils";
 import "@/features/discovery/business-records.css";
 import "./money.css";
@@ -214,6 +216,8 @@ function MoneyNavigation({ section }: { section: MoneySection }) {
             {label}
           </a>
         ))}
+        <a href="#/money/costs/unavailable">Costs</a>
+        <a href="#/money/profitability/unavailable">Profitability</a>
       </nav>
     </>
   );
@@ -509,6 +513,18 @@ function InvoiceDetail({
               Edit invoice
             </W10Button>
           ) : null}
+          {canManage && head.status === "draft" ? (
+            <W10Button
+              onClick={() =>
+                navigateMoney(
+                  `/money/tax/settings?invoiceId=${encodeURIComponent(head.invoiceId)}`,
+                )
+              }
+              variant="secondary"
+            >
+              View tax settings
+            </W10Button>
+          ) : null}
         </div>
       </header>
       <div className="money-detail-layout" data-testid="money-invoice-detail">
@@ -532,6 +548,16 @@ function InvoiceDetail({
               <p>{formatTimestamp(head.dueAt)}</p>
             </div>
           </div>
+          <div className="money-invoice-address money-tax-number-details">
+            <div>
+              <small>Seller tax number</small>
+              <p>{head.sellerTaxNumber ?? "Not supplied"}</p>
+            </div>
+            <div>
+              <small>Customer tax number</small>
+              <p>{head.customerTaxNumber ?? "Not supplied"}</p>
+            </div>
+          </div>
           <table className="w10-table money-line-table">
             <thead>
               <tr>
@@ -548,11 +574,45 @@ function InvoiceDetail({
                   </td>
                 </tr>
               ))}
+              <tr>
+                <td>Subtotal</td>
+                <td className="number">
+                  {formatMoneyMinor(totalLinesMinor(head.lines), head.currency)}
+                </td>
+              </tr>
+              {head.taxLines.length ? (
+                head.taxLines.map((taxLine) => (
+                  <tr
+                    key={formatMoneyTaxKey(
+                      taxLine.label,
+                      taxLine.rateBasisPoints,
+                    )}
+                  >
+                    <td>
+                      {taxLine.label ?? "Tax"} ·{" "}
+                      {formatMoneyTaxRate(taxLine.rateBasisPoints)}
+                    </td>
+                    <td className="number">
+                      {formatMoneyMinor(
+                        invoiceTaxTotalMinor(head.lines, [taxLine]),
+                        head.currency,
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td>Tax · Not configured</td>
+                  <td className="number">
+                    {formatMoneyMinor(0, head.currency)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           <div className="money-invoice-totals">
             <div>
-              <span>Total</span>
+              <span>Total due</span>
               <strong>
                 {formatMoneyMinor(head.totalMinor, head.currency)}
               </strong>
@@ -1015,4 +1075,18 @@ function EmptyMoneyState({
       ) : null}
     </section>
   );
+}
+
+function formatMoneyTaxRate(rateBasisPoints: number) {
+  const value = BigInt(rateBasisPoints);
+  const whole = value / 100n;
+  const fraction = (value % 100n)
+    .toString()
+    .padStart(2, "0")
+    .replace(/0+$/, "");
+  return `${whole}${fraction ? `.${fraction}` : ""}%`;
+}
+
+function formatMoneyTaxKey(label: string | null, rateBasisPoints: number) {
+  return `${label ?? "tax"}:${rateBasisPoints}`;
 }

@@ -190,6 +190,7 @@ export default defineConfig({
         "**/w11-clients-work.spec.ts",
         "**/workflow-plain-builder.spec.ts",
         "**/money.spec.ts",
+        "**/money-tax.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
