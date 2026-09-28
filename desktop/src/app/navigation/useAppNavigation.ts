@@ -528,6 +528,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAskDetail = React.useCallback(
+    (channelId: string, askId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/asks/$channelId/$askId",
+          params: { channelId, askId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goNewMessage = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -657,6 +669,7 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAskDetail,
     goChannel,
     goClient,
     goClients,

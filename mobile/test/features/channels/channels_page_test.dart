@@ -26,6 +26,7 @@ import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/community/community_icon_provider.dart';
 import 'package:buzz/shared/identity/identity_components.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -51,6 +52,7 @@ void main() {
     bool includeShell = false,
     bool captureShell = false,
     Brightness brightness = Brightness.light,
+    Map<String, String> presenceByPubkey = const {},
   }) {
     final channelsPage = ChannelsPage(
       settingsPageBuilder: _buildSettingsPage,
@@ -92,7 +94,10 @@ void main() {
     final home = captureShell
         ? RepaintBoundary(
             key: const ValueKey('channels-fullscreen-capture'),
-            child: page,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [page, _ConversationCaptureSystemBars(brightness)],
+            ),
           )
         : page;
     return ProviderScope(
@@ -102,6 +107,9 @@ void main() {
         // different identity (the page reads its pubkey from profileProvider).
         profileProvider.overrideWith(() => profile ?? _FakeProfileNotifier()),
         presenceProvider.overrideWith(() => _FakePresenceNotifier()),
+        presenceCacheProvider.overrideWith(
+          () => _FakePresenceCacheNotifier(presenceByPubkey),
+        ),
         communityIconProvider.overrideWith((ref, relayUrl) async {
           onCommunityIconLoad?.call(relayUrl);
           return communityIcons[relayUrl];
@@ -290,8 +298,9 @@ void main() {
         final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
         output.createSync(recursive: true);
         final previousComparator = goldenFileComparator;
-        goldenFileComparator = LocalFileComparator(
+        goldenFileComparator = _CaptureFileComparator(
           Uri.file('${output.path}/golden_test.dart'),
+          output.path,
         );
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
@@ -306,6 +315,7 @@ void main() {
               pubkey: 'aabb',
               displayName: 'Lerato Molefe',
             ),
+            presenceByPubkey: const {'mina': 'online', 'aya': 'online'},
             overrides: [
               channelSortProvider.overrideWith(
                 () => _FixtureChannelSortNotifier(),
@@ -376,6 +386,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        debugPrint(
+          'VISUAL_LAYOUT conversations ${size.key} $mode '
+          'title=${tester.getRect(find.text('Conversations').first)} '
+          'search=${tester.getRect(find.byKey(const ValueKey('channels-search-field')))} '
+          'filters=${tester.getRect(find.byKey(const ValueKey('conversation-filter-all')))} '
+          'firstRow=${tester.getRect(find.byKey(ValueKey('conversation-row-${channels.first.id}')))} '
+          'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
+        );
         expect(find.text('Conversations'), findsOneWidget);
         expect(find.text('LM'), findsOneWidget);
         expect(_dmTileAvatarInitial(tester, 'Mina'), 'M');
@@ -403,7 +421,7 @@ void main() {
     tester.view.resetDevicePixelRatio();
   });
 
-  testWidgets('uses shared person identity colors and plum unread badges', (
+  testWidgets('uses reference conversation identity colors and unread badges', (
     tester,
   ) async {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
@@ -432,9 +450,27 @@ void main() {
     );
     final campaign = fixture(
       id: 'campaign-unread',
-      name: 'Campaign studio',
+      name: 'olive-studio',
       type: 'stream',
       preview: 'Maya: September designs are ready',
+    );
+    final marketing = fixture(
+      id: 'marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Launch artwork is ready',
+    );
+    final sales = fixture(
+      id: 'sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Three promising leads',
+    );
+    final updates = fixture(
+      id: 'team-updates',
+      name: 'Team updates',
+      type: 'forum',
+      preview: 'September wins',
     );
     final maya = fixture(
       id: 'dm-maya',
@@ -447,6 +483,7 @@ void main() {
     await tester.pumpWidget(
       buildTestable(
         brightness: Brightness.dark,
+        presenceByPubkey: const {'maya': 'online'},
         profile: _FakeProfileNotifier(
           pubkey: 'aabb',
           displayName: 'Lerato Molefe',
@@ -454,7 +491,7 @@ void main() {
         overrides: [
           channelsProvider.overrideWith(
             () => _FakeNotifier(
-              [campaign, maya],
+              [campaign, marketing, sales, updates, maya],
               observedEventsByChannel: {
                 campaign.id: [
                   _observed(id: 'campaign-message', createdAt: now),
@@ -482,6 +519,7 @@ void main() {
     );
     expect(mayaAvatar.kind, IdentityKind.person);
     expect(mayaAvatar.tone, IdentityAvatarTone.peach);
+    expect(mayaAvatar.isOnline, isTrue);
     final mayaInitial = tester.widget<Text>(
       find.descendant(
         of: find.byKey(const ValueKey('conversation-avatar-dm-maya')),
@@ -493,12 +531,49 @@ void main() {
       AppTheme.dark().extension<AppColors>()!.identityPersonForeground,
     );
 
+    final appColors = AppTheme.dark().extension<AppColors>()!;
+    for (final entry in [
+      ('campaign-unread', appColors.agentAvatarGradient),
+      ('marketing', appColors.personAvatarGradient),
+      ('sales', appColors.sageAvatarGradient),
+      ('team-updates', appColors.personAvatarGradient),
+    ]) {
+      final avatar = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey('conversation-avatar-${entry.$1}')),
+      );
+      expect((avatar.decoration as BoxDecoration).gradient, entry.$2);
+    }
+
     final badge = tester.widget<Container>(
       find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
     );
     expect(
       (badge.decoration! as BoxDecoration).color,
-      AppTheme.dark().extension<AppColors>()!.plum,
+      appColors.conversationUnreadBadgeBackground,
+    );
+    expect(
+      (badge.decoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(Radii.sm),
+    );
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+      ),
+      const Size(19, 19),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey('channel-unread-badge-campaign-unread'),
+              ),
+              matching: find.byType(Text),
+            ),
+          )
+          .style
+          ?.color,
+      appColors.conversationUnreadBadgeForeground,
     );
   });
 
@@ -507,6 +582,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildTestable(
+        brightness: Brightness.dark,
         overrides: [channelsProvider.overrideWith(() => _FakeNotifier([]))],
       ),
     );
@@ -517,6 +593,30 @@ void main() {
     );
     final allFilter = tester.getRect(find.widgetWithText(TextButton, 'All'));
     expect(allFilter.top - search.bottom, 16);
+    final selectedFilter = tester.widget<TextButton>(
+      find.byKey(const ValueKey('conversation-filter-all')),
+    );
+    final filterTokens = tester
+        .element(find.byKey(const ValueKey('conversation-filter-all')))
+        .mobileTokens;
+    expect(
+      selectedFilter.style?.backgroundColor?.resolve({}),
+      filterTokens.action,
+    );
+    expect(
+      selectedFilter.style?.foregroundColor?.resolve({}),
+      filterTokens.onAction,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.search)).size,
+      MobileLayoutTokens.conversationSearchIconSize,
+    );
+    final appBarFinder = find.byType(FrostedAppBar);
+    final appBar = tester.widget<FrostedAppBar>(appBarFinder);
+    expect(
+      appBar.gradient,
+      tester.element(appBarFinder).appColors.companyWashGradient,
+    );
   });
 
   testWidgets('shows the v5 recent conversation list when data loads', (
@@ -595,6 +695,14 @@ void main() {
     expect(find.text(shortPubkey(a11ce)), findsOneWidget);
     expect(_dmTileAvatarInitial(tester, shortPubkey(a11ce)), 'A');
     expect(_dmTileAvatarInitial(tester, 'Alice'), 'A');
+    expect(
+      tester
+          .widget<IdentityAvatar>(
+            find.byKey(const ValueKey('conversation-avatar-dm-unnamed')),
+          )
+          .isOnline,
+      isFalse,
+    );
     final groupTile = _dmTileFor('${shortPubkey(a11ce)}, ${shortPubkey(b0b)}');
     expect(
       find.descendant(of: groupTile, matching: find.byType(AvatarImageContent)),
@@ -3078,6 +3186,15 @@ class _FakePresenceNotifier extends PresenceNotifier {
   Future<String> build() async => 'online';
 }
 
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this.initial);
+
+  final Map<String, String> initial;
+
+  @override
+  Map<String, String> build() => initial;
+}
+
 class _FakeReadStateNotifier extends ReadStateNotifier {
   final ReadStateState _initialState;
   final Map<String, int> seededContexts = {};
@@ -3148,4 +3265,76 @@ String _dmTileAvatarInitial(WidgetTester tester, String labelText) {
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _ConversationCaptureSystemBars extends StatelessWidget {
+  const _ConversationCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -53,7 +53,7 @@ import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
-import 'package:buzz/features/profile/presence_cache_provider.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/identity/identity_components.dart';
@@ -278,6 +278,7 @@ Widget _buildTestable({
   Key? captureKey,
   bool routeInNavigationStack = false,
   String profileDisplayName = 'Self',
+  bool showCaptureSystemBars = false,
 }) {
   final resolvedChannel = channel ?? _testChannel;
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -462,7 +463,14 @@ Widget _buildTestable({
         ),
         child: RepaintBoundary(
           key: captureKey,
-          child: MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+              if (showCaptureSystemBars)
+                _DetailCaptureSystemBars(brightness ?? Brightness.light),
+            ],
+          ),
         ),
       ),
       navigatorObservers: navigatorObservers,
@@ -733,6 +741,38 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
+    testWidgets('channel info uses the shared title and hero wash tokens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: _testChannel,
+          brightness: Brightness.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('channel-info-action')));
+      await tester.pumpAndSettle();
+
+      final titleFinder = find.byKey(const ValueKey('channel-details-name'));
+      final title = tester.widget<Text>(titleFinder);
+      final context = tester.element(titleFinder);
+      expect(
+        title.style,
+        context.mobileTypography.companyHubTitle.copyWith(
+          color: context.appColors.channelInfoHeroForeground,
+        ),
+      );
+      final hero = tester.widget<Container>(
+        find.byKey(const ValueKey('channel-details-hero')),
+      );
+      expect(
+        (hero.decoration! as BoxDecoration).gradient,
+        context.appColors.channelInfoHeroGradient,
+      );
+    });
+
     testWidgets('captures v5 conversation routes at both sizes and themes', (
       tester,
     ) async {
@@ -1046,8 +1086,9 @@ void main() {
             );
             output.createSync(recursive: true);
             final previousComparator = goldenFileComparator;
-            goldenFileComparator = LocalFileComparator(
+            goldenFileComparator = _CaptureFileComparator(
               Uri.file('${output.path}/capture_test.dart'),
+              output.path,
             );
             await tester.pumpWidget(
               _buildTestable(
@@ -1070,9 +1111,30 @@ void main() {
                 routeInNavigationStack: true,
                 profileDisplayName: 'Lerato Molefe',
                 disableAnimations: true,
+                showCaptureSystemBars: true,
+                presence: const {
+                  'self': 'online',
+                  'mina': 'online',
+                  'sam': 'online',
+                  'noluthando': 'online',
+                },
               ),
             );
             await tester.pumpAndSettle();
+
+            final headerTitle = switch (route.name) {
+              'channel' || 'conversation-marketing' || 'conversation-sales' =>
+                find.text('# ${route.channel.name}').first,
+              'thread' => find.byKey(const ValueKey('thread-app-bar-title')),
+              _ => find.byKey(const ValueKey('dm-header-name')),
+            };
+            debugPrint(
+              'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
+              'header=${tester.getRect(headerTitle)} '
+              'date=${tester.getRect(find.text('Today · 28 September').first)} '
+              'firstMessage=${tester.getRect(find.text(route.messages.first.content).first)} '
+              'composer=${tester.getRect(find.byKey(const ValueKey('composer-surface')))}',
+            );
 
             if (route.name == 'channel') {
               expect(find.text('# olive-studio'), findsOneWidget);
@@ -1173,6 +1235,14 @@ void main() {
                 find.byKey(const ValueKey('channel-info-action')),
               );
               await tester.pumpAndSettle();
+              debugPrint(
+                'VISUAL_LAYOUT channel-info ${size.key} $mode '
+                'header=${tester.getRect(find.text('Olive Studio').first)} '
+                'hero=${tester.getRect(find.byKey(const ValueKey('channel-details-hero')))} '
+                'members=${tester.getRect(find.byKey(const ValueKey('channel-details-members-card')))} '
+                'list=${tester.getRect(find.byKey(const ValueKey('channel-details-page-list')))} '
+                'safeTop=${MediaQuery.paddingOf(tester.element(find.byKey(const ValueKey('channel-details-page-list')))).top}',
+              );
               expect(find.text('Olive Studio'), findsOneWidget);
               expect(find.text('Client channel'), findsOneWidget);
               expect(find.text('In this conversation'), findsOneWidget);
@@ -16590,4 +16660,76 @@ class _R19ForumCaptureMediaUploadService extends MediaUploadService {
     uploaded: DateTime.utc(2026, 9, 26).millisecondsSinceEpoch ~/ 1000,
     filename: pickedFile.name,
   );
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _DetailCaptureSystemBars extends StatelessWidget {
+  const _DetailCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

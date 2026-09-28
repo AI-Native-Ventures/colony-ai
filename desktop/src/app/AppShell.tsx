@@ -185,6 +185,7 @@ export function AppShell() {
     selectedView !== "pins" &&
     location.pathname !== "/today" &&
     !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/asks/") &&
     !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
@@ -790,6 +791,7 @@ export function AppShell() {
                 !isHuddleRoom &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
+                  location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
                   selectedView === "pins" ||
