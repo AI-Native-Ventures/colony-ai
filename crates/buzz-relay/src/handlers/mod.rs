@@ -16,6 +16,8 @@ pub mod community_provisioning;
 pub mod company_asks;
 /// Nostr-first broker for company records (goals and asks).
 pub mod company_records;
+/// Nostr-first broker for device-backed secret binding records.
+pub mod company_secrets;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.

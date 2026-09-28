@@ -21,7 +21,14 @@ export type AskOutcome =
   | "chosen"
   | "confirmed"
   | "pass"
-  | "fail";
+  | "fail"
+  | "secret_bound";
+
+export type SecretAskRequest = {
+  toolName: string;
+  clientName?: string;
+  allowedUse: string;
+};
 
 export type AskOption = { id: string; label: string };
 
@@ -38,6 +45,7 @@ export type AskRecord = {
   options?: AskOption[] | null;
   items?: AskOption[] | null;
   subject?: { kind: "goal" | "workflowRun" | "workItem"; id: string } | null;
+  secretRequest?: SecretAskRequest | null;
 };
 
 export type AskHead = {
@@ -53,6 +61,7 @@ export type AskHead = {
     answer?: string;
     optionId?: string;
     checkedItemIds?: string[];
+    secretBindingId?: string;
     resolvedByPubkey: string;
     resolvedAt: string;
     responseEventId: string;
@@ -128,6 +137,22 @@ function parseAskHead(content: string): AskHead {
   }
   const head = value as unknown as AskHead;
   const ask = value.ask;
+  const secretRequest = ask.secretRequest;
+  const invalidSecretRequest =
+    ask.category === "secret"
+      ? ask.type !== "question" ||
+        !isRecord(secretRequest) ||
+        Object.keys(secretRequest).some(
+          (key) =>
+            key !== "toolName" && key !== "clientName" && key !== "allowedUse",
+        ) ||
+        typeof secretRequest.toolName !== "string" ||
+        (secretRequest.clientName !== undefined &&
+          (typeof secretRequest.clientName !== "string" ||
+            !secretRequest.clientName.trim() ||
+            Array.from(secretRequest.clientName).length > 120)) ||
+        typeof secretRequest.allowedUse !== "string"
+      : secretRequest !== undefined && secretRequest !== null;
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -143,7 +168,8 @@ function parseAskHead(content: string): AskHead {
     typeof ask.category !== "string" ||
     !ASK_CATEGORIES.has(ask.category as AskCategory) ||
     typeof ask.title !== "string" ||
-    typeof ask.threadRootEventId !== "string"
+    typeof ask.threadRootEventId !== "string" ||
+    invalidSecretRequest
   ) {
     throw new Error(
       "The relay returned an ask head with an unsupported shape.",

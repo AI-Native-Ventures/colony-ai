@@ -199,6 +199,12 @@ type MockBridgeOptions = {
   companyAskHeads?: RelayEvent[];
   /** Ephemeral test key used to model relay-signed head updates after responses. */
   companyAskRelayPrivateKeyHex?: string;
+  /** Verified relay-signed secret binding heads used by secure-entry E2E coverage. */
+  companySecretBindingHeads?: RelayEvent[];
+  /** Fail the native secret-store boundary with a generic error. */
+  companySecretStoreError?: boolean;
+  /** Reject secret-binding activation publishes in order. */
+  companySecretActivationErrors?: string[];
   /** Reject these ask response publishes in order, then accept them. */
   askResponseErrors?: string[];
   /** Reject these ask create publishes in order, then accept them. */

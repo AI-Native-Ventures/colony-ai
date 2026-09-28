@@ -750,6 +750,10 @@ pub const KIND_GOAL_ACTION: u32 = 47031;
 pub const KIND_ASK_ACTION: u32 = 47032;
 /// Member ask resolution, brokered and append only.
 pub const KIND_ASK_RESPONSE: u32 = 47033;
+/// Relay-authored canonical secret binding head (community-wide, no `h` tag).
+pub const KIND_SECRET_BINDING_HEAD: u32 = 30647;
+/// Member secret binding create, activation, or revocation, brokered.
+pub const KIND_SECRET_BINDING_ACTION: u32 = 47036;
 
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
@@ -758,16 +762,24 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_GOAL_ACTION,
     KIND_ASK_ACTION,
     KIND_ASK_RESPONSE,
+    KIND_SECRET_BINDING_HEAD,
+    KIND_SECRET_BINDING_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
 pub const fn is_company_command_kind(kind: u32) -> bool {
-    matches!(kind, KIND_GOAL_ACTION | KIND_ASK_ACTION | KIND_ASK_RESPONSE)
+    matches!(
+        kind,
+        KIND_GOAL_ACTION | KIND_ASK_ACTION | KIND_ASK_RESPONSE | KIND_SECRET_BINDING_ACTION
+    )
 }
 
 /// Returns `true` for company kinds with no channel scope (community-wide).
 pub const fn is_company_global_kind(kind: u32) -> bool {
-    matches!(kind, KIND_GOAL_HEAD | KIND_GOAL_ACTION)
+    matches!(
+        kind,
+        KIND_GOAL_HEAD | KIND_GOAL_ACTION | KIND_SECRET_BINDING_HEAD | KIND_SECRET_BINDING_ACTION
+    )
 }
 
 /// Every Phase 2 business-record kind, including heads and immutable events.
@@ -1130,6 +1142,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_GOAL_ACTION
             | KIND_ASK_ACTION
             | KIND_ASK_RESPONSE
+            | KIND_SECRET_BINDING_ACTION
     )
 }
 
@@ -1161,6 +1174,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_PROPOSAL_CONVERSION_RECEIPT
             | KIND_GOAL_HEAD
             | KIND_ASK_HEAD
+            | KIND_SECRET_BINDING_HEAD
     )
 }
 

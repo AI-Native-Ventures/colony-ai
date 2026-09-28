@@ -83,6 +83,8 @@ abstract final class EventKind {
   static const goalAction = 47031;
   static const askAction = 47032;
   static const askResponse = 47033;
+  static const secretBindingHead = 30647;
+  static const secretBindingAction = 47036;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -92,6 +94,8 @@ abstract final class EventKind {
     goalAction,
     askAction,
     askResponse,
+    secretBindingHead,
+    secretBindingAction,
   ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.

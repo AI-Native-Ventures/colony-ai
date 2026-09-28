@@ -10,6 +10,7 @@ import { Route as workRouteImport } from "./routes/work";
 import { Route as todayRouteImport } from "./routes/today";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
+import { Route as secretsRouteImport } from "./routes/secrets";
 import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
@@ -93,6 +94,11 @@ const supervisionRoute = supervisionRouteImport.update({
 const settingsRoute = settingsRouteImport.update({
   id: "/settings",
   path: "/settings",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const secretsRoute = secretsRouteImport.update({
+  id: "/secrets",
+  path: "/secrets",
   getParentRoute: () => rootRouteImport,
 } as any);
 const remindersRoute = remindersRouteImport.update({
@@ -421,6 +427,7 @@ export interface FileRoutesByFullPath {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -487,6 +494,7 @@ export interface FileRoutesByTo {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -554,6 +562,7 @@ export interface FileRoutesById {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -622,6 +631,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -688,6 +698,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -754,6 +765,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -821,6 +833,7 @@ export interface RootRouteChildren {
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
   remindersRoute: typeof remindersRoute;
+  secretsRoute: typeof secretsRoute;
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
   todayRoute: typeof todayRoute;
@@ -908,6 +921,13 @@ declare module "@tanstack/react-router" {
       path: "/settings";
       fullPath: "/settings";
       preLoaderRoute: typeof settingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/secrets": {
+      id: "/secrets";
+      path: "/secrets";
+      fullPath: "/secrets";
+      preLoaderRoute: typeof secretsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/reminders": {
@@ -1341,6 +1361,7 @@ const rootRouteChildren: RootRouteChildren = {
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
   remindersRoute: remindersRoute,
+  secretsRoute: secretsRoute,
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
   todayRoute: todayRoute,

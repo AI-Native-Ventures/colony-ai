@@ -1,9 +1,11 @@
 # Colony company record contracts
 
-Status: company layer batch 1 contract (Asks, Goals) plus the reserved company
-work item shape for batch 2. Schema version: `1`. Design baseline:
-`docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
-(approved 27 September 2026) and owner decisions C1 to C6 and D1 to D3.
+Status: company layer batch 1 contract (Asks, Goals, Secret bindings) plus the
+reserved company work item shape for batch 2. Schema version: `1`. Goals and
+asks use the approved v7 company baseline and owner decisions C1 to C6 and D1
+to D3. Secret bindings use Gap 5 in
+`docs/superpowers/plans/2026-09-24-phase-2-handoff/20260928-company-v8/` and
+its embedded 20260926-r19 route reference.
 
 Company records follow the brokered pattern of [business records](business-records.md):
 a member signs a command event, the relay validates scope, content and authority,
@@ -29,6 +31,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
 | 47033 | Ask response | Brokered, append only |
+| 30647 | Secret binding head | Relay signed, replaceable |
+| 47036 | Secret binding action | Brokered |
 
 ## Scope and storage
 
@@ -54,8 +58,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
   not signed by the relay.
 - **Agent detection** for authority uses the authorization-grade account
   record (`users.agent_owner_pubkey`), never a client-supplied tag.
-- **Search:** company kinds are excluded from full-text search (ask bodies and
-  answers can be sensitive).
+- **Search:** company kinds are excluded from full-text search (ask bodies,
+  answers and secret binding metadata can be sensitive).
 
 ## Authority
 
@@ -159,6 +163,44 @@ addressee or, for asks without an addressee, where the user has authority to
 resolve them, plus open workflow approvals addressed to them. It is sorted by
 `decideBy` (earliest first, asks without a deadline last), marks overdue asks,
 groups by channel when there are many, and links each row to its thread.
+
+## Secret bindings
+
+A secret binding names a credential, its employee and tool scope, and the store
+that holds the value. The value is never part of a Nostr event, tag, audit row,
+log, error, test fixture or CLI output. `SecretBindingSpec` intentionally has no
+value field. Its global d-tag is `company:secret:<binding-uuid>`.
+
+Kind 47036 commands are member signed and brokered by the relay. The relay
+accepts only community owners and admins, validates that the target employee is
+a current community member, stores the command and replaces the relay-signed
+kind 30647 head in one transaction. A create starts as `pending`; activation
+requires the exact current head; revocation is an explicit command that moves
+the head to `revoked`. A consumer must read the current head before every use
+and deny a missing, pending or revoked binding. No expiry or rotation policy is
+defined here.
+
+The `device` store sends the entered value only to the desktop native command,
+which uses the existing OS credential store. The webview receives only a
+success or generic failure result. The relay has no encrypted secret store, so
+`server` actions are rejected and the desktop keeps that choice unavailable.
+
+Secret asks use category `secret`, type `question`, and a non-secret
+`secretRequest` object with `toolName`, optional `clientName` and `allowedUse`.
+A secret ask cannot be
+resolved with a free-text answer. The secure entry flow creates pending
+metadata, writes the value to device storage, then activates the binding. The
+relay activates the binding and resolves its linked ask with `secretBound` and
+the binding UUID in the same transaction. The binding's `sourceAsk` coordinate
+must point to that open ask, whose requester must match `employeePubkey` and
+whose tool and allowed-use fields must match the binding. Only owners and
+admins can perform these actions; managed agents cannot.
+
+NEEDS_API: This relay has no encrypted server secret store. It also has no
+agent/tool use path that reads the current binding head and supplies a
+device-stored value to the selected local worker. Until that consumer exists,
+the binding is an access record and the saved device value is not exposed to an
+agent or tool.
 
 ## Goals
 
