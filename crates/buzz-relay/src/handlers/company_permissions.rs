@@ -578,7 +578,6 @@ mod postgres_tests {
         state: Arc<AppState>,
         tenant: TenantContext,
         owner: nostr::Keys,
-        channel_id: Uuid,
         root: Event,
         _serial_guard: tokio::sync::MutexGuard<'static, ()>,
     }
@@ -653,7 +652,6 @@ mod postgres_tests {
             state,
             tenant,
             owner,
-            channel_id: channel.id,
             root,
             _serial_guard: serial_guard,
         }
