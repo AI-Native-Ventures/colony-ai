@@ -300,6 +300,22 @@ a general proposal for their report. The relay applies an approved proposal in
 the same transaction as the ask response and member head update. Rejected,
 stale, or failed proposals change neither head.
 
+NEEDS_API: the frozen Team overviews show assigned work under "Doing now" for
+human and employee profiles. The member-position and managed-agent read models
+do not currently project company work items by assigned member. Do not copy the
+reference fixture rows into the app. The work-item lane must provide that
+projection before the Team overview can show real assigned work.
+
+NEEDS_DESIGN: the frozen Team overview routes show populated "Doing now" rows,
+not the no-work or unavailable states. Those states need an approved design
+before they are added.
+
+NEEDS_API: the frozen `hire/review` route used for reviewed rehire requires the
+retained employee package, including allowance, worker and tool scope, lessons,
+and history. The current member-position and managed-agent reads do not expose
+that complete review record. The relay rehire action is available, but its UI
+stays with the HIRE-1 record and route work.
+
 NEEDS_DESIGN: the frozen Team routes do not show where a non-owner starts a
 member-change approval ask, or how a paused employee's status and reason appear
 on message rows. Those surfaces remain unimplemented until their placement and
