@@ -3,6 +3,7 @@ import * as React from "react";
 import { AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX } from "@/shared/layout/AuxiliaryPanel";
 
 const MOBILE_BREAKPOINT = 768;
+const THREAD_PANEL_OVERLAY_BREAKPOINT = 1024;
 
 /**
  * Returns `true` when the viewport is narrower than `breakpointPx`.
@@ -91,5 +92,5 @@ export function useIsAuxiliaryPanelOverlay() {
 }
 
 export function useIsThreadPanelOverlay() {
-  return useIsAuxiliaryPanelOverlay();
+  return useMediaBreakpoint(THREAD_PANEL_OVERLAY_BREAKPOINT);
 }

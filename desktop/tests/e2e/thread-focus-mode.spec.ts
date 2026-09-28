@@ -70,7 +70,7 @@ async function scrollToMiddleVisibleMessage(
  * created a stacking context that flattened the header's `z-30` beneath the
  * sibling shared header backdrop (also `z-30`), painting the backdrop over the
  * name and actions. Neither `toBeVisible()` nor `elementFromPoint` can catch
- * this — the backdrop is `pointer-events-none`, so hit-testing skips it. We
+ * this because the backdrop is `pointer-events-none`, so hit-testing skips it. We
  * compare CSS paint order directly: walk each element's stacking-context
  * chain, find the branches under their common stacking context, and check the
  * header's branch wins (higher z-index, or later in DOM order on a tie).
@@ -278,10 +278,13 @@ test("focus and split preserve reading context and interaction ownership", async
   await expect(channel).not.toHaveAttribute("inert", "");
 });
 
-test("narrow threads do not offer an unavailable layout switch", async ({
+test("narrow thread overlays reopen with keyboard and restore trigger focus", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 860, height: 720 });
+  await page.setViewportSize({ width: 980, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem("buzz.channels.threadViewMode", "split");
+  });
   await installMockBridge(page);
   await page.goto("/");
   const rootId = await seedLongThread(page);
@@ -290,7 +293,47 @@ test("narrow threads do not offer an unavailable layout switch", async ({
     `[data-testid="message-thread-summary"][data-thread-head-id="${rootId}"]`,
   );
   await expect(summary).toBeVisible();
-  await summary.click();
-  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+
+  await summary.focus();
+  await summary.press("Enter");
+  const drawer = page.getByTestId("focus-thread-drawer");
+  await expect(drawer).toBeVisible();
+  await page.evaluate(() =>
+    Promise.all(
+      document.getAnimations().map((animation) => animation.finished),
+    ),
+  );
+  const drawerBounds = await drawer.boundingBox();
+  expect(drawerBounds?.x).toBeGreaterThanOrEqual(415);
+  expect(drawerBounds?.x).toBeLessThanOrEqual(425);
+  expect(drawerBounds?.y).toBeGreaterThanOrEqual(236);
+  expect(drawerBounds?.y).toBeLessThanOrEqual(246);
+  expect(drawerBounds?.width).toBeGreaterThanOrEqual(500);
+  expect(drawerBounds?.width).toBeLessThanOrEqual(520);
+  expect(drawerBounds?.height).toBeGreaterThan(560);
+  expect(drawerBounds?.height).toBeLessThan(610);
+  await expect
+    .poll(() =>
+      drawer.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
+  await expect(page.getByTestId("channel-drop-zone")).toHaveAttribute(
+    "inert",
+    "",
+  );
   await expect(page.getByTestId("thread-view-mode-toggle")).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("focus-thread-drawer-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("channel-drop-zone")).not.toHaveAttribute(
+    "inert",
+    "",
+  );
+  await expect(summary).toBeFocused();
+
+  await summary.press("Enter");
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("focus-thread-drawer-overlay")).toHaveCount(0);
+  await expect(summary).toBeFocused();
 });
