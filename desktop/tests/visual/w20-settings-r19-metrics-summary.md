@@ -1,95 +1,147 @@
-# W20 settings visual metrics, r19 current audit
+# W20 settings visual metrics, r19 final audit
 
-This summary stores route means, ranges, and measured residual causes after the Appearance shell alignment and moderation failure alignment. Capture gallery: `/tmp/w20-settings-r19-data-backed-final` (188 captures, 47 routes). Each route has light/dark captures at 1440x900 and 1728x1117. Exact RGB comparison, no masks or tolerance; mean RGB delta is mean absolute channel delta across pixels.
+Frozen reference: `20260926-r19`. Verification command `python3 verify.py` in that package passed: 329 frozen files match.
+Capture set: `/tmp/w20-settings-r19-final-20260928-0618` (192 captures, 48 routes, four variants per route: light/dark at 1440x900 and 1728x1117). The gallery was temporary and is removed after these metrics are recorded. Comparison is exact RGB with no masks or tolerance. Route percentages below are the mean of four captures; mean RGB is mean absolute channel delta.
+Baseline is the previously saved r17 summary. Across the 47 route IDs present in both sets, the route-mean average changed-pixel ratio moved from 41.17% to 16.03%, a 25.14 percentage-point reduction. Including the new `desktop-08-comfortable` capture, the 48-route current average is 17.10%. These are exact pixel counts, not a perceptual score.
 
-Binding reference: 20260926-r19. Its verifier passed: 329 frozen files match. The earlier baseline is the 260-capture r17 summary; r17 workspace settings routes are unchanged in r19. For the same 47 route IDs, baseline route-mean average was 41.17% and this matrix route-mean average is 18.93%. These exact-pixel percentages include color compositing and text-edge changes; they are not a perceptual score.
-
-The matrix completed before the channel picker button-color fix was committed. The `desktop-12-pick` values below are pre-fix and must be recaptured before final signoff.
-
-The capture excludes owner-held agent surfaces, unavailable states covered by NEEDS-DESIGN items 55-58, and any route without a current real data source. The channel template picker and moderation action failure are captured in their real app flows.
+Cause codes point to the measured residuals below. Rows with a workspace shell code have no route-specific body mismatch above 3% unless listed separately. The per-route cause is included even when a residual is below 3%.
 
 ## Per-route before and current
 
-| Route | Baseline mean | Current mean | Change | Current range | Mean RGB delta |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `desktop-06-camera` | 59.76% | 5.96% | -53.80 pp | 5.42% to 6.50% | 2.928 |
-| `desktop-06-cancelled` | 58.47% | 2.01% | -56.46 pp | 1.55% to 2.52% | 1.157 |
-| `desktop-06-choose` | 50.11% | 9.06% | -41.05 pp | 8.52% to 9.61% | 3.602 |
-| `desktop-06-crop` | 73.38% | 6.40% | -66.98 pp | 5.93% to 6.87% | 2.729 |
-| `desktop-06-failed` | 80.27% | 4.93% | -75.34 pp | 4.31% to 5.54% | 2.075 |
-| `desktop-06-invalid` | 60.92% | 8.49% | -52.43 pp | 8.13% to 8.86% | 4.365 |
-| `desktop-06-profile` | 58.47% | 2.01% | -56.46 pp | 1.55% to 2.52% | 1.157 |
-| `desktop-06-saved` | 62.41% | 6.65% | -55.76 pp | 5.34% to 8.25% | 1.707 |
-| `desktop-06-saving` | 52.48% | 5.45% | -47.03 pp | 4.87% to 6.02% | 2.889 |
-| `desktop-06-upload` | 52.67% | 5.76% | -46.91 pp | 5.21% to 6.30% | 3.108 |
-| `desktop-07-confirm` | 8.26% | 8.26% | -0.00 pp | 6.62% to 9.75% | 3.761 |
-| `desktop-08-catalog` | 67.86% | 63.64% | -4.22 pp | 24.71% to 100.00% | 18.601 |
-| `desktop-08-compact` | 67.54% | 63.27% | -4.27 pp | 24.09% to 100.00% | 18.382 |
-| `desktop-08-custom` | 69.87% | 63.52% | -6.35 pp | 24.61% to 100.00% | 17.587 |
-| `desktop-08-saved` | 68.19% | 64.00% | -4.19 pp | 26.44% to 100.00% | 18.378 |
-| `desktop-08-spacious` | 67.91% | 63.71% | -4.20 pp | 24.88% to 100.00% | 18.572 |
-| `desktop-11-library` | 58.13% | 51.90% | -6.23 pp | 3.18% to 100.00% | 4.929 |
-| `desktop-12-pick` | 58.37% | 51.58% | -6.79 pp | 2.59% to 100.00% | 4.409 |
-| `desktop-14-moderation-failed` | 60.44% | 2.00% | -58.44 pp | 1.99% to 2.01% | 0.664 |
-| `desktop-15-diagnostics` | 61.11% | 21.81% | -39.30 pp | 21.37% to 22.25% | 8.067 |
-| `desktop-15-failed` | 60.42% | 16.53% | -43.89 pp | 12.19% to 20.86% | 8.703 |
-| `desktop-15-form` | 55.04% | 9.67% | -45.37 pp | 9.23% to 10.12% | 7.123 |
-| `desktop-15-sending` | 53.87% | 6.96% | -46.91 pp | 6.03% to 7.75% | 5.091 |
-| `desktop-15-sent` | 53.82% | 7.51% | -46.31 pp | 7.26% to 7.75% | 7.115 |
-| `workspace-account` | 27.69% | 13.78% | -13.91 pp | 10.43% to 18.35% | 1.536 |
-| `workspace-account-accessibility` | 29.81% | 15.28% | -14.53 pp | 12.26% to 19.71% | 2.797 |
-| `workspace-account-archive` | 14.92% | 12.29% | -2.63 pp | 8.93% to 16.38% | 0.940 |
-| `workspace-account-audit` | 15.13% | 12.46% | -2.67 pp | 9.19% to 16.57% | 0.977 |
-| `workspace-account-moderation` | 15.35% | 12.84% | -2.51 pp | 9.66% to 17.04% | 1.220 |
-| `workspace-account-notifications` | 29.18% | 16.36% | -12.82 pp | 13.36% to 20.82% | 3.031 |
-| `workspace-account-recovery` | 15.32% | 12.84% | -2.48 pp | 9.58% to 17.02% | 1.334 |
-| `workspace-account-security` | 23.03% | 13.92% | -9.11 pp | 10.74% to 18.41% | 1.495 |
-| `workspace-settings` | 17.89% | 13.66% | -4.23 pp | 10.59% to 18.05% | 2.021 |
-| `workspace-settings-admin` | 15.13% | 12.46% | -2.67 pp | 9.19% to 16.57% | 0.977 |
-| `workspace-settings-appearance` | 24.78% | 12.55% | -12.23 pp | 9.29% to 16.27% | 0.628 |
-| `workspace-settings-device` | 18.79% | 14.33% | -4.46 pp | 11.38% to 18.79% | 2.293 |
-| `workspace-settings-emoji` | 27.95% | 13.54% | -14.41 pp | 10.46% to 17.86% | 1.663 |
-| `workspace-settings-experiments` | 24.89% | 13.62% | -11.27 pp | 10.59% to 17.95% | 1.646 |
-| `workspace-settings-people` | 14.05% | 13.25% | -0.80 pp | 10.06% to 17.51% | 1.753 |
-| `workspace-settings-shortcuts` | 33.15% | 14.89% | -18.26 pp | 11.66% to 19.13% | 2.268 |
-| `workspace-settings-storage` | 23.25% | 14.91% | -8.34 pp | 11.90% to 19.32% | 2.663 |
-| `workspace-settings-templates` | 14.26% | 13.40% | -0.86 pp | 10.27% to 17.67% | 1.619 |
-| `workspace-settings-theme-applied` | 26.47% | 25.79% | -0.68 pp | 20.84% to 32.11% | 3.102 |
-| `workspace-settings-theme-preview` | 26.40% | 25.71% | -0.69 pp | 20.78% to 32.02% | 2.934 |
-| `workspace-settings-themes` | 42.81% | 12.60% | -30.21 pp | 9.21% to 16.77% | 0.904 |
-| `workspace-settings-updates` | 16.01% | 13.55% | -2.46 pp | 10.52% to 17.87% | 2.150 |
-| `workspace-settings-voice` | 19.01% | 14.63% | -4.38 pp | 11.68% to 19.09% | 1.729 |
+| Route | Baseline | Current | Change | Current range | Mean RGB | Residual cause |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `desktop-06-camera` | 59.76% | 5.98% | -53.78 pp | 5.47% to 6.51% | 2.677 | AVATAR |
+| `desktop-06-cancelled` | 58.47% | 4.28% | -54.19 pp | 4.11% to 4.45% | 2.489 | AVATAR |
+| `desktop-06-choose` | 50.11% | 9.05% | -41.06 pp | 8.50% to 9.59% | 3.568 | AVATAR |
+| `desktop-06-crop` | 73.38% | 7.07% | -66.31 pp | 6.68% to 7.46% | 2.742 | AVATAR |
+| `desktop-06-failed` | 80.27% | 5.80% | -74.47 pp | 5.35% to 6.23% | 2.083 | AVATAR |
+| `desktop-06-invalid` | 60.92% | 8.88% | -52.04 pp | 8.45% to 9.31% | 4.131 | AVATAR |
+| `desktop-06-profile` | 58.47% | 4.28% | -54.19 pp | 4.11% to 4.45% | 2.489 | AVATAR |
+| `desktop-06-saved` | 62.41% | 4.24% | -58.17 pp | 4.08% to 4.39% | 2.518 | AVATAR |
+| `desktop-06-saving` | 52.48% | 5.43% | -47.05 pp | 4.86% to 6.00% | 2.716 | AVATAR |
+| `desktop-06-upload` | 52.67% | 5.75% | -46.92 pp | 5.19% to 6.31% | 3.019 | AVATAR |
+| `desktop-07-confirm` | 8.26% | 6.68% | -1.58 pp | 4.81% to 8.25% | 3.248 | SIGNOUT |
+| `desktop-08-catalog` | 67.86% | 67.10% | -0.76 pp | 33.67% to 97.74% | 17.739 | ROUTE08 |
+| `desktop-08-comfortable` | n/a | 67.10% | new | 33.67% to 97.74% | 17.739 | ROUTE08 |
+| `desktop-08-compact` | 67.54% | 66.80% | -0.74 pp | 33.14% to 97.74% | 17.570 | ROUTE08 |
+| `desktop-08-custom` | 69.87% | 69.55% | -0.32 pp | 35.99% to 100.00% | 21.951 | ROUTE08 |
+| `desktop-08-saved` | 68.19% | 67.41% | -0.78 pp | 35.13% to 97.74% | 17.547 | ROUTE08 |
+| `desktop-08-spacious` | 67.91% | 67.16% | -0.75 pp | 33.78% to 97.74% | 17.717 | ROUTE08 |
+| `desktop-11-library` | 58.13% | 2.25% | -55.88 pp | 1.42% to 3.07% | 0.834 | VOICE-LIBRARY |
+| `desktop-12-pick` | 58.37% | 2.60% | -55.77 pp | 2.10% to 3.11% | 1.616 | TEMPLATE-PICKER |
+| `desktop-14-moderation-failed` | 60.44% | 0.64% | -59.80 pp | 0.58% to 0.70% | 0.368 | MODERATION-FAIL |
+| `desktop-15-diagnostics` | 61.11% | 7.99% | -53.12 pp | 7.81% to 8.18% | 4.839 | FEEDBACK |
+| `desktop-15-failed` | 60.42% | 9.29% | -51.13 pp | 9.13% to 9.46% | 5.683 | FEEDBACK |
+| `desktop-15-form` | 55.04% | 6.93% | -48.11 pp | 6.71% to 7.16% | 4.153 | FEEDBACK |
+| `desktop-15-sending` | 53.87% | 6.31% | -47.56 pp | 5.96% to 6.53% | 4.410 | FEEDBACK |
+| `desktop-15-sent` | 53.82% | 4.88% | -48.94 pp | 4.71% to 5.07% | 3.487 | FEEDBACK |
+| `workspace-account` | 27.69% | 12.66% | -15.03 pp | 9.82% to 16.71% | 2.568 | PROFILE |
+| `workspace-account-accessibility` | 29.81% | 16.04% | -13.77 pp | 13.00% to 20.16% | 4.162 | ACCESSIBILITY |
+| `workspace-account-archive` | 14.92% | 11.77% | -3.15 pp | 8.99% to 15.53% | 1.973 | SHELL |
+| `workspace-account-audit` | 15.13% | 11.98% | -3.15 pp | 9.10% to 15.78% | 2.032 | SHELL |
+| `workspace-account-moderation` | 15.35% | 12.46% | -2.89 pp | 9.86% to 16.21% | 2.368 | SHELL |
+| `workspace-account-notifications` | 29.18% | 16.16% | -13.02 pp | 13.14% to 20.25% | 4.225 | NOTIFICATIONS |
+| `workspace-account-recovery` | 15.32% | 12.44% | -2.88 pp | 9.54% to 16.35% | 2.404 | SHELL |
+| `workspace-account-security` | 23.03% | 13.03% | -10.00 pp | 10.25% to 16.81% | 2.554 | SECURITY |
+| `workspace-settings` | 17.89% | 13.28% | -4.61 pp | 10.47% to 17.45% | 3.151 | BUSINESS-PROFILE |
+| `workspace-settings-admin` | 15.13% | 11.98% | -3.15 pp | 9.10% to 15.78% | 2.032 | SHELL |
+| `workspace-settings-appearance` | 24.78% | 12.05% | -12.73 pp | 9.49% to 15.35% | 1.646 | SHELL |
+| `workspace-settings-device` | 18.79% | 14.22% | -4.57 pp | 10.92% to 18.47% | 3.498 | DEVICE |
+| `workspace-settings-emoji` | 27.95% | 13.15% | -14.80 pp | 10.25% to 17.10% | 2.706 | EMOJI |
+| `workspace-settings-experiments` | 24.89% | 13.43% | -11.46 pp | 10.29% to 17.51% | 2.849 | EXPERIMENTS |
+| `workspace-settings-people` | 14.05% | 14.22% | +0.17 pp | 11.17% to 18.38% | 3.694 | PEOPLE |
+| `workspace-settings-shortcuts` | 33.15% | 15.76% | -17.39 pp | 12.89% to 19.69% | 3.622 | SHORTCUTS |
+| `workspace-settings-storage` | 23.25% | 14.92% | -8.33 pp | 11.71% to 19.10% | 3.957 | STORAGE |
+| `workspace-settings-templates` | 14.26% | 13.13% | -1.13 pp | 10.28% to 17.06% | 2.694 | TEMPLATES |
+| `workspace-settings-theme-applied` | 26.47% | 11.47% | -15.00 pp | 8.71% to 15.09% | 1.439 | SHELL |
+| `workspace-settings-theme-preview` | 26.40% | 11.55% | -14.85 pp | 8.80% to 15.18% | 1.461 | SHELL |
+| `workspace-settings-themes` | 42.81% | 14.12% | -28.69 pp | 11.34% to 17.04% | 1.753 | THEMES |
+| `workspace-settings-updates` | 16.01% | 13.15% | -2.86 pp | 10.07% to 17.16% | 3.222 | UPDATES |
+| `workspace-settings-voice` | 19.01% | 14.22% | -4.79 pp | 11.22% to 18.29% | 2.685 | VOICE |
 
-## Measured shared-shell residual
+## Measured residual causes
 
-At light 1440x900 on workspace Appearance, whole-screen changed pixels are 9.29% (mean RGB delta 0.559). The measured main surface is x=240,y=61,w=1191,h=830 and the heading/control grid bounds match the reference. Region measurements:
+### SHELL: shared workspace field, sidebar, and chrome
 
-| Region | Exact changed pixels | Above channel delta 4 | Above 16 | Mean RGB delta |
-| --- | ---: | ---: | ---: | ---: |
-| Field and sidebar, x=0..240 | 32.19% | 1.79% | 1.17% | 0.91 |
-| Top bar, x=240..1431 y=9..61 | 20.01% | 2.69% | 0.46% | 0.75 |
-| Inner section bar | 2.55% | 2.40% | 2.14% | 2.17 |
-| Appearance content | 1.52% | 0.35% | 0.29% | 0.21 |
+At 1440x900 on workspace Appearance, whole-screen change is 9.49% with mean RGB delta 1.491. The settings sidebar bounds match at x=1,y=8,w=238,h=884; topbar bounds match at x=240,y=9,w=1191,h=52; main surface bounds match at x=240,y=61,w=1191,h=830. The app inner surface is transparent over the paper canvas as the reference expects.
 
-The field asset URL and file content match. At pixel (20,600), reference RGB is [246,220,232] and app RGB is [246,220,231], a one-channel delta. In the top bar, reference has transparent background over the parent while the app paints #fffefd; at pixel (400,55), the reference is [255,254,253] and the app is [254,253,252]. These large-area low-amplitude differences explain most workspace route exact-pixel counts. Appearance's settings content itself has 1.52% exact changed pixels in this capture, with only 0.35% above delta 4.
+The 1440x900 Appearance field/sidebar ROI (x=0..240) has 35.0% exact changed pixels, 5.4% with max-channel delta above 4, 4.1% above 16, and mean RGB delta 1.56. At (20,600), reference RGB is [246,220,232] and app RGB is [246,220,231], a one-channel difference. At 1728x1117 the same light ROI is 46.9% exact changed, 4.5% above delta 4, and mean RGB delta 1.38. In dark mode the ROI is 72.0% to 76.9% exact changed, but only 4.4% to 5.2% above delta 4, with mean RGB delta 1.87 to 2.02. This low-amplitude field and text-edge mismatch drives much of the full-screen score.
 
-## Route-specific residuals and dispositions
+The Appearance topbar changes 2.3% to 2.8% of pixels in light mode with mean RGB delta 1.42 to 1.80; its geometry matches. The inner section bar ranges from 1.9% to 8.2% exact changed depending on its selected label and underline, with mean RGB delta 1.1 to 4.4. Appearance content is 1.54% exact changed at light 1440x900, with 0.38% above delta 4 and mean RGB delta 0.208. The whole-screen Appearance score is therefore mostly shell pixels, not its controls.
 
-- `workspace-account-notifications` is a content mismatch in the current capture. The reference shows Activity preferences (Channel messages, Agent updates, client approvals, invoice follow-ups, quiet hours, and save) plus one Desktop alerts control. The app shows the old Notify while viewing, per-event sound and Home badge controls. The content region is 7.12% exact changed and 6.82% above delta 4 at light 1440x900. The user-facing Home badge control also has an existing product-behavior test; resolution is pending owner direction.
-- `workspace-settings-theme-preview` and `workspace-settings-theme-applied` have content-region changed ratios 24.20% and 24.33% respectively at light 1440x900; above-delta-4 ratios are 14.47% and 14.52%. The captured reference uses a 950x475 workspace preview, while the app preview content has several measured 1-5 px offsets in nested message/card elements and different preview/avatar fills. This remains a measured layout/content residual, not a shell raster explanation.
-- `desktop-08-*` captures a separate frozen Theme catalog and density screen. The current manifest routes those cases to the workspace Appearance page; light cases average 24.09% to 29.95% and dark cases are 100% exact changed. This is a route/screen composition mismatch and is not folded into the workspace shell cause.
-- `desktop-11-library` has the same saved voice record in light mode (4.41% at 1440x900, 3.18% at 1728x1117). The app's heading/list/button placement differs from the standalone reference shell. Dark exact-pixel changes are 100%; the dark standalone prototype background and lavender accent differ from the workspace app's dark token. No route-specific local data mismatch was observed in the light capture.
-- `desktop-12-pick` shows the same three channel templates in both light captures; the current picker is wired to channel creation. Light changed pixels are 3.74% at 1440x900 and 2.59% at 1728x1117. The app action buttons use the workspace lavender accent while the standalone screen uses blue. Dark exact-pixel changes are 100% because the standalone prototype dark surface is RGB [38,35,45] at (10,100), while the app surface is [33,30,38]; its buttons also use a different palette.
-- `desktop-14-moderation-failed` is a component crop of the designed failure panel, not the whole workspace shell. Current change is 1.99% light and 2.01% dark across both viewport sizes; the crop is below 3%.
-- Other workspace screens retain their designed controls and local data. Their aggregate exact differences are dominated by the measured shared field/top bar and text/border edges; rows where content is visibly distinct remain in the route-specific audit before signoff.
+Workspace theme preview and applied routes have 0.3% to 0.6% exact changes in the content ROI; their full-screen residuals come from the shared shell and section bar. Workspace archive, audit, moderation, and recovery have 0.8% to 2.2% content changes at 1440x900. Their remaining full-screen scores are likewise shell and section-bar pixels.
 
-## Excluded routes
+### AVATAR: dialog states
 
-- `desktop-09-*`, workspace agent-directory/profile/settings surfaces, Teams, Power/usage: owner hold, not captured.
-- Compute hosts and host failures: NEEDS-DESIGN item 55.
-- Blocks catalog and permissions: NEEDS-DESIGN item 56.
-- Business defaults and connections: NEEDS-DESIGN item 57.
-- AI provider connections: NEEDS-DESIGN item 58.
-- Channel-template availability/error states without a real source are excluded; the live-source picker itself is covered.
+The avatar captures are clipped to the 540px-wide dialog, so the 4.24% to 9.05% route means do not include the workspace field. Across those routes, the fixed dialog header changes 5.38% to 5.51% of pixels, with mean RGB delta 1.82 to 3.49, localized around the title and close icon. The choose state body changes 11.83% of pixels, 10.27% above delta 4, mean RGB delta 4.49; the reference and app differ in avatar-option/button painting and file/camera control edges. The invalid-file body changes 10.00%, 9.75% above delta 4, mean RGB delta 4.78; the alert and drop area have 3px to 4px vertical placement/height differences. Crop changes concentrate in the circle outline and footer controls: body 6.71% exact changed and footer 11.11%. Profile/cancelled/saved body states are lower at 4.01% to 4.34%, with the same text and small control edge differences.
 
-The individual capture gallery is disposable after the final route audit; this summary is the retained metric record.
+### SIGNOUT: confirmation dialog
+
+`desktop-07-confirm` is the same 540px dialog and copy on both sides. Its mean is 6.68%; the body changes 4.98% and the 72px footer changes 13.38% of pixels. The residual is localized to the confirmation buttons, footer divider, title, and text edges; screenshot geometry and displayed state match.
+
+### ROUTE08: theme catalog and density route mapping
+
+All `desktop-08-*` cases currently point to `/#/settings?section=appearance`, while frozen `/desktop/#08/catalog` is a standalone theme-catalog-and-density screen. The catalog capture shows four built-in theme previews, a theme selector, and density controls; the mapped workspace Appearance route shows the r19 workspace Appearance screen. The measured result is 66.80% to 69.55% route mean, with dark captures 97.74% to 100% changed. This is a screen-composition/route-mapping mismatch, not raster noise. No alternate app route is represented in the manifest for the separate catalog/density reference; retain this as a route-mapping decision instead of inventing a new visible route.
+
+### VOICE-LIBRARY: standalone library crop
+
+`desktop-11-library` uses a matched 1191x245 crop. The same Voice library and Saved voices headings appear on both sides; route mean is 2.25%, range 1.42% to 3.07%, mean RGB delta 0.834. The residual is small heading/rule text-edge rendering. No voice records are seeded in the app visual fixture, so no sample voice was added to the app.
+
+### TEMPLATE-PICKER: channel creation
+
+`desktop-12-pick` compares the designed picker in the channel-creation flow. The three template names and descriptions match. Reference crop bounds are x=238,y=8,w=1191,h=882; app bounds are x=240,y=9,w=1191,h=882, a measured 2px horizontal and 1px vertical offset. Route mean is 2.60%, range 2.10% to 3.11%, mean RGB delta 1.616. The residual is the crop offset plus button and text-edge rendering.
+
+### MODERATION-FAIL: action failure state
+
+`desktop-14-moderation-failed` is a designed failure-panel crop. Its route mean is 0.64%, range 0.58% to 0.70%, mean RGB delta 0.368. The reported-message text, action, failure copy, and retry affordance match.
+
+### FEEDBACK: dialog states
+
+The feedback states compare 540px-wide dialog crops. Their route means are 4.88% to 9.29%. In the failed state, 6.10% of header pixels, 9.72% of body pixels, and 10.06% of footer pixels change; body mean RGB delta is 5.63. The form, textarea, diagnostic checkbox, alert and buttons are present with matching copy. The remaining change is concentrated on form-control borders/shadows, button bounds, and text rendering. The sending state has 12.40% footer pixels changed, driven by the progress button/status area; the sent state has a 1.93% footer residual.
+
+### Route-specific content and behavior differences
+
+- `workspace-account-accessibility`: content is 7.47% exact changed at light 1440x900, 7.14% above delta 4, and 5.37% above 16. The reference presents boxed Reading and motion controls plus a keyboard card. The app presents summary rows and a longer shortcut list.
+- `workspace-account-notifications`: content is 7.59% exact changed, 7.44% above delta 4, and 5.16% above 16 at light 1440x900. The reference presents Channel messages, Agent updates, client approvals, invoice follow-ups, quiet hours, Save activity preferences, and Desktop alerts. The app still presents while-viewing, per-event sound, and Home badge controls. Existing UI tests cover Home badge behavior, so that behavior was not silently removed.
+- `workspace-account-security`: content is 3.71% exact changed and 3.07% above delta 16 at light 1440x900. The reference shows email/password reset/change controls and signed-in devices; the app shows local sign-out and data-removal actions, which are represented separately by `desktop-07`.
+- `workspace-settings-device`: content is 5.12% exact changed, 5.03% above delta 4, and 4.61% above 16 at light 1440x900. The reference includes Connected work rows and a waiting state in addition to local preferences. The app currently exposes the two local preference toggles; compute-host controls remain excluded under NEEDS_DESIGN item 55.
+- `workspace-settings-emoji`: content is 3.26% exact changed at light 1440x900. The reference marks the three listed emoji as Built in; the app shows delete affordances and a styled upload form where the reference uses native file controls.
+- `workspace-settings-experiments`: content is 3.80% exact changed at light 1440x900. The reference has an empty Experiments state; the app exposes five existing feature toggles. The discrepancy is content and control count, not shell geometry.
+- `workspace-settings-people`: content is 5.13% exact changed, 4.98% above delta 4, and 4.64% above 16 at light 1440x900. Both screens contain the same two people, but the reference uses a member table plus Client access card and the app uses an Invites page with search and member cards.
+- `workspace-settings-shortcuts`: content is 6.80% exact changed, 6.71% above delta 4, and 4.45% above 16 at light 1440x900. The app lists additional live keyboard commands and explanations absent from the shorter reference list; the commands were retained rather than deleting working behavior.
+- `workspace-settings-storage`: content is 6.11% exact changed, 6.00% above delta 4, and 5.19% above 16 at light 1440x900. The reference shows device storage totals and an archive summary. The app shows real observer-frame metrics and channel subscription controls; synthetic storage totals were not inserted.
+- `workspace-settings-updates`: content is 3.33% exact changed at light 1440x900. The reference is a release-status preview with preview-only actions; the app preserves the real Check for updates action. No simulated update result was added.
+- `workspace-settings-voice`: content is 4.91% exact changed at light 1440x900. The app disables voice choice/preview/add controls when the local voice source is unavailable; the reference shows those controls enabled. No fake voice source was added.
+- `workspace-settings-themes`: content is 4.14% exact changed but only 1.33% is above delta 4 and mean RGB delta is 0.51 at light 1440x900. The theme cards and selection match; the residual is mostly card and label edge rendering.
+- `workspace-settings-templates`: content is 3.18% exact changed, 3.09% above delta 4, and 2.50% above 16 at light 1440x900. Template names/descriptions and actions match; the residual is row/button spacing and text edges.
+- `workspace-account`: content is 3.24% exact changed at light 1440x900. Profile values match; the reference renders Timezone as a select and the app currently renders a text input.
+- `workspace-settings`: content is 3.83% exact changed at light 1440x900. The reference has a business name, email, timezone, and About form; the app shows workspace name, relay URL, and logo upload. The product data shape is different, not just the shared shell.
+
+## Omitted routes and open items
+
+### NEEDS_DESIGN
+
+- Desktop privacy settings: r19 contains the mobile `settings/privacy` screen only. There is no frozen desktop privacy route or state, so no desktop privacy UI was added.
+- Compute hosts and unavailable/failure behavior: NEEDS_DESIGN item 55. No compute-host screen was added.
+- Blocks catalog permissions and failure behavior: NEEDS_DESIGN item 56. No Blocks route was added.
+- Business defaults/connections unavailable or failure behavior: NEEDS_DESIGN item 57. Those routes remain out of this slice.
+- AI provider connections unavailable or failure behavior: NEEDS_DESIGN item 58. Those routes remain out of this slice.
+
+### OWNER HOLD and route mapping
+
+- Agent directory, agent profile tabs, create-agent screens, Teams, Power/usage, and the harness lifecycle route are excluded by the owner hold. Existing nine-group settings navigation is preserved as required by r19.
+- The desktop `#08` theme catalog and density screen has a design, but its relationship to the separate r19 workspace `settings/themes` route is not represented as one app route. The 66.80% to 69.55% comparison is invalid for visual signoff until the route mapping is resolved. This is a route-mapping conflict, not a missing design.
+- Notifications has a design/content conflict with existing Home badge and sound controls. Existing behavior was retained and the visual conflict is recorded above.
+- Hosted-community UI, Deployment console UI, and private-key export/import UI are removed from the settings surface. Shared code remains only where other retained identity paths use it.
+
+## Test and capture evidence
+
+- R19 frozen-package verification: passed, 329 files match.
+- Desktop visual harness: 192 of 192 captures completed across 48 routes, two viewports, and light/dark themes. The results above report exact changes and do not claim every route is under 3%.
+- Desktop E2E: 76 affected smoke cases passed in the Linux Playwright v1.60.0 Noble image with `--cpus=2`, after `pnpm build:e2e`.
+- Desktop TypeScript: `tsc --noEmit` passed from `desktop/` using the installed binary. The pnpm wrapper tried to purge `node_modules` and aborted without a TTY, so no package cleanup was run.
+- Biome: the two changed CSS/E2E files passed with the desktop Biome config. Three existing `noDescendingSpecificity` warnings remain in avatar-control CSS.
+- px-text: passed with `node scripts/check-px-text.mjs` from `desktop/`.
+- Settings unit tests: 233 passed in 17 suites before the final CSS-only commit; the final commit changes no settings logic.
+
+The retained summary is the metrics artifact. Temporary image galleries were deleted after the route, region, and residual measurements were extracted.
