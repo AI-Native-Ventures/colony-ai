@@ -26,7 +26,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | ---: | --- | --- |
 | 30642 | Goal head | Relay signed, replaceable |
 | 30643 | Ask head | Relay signed, replaceable |
-| 30644 | Tool permission head | Relay signed, replaceable |
+| 30645 | Tool permission head | Relay signed, replaceable |
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
 | 47033 | Ask response | Brokered, append only |
@@ -128,7 +128,7 @@ community-scoped; only owners and admins can grant, edit or revoke.
   kind and d-tag head coordinate, checks the expected event id, and stores the
   command plus relay-signed head atomically.
 
-The relay emits kind 30644 `ToolPermissionHead` with the permission fields,
+The relay emits kind 30645 `ToolPermissionHead` with the permission fields,
 `status` (`active` or `revoked`), `grantedByPubkey`, `changedByPubkey`,
 `updatedAt`, and `sourceActionEventId`. A permission is effective only when its
 status is `active`, its expiry is in the future, its agent and action match,
