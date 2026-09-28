@@ -898,12 +898,12 @@ test("prominent channel and direct-message rows share one flat active state", as
 
 for (const { hoverSurface, mode, theme } of [
   {
-    hoverSurface: "rgba(255, 255, 255, 0.33)",
+    hoverSurface: "rgba(255, 255, 255, 0.31)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    hoverSurface: "rgba(255, 255, 255, 0.33)",
+    hoverSurface: "rgba(255, 255, 255, 0.075)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
