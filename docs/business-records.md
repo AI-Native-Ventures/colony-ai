@@ -182,6 +182,12 @@ through one exact-head company work `update` action for that item. Multi-select
 clients send separate actions and report partial failures per item. This
 separate scope preserves the existing client work payload and W11 behavior.
 
+A company work update may move the same item to a root message in another
+active channel only when the actor has work-edit authority and both channels
+have identical active membership sets. The member action uses the current
+source `h`; the relay derives the destination `h` from the root message and
+replaces the work head atomically. Client work item actions are unchanged.
+
 ### Service action, kind 47002
 
 `ServiceAction` fields: `schemaVersion`, `serviceId`, `action`,

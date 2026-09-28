@@ -211,8 +211,8 @@ function parseHeadContent(content: string): CompanyWorkHead | null {
     (value.threadRootEventId !== undefined &&
       (typeof value.threadRootEventId !== "string" ||
         !HEX64_RE.test(value.threadRootEventId))) ||
-    (value.sourceEventId === undefined) !==
-      (value.threadRootEventId === undefined) ||
+    (value.sourceEventId !== undefined &&
+      value.threadRootEventId === undefined) ||
     (value.evidence !== undefined && typeof value.evidence !== "string") ||
     (value.statusReason !== undefined &&
       typeof value.statusReason !== "string") ||

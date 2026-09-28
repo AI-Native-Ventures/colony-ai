@@ -93,6 +93,27 @@ test("company work head parsing verifies shared kind, relay author, h and d", ()
   );
 });
 
+test("company work head parsing accepts a moved standalone item", () => {
+  const head = {
+    schemaVersion: 1,
+    workItemId: WORK_ID,
+    title: "Prepare the launch checklist",
+    status: "active",
+    assignedPubkeys: ["a".repeat(64)],
+    approverPubkeys: [],
+    deliverables: [],
+    requesterPubkey: "b".repeat(64),
+    doneCondition: "Every launch task has an owner",
+    threadRootEventId: "d".repeat(64),
+    sourceActionEventId: "c".repeat(64),
+  };
+  const event = signedHead({ content: JSON.stringify(head) });
+  assert.equal(
+    parseCompanyWorkHeadEvent(event, RELAY_PUBKEY)?.head.threadRootEventId,
+    "d".repeat(64),
+  );
+});
+
 test("company work head parsing requires a pass record for done verified", () => {
   const event = signedHead({
     status: "done_verified",

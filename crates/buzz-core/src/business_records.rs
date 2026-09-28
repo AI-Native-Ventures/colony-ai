@@ -603,7 +603,7 @@ pub struct CompanyWorkItemHead {
     /// Original source message, absent only for standalone Work creation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_event_id: Option<String>,
-    /// Current conversation thread root, absent only for standalone creation.
+    /// Current conversation root; standalone work may gain one when moved to a thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_root_event_id: Option<String>,
     /// Current deliverable or evidence note.
@@ -647,7 +647,7 @@ pub struct CompanyWorkItemInput {
     /// Original source message, absent only for standalone Work creation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_event_id: Option<String>,
-    /// Current conversation thread root, absent only for standalone creation.
+    /// Current conversation root; absent for standalone work not attached to a thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_root_event_id: Option<String>,
     /// Current deliverable or evidence note.
@@ -1494,9 +1494,9 @@ pub fn validate_company_work_item_action(
                 .as_ref()
                 .ok_or(BusinessRecordError::Invalid("update head is required"))?;
             validate_company_work_item_input(action.work_item_id, head)?;
-            if head.source_event_id.is_some() != head.thread_root_event_id.is_some() {
+            if head.source_event_id.is_some() && head.thread_root_event_id.is_none() {
                 return Err(BusinessRecordError::Invalid(
-                    "sourceEventId and threadRootEventId must be supplied together",
+                    "sourceEventId requires a threadRootEventId",
                 ));
             }
         }
@@ -2310,7 +2310,7 @@ mod tests {
     }
 
     #[test]
-    fn company_work_updates_keep_the_source_and_thread_root_pair() {
+    fn company_work_updates_can_move_a_standalone_item_to_a_thread() {
         let work_item_id = Uuid::from_u128(45);
         let mut action = company_work_action(
             work_item_id,
@@ -2318,8 +2318,18 @@ mod tests {
             Some("ab".repeat(32)),
             Some(company_work_input(work_item_id)),
         );
-        action.head.as_mut().unwrap().source_event_id = Some("ef".repeat(32));
-        assert!(validate_company_work_item_action(&action).is_err());
+        action
+            .head
+            .as_mut()
+            .expect("update head")
+            .thread_root_event_id = Some("ef".repeat(32));
+        assert_eq!(validate_company_work_item_action(&action), Ok(()));
+
+        let mut source_without_root = action.clone();
+        let head = source_without_root.head.as_mut().expect("update head");
+        head.source_event_id = Some("ab".repeat(32));
+        head.thread_root_event_id = None;
+        assert!(validate_company_work_item_action(&source_without_root).is_err());
     }
 
     #[test]

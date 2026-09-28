@@ -252,6 +252,19 @@ that the source and thread are in the tagged channel. Once set, `sourceEventId`
 is immutable. `threadRootEventId` may change when the item moves to another
 thread.
 
+A move is an exact-head company work `update`. The signed action carries the
+source channel in `h`; the relay resolves the destination channel from the
+selected root message, rechecks source and destination state, and emits the
+replacement kind 30634 head with the destination `h`. The work UUID, `d` tag,
+original `sourceEventId`, goal link, owner, requester, done condition, status,
+evidence and prior action events remain attached to the same item. The relay
+allows the move only when the actor is the work owner, requester, community
+owner or admin, is a member of both active channels, and the source and
+destination have the same active membership set. A different audience is
+rejected; the move never grants channel membership or widens visibility. The
+action event remains in the source channel, and clients query history only from
+channels the viewer can currently access.
+
 An optional `goalId` must resolve to a non-deleted, non-archived goal in the
 same community. Goal deletion is refused while any company work head still
 references that goal, including an archived work item. The work form filters
