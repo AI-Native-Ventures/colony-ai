@@ -519,6 +519,30 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAdvancedWorkflow = React.useCallback(
+    (workflowId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/workflows/$workflowId",
+          params: { workflowId },
+          search: { pane: "trigger", view: "advanced" },
+          state: { workflowEditorHasOrigin: true },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewPlainWorkflow = React.useCallback(
+    (starting: "blank" | "example" = "blank") =>
+      commitNavigation({
+        to: "/workflows",
+        search: { starting, view: "plain-new" },
+        state: { workflowEditorHasOrigin: true },
+      }),
+    [commitNavigation],
+  );
+
   const goNewWorkflow = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -539,8 +563,7 @@ export function useAppNavigation() {
           to: "/workflows",
           search: {
             channel: channelId,
-            pane: "trigger",
-            view: "create",
+            view: "plain-new",
           },
           state: { workflowEditorHasOrigin: true },
         },
@@ -555,7 +578,7 @@ export function useAppNavigation() {
         {
           to: "/workflows/$workflowId",
           params: { workflowId },
-          search: { pane: "trigger", view: "edit" },
+          search: { pane: "trigger", view: "plain-edit" },
           state: { workflowEditorHasOrigin: true },
         },
         behavior,
@@ -793,6 +816,7 @@ export function useAppNavigation() {
     goClient,
     goClients,
     goDuplicateWorkflow,
+    goAdvancedWorkflow,
     goEditWorkflow,
     goForumPost,
     goHome,
@@ -811,6 +835,7 @@ export function useAppNavigation() {
     goToday,
     goNewMessage,
     goNewWorkflow,
+    goNewPlainWorkflow,
     goNewWorkflowForChannel,
     goProject,
     goProjects,

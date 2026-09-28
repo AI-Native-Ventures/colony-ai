@@ -33,6 +33,7 @@ import {
   moneyInvoiceVersionDTag,
   moneyRecordTemplate,
   parseMoneyInput,
+  totalInvoiceMinor,
 } from "./lib/moneyRecords";
 import type { InvoiceLineDraft } from "./moneyUtils";
 import {
@@ -46,7 +47,6 @@ import {
   moneyStep,
   parseQuantityInput,
   timestampFromDateInput,
-  totalLinesMinor,
   updateLine,
 } from "./moneyUtils";
 
@@ -96,7 +96,10 @@ export function InvoiceEditDialog({
           true,
         ),
       }));
-      const totalMinor = totalLinesMinor(normalizedLines);
+      const totalMinor = totalInvoiceMinor(
+        normalizedLines,
+        invoice.value.taxLines,
+      );
       if (normalizedLines.some((line) => !line.description)) {
         throw new Error("Each invoice line needs a description.");
       }
@@ -111,6 +114,9 @@ export function InvoiceEditDialog({
         action: "draft_edit",
         currency: invoice.value.currency,
         lines: normalizedLines,
+        taxLines: invoice.value.taxLines,
+        sellerTaxNumber: invoice.value.sellerTaxNumber,
+        customerTaxNumber: invoice.value.customerTaxNumber,
         totalMinor,
         status: "draft",
         dueAt: timestampFromDateInput(dueDate),
@@ -248,6 +254,9 @@ export function IssueInvoiceDialog({
       action: "issue",
       currency: current.currency,
       lines: current.lines,
+      taxLines: current.taxLines,
+      sellerTaxNumber: current.sellerTaxNumber,
+      customerTaxNumber: current.customerTaxNumber,
       totalMinor: current.totalMinor,
       status: "issued",
       dueAt: current.dueAt,
@@ -334,6 +343,9 @@ export function VoidInvoiceDialog({
       action: "void",
       currency: current.currency,
       lines: current.lines,
+      taxLines: current.taxLines,
+      sellerTaxNumber: current.sellerTaxNumber,
+      customerTaxNumber: current.customerTaxNumber,
       totalMinor: current.totalMinor,
       status: "void",
       dueAt: current.dueAt,

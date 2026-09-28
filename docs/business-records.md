@@ -11,6 +11,11 @@ acceptance is business-scoped by `h` and names the target client channel in its
 membership, token channel scope, event kind, content, d-tag coordinate, and
 record-specific authorization before persisting a command.
 
+Invoice schema version 1 accepts optional tax fields. An older invoice version
+or head that omits them means no tax and remains valid. Tax fields are omitted
+from serialization when unset, so existing tax-free invoices keep their
+meaning and shape.
+
 The relay signs canonical replaceable heads and conversion receipts. A command
 event and all of its head changes are stored in one transaction. The SDK builds
 member-signed command events with matching `h` and `d` tags. Unknown JSON fields
@@ -288,8 +293,8 @@ client channel and use a d-tag beginning `client:<client-uuid>:`.
 
 | Record | Required content fields |
 | --- | --- |
-| Invoice head 30641 | `schemaVersion`, `clientId`, `invoiceId`, `proposalId`, `proposalVersionEventId`, `currency`, `lines`, `totalMinor`, `creditedMinor`, `writtenOffMinor`, `collectedMinor`, `outstandingMinor`, `paymentEvidenceCount`, `version`, `currentVersionEventId`, `status`, `dueAt`, `issuedAt`, `sourceEventId` |
-| Invoice version 47026 | `schemaVersion`, `clientId`, `invoiceId`, `version`, `previousVersionEventId`, `proposalVersionEventId`, `expectedHeadEventId`, `action`, `currency`, `lines`, `totalMinor`, `status`, `dueAt`, `voidReason` |
+| Invoice head 30641 | `schemaVersion`, `clientId`, `invoiceId`, `proposalId`, `proposalVersionEventId`, `currency`, `lines`, optional `taxLines`, optional `sellerTaxNumber`, optional `customerTaxNumber`, `totalMinor`, `creditedMinor`, `writtenOffMinor`, `collectedMinor`, `outstandingMinor`, `paymentEvidenceCount`, `version`, `currentVersionEventId`, `status`, `dueAt`, `issuedAt`, `sourceEventId` |
+| Invoice version 47026 | `schemaVersion`, `clientId`, `invoiceId`, `version`, `previousVersionEventId`, `proposalVersionEventId`, `expectedHeadEventId`, `action`, `currency`, `lines`, optional `taxLines`, optional `sellerTaxNumber`, optional `customerTaxNumber`, `totalMinor`, `status`, `dueAt`, `voidReason` |
 | Payment evidence 47027 | `schemaVersion`, `clientId`, `invoiceId`, `paymentId`, `provider`, `providerReference`, `amountMinor`, `currency`, `occurredAt`, `evidenceRef`, `expectedInvoiceHeadEventId` |
 | Money adjustment 47028 | `schemaVersion`, `clientId`, `invoiceId`, `adjustmentId`, `adjustmentType`, `amountMinor`, `currency`, `occurredAt`, `reason`, `evidenceRef`, `expectedInvoiceHeadEventId` |
 | Money follow up action 47030 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `action`, `expectedHeadEventId`, `expectedInvoiceHeadEventId`, `dueAt`, `draftContent` |
@@ -341,6 +346,21 @@ and rejects non-positive payment or adjustment amounts. Invoice head totals are
 updated in the same transaction as the payment or adjustment evidence:
 
 - `totalMinor` is the gross invoice amount from the current invoice version.
+  With no configured tax it equals the sum of the net line amounts. The
+  optional `taxLines` array contains up to 100 `{label, rateBasisPoints}` rules.
+  `label` is optional and, when supplied, contains 1 to 200 UTF-8 bytes.
+  `rateBasisPoints` is a 32-bit unsigned integer. `sellerTaxNumber` and
+  `customerTaxNumber` are optional invoice snapshots containing non-empty
+  strings of at most 128 bytes. Empty or absent `taxLines` applies no tax. The
+  relay never supplies a default rule. Businesses may configure zero or more
+  rules on a draft; each rule uses an integer basis-point rate, where 100 basis
+  points equals one percent.
+- Each net line amount is `floor(quantityHundredths * unitAmountMinor / 100)`.
+  For each invoice line and each configured tax rule, tax minor units are
+  `floor((lineNetMinor * rateBasisPoints + 5000) / 10000)`, which rounds to the
+  nearest minor unit with ties rounded up. The relay sums these rounded
+  line-level tax amounts, then adds them to the net subtotal for `totalMinor`.
+  It does not round only once over the invoice subtotal.
 - `creditedMinor` is the sum of credit notes and cannot exceed `totalMinor`.
 - `writtenOffMinor` is the sum of write-offs against the remaining balance.
 - `collectedMinor` is recorded payments less refunds already paid externally.
@@ -371,8 +391,14 @@ does not send email, a payment request, or a reminder.
 Version, payment, adjustment, and follow-up action events are their own source
 events, so they do not include a self-referential `sourceEventId`. Relay-signed
 heads carry `sourceEventId` pointing to the member action that produced the
-head. No invoice or payment event contains tax fields or initiates external
-collection.
+head. Tax terms are stored only on invoice versions and their relay-signed
+invoice head. Payment evidence remains evidence of an external payment already
+received and never initiates collection.
+
+There is no cost record kind or source-health API in this contract. Cost and
+profitability figures require a real source before they can be reported. A UI
+may derive revenue from issued invoice records, but it must report costs and
+profit as unavailable until cost records and their source status are defined.
 
 Credential values, access tokens, private keys, and payment card data must not
 be placed in these events. `credentialRef` is an opaque local/provider secret

@@ -20,6 +20,8 @@ const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
 const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
+const ALICE_PUBKEY =
+  "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f";
 const CACHED_PROFILE_LABELS_TAG = "@cached-profile-labels";
 // Relay-only agent owned by the mock viewer (see e2eBridge.ts
 // OWNED_RELAY_AGENT_PUBKEY). Classified as a bot via mockRelayAgents and
@@ -3249,14 +3251,13 @@ test("channel settings hides workflows and skips its query when the experiment i
     .toBe(false);
 });
 
-test("channel settings opens and creates channel workflows over the channel", async ({
+test("channel workflow entries open a plain workflow and keep channel context", async ({
   page,
 }) => {
   await page.goto("/");
   await invokeMockCommand(page, "create_workflow", {
     channelId: GENERAL_CHANNEL_ID,
-    yamlDefinition:
-      "name: Welcome responder\ntrigger:\n  on: message_posted\nsteps:\n  - id: reply\n    run: send_message\n    with:\n      text: Welcome\n",
+    yamlDefinition: `name: Welcome responder\ndescription: Prepare a welcome message and review it.\ntrigger:\n  on: schedule\n  cron: "0 6 * * 1"\nsteps:\n  - id: prepare\n    name: Prepare the welcome message\n    action: ask_agent\n    agent_pubkey: ${ALICE_PUBKEY}\n    instruction: Prepare a welcome message.\n    expected_result: A welcome message ready for review.\n  - id: review\n    name: Review the welcome message\n    action: request_approval\n    from: ${MOCK_IDENTITY_PUBKEY}\n    message: Review the welcome message.\n`,
   });
   await openChannelManagement(page, "general");
 
@@ -3277,55 +3278,25 @@ test("channel settings opens and creates channel workflows over the channel", as
     "Welcome responder",
   );
 
-  // Opening a workflow keeps the settings Workflows view mounted beneath the
-  // shared editor; the channel route stays put behind both layers.
+  // The full workflow route owns plain-language viewing and editing.
   const channelUrl = new RegExp(`/channels/${GENERAL_CHANNEL_ID}(?:\\?|$)`);
   await sheet.getByTestId("channel-workflow-mock-wf-1").click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await expect(builder).toBeVisible();
+  await expect(page).toHaveURL(/#\/workflows\/mock-wf-1/);
   await expect(
-    page.getByRole("dialog", { name: "Edit workflow" }),
+    builder.getByRole("heading", { name: "Welcome responder" }),
   ).toBeVisible();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("message-timeline")).toBeVisible();
-
-  const overlayEditor = page.getByRole("dialog", { name: "Edit workflow" });
-  await overlayEditor.getByRole("tab", { name: "YAML" }).click();
-  const overlayYaml = overlayEditor.getByRole("textbox", {
-    name: "Workflow YAML",
-  });
-  await overlayYaml.fill(
-    (await overlayYaml.inputValue()).replace(
-      "Welcome responder",
-      "Unsaved welcome responder",
-    ),
+  await expect(builder.getByTestId("plain-workflow-detail")).toContainText(
+    "Every Monday at 08:00",
   );
-  await overlayEditor.getByRole("button", { name: "Workflow actions" }).click();
-  await page.getByRole("menuitem", { name: "Duplicate" }).click();
-  const discardConfirmation = page.getByRole("alertdialog", {
-    name: "Discard changes?",
-  });
-  await expect(discardConfirmation).toBeVisible();
-  await discardConfirmation
-    .getByRole("button", { name: "Keep editing" })
-    .click();
-  await expect(overlayEditor).toBeVisible();
-  await expect(overlayYaml).toContainText("Unsaved welcome responder");
   await expect(
-    page.getByRole("dialog", { name: "Duplicate workflow" }),
-  ).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Close" }).click();
-  await page
-    .getByRole("alertdialog", { name: "Discard changes?" })
-    .getByRole("button", { name: "Discard changes" })
-    .click();
-  await expect(page.getByRole("dialog", { name: "Edit workflow" })).toHaveCount(
-    0,
-  );
+    builder.getByRole("button", { name: "Edit workflow" }),
+  ).toBeVisible();
+  await builder.getByRole("button", { name: "Back to workflows" }).click();
   await expect(page).toHaveURL(channelUrl);
-  await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(sheet).toBeVisible();
+  await sheet.getByTestId("channel-workflows-ingress").click();
   await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
   await expect(sheet.getByTestId("channel-workflows-list")).toContainText(
     "Welcome responder",
@@ -3333,21 +3304,18 @@ test("channel settings opens and creates channel workflows over the channel", as
 
   await page.getByTestId("channel-workflows-new").click();
 
+  const createBuilder = page.getByTestId("plain-workflow-builder");
+  await expect(createBuilder).toBeVisible();
+  await expect(page).toHaveURL(/#\/workflows\?/);
   await expect(
-    page.getByRole("dialog", { name: "Create workflow" }),
+    createBuilder.getByLabel("Give this workflow a name"),
   ).toBeVisible();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(
-    page.getByRole("combobox", { exact: true, name: "Channel" }),
-  ).toContainText("general");
-
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Create workflow" }),
-  ).toHaveCount(0);
+  expect(page.url()).toContain(GENERAL_CHANNEL_ID);
+  await createBuilder.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(channelUrl);
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(sheet).toBeVisible();
+  await sheet.getByTestId("channel-workflows-ingress").click();
   await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
   await expect(sheet.getByTestId("channel-workflows-new")).toBeVisible();
 });

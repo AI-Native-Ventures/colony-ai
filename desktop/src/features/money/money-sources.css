@@ -1,0 +1,105 @@
+.money-source-heading h1 {
+  margin-bottom: 0.3rem;
+}
+
+.money-source-status-card {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid var(--w10-line);
+  border-left: 0.2rem solid var(--w10-warning, #a38852);
+  border-radius: 0.55rem;
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  background: var(--w10-panel);
+  color: var(--w10-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.money-source-status-card strong {
+  color: var(--w10-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.money-source-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--w10-line);
+  border-radius: 0.68rem;
+  background: var(--w10-paper);
+}
+
+.money-source-metric {
+  display: grid;
+  min-width: 0;
+  min-height: 8.25rem;
+  align-content: space-between;
+  gap: 0.8rem;
+  border-right: 1px solid var(--w10-line);
+  padding: 1.2rem 1.3rem;
+}
+
+.money-source-metric:last-child {
+  border-right: 0;
+}
+
+.money-source-metric > span {
+  color: var(--w10-muted);
+  font-size: 0.76rem;
+}
+
+.money-source-metric > strong {
+  color: var(--w10-ink);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.money-source-metric > small {
+  color: var(--w10-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.money-source-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  border: 1px solid var(--w10-line);
+  border-radius: 0.68rem;
+  padding: 1.25rem;
+  background: var(--w10-paper);
+  color: var(--w10-ink);
+}
+
+.money-source-list h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.money-source-list p {
+  margin: 0;
+  color: var(--w10-muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 56rem) {
+  .money-source-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .money-source-metric {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--w10-line);
+  }
+
+  .money-source-metric:last-child {
+    border-bottom: 0;
+  }
+}
