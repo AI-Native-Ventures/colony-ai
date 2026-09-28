@@ -811,6 +811,12 @@ mod postgres_tests {
         let updated = current(&fixture, permission_id).await;
         let stale = ToolPermissionAction {
             expected_head_event_id: Some(granted.event.id.to_hex()),
+            permission: Some(permission(
+                permission_id,
+                &agent,
+                &fixture.root.id.to_hex(),
+                (Utc::now() + chrono::Duration::hours(4)).to_rfc3339(),
+            )),
             ..update
         };
         let stale_result = send(&fixture, &fixture.owner, &stale).await;
