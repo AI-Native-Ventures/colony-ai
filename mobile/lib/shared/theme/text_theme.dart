@@ -72,6 +72,20 @@ const goalCardChipTextStyle = TextStyle(
   height: 1.4,
 );
 
+const goalParentReferenceLabelTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w400,
+  height: 1.6,
+);
+
+const goalParentReferenceTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 11,
+  fontWeight: FontWeight.w700,
+  height: 1.6,
+);
+
 const goalSectionTitleTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 15,

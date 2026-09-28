@@ -197,16 +197,15 @@ class _GoalDetailBody extends HookConsumerWidget {
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
-        Grid.gutter,
-        Grid.xs,
-        Grid.gutter,
+        MobileLayoutTokens.goalContentHorizontalInset,
+        MobileLayoutTokens.goalDetailTopInset,
+        MobileLayoutTokens.goalContentHorizontalInset,
         Grid.xl,
       ),
       children: [
         _GoalHero(record: record),
-        const SizedBox(height: MobileLayoutTokens.goalHeroBottomGap),
         if (parent != null) ...[
-          const SizedBox(height: Grid.xxs),
+          const SizedBox(height: MobileLayoutTokens.goalHeroBottomGap),
           _ParentGoalStrip(
             record: parent!,
             onTap: () => _openGoal(context, parent!.head.goalId),
@@ -273,9 +272,12 @@ class _GoalHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final head = record.head;
     final goal = head.goal;
+    final current = head.progress?.current;
+    final target = goal?.target;
     final colors = context.appColors;
     final tokens = context.mobileTokens;
     return DecoratedBox(
+      key: const ValueKey('goal-detail-hero'),
       decoration: BoxDecoration(
         gradient: colors.companyWashGradient,
         borderRadius: BorderRadius.circular(Radii.companyCard),
@@ -286,40 +288,47 @@ class _GoalHero extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GoalStatusPill(status: head.status),
-            const SizedBox(height: Grid.xxs),
+            const SizedBox(height: MobileLayoutTokens.goalHeroStatusTitleGap),
             Text(
               head.title,
               style: context.mobileTypography.goalDetailTitle.copyWith(
                 color: tokens.ink,
               ),
             ),
-            if (head.progress?.current case final current?) ...[
-              if (goal?.target case final target?) ...[
-                const SizedBox(height: Grid.xxs),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      current,
-                      style: context.mobileTypography.goalMetric.copyWith(
-                        color: tokens.ink,
-                      ),
+            if (current != null && target != null) ...[
+              const SizedBox(
+                height: MobileLayoutTokens.goalHeroTitleContentGap,
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    current,
+                    style: context.mobileTypography.goalMetric.copyWith(
+                      color: tokens.ink,
                     ),
-                    const SizedBox(width: Grid.xxs),
-                    Text(
-                      'of ${target.value} ${target.unit}',
-                      style: context.mobileTypography.goalBody.copyWith(
-                        color: tokens.muted,
-                      ),
+                  ),
+                  const SizedBox(width: Grid.xxs),
+                  Text(
+                    'of ${target.value} ${target.unit}',
+                    style: context.mobileTypography.goalBody.copyWith(
+                      color: tokens.muted,
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(
+                height: MobileLayoutTokens.goalHeroTitleContentGap,
+              ),
             ],
             if (goalProgressRatio(head) != null) ...[
               const SizedBox(height: MobileLayoutTokens.goalProgressMargin),
               GoalProgressMeter(head: head),
+              const SizedBox(
+                height: MobileLayoutTokens.goalHeroProgressBottomGap,
+              ),
             ],
           ],
         ),
@@ -338,6 +347,7 @@ class _ParentGoalStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Material(
+      key: const ValueKey('goal-parent-strip'),
       color: tokens.soft,
       borderRadius: BorderRadius.circular(Radii.companyPinned),
       clipBehavior: Clip.antiAlias,
@@ -350,27 +360,36 @@ class _ParentGoalStrip extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(LucideIcons.target, color: tokens.action),
+              Icon(
+                LucideIcons.target,
+                color: tokens.action,
+                size: Grid.xs + Grid.half,
+              ),
               const SizedBox(width: Grid.xxs),
               Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    style: context.mobileTypography.identityDetails.copyWith(
-                      color: tokens.muted,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Part of',
+                      style: context.mobileTypography.goalParentReferenceLabel
+                          .copyWith(color: tokens.action),
                     ),
-                    children: [
-                      const TextSpan(text: 'Part of '),
-                      TextSpan(
-                        text: record.head.title,
-                        style: context.mobileTypography.identityName.copyWith(
-                          color: tokens.ink,
-                        ),
-                      ),
-                    ],
-                  ),
+                    Text(
+                      record.head.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.mobileTypography.goalParentReferenceTitle
+                          .copyWith(color: tokens.action),
+                    ),
+                  ],
                 ),
               ),
-              Icon(LucideIcons.chevronRight, color: tokens.muted),
+              Icon(
+                LucideIcons.chevronRight,
+                color: tokens.muted,
+                size: Grid.xs + Grid.half,
+              ),
             ],
           ),
         ),

@@ -654,6 +654,13 @@ void main() {
               : find.text(
                   route.goalId == _goalId ? 'Company goal' : 'Sub-goal',
                 );
+          final backButton = tester.widget<IconButton>(
+            find.byKey(const ValueKey('goal-page-back')),
+          );
+          expect(
+            backButton.style?.minimumSize?.resolve(const {}),
+            const Size.square(42),
+          );
           final nav = find.byKey(const ValueKey('mobile-bottom-navigation'));
           final navLayout = nav.evaluate().isEmpty
               ? 'hidden'
@@ -670,6 +677,44 @@ void main() {
             'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
             'header=${tester.getRect(title)} nav=$navLayout',
           );
+          if (route.name == 'goal-detail') {
+            final hero = tester.getRect(
+              find.byKey(const ValueKey('goal-detail-hero')),
+            );
+            debugPrint('VISUAL_GOAL_DETAIL ${size.key} $mode hero=$hero');
+            expect(hero.left, 21);
+            expect(hero.width, size.value.width - 42);
+            expect(hero.top, closeTo(119, 1));
+            expect(hero.height, closeTo(219.5, 1));
+            expect(
+              tester.getRect(find.text('What done looks like')).top,
+              closeTo(361.5, 1),
+            );
+          }
+          if (route.name == 'sub-goal-detail') {
+            final hero = tester.getRect(
+              find.byKey(const ValueKey('goal-detail-hero')),
+            );
+            final parent = tester.getRect(
+              find.byKey(const ValueKey('goal-parent-strip')),
+            );
+            debugPrint(
+              'VISUAL_SUBGOAL_DETAIL ${size.key} $mode '
+              'hero=$hero parent=$parent',
+            );
+            expect(hero.left, 21);
+            expect(hero.width, size.value.width - 42);
+            expect(hero.top, closeTo(119, 1));
+            expect(hero.height, closeTo(159.5, 1));
+            expect(parent.left, 21);
+            expect(parent.width, size.value.width - 42);
+            expect(parent.top, closeTo(298.5, 1));
+            expect(parent.height, closeTo(57.6, 1));
+            expect(
+              tester.getRect(find.text('What done looks like')).top,
+              closeTo(379.1, 1),
+            );
+          }
           if (route.name == 'goals') {
             debugPrint(
               'VISUAL_LIST ${size.key} $mode '

@@ -219,8 +219,11 @@ abstract final class MobileLayoutTokens {
   /// Interior padding for a company goal card.
   static const goalCardPadding = 19.0;
 
-  /// Horizontal inset for the Goals list content.
-  static const goalListContentGutter = 21.0;
+  /// Horizontal inset for Goals content and headers.
+  static const goalContentHorizontalInset = 21.0;
+
+  /// Visible square size for the Goals header actions.
+  static const goalHeaderButtonSize = 42.0;
 
   /// Maximum line width for a goal card title.
   static const goalCardTitleMaxWidth = 225.0;
@@ -246,7 +249,19 @@ abstract final class MobileLayoutTokens {
   /// Padding inside the goal detail gradient hero.
   static const goalHeroPadding = 22.0;
 
-  /// Space beneath the goal detail gradient hero.
+  /// Top inset before the goal detail hero.
+  static const goalDetailTopInset = 7.0;
+
+  /// Gap between the goal status chip and its title.
+  static const goalHeroStatusTitleGap = 14.0;
+
+  /// Gap after a goal hero title before the next value or hero edge.
+  static const goalHeroTitleContentGap = 14.0;
+
+  /// Bottom margin after a goal hero progress meter.
+  static const goalHeroProgressBottomGap = 10.0;
+
+  /// Space beneath a goal hero when it leads into a parent reference row.
   static const goalHeroBottomGap = 20.0;
 
   /// Height of goal progress indicators.

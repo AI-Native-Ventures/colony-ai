@@ -36,7 +36,9 @@ class GoalPageHeader extends StatelessWidget {
       bottom: false,
       child: Container(
         height: MobileLayoutTokens.appBarHeight,
-        padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
+        padding: const EdgeInsets.symmetric(
+          horizontal: MobileLayoutTokens.goalContentHorizontalInset,
+        ),
         color: tokens.canvas,
         child: Row(
           children: [
@@ -98,7 +100,7 @@ ButtonStyle _goalHeaderButtonStyle(BuildContext context) {
   return IconButton.styleFrom(
     backgroundColor: tokens.paper,
     foregroundColor: tokens.ink,
-    minimumSize: Size.square(MobileLayoutTokens.minimumTapTarget),
+    minimumSize: Size.square(MobileLayoutTokens.goalHeaderButtonSize),
     padding: EdgeInsets.zero,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(Radii.button),

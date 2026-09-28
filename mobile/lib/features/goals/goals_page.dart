@@ -129,9 +129,9 @@ class _GoalList extends HookConsumerWidget {
     });
     return ListView(
       padding: const EdgeInsets.fromLTRB(
-        MobileLayoutTokens.goalListContentGutter,
+        MobileLayoutTokens.goalContentHorizontalInset,
         0,
-        MobileLayoutTokens.goalListContentGutter,
+        MobileLayoutTokens.goalContentHorizontalInset,
         Grid.xl,
       ),
       children: [
