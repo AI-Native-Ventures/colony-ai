@@ -778,24 +778,31 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     "aria-label",
     "Show project context",
   );
-  const [attachedContentSurfaceBounds, collapsedMainPaneBounds] =
-    await Promise.all([
-      appContentSurface.boundingBox(),
-      workspacePanel.boundingBox(),
-    ]);
+  const [
+    finalProjectContentPodBounds,
+    attachedContentSurfaceBounds,
+    collapsedMainPaneBounds,
+  ] = await Promise.all([
+    projectContentPod.boundingBox(),
+    appContentSurface.boundingBox(),
+    workspacePanel.boundingBox(),
+  ]);
+  expect(finalProjectContentPodBounds).not.toBeNull();
   expect(attachedContentSurfaceBounds).not.toBeNull();
   await expect(appContentSurface).toHaveCSS("box-shadow", "none");
   // The pod starts after the 1px frame border and wrapper inset, with an
   // 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
   expect(
-    (projectContentPodBounds?.x ?? 0) - (attachedContentSurfaceBounds?.x ?? 0),
+    (finalProjectContentPodBounds?.x ?? 0) -
+      (attachedContentSurfaceBounds?.x ?? 0),
   ).toBe(2);
   expect(
-    (projectContentPodBounds?.y ?? 0) - (attachedContentSurfaceBounds?.y ?? 0),
+    (finalProjectContentPodBounds?.y ?? 0) -
+      (attachedContentSurfaceBounds?.y ?? 0),
   ).toBe(2);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
-      (projectContentPodBounds?.height ?? 0),
+      (finalProjectContentPodBounds?.height ?? 0),
   ).toBe(11);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
