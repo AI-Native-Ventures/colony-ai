@@ -12,6 +12,7 @@ pub mod issues;
 pub mod mem;
 pub mod messages;
 pub mod moderation;
+pub mod money;
 pub mod notes;
 pub mod pack;
 pub mod patches;

@@ -162,6 +162,10 @@ type MockBridgeOptions = {
   referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */
   referenceWorkspaceRole?: "owner" | "admin" | "member";
+  /** Override the active community role when testing relay-authorized actions. */
+  relayRole?: "owner" | "admin" | "member" | null;
+  /** Make the mock relay expose its NIP-43 community membership snapshot. */
+  relayRequiresMembership?: boolean;
   /** Override record statuses to exercise reference workspace boundaries. */
   referenceWorkspaceClientStatus?: string;
   referenceWorkspaceWorkStatus?: string;

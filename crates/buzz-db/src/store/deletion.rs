@@ -81,6 +81,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "subscriptions",
     "thread_metadata",
     "users",
+    "workflow_agent_waits",
     "workflow_approvals",
     "workflow_runs",
     "workflows",
@@ -88,6 +89,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
 
 /// Foreign-key-safe child-before-parent order for the PostgreSQL purge.
 pub const PURGE_SCOPED_TABLES: &[&str] = &[
+    "workflow_agent_waits",
     "workflow_approvals",
     "scheduled_workflow_fires",
     "workflow_runs",
@@ -3233,6 +3235,20 @@ mod tests {
         assert!(DeletionStage::Approved.runnable());
         assert!(!DeletionStage::RetentionPending.runnable());
         assert!(!DeletionStage::Aborted.runnable());
+    }
+
+    #[test]
+    fn workflow_agent_waits_are_inventoried_and_purged_before_runs() {
+        assert!(EXPECTED_SCOPED_TABLES.contains(&"workflow_agent_waits"));
+        let wait_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "workflow_agent_waits")
+            .expect("agent wait table is purged");
+        let run_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "workflow_runs")
+            .expect("workflow run table is purged");
+        assert!(wait_index < run_index);
     }
 
     #[test]

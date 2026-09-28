@@ -37,6 +37,56 @@ impl From<ActionSinkError> for crate::WorkflowError {
     }
 }
 
+/// Boxed, sendable result used to keep [`ActionSink`] object-safe.
+pub type ActionSinkFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, ActionSinkError>> + Send + 'a>>;
+
+/// Inputs for asking a named agent to complete a workflow task.
+pub struct AgentTaskParams<'a> {
+    /// Community that owns the workflow and run.
+    pub community_id: CommunityId,
+    /// Workflow run waiting for the agent.
+    pub run_id: uuid::Uuid,
+    /// Stable workflow step identifier.
+    pub step_id: &'a str,
+    /// Zero-based step index.
+    pub step_index: usize,
+    /// Assigned agent pubkey in hex form.
+    pub agent_pubkey: &'a str,
+    /// Work instructions posted to the request thread.
+    pub instruction: &'a str,
+    /// Optional result description appended to the request.
+    pub expected_result: Option<&'a str>,
+    /// Maximum wait for the agent reply.
+    pub timeout_secs: u64,
+    /// Workflow owner pubkey in hex form.
+    pub owner_pubkey: &'a str,
+    /// Completed step trace preceding the agent wait.
+    pub prior_trace: &'a serde_json::Value,
+}
+
+/// Inputs for publishing an approval request and suspending a workflow run.
+pub struct ApprovalRequestParams<'a> {
+    /// Community that owns the workflow and run.
+    pub community_id: CommunityId,
+    /// Workflow run waiting for approval.
+    pub run_id: uuid::Uuid,
+    /// Stable workflow step identifier.
+    pub step_id: &'a str,
+    /// Zero-based step index.
+    pub step_index: usize,
+    /// Allowed approver key, role, or `any`.
+    pub approver_spec: &'a str,
+    /// Message shown to the approver.
+    pub message: &'a str,
+    /// Maximum wait for an approval response.
+    pub timeout_secs: u64,
+    /// Completed step trace preceding the approval request.
+    pub prior_trace: &'a serde_json::Value,
+    /// Raw approval token used to correlate the decision.
+    pub approval_token: &'a str,
+}
+
 /// Interface for workflow actions that produce side effects.
 ///
 /// Implemented by the relay to provide direct DB/event access to the executor.
@@ -73,5 +123,14 @@ pub trait ActionSink: Send + Sync {
         authored_text: &str,
         author_pubkey: &str,
         reply_to: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ActionSinkError>> + Send + '_>>;
+    ) -> ActionSinkFuture<'_, String>;
+
+    /// Publish a workflow task to a named channel agent and persist its reply wait.
+    fn ask_agent(&self, params: AgentTaskParams<'_>) -> ActionSinkFuture<'_, String>;
+
+    /// Persist and publish a request for approval, returning its token and event id.
+    fn request_approval(
+        &self,
+        params: ApprovalRequestParams<'_>,
+    ) -> ActionSinkFuture<'_, (String, String)>;
 }

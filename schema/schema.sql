@@ -29,8 +29,9 @@ CREATE TYPE channel_type AS ENUM ('stream', 'forum', 'dm', 'workflow');
 CREATE TYPE channel_visibility AS ENUM ('open', 'private');
 CREATE TYPE member_role AS ENUM ('owner', 'admin', 'member', 'guest', 'bot');
 CREATE TYPE workflow_status AS ENUM ('active', 'disabled', 'archived');
-CREATE TYPE run_status AS ENUM ('pending', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled');
+CREATE TYPE run_status AS ENUM ('pending', 'running', 'waiting_approval', 'waiting_agent', 'completed', 'failed', 'cancelled', 'timed_out');
 CREATE TYPE approval_status AS ENUM ('pending', 'granted', 'denied', 'expired');
+CREATE TYPE workflow_agent_wait_status AS ENUM ('pending', 'completed', 'timed_out', 'failed');
 CREATE TYPE delivery_method AS ENUM ('webhook', 'websocket');
 CREATE TYPE subscription_status AS ENUM ('active', 'paused', 'deleted');
 CREATE TYPE pause_reason AS ENUM ('user', 'system', 'rate_limit');
@@ -431,6 +432,9 @@ CREATE TABLE workflow_runs (
     community_id        UUID NOT NULL REFERENCES communities(id),
     id                  UUID NOT NULL DEFAULT gen_random_uuid(),
     workflow_id         UUID NOT NULL,
+    workflow_channel_id UUID,
+    definition_version  BYTEA CHECK (definition_version IS NULL OR octet_length(definition_version) = 32),
+    definition_snapshot JSONB,
     status              run_status NOT NULL DEFAULT 'pending',
     trigger_event_id    BYTEA,
     current_step        INT NOT NULL DEFAULT 0,
@@ -478,6 +482,38 @@ CREATE TABLE workflow_approvals (
 CREATE INDEX idx_workflow_approvals_workflow ON workflow_approvals (community_id, workflow_id);
 CREATE INDEX idx_workflow_approvals_run ON workflow_approvals (community_id, run_id);
 CREATE INDEX idx_workflow_approvals_status ON workflow_approvals (community_id, status);
+
+-- ── Workflow agent waits ─────────────────────────────────────────────────────
+
+CREATE TABLE workflow_agent_waits (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    workflow_id UUID NOT NULL,
+    run_id UUID NOT NULL,
+    step_id VARCHAR(64) NOT NULL,
+    step_index INT NOT NULL,
+    channel_id UUID NOT NULL,
+    agent_pubkey BYTEA NOT NULL CHECK (octet_length(agent_pubkey) = 32),
+    request_event_id BYTEA NOT NULL CHECK (octet_length(request_event_id) = 32),
+    status workflow_agent_wait_status NOT NULL DEFAULT 'pending',
+    reply_event_id BYTEA CHECK (reply_event_id IS NULL OR octet_length(reply_event_id) = 32),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (community_id, run_id, step_id),
+    UNIQUE (community_id, request_event_id),
+    FOREIGN KEY (community_id, workflow_id)
+        REFERENCES workflows (community_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (community_id, run_id)
+        REFERENCES workflow_runs (community_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (community_id, channel_id)
+        REFERENCES channels (community_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_workflow_agent_waits_pending_expiry
+    ON workflow_agent_waits (expires_at, community_id) WHERE status = 'pending';
+CREATE INDEX idx_workflow_agent_waits_request
+    ON workflow_agent_waits (community_id, request_event_id, agent_pubkey)
+    WHERE status = 'pending';
 
 -- ── Scheduled workflow fires (cron claim) ─────────────────────────────────────
 -- Plan §5: the at-most-once cron fire claim. UNIQUE (community_id, workflow_id,
@@ -1798,6 +1834,7 @@ SELECT attach_community_write_fence('subscriptions');
 SELECT attach_community_write_fence('thread_metadata');
 SELECT attach_community_write_fence('users');
 SELECT attach_community_write_fence('workflow_approvals');
+SELECT attach_community_write_fence('workflow_agent_waits');
 SELECT attach_community_write_fence('workflow_runs');
 SELECT attach_community_write_fence('workflows');
 
