@@ -685,6 +685,8 @@ type E2eConfig = {
     companyAskRelayPrivateKeyHex?: string;
     /** Reject these ask response publishes in order, then accept them. */
     askResponseErrors?: string[];
+    /** Reject these ask create publishes in order, then accept them. */
+    askActionErrors?: string[];
     /** Pending workflow approval rows used by Today E2E coverage. */
     workflowApprovals?: Array<{
       workflowId: string;
@@ -3758,6 +3760,7 @@ const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
+const mockAskActionIds = new Set<string>();
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
 const mockAuthResponses: Array<{ success: boolean; message: string }> = [];
@@ -5881,6 +5884,140 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 50);
+}
+
+function acceptMockAskAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  if (mockAskActionIds.has(event.id)) {
+    accept();
+    return;
+  }
+
+  const configuredError = config?.mock?.askActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  let action: {
+    action?: string;
+    askId?: string;
+    ask?: Record<string, unknown>;
+    schemaVersion?: number;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: ask action is not valid JSON");
+    return;
+  }
+
+  if (
+    action.action !== "create" ||
+    action.schemaVersion !== 1 ||
+    !action.ask ||
+    typeof action.askId !== "string" ||
+    action.ask.askId !== action.askId ||
+    action.ask.schemaVersion !== 1
+  ) {
+    reject("invalid: ask create action has an unsupported shape");
+    return;
+  }
+
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
+  const coordinate =
+    coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
+  const rootEventId = action.ask.threadRootEventId;
+  if (
+    !channelId ||
+    typeof rootEventId !== "string" ||
+    coordinate !== `channel:${channelId}:ask:${action.askId}` ||
+    !event.tags.some(
+      (tag) => tag[0] === "e" && tag[1] === rootEventId && tag[3] === "root",
+    )
+  ) {
+    reject(
+      "restricted: ask create needs a channel, coordinate and thread root",
+    );
+    return;
+  }
+
+  if (
+    !getMockMessageStore(channelId).some(
+      (message) => message.id === rootEventId,
+    )
+  ) {
+    reject("conflict: the discussion thread could not be found");
+    return;
+  }
+
+  const existingHead = filterMockCompanyAskHeads({
+    kinds: [KIND_ASK_HEAD],
+    "#h": [channelId],
+    "#d": [coordinate],
+    limit: 10,
+  })[0];
+  if (existingHead) {
+    reject("conflict: an ask already exists at this coordinate");
+    return;
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for ask creates");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const head = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", channelId],
+        ["d", coordinate],
+        ["e", rootEventId],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        askId: action.askId,
+        status: "open",
+        askerPubkey: event.pubkey,
+        createdAt: new Date().toISOString(),
+        ask: action.ask,
+        resolution: null,
+        cancellation: null,
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+
+  recordMockMessage(channelId, event);
+  mockCompanyAskHeads.push(head);
+  mockAskActionIds.add(event.id);
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, head);
+  accept();
 }
 
 function acceptMockAskResponse(
@@ -13412,6 +13549,19 @@ function sendToMockSocket(args: {
       }
     }
 
+    if (event.kind === KIND_ASK_ACTION) {
+      let actionType: unknown;
+      try {
+        actionType = (JSON.parse(event.content) as { action?: unknown }).action;
+      } catch {
+        actionType = null;
+      }
+      if (actionType === "create") {
+        acceptMockAskAction(socket, event, getConfig());
+        return;
+      }
+    }
+
     if (event.kind === KIND_ASK_RESPONSE) {
       acceptMockAskResponse(socket, event, getConfig());
       return;
@@ -13711,6 +13861,7 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyAskHeads.length,
     ...(config.mock?.companyAskHeads ?? []),
   );
+  mockAskActionIds.clear();
   if (!isRelayMode(config) && config.mock?.visualFixture) {
     seedVisualFixture(config.mock.visualFixture);
   }
