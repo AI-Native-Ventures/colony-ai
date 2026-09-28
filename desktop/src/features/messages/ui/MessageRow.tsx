@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import {
   depthGuideActionsEqual,
@@ -10,6 +11,7 @@ import {
   assertCanSendMessageToChannel,
   canSendMessageToChannel,
 } from "@/features/messages/lib/canSendToChannel";
+import { getThreadReference } from "@/features/messages/lib/threading";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
@@ -32,6 +34,7 @@ import {
   KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
   KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_V2,
   KIND_STREAM_MESSAGE_DIFF,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -168,6 +171,7 @@ export const MessageRow = React.memo(
     videoReviewCommentRootId?: string;
     videoReviewContext?: VideoReviewContext;
   }) {
+    const navigate = useNavigate();
     // Keep the transient send state with its timestamp rather than collapsing
     // it into a grouped message row with no header.
     const isDisplayedAsContinuation = isContinuation && !message.pending;
@@ -256,6 +260,18 @@ export const MessageRow = React.memo(
         await onSendToChannel?.(target);
       },
       [currentPubkey, onSendToChannel, profiles],
+    );
+    const handleRaiseAsk = React.useCallback(
+      (target: TimelineMessage) => {
+        if (!channelId) return;
+        const threadRootEventId =
+          getThreadReference(target.tags ?? []).rootId ?? target.id;
+        void navigate({
+          to: "/asks/new",
+          search: { channelId, threadRootEventId },
+        });
+      },
+      [channelId, navigate],
     );
     const { mentionNames, mentionPubkeysByName } = React.useMemo(
       () => resolveMentionProps(message.tags, profiles, message.body),
@@ -639,6 +655,14 @@ export const MessageRow = React.memo(
             canToggleReactions ? handleReactionSelect : undefined
           }
           onRemindLater={handleRemindLater}
+          onRaiseAsk={
+            channelId &&
+            !message.pending &&
+            (message.kind === KIND_STREAM_MESSAGE ||
+              message.kind === KIND_STREAM_MESSAGE_V2)
+              ? handleRaiseAsk
+              : undefined
+          }
           onReply={onReply}
           onSendToChannel={
             onSendToChannel && sendToChannelAllowed

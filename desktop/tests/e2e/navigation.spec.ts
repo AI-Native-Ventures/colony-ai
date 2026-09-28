@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings } from "../helpers/settings";
+import {
+  createPlainWorkflow,
+  installWorkflowAdminBridge,
+} from "../helpers/workflows";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
 const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
@@ -9,7 +13,7 @@ const FORUM_POST_ID = "mock-forum-release-thread";
 const FORUM_REPLY_ID = "mock-forum-release-reply";
 
 test.beforeEach(async ({ page }) => {
-  await installMockBridge(page);
+  await installWorkflowAdminBridge(page);
 });
 
 /**
@@ -56,43 +60,6 @@ async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await page.getByTestId("open-workflows-view").click();
   await expect(page).toHaveURL(/#\/workflows$/);
   await expect(page.getByTestId("workflows-view")).toBeVisible();
-}
-
-async function createWorkflow(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  await expect(dialog).toBeVisible();
-
-  const channelList = page.getByTestId("channel-combobox-list");
-  await expect(channelList).toBeVisible();
-  await channelList
-    .getByRole("option", { name: "agents", exact: true })
-    .click();
-
-  await dialog.getByRole("button", { name: "Edit workflow name" }).click();
-  await dialog.getByRole("textbox", { name: "Workflow name" }).fill(name);
-  await dialog.getByRole("button", { name: "Save workflow name" }).click();
-
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
-  await dialog.getByLabel("Message text").fill("Workflow notification");
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const activationConfirmation = page.getByRole("alertdialog", {
-    name: "This workflow may run often",
-  });
-  await Promise.race([
-    activationConfirmation.waitFor({ state: "visible" }),
-    dialog.waitFor({ state: "hidden" }),
-  ]);
-  if (await activationConfirmation.isVisible()) {
-    await activationConfirmation
-      .getByRole("button", { name: "Turn on" })
-      .click();
-  }
-  await expect(dialog).not.toBeVisible();
 }
 
 test("back and forward move across channel routes", async ({ page }) => {
@@ -168,34 +135,26 @@ test.fixme("direct forum thread links close back to the forum route", async ({
   ).toBeVisible();
 });
 
-test("direct workflow detail links close back to workflows", async ({
-  page,
-}) => {
+test("direct workflow detail links return to workflows", async ({ page }) => {
   const workflowName = `workflow_nav_${Date.now()}`;
 
   await navigateToWorkflows(page);
-  await createWorkflow(page, workflowName);
+  const { workflowId } = await createPlainWorkflow(page, workflowName);
+  await page.getByRole("button", { name: "Back to workflows" }).click();
+  await expect(page).toHaveURL(/#\/workflows$/);
+  await page.getByTestId(`workflow-card-${workflowId}`).click();
 
-  const workflowCard = page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: workflowName })
-    .first();
-  const workflowTestId = await workflowCard.getAttribute("data-testid");
-  const workflowId = workflowTestId?.replace("workflow-card-", "");
-
-  expect(workflowId).toBeTruthy();
-
-  await page.goto(`/#/workflows/${workflowId}`);
-
-  const dialog = page.getByRole("dialog", { name: "Edit workflow" });
-  await expect(dialog.getByText(workflowName, { exact: true })).toBeVisible();
-  await expect(
-    dialog.getByRole("button", { name: "Trigger: Message Posted" }),
-  ).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Run history" })).toHaveCount(
-    0,
+  const detail = page.getByTestId("plain-workflow-detail");
+  await expect(page).toHaveURL(
+    new RegExp(`#\\/workflows\\/${workflowId}(?:\\?pane=trigger)?$`),
   );
-  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(
+    page
+      .getByTestId("plain-workflow-builder")
+      .getByRole("heading", { name: workflowName }),
+  ).toBeVisible();
+  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to workflows" }).click();
 
   await expect(page).toHaveURL(/#\/workflows$/);
   await expect(page.getByTestId("workflows-view")).toBeVisible();

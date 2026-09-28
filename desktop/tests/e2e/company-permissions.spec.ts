@@ -187,7 +187,7 @@ test("owner resolves an off-channel tool consent ask from Needs me", async ({
     actionPreview,
   );
   await page.getByLabel("Reason").fill("Reviewed the recipient and message.");
-  await page.getByRole("button", { name: "Record response" }).click();
+  await page.getByRole("button", { name: "Record tool decision" }).click();
   await expect(page.getByTestId("ask-resolved")).toContainText(
     "Approved by You",
   );

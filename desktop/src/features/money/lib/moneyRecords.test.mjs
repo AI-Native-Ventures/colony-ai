@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   deriveMoneyTotals,
   formatMoneyMinor,
+  invoiceTaxTotalMinor,
   parseMoneyInput,
   parseMoneyRecords,
+  totalInvoiceMinor,
 } from "./moneyRecords.ts";
 import {
   KIND_INVOICE_HEAD,
@@ -144,6 +146,36 @@ test("money totals derive from scoped invoice, payment, and adjustment records",
   assert.equal(totals.collectedMinorByCurrency.ZAR, 2_500);
   assert.equal(totals.outstandingMinorByCurrency.ZAR, 6_000);
   assert.equal(totals.overdueMinorByCurrency.ZAR, 6_000);
+  assert.deepEqual(records.invoiceHeads[0].value.taxLines, []);
+  assert.equal(records.invoiceHeads[0].value.sellerTaxNumber, null);
+  assert.equal(records.invoiceHeads[0].value.customerTaxNumber, null);
+});
+
+test("optional tax rounds half up per invoice line with integer minor units", () => {
+  const lines = [
+    {
+      serviceId: null,
+      description: "First one-minor line",
+      quantityHundredths: 100,
+      unitAmountMinor: 1,
+    },
+    {
+      serviceId: null,
+      description: "Second one-minor line",
+      quantityHundredths: 100,
+      unitAmountMinor: 1,
+    },
+  ];
+  const taxLines = [{ label: "Sample only", rateBasisPoints: 5_000 }];
+  assert.equal(invoiceTaxTotalMinor(lines, taxLines), 2);
+  assert.equal(totalInvoiceMinor(lines, taxLines), 4);
+  assert.equal(invoiceTaxTotalMinor(lines, []), 0);
+  assert.equal(
+    invoiceTaxTotalMinor(lines.slice(0, 1), [
+      { label: null, rateBasisPoints: 4_999 },
+    ]),
+    0,
+  );
 });
 
 test("money parsing denies records outside the selected client scope", () => {
@@ -159,6 +191,39 @@ test("money parsing denies records outside the selected client scope", () => {
   assert.throws(
     () => parseMoneyRecords([event], [CLIENT_ID]),
     /another client/,
+  );
+});
+
+test("money parsing accepts optional tax snapshots on current invoice heads", () => {
+  const taxableHead = {
+    ...invoiceHead,
+    taxLines: [{ label: "Sample only", rateBasisPoints: 850 }],
+    sellerTaxNumber: "SELLER-TEST-REG",
+    customerTaxNumber: "CUSTOMER-TEST-REG",
+  };
+  const records = parseMoneyRecords(
+    [
+      recordEvent(
+        KIND_INVOICE_HEAD,
+        taxableHead,
+        `client:${CLIENT_ID}:invoice:${INVOICE_ID}`,
+        invoiceHead.issuedAt,
+        6,
+      ),
+    ],
+    [CLIENT_ID],
+  );
+  assert.deepEqual(
+    records.invoiceHeads[0].value.taxLines,
+    taxableHead.taxLines,
+  );
+  assert.equal(
+    records.invoiceHeads[0].value.sellerTaxNumber,
+    "SELLER-TEST-REG",
+  );
+  assert.equal(
+    records.invoiceHeads[0].value.customerTaxNumber,
+    "CUSTOMER-TEST-REG",
   );
 });
 

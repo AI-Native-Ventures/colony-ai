@@ -1,305 +1,166 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { installMockBridge } from "../helpers/bridge";
-import { waitForAnimations } from "../helpers/animations";
+import { invokeMockCommand } from "../helpers/welcomeTeam";
+import {
+  createPlainWorkflow,
+  installWorkflowAdminBridge,
+  openAdvancedWorkflow,
+  seedWorkflow,
+} from "../helpers/workflows";
 
-test.beforeEach(async ({ page }) => {
-  await installMockBridge(page);
-});
-
-const GENERATED_NAME = /^[a-z]+-[a-z]+-[a-z]+$/;
-
-async function navigateToWorkflows(page: Page) {
+async function openWorkflows(page: Page) {
   await page.goto("/");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
 
-function readWorkflowName(dialog: Locator) {
-  return dialog
-    .getByRole("button", { name: "Edit workflow name" })
-    .evaluate((button) =>
-      (button.previousElementSibling?.textContent ?? "").trim(),
-    );
+async function seedAndOpenWorkflows(page: Page, name: string) {
+  await page.goto("/");
+  const workflow = await seedWorkflow(page, name);
+  await page.getByTestId("open-workflows-view").click();
+  await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();
+  return workflow;
 }
 
-async function selectWorkflowChannel(page: Page, dialog: Locator) {
-  const channelList = page.getByTestId("channel-combobox-list");
-  if (!(await channelList.isVisible())) {
-    await dialog.getByRole("combobox", { name: "Channel" }).click();
-  }
-  await expect(channelList).toBeVisible();
-  await waitForAnimations(page);
-  await channelList
-    .getByRole("option", { name: "agents", exact: true })
-    .click();
-}
+test.beforeEach(async ({ page }) => {
+  await installWorkflowAdminBridge(page);
+});
 
-async function openTriggerPane(dialog: Locator) {
-  await dialog.getByRole("button", { name: /^Trigger: / }).click();
+test("a chosen name stays visible through steps, preview and activation review", async ({
+  page,
+}) => {
+  const name = `weekly_name_${Date.now()}`;
+  await openWorkflows(page);
+  await page.getByRole("button", { name: "Use this example" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await builder.getByLabel("Give this workflow a name").fill(name);
+  await builder
+    .getByLabel("Describe the routine")
+    .fill("Prepare a result and ask a person to review it.");
+  await builder.getByRole("button", { name: "Continue" }).click();
+  await expect(builder.getByRole("heading", { level: 1, name })).toBeVisible();
+  await builder.getByRole("button", { name: "Preview a sample run" }).click();
   await expect(
-    dialog.getByRole("button", { name: "Trigger event" }),
+    builder.getByRole("heading", {
+      level: 1,
+      name: "Walk through a sample run",
+    }),
   ).toBeVisible();
-}
-
-async function openStepPane(dialog: Locator, index: number) {
-  await dialog
-    .getByRole("button", { name: new RegExp(`^Step ${index}: `) })
-    .click();
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    `Step ${index}`,
-  );
-}
-
-/**
- * Inserts a step right after the trigger. The insertion control only becomes
- * interactive on hover once the trigger is no longer the terminal node.
- */
-async function addStepAfterTrigger(page: Page, dialog: Locator) {
-  const ingress = dialog.getByTestId("workflow-node-ingress").first();
-  await ingress.hover();
-  await ingress.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
-}
-
-async function finishRiskyActivationIfShown(page: Page, dialog: Locator) {
-  const confirmation = page.getByRole("alertdialog", {
-    name: "This workflow may run often",
+  const workflowId = await page.evaluate(() => {
+    const lastSave = [...(window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [])]
+      .reverse()
+      .find((call) => call.command === "save_workflow_draft");
+    return (
+      (lastSave?.payload as { workflowId?: string } | undefined)?.workflowId ??
+      ""
+    );
   });
-  await Promise.race([
-    confirmation.waitFor({ state: "visible" }),
-    dialog.waitFor({ state: "hidden" }),
-  ]);
-  if (await confirmation.isVisible()) {
-    await confirmation.getByRole("button", { name: "Turn on" }).click();
-  }
-  await expect(dialog).toBeHidden();
-}
-
-async function createNamedWorkflow(page: Page, name: string) {
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  await expect(dialog).toBeVisible();
-
-  await selectWorkflowChannel(page, dialog);
-  await dialog.getByRole("button", { name: "Edit workflow name" }).click();
-  await dialog.getByRole("textbox", { name: "Workflow name" }).fill(name);
-  await dialog.getByRole("button", { name: "Save workflow name" }).click();
-
-  await dialog.getByRole("button", { name: "Add first step" }).click();
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  const yaml = await yamlEditor.inputValue();
-  await yamlEditor.fill(
-    yaml.replace(
-      "    action: send_message",
-      '    action: send_message\n    text: "Workflow notification"',
-    ),
-  );
-  await dialog.getByRole("button", { name: "Create workflow" }).click();
-  await finishRiskyActivationIfShown(page, dialog);
-
-  await expect(page.getByTestId("workflows-view")).toContainText(name);
-}
-
-function workflowCard(page: Page, name: string) {
-  return page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: name })
-    .first();
-}
-
-test("keeps the generated name while moving between trigger and step panes", async ({
-  page,
-}) => {
-  await navigateToWorkflows(page);
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  await selectWorkflowChannel(page, dialog);
-  await expect.poll(() => readWorkflowName(dialog)).toMatch(GENERATED_NAME);
-  const generatedName = await readWorkflowName(dialog);
-
-  // Adding the first step lands on the step pane while the step is still
-  // incomplete — the header must keep showing the workflow name.
-  await dialog.getByRole("button", { name: "Add first step" }).click();
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-  expect(await readWorkflowName(dialog)).toBe(generatedName);
+  expect(workflowId).toBeTruthy();
+  const draft = await invokeMockCommand<{
+    definition: { name: string };
+  }>(page, "get_workflow_draft", { workflowId });
+  expect(draft.definition.name).toBe(name);
+  await builder.getByRole("button", { name: "Review activation" }).click();
   await expect(
-    dialog.getByRole("button", { name: "Edit workflow name" }),
-  ).toBeEnabled();
-
-  await openTriggerPane(dialog);
-  expect(await readWorkflowName(dialog)).toBe(generatedName);
-
-  await openStepPane(dialog, 1);
-  expect(await readWorkflowName(dialog)).toBe(generatedName);
-
-  // A second, still-empty step must not clear the name either.
-  await addStepAfterTrigger(page, dialog);
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-  expect(await readWorkflowName(dialog)).toBe(generatedName);
-
-  await openStepPane(dialog, 2);
-  expect(await readWorkflowName(dialog)).toBe(generatedName);
+    builder.getByTestId("workflow-activation-review").getByRole("heading", {
+      name,
+    }),
+  ).toBeVisible();
 });
 
-test("renames stay visible across pane navigation before the step is filled in", async ({
+test("a workflow rename in its draft is preserved through publish", async ({
   page,
 }) => {
-  const name = `renamed_workflow_${Date.now()}`;
-
-  await navigateToWorkflows(page);
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  await selectWorkflowChannel(page, dialog);
-  await dialog.getByRole("button", { name: "Add first step" }).click();
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-
-  await dialog.getByRole("button", { name: "Edit workflow name" }).click();
-  await dialog.getByRole("textbox", { name: "Workflow name" }).fill(name);
-  await dialog.getByRole("button", { name: "Save workflow name" }).click();
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await openTriggerPane(dialog);
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await openStepPane(dialog, 1);
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  // Completing the step re-serializes the definition from the builder's form
-  // state, which must have picked the rename up rather than writing back the
-  // generated name it was holding when the rename happened.
-  await dialog
-    .getByTestId("workflow-node-inspector")
-    .getByLabel("Message text")
-    .fill("Workflow notification");
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await dialog.getByRole("button", { name: "Create workflow" }).click();
-  await finishRiskyActivationIfShown(page, dialog);
-  await expect(page.getByTestId("workflows-view")).toContainText(name);
-});
-
-test("keeps a header disable across a later form edit", async ({ page }) => {
-  const name = `disabled_workflow_${Date.now()}`;
-
-  await navigateToWorkflows(page);
-  await createNamedWorkflow(page, name);
-
-  await workflowCard(page, name)
-    .getByRole("button", { name: "Workflow actions" })
+  const initialName = `initial_${Date.now()}`;
+  const updatedName = `renamed_${Date.now()}`;
+  await openWorkflows(page);
+  await page.getByRole("button", { name: "Use this example" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await builder.getByLabel("Give this workflow a name").fill(initialName);
+  await builder
+    .getByLabel("Describe the routine")
+    .fill("Prepare a result and ask for review.");
+  await builder.getByRole("button", { name: "Continue" }).click();
+  await builder
+    .getByRole("button", { name: "Edit name & description" })
     .click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Edit workflow" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("tab", { name: "Form" }).click();
-
-  const enableItem = page.getByRole("menuitemcheckbox", { name: "Enable" });
-  // The open menu aria-hides the dialog behind it, so it has to be dismissed
-  // before the dialog can be addressed again.
-  const closeActionsMenu = async () => {
-    await page.keyboard.press("Escape");
-    await expect(enableItem).not.toBeVisible();
-  };
-
-  // Add an empty step so the definition stops validating, then disable from the
-  // header. Completing the step re-serializes the definition from the builder's
-  // form state, which must carry the disable rather than the enabled state it
-  // held before the header wrote it.
-  await addStepAfterTrigger(page, dialog);
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-
-  await dialog.getByRole("button", { name: "Workflow actions" }).click();
-  await expect(enableItem).toHaveAttribute("aria-checked", "true");
-  await enableItem.click();
-  await expect(enableItem).toHaveAttribute("aria-checked", "false");
-  await closeActionsMenu();
-
-  await dialog.getByLabel("Message text").fill("Updated notification");
-
-  await dialog.getByRole("button", { name: "Workflow actions" }).click();
-  await expect(enableItem).toHaveAttribute("aria-checked", "false");
-  await closeActionsMenu();
-
-  await dialog.getByRole("button", { name: "Save changes" }).click();
-  await expect(workflowCard(page, name)).toContainText("disabled");
-});
-
-test("keeps the saved name while editing an existing workflow", async ({
-  page,
-}) => {
-  const name = `edit_title_${Date.now()}`;
-
-  await navigateToWorkflows(page);
-  await createNamedWorkflow(page, name);
-
-  await workflowCard(page, name)
-    .getByRole("button", { name: "Workflow actions" })
-    .click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Edit workflow" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await openTriggerPane(dialog);
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await openStepPane(dialog, 1);
-  expect(await readWorkflowName(dialog)).toBe(name);
-
-  await addStepAfterTrigger(page, dialog);
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-  expect(await readWorkflowName(dialog)).toBe(name);
+  await builder.getByLabel("Give this workflow a name").fill(updatedName);
+  await builder.getByRole("button", { name: "Continue" }).click();
   await expect(
-    dialog.getByRole("button", { name: "Edit workflow name" }),
-  ).toBeEnabled();
-
-  await openStepPane(dialog, 2);
-  expect(await readWorkflowName(dialog)).toBe(name);
+    builder.getByRole("heading", { level: 1, name: updatedName }),
+  ).toBeVisible();
+  await builder.getByRole("button", { name: "Preview a sample run" }).click();
+  await builder.getByRole("button", { name: "Review activation" }).click();
+  const review = builder.getByTestId("workflow-activation-review");
+  await expect(
+    review.getByRole("heading", { level: 2, name: updatedName }),
+  ).toBeVisible();
+  await review
+    .getByLabel("I have reviewed the steps, people and schedule.")
+    .check();
+  await review.getByRole("button", { name: "Turn on workflow" }).click();
+  await expect(
+    builder.getByRole("heading", { level: 1, name: updatedName }),
+  ).toBeVisible();
 });
 
-test("keeps the copy name while duplicating an existing workflow", async ({
+test("the saved workflow name stays visible in Advanced form and YAML views", async ({
   page,
 }) => {
-  const name = `dup_title_${Date.now()}`;
+  const name = `advanced_title_${Date.now()}`;
+  const workflow = await seedAndOpenWorkflows(page, name);
+  await openAdvancedWorkflow(page, workflow.id);
+  const editor = page.getByRole("dialog", { name: "Edit workflow" });
+  const nameButton = editor.getByRole("button", { name: "Edit workflow name" });
+  await expect(nameButton).toBeVisible();
+  await expect(editor.getByText(name, { exact: true })).toBeVisible();
+  await editor.getByRole("tab", { name: "YAML" }).click();
+  const yamlEditor = editor.getByRole("textbox", { name: "Workflow YAML" });
+  await expect(yamlEditor).toContainText(`name: ${name}`);
+  await editor.getByRole("tab", { name: "Form" }).click();
+  await expect(editor.getByText(name, { exact: true })).toBeVisible();
+});
 
-  await navigateToWorkflows(page);
-  await createNamedWorkflow(page, name);
+test("Advanced name edits remain drafts until the user publishes them", async ({
+  page,
+}) => {
+  const originalName = `active_name_${Date.now()}`;
+  const workflow = await seedAndOpenWorkflows(page, originalName);
+  await openAdvancedWorkflow(page, workflow.id);
+  const editor = page.getByRole("dialog", { name: "Edit workflow" });
+  await editor.getByRole("button", { name: "Edit workflow name" }).click();
+  const nameInput = editor.getByRole("textbox", { name: "Workflow name" });
+  const draftName = `${originalName}_draft`;
+  await nameInput.fill(draftName);
+  await editor.getByRole("button", { name: "Save workflow name" }).click();
+  await editor.getByTestId("workflow-dialog-primary-action").click();
+  const active = await invokeMockCommand<{
+    name: string;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  const draft = await invokeMockCommand<{
+    name: string;
+  }>(page, "get_workflow_draft", { workflowId: workflow.id });
+  expect(active.name).toBe(originalName);
+  expect(draft.name).toBe(draftName);
+});
 
-  await workflowCard(page, name)
-    .getByRole("button", { name: "Workflow actions" })
-    .click();
-  await page.getByRole("menuitem", { name: "Duplicate" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Duplicate workflow" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  expect(await readWorkflowName(dialog)).toBe(`${name} (copy)`);
-
-  await openStepPane(dialog, 1);
-  expect(await readWorkflowName(dialog)).toBe(`${name} (copy)`);
-
-  await addStepAfterTrigger(page, dialog);
-  await expect(dialog.getByTestId("workflow-node-inspector")).toContainText(
-    "Step 1",
-  );
-  expect(await readWorkflowName(dialog)).toBe(`${name} (copy)`);
-
-  await openTriggerPane(dialog);
-  expect(await readWorkflowName(dialog)).toBe(`${name} (copy)`);
+test("normal workflow details keep their saved name and omit duplicate actions", async ({
+  page,
+}) => {
+  await openWorkflows(page);
+  const name = `detail_title_${Date.now()}`;
+  await createPlainWorkflow(page, name);
+  await page.getByRole("button", { name: "Back to workflows" }).click();
+  await page.getByRole("button", { name: new RegExp(name) }).click();
+  const detail = page.getByTestId("plain-workflow-detail");
+  await expect(
+    page
+      .getByTestId("plain-workflow-builder")
+      .getByRole("heading", { level: 1, name }),
+  ).toBeVisible();
+  await expect(detail).toContainText("Active");
+  await expect(page.getByRole("button", { name: "Duplicate" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Workflow actions" }),
+  ).toHaveCount(0);
 });

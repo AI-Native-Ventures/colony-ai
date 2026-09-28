@@ -20,7 +20,6 @@ import { cn } from "@/shared/lib/cn";
 import { Switch } from "@/shared/ui/switch";
 import { WorkflowActionsMenu } from "./WorkflowActionsMenu";
 import {
-  getWorkflowEnabled,
   getWorkflowActionTiles,
   getWorkflowCardLabel,
   getWorkflowTriggerEmoji,
@@ -208,7 +207,7 @@ export function WorkflowCard({
 }: WorkflowCardProps) {
   const [triggerAnimationSequence, setTriggerAnimationSequence] =
     React.useState(0);
-  const isEnabled = getWorkflowEnabled(workflow.definition);
+  const isEnabled = workflow.status === "active";
   const configuredTrigger = getWorkflowTriggerConfig(workflow.definition);
   const cardLabel = getWorkflowCardLabel(workflow.definition, {
     triggerDescription: configuredTrigger

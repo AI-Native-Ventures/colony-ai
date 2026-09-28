@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use buzz_core::business_records::{
     approval_matches_current_version, business_d_tag, client_d_tag, invoice_head_d_tag,
-    invoice_lines_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
+    invoice_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
     money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
     prospect_d_tag, validate_business_command_scope, validate_hex_reference, BusinessCommand,
     ClientAction, ClientHead, DeliverablePointer, DeliverableVersion, InvoiceHead, InvoiceStatus,
@@ -1046,6 +1046,9 @@ pub async fn handle(
                 InvoiceVersionAction::Issue | InvoiceVersionAction::Void
             ) && (version.currency != current.currency
                 || version.lines != current.lines
+                || version.tax_lines != current.tax_lines
+                || version.seller_tax_number != current.seller_tax_number
+                || version.customer_tax_number != current.customer_tax_number
                 || version.total_minor != current.total_minor
                 || version.due_at != current.due_at)
             {
@@ -1056,6 +1059,9 @@ pub async fn handle(
             let mut head = current;
             head.currency = version.currency.clone();
             head.lines = version.lines.clone();
+            head.tax_lines = version.tax_lines.clone();
+            head.seller_tax_number = version.seller_tax_number.clone();
+            head.customer_tax_number = version.customer_tax_number.clone();
             head.total_minor = version.total_minor;
             head.version = version.version;
             head.current_version_event_id = event.id.to_hex();
@@ -1899,7 +1905,7 @@ async fn prepare_proposal_acceptance(
         deliverables: Vec::new(),
         source_event_id: acceptance_event.id.to_hex(),
     };
-    let total_minor = invoice_lines_total_minor(&version.lines)
+    let total_minor = invoice_total_minor(&version.lines, &[])
         .ok_or_else(|| invalid("proposal total overflows minor units"))?;
     let invoice_version = InvoiceVersion {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -1912,6 +1918,9 @@ async fn prepare_proposal_acceptance(
         action: InvoiceVersionAction::ProposalAcceptance,
         currency: version.currency.clone(),
         lines: version.lines.clone(),
+        tax_lines: Vec::new(),
+        seller_tax_number: None,
+        customer_tax_number: None,
         total_minor,
         status: InvoiceStatus::Draft,
         due_at: None,
@@ -1937,6 +1946,9 @@ async fn prepare_proposal_acceptance(
         proposal_version_event_id: acceptance.proposal_version_event_id.clone(),
         currency: version.currency.clone(),
         lines: version.lines.clone(),
+        tax_lines: Vec::new(),
+        seller_tax_number: None,
+        customer_tax_number: None,
         total_minor,
         credited_minor: 0,
         written_off_minor: 0,
@@ -2918,10 +2930,29 @@ fn validate_invoice_version(version: &InvoiceVersion) -> Result<(), IngestError>
             ));
         }
     }
-    let calculated_total = invoice_lines_total_minor(&version.lines)
+    if version.tax_lines.len() > 100
+        || version.tax_lines.iter().any(|tax_line| {
+            tax_line
+                .label
+                .as_deref()
+                .is_some_and(|label| label.trim().is_empty() || label.len() > 200)
+        })
+        || [
+            version.seller_tax_number.as_deref(),
+            version.customer_tax_number.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|number| number.trim().is_empty() || number.len() > 128)
+    {
+        return Err(invalid("invoice tax details are invalid"));
+    }
+    let calculated_total = invoice_total_minor(&version.lines, &version.tax_lines)
         .ok_or_else(|| invalid("invoice total overflows minor units"))?;
     if version.total_minor != calculated_total {
-        return Err(invalid("invoice total does not match its line items"));
+        return Err(invalid(
+            "invoice total does not match its line items and tax",
+        ));
     }
     let valid_transition_shape = match version.action {
         InvoiceVersionAction::ProposalAcceptance => {
@@ -3429,7 +3460,7 @@ mod postgres_tests {
     use super::*;
     use buzz_core::business_records::{
         deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval,
-        DraftInvoiceHead, ProposalLine, WorkItemHeadInput,
+        DraftInvoiceHead, InvoiceTaxLine, ProposalLine, WorkItemHeadInput,
     };
     use buzz_db::channel::{ChannelType, ChannelVisibility};
     use nostr::{Keys, Tag};
@@ -3596,6 +3627,9 @@ mod postgres_tests {
             action: InvoiceVersionAction::ProposalAcceptance,
             currency: "ZAR".into(),
             lines: lines.clone(),
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
             total_minor,
             status: InvoiceStatus::Draft,
             due_at,
@@ -3620,6 +3654,9 @@ mod postgres_tests {
             proposal_version_event_id,
             currency: "ZAR".into(),
             lines,
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
             total_minor,
             credited_minor: 0,
             written_off_minor: 0,
@@ -3677,6 +3714,9 @@ mod postgres_tests {
             action: InvoiceVersionAction::Issue,
             currency: head.currency.clone(),
             lines: head.lines.clone(),
+            tax_lines: head.tax_lines.clone(),
+            seller_tax_number: head.seller_tax_number.clone(),
+            customer_tax_number: head.customer_tax_number.clone(),
             total_minor: head.total_minor,
             status: InvoiceStatus::Issued,
             due_at: head.due_at,
@@ -5345,6 +5385,9 @@ mod postgres_tests {
             action: InvoiceVersionAction::Issue,
             currency: member_head.currency.clone(),
             lines: member_head.lines.clone(),
+            tax_lines: member_head.tax_lines.clone(),
+            seller_tax_number: member_head.seller_tax_number.clone(),
+            customer_tax_number: member_head.customer_tax_number.clone(),
             total_minor: member_head.total_minor,
             status: InvoiceStatus::Issued,
             due_at: member_head.due_at,
@@ -5398,6 +5441,113 @@ mod postgres_tests {
             matches!(cross_client_result, Err(IngestError::Rejected(message)) if message.contains("client id does not match channel scope"))
         );
         expect_event_missing(&fixture, &forged_payment_event).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn invoice_tax_is_per_line_validated_and_preserved_when_issued() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-tax-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        let (head_event, draft) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load draft invoice");
+        let lines = vec![
+            ProposalLine {
+                service_id: None,
+                description: "First minor-unit line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+            ProposalLine {
+                service_id: None,
+                description: "Second minor-unit line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+        ];
+        let tax_lines = vec![InvoiceTaxLine {
+            label: Some("Illustrative tax".into()),
+            rate_basis_points: 5_000,
+        }];
+        let mut edit = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: draft.version + 1,
+            previous_version_event_id: Some(draft.current_version_event_id.clone()),
+            proposal_version_event_id: Some(draft.proposal_version_event_id.clone()),
+            expected_head_event_id: Some(head_event.event.id.to_hex()),
+            action: InvoiceVersionAction::DraftEdit,
+            currency: draft.currency.clone(),
+            lines,
+            tax_lines,
+            seller_tax_number: Some("SELLER-TEST-REG".into()),
+            customer_tax_number: Some("CUSTOMER-TEST-REG".into()),
+            total_minor: 3,
+            status: InvoiceStatus::Draft,
+            due_at: draft.due_at,
+            void_reason: None,
+        };
+        let edit_d = invoice_version_d_tag(client_id, invoice_id, edit.version);
+        let invalid_event = signed_command(&owner, KIND_INVOICE_VERSION, client_id, &edit_d, &edit);
+        let invalid_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            invalid_event.clone(),
+            auth(&owner),
+        )
+        .await;
+        assert!(
+            matches!(invalid_result, Err(IngestError::Rejected(message)) if message.contains("line items and tax"))
+        );
+        expect_event_missing(&fixture, &invalid_event).await;
+
+        edit.total_minor = 4;
+        let edit_event = signed_command(&owner, KIND_INVOICE_VERSION, client_id, &edit_d, &edit);
+        let edit_result = handle(&fixture.tenant, &fixture.state, edit_event, auth(&owner))
+            .await
+            .expect("save optional tax on the draft invoice");
+        assert!(edit_result.accepted);
+        let (_, taxed_draft) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load tax draft");
+        assert_eq!(taxed_draft.total_minor, 4);
+        assert_eq!(taxed_draft.tax_lines, edit.tax_lines);
+        assert_eq!(
+            taxed_draft.seller_tax_number.as_deref(),
+            Some("SELLER-TEST-REG")
+        );
+        assert_eq!(
+            taxed_draft.customer_tax_number.as_deref(),
+            Some("CUSTOMER-TEST-REG")
+        );
+
+        let (_, issued) = issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+        assert_eq!(issued.status, InvoiceStatus::Issued);
+        assert_eq!(issued.total_minor, 4);
+        assert_eq!(issued.outstanding_minor, 4);
+        assert_eq!(issued.tax_lines, edit.tax_lines);
+        assert_eq!(issued.seller_tax_number.as_deref(), Some("SELLER-TEST-REG"));
+        assert_eq!(
+            issued.customer_tax_number.as_deref(),
+            Some("CUSTOMER-TEST-REG")
+        );
     }
 
     #[tokio::test]
@@ -5602,6 +5752,9 @@ mod postgres_tests {
             action: InvoiceVersionAction::Void,
             currency: refunded.currency.clone(),
             lines: refunded.lines.clone(),
+            tax_lines: refunded.tax_lines.clone(),
+            seller_tax_number: refunded.seller_tax_number.clone(),
+            customer_tax_number: refunded.customer_tax_number.clone(),
             total_minor: refunded.total_minor,
             status: InvoiceStatus::Void,
             due_at: refunded.due_at,

@@ -21,7 +21,7 @@ name: Docker image
 #   - push tags relay-v*.*.* → :{version} + :{major}.{minor} + :{major}
 #                              + matching :debug-* tags
 #                              (+ :latest/:debug-latest for stable releases)
-#   - pull_request           → build only (no push), cache stays warm
+#   - pull_request           → build only (no push); reads the build cache, never writes it
 #   - workflow_dispatch      → manual relay-tag rescue at the tag itself
 #
 # Why workflow_dispatch carries a version input:
@@ -188,7 +188,10 @@ jobs:
           # Actions cache object. The gha backend receives its runtime URL/token
           # from build-push-action; it must not point at a publisher's GHCR cache.
           cache-from: type=gha,scope=buzz-relay-release-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=buzz-relay-release-${{ matrix.arch }}
+          # Pull requests read the build cache but never write it: per-PR buildkit
+          # blobs (2.6 to 3.8 GB each) pushed the repository over the 10 GB Actions
+          # cache limit and evicted the shared Hermit and service-image caches.
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=buzz-relay-release-{0}', matrix.arch) || '' }}
 
       - name: Build and push debug image by digest
         id: build-debug
@@ -205,7 +208,7 @@ jobs:
             BUZZ_BUILD_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=buzz-relay-debug-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=buzz-relay-debug-${{ matrix.arch }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=buzz-relay-debug-{0}', matrix.arch) || '' }}
 
       - name: Export release and debug digests
         if: github.event_name != 'pull_request'
@@ -555,7 +558,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=ghcr.io/block/buzz-push-gateway,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=buzz-push-gateway-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=buzz-push-gateway-${{ matrix.arch }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=buzz-push-gateway-{0}', matrix.arch) || '' }}
       - name: Export digest
         if: github.event_name != 'pull_request'
         env:

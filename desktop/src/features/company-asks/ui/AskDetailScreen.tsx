@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { mapSpecializedAskCard } from "@/features/company-asks/askCardMapping";
 import { useAskHeadQuery } from "@/features/company-asks/hooks";
 import { AskCard } from "@/features/company-asks/ui/AskCard";
 import { formatTimelineMessages } from "@/features/messages/lib/formatTimelineMessages";
@@ -147,6 +148,11 @@ function AskDetailMemberScreen({
   const threadTitle = formattedRoot
     ? rootThreadTitle(formattedRoot.body)
     : "Decision";
+  const specializedAskTitle =
+    record && mapSpecializedAskCard(record.head.ask)
+      ? record.head.ask.title
+      : null;
+  const pageTitle = specializedAskTitle ?? `Decision in ${threadTitle}`;
   const rootDisplayBody = formattedRoot
     ? rootThreadDisplayBody(formattedRoot.body)
     : "";
@@ -220,6 +226,7 @@ function AskDetailMemberScreen({
       />
     );
   }
+  if (specializedAskTitle) detailState = null;
 
   const searchWorkspace = () => {
     document
@@ -261,7 +268,7 @@ function AskDetailMemberScreen({
           className="colony-ask-detail-breadcrumb-label"
           data-testid="ask-detail-breadcrumb"
         >
-          Decision in {threadTitle}
+          {pageTitle}
         </span>
       </WorkspaceTopBar>
       <main className="colony-ask-detail-scroll">
@@ -269,7 +276,22 @@ function AskDetailMemberScreen({
           <Link className="colony-ask-detail-back" to="/today">
             ‹ Back
           </Link>
-          {formattedRoot ? (
+          {specializedAskTitle ? (
+            <div className="colony-ask-detail-title-row">
+              <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
+              <Link
+                className="colony-ask-special-raise"
+                search={{
+                  channelId,
+                  threadRootEventId: record?.head.ask.threadRootEventId ?? null,
+                }}
+                to="/asks/new"
+              >
+                Raise an ask
+              </Link>
+            </div>
+          ) : null}
+          {!specializedAskTitle && formattedRoot ? (
             <>
               <h1 data-testid="ask-thread-title">Decision in {threadTitle}</h1>
               <article
@@ -314,25 +336,27 @@ function AskDetailMemberScreen({
               showDetailLink={false}
             />
           ) : null}
-          <nav
-            aria-label="Ask navigation"
-            className="colony-ask-detail-actions"
-          >
-            {channel?.isMember ? (
-              <Link
-                params={{ channelId }}
-                search={{
-                  messageId: rootId ?? undefined,
-                  threadRootId: rootId ?? undefined,
-                  thread: rootId ?? undefined,
-                }}
-                to="/channels/$channelId"
-              >
-                Back to discussion
-              </Link>
-            ) : null}
-            <Link to="/today">Needs me</Link>
-          </nav>
+          {!specializedAskTitle ? (
+            <nav
+              aria-label="Ask navigation"
+              className="colony-ask-detail-actions"
+            >
+              {channel?.isMember ? (
+                <Link
+                  params={{ channelId }}
+                  search={{
+                    messageId: rootId ?? undefined,
+                    threadRootId: rootId ?? undefined,
+                    thread: rootId ?? undefined,
+                  }}
+                  to="/channels/$channelId"
+                >
+                  Back to discussion
+                </Link>
+              ) : null}
+              <Link to="/today">Needs me</Link>
+            </nav>
+          ) : null}
         </div>
       </main>
     </div>

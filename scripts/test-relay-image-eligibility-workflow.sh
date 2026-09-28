@@ -56,8 +56,10 @@ require_docker_cache_contract() {
     echo "build step has the wrong gha cache-from scope: $step_name" >&2
     exit 1
   }
-  grep -Fq "cache-to: type=gha,mode=max,scope=$scope" <<<"$block" || {
-    echo "build step has the wrong gha cache-to scope: $step_name" >&2
+  # Pull requests read the cache but never export it (Actions cache limit).
+  local export_scope=${scope/\$\{\{ matrix.arch \}\}/\{0\}}
+  grep -Fq "cache-to: \${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=$export_scope', matrix.arch) || '' }}" <<<"$block" || {
+    echo "build step must export the gha cache only outside pull requests: $step_name" >&2
     exit 1
   }
   if grep -Eq 'type=registry|buildcache|cache-mode:' <<<"$block"; then
@@ -80,7 +82,9 @@ for scope in \
   'buzz-relay-release-${{ matrix.arch }}' \
   'buzz-relay-debug-${{ matrix.arch }}' \
   'buzz-push-gateway-${{ matrix.arch }}'; do
-  [[ "$(grep -F -c "scope=$scope" "$workflow" || true)" == "2" ]] || {
+  export_scope=${scope/\$\{\{ matrix.arch \}\}/\{0\}}
+  [[ "$(grep -F -c "scope=$scope" "$workflow" || true)" == "1" \
+    && "$(grep -F -c "scope=$export_scope'" "$workflow" || true)" == "1" ]] || {
     echo "gha cache scope must be used once for import and once for export: $scope" >&2
     exit 1
   }
