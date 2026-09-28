@@ -518,6 +518,43 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
 
 #[tokio::test]
 #[ignore]
+async fn company_work_allows_channel_members_without_relay_membership() {
+    let community_owner = Keys::generate();
+    let channel_member = Keys::generate();
+    seed_relay_member(&community_owner, "owner").await;
+    let channel_id = create_test_channel(&community_owner).await;
+    add_channel_member(&community_owner, &channel_member, &channel_id).await;
+    let source_event_id = send_message(&channel_member, &channel_id, "I will own this work").await;
+    let work_item_id = Uuid::new_v4();
+    let create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            work_item_id,
+            &channel_member,
+            &channel_member,
+            None,
+            Some(source_event_id.clone()),
+            Some(source_event_id),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+    };
+
+    assert_accepted(&submit_work_action(&channel_member, &channel_id, &create).await);
+    let (_, head) = current_work_head(&community_owner, &channel_id, work_item_id).await;
+    assert_eq!(head.status, CompanyWorkStatus::Active);
+    assert_eq!(
+        head.assigned_pubkeys,
+        vec![channel_member.public_key().to_hex()]
+    );
+}
+
+#[tokio::test]
+#[ignore]
 async fn company_work_denies_cross_channel_actions_and_serializes_exact_head_races() {
     let admin = Keys::generate();
     seed_relay_member(&admin, "owner").await;

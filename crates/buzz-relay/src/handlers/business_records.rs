@@ -2327,8 +2327,14 @@ async fn handle_company_work_item_action(
     .bind(&actor_pubkey)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(internal)?
-    .ok_or_else(|| forbidden("actor is not a member of this community"))?;
+    .map_err(internal)?;
+    // Company work is scoped to the active channel. A relay-members row adds
+    // community-wide owner or admin authority, but its absence does not revoke
+    // the channel member's ability to manage work in that channel.
+    let community_role = match community_role {
+        Some(role) => role,
+        None => "member".to_owned(),
+    };
 
     let already_stored = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (SELECT 1 FROM events WHERE community_id = $1 AND id = $2)",
