@@ -22,6 +22,7 @@ class Radii {
   static const double container = 20.0;
   static const double card = container; // Backwards-compatible card alias.
   static const double companyCard = 18.0;
+  static const double tag = 7.0;
   static const double companyPinned = 13.0;
   static const double compactCard = 15.0;
   static const double field = 12.0;

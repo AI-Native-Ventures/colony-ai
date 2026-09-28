@@ -332,7 +332,7 @@ test("video upload previews use poster frames and inline videos open review mode
   const inlineVideo = inlinePlayer.locator("video");
   await inlinePlayer.getByRole("button", { name: "Play video" }).click();
 
-  // Inline playback uses our own controls — the native browser UI must
+  // Inline playback uses our own controls - the native browser UI must
   // never appear.
   await expect(inlineVideo).not.toHaveAttribute("controls", "");
   await expect(
@@ -1137,7 +1137,7 @@ test("video replies in threads open the review comments view", async ({
   await page
     .getByTestId("video-review-backdrop")
     .click({ position: { x: 4, y: 4 } });
-  await page.getByRole("button", { name: "Inbox", exact: true }).click();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
   const inboxRow = page.getByTestId(`home-inbox-item-${reviewComment.id}`);
   await expect(inboxRow).toBeVisible();
   const inboxPreviewTimecode = inboxRow.getByTestId(
@@ -1187,7 +1187,7 @@ test("Inbox preserves bracketed timestamps without video evidence", async ({
   )) as MockFeedMessage;
   await pushMockFeedItems(page, [reply]);
 
-  await page.getByRole("button", { name: "Inbox", exact: true }).click();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
   const inboxRow = page.getByTestId(`home-inbox-item-${reply.id}`);
   await expect(inboxRow).toContainText("[12:30] Meeting starts");
   await expect(
@@ -1224,7 +1224,7 @@ test("Inbox recognizes reference-style video ancestors with custom alt text", as
   )) as MockFeedMessage;
   await pushMockFeedItems(page, [video, comment]);
 
-  await page.getByRole("button", { name: "Inbox", exact: true }).click();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
   const inboxRow = page.getByTestId(`home-inbox-item-${comment.id}`);
   await expect(
     inboxRow.getByTestId("video-review-comment-timecode"),
@@ -1530,7 +1530,7 @@ test("right-click menus expose distinct selectors for links, relay video, and of
   await expect(page.locator("[data-media-context-menu]")).toBeVisible();
   // Download eligibility is reactive: the relay origin resolves asynchronously
   // (commonly after first render), and when it does the already-open menu
-  // recomputes to reveal Download — no re-navigation or menu re-open.
+  // recomputes to reveal Download - no re-navigation or menu re-open.
   await expect(
     videoMenu.getByRole("button", { name: "Download video" }),
   ).toBeVisible();

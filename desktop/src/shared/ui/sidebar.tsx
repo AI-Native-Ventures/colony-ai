@@ -28,13 +28,13 @@ import {
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
-const SIDEBAR_WIDTH_DEFAULT = 220;
+const SIDEBAR_WIDTH_DEFAULT = 244;
 const SIDEBAR_WIDTH_DEFAULT_HAPTIC_THRESHOLD = 2;
 const SIDEBAR_WIDTH_DEFAULT_SNAP_DISTANCE = 8;
 const SIDEBAR_WIDTH_DEFAULT_MAGNET_DISTANCE = 28;
 const SIDEBAR_WIDTH_MAX = 340;
 const SIDEBAR_WIDTH_MOBILE = "288px";
-const SIDEBAR_WIDTH_ICON = "58px";
+const SIDEBAR_WIDTH_ICON = "64px";
 const SIDEBAR_KEYBOARD_SHORTCUT = "s";
 // Increases button hit areas on mobile without changing their layout.
 const MOBILE_ACTION_HIT_AREA = "after:absolute after:-inset-2 after:md:hidden";

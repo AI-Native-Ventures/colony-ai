@@ -4,7 +4,7 @@ import { finalizeEvent } from "nostr-tools/pure";
 
 import { installMockBridge } from "../helpers/bridge";
 
-// Tyler's test identity — from TEST_IDENTITIES.tyler in tests/helpers/bridge.ts
+// Tyler's test identity - from TEST_IDENTITIES.tyler in tests/helpers/bridge.ts
 const TYLER_PRIVATE_KEY = hexToBytes(
   "3dbaebadb5dfd777ff25149ee230d907a15a9e1294b40b830661e65bb42f6c03",
 );
@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
 async function gotoApp(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForInvokeBridge(page);
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("app-sidebar")).toBeVisible({
     timeout: 10_000,
   });
 }
@@ -80,7 +80,7 @@ async function invokeTauri<T>(
  * Returns true if the event fired, false on timeout.
  *
  * Must be called before the invokeTauri that triggers the emit so the listener
- * is registered before the event fires — no race.
+ * is registered before the event fires - no race.
  */
 async function listenForAgentsDataChanged(
   page: import("@playwright/test").Page,
@@ -137,7 +137,7 @@ test("upsert round-trip: reconcile_inbound_persona_event writes record and emits
     TYLER_PRIVATE_KEY,
   );
 
-  // Register the listener BEFORE the reconcile call — no race.
+  // Register the listener BEFORE the reconcile call - no race.
   const awaitFired = await listenForAgentsDataChanged(page);
 
   // Drive the inbound reconcile path.
@@ -203,7 +203,7 @@ test("tombstone round-trip: reconcile_inbound_persona_event removes record and e
     TYLER_PRIVATE_KEY,
   );
 
-  // Register the listener BEFORE the tombstone reconcile call — no race.
+  // Register the listener BEFORE the tombstone reconcile call - no race.
   const awaitFired = await listenForAgentsDataChanged(page);
 
   await invokeTauri(page, "reconcile_inbound_persona_event", {

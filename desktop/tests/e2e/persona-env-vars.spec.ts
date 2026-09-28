@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 async function gotoApp(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForInvokeBridge(page);
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("app-sidebar")).toBeVisible({
     timeout: 10_000,
   });
 }
@@ -64,7 +64,7 @@ async function openModelCombobox(
   model: import("@playwright/test").Locator,
 ) {
   // PersonaModelCombobox renders a role="combobox" trigger + a Radix Popover
-  // with a search <input> and plain <button> options — not a role="menu".
+  // with a search <input> and plain <button> options - not a role="menu".
   await model.click();
   const searchInput = page.getByPlaceholder("Search models…");
   await expect(searchInput).toBeVisible({ timeout: 5_000 });
@@ -279,7 +279,7 @@ test("env vars editor renders in PersonaDialog new-persona form", async ({
 
   await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
   await expect(dialog.getByTestId("env-vars-editor")).toBeVisible();
-  // Initially empty (no rows — buzz-agent with no provider has no required keys).
+  // Initially empty (no rows - buzz-agent with no provider has no required keys).
   await expect(dialog.getByTestId("env-vars-key")).toHaveCount(0);
 
   // Add a row.
@@ -334,7 +334,7 @@ test("persona model options follow the selected LLM provider", async ({
   ).toHaveAttribute("aria-expanded", "false");
   await expect(model).toBeVisible();
   // OpenAI requires an explicit model, so "Default model" is filtered out.
-  // The combobox offers only "Custom model..." — verify it is present and selectable.
+  // The combobox offers only "Custom model..." - verify it is present and selectable.
   const openAiModelPopover = await openModelCombobox(page, model);
   await openAiModelPopover
     .getByRole("button", { name: "Custom model...", exact: true })
@@ -345,7 +345,7 @@ test("persona model options follow the selected LLM provider", async ({
   await expect(dialog.getByLabel("OpenAI Runtime API Key")).not.toBeVisible();
   await expect(model).toBeVisible();
 
-  // Switch back to inherited defaults — per-agent provider, credential, and
+  // Switch back to inherited defaults - per-agent provider, credential, and
   // model controls disappear together.
   await page.getByRole("tab", { name: "Use agent defaults" }).click();
   await expect(llmProvider).not.toBeVisible();

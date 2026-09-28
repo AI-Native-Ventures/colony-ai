@@ -1995,7 +1995,7 @@ test("restored Inbox deep link hides the back arrow", async ({ page }) => {
 
   // A reload keeps the `agentSession` URL param but drops the in-memory
   // return target, so the restored panel hides the back arrow and close is
-  // the only affordance — never a blind history pop.
+  // the only affordance - never a blind history pop.
   await page.reload();
   await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
   await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
@@ -2091,7 +2091,7 @@ test("declared owner sees runtime tab without a relay-agent record", async ({
   ).toHaveCount(0);
   await expect(panel.getByText("Harness log", { exact: true })).toHaveCount(0);
 
-  // No relay/managed runtime record means no write or management affordance —
+  // No relay/managed runtime record means no write or management affordance -
   // only the truthful NIP-OA profile signal is rendered in Runtime.
   await expect(panel.getByText("Model")).toHaveCount(0);
   await expect(
@@ -2142,7 +2142,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
     "16aaadcf39011edbd887e4abefe5837170621db277e234f3f6c220d38ba75ecf";
   await installMockBridge(page, {
     // Seeded as an agent (kind:0 NIP-OA owner) but NOT as a managed agent and
-    // NOT in the relay-agents registry — exactly the bug scenario.
+    // NOT in the relay-agents registry - exactly the bug scenario.
     searchProfiles: [
       { pubkey: ednaPubkey, displayName: "Edna", isAgent: true },
     ],
@@ -2179,7 +2179,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
   await messageRow.locator("button").first().click();
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-  // The bot indicator only renders when isBot resolves true — the assertion
+  // The bot indicator only renders when isBot resolves true - the assertion
   // that the OA-owner signal now drives agent framing.
   await expect(page.getByTestId("profile-bot-indicator")).toBeVisible();
 });
@@ -2191,7 +2191,7 @@ test("renders settings in the app shell with a back button", async ({
 
   const inboxNavButton = page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" });
+    .getByRole("button", { name: "Activity", exact: true });
   await expect(inboxNavButton).toBeVisible();
 
   await openSettings(page);
@@ -2200,20 +2200,17 @@ test("renders settings in the app shell with a back button", async ({
   await expect(page.getByPlaceholder("Search everything")).toHaveCount(0);
   await expect(page.getByText("Personal", { exact: true })).toBeVisible();
   const personalGroup = page
-    .getByTestId("settings-nav-channel-templates")
+    .getByTestId("settings-nav-profile")
     .locator("xpath=ancestor::*[@data-sidebar='group']");
   await expect(personalGroup).toContainText("Personal");
-  await expect(
-    page.getByTestId("settings-nav-channel-templates"),
-  ).toContainText("Channel templates");
+  await expect(page.getByTestId("settings-nav-channel-templates")).toHaveCount(
+    0,
+  );
   await expect(page.getByTestId("settings-nav-profile")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await expect(page.getByText("Communities", { exact: true })).toBeVisible();
-  await expect(
-    page.getByTestId("settings-nav-channel-templates"),
-  ).toBeVisible();
   await expect(page.getByText("App", { exact: true })).toBeVisible();
   await expect(page.getByTestId("settings-nav-agents")).toBeVisible();
   await expect(
@@ -2366,7 +2363,7 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
 
   await page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" })
+    .getByRole("button", { name: "Activity", exact: true })
     .click();
   await expectHomeView(page);
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
@@ -2478,12 +2475,12 @@ test("opens settings with the keyboard shortcut and updates theme", async ({
     )
     .toBe(true);
 
-  // Switch to Light mode tab to reveal light themes. Target the testid — in
+  // Switch to Light mode tab to reveal light themes. Target the testid - in
   // the default System mode the "Light" paired-theme tile shares the same
   // accessible name as the mode button.
   await page.getByTestId("appearance-mode-light").click();
 
-  // Switch to a light theme — verifies dark→light transition
+  // Switch to a light theme - verifies dark→light transition
   await page.getByTestId("theme-style-trigger").click();
   await page.getByTestId("theme-option-github-light").click();
 
@@ -2516,7 +2513,7 @@ test("opens settings with the keyboard shortcut and updates theme", async ({
   // Switch to Dark mode tab to reveal dark themes
   await page.getByTestId("appearance-mode-dark").click();
 
-  // Switch back to a dark theme — verifies light→dark transition
+  // Switch back to a dark theme - verifies light→dark transition
   await page.getByTestId("theme-option-dracula").click();
 
   await expect
@@ -2757,7 +2754,6 @@ test("settings subtitles share the Appearance secondary color", async ({
     "shortcuts",
     "custom-emoji",
     "local-archive",
-    "channel-templates",
     "hosted-communities",
     "agents",
     "compute",
@@ -2777,4 +2773,22 @@ test("settings subtitles share the Appearance secondary color", async ({
       new Set([secondaryColor]),
     );
   }
+
+  await page.goto("/");
+  await page.getByTestId("sidebar-nav-library-toggle").click();
+  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
+  await expect(blocksAndTemplates).toBeVisible();
+  await expect(blocksAndTemplates).toHaveCount(1);
+  await blocksAndTemplates.click();
+  const templatePanel = page.getByTestId("settings-panel-channel-templates");
+  await expect(templatePanel).toBeVisible();
+  const templateSubtitles = templatePanel.locator("[data-settings-subcopy]");
+  await expect(templateSubtitles.first()).toBeVisible();
+  await expect
+    .poll(async () =>
+      templateSubtitles.evaluateAll((elements) => [
+        ...new Set(elements.map((element) => getComputedStyle(element).color)),
+      ]),
+    )
+    .toEqual([secondaryColor]);
 });

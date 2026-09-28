@@ -28,6 +28,28 @@ void main() {
     expect(find.text('M'), findsOneWidget);
   });
 
+  testWidgets('supports compact rounded-square people avatars', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const IdentityAvatar(
+            initials: 'RK',
+            kind: IdentityKind.person,
+            roundedSquare: true,
+            size: 28,
+          ),
+        ),
+      ),
+    );
+
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.borderRadius, isNotNull);
+    expect(avatar.isAgent, isFalse);
+    expect(find.byType(CircleAvatar), findsNothing);
+    expect(find.text('RK'), findsOneWidget);
+  });
+
   testWidgets('exposes each identity row as one accessible action', (
     tester,
   ) async {
