@@ -105,7 +105,7 @@
       }
     },
     "appMockData": {
-      "accountEmail": "lerato@example.com",
+      "accountEmail": "lerato@leratosocial.example",
       "searchProfiles": [
         {
           "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -208,6 +208,13 @@
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/accessibility",
       "appRoute": "/#/settings?section=accessibility",
       "routeLabel": "Accessibility settings"
+    },
+    {
+      "id": "workspace-account-notifications",
+      "referenceInventoryRoute": "account/notifications",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/notifications",
+      "appRoute": "/#/settings?section=notifications",
+      "routeLabel": "Notifications and sounds"
     },
     {
       "id": "workspace-settings-admin",
@@ -336,7 +343,33 @@
       "referenceInventoryRoute": "settings/people",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/people",
       "appRoute": "/#/settings?section=people",
-      "routeLabel": "settings/people"
+      "routeLabel": "settings/people",
+      "appMockData": {
+        "relayRequiresMembership": true,
+        "relayRole": "owner",
+        "relayMembers": [
+          {
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "role": "owner"
+          },
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "role": "member"
+          }
+        ],
+        "searchProfiles": [
+          {
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "displayName": "Lerato Molefe",
+            "nip05Handle": "lerato@leratosocial.example"
+          },
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "displayName": "Zinhle Dlamini",
+            "nip05Handle": "zinhle@leratosocial.example"
+          }
+        ]
+      }
     },
     {
       "id": "workspace-settings-shortcuts",
@@ -895,9 +928,9 @@
     {
       "id": "desktop-08-catalog",
       "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/catalog",
-      "appRoute": "/#/settings?section=settings/themes",
+      "appRoute": "/#/settings?section=appearance",
       "routeLabel": "Theme catalog",
-      "appReadySelector": "[data-testid=settings-theme-catalog]",
+      "appReadySelector": "[data-testid=settings-appearance]",
       "referenceCanvas": true
     },
     {
