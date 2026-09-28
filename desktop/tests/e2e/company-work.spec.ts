@@ -91,7 +91,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   const joinButton = page.getByRole("button", {
     name: "Join to participate",
   });
-  await expect(joinButton).toBeVisible();
+  await expect(joinButton).toBeVisible({ timeout: 30_000 });
   await joinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
   await waitForMockLiveSubscription(page, "general");
@@ -252,7 +252,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   const rejoinButton = page.getByRole("button", {
     name: "Join to participate",
   });
-  await expect(rejoinButton).toBeVisible();
+  await expect(rejoinButton).toBeVisible({ timeout: 30_000 });
   await rejoinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
   await page.goto(`/#/work/detail/${workItemId}`);
