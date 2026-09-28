@@ -1123,7 +1123,8 @@ void main() {
             await tester.pumpAndSettle();
 
             final headerTitle = switch (route.name) {
-              'channel' => find.text('# olive-studio').first,
+              'channel' || 'conversation-marketing' || 'conversation-sales' =>
+                find.text('# ${route.channel.name}').first,
               'thread' => find.byKey(const ValueKey('thread-app-bar-title')),
               _ => find.byKey(const ValueKey('dm-header-name')),
             };
@@ -1238,7 +1239,9 @@ void main() {
                 'VISUAL_LAYOUT channel-info ${size.key} $mode '
                 'header=${tester.getRect(find.text('Olive Studio').first)} '
                 'hero=${tester.getRect(find.byKey(const ValueKey('channel-details-hero')))} '
-                'members=${tester.getRect(find.byKey(const ValueKey('channel-details-members-card')))}',
+                'members=${tester.getRect(find.byKey(const ValueKey('channel-details-members-card')))} '
+                'list=${tester.getRect(find.byKey(const ValueKey('channel-details-page-list')))} '
+                'safeTop=${MediaQuery.paddingOf(tester.element(find.byKey(const ValueKey('channel-details-page-list')))).top}',
               );
               expect(find.text('Olive Studio'), findsOneWidget);
               expect(find.text('Client channel'), findsOneWidget);

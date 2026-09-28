@@ -335,62 +335,68 @@ void main() {
     for (final size in sizes.entries) {
       for (final brightness in [Brightness.light, Brightness.dark]) {
         for (final state in captureStates) {
-          testWidgets(
-            'captures approval $state ${brightness.name} ${size.key}',
-            (tester) async {
-              final previousComparator = goldenFileComparator;
-              final mode = brightness == Brightness.light ? 'light' : 'dark';
-              final output = Directory(
-                '/tmp/m3a-visual-sheets/approval/${size.key}/$mode',
-              )..createSync(recursive: true);
-              goldenFileComparator = _CaptureFileComparator(
-                Uri.file('${output.path}/capture_test.dart'),
-                output.path,
+          testWidgets('captures approval $state ${brightness.name} ${size.key}', (
+            tester,
+          ) async {
+            final previousComparator = goldenFileComparator;
+            final mode = brightness == Brightness.light ? 'light' : 'dark';
+            final output = Directory(
+              '/tmp/m3a-visual-sheets/approval/${size.key}/$mode',
+            )..createSync(recursive: true);
+            goldenFileComparator = _CaptureFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+              output.path,
+            );
+            tester.view.devicePixelRatio = 1;
+            tester.view.physicalSize = size.value;
+            tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+            tester.view.viewPadding = const FakeViewPadding(
+              top: 46,
+              bottom: 20,
+            );
+            addTearDown(() {
+              tester.view.resetPhysicalSize();
+              tester.view.resetDevicePixelRatio();
+              tester.view.padding = FakeViewPadding.zero;
+              tester.view.viewPadding = FakeViewPadding.zero;
+              goldenFileComparator = previousComparator;
+            });
+            final captureKey = GlobalKey();
+            final fixture = _BusinessRecords();
+            await _pumpApprovalPage(
+              tester,
+              fixture,
+              _FakeDeliverableGateway(fixture.events),
+              brightness: brightness,
+              captureStatusBar: true,
+              captureKey: captureKey,
+            );
+            if (state == 'details') {
+              await tester.tap(
+                find.byKey(const ValueKey('deliverable-review-details-action')),
               );
-              tester.view.devicePixelRatio = 1;
-              tester.view.physicalSize = size.value;
-              tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
-              tester.view.viewPadding = const FakeViewPadding(
-                top: 46,
-                bottom: 20,
+            } else if (state == 'feedback') {
+              await tester.tap(
+                find.byKey(const ValueKey('deliverable-give-feedback')),
               );
-              addTearDown(() {
-                tester.view.resetPhysicalSize();
-                tester.view.resetDevicePixelRatio();
-                tester.view.padding = FakeViewPadding.zero;
-                tester.view.viewPadding = FakeViewPadding.zero;
-                goldenFileComparator = previousComparator;
-              });
-              final captureKey = GlobalKey();
-              final fixture = _BusinessRecords();
-              await _pumpApprovalPage(
-                tester,
-                fixture,
-                _FakeDeliverableGateway(fixture.events),
-                brightness: brightness,
-                captureStatusBar: true,
-                captureKey: captureKey,
+            }
+            await tester.pumpAndSettle();
+            if (state == 'approval') {
+              debugPrint(
+                'VISUAL_LAYOUT approval ${size.key} $mode '
+                'header=${tester.getRect(find.text('Content review').first)} '
+                'title=${tester.getRect(find.text('A slower kind of morning.').first)} '
+                'status=${tester.getRect(find.text('Your review is needed'))} '
+                'approve=${tester.getRect(find.byKey(const ValueKey('deliverable-approve-version')))}',
               );
-              if (state == 'details') {
-                await tester.tap(
-                  find.byKey(
-                    const ValueKey('deliverable-review-details-action'),
-                  ),
-                );
-              } else if (state == 'feedback') {
-                await tester.tap(
-                  find.byKey(const ValueKey('deliverable-give-feedback')),
-                );
-              }
-              await tester.pumpAndSettle();
-              final fileName = '$state.png';
-              await expectLater(
-                find.byKey(captureKey),
-                matchesGoldenFile(fileName),
-              );
-              debugPrint('VISUAL_PROOF ${output.path}/$fileName');
-            },
-          );
+            }
+            final fileName = '$state.png';
+            await expectLater(
+              find.byKey(captureKey),
+              matchesGoldenFile(fileName),
+            );
+            debugPrint('VISUAL_PROOF ${output.path}/$fileName');
+          });
         }
       }
     }
