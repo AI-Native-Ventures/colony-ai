@@ -200,7 +200,8 @@ NEEDS_API: This relay has no encrypted server secret store. It also has no
 agent/tool use path that reads the current binding head and supplies a
 device-stored value to the selected local worker. Until that consumer exists,
 the binding is an access record and the saved device value is not exposed to an
-agent or tool.
+agent or tool. Revocation therefore changes the shared status record only and
+cannot yet enforce a deny on the next runtime use.
 
 ## Goals
 
