@@ -21,6 +21,47 @@ import '../../shared/widgets/modal_presentation.dart';
 import 'goal_sheets.dart';
 import 'goal_widgets.dart';
 
+const _goalLifecycleTopInset = 13.0;
+const _goalLifecycleBannerKickerStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 10,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+  letterSpacing: 0.7,
+);
+const _goalLifecycleBannerTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 28.8,
+  fontWeight: FontWeight.w600,
+  height: 1.1,
+  letterSpacing: -1.584,
+);
+const _goalLifecycleNoticeTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+);
+const _goalLifecycleNoticeMessageStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 12,
+  fontWeight: FontWeight.w400,
+  height: 1.75,
+);
+const _goalDeletedTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 23.2,
+  fontWeight: FontWeight.w600,
+  height: 1.25,
+  letterSpacing: -1.044,
+);
+const _goalDeletedMessageStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 13,
+  fontWeight: FontWeight.w400,
+  height: 1.8,
+);
+
 class GoalDetailPage extends HookConsumerWidget {
   const GoalDetailPage({
     required this.goalId,
@@ -85,7 +126,9 @@ class GoalDetailPage extends HookConsumerWidget {
       child: Column(
         children: [
           GoalPageHeader(
-            title: record?.head.title ?? 'Company goal',
+            title: record?.head.status == GoalStatus.deleted
+                ? 'Draft goal removed'
+                : record?.head.title ?? 'Company goal',
             subtitle: community?.name,
             onBack: () => unawaited(Navigator.of(context).maybePop()),
             backLabel: 'Back',
@@ -159,7 +202,6 @@ class GoalDetailPage extends HookConsumerWidget {
                 }
                 if (value.head.status == GoalStatus.deleted) {
                   return _DeletedGoalState(
-                    title: value.head.title,
                     onBackToGoals: () => _backToGoals(context),
                   );
                 }
@@ -583,45 +625,44 @@ class _ArchivedGoalState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
     return ListView(
       key: const ValueKey('goal-archived-state'),
       padding: const EdgeInsets.fromLTRB(
         Grid.gutter,
-        Grid.xs,
+        _goalLifecycleTopInset,
         Grid.gutter,
         Grid.xl,
       ),
       children: [
         DecoratedBox(
           decoration: BoxDecoration(
-            gradient: context.appColors.companyWashGradient,
-            borderRadius: BorderRadius.circular(Radii.companyCard),
+            gradient: _goalLifecycleBannerGradient(context),
+            borderRadius: BorderRadius.circular(23),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(Grid.gutter),
+            padding: const EdgeInsets.fromLTRB(23, 29, 23, 23),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'STATUS UPDATED',
-                  style: context.mobileTypography.metadata.copyWith(
-                    color: tokens.action,
-                    fontWeight: FontWeight.w700,
+                  style: _goalLifecycleBannerKickerStyle.copyWith(
+                    color: _goalLifecycleBannerForeground(context),
                   ),
                 ),
-                const SizedBox(height: Grid.xxs),
+                const SizedBox(height: 10),
                 Text(
                   record.head.title,
-                  style: context.mobileTypography.goalDetailTitle.copyWith(
-                    color: tokens.ink,
+                  style: _goalLifecycleBannerTitleStyle.copyWith(
+                    color: _goalLifecycleBannerForeground(context),
                   ),
                 ),
+                const SizedBox(height: 10),
               ],
             ),
           ),
         ),
-        const SizedBox(height: Grid.gutter),
+        const SizedBox(height: 24),
         _GoalLifecycleNotice(
           title: 'Archived',
           message: 'The active list now reflects this change.',
@@ -635,11 +676,11 @@ class _ArchivedGoalState extends StatelessWidget {
           ),
         ],
         if (canRestore) ...[
-          const SizedBox(height: Grid.gutter),
+          const SizedBox(height: 30),
           FilledButton(
             key: const ValueKey('goal-restore'),
             onPressed: isSubmitting ? null : onRestore,
-            style: _goalPrimaryButtonStyle(context),
+            style: _goalLifecyclePrimaryButtonStyle(context),
             child: isSubmitting
                 ? const SizedBox.square(
                     dimension: Grid.sm,
@@ -648,11 +689,11 @@ class _ArchivedGoalState extends StatelessWidget {
                 : const Text('Restore'),
           ),
         ],
-        const SizedBox(height: Grid.sm),
+        const SizedBox(height: Grid.xxs),
         FilledButton(
           key: const ValueKey('goal-back-to-goals'),
           onPressed: onBackToGoals,
-          style: _goalSecondaryButtonStyle(context),
+          style: _goalLifecycleSecondaryButtonStyle(context),
           child: const Text('Back to goals'),
         ),
       ],
@@ -661,9 +702,8 @@ class _ArchivedGoalState extends StatelessWidget {
 }
 
 class _DeletedGoalState extends StatelessWidget {
-  const _DeletedGoalState({required this.title, required this.onBackToGoals});
+  const _DeletedGoalState({required this.onBackToGoals});
 
-  final String title;
   final VoidCallback onBackToGoals;
 
   @override
@@ -673,56 +713,59 @@ class _DeletedGoalState extends StatelessWidget {
       key: const ValueKey('goal-deleted-state'),
       padding: const EdgeInsets.fromLTRB(
         Grid.gutter,
-        Grid.xs,
+        _goalLifecycleTopInset,
         Grid.gutter,
-        Grid.xl,
+        Grid.xs,
       ),
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: context.appColors.companyWashGradient,
-                borderRadius: BorderRadius.circular(Radii.companyCard),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(Grid.gutter),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'STATUS UPDATED',
-                      style: context.mobileTypography.metadata.copyWith(
-                        color: tokens.action,
-                        fontWeight: FontWeight.w700,
-                      ),
+        const SizedBox(height: 28),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  key: const ValueKey('goal-deleted-icon'),
+                  width: 66,
+                  height: 66,
+                  decoration: BoxDecoration(
+                    color: tokens.soft,
+                    borderRadius: BorderRadius.circular(21),
+                  ),
+                  child: ExcludeSemantics(
+                    child: Icon(
+                      LucideIcons.briefcaseBusiness,
+                      size: 18,
+                      color: tokens.action,
                     ),
-                    const SizedBox(height: Grid.xxs),
-                    Text(
-                      title,
-                      style: context.mobileTypography.goalDetailTitle.copyWith(
-                        color: tokens.ink,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: Grid.gutter),
-            const _GoalLifecycleNotice(
-              title: 'Deleted',
-              message: 'The active list now reflects this change.',
-            ),
-            const SizedBox(height: Grid.sm),
-            FilledButton(
-              key: const ValueKey('goal-back-to-goals'),
-              onPressed: onBackToGoals,
-              style: _goalSecondaryButtonStyle(context),
-              child: const Text('Back to goals'),
-            ),
-          ],
+              const SizedBox(height: 22),
+              Text(
+                'Draft goal deleted',
+                key: const ValueKey('goal-deleted-heading'),
+                textAlign: TextAlign.center,
+                style: _goalDeletedTitleStyle.copyWith(color: tokens.ink),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'The unlinked draft research goal was removed. Existing company goals and discussions remain.',
+                textAlign: TextAlign.center,
+                style: _goalDeletedMessageStyle.copyWith(color: tokens.muted),
+              ),
+              const SizedBox(height: 26),
+              FilledButton(
+                key: const ValueKey('goal-back-to-goals'),
+                onPressed: onBackToGoals,
+                style: _goalLifecyclePrimaryButtonStyle(context),
+                child: const Text('Back to goals'),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 28),
       ],
     );
   }
@@ -742,18 +785,18 @@ class _GoalLifecycleNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
-    final accentColor = isError ? tokens.error : tokens.action;
+    final accentColor = isError ? tokens.error : const Color(0xFFA781B3);
     return Container(
       decoration: BoxDecoration(
         color: tokens.paper,
         border: Border.all(color: tokens.line),
-        borderRadius: BorderRadius.circular(Radii.companyPinned),
+        borderRadius: BorderRadius.circular(13),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(Grid.sm),
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
             child: Semantics(
               liveRegion: isError,
               child: Column(
@@ -761,18 +804,18 @@ class _GoalLifecycleNotice extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: context.mobileTypography.goalBody.copyWith(
+                    style: _goalLifecycleNoticeTitleStyle.copyWith(
                       color: tokens.ink,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: Grid.half),
+                  const SizedBox(height: 5),
                   Text(
                     message,
-                    style: context.mobileTypography.goalBody.copyWith(
+                    style: _goalLifecycleNoticeMessageStyle.copyWith(
                       color: tokens.muted,
                     ),
                   ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
@@ -803,6 +846,54 @@ void _backToGoals(BuildContext context) {
       context,
       MobileBusinessRoutes.goals,
       const NoMobileRouteArguments(),
+    ),
+  );
+}
+
+LinearGradient _goalLifecycleBannerGradient(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: isDark
+        ? const [Color(0xFF513561), Color(0xFF5E3F41)]
+        : const [Color(0xFFE6D2EE), Color(0xFFF5DFCE)],
+  );
+}
+
+Color _goalLifecycleBannerForeground(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFFF3E2FC)
+    : const Color(0xFF513360);
+
+ButtonStyle _goalLifecyclePrimaryButtonStyle(BuildContext context) {
+  final tokens = context.mobileTokens;
+  final foreground = tokens.canvas;
+  return FilledButton.styleFrom(
+    backgroundColor: context.appColors.plum,
+    foregroundColor: foreground,
+    textStyle: context.mobileTypography.companyEntryTitle.copyWith(
+      color: foreground,
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+    minimumSize: const Size.fromHeight(MobileLayoutTokens.minimumTapTarget),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  );
+}
+
+ButtonStyle _goalLifecycleSecondaryButtonStyle(BuildContext context) {
+  final tokens = context.mobileTokens;
+  return FilledButton.styleFrom(
+    backgroundColor: tokens.soft,
+    foregroundColor: tokens.action,
+    textStyle: context.mobileTypography.companyEntryTitle.copyWith(
+      color: tokens.action,
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+    minimumSize: const Size.fromHeight(MobileLayoutTokens.minimumTapTarget),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: tokens.line),
     ),
   );
 }

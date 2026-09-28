@@ -177,11 +177,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Improve client handoff'), findsNWidgets(2));
+    expect(find.text('Draft goal removed'), findsOneWidget);
     expect(find.byKey(const ValueKey('goal-deleted-state')), findsOneWidget);
-    expect(find.text('Deleted'), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-deleted-icon')), findsOneWidget);
+    expect(find.text('Draft goal deleted'), findsOneWidget);
     expect(
-      find.text('The active list now reflects this change.'),
+      find.text(
+        'The unlinked draft research goal was removed. Existing company goals and discussions remain.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Back to goals'), findsOneWidget);
@@ -905,6 +908,18 @@ void main() {
   testWidgets('captures archived and deleted goals at both sizes and themes', (
     tester,
   ) async {
+    final fontLoader = FontLoader('Manrope')
+      ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+    await fontLoader.load();
+    final materialIconFontLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await materialIconFontLoader.load();
+    final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+      ..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      );
+    await iconFontLoader.load();
+
     final archived = _headRecord(
       goalId: _archivedGoalId,
       title: 'October client plans',
@@ -930,8 +945,8 @@ void main() {
     for (final size in captureSizes.entries) {
       tester.view.physicalSize = size.value;
       tester.view.devicePixelRatio = 1;
-      tester.view.padding = const FakeViewPadding(top: 24, bottom: 20);
-      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 20);
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 28);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 28);
       for (final brightness in [Brightness.light, Brightness.dark]) {
         final mode = brightness == Brightness.light ? 'light' : 'dark';
         final output = Directory(
