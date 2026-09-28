@@ -181,6 +181,7 @@ mod tests {
     use buzz_core::company_records::{
         ToolPermissionScope, ToolPermissionScopeKind, ToolPermissionVerb,
     };
+    use clap::Parser;
     use nostr::{EventBuilder, Kind, Tag};
     use uuid::Uuid;
 
