@@ -119,7 +119,9 @@ function AskNeedsMeRow({
           {asker} → {recipient} · #{channelName} · {deadlineLabel(ask.decideBy)}
         </small>
       </span>
-      <span className="colony-needs-me-type">{ask.type}</span>
+      <span className="colony-needs-me-type">
+        {ask.type === "tool_consent" ? "Tool consent" : ask.type}
+      </span>
       {overdue ? (
         <span className="colony-needs-me-overdue">Overdue</span>
       ) : null}
@@ -336,7 +338,11 @@ export function TodayScreen({
 
   const openAsk = React.useCallback(
     (record: AskHeadRecord) => {
-      void goAskDetail(record.channelId, record.head.askId);
+      void goAskDetail(
+        record.channelId,
+        record.head.askId,
+        record.head.ask.type === "tool_consent",
+      );
     },
     [goAskDetail],
   );

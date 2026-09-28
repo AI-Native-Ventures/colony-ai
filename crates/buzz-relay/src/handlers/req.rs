@@ -127,6 +127,35 @@ pub async fn handle_req(
         accessible_channels.retain(|channel_id| allowed.contains(channel_id));
     }
 
+    let relay_pubkey = state.relay_keypair.public_key();
+    let requested_tool_consent_inbox = filters
+        .iter()
+        .any(|filter| is_tool_consent_inbox_filter(filter, &relay_pubkey));
+    let company_role = if requested_tool_consent_inbox && token_channel_ids.is_none() {
+        match state
+            .db
+            .get_relay_member(conn.tenant.community(), &hex::encode(&pubkey_bytes))
+            .await
+        {
+            Ok(member) => member.map(|member| member.role),
+            Err(error) => {
+                warn!(conn_id = %conn_id, "Company inbox role lookup failed: {error}");
+                conn.send(RelayMessage::closed(&sub_id, "error: database error"));
+                return;
+            }
+        }
+    } else {
+        None
+    };
+    let tool_consent_inbox_filters: HashSet<usize> = filters
+        .iter()
+        .enumerate()
+        .filter_map(|(index, filter)| {
+            can_read_tool_consent_inbox(filter, &relay_pubkey, company_role.as_deref())
+                .then_some(index)
+        })
+        .collect();
+
     // Build the conformance `AbstractState` once at request entry. The
     // `Option` only goes `None` on malformed pubkey bytes (already a
     // separate failure path elsewhere); on the hot read path this is
@@ -356,11 +385,12 @@ pub async fn handle_req(
             let mut params =
                 filter_to_query_params(filter, per_filter_channel, conn.tenant.community());
             params.before_id = before_ids.get(idx).cloned().flatten();
-            apply_channel_scope_to_query(
+            apply_reader_channel_scope(
                 &mut params,
                 filter,
                 per_filter_channel,
                 &accessible_channels,
+                tool_consent_inbox_filters.contains(&idx),
             );
             // Shared-gated visibility pushdown: set reader bytes so query_events
             // appends the SQL visibility clause before ORDER/LIMIT, preventing
@@ -450,10 +480,16 @@ pub async fn handle_req(
                 continue;
             }
 
+            let is_company_tool_consent_inbox = tool_consent_inbox_filters.contains(&idx);
             if let Some(ch_id) = stored.channel_id {
-                if !accessible_channels.contains(&ch_id) {
+                if !is_company_tool_consent_inbox && !accessible_channels.contains(&ch_id) {
                     continue;
                 }
+            }
+            if is_company_tool_consent_inbox
+                && !is_tool_consent_head_event(&stored.event, &relay_pubkey)
+            {
+                continue;
             }
 
             // Result-level read auth: a viewer-private snapshot (kind:30622) is
@@ -1105,6 +1141,131 @@ pub(crate) fn apply_channel_scope_to_query(
     }
 }
 
+/// Apply the ordinary reader channel boundary or the narrow owner/admin
+/// tool-consent inbox boundary before the query limit is evaluated.
+pub(crate) fn apply_reader_channel_scope(
+    query: &mut EventQuery,
+    filter: &Filter,
+    channel_id: Option<uuid::Uuid>,
+    accessible_channels: &[uuid::Uuid],
+    tool_consent_inbox: bool,
+) {
+    if tool_consent_inbox {
+        query.channel_id = None;
+        query.channel_ids = None;
+        query.channel_ids_include_global = false;
+        query.custom_tag = Some(("t".to_owned(), "tool_consent".to_owned()));
+        query.limit = Some(
+            query
+                .limit
+                .unwrap_or(100)
+                .clamp(0, buzz_db::DEFAULT_MAX_PAGE_LIMIT),
+        );
+    } else {
+        apply_channel_scope_to_query(query, filter, channel_id, accessible_channels);
+    }
+}
+
+/// Recognize the dedicated global inbox filter for relay-signed tool-consent
+/// asks. Every ordinary ask query remains under the caller's channel scope.
+pub(crate) fn is_tool_consent_inbox_filter(
+    filter: &Filter,
+    relay_pubkey: &nostr::PublicKey,
+) -> bool {
+    let expected_kind = nostr::Kind::Custom(buzz_core::kind::KIND_ASK_HEAD as u16);
+    let t_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::T);
+    let d_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::D);
+    let detail_coordinate_matches = match filter.generic_tags.get(&d_tag) {
+        None => true,
+        Some(coordinates) if coordinates.len() == 1 => coordinates
+            .iter()
+            .next()
+            .and_then(|coordinate| coordinate.strip_prefix("channel:"))
+            .and_then(|coordinate| coordinate.split_once(":ask:"))
+            .is_some_and(|(channel, ask_id)| {
+                uuid::Uuid::parse_str(channel).is_ok() && uuid::Uuid::parse_str(ask_id).is_ok()
+            }),
+        _ => false,
+    };
+    filter
+        .kinds
+        .as_ref()
+        .is_some_and(|kinds| kinds.len() == 1 && kinds.contains(&expected_kind))
+        && filter
+            .authors
+            .as_ref()
+            .is_some_and(|authors| authors.len() == 1 && authors.contains(relay_pubkey))
+        && filter.generic_tags.len() >= 1
+        && filter.generic_tags.len() <= 2
+        && filter
+            .generic_tags
+            .keys()
+            .all(|tag| tag == &t_tag || tag == &d_tag)
+        && filter
+            .generic_tags
+            .get(&t_tag)
+            .is_some_and(|values| values.len() == 1 && values.contains("tool_consent"))
+        && detail_coordinate_matches
+        && filter.search.is_none()
+        && filter.ids.is_none()
+}
+
+/// Global tool-consent ask reads are reserved for community owners and admins.
+pub(crate) fn can_read_tool_consent_inbox(
+    filter: &Filter,
+    relay_pubkey: &nostr::PublicKey,
+    community_role: Option<&str>,
+) -> bool {
+    is_tool_consent_inbox_filter(filter, relay_pubkey)
+        && matches!(community_role, Some("owner" | "admin"))
+}
+
+/// Verify the subtype after the indexed `t=tool_consent` query constraint.
+pub(crate) fn is_tool_consent_head_event(
+    event: &nostr::Event,
+    relay_pubkey: &nostr::PublicKey,
+) -> bool {
+    if event.pubkey != *relay_pubkey
+        || event.tags.len() != 4
+        || !event
+            .tags
+            .iter()
+            .any(|tag| tag.kind().to_string() == "t" && tag.content() == Some("tool_consent"))
+    {
+        return false;
+    }
+    let Ok(head) = serde_json::from_str::<buzz_core::company_records::AskHead>(&event.content)
+    else {
+        return false;
+    };
+    let channel_tags: Vec<_> = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "h")
+        .collect();
+    let d_tags: Vec<_> = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "d")
+        .collect();
+    let root_tags: Vec<_> = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "e")
+        .collect();
+    let Some(channel) = channel_tags.first().and_then(|tag| tag.content()) else {
+        return false;
+    };
+    head.ask.ask_type == buzz_core::company_records::AskType::ToolConsent
+        && head.ask.category == buzz_core::company_records::AskCategory::Tool
+        && channel_tags.len() == 1
+        && d_tags.len() == 1
+        && root_tags.len() == 1
+        && uuid::Uuid::parse_str(channel).is_ok()
+        && d_tags[0].content() == Some(format!("channel:{channel}:ask:{}", head.ask_id).as_str())
+        && root_tags[0].content() == Some(head.ask.thread_root_event_id.as_str())
+}
+
 /// Extract the complete channel set when every filter is explicitly #h-scoped.
 /// `None` means at least one filter is community-global.
 ///
@@ -1613,6 +1774,63 @@ mod tests {
 
         assert!(query.channel_ids.is_none());
         assert_eq!(query.channel_id, Some(channel));
+    }
+
+    #[test]
+    fn authorized_tool_consent_inbox_clears_channel_fence_and_pushes_tag_before_limit() {
+        let relay_pubkey = nostr::Keys::generate().public_key();
+        let filter = Filter::new()
+            .kind(nostr::Kind::Custom(KIND_ASK_HEAD as u16))
+            .author(relay_pubkey)
+            .custom_tag(SingleLetterTag::lowercase(Alphabet::T), "tool_consent");
+        assert!(can_read_tool_consent_inbox(
+            &filter,
+            &relay_pubkey,
+            Some("admin")
+        ));
+
+        let channel = uuid::Uuid::new_v4();
+        let mut query = EventQuery::for_community(buzz_core::tenant::CommunityId::from_uuid(
+            uuid::Uuid::new_v4(),
+        ));
+        query.channel_id = Some(channel);
+        query.limit = Some(usize::MAX);
+        apply_reader_channel_scope(&mut query, &filter, Some(channel), &[], true);
+
+        assert_eq!(query.channel_id, None);
+        assert_eq!(query.channel_ids, None);
+        assert!(!query.channel_ids_include_global);
+        assert_eq!(
+            query.custom_tag,
+            Some(("t".to_owned(), "tool_consent".to_owned()))
+        );
+        assert_eq!(query.limit, Some(buzz_db::DEFAULT_MAX_PAGE_LIMIT));
+    }
+
+    #[test]
+    fn unauthorized_or_ordinary_ask_filter_keeps_reader_channel_fence() {
+        let relay_pubkey = nostr::Keys::generate().public_key();
+        let consent_filter = Filter::new()
+            .kind(nostr::Kind::Custom(KIND_ASK_HEAD as u16))
+            .author(relay_pubkey)
+            .custom_tag(SingleLetterTag::lowercase(Alphabet::T), "tool_consent");
+        assert!(!can_read_tool_consent_inbox(
+            &consent_filter,
+            &relay_pubkey,
+            Some("member")
+        ));
+
+        let ordinary_filter = Filter::new().kind(nostr::Kind::Custom(KIND_ASK_HEAD as u16));
+        let channel = uuid::Uuid::new_v4();
+        let accessible = [channel, uuid::Uuid::new_v4()];
+        let mut query = EventQuery::for_community(buzz_core::tenant::CommunityId::from_uuid(
+            uuid::Uuid::new_v4(),
+        ));
+        apply_reader_channel_scope(&mut query, &ordinary_filter, None, &accessible, false);
+
+        assert_eq!(query.channel_ids.as_deref(), Some(accessible.as_slice()));
+        assert!(query.channel_ids_include_global);
+        assert_eq!(query.custom_tag, None);
     }
 
     /// S2 invariant: the bounded-concurrency pipeline (phase 2) must yield

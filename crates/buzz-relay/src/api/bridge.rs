@@ -1156,6 +1156,27 @@ async fn query_events_authed(
         &mut accessible_channels,
     )
     .await?;
+    let relay_pubkey = state.relay_keypair.public_key();
+    let requested_tool_consent_inbox = filters
+        .iter()
+        .any(|filter| crate::handlers::req::is_tool_consent_inbox_filter(filter, &relay_pubkey));
+    let company_role = if requested_tool_consent_inbox {
+        state
+            .db
+            .get_relay_member(tenant.community(), &authed_pubkey_hex)
+            .await
+            .map_err(|error| internal_error(&format!("company inbox role lookup: {error}")))?
+            .map(|member| member.role)
+    } else {
+        None
+    };
+    let tool_consent_inbox_authorized = filters.iter().any(|filter| {
+        crate::handlers::req::can_read_tool_consent_inbox(
+            filter,
+            &relay_pubkey,
+            company_role.as_deref(),
+        )
+    });
 
     if filters.iter().any(|f| f.search.is_some()) {
         if has_mixed_search_filters(&filters) {
@@ -1413,6 +1434,8 @@ async fn query_events_authed(
             }
         }
 
+        let is_company_tool_consent_inbox = tool_consent_inbox_authorized
+            && crate::handlers::req::is_tool_consent_inbox_filter(filter, &relay_pubkey);
         let mut query = crate::handlers::req::build_event_query_from_filter(
             filter,
             &pubkey_bytes,
@@ -1420,14 +1443,17 @@ async fn query_events_authed(
             tenant.community(),
         )
         .await;
-        crate::handlers::req::apply_channel_scope_to_query(
+        crate::handlers::req::apply_reader_channel_scope(
             &mut query,
             filter,
             extract_channel_from_filter(filter),
             &accessible_channels,
+            is_company_tool_consent_inbox,
         );
-        if let Some(channel) = extract_buzz_channel(raw) {
-            query.custom_tag = Some(("buzz-channel".into(), channel.into()));
+        if !is_company_tool_consent_inbox {
+            if let Some(channel) = extract_buzz_channel(raw) {
+                query.custom_tag = Some(("buzz-channel".into(), channel.into()));
+            }
         }
         // Shared-gated visibility pushdown: must mirror WS REQ so that a page of
         // newer private events does not starve older shared ones off the page.
@@ -1486,7 +1512,22 @@ async fn query_events_authed(
         match filter_events {
             Ok(stored_events) => {
                 for se in stored_events {
-                    if !event_in_accessible_channel(&se, &accessible_channels) {
+                    let is_company_tool_consent_inbox = tool_consent_inbox_authorized
+                        && crate::handlers::req::is_tool_consent_inbox_filter(
+                            filter,
+                            &relay_pubkey,
+                        );
+                    if !is_company_tool_consent_inbox
+                        && !event_in_accessible_channel(&se, &accessible_channels)
+                    {
+                        continue;
+                    }
+                    if is_company_tool_consent_inbox
+                        && !crate::handlers::req::is_tool_consent_head_event(
+                            &se.event,
+                            &relay_pubkey,
+                        )
+                    {
                         continue;
                     }
                     if !buzz_core::filter::filters_match(std::slice::from_ref(filter), &se) {
@@ -2565,6 +2606,54 @@ mod postgres_tests {
         ];
 
         assert!(has_mixed_search_filters(&filters));
+    }
+
+    #[test]
+    fn tool_consent_inbox_requires_a_relay_only_filter_and_company_authority() {
+        let relay = nostr::Keys::generate().public_key();
+        let t_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::T);
+        let filter = nostr::Filter::new()
+            .kind(nostr::Kind::Custom(buzz_core::kind::KIND_ASK_HEAD as u16))
+            .author(relay)
+            .custom_tags(t_tag, ["tool_consent"]);
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("owner")
+        ));
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("admin")
+        ));
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("member")
+        ));
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &filter, &relay, None
+        ));
+
+        let detail_filter = filter.custom_tags(
+            nostr::SingleLetterTag::lowercase(nostr::Alphabet::D),
+            ["channel:9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50:ask:7245ba1a-e078-42ef-b896-00be34a94f11"],
+        );
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &detail_filter,
+            &relay,
+            Some("owner")
+        ));
+
+        let mismatched_detail_filter = filter.custom_tags(
+            nostr::SingleLetterTag::lowercase(nostr::Alphabet::H),
+            [uuid::Uuid::new_v4().to_string()],
+        );
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &mismatched_detail_filter,
+            &relay,
+            Some("owner")
+        ));
     }
 
     #[test]

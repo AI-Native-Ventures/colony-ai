@@ -123,7 +123,7 @@ mod tests {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
                 permission_id,
                 agent_pubkey: "ab".repeat(32),
-                action: ToolPermissionVerb::MessageOutsider,
+                action: ToolPermissionVerb::MessageOutsider.permission_key().into(),
                 scope: ToolPermissionScope {
                     kind: ToolPermissionScopeKind::Thread,
                     id: "cd".repeat(32),

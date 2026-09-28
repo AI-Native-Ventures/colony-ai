@@ -7,6 +7,13 @@ export const routes = rootRoute("root.tsx", [
   route("/power", "power.tsx"),
   route("/today", "today.tsx"),
   route("/asks/$channelId/$askId", "asks.$channelId.$askId.tsx"),
+  route("/permission/new", "permission.new.tsx"),
+  route("/permission/$permissionId", "permission.$permissionId.tsx"),
+  route("/permission/$permissionId/edit", "permission.$permissionId.edit.tsx"),
+  route(
+    "/permission/$permissionId/revoke",
+    "permission.$permissionId.revoke.tsx",
+  ),
   route("/today/updates", "today.updates.tsx"),
   route("/today/reviews-empty", "today.reviews-empty.tsx"),
   route("/navigation/history", "navigation.history.tsx"),

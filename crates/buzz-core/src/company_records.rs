@@ -29,6 +29,8 @@ pub const MAX_EVIDENCE_CHARS: usize = 2000;
 pub const MAX_ASK_BODY_CHARS: usize = 4000;
 /// Longest exact tool action preview shown in a tool consent ask, in characters.
 pub const MAX_TOOL_CONSENT_PREVIEW_CHARS: usize = 4000;
+/// Longest exact action label on a standing permission, in characters.
+pub const MAX_TOOL_PERMISSION_ACTION_CHARS: usize = 180;
 /// Longest ask answer, in characters.
 pub const MAX_ANSWER_CHARS: usize = 4000;
 /// Longest reason attached to a decision, status change or cancellation.
@@ -241,6 +243,18 @@ pub enum ToolPermissionVerb {
     PublishPublicly,
 }
 
+impl ToolPermissionVerb {
+    /// Stable permission action key corresponding to this sensitive action.
+    pub const fn permission_key(self) -> &'static str {
+        match self {
+            Self::SpendMoney => "spend_money",
+            Self::MessageOutsider => "message_outsider",
+            Self::DeleteData => "delete_data",
+            Self::PublishPublicly => "publish_publicly",
+        }
+    }
+}
+
 /// Kind of resource a standing tool permission is scoped to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -273,8 +287,8 @@ pub struct ToolPermissionRecord {
     pub permission_id: Uuid,
     /// Managed agent receiving the permission.
     pub agent_pubkey: String,
-    /// Exact always-ask action this record covers.
-    pub action: ToolPermissionVerb,
+    /// Exact action label or stable sensitive-action key this record covers.
+    pub action: String,
     /// Exact thread, channel or customer covered by this record.
     pub scope: ToolPermissionScope,
     /// RFC 3339 UTC expiry time.
@@ -974,6 +988,23 @@ pub fn validate_tool_permission_record(
             "agentPubkey must be a lowercase public key",
         ));
     }
+    require_text(
+        &permission.action,
+        MAX_TOOL_PERMISSION_ACTION_CHARS,
+        "action is required, 180 characters at most",
+    )?;
+    if ![
+        ToolPermissionVerb::SpendMoney.permission_key(),
+        ToolPermissionVerb::MessageOutsider.permission_key(),
+        ToolPermissionVerb::DeleteData.permission_key(),
+        ToolPermissionVerb::PublishPublicly.permission_key(),
+    ]
+    .contains(&permission.action.as_str())
+    {
+        return Err(CompanyRecordError::Invalid(
+            "action must be one of the always-ask action values",
+        ));
+    }
     let valid_scope = match permission.scope.kind {
         ToolPermissionScopeKind::Thread => is_hex_id(&permission.scope.id),
         ToolPermissionScopeKind::Channel | ToolPermissionScopeKind::Customer => {
@@ -1055,7 +1086,7 @@ pub fn tool_permission_matches(
 ) -> bool {
     head.status == ToolPermissionStatus::Active
         && head.permission.agent_pubkey == agent_pubkey
-        && head.permission.action == action
+        && head.permission.action == action.permission_key()
         && head.permission.scope == *scope
         && parse_utc_timestamp(&head.permission.expires_at)
             .is_some_and(|expires_at| expires_at > now)
@@ -1419,7 +1450,11 @@ pub fn ask_resolution_denied_reason(
     ask: &AskRecord,
     resolver: AskResolver<'_>,
 ) -> Option<&'static str> {
-    if !resolver.is_channel_member && resolver.community_role.is_none() {
+    let authority_resolver = matches!(
+        resolver.community_role,
+        Some(CommunityRole::Owner | CommunityRole::Admin)
+    );
+    if !resolver.is_channel_member && !(ask.category.requires_authority() && authority_resolver) {
         return Some("Only members of this conversation can answer");
     }
     if ask.category.requires_authority() {
@@ -1530,7 +1565,7 @@ mod tests {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
             permission_id: Uuid::from_u128(21),
             agent_pubkey: PK_A.into(),
-            action: ToolPermissionVerb::MessageOutsider,
+            action: ToolPermissionVerb::MessageOutsider.permission_key().into(),
             scope: ToolPermissionScope {
                 kind: ToolPermissionScopeKind::Thread,
                 id: EV.into(),
@@ -1748,6 +1783,10 @@ mod tests {
         let mut invalid_scope = permission.clone();
         invalid_scope.scope.kind = ToolPermissionScopeKind::Customer;
         assert!(validate_tool_permission_record(&invalid_scope, now).is_err());
+
+        let mut unknown_action = permission.clone();
+        unknown_action.action = "read_client_reports".into();
+        assert!(validate_tool_permission_record(&unknown_action, now).is_err());
 
         let grant = ToolPermissionAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,

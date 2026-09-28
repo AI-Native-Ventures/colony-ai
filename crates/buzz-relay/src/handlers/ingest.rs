@@ -664,6 +664,9 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             // Company goals are community-wide; the broker stores them without `h`.
             | KIND_GOAL_HEAD
             | KIND_GOAL_ACTION
+            // Standing tool permissions are community-wide relay heads/actions.
+            | buzz_core::kind::KIND_TOOL_PERMISSION_HEAD
+            | buzz_core::kind::KIND_TOOL_PERMISSION_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT

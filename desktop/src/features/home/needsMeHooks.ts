@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useAskHeadsQuery } from "@/features/company-asks/hooks";
 import type { AskHeadRecord } from "@/features/company-asks/askRecords";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { Channel } from "@/shared/api/types";
 import { useFocusedRefetchInterval } from "@/shared/lib/useDocumentVisible";
@@ -39,6 +40,7 @@ function memberChannelIds(channels: readonly Channel[] | undefined) {
 
 export function useNeedsMeQuery() {
   const identityQuery = useIdentityQuery();
+  const membershipQuery = useMyRelayMembershipQuery();
   const channelsQuery = useChannelsQuery();
   const currentPubkey = identityQuery.data?.pubkey ?? null;
   const channelIds = React.useMemo(
@@ -46,7 +48,10 @@ export function useNeedsMeQuery() {
     [channelsQuery.data],
   );
   const channelIdsKey = channelIds.join(",");
-  const askHeads = useAskHeadsQuery(channelIds);
+  const canResolveToolConsent =
+    membershipQuery.data?.role === "owner" ||
+    membershipQuery.data?.role === "admin";
+  const askHeads = useAskHeadsQuery(channelIds, canResolveToolConsent);
   const refetchInterval = useFocusedRefetchInterval(
     TODAY_NEEDS_ME_REFETCH_INTERVAL_MS,
   );
@@ -74,12 +79,13 @@ export function useNeedsMeQuery() {
       ? new Error("Your identity is unavailable.")
       : null);
   const relaySelfError =
-    channelIds.length > 0 && askHeads.relaySelfQuery.isError
+    (channelIds.length > 0 || canResolveToolConsent) &&
+    askHeads.relaySelfQuery.isError
       ? asError(
           askHeads.relaySelfQuery.error,
           "The relay identity could not be loaded.",
         )
-      : channelIds.length > 0 &&
+      : (channelIds.length > 0 || canResolveToolConsent) &&
           askHeads.relaySelfQuery.isSuccess &&
           !askHeads.relaySelfQuery.data
         ? new Error(
@@ -88,6 +94,12 @@ export function useNeedsMeQuery() {
         : null;
   const asksError =
     baseError ??
+    (membershipQuery.error
+      ? asError(
+          membershipQuery.error,
+          "Company permissions could not be loaded.",
+        )
+      : null) ??
     relaySelfError ??
     (askHeads.query.isError
       ? asError(askHeads.query.error, "Ask records could not be loaded.")
@@ -103,15 +115,24 @@ export function useNeedsMeQuery() {
 
   const asks = React.useMemo(
     () =>
-      (askHeads.query.data ?? []).filter(
-        (record) =>
-          record.head.status === "open" &&
+      (askHeads.query.data ?? []).filter((record) => {
+        if (record.head.status !== "open" || currentPubkey === null) {
+          return false;
+        }
+        if (
           record.head.ask.addresseePubkey != null &&
-          currentPubkey !== null &&
           normalizePubkey(record.head.ask.addresseePubkey) ===
-            normalizePubkey(currentPubkey),
-      ),
-    [askHeads.query.data, currentPubkey],
+            normalizePubkey(currentPubkey)
+        ) {
+          return true;
+        }
+        return (
+          record.head.ask.type === "tool_consent" &&
+          (membershipQuery.data?.role === "owner" ||
+            membershipQuery.data?.role === "admin")
+        );
+      }),
+    [askHeads.query.data, currentPubkey, membershipQuery.data?.role],
   );
   const data = React.useMemo<NeedsMeData>(
     () => ({
@@ -126,7 +147,8 @@ export function useNeedsMeQuery() {
     (currentPubkey !== null &&
       channelsQuery.data !== undefined &&
       workflowApprovalsQuery.isPending) ||
-    (channelIds.length > 0 &&
+    membershipQuery.isPending ||
+    ((channelIds.length > 0 || canResolveToolConsent) &&
       !relaySelfError &&
       (askHeads.relaySelfQuery.isPending || askHeads.query.isPending));
 
@@ -136,6 +158,7 @@ export function useNeedsMeQuery() {
       channelsQuery.refetch(),
       askHeads.relaySelfQuery.refetch(),
       askHeads.query.refetch(),
+      membershipQuery.refetch(),
       workflowApprovalsQuery.refetch(),
     ]);
   }, [
@@ -143,6 +166,7 @@ export function useNeedsMeQuery() {
     askHeads.relaySelfQuery,
     channelsQuery,
     identityQuery,
+    membershipQuery,
     workflowApprovalsQuery,
   ]);
 

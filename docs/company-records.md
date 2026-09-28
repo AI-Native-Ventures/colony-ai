@@ -121,6 +121,10 @@ community-scoped; only owners and admins can grant, edit or revoke.
   head with status `revoked` for audit.
 - The `permission` payload contains `schemaVersion`, `permissionId`,
   `agentPubkey`, `action`, `scope: { kind, id }`, and `expiresAt`.
+- `action` is an exact label or stable key, 1 to 180 characters. Sensitive
+  actions use the stable keys `spend_money`, `message_outsider`,
+  `delete_data`, and `publish_publicly`. Other exact action labels can be
+  listed and edited, but they do not widen the harness's always-ask classifier.
 - `expiresAt` is an RFC 3339 UTC timestamp later than command acceptance.
   Expiry is derived from the timestamp and does not require a scheduled write.
 - The caller must be a community owner or admin and must not use a

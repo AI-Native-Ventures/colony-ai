@@ -73,6 +73,7 @@ function outcomeLabel(outcome: AskOutcome) {
 }
 
 function typeLabel(type: AskType) {
+  if (type === "tool_consent") return "Tool consent";
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
@@ -84,7 +85,6 @@ function accessReason(input: {
   communityRole: string | null;
 }) {
   const { head, channelMember, isAgent, pubkey, communityRole } = input;
-  if (!channelMember) return "Only members of this conversation can answer";
   if (head.ask.category !== "general") {
     if (isAgent)
       return "Agents cannot decide spending, hires, tools or secrets";
@@ -93,6 +93,7 @@ function accessReason(input: {
     }
     return null;
   }
+  if (!channelMember) return "Only members of this conversation can answer";
   const addressee = head.ask.addresseePubkey;
   if (addressee) {
     if (normalizePubkey(addressee) !== normalizePubkey(pubkey)) {
@@ -116,7 +117,8 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
   const idPrefix = React.useId();
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = React.useState<AskOutcome>(
-    record.head.ask.type === "approval"
+    record.head.ask.type === "approval" ||
+      record.head.ask.type === "tool_consent"
       ? "approved"
       : record.head.ask.type === "verdict"
         ? "pass"
@@ -181,7 +183,9 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
           askId: ask.askId,
           expectedHeadEventId: currentHeadId,
           outcome,
-          ...(ask.type === "approval" || ask.type === "verdict"
+          ...(ask.type === "approval" ||
+          ask.type === "verdict" ||
+          ask.type === "tool_consent"
             ? { reason: reason.trim() }
             : {}),
           ...(ask.type === "question" ? { answer: answer.trim() } : {}),
@@ -220,7 +224,9 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
   };
 
   const readyToSubmit =
-    (ask.type === "approval" || ask.type === "verdict"
+    (ask.type === "approval" ||
+    ask.type === "verdict" ||
+    ask.type === "tool_consent"
       ? reason.trim().length > 0
       : ask.type === "question"
         ? answer.trim().length > 0
@@ -283,6 +289,33 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
           <label htmlFor={`${idPrefix}-reason`}>
             Reason and evidence checked
           </label>
+          <textarea
+            id={`${idPrefix}-reason`}
+            maxLength={1000}
+            onChange={(event) => updateForm(setReason, event.target.value)}
+            required
+            rows={3}
+            value={reason}
+          />
+        </>
+      ) : null}
+      {ask.type === "tool_consent" ? (
+        <>
+          <label htmlFor={`${idPrefix}-decision`}>Decision</label>
+          <select
+            id={`${idPrefix}-decision`}
+            onChange={(event) =>
+              updateForm(
+                setOutcome,
+                event.target.value as "approved" | "rejected",
+              )
+            }
+            value={outcome}
+          >
+            <option value="approved">Approve</option>
+            <option value="rejected">Reject</option>
+          </select>
+          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
           <textarea
             id={`${idPrefix}-reason`}
             maxLength={1000}
@@ -543,7 +576,7 @@ export function AskCard({
   const checksReady =
     Boolean(resolverPubkey) &&
     identityQuery.isSuccess &&
-    membersQuery.isSuccess &&
+    (head.ask.category !== "general" || membersQuery.isSuccess) &&
     membershipQuery.isSuccess &&
     agentsQuery.isSuccess &&
     relaySelfQuery.isSuccess &&
@@ -560,7 +593,7 @@ export function AskCard({
       : null;
   const accessFailure =
     identityQuery.isError ||
-    membersQuery.isError ||
+    (head.ask.category === "general" && membersQuery.isError) ||
     membershipQuery.isError ||
     agentsQuery.isError ||
     relaySelfQuery.isError ||
@@ -589,7 +622,7 @@ export function AskCard({
         >
           {statusText}
         </span>
-        <span>{head.ask.type}</span>
+        <span>{typeLabel(head.ask.type)}</span>
         {head.ask.decideBy ? (
           <span>
             Decide by {formatAskDate(head.ask.decideBy) ?? head.ask.decideBy}
@@ -599,6 +632,11 @@ export function AskCard({
       <h2>{head.ask.title}</h2>
       {head.ask.body ? (
         <p className="colony-ask-body">{head.ask.body}</p>
+      ) : null}
+      {head.ask.toolConsent ? (
+        <p className="colony-ask-body" data-testid="tool-consent-preview">
+          {head.ask.toolConsent.actionPreview}
+        </p>
       ) : null}
       {head.ask.addresseePubkey ? (
         <p className="colony-ask-addressed">
@@ -656,6 +694,7 @@ export function AskCard({
           className="colony-ask-detail-link"
           data-testid="ask-detail-link"
           params={{ askId, channelId }}
+          search={{}}
           to="/asks/$channelId/$askId"
         >
           Open decision

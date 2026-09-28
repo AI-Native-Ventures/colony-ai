@@ -246,6 +246,9 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// List, grant, and revoke standing tool permissions
+    #[command(subcommand)]
+    Permissions(PermissionsCmd),
     /// Read the activity feed
     #[command(subcommand)]
     Feed(FeedCmd),
@@ -1184,6 +1187,34 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PermissionsCmd {
+    /// List current relay-signed standing permission heads
+    List {
+        /// Filter to one managed agent public key
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Grant a standing permission from a ToolPermissionRecord JSON object
+    Grant {
+        /// ToolPermissionRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke an open permission at its exact current head
+    Revoke {
+        /// Permission UUID
+        #[arg(long)]
+        permission: String,
+        /// Current kind 30645 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for revoking, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
     },
 }
 
@@ -2360,6 +2391,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
@@ -2541,6 +2573,7 @@ mod tests {
             "notes",
             "pack",
             "patches",
+            "permissions",
             "pr",
             "projects",
             "reactions",
