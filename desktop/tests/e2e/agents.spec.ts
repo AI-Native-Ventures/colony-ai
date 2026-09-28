@@ -2377,7 +2377,7 @@ test("one share level selector drives both the link and send paths", async ({
   await expect(memoryConfirmation).toBeVisible();
   await expect(memoryConfirmation).toContainText("plaintext all memories");
   await expect(memoryConfirmation).toContainText(
-    "Charlie-and anyone with the file link-can view it.",
+    /Charlie\p{P}and anyone with the file link\p{P}can view it/u,
   );
   const encodeLevelsBeforeSendConfirmation = await page.evaluate(() =>
     (

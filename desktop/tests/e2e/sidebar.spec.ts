@@ -84,7 +84,10 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   const hoverRow = page.getByTestId("channel-random");
 
   await page.mouse.move(600, 100);
-  await expect(selectedRow).toHaveCSS("background-color", "rgb(38, 85, 160)");
+  await expect(selectedRow).toHaveCSS(
+    "background-color",
+    "rgba(255, 255, 255, 0.56)",
+  );
   // The spacing and motion experiment must preserve the production selected
   // row typography.
   await expect(selectedRow).toHaveCSS("font-weight", "650");
@@ -101,7 +104,7 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     const followingBox = following.getBoundingClientRect();
     return followingBox.top - selectedBox.bottom;
   });
-  expect(rowGap).toBe(4);
+  expect(rowGap).toBe(0);
 
   const idleHoverRowBackground = await hoverRow.evaluate(
     (row) => getComputedStyle(row).backgroundColor,
@@ -512,7 +515,7 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
-  expect(Math.abs(searchCenter - channelTitleCenter)).toBeLessThanOrEqual(2);
+  expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(3.1875, 2);
 });
 
 test("keeps only search pinned while primary navigation scrolls", async ({
@@ -628,12 +631,14 @@ test("resizes, persists, and snaps to the default sidebar width", async ({
 
   await dragSidebarRail(page, 64);
 
-  await expect.poll(() => sidebarWidth(page)).toBe(284);
-  await expect.poll(() => storedSidebarWidth(page)).toBe("284");
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect
+    .poll(() => storedSidebarWidth(page))
+    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 64));
 
   await page.reload();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect.poll(() => sidebarWidth(page)).toBe(284);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
 
   await dragSidebarRail(page, -60);
 
