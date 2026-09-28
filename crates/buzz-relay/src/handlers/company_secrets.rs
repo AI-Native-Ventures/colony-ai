@@ -12,12 +12,12 @@ use nostr::Event;
 use uuid::Uuid;
 
 use buzz_core::company_records::{
-    ask_d_tag, parse_company_command, secret_binding_d_tag, validate_secret_binding_action,
+    ask_d_tag, parse_company_command, validate_secret_binding_action,
     validate_secret_binding_d_tag, validate_secret_binding_spec, AskHead, AskOutcome,
     AskResolution, AskResolutionPayload, AskStatus, CompanyCommand, SecretBindingActionKind,
     SecretBindingHead, SecretBindingStatus, SecretStorage, COMPANY_RECORD_SCHEMA_VERSION,
 };
-use buzz_core::kind::{KIND_ASK_HEAD, KIND_SECRET_BINDING_HEAD};
+use buzz_core::kind::{KIND_ASK_HEAD, KIND_SECRET_BINDING_ACTION, KIND_SECRET_BINDING_HEAD};
 use buzz_core::tenant::TenantContext;
 use buzz_core::StoredEvent;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
@@ -362,7 +362,9 @@ pub async fn handle(
 
     let mut replaced_ask = None;
     if let Some((channel_id, ask_d_tag, stored_ask, ask_head)) = ask_head_event {
-        let precondition = ParameterizedReplacePrecondition::ExpectedRevision;
+        let expected_ask_revision = stored_ask.event.id.to_bytes();
+        let precondition =
+            ParameterizedReplacePrecondition::ExpectedRevision(expected_ask_revision.as_slice());
         let result = state
             .db
             .replace_parameterized_event_in_transaction(
