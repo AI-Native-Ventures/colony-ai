@@ -810,11 +810,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
     "background-color",
     "var(--w20-appearance-accent)",
   );
-  const prominentForeground = await resolveSidebarColor(
-    page,
-    "color",
-    "hsl(var(--primary-foreground))",
-  );
+  const prominentForeground = await resolveSidebarColor(page, "color", "#fff");
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
   const subtleTextStyle = await activeRow.evaluate((element) => {
     const styles = getComputedStyle(element);
@@ -944,7 +940,7 @@ for (const { hoverSurface, mode, theme } of [
       "box-shadow",
       "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
     );
-    await expect(activeRow).toHaveCSS("font-weight", "700");
+    await expect(activeRow).toHaveCSS("font-weight", "650");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", subtleSurface);
     const inactiveRow = page.getByTestId("channel-random");
