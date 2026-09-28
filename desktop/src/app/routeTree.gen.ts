@@ -19,11 +19,13 @@ import { Route as leadsRouteImport } from "./routes/leads";
 import { Route as goalsRouteImport } from "./routes/goals";
 import { Route as factoryRouteImport } from "./routes/factory";
 import { Route as discoveryRouteImport } from "./routes/discovery";
+import { Route as companyWorkRouteImport } from "./routes/company-work";
 import { Route as clientsRouteImport } from "./routes/clients";
 import { Route as campaignRouteImport } from "./routes/campaign";
 import { Route as agentsRouteImport } from "./routes/agents";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
+import { Route as workDotnewRouteImport } from "./routes/work.new";
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
@@ -42,6 +44,12 @@ import { Route as factoryDotprojectsRouteImport } from "./routes/factory.project
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as workDotverifyDotworkItemIdRouteImport } from "./routes/work.verify.$workItemId";
+import { Route as workDotstatusDotworkItemIdRouteImport } from "./routes/work.status.$workItemId";
+import { Route as workDotfromChatDotmessageIdRouteImport } from "./routes/work.from-chat.$messageId";
+import { Route as workDoteditDotworkItemIdRouteImport } from "./routes/work.edit.$workItemId";
+import { Route as workDotdetailDotworkItemIdRouteImport } from "./routes/work.detail.$workItemId";
+import { Route as workDotarchiveDotworkItemIdRouteImport } from "./routes/work.archive.$workItemId";
 import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
@@ -129,6 +137,11 @@ const discoveryRoute = discoveryRouteImport.update({
   path: "/discovery",
   getParentRoute: () => rootRouteImport,
 } as any);
+const companyWorkRoute = companyWorkRouteImport.update({
+  id: "/company-work",
+  path: "/company-work",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const clientsRoute = clientsRouteImport.update({
   id: "/clients",
   path: "/clients",
@@ -152,6 +165,11 @@ const indexRoute = indexRouteImport.update({
 const workflowsDotworkflowIdRoute = workflowsDotworkflowIdRouteImport.update({
   id: "/workflows/$workflowId",
   path: "/workflows/$workflowId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const workDotnewRoute = workDotnewRouteImport.update({
+  id: "/work/new",
+  path: "/work/new",
   getParentRoute: () => rootRouteImport,
 } as any);
 const workDotworkIdRoute = workDotworkIdRouteImport.update({
@@ -244,6 +262,42 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const workDotverifyDotworkItemIdRoute =
+  workDotverifyDotworkItemIdRouteImport.update({
+    id: "/work/verify/$workItemId",
+    path: "/work/verify/$workItemId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const workDotstatusDotworkItemIdRoute =
+  workDotstatusDotworkItemIdRouteImport.update({
+    id: "/work/status/$workItemId",
+    path: "/work/status/$workItemId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const workDotfromChatDotmessageIdRoute =
+  workDotfromChatDotmessageIdRouteImport.update({
+    id: "/work/from-chat/$messageId",
+    path: "/work/from-chat/$messageId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const workDoteditDotworkItemIdRoute =
+  workDoteditDotworkItemIdRouteImport.update({
+    id: "/work/edit/$workItemId",
+    path: "/work/edit/$workItemId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const workDotdetailDotworkItemIdRoute =
+  workDotdetailDotworkItemIdRouteImport.update({
+    id: "/work/detail/$workItemId",
+    path: "/work/detail/$workItemId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const workDotarchiveDotworkItemIdRoute =
+  workDotarchiveDotworkItemIdRouteImport.update({
+    id: "/work/archive/$workItemId",
+    path: "/work/archive/$workItemId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const salesDotproposalDotproposalFormRoute =
   salesDotproposalDotproposalFormRouteImport.update({
     id: "/sales/proposal/proposal-form",
@@ -342,6 +396,7 @@ export interface FileRoutesByFullPath {
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/company-work": typeof companyWorkRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
@@ -374,6 +429,7 @@ export interface FileRoutesByFullPath {
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
+  "/work/new": typeof workDotnewRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
@@ -390,6 +446,12 @@ export interface FileRoutesByFullPath {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/archive/$workItemId": typeof workDotarchiveDotworkItemIdRoute;
+  "/work/detail/$workItemId": typeof workDotdetailDotworkItemIdRoute;
+  "/work/edit/$workItemId": typeof workDoteditDotworkItemIdRoute;
+  "/work/from-chat/$messageId": typeof workDotfromChatDotmessageIdRoute;
+  "/work/status/$workItemId": typeof workDotstatusDotworkItemIdRoute;
+  "/work/verify/$workItemId": typeof workDotverifyDotworkItemIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
@@ -397,6 +459,7 @@ export interface FileRoutesByTo {
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/company-work": typeof companyWorkRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
@@ -429,6 +492,7 @@ export interface FileRoutesByTo {
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
+  "/work/new": typeof workDotnewRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
@@ -445,6 +509,12 @@ export interface FileRoutesByTo {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/archive/$workItemId": typeof workDotarchiveDotworkItemIdRoute;
+  "/work/detail/$workItemId": typeof workDotdetailDotworkItemIdRoute;
+  "/work/edit/$workItemId": typeof workDoteditDotworkItemIdRoute;
+  "/work/from-chat/$messageId": typeof workDotfromChatDotmessageIdRoute;
+  "/work/status/$workItemId": typeof workDotstatusDotworkItemIdRoute;
+  "/work/verify/$workItemId": typeof workDotverifyDotworkItemIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
@@ -453,6 +523,7 @@ export interface FileRoutesById {
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/company-work": typeof companyWorkRoute;
   "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
@@ -485,6 +556,7 @@ export interface FileRoutesById {
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
+  "/work/new": typeof workDotnewRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
@@ -501,6 +573,12 @@ export interface FileRoutesById {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/archive/$workItemId": typeof workDotarchiveDotworkItemIdRoute;
+  "/work/detail/$workItemId": typeof workDotdetailDotworkItemIdRoute;
+  "/work/edit/$workItemId": typeof workDoteditDotworkItemIdRoute;
+  "/work/from-chat/$messageId": typeof workDotfromChatDotmessageIdRoute;
+  "/work/status/$workItemId": typeof workDotstatusDotworkItemIdRoute;
+  "/work/verify/$workItemId": typeof workDotverifyDotworkItemIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
@@ -510,6 +588,7 @@ export interface FileRouteTypes {
     | "/agents"
     | "/campaign"
     | "/clients"
+    | "/company-work"
     | "/discovery"
     | "/factory"
     | "/goals"
@@ -542,6 +621,7 @@ export interface FileRouteTypes {
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
+    | "/work/new"
     | "/workflows/$workflowId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
@@ -558,6 +638,12 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/archive/$workItemId"
+    | "/work/detail/$workItemId"
+    | "/work/edit/$workItemId"
+    | "/work/from-chat/$messageId"
+    | "/work/status/$workItemId"
+    | "/work/verify/$workItemId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -565,6 +651,7 @@ export interface FileRouteTypes {
     | "/agents"
     | "/campaign"
     | "/clients"
+    | "/company-work"
     | "/discovery"
     | "/factory"
     | "/goals"
@@ -597,6 +684,7 @@ export interface FileRouteTypes {
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
+    | "/work/new"
     | "/workflows/$workflowId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
@@ -613,6 +701,12 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/archive/$workItemId"
+    | "/work/detail/$workItemId"
+    | "/work/edit/$workItemId"
+    | "/work/from-chat/$messageId"
+    | "/work/status/$workItemId"
+    | "/work/verify/$workItemId"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
@@ -620,6 +714,7 @@ export interface FileRouteTypes {
     | "/agents"
     | "/campaign"
     | "/clients"
+    | "/company-work"
     | "/discovery"
     | "/factory"
     | "/goals"
@@ -652,6 +747,7 @@ export interface FileRouteTypes {
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
+    | "/work/new"
     | "/workflows/$workflowId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
@@ -668,6 +764,12 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/archive/$workItemId"
+    | "/work/detail/$workItemId"
+    | "/work/edit/$workItemId"
+    | "/work/from-chat/$messageId"
+    | "/work/status/$workItemId"
+    | "/work/verify/$workItemId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
@@ -676,6 +778,7 @@ export interface RootRouteChildren {
   agentsRoute: typeof agentsRoute;
   campaignRoute: typeof campaignRoute;
   clientsRoute: typeof clientsRoute;
+  companyWorkRoute: typeof companyWorkRoute;
   discoveryRoute: typeof discoveryRoute;
   factoryRoute: typeof factoryRoute;
   goalsRoute: typeof goalsRoute;
@@ -708,6 +811,7 @@ export interface RootRouteChildren {
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
+  workDotnewRoute: typeof workDotnewRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
   asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
@@ -724,6 +828,12 @@ export interface RootRouteChildren {
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
   salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
+  workDotarchiveDotworkItemIdRoute: typeof workDotarchiveDotworkItemIdRoute;
+  workDotdetailDotworkItemIdRoute: typeof workDotdetailDotworkItemIdRoute;
+  workDoteditDotworkItemIdRoute: typeof workDoteditDotworkItemIdRoute;
+  workDotfromChatDotmessageIdRoute: typeof workDotfromChatDotmessageIdRoute;
+  workDotstatusDotworkItemIdRoute: typeof workDotstatusDotworkItemIdRoute;
+  workDotverifyDotworkItemIdRoute: typeof workDotverifyDotworkItemIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -827,6 +937,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof discoveryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/company-work": {
+      id: "/company-work";
+      path: "/company-work";
+      fullPath: "/company-work";
+      preLoaderRoute: typeof companyWorkRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/clients": {
       id: "/clients";
       path: "/clients";
@@ -860,6 +977,13 @@ declare module "@tanstack/react-router" {
       path: "/workflows/$workflowId";
       fullPath: "/workflows/$workflowId";
       preLoaderRoute: typeof workflowsDotworkflowIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/new": {
+      id: "/work/new";
+      path: "/work/new";
+      fullPath: "/work/new";
+      preLoaderRoute: typeof workDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/work/$workId": {
@@ -988,6 +1112,48 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/work/verify/$workItemId": {
+      id: "/work/verify/$workItemId";
+      path: "/work/verify/$workItemId";
+      fullPath: "/work/verify/$workItemId";
+      preLoaderRoute: typeof workDotverifyDotworkItemIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/status/$workItemId": {
+      id: "/work/status/$workItemId";
+      path: "/work/status/$workItemId";
+      fullPath: "/work/status/$workItemId";
+      preLoaderRoute: typeof workDotstatusDotworkItemIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/from-chat/$messageId": {
+      id: "/work/from-chat/$messageId";
+      path: "/work/from-chat/$messageId";
+      fullPath: "/work/from-chat/$messageId";
+      preLoaderRoute: typeof workDotfromChatDotmessageIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/edit/$workItemId": {
+      id: "/work/edit/$workItemId";
+      path: "/work/edit/$workItemId";
+      fullPath: "/work/edit/$workItemId";
+      preLoaderRoute: typeof workDoteditDotworkItemIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/detail/$workItemId": {
+      id: "/work/detail/$workItemId";
+      path: "/work/detail/$workItemId";
+      fullPath: "/work/detail/$workItemId";
+      preLoaderRoute: typeof workDotdetailDotworkItemIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/archive/$workItemId": {
+      id: "/work/archive/$workItemId";
+      path: "/work/archive/$workItemId";
+      fullPath: "/work/archive/$workItemId";
+      preLoaderRoute: typeof workDotarchiveDotworkItemIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sales/proposal/proposal-form": {
       id: "/sales/proposal/proposal-form";
       path: "/sales/proposal/proposal-form";
@@ -1108,6 +1274,7 @@ const rootRouteChildren: RootRouteChildren = {
   agentsRoute: agentsRoute,
   campaignRoute: campaignRoute,
   clientsRoute: clientsRoute,
+  companyWorkRoute: companyWorkRoute,
   discoveryRoute: discoveryRoute,
   factoryRoute: factoryRoute,
   goalsRoute: goalsRoute,
@@ -1140,6 +1307,7 @@ const rootRouteChildren: RootRouteChildren = {
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
   workDotworkIdRoute: workDotworkIdRoute,
+  workDotnewRoute: workDotnewRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
   asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
@@ -1156,6 +1324,12 @@ const rootRouteChildren: RootRouteChildren = {
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,
   salesDotproposalDotproposalFormRoute: salesDotproposalDotproposalFormRoute,
+  workDotarchiveDotworkItemIdRoute: workDotarchiveDotworkItemIdRoute,
+  workDotdetailDotworkItemIdRoute: workDotdetailDotworkItemIdRoute,
+  workDoteditDotworkItemIdRoute: workDoteditDotworkItemIdRoute,
+  workDotfromChatDotmessageIdRoute: workDotfromChatDotmessageIdRoute,
+  workDotstatusDotworkItemIdRoute: workDotstatusDotworkItemIdRoute,
+  workDotverifyDotworkItemIdRoute: workDotverifyDotworkItemIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

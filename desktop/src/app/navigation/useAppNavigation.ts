@@ -384,6 +384,104 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goCompanyWork = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/company-work" }, behavior),
+    [commitNavigation],
+  );
+
+  const goNewCompanyWork = React.useCallback(
+    (
+      search: { channel?: string; goal?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/new",
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkFromChat = React.useCallback(
+    (
+      messageId: string,
+      search: { channel: string; threadRoot: string; goal?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/from-chat/$messageId",
+          params: { messageId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkDetail = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/detail/$workItemId",
+          params: { workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkEdit = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/edit/$workItemId",
+          params: { workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkStatus = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/status/$workItemId",
+          params: { workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkVerify = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/verify/$workItemId",
+          params: { workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkArchive = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/archive/$workItemId",
+          params: { workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -703,6 +801,14 @@ export function useAppNavigation() {
     goWorkflows,
     goWork,
     goWorkItem,
+    goCompanyWork,
+    goNewCompanyWork,
+    goCompanyWorkFromChat,
+    goCompanyWorkDetail,
+    goCompanyWorkEdit,
+    goCompanyWorkStatus,
+    goCompanyWorkVerify,
+    goCompanyWorkArchive,
     openSearchHit,
   };
 }

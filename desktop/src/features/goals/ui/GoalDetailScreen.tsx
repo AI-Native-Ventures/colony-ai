@@ -7,6 +7,8 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
+import { useCompanyWorkHeadsQuery } from "@/features/company-work/hooks";
+import { CompanyWorkListRow } from "@/features/company-work/ui/CompanyWorkPresentation";
 import {
   canCreateSubgoal,
   canEditGoal,
@@ -98,6 +100,7 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
   const identityQuery = useIdentityQuery();
   const membershipQuery = useMyRelayMembershipQuery();
   const channelsQuery = useChannelsQuery();
+  const companyWorkQuery = useCompanyWorkHeadsQuery();
   const mutation = useGoalActionMutation();
   const {
     goEditGoal,
@@ -109,6 +112,7 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
     goNewGoal,
     goChannel,
     goShareGoal,
+    goNewCompanyWork,
   } = useAppNavigation();
   const record = goalQuery.data;
   const head = record?.head;
@@ -133,16 +137,34 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
         }),
     [allGoals, goalId],
   );
+  const linkedWork = React.useMemo(
+    () =>
+      (companyWorkQuery.data ?? [])
+        .filter((record) => record.head.goalId === goalId)
+        .sort((left, right) => left.head.title.localeCompare(right.head.title)),
+    [companyWorkQuery.data, goalId],
+  );
+  const linkedWorkPubkeys = React.useMemo(
+    () =>
+      linkedWork.flatMap((record) => [
+        record.head.assignedPubkeys[0],
+        record.head.requesterPubkey,
+      ]),
+    [linkedWork],
+  );
   const ownerAndHistoryPubkeys = React.useMemo(() => {
     const pubkeys = new Set<string>();
     if (goal?.ownerPubkey) pubkeys.add(goal.ownerPubkey);
+    for (const pubkey of linkedWorkPubkeys) {
+      if (pubkey) pubkeys.add(pubkey);
+    }
     for (const child of children) {
       const childOwner = child.head.goal?.ownerPubkey;
       if (childOwner) pubkeys.add(childOwner);
     }
     for (const event of historyQuery.data ?? []) pubkeys.add(event.pubkey);
     return [...pubkeys];
-  }, [children, goal?.ownerPubkey, historyQuery.data]);
+  }, [children, goal?.ownerPubkey, historyQuery.data, linkedWorkPubkeys]);
   const profilesQuery = useUsersBatchQuery(ownerAndHistoryPubkeys);
   const channels = channelsQuery.data ?? [];
   const role = membershipQuery.data?.role;
@@ -372,6 +394,83 @@ export function GoalDetailScreen({ goalId }: { goalId: string }) {
                 Only the community owner, an admin, or this goal’s owner can
                 create a sub-goal.
               </p>
+            ) : null}
+            <div className="my-7 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">
+                Linked work{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {linkedWork.length}
+                </span>
+              </h2>
+              <Button
+                onClick={() => {
+                  const linkedChannel = goal.linkedChannelIds.find(
+                    (channelId) =>
+                      channels.some(
+                        (candidate) =>
+                          candidate.id === channelId &&
+                          candidate.channelType === "stream" &&
+                          candidate.isMember &&
+                          candidate.archivedAt === null,
+                      ),
+                  );
+                  void goNewCompanyWork({
+                    goal: goalId,
+                    ...(linkedChannel ? { channel: linkedChannel } : {}),
+                  });
+                }}
+                variant="ghost"
+              >
+                Link work
+              </Button>
+            </div>
+            {companyWorkQuery.isPending ? (
+              <p className="mt-3 text-sm text-muted-foreground" role="status">
+                Loading linked work
+              </p>
+            ) : null}
+            {companyWorkQuery.isError ? (
+              <div className="mt-3">
+                <p className="text-sm text-muted-foreground">
+                  Linked work is unavailable.
+                </p>
+                <Button
+                  className="mt-2"
+                  onClick={() => void companyWorkQuery.refetch()}
+                  variant="outline"
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+            {companyWorkQuery.isSuccess && linkedWork.length === 0 ? (
+              <p className="text-sm leading-7 text-muted-foreground">
+                No work is linked to this goal yet.
+              </p>
+            ) : null}
+            {linkedWork.length > 0 ? (
+              <div className="mt-1">
+                {linkedWork.map((record) => {
+                  const linkedChannel = channels.find(
+                    (candidate) => candidate.id === record.channelId,
+                  );
+                  return (
+                    <CompanyWorkListRow
+                      channelLabel={
+                        linkedChannel?.name ?? record.channelId.slice(0, 8)
+                      }
+                      key={record.head.workItemId}
+                      ownerLabel={resolveUserLabel({
+                        currentPubkey,
+                        profiles: profilesQuery.data?.profiles,
+                        pubkey: record.head.assignedPubkeys[0] ?? "",
+                        preferResolvedSelfLabel: true,
+                      })}
+                      record={record}
+                    />
+                  );
+                })}
+              </div>
             ) : null}
             <h2 className="mt-8 text-base font-semibold">History</h2>
             {historyQuery.isPending ? (

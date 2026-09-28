@@ -64,6 +64,8 @@ import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
+import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkMessageContext";
+import { getThreadReference } from "@/features/messages/lib/threading";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
@@ -730,7 +732,20 @@ export const MessageRow = React.memo(
     const messageBodyNode = (
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {renderBody()}
+        {channelId && message.pubkey && !message.pending ? (
+          <CompanyWorkMessageProvider
+            value={{
+              channelId,
+              sourceEventId: message.id,
+              threadRootEventId:
+                getThreadReference(message.tags ?? []).rootId ?? message.id,
+            }}
+          >
+            {renderBody()}
+          </CompanyWorkMessageProvider>
+        ) : (
+          renderBody()
+        )}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}
