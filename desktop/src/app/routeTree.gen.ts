@@ -30,8 +30,7 @@ import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
-import { Route as permissionDotnewRouteImport } from "./routes/permission.new";
-import { Route as permissionDotpermissionIdRouteImport } from "./routes/permission.$permissionId";
+import { Route as permissionDotsplatRouteImport } from "./routes/permission.$";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
@@ -48,8 +47,6 @@ import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sa
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
-import { Route as permissionDotpermissionIdDotrevokeRouteImport } from "./routes/permission.$permissionId.revoke";
-import { Route as permissionDotpermissionIdDoteditRouteImport } from "./routes/permission.$permissionId.edit";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
 import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
@@ -188,17 +185,11 @@ const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   path: "/projects/$projectId",
   getParentRoute: () => rootRouteImport,
 } as any);
-const permissionDotnewRoute = permissionDotnewRouteImport.update({
-  id: "/permission/new",
-  path: "/permission/new",
+const permissionDotsplatRoute = permissionDotsplatRouteImport.update({
+  id: "/permission/$",
+  path: "/permission/$",
   getParentRoute: () => rootRouteImport,
 } as any);
-const permissionDotpermissionIdRoute =
-  permissionDotpermissionIdRouteImport.update({
-    id: "/permission/$permissionId",
-    path: "/permission/$permissionId",
-    getParentRoute: () => rootRouteImport,
-  } as any);
 const navigationDotstartRoute = navigationDotstartRouteImport.update({
   id: "/navigation/start",
   path: "/navigation/start",
@@ -281,18 +272,6 @@ const salesDotleadDotprospectIdRoute =
   salesDotleadDotprospectIdRouteImport.update({
     id: "/sales/lead/$prospectId",
     path: "/sales/lead/$prospectId",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const permissionDotpermissionIdDotrevokeRoute =
-  permissionDotpermissionIdDotrevokeRouteImport.update({
-    id: "/permission/$permissionId/revoke",
-    path: "/permission/$permissionId/revoke",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const permissionDotpermissionIdDoteditRoute =
-  permissionDotpermissionIdDoteditRouteImport.update({
-    id: "/permission/$permissionId/edit",
-    path: "/permission/$permissionId/edit",
     getParentRoute: () => rootRouteImport,
   } as any);
 const goalsDotgoalIdDotsubgoalRoute =
@@ -395,8 +374,7 @@ export interface FileRoutesByFullPath {
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
-  "/permission/$permissionId": typeof permissionDotpermissionIdRoute;
-  "/permission/new": typeof permissionDotnewRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -415,8 +393,6 @@ export interface FileRoutesByFullPath {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
-  "/permission/$permissionId/edit": typeof permissionDotpermissionIdDoteditRoute;
-  "/permission/$permissionId/revoke": typeof permissionDotpermissionIdDotrevokeRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -454,8 +430,7 @@ export interface FileRoutesByTo {
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
-  "/permission/$permissionId": typeof permissionDotpermissionIdRoute;
-  "/permission/new": typeof permissionDotnewRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -474,8 +449,6 @@ export interface FileRoutesByTo {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
-  "/permission/$permissionId/edit": typeof permissionDotpermissionIdDoteditRoute;
-  "/permission/$permissionId/revoke": typeof permissionDotpermissionIdDotrevokeRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -514,8 +487,7 @@ export interface FileRoutesById {
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
-  "/permission/$permissionId": typeof permissionDotpermissionIdRoute;
-  "/permission/new": typeof permissionDotnewRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -534,8 +506,6 @@ export interface FileRoutesById {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
-  "/permission/$permissionId/edit": typeof permissionDotpermissionIdDoteditRoute;
-  "/permission/$permissionId/revoke": typeof permissionDotpermissionIdDotrevokeRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -575,8 +545,7 @@ export interface FileRouteTypes {
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
-    | "/permission/$permissionId"
-    | "/permission/new"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -595,8 +564,6 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
-    | "/permission/$permissionId/edit"
-    | "/permission/$permissionId/revoke"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -634,8 +601,7 @@ export interface FileRouteTypes {
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
-    | "/permission/$permissionId"
-    | "/permission/new"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -654,8 +620,6 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
-    | "/permission/$permissionId/edit"
-    | "/permission/$permissionId/revoke"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -693,8 +657,7 @@ export interface FileRouteTypes {
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
-    | "/permission/$permissionId"
-    | "/permission/new"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -713,8 +676,6 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
-    | "/permission/$permissionId/edit"
-    | "/permission/$permissionId/revoke"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -753,8 +714,7 @@ export interface RootRouteChildren {
   messagesDotnewRoute: typeof messagesDotnewRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
-  permissionDotpermissionIdRoute: typeof permissionDotpermissionIdRoute;
-  permissionDotnewRoute: typeof permissionDotnewRoute;
+  permissionDotsplatRoute: typeof permissionDotsplatRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
@@ -773,8 +733,6 @@ export interface RootRouteChildren {
   goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
   goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
   goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
-  permissionDotpermissionIdDoteditRoute: typeof permissionDotpermissionIdDoteditRoute;
-  permissionDotpermissionIdDotrevokeRoute: typeof permissionDotpermissionIdDotrevokeRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
@@ -959,18 +917,11 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/permission/new": {
-      id: "/permission/new";
-      path: "/permission/new";
-      fullPath: "/permission/new";
-      preLoaderRoute: typeof permissionDotnewRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/permission/$permissionId": {
-      id: "/permission/$permissionId";
-      path: "/permission/$permissionId";
-      fullPath: "/permission/$permissionId";
-      preLoaderRoute: typeof permissionDotpermissionIdRouteImport;
+    "/permission/$": {
+      id: "/permission/$";
+      path: "/permission/$";
+      fullPath: "/permission/$";
+      preLoaderRoute: typeof permissionDotsplatRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/navigation/start": {
@@ -1083,20 +1034,6 @@ declare module "@tanstack/react-router" {
       path: "/sales/lead/$prospectId";
       fullPath: "/sales/lead/$prospectId";
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/permission/$permissionId/revoke": {
-      id: "/permission/$permissionId/revoke";
-      path: "/permission/$permissionId/revoke";
-      fullPath: "/permission/$permissionId/revoke";
-      preLoaderRoute: typeof permissionDotpermissionIdDotrevokeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/permission/$permissionId/edit": {
-      id: "/permission/$permissionId/edit";
-      path: "/permission/$permissionId/edit";
-      fullPath: "/permission/$permissionId/edit";
-      preLoaderRoute: typeof permissionDotpermissionIdDoteditRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/goals/$goalId/subgoal": {
@@ -1217,8 +1154,7 @@ const rootRouteChildren: RootRouteChildren = {
   messagesDotnewRoute: messagesDotnewRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
-  permissionDotpermissionIdRoute: permissionDotpermissionIdRoute,
-  permissionDotnewRoute: permissionDotnewRoute,
+  permissionDotsplatRoute: permissionDotsplatRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,
@@ -1237,9 +1173,6 @@ const rootRouteChildren: RootRouteChildren = {
   goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
   goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
   goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
-  permissionDotpermissionIdDoteditRoute: permissionDotpermissionIdDoteditRoute,
-  permissionDotpermissionIdDotrevokeRoute:
-    permissionDotpermissionIdDotrevokeRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,

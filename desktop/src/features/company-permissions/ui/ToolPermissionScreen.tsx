@@ -158,8 +158,8 @@ export function ToolPermissionScreen({
     try {
       await mutation.mutateAsync({ action: command });
       await navigate({
-        to: "/permission/$permissionId",
-        params: { permissionId: record.permissionId },
+        to: "/permission/$",
+        params: { _splat: record.permissionId },
         search: { agent: record.agentPubkey },
       });
     } catch (cause) {
@@ -227,8 +227,8 @@ export function ToolPermissionScreen({
     try {
       await mutation.mutateAsync({ action: command });
       await navigate({
-        to: "/permission/$permissionId",
-        params: { permissionId: permission.permissionId },
+        to: "/permission/$",
+        params: { _splat: permission.permissionId },
         search: { agent: permission.agentPubkey },
       });
     } catch (cause) {
@@ -294,18 +294,18 @@ export function ToolPermissionScreen({
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button asChild variant="outline">
                   <Link
-                    params={{ permissionId: record.permissionId }}
+                    params={{ _splat: `${record.permissionId}/edit` }}
                     search={{ agent: record.agentPubkey }}
-                    to="/permission/$permissionId/edit"
+                    to="/permission/$"
                   >
                     Edit scope
                   </Link>
                 </Button>
                 <Button asChild variant="destructive">
                   <Link
-                    params={{ permissionId: record.permissionId }}
+                    params={{ _splat: `${record.permissionId}/revoke` }}
                     search={{ agent: record.agentPubkey }}
-                    to="/permission/$permissionId/revoke"
+                    to="/permission/$"
                   >
                     Revoke permission
                   </Link>
@@ -360,9 +360,9 @@ export function ToolPermissionScreen({
               </Button>
               <Button asChild variant="outline">
                 <Link
-                  params={{ permissionId: existing.head.permissionId }}
+                  params={{ _splat: existing.head.permissionId }}
                   search={{ agent: existing.head.permission.agentPubkey }}
-                  to="/permission/$permissionId"
+                  to="/permission/$"
                 >
                   Cancel
                 </Link>
@@ -456,9 +456,9 @@ export function ToolPermissionScreen({
               {mode === "edit" && permissionId ? (
                 <Button asChild variant="outline">
                   <Link
-                    params={{ permissionId }}
+                    params={{ _splat: permissionId }}
                     search={{ agent: agentPubkey }}
-                    to="/permission/$permissionId"
+                    to="/permission/$"
                   >
                     Cancel
                   </Link>
@@ -510,7 +510,11 @@ export function ToolPermissionList({ agentPubkey }: { agentPubkey: string }) {
         <h2 className="text-base font-semibold">Standing permissions</h2>
         {canManage ? (
           <Button asChild size="sm" variant="outline">
-            <Link search={{ agent: agentPubkey }} to="/permission/new">
+            <Link
+              params={{ _splat: "new" }}
+              search={{ agent: agentPubkey }}
+              to="/permission/$"
+            >
               Grant permission
             </Link>
           </Button>
@@ -534,9 +538,9 @@ export function ToolPermissionList({ agentPubkey }: { agentPubkey: string }) {
               <li key={record.head.permissionId}>
                 <Link
                   className="flex min-h-12 items-center justify-between gap-4 px-4 py-3 text-sm hover:bg-accent/50"
-                  params={{ permissionId: record.head.permissionId }}
+                  params={{ _splat: record.head.permissionId }}
                   search={{ agent: agentPubkey }}
-                  to="/permission/$permissionId"
+                  to="/permission/$"
                 >
                   <span className="min-w-0 truncate font-medium">
                     {label} · {status}
