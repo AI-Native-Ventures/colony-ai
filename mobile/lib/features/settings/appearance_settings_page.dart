@@ -7,6 +7,13 @@ class AppearanceSettingsPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final savedTheme = ref.watch(communityThemeProvider);
     final savedDisplay = ref.watch(appearanceDisplayPreferenceProvider);
+    final profile = ref.watch(profileProvider).asData?.value;
+    final profileAbout = profile?.about?.trim();
+    final status = ref.watch(userStatusProvider).asData?.value;
+    final statusParts = [
+      if (status?.emoji.trim().isNotEmpty == true) status!.emoji.trim(),
+      if (status?.text.trim().isNotEmpty == true) status!.text.trim(),
+    ];
     final mode = useState(savedTheme.mode);
     final themeName = useState(savedTheme.theme);
     final density = useState(savedDisplay.density);
@@ -48,7 +55,7 @@ class AppearanceSettingsPage extends HookConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
                 Grid.gutter,
-                Grid.twelve,
+                Grid.fourteen,
                 Grid.gutter,
                 Grid.md,
               ),
@@ -56,6 +63,12 @@ class AppearanceSettingsPage extends HookConsumerWidget {
                 _AppearancePreview(
                   theme: previewTheme,
                   density: density.value,
+                  displayName: profile?.label,
+                  initials: profile?.initials,
+                  about: profileAbout?.isNotEmpty == true ? profileAbout : null,
+                  statusLabel: statusParts.isEmpty
+                      ? null
+                      : statusParts.join(' '),
                   dark:
                       mode.value == ThemeMode.dark ||
                       (mode.value == ThemeMode.system &&
@@ -115,7 +128,8 @@ class AppearanceSettingsPage extends HookConsumerWidget {
                 const SizedBox(height: Grid.twelve),
                 _SettingsLinkRow(
                   title: 'Browse named themes',
-                  subtitle: '62 themes · Preview before applying',
+                  subtitle:
+                      '${themeCatalog.length} themes · Preview before applying',
                   onPressed: () =>
                       MobileNavigation.push<NoMobileRouteArguments, Object?>(
                         context,

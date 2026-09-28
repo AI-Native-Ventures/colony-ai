@@ -63,7 +63,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
                 fontSize: 13,
               ),
               decoration: InputDecoration(
-                hintText: 'Search 62 themes',
+                hintText: 'Search ${themeCatalog.length} themes',
                 hintStyle: context.mobileTypography.conversation.copyWith(
                   color: context.mobileTokens.muted,
                   fontSize: 13,

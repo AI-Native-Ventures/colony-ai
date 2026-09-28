@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
 import 'package:buzz/features/profile/profile_avatar_page.dart';
 import 'package:buzz/features/profile/profile_avatar_capture_page.dart';
@@ -129,7 +131,9 @@ void main() {
           tester.view.physicalSize = size;
           if (captureScreenshots) await _loadProofFonts();
 
-          final prefs = await _proofPreferences();
+          final prefs = await _proofPreferences(
+            showMessagePreview: screen.name == 'settings-privacy-message',
+          );
           final rootKey = GlobalKey();
           final app = MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -154,6 +158,7 @@ void main() {
                 communityThemeProvider.overrideWith(
                   _ProofCommunityThemeNotifier.new,
                 ),
+                channelsProvider.overrideWith(_ProofChannelsNotifier.new),
                 userStatusProvider.overrideWith(
                   screen.name == 'profile-status-saved'
                       ? _ProofEmptyUserStatusNotifier.new
@@ -204,6 +209,8 @@ void main() {
               expect(find.text('Colony'), findsOneWidget);
               expect(find.text('Comfortable'), findsOneWidget);
               expect(find.text('Default'), findsOneWidget);
+              expect(find.text('📅 In a meeting'), findsOneWidget);
+              expect(find.text('Ready for review'), findsNothing);
             }
             final filename =
                 '${screen.name}-${brightness.name}-'
@@ -243,6 +250,14 @@ final _screenCases = <_ScreenCase>[
     ),
   ),
   _ScreenCase('settings-appearance', () => const AppearanceSettingsPage()),
+  _ScreenCase(
+    'settings-theme-preview',
+    () => const ThemePreviewPage(themeName: 'Colony'),
+  ),
+  _ScreenCase(
+    'settings-theme-applied',
+    () => const ThemeAppliedPage(themeName: 'Colony'),
+  ),
   _ScreenCase('settings-preferences', () => const PersonalPreferencesPage()),
   _ScreenCase(
     'settings-devices',
@@ -271,6 +286,7 @@ final _screenCases = <_ScreenCase>[
     () => const SettingsFeedbackFailedPage(),
   ),
   _ScreenCase('settings-privacy', () => const SettingsPrivacyPage()),
+  _ScreenCase('settings-privacy-message', () => const SettingsPrivacyPage()),
   _ScreenCase('settings-export', () => const SettingsExportPage()),
   _ScreenCase('settings-export-failed', () => const SettingsExportFailedPage()),
   _ScreenCase(
@@ -342,11 +358,15 @@ class _ScreenCase {
   final Widget Function() build;
 }
 
-Future<SharedPreferences> _proofPreferences() async {
+Future<SharedPreferences> _proofPreferences({
+  bool showMessagePreview = false,
+}) async {
   SharedPreferences.setMockInitialValues({
     'buzz-appearance-display.v1': jsonEncode(
       const AppearanceDisplayPreference(reduceMotion: true).toJson(),
     ),
+    if (showMessagePreview)
+      'buzz-notification-privacy-preview.v1': 'Show message previews',
   });
   return SharedPreferences.getInstance();
 }
@@ -414,6 +434,25 @@ class _ProofSavedProfileNotifier extends ProfileNotifier {
   @override
   Future<UserProfile?> build() async =>
       UserProfile(pubkey: 'proof-profile', displayName: 'Lerato Molefe');
+}
+
+class _ProofChannelsNotifier extends ChannelsNotifier {
+  @override
+  Future<List<Channel>> build() async => [
+    Channel(
+      id: 'proof-channel',
+      name: 'Proof channel',
+      channelType: 'stream',
+      visibility: 'open',
+      description: '',
+      createdBy: 'a' * 64,
+      createdAt: DateTime.utc(2026, 9, 29),
+      memberCount: 1,
+      lastMessageContent: 'A verified workspace update.',
+      lastMessagePubkey: 'a' * 64,
+      lastMessageCreatedAt: 1790700000,
+    ),
+  ];
 }
 
 Future<void> _loadProofFonts() async {

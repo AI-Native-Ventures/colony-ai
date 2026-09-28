@@ -1,3 +1,5 @@
+import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/features/settings/personal_settings_home_page.dart';
 import 'package:buzz/features/settings/appearance_settings_pages.dart'
     show PersonalPreferencesPage;
@@ -268,10 +270,13 @@ void main() {
     await tester.tap(find.text('Preview privacy'));
     await tester.pumpAndSettle();
     expect(find.text('Lock-screen preview'), findsOneWidget);
+    expect(find.text('Colony · You have a new notification.'), findsOneWidget);
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show message previews').last);
     await tester.pumpAndSettle();
+    expect(find.textContaining('A real workspace update.'), findsOneWidget);
+    expect(find.textContaining('Maya'), findsNothing);
     await tester.tap(find.text('Save preview privacy'));
     await tester.pumpAndSettle();
 
@@ -321,11 +326,33 @@ Widget _testApp({
   required MobileRouteRegistry registry,
   required Widget child,
 }) => ProviderScope(
-  overrides: [savedPrefsProvider.overrideWithValue(prefs)],
+  overrides: [
+    savedPrefsProvider.overrideWithValue(prefs),
+    channelsProvider.overrideWith(_TestChannelsNotifier.new),
+  ],
   child: MaterialApp(
     theme: AppTheme.light(),
     home: MobileRouteScope(registry: registry, child: child),
   ),
 );
+
+class _TestChannelsNotifier extends ChannelsNotifier {
+  @override
+  Future<List<Channel>> build() async => [
+    Channel(
+      id: 'test-channel',
+      name: 'Launch notes',
+      channelType: 'stream',
+      visibility: 'open',
+      description: '',
+      createdBy: 'a' * 64,
+      createdAt: DateTime.utc(2026, 9, 29),
+      memberCount: 1,
+      lastMessageContent: 'A real workspace update.',
+      lastMessagePubkey: 'a' * 64,
+      lastMessageCreatedAt: 1790700000,
+    ),
+  ];
+}
 
 void _noop() {}
