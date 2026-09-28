@@ -75,6 +75,14 @@ async function installCompanyWorkMock(
   });
 }
 
+async function activateByKeyboard(
+  page: import("@playwright/test").Page,
+  control: import("@playwright/test").Locator,
+) {
+  await control.focus();
+  await page.keyboard.press("Enter");
+}
+
 test("company work keeps its chat source, review history, and goal link", async ({
   page,
 }) => {
@@ -163,7 +171,10 @@ test("company work keeps its chat source, review history, and goal link", async 
   expect(storedSource.sourceEventId).toBe(sourceEventId);
   expect(storedSource.threadRootEventId).toBe(sourceEventId);
 
-  await page.getByRole("button", { name: "Edit work item" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Edit work item" }),
+  );
   await page
     .getByTestId("company-work-title")
     .fill("Review final launch brief");
@@ -175,37 +186,60 @@ test("company work keeps its chat source, review history, and goal link", async 
   await page.keyboard.press("Enter");
   await expect(detail).toContainText("Review final launch brief");
 
-  await page.getByRole("button", { name: "Update status" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Update status" }),
+  );
   await expect(page.getByText("Done condition", { exact: true })).toBeVisible();
-  await page.getByTestId("company-work-status").selectOption("done_unverified");
+  await page.getByTestId("company-work-status").focus();
+  await page.getByTestId("company-work-status").press("End");
   await page
     .getByTestId("company-work-status-reason")
     .fill("The owner submitted the final document.");
-  await page.getByRole("button", { name: "Save status" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Save status" }),
+  );
   await expect(
     detail.getByText("done unverified", { exact: true }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Review and verify" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Review and verify" }),
+  );
   await expect(page.getByText("Done condition", { exact: true })).toBeVisible();
-  await page
-    .getByTestId("company-work-verdict")
-    .selectOption("revision_requested");
+  await page.getByTestId("company-work-verdict").focus();
+  await page.getByTestId("company-work-verdict").press("End");
   await page
     .getByTestId("company-work-review-note")
     .fill("Add the approved budget table before closing this work.");
-  await page.getByRole("button", { name: "Record verdict" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Record verdict" }),
+  );
   await expect(detail.getByText("Revision requested")).toBeVisible();
   await expect(detail.getByText("active", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Update status" }).click();
-  await page.getByTestId("company-work-status").selectOption("done_unverified");
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Update status" }),
+  );
+  await page.getByTestId("company-work-status").focus();
+  await page.getByTestId("company-work-status").press("End");
   await page
     .getByTestId("company-work-status-reason")
     .fill("The budget table was added.");
-  await page.getByRole("button", { name: "Save status" }).click();
-  await page.getByRole("button", { name: "Review and verify" }).click();
-  await page.getByTestId("company-work-verdict").selectOption("pass");
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Save status" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Review and verify" }),
+  );
+  await page.getByTestId("company-work-verdict").focus();
+  await page.getByTestId("company-work-verdict").press("Home");
   await page
     .getByTestId("company-work-review-note")
     .fill("The final brief meets the done condition.");
@@ -226,10 +260,19 @@ test("company work keeps its chat source, review history, and goal link", async 
     "The final brief meets the done condition.",
   );
 
-  await page.getByRole("button", { name: "Archive work item" }).click();
-  await page.getByRole("button", { name: "Archive item" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Archive work item" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Archive item" }),
+  );
   await expect(detail).toContainText("This work item is archived.");
-  await page.getByRole("button", { name: "Restore work item" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Restore work item" }),
+  );
   await expect(detail.getByText("active", { exact: true })).toBeVisible();
 
   await page.goto(`/#/goals/${GOAL_ID}`);
