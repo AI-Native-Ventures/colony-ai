@@ -563,7 +563,7 @@ test("shows cached profile labels while relay profiles revalidate", {
 
   const aliceMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   // beforeEach holds get_users_batch for 10 s for this tag, so relay
   // revalidation cannot supply the label inside this window: "Cached Alice"
   // can only come from the persisted cache. A 1 s budget also had to cover

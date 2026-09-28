@@ -5415,7 +5415,7 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
             created_at: Math.floor(Date.now() / 1000) - 60,
             kind: 9,
             tags: [["h", channelId]],
-            content: "Hey team — checking in.",
+            content: "Hey team - checking in.",
             sig: "mocksig".repeat(20).slice(0, 128),
           },
           // Reaction-target seed for the custom-emoji reaction guard. Real
