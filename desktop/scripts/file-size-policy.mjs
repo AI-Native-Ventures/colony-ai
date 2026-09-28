@@ -1,7 +1,15 @@
 const DESKTOP_FRONTEND_MAX_LINES = 1200;
+const DESKTOP_GENERATED_ROUTE_TREE_MAX_LINES = 2000;
 const DESKTOP_RUST_MAX_LINES = 1500;
 
 export const rules = [
+  {
+    // TanStack emits one typed registry entry per route file. Keep room for
+    // the full Phase 2 route set without relaxing limits on authored screens.
+    root: "src/app/routeTree.gen.ts",
+    extensions: new Set([".ts"]),
+    maxLines: DESKTOP_GENERATED_ROUTE_TREE_MAX_LINES,
+  },
   {
     root: "src-tauri/src",
     extensions: new Set([".rs"]),

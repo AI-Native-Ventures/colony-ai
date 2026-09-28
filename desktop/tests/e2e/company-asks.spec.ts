@@ -320,6 +320,8 @@ test("Needs me opens each ask type, records a response, and returns to its threa
       const seeded: Array<{
         askId: string;
         type: string;
+        category: string;
+        title: string;
         threadTitle: string;
         context: string;
         rootId: string;
@@ -378,6 +380,8 @@ test("Needs me opens each ask type, records a response, and returns to its threa
         seeded.push({
           askId: askFixture.askId,
           type: askFixture.type,
+          category: askFixture.category,
+          title: askFixture.title,
           threadTitle: askFixture.threadTitle,
           context: askFixture.context,
           rootId: root.id,
@@ -394,13 +398,26 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     await expect(row).toBeVisible();
     await row.click();
     await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-    await expect(page.getByTestId("ask-thread-title")).toHaveText(
-      `Decision in ${ask.threadTitle}`,
-    );
-    await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
-      `Decision in ${ask.threadTitle}`,
-    );
-    await expect(page.getByTestId("ask-thread-root")).toBeVisible();
+    if (ask.category === "money") {
+      await expect(page.getByTestId("ask-thread-title")).toHaveText(ask.title);
+      await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
+        ask.title,
+      );
+      await expect(
+        page.getByRole("heading", { name: "Decision requested" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Decision context" }),
+      ).toBeVisible();
+    } else {
+      await expect(page.getByTestId("ask-thread-title")).toHaveText(
+        `Decision in ${ask.threadTitle}`,
+      );
+      await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
+        `Decision in ${ask.threadTitle}`,
+      );
+      await expect(page.getByTestId("ask-thread-root")).toBeVisible();
+    }
     await expect(page.getByTestId("ask-card")).toBeVisible();
 
     if (CAPTURE_ASK_MATRIX) {
@@ -454,9 +471,21 @@ test("Needs me opens each ask type, records a response, and returns to its threa
         .getByLabel("Reason and evidence checked")
         .fill("All checks passed.");
     }
-    await page.getByRole("button", { name: "Record response" }).click();
+    await page
+      .getByRole("button", {
+        name:
+          ask.category === "money"
+            ? "Record funding decision"
+            : "Record response",
+      })
+      .click();
     await expect(page.getByTestId("ask-resolved")).toBeVisible();
-    await page.getByRole("link", { name: "Back to discussion" }).click();
+    await page
+      .getByRole("link", {
+        name:
+          ask.category === "money" ? "Open conversation" : "Back to discussion",
+      })
+      .click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`[?&]messageId=${ask.rootId}`));
     await expect(page.getByTestId("message-thread-head")).toContainText(

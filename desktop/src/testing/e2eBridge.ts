@@ -122,8 +122,13 @@ import {
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
   KIND_HUDDLE_STARTED,
+  KIND_INVOICE_HEAD,
+  KIND_INVOICE_VERSION,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
   KIND_MEMBER_ADDED_NOTIFICATION,
   KIND_MEMBER_REMOVED_NOTIFICATION,
+  KIND_PAYMENT,
   KIND_PERSONA,
   KIND_PRODUCT_FEEDBACK,
   KIND_PROJECT_ANNOUNCEMENT,
@@ -389,6 +394,13 @@ type E2eConfig = {
     /** Override record statuses to exercise reference workspace boundaries. */
     referenceWorkspaceClientStatus?: string;
     referenceWorkspaceWorkStatus?: string;
+    /** Exclude the existing invoice/payment records to exercise unavailable source data. */
+    referenceWorkspaceMoneyRecords?: boolean;
+    /** Reject the listed business record writes once in reference workspace tests. */
+    referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /** Seed the r19 work-reference card in The Olive House client channel. */
     referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
@@ -439,6 +451,8 @@ type E2eConfig = {
     acpAuthMethodsError?: string;
     /** When set, workflow updates fail with this message. */
     workflowUpdateError?: string;
+    /** When set, workflow status changes fail with this message. */
+    workflowStatusError?: string;
     /** When set, workflow deletion fails with this message. */
     workflowDeleteError?: string;
     /** Reject workflow run creation with this message. */
@@ -697,6 +711,8 @@ type E2eConfig = {
     companyAskRelayPrivateKeyHex?: string;
     /** Reject these ask response publishes in order, then accept them. */
     askResponseErrors?: string[];
+    /** Reject these ask create publishes in order, then accept them. */
+    askActionErrors?: string[];
     /** Pending workflow approval rows used by Today E2E coverage. */
     workflowApprovals?: Array<{
       workflowId: string;
@@ -1336,6 +1352,10 @@ const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
   KIND_WORK_ITEM_ACTION,
   KIND_DELIVERABLE_VERSION,
   KIND_DELIVERABLE_APPROVAL,
+  KIND_INVOICE_VERSION,
+  KIND_PAYMENT,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
 ]);
 
 function createMockRelayMembershipEvent(): RelayEvent {
@@ -3781,6 +3801,7 @@ const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
+const mockAskActionIds = new Set<string>();
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
 const mockAuthResponses: Array<{ success: boolean; message: string }> = [];
@@ -4402,6 +4423,16 @@ type MockWorkflow = {
   updated_at: number;
 };
 
+type MockWorkflowDraft = {
+  id: string;
+  revision: string;
+  name: string;
+  owner_pubkey: string;
+  channel_id: string;
+  definition: Record<string, unknown>;
+  updated_at: number;
+};
+
 type RawWorkflowTraceEntry = {
   step_id: string;
   status: string;
@@ -4445,15 +4476,19 @@ type MockWorkflowApproval = {
 };
 
 const mockWorkflows: MockWorkflow[] = [];
+const mockWorkflowDrafts: MockWorkflowDraft[] = [];
 let mockWorkflowRuns: RawWorkflowRun[] = [];
 const mockWorkflowApprovals: MockWorkflowApproval[] = [];
 let mockWorkflowIdCounter = 0;
+let mockWorkflowRevisionCounter = 0;
 
 function resetMockWorkflows(config: E2eConfig | null) {
   mockWorkflows.length = 0;
+  mockWorkflowDrafts.length = 0;
   mockWorkflowRuns = [];
   mockWorkflowApprovals.length = 0;
   mockWorkflowIdCounter = 0;
+  mockWorkflowRevisionCounter = 0;
   const activePubkey = getMockMemberPubkey(config ?? undefined);
   for (const seed of config?.mock?.workflowApprovals ?? []) {
     const channelId = mockChannels.find(
@@ -4535,6 +4570,161 @@ function handleGetWorkflow(args: { workflowId: string }) {
   const workflow = mockWorkflows.find((w) => w.id === args.workflowId);
   if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
   return workflow;
+}
+
+function handleGetWorkflowDraft(args: { workflowId: string }) {
+  return (
+    mockWorkflowDrafts.find((draft) => draft.id === args.workflowId) ?? null
+  );
+}
+
+function handleSaveWorkflowDraft(args: {
+  workflowId: string;
+  channelId: string;
+  yamlDefinition: string;
+  expectedRevision: string | null;
+}) {
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (active && active.owner_pubkey !== MOCK_IDENTITY_PUBKEY) {
+    throw new Error("only the workflow owner can edit its draft");
+  }
+  const current = mockWorkflowDrafts.find(
+    (draft) => draft.id === args.workflowId,
+  );
+  if (
+    (current && current.revision !== args.expectedRevision) ||
+    (!current && args.expectedRevision !== null)
+  ) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const draft: MockWorkflowDraft = {
+    id: args.workflowId,
+    revision: `mock-draft-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+    name:
+      typeof definition.name === "string" ? definition.name : args.workflowId,
+    owner_pubkey: MOCK_IDENTITY_PUBKEY,
+    channel_id: args.channelId,
+    definition,
+    updated_at: now,
+  };
+  if (current) {
+    Object.assign(current, draft);
+    return current;
+  }
+  mockWorkflowDrafts.push(draft);
+  return draft;
+}
+
+function handlePublishWorkflowDraft(args: {
+  workflowId: string;
+  draftRevision: string;
+  expectedActiveRevision?: string | null;
+}) {
+  const draft = mockWorkflowDrafts.find(
+    (value) => value.id === args.workflowId,
+  );
+  if (!draft || draft.revision !== args.draftRevision) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (
+    (active && active.revision !== args.expectedActiveRevision) ||
+    (!active && args.expectedActiveRevision != null)
+  ) {
+    throw new Error(
+      "active workflow changed since it was loaded; refresh and try again",
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const workflow: MockWorkflow = active
+    ? {
+        ...active,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        updated_at: now,
+      }
+    : {
+        id: args.workflowId,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        owner_pubkey: draft.owner_pubkey,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      };
+  if (active) Object.assign(active, workflow);
+  else mockWorkflows.push(workflow);
+  return { ...workflow, webhook_secret: null };
+}
+
+function handleSetWorkflowStatus(args: {
+  workflowId: string;
+  status: "active" | "paused";
+}) {
+  const configuredError = window.__BUZZ_E2E__?.mock?.workflowStatusError;
+  if (configuredError) throw new Error(configuredError);
+  const workflow = mockWorkflows.find((value) => value.id === args.workflowId);
+  if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
+  workflow.status = args.status === "paused" ? "disabled" : "active";
+  return args.status;
+}
+
+function handlePreviewWorkflow(args: { yamlDefinition: string }) {
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const steps = Array.isArray(definition.steps) ? definition.steps : [];
+  return {
+    preview: true,
+    side_effects: false,
+    steps: steps.map((value) => {
+      const step = value as Record<string, unknown>;
+      const action =
+        step.action === "request_approval"
+          ? "Would request approval"
+          : step.action === "ask_agent"
+            ? "Would ask an agent and wait for a reply"
+            : "Would run the step";
+      const paths =
+        step.action === "request_approval"
+          ? [
+              "Approved: continue to the next step",
+              "Denied: stop the run",
+              "Changes requested: no revision action is currently supported",
+              "Step failure: stop the run as failed",
+            ]
+          : step.action === "ask_agent"
+            ? [
+                "Reply in the request thread: continue to the next step",
+                "No reply before timeout: stop the run as timed out",
+                "Step failure: stop the run as failed",
+              ]
+            : ["Step failure: stop the run as failed"];
+      return {
+        step_id: String(step.id ?? ""),
+        outcome: "would_run",
+        action,
+        definition: step,
+        paths,
+        note: null,
+      };
+    }),
+  };
 }
 
 function handleCreateWorkflow(args: {
@@ -4913,6 +5103,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+    ...(config.mock?.referenceWorkspaceRejectBusinessRecordEvents ?? []),
+  ];
   if (sidebarShell) {
     for (const [channelId, events] of Object.entries(
       referenceSidebarUnreadMessages(self),
@@ -4925,6 +5118,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
     workShare: config.mock?.referenceWorkspaceWorkShare,
+    moneyRecordsAvailable: config.mock?.referenceWorkspaceMoneyRecords,
   })) {
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     if (!channelId) continue;
@@ -5733,6 +5927,140 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
     .slice(0, filter.limit ?? 50);
 }
 
+function acceptMockAskAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  if (mockAskActionIds.has(event.id)) {
+    accept();
+    return;
+  }
+
+  const configuredError = config?.mock?.askActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  let action: {
+    action?: string;
+    askId?: string;
+    ask?: Record<string, unknown>;
+    schemaVersion?: number;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: ask action is not valid JSON");
+    return;
+  }
+
+  if (
+    action.action !== "create" ||
+    action.schemaVersion !== 1 ||
+    !action.ask ||
+    typeof action.askId !== "string" ||
+    action.ask.askId !== action.askId ||
+    action.ask.schemaVersion !== 1
+  ) {
+    reject("invalid: ask create action has an unsupported shape");
+    return;
+  }
+
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
+  const coordinate =
+    coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
+  const rootEventId = action.ask.threadRootEventId;
+  if (
+    !channelId ||
+    typeof rootEventId !== "string" ||
+    coordinate !== `channel:${channelId}:ask:${action.askId}` ||
+    !event.tags.some(
+      (tag) => tag[0] === "e" && tag[1] === rootEventId && tag[3] === "root",
+    )
+  ) {
+    reject(
+      "restricted: ask create needs a channel, coordinate and thread root",
+    );
+    return;
+  }
+
+  if (
+    !getMockMessageStore(channelId).some(
+      (message) => message.id === rootEventId,
+    )
+  ) {
+    reject("conflict: the discussion thread could not be found");
+    return;
+  }
+
+  const existingHead = filterMockCompanyAskHeads({
+    kinds: [KIND_ASK_HEAD],
+    "#h": [channelId],
+    "#d": [coordinate],
+    limit: 10,
+  })[0];
+  if (existingHead) {
+    reject("conflict: an ask already exists at this coordinate");
+    return;
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for ask creates");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const head = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", channelId],
+        ["d", coordinate],
+        ["e", rootEventId],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        askId: action.askId,
+        status: "open",
+        askerPubkey: event.pubkey,
+        createdAt: new Date().toISOString(),
+        ask: action.ask,
+        resolution: null,
+        cancellation: null,
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+
+  recordMockMessage(channelId, event);
+  mockCompanyAskHeads.push(head);
+  mockAskActionIds.add(event.id);
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, head);
+  accept();
+}
+
 function acceptMockAskResponse(
   socket: MockSocket,
   event: RelayEvent,
@@ -6139,7 +6467,168 @@ function publishReferenceBusinessCommand(
     return prior ? parseMockBusinessContent<T>(prior) : null;
   };
 
-  if (event.kind === KIND_SERVICE_ACTION) {
+  if (event.kind === KIND_INVOICE_VERSION) {
+    const version = parseMockBusinessContent<{
+      clientId?: string;
+      invoiceId?: string;
+      version?: number;
+      previousVersionEventId?: string | null;
+      expectedHeadEventId?: string | null;
+      action?: string;
+      currency?: string;
+      lines?: Array<{
+        quantityHundredths: number;
+        unitAmountMinor: number;
+      }>;
+      taxLines?: Array<{
+        label?: string | null;
+        rateBasisPoints: number;
+      }>;
+      sellerTaxNumber?: string | null;
+      customerTaxNumber?: string | null;
+      totalMinor?: number;
+      status?: string;
+      dueAt?: number | null;
+    }>(event);
+    const invoiceDTag =
+      version?.clientId && version.invoiceId
+        ? `client:${version.clientId}:invoice:${version.invoiceId}`
+        : null;
+    const store = getMockMessageStore(channelId);
+    const headIndex = invoiceDTag
+      ? store.findIndex(
+          (candidate) =>
+            candidate.kind === KIND_INVOICE_HEAD &&
+            businessDTagOf(candidate) === invoiceDTag,
+        )
+      : -1;
+    const priorHeadEvent = headIndex >= 0 ? store[headIndex] : null;
+    const priorHead = priorHeadEvent
+      ? parseMockBusinessContent<{
+          clientId: string;
+          invoiceId: string;
+          currency: string;
+          lines: Array<{
+            quantityHundredths: number;
+            unitAmountMinor: number;
+          }>;
+          taxLines?: Array<{ label: string | null; rateBasisPoints: number }>;
+          sellerTaxNumber?: string | null;
+          customerTaxNumber?: string | null;
+          totalMinor: number;
+          collectedMinor: number;
+          outstandingMinor: number;
+          paymentEvidenceCount: number;
+          version: number;
+          currentVersionEventId: string;
+          status: string;
+          dueAt: number | null;
+          issuedAt: number | null;
+          [key: string]: unknown;
+        }>(priorHeadEvent)
+      : null;
+    const taxNumberValid = (value: unknown) =>
+      value === null ||
+      (typeof value === "string" &&
+        value.trim().length > 0 &&
+        new TextEncoder().encode(value).length <= 128);
+    if (!version || !priorHead || !priorHeadEvent || !invoiceDTag) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lines = version.lines;
+    const taxLines = version.taxLines;
+    if (taxLines === undefined) {
+      version.taxLines = [];
+    }
+    const configuredTaxLines = version.taxLines;
+    if (
+      version.clientId !== channelId ||
+      dTag !== `${invoiceDTag}:version:${version.version}` ||
+      version.action !== "draft_edit" ||
+      version.status !== "draft" ||
+      version.currency !== priorHead.currency ||
+      version.invoiceId !== priorHead.invoiceId ||
+      version.version !== priorHead.version + 1 ||
+      version.previousVersionEventId !== priorHead.currentVersionEventId ||
+      version.expectedHeadEventId !== priorHeadEvent.id ||
+      priorHead.status !== "draft" ||
+      !Array.isArray(lines) ||
+      lines.length === 0 ||
+      lines.length > 100 ||
+      !lines.every(
+        (line) =>
+          Number.isSafeInteger(line.quantityHundredths) &&
+          line.quantityHundredths > 0 &&
+          Number.isSafeInteger(line.unitAmountMinor) &&
+          line.unitAmountMinor > 0,
+      ) ||
+      !Array.isArray(configuredTaxLines) ||
+      configuredTaxLines.length > 100 ||
+      !configuredTaxLines.every(
+        (line) =>
+          (line.label === null ||
+            line.label === undefined ||
+            (typeof line.label === "string" &&
+              line.label.trim().length > 0 &&
+              new TextEncoder().encode(line.label).length <= 200)) &&
+          Number.isInteger(line.rateBasisPoints) &&
+          line.rateBasisPoints >= 0 &&
+          line.rateBasisPoints <= 0xffff_ffff,
+      ) ||
+      !taxNumberValid(version.sellerTaxNumber) ||
+      !taxNumberValid(version.customerTaxNumber)
+    ) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lineAmounts = lines.map(
+      (line) =>
+        (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n,
+    );
+    const subtotal = lineAmounts.reduce((sum, amount) => sum + amount, 0n);
+    const taxTotal = lineAmounts.reduce(
+      (sum, lineAmount) =>
+        sum +
+        configuredTaxLines.reduce(
+          (lineTax, taxLine) =>
+            lineTax +
+            (lineAmount * BigInt(taxLine.rateBasisPoints) + 5_000n) / 10_000n,
+          0n,
+        ),
+      0n,
+    );
+    const total = subtotal + taxTotal;
+    if (
+      total > BigInt(Number.MAX_SAFE_INTEGER) ||
+      version.totalMinor !== Number(total)
+    ) {
+      fail("invoice total does not match its integer line and tax amounts");
+      return true;
+    }
+
+    storeReferenceBusinessEvent(channelId, event, false, false);
+    const nextHead = referenceRecordEvent(
+      KIND_INVOICE_HEAD,
+      channelId,
+      invoiceDTag,
+      {
+        ...priorHead,
+        taxLines: configuredTaxLines,
+        sellerTaxNumber: version.sellerTaxNumber,
+        customerTaxNumber: version.customerTaxNumber,
+        totalMinor: Number(total),
+        outstandingMinor: Number(total) - priorHead.collectedMinor,
+        version: version.version,
+        currentVersionEventId: event.id,
+        sourceEventId: event.id,
+      },
+      event,
+    );
+    store[headIndex] = nextHead;
+    emitMockLiveEvent(channelId, event);
+    emitMockLiveEvent(channelId, nextHead);
+  } else if (event.kind === KIND_SERVICE_ACTION) {
     const action = parseMockBusinessContent<ReferenceServiceAction>(event);
     if (!action || action.serviceId !== action.service.serviceId) {
       fail("service action is invalid");
@@ -13137,6 +13626,19 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_ASK_ACTION) {
+      let actionType: unknown;
+      try {
+        actionType = (JSON.parse(event.content) as { action?: unknown }).action;
+      } catch {
+        actionType = null;
+      }
+      if (actionType === "create") {
+        acceptMockAskAction(socket, event, getConfig());
+        return;
+      }
+    }
+
     if (event.kind === KIND_ASK_RESPONSE) {
       acceptMockAskResponse(socket, event, getConfig());
       return;
@@ -13145,6 +13647,7 @@ function sendToMockSocket(args: {
     if (
       referenceWorkspaceActive &&
       [
+        KIND_INVOICE_VERSION,
         KIND_SERVICE_ACTION,
         KIND_PROSPECT_ACTION,
         KIND_PROPOSAL_VERSION,
@@ -13435,6 +13938,7 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyAskHeads.length,
     ...(config.mock?.companyAskHeads ?? []),
   );
+  mockAskActionIds.clear();
   if (!isRelayMode(config) && config.mock?.visualFixture) {
     seedVisualFixture(config.mock.visualFixture);
   }
@@ -17184,9 +17688,29 @@ export function maybeInstallE2eTauriMocks() {
         return handleGetWorkflow(
           payload as Parameters<typeof handleGetWorkflow>[0],
         );
+      case "get_workflow_draft":
+        return handleGetWorkflowDraft(
+          payload as Parameters<typeof handleGetWorkflowDraft>[0],
+        );
       case "create_workflow":
         return handleCreateWorkflow(
           payload as Parameters<typeof handleCreateWorkflow>[0],
+        );
+      case "save_workflow_draft":
+        return handleSaveWorkflowDraft(
+          payload as Parameters<typeof handleSaveWorkflowDraft>[0],
+        );
+      case "publish_workflow_draft":
+        return handlePublishWorkflowDraft(
+          payload as Parameters<typeof handlePublishWorkflowDraft>[0],
+        );
+      case "set_workflow_status":
+        return handleSetWorkflowStatus(
+          payload as Parameters<typeof handleSetWorkflowStatus>[0],
+        );
+      case "preview_workflow":
+        return handlePreviewWorkflow(
+          payload as Parameters<typeof handlePreviewWorkflow>[0],
         );
       case "update_workflow":
         return handleUpdateWorkflow(

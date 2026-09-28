@@ -2472,6 +2472,3186 @@
           "selector": "[data-testid=\"w10-request-revision\"]"
         }
       ]
+    },
+    {
+      "id": "w18-money-overview-light-1728",
+      "referenceInventoryRoute": "money",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money",
+      "appRoute": "/#/money",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-overview\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-overview-light-1440",
+      "referenceInventoryRoute": "money",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money",
+      "appRoute": "/#/money",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-overview\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-overview-dark-1728",
+      "referenceInventoryRoute": "money",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money",
+      "appRoute": "/#/money",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-overview\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-overview-dark-1440",
+      "referenceInventoryRoute": "money",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money",
+      "appRoute": "/#/money",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-overview\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-invoices-light-1728",
+      "referenceInventoryRoute": "money/invoices",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoices",
+      "appRoute": "/#/money/invoices",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-list\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-invoices-light-1440",
+      "referenceInventoryRoute": "money/invoices",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoices",
+      "appRoute": "/#/money/invoices",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-list\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-invoices-dark-1728",
+      "referenceInventoryRoute": "money/invoices",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoices",
+      "appRoute": "/#/money/invoices",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-list\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-invoices-dark-1440",
+      "referenceInventoryRoute": "money/invoices",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoices",
+      "appRoute": "/#/money/invoices",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-list\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-invoice-detail-light-1728",
+      "referenceInventoryRoute": "money/invoice/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoice/LS-027",
+      "appRoute": "/#/money/invoice/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-invoice-detail-light-1440",
+      "referenceInventoryRoute": "money/invoice/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoice/LS-027",
+      "appRoute": "/#/money/invoice/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-invoice-detail-dark-1728",
+      "referenceInventoryRoute": "money/invoice/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoice/LS-027",
+      "appRoute": "/#/money/invoice/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-invoice-detail-dark-1440",
+      "referenceInventoryRoute": "money/invoice/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/invoice/LS-027",
+      "appRoute": "/#/money/invoice/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-adjustments-light-1728",
+      "referenceInventoryRoute": "money/adjustments",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/adjustments",
+      "appRoute": "/#/money/adjustments",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-adjustments-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-adjustments-light-1440",
+      "referenceInventoryRoute": "money/adjustments",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/adjustments",
+      "appRoute": "/#/money/adjustments",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-adjustments-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-adjustments-dark-1728",
+      "referenceInventoryRoute": "money/adjustments",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/adjustments",
+      "appRoute": "/#/money/adjustments",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-adjustments-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-adjustments-dark-1440",
+      "referenceInventoryRoute": "money/adjustments",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/adjustments",
+      "appRoute": "/#/money/adjustments",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-adjustments-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-follow-ups-light-1728",
+      "referenceInventoryRoute": "money/follow-ups",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/follow-ups",
+      "appRoute": "/#/money/follow-ups",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-follow-ups\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-follow-ups-light-1440",
+      "referenceInventoryRoute": "money/follow-ups",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/follow-ups",
+      "appRoute": "/#/money/follow-ups",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-follow-ups\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-follow-ups-dark-1728",
+      "referenceInventoryRoute": "money/follow-ups",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/follow-ups",
+      "appRoute": "/#/money/follow-ups",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-follow-ups\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-follow-ups-dark-1440",
+      "referenceInventoryRoute": "money/follow-ups",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/follow-ups",
+      "appRoute": "/#/money/follow-ups",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-follow-ups\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-revenue-detail-light-1728",
+      "referenceInventoryRoute": "money/revenue/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/revenue/LS-027",
+      "appRoute": "/#/money/revenue/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-revenue-detail-light-1440",
+      "referenceInventoryRoute": "money/revenue/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/revenue/LS-027",
+      "appRoute": "/#/money/revenue/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      }
+    },
+    {
+      "id": "w18-money-revenue-detail-dark-1728",
+      "referenceInventoryRoute": "money/revenue/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/revenue/LS-027",
+      "appRoute": "/#/money/revenue/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w18-money-revenue-detail-dark-1440",
+      "referenceInventoryRoute": "money/revenue/LS-027",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#money/revenue/LS-027",
+      "appRoute": "/#/money/revenue/3e3a7000-0000-4000-8000-000000000027",
+      "referenceReadySelector": "body",
+      "appReadySelector": "[data-testid=\"money-invoice-detail\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "appMockData": {
+        "referenceWorkspace": true,
+        "relayRole": "owner",
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true
+      },
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "money-tax-invoice-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/invoice",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/invoice?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-invoice-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-invoice-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/invoice",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/invoice?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-invoice-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-invoice-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/invoice",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/invoice?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-invoice-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-invoice-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/invoice",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/invoice?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-invoice-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-settings-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/settings",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-settings-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/settings",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-settings-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/settings",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-settings-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/settings",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-preview-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/preview",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/preview?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-preview-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-preview-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/preview",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/preview?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-preview-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-preview-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/preview",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/preview?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-preview-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-preview-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/preview",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/preview?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-preview-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-saved-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/saved",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/saved?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-saved-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-saved-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/saved",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/saved?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-saved-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      }
+    },
+    {
+      "id": "money-tax-saved-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/saved",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/saved?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-saved-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-saved-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/saved",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/saved?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-saved-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-failed-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/failed",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-failed-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Seller tax number, optional\"]",
+          "value": "ZA-RETRY-11"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax label, optional\"]",
+          "value": "VAT"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax rate, percent\"]",
+          "value": "15"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "button:has-text(\"Preview invoice\")"
+        }
+      ],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceRejectBusinessRecordEvents": [
+          {
+            "kind": 47026,
+            "reason": "temporary relay failure"
+          }
+        ],
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPreActionsReadySelector": "[data-testid=\"money-tax-settings-page\"]"
+    },
+    {
+      "id": "money-tax-failed-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/failed",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-failed-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Seller tax number, optional\"]",
+          "value": "ZA-RETRY-11"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax label, optional\"]",
+          "value": "VAT"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax rate, percent\"]",
+          "value": "15"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "button:has-text(\"Preview invoice\")"
+        }
+      ],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceRejectBusinessRecordEvents": [
+          {
+            "kind": 47026,
+            "reason": "temporary relay failure"
+          }
+        ],
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPreActionsReadySelector": "[data-testid=\"money-tax-settings-page\"]"
+    },
+    {
+      "id": "money-tax-failed-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/failed",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-failed-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Seller tax number, optional\"]",
+          "value": "ZA-RETRY-11"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax label, optional\"]",
+          "value": "VAT"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax rate, percent\"]",
+          "value": "15"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "button:has-text(\"Preview invoice\")"
+        }
+      ],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceRejectBusinessRecordEvents": [
+          {
+            "kind": 47026,
+            "reason": "temporary relay failure"
+          }
+        ],
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPreActionsReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-failed-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/failed",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/settings?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-failed-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Seller tax number, optional\"]",
+          "value": "ZA-RETRY-11"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax label, optional\"]",
+          "value": "VAT"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[aria-label=\"Tax rate, percent\"]",
+          "value": "15"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "button:has-text(\"Preview invoice\")"
+        }
+      ],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceRejectBusinessRecordEvents": [
+          {
+            "kind": 47026,
+            "reason": "temporary relay failure"
+          }
+        ],
+        "relayRequiresMembership": true,
+        "relayRole": "owner"
+      },
+      "appPreActionsReadySelector": "[data-testid=\"money-tax-settings-page\"]",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-denied-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/denied",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/denied?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-denied-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "member",
+        "relayRequiresMembership": true,
+        "relayRole": "member"
+      }
+    },
+    {
+      "id": "money-tax-denied-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/tax/denied",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/denied?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-denied-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "member",
+        "relayRequiresMembership": true,
+        "relayRole": "member"
+      }
+    },
+    {
+      "id": "money-tax-denied-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/denied",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/denied?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-denied-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "member",
+        "relayRequiresMembership": true,
+        "relayRole": "member"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-tax-denied-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/tax/denied",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/tax/denied?invoiceId=3e3a7000-0000-4000-8000-000000000029",
+      "appReadySelector": "[data-testid=\"money-tax-denied-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "member",
+        "relayRequiresMembership": true,
+        "relayRole": "member"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-unavailable-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/unavailable",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      }
+    },
+    {
+      "id": "money-costs-unavailable-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/unavailable",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      }
+    },
+    {
+      "id": "money-costs-unavailable-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/unavailable",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-unavailable-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/unavailable",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-partial-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/partial",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-costs-partial-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/partial",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-costs-partial-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/partial",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-partial-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/partial",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-recovered-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/recovered",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-costs-recovered-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/costs/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/recovered",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-costs-recovered-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/recovered",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-costs-recovered-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/costs/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/costs/recovered",
+      "appReadySelector": "[data-testid=\"money-costs-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-unavailable-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/unavailable",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      }
+    },
+    {
+      "id": "money-profitability-unavailable-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/unavailable",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      }
+    },
+    {
+      "id": "money-profitability-unavailable-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/unavailable",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-unavailable-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/unavailable",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/unavailable",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner",
+        "referenceWorkspaceMoneyRecords": false
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-partial-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/partial",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-profitability-partial-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/partial",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-profitability-partial-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/partial",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-partial-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/partial",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/partial",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-recovered-light-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/recovered",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-profitability-recovered-light-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=light#money/profitability/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "light",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/recovered",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      }
+    },
+    {
+      "id": "money-profitability-recovered-dark-1728-1117",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/recovered",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
+    },
+    {
+      "id": "money-profitability-recovered-dark-1440-900",
+      "referenceUrl": "http://127.0.0.1:5198/company-feature-review/screen.html?theme=dark#money/profitability/recovered",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        }
+      },
+      "appRoute": "/#/money/profitability/recovered",
+      "appReadySelector": "[data-testid=\"money-profitability-page\"]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "actions": [],
+      "appMockData": {
+        "referenceWorkspace": true,
+        "referenceWorkspaceRole": "owner"
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false"
+        }
+      }
     }
   ]
 }

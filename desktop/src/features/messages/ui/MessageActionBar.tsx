@@ -10,6 +10,7 @@ import {
   MailCheck,
   MailOpen,
   Pencil,
+  Plus,
   SmilePlus,
   Trash2,
 } from "lucide-react";
@@ -93,6 +94,7 @@ function MoreActionsMenu({
   onMarkRead,
   onOpenChange,
   onRemindLater,
+  onRaiseAsk,
   onSendToChannel,
   onUnfollowThread,
   open,
@@ -113,6 +115,7 @@ function MoreActionsMenu({
   onMarkRead?: (message: TimelineMessage) => void;
   onOpenChange: (open: boolean) => void;
   onRemindLater?: (message: TimelineMessage) => void;
+  onRaiseAsk?: (message: TimelineMessage) => void;
   onSendToChannel?: (message: TimelineMessage) => Promise<void>;
   onUnfollowThread?: (message: TimelineMessage) => void;
   open: boolean;
@@ -252,6 +255,16 @@ function MoreActionsMenu({
             >
               <Clock className="h-4 w-4" />
               Remind me later
+            </DropdownMenuItem>
+          ) : null}
+
+          {onRaiseAsk ? (
+            <DropdownMenuItem
+              data-testid={`raise-ask-message-${message.id}`}
+              onSelect={() => onRaiseAsk(message)}
+            >
+              <Plus className="h-4 w-4" />
+              Raise an ask
             </DropdownMenuItem>
           ) : null}
 
@@ -405,6 +418,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   onReactionBadgeBurstRequest,
   onReactionSelect,
   onRemindLater,
+  onRaiseAsk,
   onReply,
   onSendToChannel,
   onUnfollowThread,
@@ -429,6 +443,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   onReactionBadgeBurstRequest?: (emoji: string) => void;
   onReactionSelect?: (emoji: string) => Promise<void>;
   onRemindLater?: (message: TimelineMessage) => void;
+  onRaiseAsk?: (message: TimelineMessage) => void;
   onReply?: (message: TimelineMessage) => void;
   onSendToChannel?: (message: TimelineMessage) => Promise<void>;
   onUnfollowThread?: (message: TimelineMessage) => void;
@@ -468,6 +483,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
     Boolean(onFollowThread) ||
     Boolean(onUnfollowThread) ||
     Boolean(onRemindLater) ||
+    Boolean(onRaiseAsk) ||
     Boolean(onSendToChannel) ||
     !message.pending;
 
@@ -645,6 +661,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
               onMarkRead={onMarkRead}
               onOpenChange={setIsDropdownOpen}
               onRemindLater={onRemindLater}
+              onRaiseAsk={onRaiseAsk}
               onSendToChannel={onSendToChannel}
               onUnfollowThread={onUnfollowThread}
               open={isDropdownOpen}

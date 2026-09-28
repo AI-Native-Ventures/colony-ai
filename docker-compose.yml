@@ -132,7 +132,7 @@ services:
 
   minio-init:
     # CI points this at a locally cached copy of the same pinned image.
-    image: ${BUZZ_MINIO_INIT_IMAGE:-public.ecr.aws/aws-cli/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5}
+    image: ${BUZZ_MINIO_INIT_IMAGE:-docker.io/amazon/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5}
     container_name: buzz-minio-init
     depends_on:
       minio:

@@ -23,7 +23,7 @@ type WorkflowsScreenProps = {
   channels: Channel[];
   editor: WorkflowEditorRoute | null;
   onCloseEditor: () => void;
-  onCreateWorkflow: () => void;
+  onCreateWorkflow: (starting: "blank" | "example") => void;
   onDuplicateWorkflow: (workflowId: string) => void;
   onEditWorkflow: (workflowId: string) => void;
   onViewWorkflow: (workflowId: string) => void;

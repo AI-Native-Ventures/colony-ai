@@ -2,17 +2,21 @@ import { useWorkflowQuery } from "@/features/workflows/hooks";
 import { WorkflowDialog } from "@/features/workflows/ui/WorkflowDialog";
 import { WorkflowUnavailableDialog } from "@/features/workflows/ui/WorkflowUnavailableDialog";
 import type { Channel, Workflow } from "@/shared/api/types";
+import { definitionToPlainDraft } from "./plainWorkflowModel";
 import type { WorkflowEditorPane } from "./workflowEditorPane";
 
 /** Create target for the shared workflow editor. */
 export type WorkflowEditorCreateTarget = {
+  advanced?: boolean;
   initialChannelId?: string;
   mode: "create";
   pane: WorkflowEditorPane;
+  starting?: "blank" | "example";
 };
 
 /** Existing-workflow target for the shared workflow editor. */
 export type WorkflowEditorWorkflowTarget = {
+  advanced?: boolean;
   mode: "detail" | "duplicate" | "edit";
   pane: WorkflowEditorPane;
   workflowId: string;
@@ -66,6 +70,14 @@ export function WorkflowEditorHost({
     workflowHint?.id === editorWorkflowId
       ? workflowHint
       : editorWorkflowQuery.data;
+  const advancedMapping =
+    editor?.advanced === true && editorWorkflow
+      ? definitionToPlainDraft(editorWorkflow.definition)
+      : null;
+  const readOnlyReasons =
+    advancedMapping && !advancedMapping.supported
+      ? advancedMapping.reasons
+      : [];
 
   if (!editor) return null;
 
@@ -85,6 +97,7 @@ export function WorkflowEditorHost({
   return (
     <WorkflowDialog
       channels={channels}
+      draftOnly={editor.advanced === true}
       initialChannelId={
         editor.mode === "create" ? editor.initialChannelId : undefined
       }
@@ -104,6 +117,7 @@ export function WorkflowEditorHost({
       onTriggerWorkflow={onTriggerWorkflow}
       open
       pane={editor.pane}
+      readOnly={readOnlyReasons.length > 0}
       workflow={editorWorkflow}
     />
   );

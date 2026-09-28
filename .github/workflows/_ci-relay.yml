@@ -488,6 +488,16 @@ jobs:
           VALUES ('00000000-0000-4000-8000-00000000c0de', 'localhost:3000')
           ON CONFLICT (lower(host)) DO NOTHING
           ;"
+      - name: Money record broker integration tests
+        env:
+          BUZZ_TEST_SCHEMA_MODE: desired
+          BUZZ_TEST_DATABASE_URL: postgres://buzz:${{ env.BUZZ_TEST_POSTGRES_PASSWORD }}@localhost:5432/buzz
+          BUZZ_TEST_REDIS_URL: redis://localhost:6379
+        run: |
+          cargo nextest run \
+            --archive-file target/ci/backend-integration-tests.tar.zst \
+            -E 'package(buzz-relay) and test(/money_adjustments_require_a_positive_effective_date|money_writes_require_community_owner_or_admin_and_matching_client_scope|payment_evidence_rejects_currency_and_overpayment_and_updates_partial_and_full_totals|adjustments_update_balances_and_void_after_any_payment_is_rejected|follow_up_draft_review_and_approval_record_intent_only|concurrent_payments_with_one_invoice_head_commit_only_one/)' \
+            --run-ignored all
       - name: Git default-branch route and clone regressions
         env:
           # The preceding step already applied and reconciled schema/schema.sql.

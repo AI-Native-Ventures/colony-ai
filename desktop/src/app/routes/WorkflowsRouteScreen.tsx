@@ -21,7 +21,7 @@ export function WorkflowsRouteScreen({
     closeWorkflowDetail,
     goDuplicateWorkflow,
     goEditWorkflow,
-    goNewWorkflow,
+    goNewPlainWorkflow,
     goWorkflow,
     goWorkflows,
   } = useAppNavigation();
@@ -41,8 +41,8 @@ export function WorkflowsRouteScreen({
       channels={memberChannels}
       editor={editor}
       onCloseEditor={closeEditor}
-      onCreateWorkflow={() => {
-        void goNewWorkflow();
+      onCreateWorkflow={(starting) => {
+        void goNewPlainWorkflow(starting);
       }}
       onDuplicateWorkflow={(workflowId) => {
         void goDuplicateWorkflow(workflowId);

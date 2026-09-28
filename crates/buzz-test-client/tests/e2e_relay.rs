@@ -103,6 +103,124 @@ async fn ensure_test_community(host: &str) -> uuid::Uuid {
         .unwrap_or_else(|e| panic!("lookup community {host}: {e}"))
 }
 
+async fn submit_workflow_event(http_base: &str, event: &nostr::Event) -> serde_json::Value {
+    let pubkey = event.pubkey.to_hex();
+    reqwest::Client::new()
+        .post(format!("{http_base}/events"))
+        .timeout(Duration::from_secs(10))
+        .header("X-Pubkey", pubkey)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(event).expect("serialize workflow event"))
+        .send()
+        .await
+        .expect("submit workflow event")
+        .json()
+        .await
+        .expect("parse workflow event response")
+}
+
+async fn query_workflow_definition(
+    client: &mut BuzzTestClient,
+    workflow_id: &str,
+    channel_id: &str,
+) -> nostr::Event {
+    let sid = sub_id("workflow-definition");
+    let filter = Filter::new()
+        .kind(Kind::Custom(30620))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::D), [workflow_id])
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel_id]);
+    client
+        .subscribe(&sid, vec![filter])
+        .await
+        .expect("subscribe to active workflow definition");
+    let mut events = client
+        .collect_until_eose(&sid, Duration::from_secs(5))
+        .await
+        .expect("read active workflow definition");
+    assert_eq!(events.len(), 1, "expected one active workflow definition");
+    events.remove(0)
+}
+
+async fn wait_for_workflow_approval_request(
+    client: &mut BuzzTestClient,
+    workflow_id: &str,
+    channel_id: &str,
+    approver_spec: &str,
+) -> nostr::Event {
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            match client.recv_event(Duration::from_secs(2)).await {
+                Ok(RelayMessage::Event { event, .. })
+                    if event.kind == Kind::Custom(46010)
+                        && event.tags.iter().any(|tag| {
+                            tag.kind().to_string() == "h" && tag.content() == Some(channel_id)
+                        }) =>
+                {
+                    let content: serde_json::Value =
+                        serde_json::from_str(&event.content).expect("approval request JSON");
+                    if content["workflow_id"] == workflow_id
+                        && content["approver_spec"] == approver_spec
+                    {
+                        return *event;
+                    }
+                }
+                Ok(_) | Err(TestClientError::Timeout) => {}
+                Err(error) => panic!("receive workflow approval request: {error}"),
+            }
+        }
+    })
+    .await
+    .expect("workflow approval request within 20 seconds")
+}
+
+async fn create_approval_workflow(keys: &Keys, channel_id: &str, approver_spec: &str) -> String {
+    let workflow_id = Uuid::new_v4().to_string();
+    let name = format!("role-approval-{}", Uuid::new_v4().simple());
+    let yaml = format!(
+        "name: {name}\n\
+         trigger:\n\
+         \x20 on: manual\n\
+         steps:\n\
+         \x20 - id: review\n\
+         \x20   action: request_approval\n\
+         \x20   from: {approver_spec}\n\
+         \x20   message: Review this workflow run\n\
+         \x20   timeout: 30m\n"
+    );
+    let event = EventBuilder::new(Kind::Custom(30620), yaml)
+        .tags([
+            Tag::parse(["d", workflow_id.as_str()]).expect("workflow id tag"),
+            Tag::parse(["h", channel_id]).expect("channel tag"),
+            Tag::parse(["name", name.as_str()]).expect("workflow name tag"),
+        ])
+        .sign_with_keys(keys)
+        .expect("sign approval workflow");
+    let response = submit_workflow_event(&relay_http_url(), &event).await;
+    assert!(
+        response["accepted"].as_bool().unwrap_or(false),
+        "approval workflow was rejected: {response}"
+    );
+    workflow_id
+}
+
+async fn assert_recorded_approval_action(token_hash: &str, status: &str, actor: &Keys) {
+    let pool = e2e_db_pool().await;
+    let community_id = ensure_test_community(&relay_authority()).await;
+    let token_hash = hex::decode(token_hash).expect("approval token hash hex");
+    let (recorded_status, approver_pubkey) = sqlx::query_as::<_, (String, Option<Vec<u8>>)>(
+        "SELECT status::text, approver_pubkey FROM workflow_approvals \
+         WHERE community_id = $1 AND token = $2",
+    )
+    .bind(community_id)
+    .bind(token_hash)
+    .fetch_one(&pool)
+    .await
+    .expect("read role approval result");
+    assert_eq!(recorded_status, status);
+    let expected_pubkey = actor.public_key().to_bytes();
+    assert_eq!(approver_pubkey.as_deref(), Some(expected_pubkey.as_slice()));
+}
+
 async fn seed_relay_member(host: &str, keys: &Keys, role: &str) {
     let pool = e2e_db_pool().await;
     let community_id = ensure_test_community(host).await;
@@ -2913,6 +3031,353 @@ async fn test_workflow_reply_in_thread_pushes_live_thread_summary() {
     );
 
     ws.disconnect().await.expect("disconnect");
+}
+
+/// A real relay keeps an unpublished definition separate from the active one,
+/// then pins a triggered run to the newly published version.
+#[tokio::test]
+#[ignore]
+async fn test_workflow_draft_is_inert_until_publish_and_run_records_published_version() {
+    let url = relay_url();
+    let http = relay_http_url();
+    let keys = Keys::generate();
+    let channel = create_test_channel(&keys).await;
+    let workflow_id = Uuid::new_v4().to_string();
+
+    let definition = |reply: &str| {
+        format!(
+            "name: versioned-reply-bot\n\
+             description: Verify published workflow versions on a real relay.\n\
+             trigger:\n\
+             \x20 on: message_posted\n\
+             \x20 filter: \"trigger_is_reply == false\"\n\
+             steps:\n\
+             \x20 - id: reply\n\
+             \x20   name: Reply\n\
+             \x20   action: send_message\n\
+             \x20   text: \"{reply}\"\n\
+             \x20   reply_in_thread: true\n"
+        )
+    };
+
+    let version_one_yaml = definition("published version one");
+    let version_one = EventBuilder::new(Kind::Custom(30620), version_one_yaml.clone())
+        .tags([
+            Tag::parse(["d", workflow_id.as_str()]).expect("workflow id tag"),
+            Tag::parse(["h", channel.as_str()]).expect("channel tag"),
+            Tag::parse(["name", "versioned-reply-bot"]).expect("name tag"),
+        ])
+        .sign_with_keys(&keys)
+        .expect("sign version one");
+    let version_one_id = version_one.id.to_hex();
+    let response = submit_workflow_event(&http, &version_one).await;
+    assert!(
+        response["accepted"].as_bool().unwrap_or(false),
+        "version one was rejected: {response}"
+    );
+
+    let mut ws = BuzzTestClient::connect(&url, &keys)
+        .await
+        .expect("connect as workflow owner");
+    let active_before_draft = query_workflow_definition(&mut ws, &workflow_id, &channel).await;
+    assert_eq!(active_before_draft.id.to_hex(), version_one_id);
+    assert_eq!(active_before_draft.content, version_one_yaml);
+
+    let version_two_yaml = definition("published version two");
+    let draft = EventBuilder::new(Kind::Custom(30623), version_two_yaml.clone())
+        .tags([
+            Tag::parse(["d", workflow_id.as_str()]).expect("workflow id tag"),
+            Tag::parse(["h", channel.as_str()]).expect("channel tag"),
+        ])
+        .sign_with_keys(&keys)
+        .expect("sign workflow draft");
+    let response = submit_workflow_event(&http, &draft).await;
+    assert!(
+        response["accepted"].as_bool().unwrap_or(false),
+        "workflow draft was rejected: {response}"
+    );
+
+    let active_after_draft = query_workflow_definition(&mut ws, &workflow_id, &channel).await;
+    assert_eq!(active_after_draft.id.to_hex(), version_one_id);
+    assert_eq!(active_after_draft.content, version_one_yaml);
+
+    let version_two = EventBuilder::new(Kind::Custom(30620), version_two_yaml.clone())
+        .tags([
+            Tag::parse(["d", workflow_id.as_str()]).expect("workflow id tag"),
+            Tag::parse(["h", channel.as_str()]).expect("channel tag"),
+            Tag::parse(["name", "versioned-reply-bot"]).expect("name tag"),
+            Tag::parse(["expected-revision", version_one_id.as_str()])
+                .expect("active revision tag"),
+        ])
+        .sign_with_keys(&keys)
+        .expect("sign version two");
+    let version_two_id = version_two.id.to_hex();
+    let response = submit_workflow_event(&http, &version_two).await;
+    assert!(
+        response["accepted"].as_bool().unwrap_or(false),
+        "version two was rejected: {response}"
+    );
+    let active_after_publish = query_workflow_definition(&mut ws, &workflow_id, &channel).await;
+    assert_eq!(active_after_publish.id.to_hex(), version_two_id);
+    assert_eq!(active_after_publish.content, version_two_yaml);
+
+    let reply_sid = sub_id("workflow-published-version-reply");
+    let reply_filter = Filter::new()
+        .kind(Kind::Custom(9))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel.as_str()]);
+    let summary_sid = sub_id("workflow-published-version-summary");
+    let summary_filter = Filter::new()
+        .kind(Kind::Custom(39005))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel.as_str()]);
+    ws.subscribe(&reply_sid, vec![reply_filter])
+        .await
+        .expect("subscribe to channel replies");
+    ws.subscribe(&summary_sid, vec![summary_filter])
+        .await
+        .expect("subscribe to workflow thread summaries");
+    ws.collect_until_eose(&reply_sid, Duration::from_secs(5))
+        .await
+        .expect("reply subscription EOSE");
+    ws.collect_until_eose(&summary_sid, Duration::from_secs(5))
+        .await
+        .expect("summary subscription EOSE");
+
+    let root = EventBuilder::new(Kind::Custom(9), "trigger versioned workflow")
+        .tags([Tag::parse(["h", channel.as_str()]).expect("channel tag")])
+        .sign_with_keys(&keys)
+        .expect("sign workflow trigger message");
+    let root_id = root.id;
+    let accepted = ws.send_event(root).await.expect("send trigger message");
+    assert!(
+        accepted.accepted,
+        "trigger message rejected: {}",
+        accepted.message
+    );
+
+    let (reply, summary) = tokio::time::timeout(Duration::from_secs(20), async {
+        let mut reply = None;
+        let mut summary = None;
+        while reply.is_none() || summary.is_none() {
+            match ws.recv_event(Duration::from_secs(2)).await {
+                Ok(RelayMessage::Event { event, .. }) => {
+                    if event.kind == Kind::Custom(9) && event.content == "published version two" {
+                        reply = Some(*event);
+                    } else if event.kind == Kind::Custom(39005) {
+                        summary = Some(*event);
+                    }
+                }
+                Ok(_) | Err(TestClientError::Timeout) => {}
+                Err(error) => panic!("receive workflow reply: {error}"),
+            }
+        }
+        (
+            reply.expect("version two reply"),
+            summary.expect("thread summary"),
+        )
+    })
+    .await
+    .expect("published workflow reply and summary within 20 seconds");
+    let reply_root = reply
+        .tags
+        .iter()
+        .find(|tag| tag.as_slice().first().map(String::as_str) == Some("e"))
+        .and_then(|tag| tag.content().map(str::to_string))
+        .expect("workflow reply carries the root event tag");
+    assert_eq!(reply_root, root_id.to_hex());
+    let summary_root = summary
+        .tags
+        .iter()
+        .find(|tag| tag.as_slice().first().map(String::as_str) == Some("e"))
+        .and_then(|tag| tag.content().map(str::to_string))
+        .expect("thread summary carries the root event tag");
+    assert_eq!(summary_root, root_id.to_hex());
+
+    let pool = e2e_db_pool().await;
+    let community_id = ensure_test_community(&relay_authority()).await;
+    let active_definition_hash = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT definition_hash FROM workflows WHERE community_id = $1 AND id = $2",
+    )
+    .bind(community_id)
+    .bind(Uuid::parse_str(&workflow_id).expect("workflow UUID"))
+    .fetch_one(&pool)
+    .await
+    .expect("read published workflow hash");
+    let run_definition_version = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT definition_version FROM workflow_runs \
+         WHERE community_id = $1 AND workflow_id = $2 AND trigger_event_id = $3",
+    )
+    .bind(community_id)
+    .bind(Uuid::parse_str(&workflow_id).expect("workflow UUID"))
+    .bind(root_id.to_bytes().to_vec())
+    .fetch_one(&pool)
+    .await
+    .expect("read workflow run version");
+    assert_eq!(run_definition_version, active_definition_hash);
+
+    ws.disconnect().await.expect("disconnect");
+}
+
+/// Role approval commands authorize current community/channel members and persist the actor.
+#[tokio::test]
+#[ignore]
+async fn test_role_approval_commands_use_live_scoped_membership() {
+    let url = relay_url();
+    let owner = Keys::generate();
+    let admin = Keys::generate();
+    let member = Keys::generate();
+    let channel = create_test_channel(&owner).await;
+    seed_relay_owner(&owner).await;
+    seed_relay_member(&relay_authority(), &admin, "admin").await;
+    seed_relay_member(&relay_authority(), &member, "member").await;
+
+    let mut owner_ws = BuzzTestClient::connect(&url, &owner)
+        .await
+        .expect("connect workflow owner");
+    let mut admin_ws = BuzzTestClient::connect(&url, &admin)
+        .await
+        .expect("connect community admin");
+    let mut member_ws = BuzzTestClient::connect(&url, &member)
+        .await
+        .expect("connect channel member");
+    let (added, message) = add_member_ws(
+        &mut owner_ws,
+        &channel,
+        &member.public_key().to_hex(),
+        &owner,
+    )
+    .await;
+    assert!(added, "channel member add rejected: {message}");
+
+    let approval_sid = sub_id("role-approval-requests");
+    let approval_filter = Filter::new()
+        .kind(Kind::Custom(46010))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel.as_str()]);
+    owner_ws
+        .subscribe(&approval_sid, vec![approval_filter])
+        .await
+        .expect("subscribe to approval requests");
+    owner_ws
+        .collect_until_eose(&approval_sid, Duration::from_secs(5))
+        .await
+        .expect("approval request subscription EOSE");
+
+    let admin_workflow = create_approval_workflow(&owner, &channel, "owner_or_admin").await;
+    let admin_trigger = EventBuilder::new(Kind::Custom(46020), "")
+        .tags([Tag::parse(["d", admin_workflow.as_str()]).expect("workflow trigger tag")])
+        .sign_with_keys(&owner)
+        .expect("sign admin approval trigger");
+    let trigger_result = owner_ws
+        .send_event(admin_trigger)
+        .await
+        .expect("trigger owner_or_admin workflow");
+    assert!(
+        trigger_result.accepted,
+        "owner_or_admin workflow trigger rejected: {}",
+        trigger_result.message
+    );
+    let admin_request = wait_for_workflow_approval_request(
+        &mut owner_ws,
+        &admin_workflow,
+        &channel,
+        "owner_or_admin",
+    )
+    .await;
+    let admin_token_hash = admin_request
+        .tags
+        .iter()
+        .find(|tag| tag.kind().to_string() == "d")
+        .and_then(|tag| tag.content())
+        .expect("approval request carries token hash")
+        .to_string();
+
+    let member_grant = EventBuilder::new(Kind::Custom(46030), "Should not grant")
+        .tags([Tag::parse(["d", admin_token_hash.as_str()]).expect("approval token tag")])
+        .sign_with_keys(&member)
+        .expect("sign unauthorized grant");
+    let member_result = member_ws
+        .send_event(member_grant)
+        .await
+        .expect("submit unauthorized owner_or_admin grant");
+    assert!(
+        !member_result.accepted,
+        "ordinary member granted owner_or_admin approval"
+    );
+
+    let admin_grant = EventBuilder::new(Kind::Custom(46030), "Approved by admin")
+        .tags([Tag::parse(["d", admin_token_hash.as_str()]).expect("approval token tag")])
+        .sign_with_keys(&admin)
+        .expect("sign admin grant");
+    let admin_result = admin_ws
+        .send_event(admin_grant)
+        .await
+        .expect("submit authorized owner_or_admin grant");
+    assert!(
+        admin_result.accepted,
+        "community admin grant rejected: {}",
+        admin_result.message
+    );
+    assert_recorded_approval_action(&admin_token_hash, "granted", &admin).await;
+
+    let member_workflow = create_approval_workflow(&owner, &channel, "channel_member").await;
+    let member_trigger = EventBuilder::new(Kind::Custom(46020), "")
+        .tags([Tag::parse(["d", member_workflow.as_str()]).expect("workflow trigger tag")])
+        .sign_with_keys(&owner)
+        .expect("sign channel-member approval trigger");
+    let trigger_result = owner_ws
+        .send_event(member_trigger)
+        .await
+        .expect("trigger channel_member workflow");
+    assert!(
+        trigger_result.accepted,
+        "channel_member workflow trigger rejected: {}",
+        trigger_result.message
+    );
+    let member_request = wait_for_workflow_approval_request(
+        &mut owner_ws,
+        &member_workflow,
+        &channel,
+        "channel_member",
+    )
+    .await;
+    let member_token_hash = member_request
+        .tags
+        .iter()
+        .find(|tag| tag.kind().to_string() == "d")
+        .and_then(|tag| tag.content())
+        .expect("approval request carries token hash")
+        .to_string();
+
+    let admin_deny = EventBuilder::new(Kind::Custom(46031), "Should not deny")
+        .tags([Tag::parse(["d", member_token_hash.as_str()]).expect("approval token tag")])
+        .sign_with_keys(&admin)
+        .expect("sign unauthorized denial");
+    let admin_result = admin_ws
+        .send_event(admin_deny)
+        .await
+        .expect("submit unauthorized channel_member denial");
+    assert!(
+        !admin_result.accepted,
+        "community admin without channel membership denied channel_member approval"
+    );
+
+    let member_deny = EventBuilder::new(Kind::Custom(46031), "Needs revision")
+        .tags([Tag::parse(["d", member_token_hash.as_str()]).expect("approval token tag")])
+        .sign_with_keys(&member)
+        .expect("sign channel-member denial");
+    let member_result = member_ws
+        .send_event(member_deny)
+        .await
+        .expect("submit authorized channel_member denial");
+    assert!(
+        member_result.accepted,
+        "channel member denial rejected: {}",
+        member_result.message
+    );
+    assert_recorded_approval_action(&member_token_hash, "denied", &member).await;
+
+    owner_ws.disconnect().await.expect("disconnect owner");
+    admin_ws.disconnect().await.expect("disconnect admin");
+    member_ws.disconnect().await.expect("disconnect member");
 }
 
 /// Read a member's authoritative role from the relay-signed kind:39002 member
