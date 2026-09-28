@@ -1090,7 +1090,7 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <SidebarMenu>
+            <SidebarMenu className="sidebar-navigation-profile">
               <SidebarMenuItem>
                 <SidebarProfileCard
                   activeCommunity={activeCommunity}

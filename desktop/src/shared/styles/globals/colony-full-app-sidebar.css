@@ -476,9 +476,13 @@
   .app-sidebar-full-shell
   .sidebar-navigation-group-toggle
   > svg {
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 1.25rem;
+  height: 1.25rem;
   flex: none;
+  padding: 0.25rem;
+  border: 1px solid hsl(var(--sidebar-border) / 0.35);
+  border-radius: 0.25rem;
+  background-color: hsl(var(--sidebar-border) / 0.2);
   opacity: 0.75;
   transition: transform 120ms ease;
 }
@@ -560,12 +564,18 @@
 :root:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   [data-sidebar="footer"] {
-  border-top: 1px solid hsl(var(--sidebar-border) / 0.35);
   padding: 0.375rem 0.25rem 0.5rem;
 }
 
 .sidebar-navigation-utility {
-  padding-bottom: 0.375rem;
+  border-top: 1px solid hsl(var(--sidebar-border) / 0.35);
+  padding-top: 0.5rem;
+}
+
+.sidebar-navigation-utility + .sidebar-navigation-profile {
+  margin-top: -0.25rem;
+  border-top: 1px solid hsl(var(--sidebar-border) / 0.35);
+  padding-top: 0.375rem;
 }
 
 :root:has([data-colony-full-app-shell="true"])

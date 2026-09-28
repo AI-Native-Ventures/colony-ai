@@ -55,6 +55,8 @@ import 'features/forum/forum_new_post_page.dart';
 import 'features/forum/forum_posts_view.dart';
 import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
+import 'features/business/discovery_workspace_page.dart';
+import 'features/business/money_workspace_page.dart';
 import 'features/profile/user_profile_sheet.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
@@ -86,6 +88,7 @@ import 'features/settings/settings_clear_cache_page.dart';
 import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
 import 'shared/business/mobile_business_entry_points.dart';
+import 'shared/business/mobile_business_records.dart';
 import 'shared/company/goals/goal_records.dart';
 import 'shared/company/goals/goal_repository.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
@@ -257,6 +260,56 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       );
     })
     .register(MobileBusinessRoutes.goals, (context, _) => const GoalsPage())
+    .register(MobileBusinessRoutes.discovery, (context, _) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final channelsAsync = ref.watch(channelsProvider);
+          final communityId = ref.watch(activeCommunityProvider).value?.id;
+          final candidatesAsync = channelsAsync.whenData(
+            (channels) => [
+              for (final channel in channels)
+                MobileBusinessChannelCandidate(
+                  id: channel.id,
+                  name: channel.name,
+                  visibility: channel.visibility,
+                  channelType: channel.channelType,
+                  isMember: channel.isMember,
+                  archived: channel.isArchived,
+                ),
+            ],
+          );
+          return DiscoveryWorkspacePage(
+            channelDirectory: candidatesAsync,
+            communityId: communityId,
+            onRetryChannelDirectory: () => ref.invalidate(channelsProvider),
+          );
+        },
+      );
+    })
+    .register(MobileBusinessRoutes.money, (context, _) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final channelsAsync = ref.watch(channelsProvider);
+          final candidatesAsync = channelsAsync.whenData(
+            (channels) => [
+              for (final channel in channels)
+                MobileBusinessChannelCandidate(
+                  id: channel.id,
+                  name: channel.name,
+                  visibility: channel.visibility,
+                  channelType: channel.channelType,
+                  isMember: channel.isMember,
+                  archived: channel.isArchived,
+                ),
+            ],
+          );
+          return MoneyWorkspacePage(
+            channelDirectory: candidatesAsync,
+            onRetryChannelDirectory: () => ref.invalidate(channelsProvider),
+          );
+        },
+      );
+    })
     .register(MobileBusinessRoutes.goalDetail, (context, goalId) {
       return Consumer(
         builder: (context, ref, _) {
