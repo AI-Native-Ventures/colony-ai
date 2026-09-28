@@ -219,8 +219,17 @@ abstract final class MobileLayoutTokens {
   /// Interior padding for a company goal card.
   static const goalCardPadding = 19.0;
 
+  /// Horizontal inset for the Goals list content.
+  static const goalListContentGutter = 21.0;
+
   /// Maximum line width for a goal card title.
   static const goalCardTitleMaxWidth = 225.0;
+
+  /// Horizontal inset inside goal card status chips.
+  static const goalCardChipHorizontalPadding = 8.0;
+
+  /// Vertical inset inside goal card status chips.
+  static const goalCardChipVerticalPadding = 5.0;
 
   /// Gap between goal cards and the following section heading.
   static const goalSectionSpacing = 23.0;

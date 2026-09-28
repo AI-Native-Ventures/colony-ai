@@ -129,9 +129,9 @@ class _GoalList extends HookConsumerWidget {
     });
     return ListView(
       padding: const EdgeInsets.fromLTRB(
-        MobileLayoutTokens.contentGutter,
+        MobileLayoutTokens.goalListContentGutter,
         0,
-        MobileLayoutTokens.contentGutter,
+        MobileLayoutTokens.goalListContentGutter,
         Grid.xl,
       ),
       children: [
@@ -291,18 +291,15 @@ class _GoalCard extends ConsumerWidget {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: Grid.xxs,
-                            vertical: Grid.half,
+                            horizontal: MobileLayoutTokens
+                                .goalCardChipHorizontalPadding,
+                            vertical:
+                                MobileLayoutTokens.goalCardChipVerticalPadding,
                           ),
                           child: Text(
                             'Sub-goal',
-                            style: context
-                                .mobileTypography
-                                .companyEntryDescription
-                                .copyWith(
-                                  color: tokens.action,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: context.mobileTypography.goalCardChip
+                                .copyWith(color: tokens.action),
                           ),
                         ),
                       )

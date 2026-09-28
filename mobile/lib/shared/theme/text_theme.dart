@@ -65,6 +65,13 @@ const goalCardTitleTextStyle = TextStyle(
   letterSpacing: -0.4,
 );
 
+const goalCardChipTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 9,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+);
+
 const goalSectionTitleTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 15,

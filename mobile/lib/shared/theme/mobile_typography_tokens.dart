@@ -19,6 +19,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     required this.companyEntryTitle,
     required this.companyEntryDescription,
     required this.goalCardTitle,
+    required this.goalCardChip,
     required this.goalSectionTitle,
     required this.goalDetailTitle,
     required this.goalMetric,
@@ -79,6 +80,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     companyEntryTitle: companyEntryTitleTextStyle,
     companyEntryDescription: companyEntryDescriptionTextStyle,
     goalCardTitle: goalCardTitleTextStyle,
+    goalCardChip: goalCardChipTextStyle,
     goalSectionTitle: goalSectionTitleTextStyle,
     goalDetailTitle: goalDetailTitleTextStyle,
     goalMetric: goalMetricTextStyle,
@@ -120,6 +122,9 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
 
   /// Typography for goal cards in the Company Goals view.
   final TextStyle goalCardTitle;
+
+  /// Typography for labels and status chips on goal cards.
+  final TextStyle goalCardChip;
 
   /// Typography for goal section headings.
   final TextStyle goalSectionTitle;
@@ -172,6 +177,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     TextStyle? companyEntryTitle,
     TextStyle? companyEntryDescription,
     TextStyle? goalCardTitle,
+    TextStyle? goalCardChip,
     TextStyle? goalSectionTitle,
     TextStyle? goalDetailTitle,
     TextStyle? goalMetric,
@@ -199,6 +205,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     companyEntryDescription:
         companyEntryDescription ?? this.companyEntryDescription,
     goalCardTitle: goalCardTitle ?? this.goalCardTitle,
+    goalCardChip: goalCardChip ?? this.goalCardChip,
     goalSectionTitle: goalSectionTitle ?? this.goalSectionTitle,
     goalDetailTitle: goalDetailTitle ?? this.goalDetailTitle,
     goalMetric: goalMetric ?? this.goalMetric,
@@ -257,6 +264,7 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
         t,
       )!,
       goalCardTitle: TextStyle.lerp(goalCardTitle, other.goalCardTitle, t)!,
+      goalCardChip: TextStyle.lerp(goalCardChip, other.goalCardChip, t)!,
       goalSectionTitle: TextStyle.lerp(
         goalSectionTitle,
         other.goalSectionTitle,

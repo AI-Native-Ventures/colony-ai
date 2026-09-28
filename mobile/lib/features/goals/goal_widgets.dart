@@ -129,14 +129,13 @@ class GoalStatusPill extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: Grid.ten,
-          vertical: Grid.half,
+          horizontal: MobileLayoutTokens.goalCardChipHorizontalPadding,
+          vertical: MobileLayoutTokens.goalCardChipVerticalPadding,
         ),
         child: Text(
           label,
-          style: context.mobileTypography.companyEntryDescription.copyWith(
+          style: context.mobileTypography.goalCardChip.copyWith(
             color: foreground,
-            fontWeight: FontWeight.w700,
           ),
         ),
       ),

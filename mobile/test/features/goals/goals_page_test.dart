@@ -38,6 +38,47 @@ const _secondChildOwnerPubkey =
     'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 
 void main() {
+  testWidgets('goal cards keep the reference gutter and chip typography', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _goalsApp(
+        records: [
+          _headRecord(
+            goalId: _goalId,
+            title: 'Campaign direction',
+            ownerPubkey: _ownerPubkey,
+            doneCondition: 'The campaign is approved.',
+            target: '4',
+            current: '2',
+          ),
+          _headRecord(
+            goalId: _childGoalId,
+            title: 'Client campaign',
+            ownerPubkey: _childOwnerPubkey,
+            doneCondition: 'The client approves the campaign.',
+            parentGoalId: _goalId,
+          ),
+        ],
+        role: CommunityMemberRole.owner,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final companyCard = find.byKey(const ValueKey('goal-card-$_goalId'));
+    expect(tester.getRect(companyCard).left, 21);
+    expect(tester.getRect(companyCard).width, 348);
+
+    final statusText = tester.widget<Text>(find.text('On track').first);
+    expect(statusText.style?.fontSize, 9);
+    expect(statusText.style?.height, 1.4);
+    final subGoalText = tester.widget<Text>(find.text('Sub-goal'));
+    expect(subGoalText.style?.fontSize, 9);
+    expect(subGoalText.style?.height, 1.4);
+  });
+
   testWidgets('lists company goals and contributing sub-goals from records', (
     tester,
   ) async {
