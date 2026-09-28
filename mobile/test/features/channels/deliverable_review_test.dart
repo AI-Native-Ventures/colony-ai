@@ -226,6 +226,19 @@ void main() {
       await _pumpApprovalPage(tester, fixture, gateway);
       await tester.tap(find.byKey(const ValueKey('deliverable-give-feedback')));
       await tester.pumpAndSettle();
+      expect(find.text('What should change?'), findsOneWidget);
+      expect(find.text('Feedback'), findsOneWidget);
+      expect(find.byTooltip('Close sheet'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('deliverable-feedback-input')),
+            )
+            .decoration!
+            .hintText,
+        'Keep the warm tone, but…',
+      );
+      expect(find.bySemanticsLabel('Feedback'), findsOneWidget);
       await tester.enterText(
         find.byKey(const ValueKey('deliverable-feedback-input')),
         'Please revise the opening paragraph.',
@@ -388,6 +401,15 @@ void main() {
                 'title=${tester.getRect(find.text('A slower kind of morning.').first)} '
                 'status=${tester.getRect(find.text('Your review is needed'))} '
                 'approve=${tester.getRect(find.byKey(const ValueKey('deliverable-approve-version')))}',
+              );
+            } else if (state == 'feedback') {
+              debugPrint(
+                'VISUAL_LAYOUT feedback ${size.key} $mode '
+                'surface=${tester.getRect(find.byKey(const ValueKey('deliverable-feedback-sheet-content')))} '
+                'title=${tester.getRect(find.byKey(const ValueKey('deliverable-feedback-title')))} '
+                'description=${tester.getRect(find.text('Your feedback will be recorded with this version. This version stays unapproved.'))} '
+                'field=${tester.getRect(find.byKey(const ValueKey('deliverable-feedback-input')))} '
+                'send=${tester.getRect(find.byKey(const ValueKey('deliverable-send-feedback')))}',
               );
             }
             final fileName = '$state.png';

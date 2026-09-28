@@ -61,9 +61,9 @@ class DeliverableApprovalPage extends HookConsumerWidget {
     Future<void> openFeedback(DeliverableReviewBundle bundle) async {
       final sent = await showBuzzModalBottomSheet<bool>(
         context: context,
-        title: 'What should change?',
         isScrollControlled: true,
-        showDragHandle: true,
+        showCloseButton: false,
+        showDragHandle: false,
         builder: (sheetContext) => DeliverableFeedbackSheet(
           clientName: request.clientName,
           onSubmit: (text) async {
@@ -571,33 +571,114 @@ class DeliverableFeedbackSheet extends HookConsumerWidget {
     }
 
     return Padding(
+      key: const ValueKey('deliverable-feedback-sheet-content'),
       padding: EdgeInsets.fromLTRB(
-        Grid.gutter,
+        Grid.scrollInset,
         0,
-        Grid.gutter,
-        MediaQuery.viewInsetsOf(context).bottom + Grid.xs,
+        Grid.scrollInset,
+        MediaQuery.viewInsetsOf(context).bottom +
+            MediaQuery.paddingOf(context).bottom +
+            MobileLayoutTokens.deliverableFeedbackSheetBottomPadding,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Your feedback will be recorded with this version. This version stays unapproved.',
-            style: context.mobileTypography.body.copyWith(
-              color: context.mobileTokens.muted,
+          SizedBox(
+            height: MobileLayoutTokens.deliverableFeedbackSheetHeaderHeight,
+            child: Stack(
+              children: [
+                Positioned(
+                  top: Grid.xxs,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      key: const ValueKey('deliverable-feedback-drag-handle'),
+                      width: Grid.md,
+                      height: Grid.half,
+                      decoration: BoxDecoration(
+                        color: context.mobileTokens.muted.withValues(
+                          alpha: 0.35,
+                        ),
+                        borderRadius: BorderRadius.circular(Radii.full),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: MobileLayoutTokens.minimumTapTarget,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            'What should change?',
+                            key: const ValueKey('deliverable-feedback-title'),
+                            style: context.mobileTypography.companyHubTitle
+                                .copyWith(
+                                  height: 1.4,
+                                  color: context.mobileTokens.ink,
+                                ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close sheet',
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: IconButton.styleFrom(
+                          backgroundColor: context.mobileTokens.paper,
+                          foregroundColor: context.mobileTokens.ink,
+                          minimumSize: Size.square(
+                            MobileLayoutTokens.minimumTapTarget,
+                          ),
+                          padding: EdgeInsets.zero,
+                          side: BorderSide(color: context.mobileTokens.line),
+                          shape: const CircleBorder(),
+                        ),
+                        icon: const Icon(LucideIcons.x),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: Grid.xs),
-          TextField(
-            key: const ValueKey('deliverable-feedback-input'),
-            controller: controller,
-            autofocus: true,
-            minLines: 3,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Feedback',
-              hintText: 'What should change?',
-              alignLabelWithHint: true,
+          Text(
+            'Your feedback will be recorded with this version. This version stays unapproved.',
+            style: bodyExtraSmallTextStyle
+                .copyWith(height: 1.8)
+                .copyWith(color: context.mobileTokens.muted),
+          ),
+          const SizedBox(height: Grid.xs),
+          Text(
+            'Feedback',
+            style: context.mobileTypography.metadata.copyWith(
+              color: context.mobileTokens.muted,
+            ),
+          ),
+          const SizedBox(height: Grid.xxs),
+          Semantics(
+            label: 'Feedback',
+            child: TextField(
+              key: const ValueKey('deliverable-feedback-input'),
+              controller: controller,
+              minLines: 3,
+              maxLines: 5,
+              style: context.mobileTypography.conversation,
+              decoration: const InputDecoration(
+                hintText: 'Keep the warm tone, but…',
+                alignLabelWithHint: true,
+                constraints: BoxConstraints(
+                  minHeight:
+                      MobileLayoutTokens.deliverableFeedbackFieldMinHeight,
+                ),
+              ),
             ),
           ),
           if (failed.value)
@@ -611,9 +692,13 @@ class DeliverableFeedbackSheet extends HookConsumerWidget {
                 ),
               ),
             ),
-          const SizedBox(height: Grid.xs),
+          const SizedBox(height: Grid.xxs),
           FilledButton(
             key: const ValueKey('deliverable-send-feedback'),
+            style: FilledButton.styleFrom(
+              minimumSize: Size.fromHeight(MobileLayoutTokens.minimumTapTarget),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed:
                 hasPermission &&
                     text.text.trim().isNotEmpty &&
