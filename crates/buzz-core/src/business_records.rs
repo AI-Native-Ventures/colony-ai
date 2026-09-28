@@ -1125,6 +1125,11 @@ pub fn validate_company_work_item_action(
                 .as_ref()
                 .ok_or(BusinessRecordError::Invalid("update head is required"))?;
             validate_company_work_item_input(action.work_item_id, head)?;
+            if head.source_event_id.is_some() != head.thread_root_event_id.is_some() {
+                return Err(BusinessRecordError::Invalid(
+                    "sourceEventId and threadRootEventId must be supplied together",
+                ));
+            }
         }
         CompanyWorkItemActionKind::SetStatus => {
             require_company_work_expected_head(action)?;
@@ -1698,6 +1703,19 @@ mod tests {
         assert!(validate_company_work_item_action(&action).is_err());
         action.verification.as_mut().expect("verification").evidence = "Reviewed attachment".into();
         action.expected_head_event_id = None;
+        assert!(validate_company_work_item_action(&action).is_err());
+    }
+
+    #[test]
+    fn company_work_updates_keep_the_source_and_thread_root_pair() {
+        let work_item_id = Uuid::from_u128(45);
+        let mut action = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Update,
+            Some("ab".repeat(32)),
+            Some(company_work_input(work_item_id)),
+        );
+        action.head.as_mut().unwrap().source_event_id = Some("ef".repeat(32));
         assert!(validate_company_work_item_action(&action).is_err());
     }
 
