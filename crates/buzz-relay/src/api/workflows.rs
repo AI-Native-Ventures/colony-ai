@@ -201,6 +201,7 @@ fn run_json(run: &buzz_db::workflow::WorkflowRunRecord) -> Value {
     serde_json::json!({
         "id": run.id,
         "workflow_id": run.workflow_id,
+        "definition_version": run.definition_version.as_ref().map(hex::encode),
         "status": run.status,
         "current_step": run.current_step,
         "execution_trace": run.execution_trace,
@@ -262,5 +263,32 @@ mod tests {
         let wire = approval_json(&approval);
         assert!(wire.get("token").is_none());
         assert_eq!(wire["approval_ref"], hex::encode([0xab; 32]));
+    }
+
+    #[test]
+    fn run_wire_exposes_the_definition_version_without_the_snapshot() {
+        let version = vec![0xcd; 32];
+        let run = buzz_db::workflow::WorkflowRunRecord {
+            id: Uuid::new_v4(),
+            community_id: buzz_core::CommunityId::from_uuid(Uuid::new_v4()),
+            workflow_id: Uuid::new_v4(),
+            workflow_channel_id: Some(Uuid::new_v4()),
+            definition_version: Some(version.clone()),
+            definition_snapshot: Some(serde_json::json!({ "name": "private definition" })),
+            status: buzz_db::workflow::RunStatus::Completed,
+            trigger_event_id: None,
+            current_step: 0,
+            execution_trace: serde_json::json!([]),
+            trigger_context: None,
+            started_at: None,
+            completed_at: None,
+            error_message: None,
+            error_code: None,
+            created_at: Utc::now(),
+        };
+
+        let wire = run_json(&run);
+        assert_eq!(wire["definition_version"], hex::encode(version));
+        assert!(wire.get("definition_snapshot").is_none());
     }
 }

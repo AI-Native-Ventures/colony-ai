@@ -84,12 +84,16 @@ pub enum RunStatus {
     Running,
     /// Run is suspended waiting for an approval gate.
     WaitingApproval,
+    /// Suspended while waiting for an assigned channel agent to reply.
+    WaitingAgent,
     /// Run finished successfully.
     Completed,
     /// Run terminated with an error.
     Failed,
     /// Run was cancelled before completion.
     Cancelled,
+    /// A bounded agent or approval wait expired.
+    TimedOut,
 }
 
 impl fmt::Display for RunStatus {
@@ -98,9 +102,11 @@ impl fmt::Display for RunStatus {
             RunStatus::Pending => write!(f, "pending"),
             RunStatus::Running => write!(f, "running"),
             RunStatus::WaitingApproval => write!(f, "waiting_approval"),
+            RunStatus::WaitingAgent => write!(f, "waiting_agent"),
             RunStatus::Completed => write!(f, "completed"),
             RunStatus::Failed => write!(f, "failed"),
             RunStatus::Cancelled => write!(f, "cancelled"),
+            RunStatus::TimedOut => write!(f, "timed_out"),
         }
     }
 }
@@ -112,9 +118,11 @@ impl FromStr for RunStatus {
             "pending" => Ok(RunStatus::Pending),
             "running" => Ok(RunStatus::Running),
             "waiting_approval" => Ok(RunStatus::WaitingApproval),
+            "waiting_agent" => Ok(RunStatus::WaitingAgent),
             "completed" => Ok(RunStatus::Completed),
             "failed" => Ok(RunStatus::Failed),
             "cancelled" => Ok(RunStatus::Cancelled),
+            "timed_out" => Ok(RunStatus::TimedOut),
             other => Err(DbError::InvalidData(format!("unknown run status: {other}"))),
         }
     }
@@ -203,6 +211,14 @@ pub struct WorkflowRunRecord {
     pub community_id: CommunityId,
     /// The workflow definition that was executed.
     pub workflow_id: Uuid,
+    /// Workflow channel captured when this run started. Null for legacy runs.
+    pub workflow_channel_id: Option<Uuid>,
+    /// Content hash identifying the active workflow definition this run used.
+    /// Null only for runs created before definition snapshots were added.
+    pub definition_version: Option<Vec<u8>>,
+    /// Immutable definition snapshot used by this run and any later resume.
+    /// Null only for runs created before definition snapshots were added.
+    pub definition_snapshot: Option<serde_json::Value>,
     /// Current execution status of this run.
     pub status: RunStatus,
     /// Raw event ID bytes that triggered this run, if any.
@@ -225,6 +241,120 @@ pub struct WorkflowRunRecord {
     pub error_code: Option<String>,
     /// When the run record was created.
     pub created_at: DateTime<Utc>,
+}
+
+/// Lifecycle status of a persisted agent reply wait.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowAgentWaitStatus {
+    /// Request was published and is waiting for the assigned agent.
+    Pending,
+    /// The assigned agent replied in the request thread.
+    Completed,
+    /// No reply arrived before the configured deadline.
+    TimedOut,
+    /// The run failed before the request could be completed.
+    Failed,
+}
+
+impl fmt::Display for WorkflowAgentWaitStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Completed => write!(f, "completed"),
+            Self::TimedOut => write!(f, "timed_out"),
+            Self::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+impl FromStr for WorkflowAgentWaitStatus {
+    type Err = DbError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "completed" => Ok(Self::Completed),
+            "timed_out" => Ok(Self::TimedOut),
+            "failed" => Ok(Self::Failed),
+            other => Err(DbError::InvalidData(format!(
+                "unknown workflow agent wait status: {other}"
+            ))),
+        }
+    }
+}
+
+/// Persisted wait for a named agent's reply to a workflow request thread.
+#[derive(Debug, Clone)]
+pub struct WorkflowAgentWaitRecord {
+    /// Owning community.
+    pub community_id: CommunityId,
+    /// Workflow the wait belongs to.
+    pub workflow_id: Uuid,
+    /// Run currently suspended on the agent.
+    pub run_id: Uuid,
+    /// Workflow step waiting for the response.
+    pub step_id: String,
+    /// Zero-based workflow step index.
+    pub step_index: i32,
+    /// Channel containing the request thread.
+    pub channel_id: Uuid,
+    /// Pubkey bytes of the assigned agent.
+    pub agent_pubkey: Vec<u8>,
+    /// Event ID bytes of the request thread root.
+    pub request_event_id: Vec<u8>,
+    /// Wait lifecycle state.
+    pub status: WorkflowAgentWaitStatus,
+    /// Reply event ID bytes after completion.
+    pub reply_event_id: Option<Vec<u8>>,
+    /// Deadline for the agent reply.
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Values stored atomically when a workflow step starts waiting for an agent.
+pub struct CreateWorkflowAgentWaitParams<'a> {
+    /// Community that owns the workflow and run.
+    pub community_id: CommunityId,
+    /// Workflow the run is executing.
+    pub workflow_id: Uuid,
+    /// Run to suspend.
+    pub run_id: Uuid,
+    /// Step being suspended.
+    pub step_id: &'a str,
+    /// Zero-based step index.
+    pub step_index: i32,
+    /// Channel containing the request thread.
+    pub channel_id: Uuid,
+    /// Assigned agent pubkey bytes.
+    pub agent_pubkey: &'a [u8],
+    /// Request event ID bytes, computed before it is published.
+    pub request_event_id: &'a [u8],
+    /// Signed request event stored in the same transaction as the wait.
+    pub request_event: &'a nostr::Event,
+    /// Deadline for the reply.
+    pub expires_at: DateTime<Utc>,
+    /// Completed/skipped steps preceding the wait, in execution order.
+    pub prior_trace: &'a serde_json::Value,
+    /// Run trace entry identifying the pending agent request.
+    pub trace_entry: &'a serde_json::Value,
+}
+
+/// Values used to complete a persisted agent reply wait and resume its run.
+pub struct CompleteWorkflowAgentWaitParams<'a> {
+    /// Community that owns the workflow and run.
+    pub community_id: CommunityId,
+    /// Channel containing the request thread.
+    pub channel_id: Uuid,
+    /// Event ID bytes of the request thread root.
+    pub request_event_id: &'a [u8],
+    /// Pubkey bytes of the assigned agent.
+    pub agent_pubkey: &'a [u8],
+    /// Event ID bytes of the agent reply.
+    pub reply_event_id: &'a [u8],
+    /// Text of the agent reply, capped before it is stored in the trace.
+    pub reply_text: &'a str,
+    /// Current time used to reject replies received after the deadline.
+    pub now: DateTime<Utc>,
 }
 
 /// A winning scheduled workflow fire claim.
@@ -713,6 +843,52 @@ pub async fn set_workflow_enabled(
     Ok(())
 }
 
+/// Update a workflow's paused lifecycle state and trigger eligibility together.
+pub async fn set_workflow_lifecycle(
+    pool: &PgPool,
+    community_id: CommunityId,
+    id: Uuid,
+    status: WorkflowStatus,
+    enabled: bool,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    set_workflow_lifecycle_in_transaction(&mut tx, community_id, id, status, enabled).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Update a workflow's paused lifecycle in the transaction that stores its
+/// signed status command.
+pub async fn set_workflow_lifecycle_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    id: Uuid,
+    status: WorkflowStatus,
+    enabled: bool,
+) -> Result<()> {
+    let affected = sqlx::query(
+        r#"
+        UPDATE workflows
+        SET status = $1::workflow_status,
+            enabled = $2,
+            updated_at = NOW()
+        WHERE community_id = $3 AND id = $4
+        "#,
+    )
+    .bind(status.to_string())
+    .bind(enabled)
+    .bind(community_id.as_uuid())
+    .bind(id)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(DbError::NotFound(format!("workflow {id}")));
+    }
+    Ok(())
+}
+
 /// Disable all of `owner_pubkey`'s workflows in a channel (SEC-006).
 ///
 /// Called when the owner loses channel membership (kind 9001 removal or kind
@@ -827,6 +1003,52 @@ pub async fn create_workflow_run(
     Ok(id)
 }
 
+/// Insert a workflow run pinned to the exact active definition snapshot.
+pub async fn create_workflow_run_versioned(
+    pool: &PgPool,
+    community_id: CommunityId,
+    workflow_id: Uuid,
+    trigger_event_id: Option<&[u8]>,
+    trigger_context: Option<&serde_json::Value>,
+    definition_version: &[u8],
+    definition_snapshot: &serde_json::Value,
+) -> Result<Uuid> {
+    let id = Uuid::new_v4();
+    if definition_version.len() != 32 {
+        return Err(DbError::InvalidData(
+            "workflow definition version must be 32 bytes".to_string(),
+        ));
+    }
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_runs
+            (community_id, id, workflow_id, workflow_channel_id, status, trigger_event_id,
+             current_step, execution_trace, trigger_context, definition_version, definition_snapshot)
+        SELECT $1, $2, $3, w.channel_id, 'pending', $4, 0, '[]', $5, $6, $7
+        FROM workflows w
+        WHERE w.community_id = $1 AND w.id = $3 AND w.status = 'active' AND w.enabled = TRUE
+          AND w.definition_hash = $6 AND w.definition = $7
+        RETURNING id
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(id)
+    .bind(workflow_id)
+    .bind(trigger_event_id)
+    .bind(trigger_context)
+    .bind(definition_version)
+    .bind(definition_snapshot)
+    .fetch_optional(pool)
+    .await?;
+
+    row.map(|row| row.get("id")).ok_or_else(|| {
+        DbError::NotFound(format!(
+            "active workflow {workflow_id} at requested definition version"
+        ))
+    })
+}
+
 /// Fetch a single workflow run by ID, scoped to its community.
 pub async fn get_workflow_run(
     pool: &PgPool,
@@ -835,8 +1057,10 @@ pub async fn get_workflow_run(
 ) -> Result<WorkflowRunRecord> {
     let row = sqlx::query(
         r#"
-        SELECT community_id, id, workflow_id, status::text AS status, trigger_event_id, current_step,
-               execution_trace, trigger_context, started_at, completed_at, error_message, error_code, created_at
+        SELECT community_id, id, workflow_id, workflow_channel_id, status::text AS status,
+               trigger_event_id, current_step,
+               execution_trace, trigger_context, definition_version, definition_snapshot,
+               started_at, completed_at, error_message, error_code, created_at
         FROM workflow_runs
         WHERE community_id = $1 AND id = $2
         "#,
@@ -867,8 +1091,10 @@ pub async fn list_workflow_runs_page(
     let limit = limit.clamp(1, LIST_MAX_LIMIT);
     let rows = sqlx::query(
         r#"
-        SELECT community_id, id, workflow_id, status::text AS status, trigger_event_id, current_step,
-               execution_trace, trigger_context, started_at, completed_at, error_message, error_code, created_at
+        SELECT community_id, id, workflow_id, workflow_channel_id, status::text AS status,
+               trigger_event_id, current_step,
+               execution_trace, trigger_context, definition_version, definition_snapshot,
+               started_at, completed_at, error_message, error_code, created_at
         FROM workflow_runs
         WHERE community_id = $1 AND workflow_id = $2
           AND (
@@ -939,7 +1165,7 @@ pub async fn update_workflow_run(
             error_message = $5,
             started_at    = CASE WHEN $6 = 'running' AND started_at IS NULL
                                  THEN NOW() ELSE started_at END,
-            completed_at  = CASE WHEN $7 IN ('completed','failed','cancelled')
+            completed_at  = CASE WHEN $7 IN ('completed','failed','cancelled','timed_out')
                                  THEN NOW() ELSE completed_at END
         WHERE community_id = $8 AND id = $9
         "#,
@@ -1021,6 +1247,78 @@ pub async fn create_approval(pool: &PgPool, params: CreateApprovalParams<'_>) ->
     .await?;
 
     Ok(())
+}
+
+/// Create an approval record and suspend its workflow run atomically.
+pub async fn create_approval_and_suspend_run(
+    pool: &PgPool,
+    params: CreateApprovalParams<'_>,
+    prior_trace: &serde_json::Value,
+    trace_entry: &serde_json::Value,
+    request_event: &nostr::Event,
+    channel_id: Uuid,
+) -> Result<(buzz_core::StoredEvent, bool)> {
+    let mut tx = pool.begin().await?;
+    let token_hash = hash_approval_token(params.token);
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_approvals
+            (community_id, token, workflow_id, run_id, step_id, step_index, approver_spec, status, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+        "#,
+    )
+    .bind(params.community_id.as_uuid())
+    .bind(token_hash)
+    .bind(params.workflow_id)
+    .bind(params.run_id)
+    .bind(params.step_id)
+    .bind(params.step_index)
+    .bind(params.approver_spec)
+    .bind(params.expires_at)
+    .execute(&mut *tx)
+    .await?;
+
+    let affected = sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'waiting_approval', current_step = $1,
+            execution_trace = $2::jsonb || jsonb_build_array($3::jsonb)
+        WHERE community_id = $4 AND id = $5 AND workflow_id = $6 AND status = 'running'
+        "#,
+    )
+    .bind(params.step_index)
+    .bind(prior_trace)
+    .bind(trace_entry)
+    .bind(params.community_id.as_uuid())
+    .bind(params.run_id)
+    .bind(params.workflow_id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(DbError::NotFound(format!(
+            "running workflow run {}",
+            params.run_id
+        )));
+    }
+    let (stored_event, was_inserted) = crate::event::insert_event_in_transaction(
+        &mut tx,
+        params.community_id,
+        request_event,
+        Some(channel_id),
+    )
+    .await?;
+    if was_inserted {
+        crate::insert_mentions_in_transaction(
+            &mut tx,
+            params.community_id,
+            request_event,
+            Some(channel_id),
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok((stored_event, was_inserted))
 }
 
 /// Fetch an approval record by raw token.
@@ -1164,6 +1462,489 @@ pub async fn update_approval_by_stored_hash(
     Ok(affected > 0)
 }
 
+/// Persist an agent wait and suspend its run before publishing the request
+/// event. A fast reply therefore always finds its durable wait record.
+pub async fn create_workflow_agent_wait(
+    pool: &PgPool,
+    params: CreateWorkflowAgentWaitParams<'_>,
+) -> Result<(buzz_core::StoredEvent, bool)> {
+    if params.agent_pubkey.len() != 32 || params.request_event_id.len() != 32 {
+        return Err(DbError::InvalidData(
+            "agent wait pubkey and request id must be 32 bytes".to_string(),
+        ));
+    }
+    if params.request_event.id.as_bytes() != params.request_event_id {
+        return Err(DbError::InvalidData(
+            "agent wait request id does not match its signed event".to_string(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_agent_waits
+            (community_id, workflow_id, run_id, step_id, step_index, channel_id,
+             agent_pubkey, request_event_id, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        "#,
+    )
+    .bind(params.community_id.as_uuid())
+    .bind(params.workflow_id)
+    .bind(params.run_id)
+    .bind(params.step_id)
+    .bind(params.step_index)
+    .bind(params.channel_id)
+    .bind(params.agent_pubkey)
+    .bind(params.request_event_id)
+    .bind(params.expires_at)
+    .execute(&mut *tx)
+    .await?;
+
+    let affected = sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'waiting_agent',
+            current_step = $1,
+            execution_trace = $2::jsonb || jsonb_build_array($3::jsonb)
+        WHERE community_id = $4 AND id = $5 AND workflow_id = $6 AND status = 'running'
+        "#,
+    )
+    .bind(params.step_index)
+    .bind(params.prior_trace)
+    .bind(params.trace_entry)
+    .bind(params.community_id.as_uuid())
+    .bind(params.run_id)
+    .bind(params.workflow_id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(DbError::NotFound(format!(
+            "running workflow run {}",
+            params.run_id
+        )));
+    }
+
+    let (stored_event, was_inserted) = crate::event::insert_event_in_transaction(
+        &mut tx,
+        params.community_id,
+        params.request_event,
+        Some(params.channel_id),
+    )
+    .await?;
+    if was_inserted {
+        crate::insert_mentions_in_transaction(
+            &mut tx,
+            params.community_id,
+            params.request_event,
+            Some(params.channel_id),
+        )
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok((stored_event, was_inserted))
+}
+
+/// Find a pending wait by its thread root, assigned agent, and channel.
+pub async fn get_pending_workflow_agent_wait(
+    pool: &PgPool,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    request_event_id: &[u8],
+    agent_pubkey: &[u8],
+) -> Result<Option<WorkflowAgentWaitRecord>> {
+    let row = sqlx::query(
+        r#"
+        SELECT community_id, workflow_id, run_id, step_id, step_index, channel_id,
+               agent_pubkey, request_event_id, status::text AS status,
+               reply_event_id, expires_at
+        FROM workflow_agent_waits
+        WHERE community_id = $1 AND channel_id = $2 AND request_event_id = $3
+          AND agent_pubkey = $4 AND status = 'pending'
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(request_event_id)
+    .bind(agent_pubkey)
+    .fetch_optional(pool)
+    .await?;
+
+    row.map(row_to_workflow_agent_wait).transpose()
+}
+
+/// Atomically claim an agent reply, record it in the trace, and resume the run.
+pub async fn complete_workflow_agent_wait(
+    pool: &PgPool,
+    params: CompleteWorkflowAgentWaitParams<'_>,
+) -> Result<Option<WorkflowRunRecord>> {
+    let CompleteWorkflowAgentWaitParams {
+        community_id,
+        channel_id,
+        request_event_id,
+        agent_pubkey,
+        reply_event_id,
+        reply_text,
+        now,
+    } = params;
+    if request_event_id.len() != 32 || agent_pubkey.len() != 32 || reply_event_id.len() != 32 {
+        return Err(DbError::InvalidData(
+            "agent wait event ids and pubkey must be 32 bytes".to_string(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    let wait_row = sqlx::query(
+        r#"
+        SELECT community_id, workflow_id, run_id, step_id, step_index, channel_id,
+               agent_pubkey, request_event_id, status::text AS status,
+               reply_event_id, expires_at
+        FROM workflow_agent_waits
+        WHERE community_id = $1 AND channel_id = $2 AND request_event_id = $3
+          AND agent_pubkey = $4 AND status = 'pending'
+        FOR UPDATE
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(request_event_id)
+    .bind(agent_pubkey)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(wait_row) = wait_row else {
+        tx.rollback().await?;
+        return Ok(None);
+    };
+    let wait = row_to_workflow_agent_wait(wait_row)?;
+    if wait.expires_at <= now {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    let run_row = sqlx::query(
+        "SELECT status::text AS status, execution_trace FROM workflow_runs \
+         WHERE community_id = $1 AND id = $2 AND workflow_id = $3 FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(wait.run_id)
+    .bind(wait.workflow_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(run_row) = run_row else {
+        tx.rollback().await?;
+        return Ok(None);
+    };
+    let run_status: String = run_row.try_get("status")?;
+    if run_status != "waiting_agent" {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    let mut trace: serde_json::Value = run_row.try_get("execution_trace")?;
+    let reply_text: String = reply_text.chars().take(16_384).collect();
+    let output = serde_json::json!({
+        "agent_pubkey": hex::encode(agent_pubkey),
+        "request_event_id": hex::encode(request_event_id),
+        "reply_event_id": hex::encode(reply_event_id),
+        "reply_text": reply_text,
+    });
+    replace_wait_trace_entry(&mut trace, &wait.step_id, "completed", output);
+
+    let changed = sqlx::query(
+        r#"
+        UPDATE workflow_agent_waits
+        SET status = 'completed', reply_event_id = $1, updated_at = $2
+        WHERE community_id = $3 AND run_id = $4 AND step_id = $5 AND status = 'pending'
+        "#,
+    )
+    .bind(reply_event_id)
+    .bind(now)
+    .bind(community_id.as_uuid())
+    .bind(wait.run_id)
+    .bind(&wait.step_id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if changed == 0 {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'running', current_step = $1, execution_trace = $2,
+            error_code = NULL, error_message = NULL
+        WHERE community_id = $3 AND id = $4 AND status = 'waiting_agent'
+        "#,
+    )
+    .bind(wait.step_index + 1)
+    .bind(&trace)
+    .bind(community_id.as_uuid())
+    .bind(wait.run_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    get_workflow_run(pool, community_id, wait.run_id)
+        .await
+        .map(Some)
+}
+
+/// Mark an agent wait failed when its request could not be published.
+pub async fn fail_workflow_agent_wait(
+    pool: &PgPool,
+    community_id: CommunityId,
+    run_id: Uuid,
+    step_id: &str,
+    error_message: &str,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "SELECT execution_trace FROM workflow_runs WHERE community_id = $1 AND id = $2 \
+         AND status = 'waiting_agent' FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(run_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(row) = row else {
+        tx.rollback().await?;
+        return Ok(());
+    };
+    let mut trace: serde_json::Value = row.try_get("execution_trace")?;
+    replace_wait_trace_entry(
+        &mut trace,
+        step_id,
+        "failed",
+        serde_json::json!({ "error": error_message.chars().take(1024).collect::<String>() }),
+    );
+    sqlx::query(
+        "UPDATE workflow_agent_waits SET status = 'failed', updated_at = NOW() \
+         WHERE community_id = $1 AND run_id = $2 AND step_id = $3 AND status = 'pending'",
+    )
+    .bind(community_id.as_uuid())
+    .bind(run_id)
+    .bind(step_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE workflow_runs SET status = 'failed', execution_trace = $1, \
+         error_code = 'agent_request_publish_failed', error_message = $2, completed_at = NOW() \
+         WHERE community_id = $3 AND id = $4 AND status = 'waiting_agent'",
+    )
+    .bind(&trace)
+    .bind(error_message.chars().take(1024).collect::<String>())
+    .bind(community_id.as_uuid())
+    .bind(run_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Mark due agent waits and their runs timed out. One scheduler tick processes
+/// at most `limit` rows so a backlog cannot turn into an unbounded loop.
+pub async fn expire_workflow_agent_waits(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64> {
+    let limit = limit.clamp(1, 100);
+    let mut tx = pool.begin().await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT w.community_id, w.workflow_id, w.run_id, w.step_id, w.step_index,
+               w.channel_id, w.agent_pubkey, w.request_event_id,
+               w.status::text AS status, w.reply_event_id, w.expires_at
+        FROM workflow_agent_waits w
+        JOIN workflow_runs r
+          ON r.community_id = w.community_id AND r.id = w.run_id
+        WHERE w.status = 'pending' AND w.expires_at <= $1 AND r.status = 'waiting_agent'
+        ORDER BY w.expires_at, w.run_id, w.step_id
+        LIMIT $2
+        FOR UPDATE OF w SKIP LOCKED
+        "#,
+    )
+    .bind(now)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut expired = 0_u64;
+    for row in rows {
+        let wait = row_to_workflow_agent_wait(row)?;
+        let run_row = sqlx::query(
+            "SELECT execution_trace FROM workflow_runs WHERE community_id = $1 AND id = $2 \
+             AND status = 'waiting_agent' FOR UPDATE",
+        )
+        .bind(wait.community_id.as_uuid())
+        .bind(wait.run_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(run_row) = run_row else {
+            continue;
+        };
+        let mut trace: serde_json::Value = run_row.try_get("execution_trace")?;
+        replace_wait_trace_entry(
+            &mut trace,
+            &wait.step_id,
+            "timed_out",
+            serde_json::json!({
+                "agent_pubkey": hex::encode(&wait.agent_pubkey),
+                "request_event_id": hex::encode(&wait.request_event_id),
+            }),
+        );
+        sqlx::query(
+            r#"
+            UPDATE workflow_agent_waits
+            SET status = 'timed_out', updated_at = $1
+            WHERE community_id = $2 AND run_id = $3 AND step_id = $4 AND status = 'pending'
+            "#,
+        )
+        .bind(now)
+        .bind(wait.community_id.as_uuid())
+        .bind(wait.run_id)
+        .bind(&wait.step_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE workflow_runs
+            SET status = 'timed_out', current_step = $1, execution_trace = $2,
+                error_code = 'agent_timeout',
+                error_message = 'assigned agent did not reply before the deadline',
+                completed_at = $3
+            WHERE community_id = $4 AND id = $5 AND status = 'waiting_agent'
+            "#,
+        )
+        .bind(wait.step_index)
+        .bind(&trace)
+        .bind(now)
+        .bind(wait.community_id.as_uuid())
+        .bind(wait.run_id)
+        .execute(&mut *tx)
+        .await?;
+        expired += 1;
+    }
+
+    tx.commit().await?;
+    Ok(expired)
+}
+
+/// Expire a bounded batch of approval waits and make their runs terminal.
+pub async fn expire_workflow_approvals(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64> {
+    let limit = limit.clamp(1, 100);
+    let mut tx = pool.begin().await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT a.community_id, a.workflow_id, a.run_id, a.step_id, a.step_index, a.token
+        FROM workflow_approvals a
+        JOIN workflow_runs r
+          ON r.community_id = a.community_id AND r.id = a.run_id
+        WHERE a.status = 'pending' AND a.expires_at <= $1 AND r.status = 'waiting_approval'
+        ORDER BY a.expires_at, a.run_id, a.step_index
+        LIMIT $2
+        FOR UPDATE OF a SKIP LOCKED
+        "#,
+    )
+    .bind(now)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut expired = 0_u64;
+    for row in rows {
+        let community_uuid: Uuid = row.try_get("community_id")?;
+        let community_id = CommunityId::from_uuid(community_uuid);
+        let workflow_id: Uuid = row.try_get("workflow_id")?;
+        let run_id: Uuid = row.try_get("run_id")?;
+        let step_id: String = row.try_get("step_id")?;
+        let step_index: i32 = row.try_get("step_index")?;
+        let token: Vec<u8> = row.try_get("token")?;
+        let run_row = sqlx::query(
+            "SELECT execution_trace FROM workflow_runs WHERE community_id = $1 AND id = $2 \
+             AND workflow_id = $3 AND status = 'waiting_approval' FOR UPDATE",
+        )
+        .bind(community_uuid)
+        .bind(run_id)
+        .bind(workflow_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(run_row) = run_row else {
+            continue;
+        };
+        let mut trace: serde_json::Value = run_row.try_get("execution_trace")?;
+        replace_wait_trace_entry(
+            &mut trace,
+            &step_id,
+            "timed_out",
+            serde_json::json!({ "reason": "approval deadline elapsed" }),
+        );
+        let approval_changed = sqlx::query(
+            "UPDATE workflow_approvals SET status = 'expired', note = 'approval deadline elapsed' \
+             WHERE community_id = $1 AND token = $2 AND status = 'pending'",
+        )
+        .bind(community_uuid)
+        .bind(token)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if approval_changed == 0 {
+            continue;
+        }
+        sqlx::query(
+            "UPDATE workflow_runs SET status = 'timed_out', current_step = $1, \
+             execution_trace = $2, error_code = 'approval_timeout', \
+             error_message = 'approver did not respond before the deadline', completed_at = $3 \
+             WHERE community_id = $4 AND id = $5 AND status = 'waiting_approval'",
+        )
+        .bind(step_index)
+        .bind(&trace)
+        .bind(now)
+        .bind(community_id.as_uuid())
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await?;
+        expired += 1;
+    }
+    tx.commit().await?;
+    Ok(expired)
+}
+
+fn replace_wait_trace_entry(
+    trace: &mut serde_json::Value,
+    step_id: &str,
+    status: &str,
+    output: serde_json::Value,
+) {
+    if !trace.is_array() {
+        *trace = serde_json::Value::Array(Vec::new());
+    }
+    if let Some(entries) = trace.as_array_mut() {
+        if let Some(entry) = entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.get("step_id").and_then(serde_json::Value::as_str) == Some(step_id))
+        {
+            entry["status"] = serde_json::Value::String(status.to_string());
+            entry["output"] = output;
+        } else {
+            entries.push(serde_json::json!({
+                "step_id": step_id,
+                "status": status,
+                "output": output,
+            }));
+        }
+    }
+}
+
 // -- Row mappers --------------------------------------------------------------
 
 fn row_to_workflow_record(row: sqlx::postgres::PgRow) -> Result<WorkflowRecord> {
@@ -1204,6 +1985,9 @@ fn row_to_run_record(row: sqlx::postgres::PgRow) -> Result<WorkflowRunRecord> {
         id,
         community_id: CommunityId::from_uuid(community_id),
         workflow_id,
+        workflow_channel_id: row.try_get("workflow_channel_id")?,
+        definition_version: row.try_get("definition_version")?,
+        definition_snapshot: row.try_get("definition_snapshot")?,
         status,
         trigger_event_id: row.try_get("trigger_event_id")?,
         current_step: row.try_get("current_step")?,
@@ -1214,6 +1998,24 @@ fn row_to_run_record(row: sqlx::postgres::PgRow) -> Result<WorkflowRunRecord> {
         error_message: row.try_get("error_message")?,
         error_code: row.try_get("error_code")?,
         created_at: row.try_get("created_at")?,
+    })
+}
+
+fn row_to_workflow_agent_wait(row: sqlx::postgres::PgRow) -> Result<WorkflowAgentWaitRecord> {
+    let community_id: Uuid = row.try_get("community_id")?;
+    let status: String = row.try_get("status")?;
+    Ok(WorkflowAgentWaitRecord {
+        community_id: CommunityId::from_uuid(community_id),
+        workflow_id: row.try_get("workflow_id")?,
+        run_id: row.try_get("run_id")?,
+        step_id: row.try_get("step_id")?,
+        step_index: row.try_get("step_index")?,
+        channel_id: row.try_get("channel_id")?,
+        agent_pubkey: row.try_get("agent_pubkey")?,
+        request_event_id: row.try_get("request_event_id")?,
+        status: status.parse()?,
+        reply_event_id: row.try_get("reply_event_id")?,
+        expires_at: row.try_get("expires_at")?,
     })
 }
 
@@ -1290,6 +2092,97 @@ impl Db {
         .await
     }
 
+    /// Create a run pinned to the exact active workflow definition snapshot.
+    #[datastore_span(name = "create_workflow_run_versioned", system = "postgresql")]
+    pub async fn create_workflow_run_versioned(
+        &self,
+        community_id: CommunityId,
+        workflow_id: Uuid,
+        trigger_event_id: Option<&[u8]>,
+        trigger_context: Option<&serde_json::Value>,
+        definition_version: &[u8],
+        definition_snapshot: &serde_json::Value,
+    ) -> Result<Uuid> {
+        crate::workflow::create_workflow_run_versioned(
+            &self.pool,
+            community_id,
+            workflow_id,
+            trigger_event_id,
+            trigger_context,
+            definition_version,
+            definition_snapshot,
+        )
+        .await
+    }
+
+    /// Persist a wait for an agent reply and suspend its run atomically.
+    #[datastore_span(name = "create_workflow_agent_wait", system = "postgresql")]
+    pub async fn create_workflow_agent_wait(
+        &self,
+        params: CreateWorkflowAgentWaitParams<'_>,
+    ) -> Result<(buzz_core::StoredEvent, bool)> {
+        crate::workflow::create_workflow_agent_wait(&self.pool, params).await
+    }
+
+    /// Find an active agent wait by its exact request thread and assignee.
+    #[datastore_span(name = "get_pending_workflow_agent_wait", system = "postgresql")]
+    pub async fn get_pending_workflow_agent_wait(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+        request_event_id: &[u8],
+        agent_pubkey: &[u8],
+    ) -> Result<Option<WorkflowAgentWaitRecord>> {
+        crate::workflow::get_pending_workflow_agent_wait(
+            &self.pool,
+            community_id,
+            channel_id,
+            request_event_id,
+            agent_pubkey,
+        )
+        .await
+    }
+
+    /// Complete a pending agent wait and atomically resume its run.
+    #[datastore_span(name = "complete_workflow_agent_wait", system = "postgresql")]
+    pub async fn complete_workflow_agent_wait(
+        &self,
+        params: CompleteWorkflowAgentWaitParams<'_>,
+    ) -> Result<Option<WorkflowRunRecord>> {
+        crate::workflow::complete_workflow_agent_wait(&self.pool, params).await
+    }
+
+    /// Fail an agent wait when its request could not be published.
+    #[datastore_span(name = "fail_workflow_agent_wait", system = "postgresql")]
+    pub async fn fail_workflow_agent_wait(
+        &self,
+        community_id: CommunityId,
+        run_id: Uuid,
+        step_id: &str,
+        error_message: &str,
+    ) -> Result<()> {
+        crate::workflow::fail_workflow_agent_wait(
+            &self.pool,
+            community_id,
+            run_id,
+            step_id,
+            error_message,
+        )
+        .await
+    }
+
+    /// Expire a bounded batch of agent waits whose deadlines have passed.
+    #[datastore_span(name = "expire_workflow_agent_waits", system = "postgresql")]
+    pub async fn expire_workflow_agent_waits(&self, now: DateTime<Utc>, limit: i64) -> Result<u64> {
+        crate::workflow::expire_workflow_agent_waits(&self.pool, now, limit).await
+    }
+
+    /// Expire a bounded batch of overdue workflow approvals.
+    #[datastore_span(name = "expire_workflow_approvals", system = "postgresql")]
+    pub async fn expire_workflow_approvals(&self, now: DateTime<Utc>, limit: i64) -> Result<u64> {
+        crate::workflow::expire_workflow_approvals(&self.pool, now, limit).await
+    }
+
     /// Fetch a single workflow run, scoped to its community.
     #[datastore_span(name = "get_workflow_run", system = "postgresql")]
     pub async fn get_workflow_run(
@@ -1362,6 +2255,27 @@ impl Db {
         params: crate::workflow::CreateApprovalParams<'_>,
     ) -> Result<()> {
         crate::workflow::create_approval(&self.pool, params).await
+    }
+
+    /// Create an approval and suspend its run in one transaction.
+    #[datastore_span(name = "create_approval_and_suspend_run", system = "postgresql")]
+    pub async fn create_approval_and_suspend_run(
+        &self,
+        params: crate::workflow::CreateApprovalParams<'_>,
+        prior_trace: &serde_json::Value,
+        trace_entry: &serde_json::Value,
+        request_event: &nostr::Event,
+        channel_id: Uuid,
+    ) -> Result<(buzz_core::StoredEvent, bool)> {
+        crate::workflow::create_approval_and_suspend_run(
+            &self.pool,
+            params,
+            prior_trace,
+            trace_entry,
+            request_event,
+            channel_id,
+        )
+        .await
     }
 
     /// Fetch an approval by raw token.
@@ -1634,6 +2548,38 @@ impl Db {
         crate::workflow::set_workflow_enabled(&self.pool, community_id, id, enabled).await
     }
 
+    /// Update a workflow's paused lifecycle state and trigger eligibility together.
+    #[datastore_span(name = "set_workflow_lifecycle", system = "postgresql")]
+    pub async fn set_workflow_lifecycle(
+        &self,
+        community_id: CommunityId,
+        id: Uuid,
+        status: crate::workflow::WorkflowStatus,
+        enabled: bool,
+    ) -> Result<()> {
+        crate::workflow::set_workflow_lifecycle(&self.pool, community_id, id, status, enabled).await
+    }
+
+    /// Update lifecycle state inside the transaction that stores its command.
+    #[datastore_span(name = "set_workflow_lifecycle_in_transaction", system = "postgresql")]
+    pub async fn set_workflow_lifecycle_in_transaction(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        community_id: CommunityId,
+        id: Uuid,
+        status: crate::workflow::WorkflowStatus,
+        enabled: bool,
+    ) -> Result<()> {
+        crate::workflow::set_workflow_lifecycle_in_transaction(
+            tx,
+            community_id,
+            id,
+            status,
+            enabled,
+        )
+        .await
+    }
+
     /// Disable all of an owner's workflows in a channel (SEC-006, on
     /// membership loss). Returns the number of workflows disabled.
     #[datastore_span(name = "disable_workflows_for_owner_in_channel", system = "postgresql")]
@@ -1726,9 +2672,11 @@ mod postgres_tests {
         assert_eq!(RunStatus::Pending.to_string(), "pending");
         assert_eq!(RunStatus::Running.to_string(), "running");
         assert_eq!(RunStatus::WaitingApproval.to_string(), "waiting_approval");
+        assert_eq!(RunStatus::WaitingAgent.to_string(), "waiting_agent");
         assert_eq!(RunStatus::Completed.to_string(), "completed");
         assert_eq!(RunStatus::Failed.to_string(), "failed");
         assert_eq!(RunStatus::Cancelled.to_string(), "cancelled");
+        assert_eq!(RunStatus::TimedOut.to_string(), "timed_out");
     }
 
     #[test]
@@ -1737,9 +2685,11 @@ mod postgres_tests {
             "pending",
             "running",
             "waiting_approval",
+            "waiting_agent",
             "completed",
             "failed",
             "cancelled",
+            "timed_out",
         ] {
             let status: RunStatus = s.parse().expect("parse");
             assert_eq!(status.to_string(), *s);
@@ -1922,6 +2872,9 @@ mod postgres_tests {
             id,
             community_id: CommunityId::from_uuid(Uuid::new_v4()),
             workflow_id,
+            workflow_channel_id: None,
+            definition_version: None,
+            definition_snapshot: None,
             status: RunStatus::Running,
             trigger_event_id: Some(trigger_event_id.clone()),
             current_step: 2,
@@ -1953,6 +2906,9 @@ mod postgres_tests {
             id: Uuid::new_v4(),
             community_id: CommunityId::from_uuid(Uuid::new_v4()),
             workflow_id: Uuid::new_v4(),
+            workflow_channel_id: None,
+            definition_version: None,
+            definition_snapshot: None,
             status: RunStatus::Pending,
             trigger_event_id: None,
             current_step: 0,
@@ -1977,6 +2933,9 @@ mod postgres_tests {
             id: Uuid::new_v4(),
             community_id: CommunityId::from_uuid(Uuid::new_v4()),
             workflow_id: Uuid::new_v4(),
+            workflow_channel_id: None,
+            definition_version: None,
+            definition_snapshot: None,
             status: RunStatus::Failed,
             trigger_event_id: None,
             current_step: 1,
@@ -2009,6 +2968,9 @@ mod postgres_tests {
             id: Uuid::new_v4(),
             community_id: CommunityId::from_uuid(Uuid::new_v4()),
             workflow_id: Uuid::new_v4(),
+            workflow_channel_id: None,
+            definition_version: None,
+            definition_snapshot: None,
             status: RunStatus::Completed,
             trigger_event_id: None,
             current_step: 2,
@@ -2032,6 +2994,9 @@ mod postgres_tests {
             id: Uuid::new_v4(),
             community_id: CommunityId::from_uuid(Uuid::new_v4()),
             workflow_id: Uuid::new_v4(),
+            workflow_channel_id: None,
+            definition_version: None,
+            definition_snapshot: None,
             status: RunStatus::Pending,
             trigger_event_id: None,
             current_step: 0,
@@ -2233,6 +3198,289 @@ mod postgres_tests {
         .await
         .expect("insert channel");
         id
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn run_keeps_its_definition_snapshot_after_publish() {
+        let pool = setup_pool().await;
+        let community = make_community(&pool).await;
+        let owner = vec![0x51; 32];
+        ensure_user(&pool, community, &owner)
+            .await
+            .expect("insert owner user");
+        let channel_id = make_channel(&pool, community, &owner).await;
+        let workflow_id = Uuid::new_v4();
+        let active_v1 = serde_json::json!({
+            "name": "snapshot-test",
+            "trigger": {"on": "manual"},
+            "steps": [{"id": "first", "action": "send_message", "text": "v1"}],
+            "enabled": true
+        });
+        let active_v2 = serde_json::json!({
+            "name": "snapshot-test",
+            "trigger": {"on": "manual"},
+            "steps": [{"id": "first", "action": "send_message", "text": "v2"}],
+            "enabled": true
+        });
+        let v1_json = active_v1.to_string();
+        let v2_json = active_v2.to_string();
+        let v1_hash = Sha256::digest(v1_json.as_bytes()).to_vec();
+        let v2_hash = Sha256::digest(v2_json.as_bytes()).to_vec();
+        upsert_workflow(
+            &pool,
+            community,
+            workflow_id,
+            Some(channel_id),
+            &owner,
+            "snapshot-test",
+            &v1_json,
+            &v1_hash,
+        )
+        .await
+        .expect("publish v1");
+        let run_id = create_workflow_run_versioned(
+            &pool,
+            community,
+            workflow_id,
+            None,
+            None,
+            &v1_hash,
+            &active_v1,
+        )
+        .await
+        .expect("create pinned run");
+        upsert_workflow(
+            &pool,
+            community,
+            workflow_id,
+            Some(channel_id),
+            &owner,
+            "snapshot-test",
+            &v2_json,
+            &v2_hash,
+        )
+        .await
+        .expect("publish v2");
+
+        set_workflow_lifecycle(
+            &pool,
+            community,
+            workflow_id,
+            WorkflowStatus::Disabled,
+            false,
+        )
+        .await
+        .expect("pause workflow");
+        set_workflow_lifecycle(&pool, community, workflow_id, WorkflowStatus::Active, true)
+            .await
+            .expect("resume workflow");
+
+        let run = get_workflow_run(&pool, community, run_id)
+            .await
+            .expect("load pinned run");
+        assert_eq!(run.definition_version.as_deref(), Some(v1_hash.as_slice()));
+        assert_eq!(run.definition_snapshot, Some(active_v1));
+        assert_eq!(run.workflow_channel_id, Some(channel_id));
+        let workflow = get_workflow(&pool, community, workflow_id)
+            .await
+            .expect("load resumed workflow");
+        assert_eq!(workflow.definition_hash, v2_hash);
+        assert!(workflow.enabled);
+        assert_eq!(workflow.status, WorkflowStatus::Active);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn agent_reply_records_identity_and_resumes_run_from_snapshot() {
+        let pool = setup_pool().await;
+        let community = make_community(&pool).await;
+        let owner = vec![0x52; 32];
+        ensure_user(&pool, community, &owner)
+            .await
+            .expect("insert owner user");
+        let channel_id = make_channel(&pool, community, &owner).await;
+        let workflow_id = Uuid::new_v4();
+        let agent_pubkey = nostr::Keys::generate().public_key().to_hex();
+        let definition = serde_json::json!({
+            "name": "agent-test",
+            "trigger": {"on": "manual"},
+            "steps": [{"id": "research", "action": "ask_agent", "agent_pubkey": agent_pubkey, "instruction": "Research"}],
+            "enabled": true
+        });
+        let definition_hash = Sha256::digest(definition.to_string().as_bytes()).to_vec();
+        upsert_workflow(
+            &pool,
+            community,
+            workflow_id,
+            Some(channel_id),
+            &owner,
+            "agent-test",
+            &definition.to_string(),
+            &definition_hash,
+        )
+        .await
+        .expect("create workflow");
+        let run_id = create_workflow_run_versioned(
+            &pool,
+            community,
+            workflow_id,
+            None,
+            None,
+            &definition_hash,
+            &definition,
+        )
+        .await
+        .expect("create run");
+        update_workflow_run(
+            &pool,
+            community,
+            run_id,
+            RunStatus::Running,
+            0,
+            &serde_json::json!([]),
+            None,
+        )
+        .await
+        .expect("start run");
+        let agent = vec![0xa1; 32];
+        let channel_tag = channel_id.to_string();
+        let request_event = nostr::EventBuilder::new(nostr::Kind::Custom(9), "Research this")
+            .tags([nostr::Tag::parse(["h", channel_tag.as_str()]).expect("channel tag")])
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("sign request event");
+        let request_id = request_event.id.as_bytes().to_vec();
+        let reply_id = vec![0xc3; 32];
+        let prior_trace = serde_json::json!([]);
+        let wait_trace = serde_json::json!({
+            "step_id": "research",
+            "status": "waiting_agent",
+            "output": {"agent_pubkey": hex::encode(&agent), "request_event_id": hex::encode(&request_id)}
+        });
+        create_workflow_agent_wait(
+            &pool,
+            CreateWorkflowAgentWaitParams {
+                community_id: community,
+                workflow_id,
+                run_id,
+                step_id: "research",
+                step_index: 0,
+                channel_id,
+                agent_pubkey: &agent,
+                request_event_id: &request_id,
+                request_event: &request_event,
+                expires_at: Utc::now() + chrono::Duration::minutes(1),
+                prior_trace: &prior_trace,
+                trace_entry: &wait_trace,
+            },
+        )
+        .await
+        .expect("persist agent wait");
+
+        let run = complete_workflow_agent_wait(
+            &pool,
+            CompleteWorkflowAgentWaitParams {
+                community_id: community,
+                channel_id,
+                request_event_id: &request_id,
+                agent_pubkey: &agent,
+                reply_event_id: &reply_id,
+                reply_text: "The report is ready",
+                now: Utc::now(),
+            },
+        )
+        .await
+        .expect("complete wait")
+        .expect("matching wait resumes run");
+        assert_eq!(run.status, RunStatus::Running);
+        assert_eq!(run.current_step, 1);
+        assert_eq!(run.definition_snapshot, Some(definition.clone()));
+        let trace = run.execution_trace.as_array().expect("trace array");
+        assert_eq!(trace[0]["status"], "completed");
+        assert_eq!(trace[0]["output"]["agent_pubkey"], hex::encode(&agent));
+        assert_eq!(
+            trace[0]["output"]["request_event_id"],
+            hex::encode(&request_id)
+        );
+        assert_eq!(trace[0]["output"]["reply_event_id"], hex::encode(&reply_id));
+        let stored_requests: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE community_id = $1 AND id = $2")
+                .bind(community.as_uuid())
+                .bind(&request_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count persisted request events");
+        assert_eq!(stored_requests, 1, "request and wait commit together");
+
+        let timeout_run_id = create_workflow_run_versioned(
+            &pool,
+            community,
+            workflow_id,
+            None,
+            None,
+            &definition_hash,
+            &definition,
+        )
+        .await
+        .expect("create timeout run");
+        update_workflow_run(
+            &pool,
+            community,
+            timeout_run_id,
+            RunStatus::Running,
+            0,
+            &serde_json::json!([]),
+            None,
+        )
+        .await
+        .expect("start timeout run");
+        let timeout_event = nostr::EventBuilder::new(nostr::Kind::Custom(9), "Second request")
+            .tags([nostr::Tag::parse(["h", channel_tag.as_str()]).expect("channel tag")])
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("sign timeout event");
+        let timeout_request_id = timeout_event.id.as_bytes().to_vec();
+        let timeout_expires_at = Utc::now() + chrono::Duration::minutes(1);
+        let timeout_trace = serde_json::json!({
+            "step_id": "research",
+            "status": "waiting_agent",
+            "output": {
+                "agent_pubkey": hex::encode(&agent),
+                "request_event_id": hex::encode(&timeout_request_id)
+            }
+        });
+        create_workflow_agent_wait(
+            &pool,
+            CreateWorkflowAgentWaitParams {
+                community_id: community,
+                workflow_id,
+                run_id: timeout_run_id,
+                step_id: "research",
+                step_index: 0,
+                channel_id,
+                agent_pubkey: &agent,
+                request_event_id: &timeout_request_id,
+                request_event: &timeout_event,
+                expires_at: timeout_expires_at,
+                prior_trace: &serde_json::json!([]),
+                trace_entry: &timeout_trace,
+            },
+        )
+        .await
+        .expect("persist timeout wait");
+        let expired = expire_workflow_agent_waits(
+            &pool,
+            timeout_expires_at + chrono::Duration::seconds(1),
+            100,
+        )
+        .await
+        .expect("expire bounded wait");
+        assert_eq!(expired, 1);
+        let timed_out = get_workflow_run(&pool, community, timeout_run_id)
+            .await
+            .expect("load timed out run");
+        assert_eq!(timed_out.status, RunStatus::TimedOut);
+        assert_eq!(timed_out.error_code.as_deref(), Some("agent_timeout"));
+        assert!(timed_out.completed_at.is_some());
     }
 
     /// Insert a workflow whose tenant is `community`'s channel. Returns the
