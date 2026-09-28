@@ -304,11 +304,14 @@ NEEDS_API: the frozen Team overviews show assigned work under "Doing now" for
 human and employee profiles. The member-position and managed-agent read models
 do not currently project company work items by assigned member. Do not copy the
 reference fixture rows into the app. The work-item lane must provide that
-projection before the Team overview can show real assigned work.
+projection before the Team overview can show real assigned work. The reference
+also defines "No current commitments." for a member with no assigned work, but
+the app cannot distinguish that state from unavailable work data without the
+projection.
 
-NEEDS_DESIGN: the frozen Team overview routes show populated "Doing now" rows,
-not the no-work or unavailable states. Those states need an approved design
-before they are added.
+NEEDS_DESIGN: the frozen Team routes do not define how "Doing now" should look
+when its work source is unavailable or fails. Do not invent a fallback for that
+state.
 
 NEEDS_API: the frozen `hire/review` route used for reviewed rehire requires the
 retained employee package, including allowance, worker and tool scope, lessons,

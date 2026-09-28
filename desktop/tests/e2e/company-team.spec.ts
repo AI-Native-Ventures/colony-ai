@@ -50,6 +50,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   const employeePubkey = getPublicKey(employeeSecret);
   const workerPubkey = getPublicKey(generateSecretKey());
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
+  const bobPubkey = TEST_IDENTITIES.bob.pubkey;
   await installMockBridge(page, {
     relaySelf,
     companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
@@ -68,10 +69,18 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
         kind: "employee",
         managerPubkey: OWNER_PUBKEY,
       }),
+      positionHead({
+        relaySecret,
+        pubkey: bobPubkey,
+        title: "Designer",
+        kind: "human",
+        managerPubkey: alicePubkey,
+      }),
     ],
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role: "owner" },
       { pubkey: alicePubkey, role: "member" },
+      { pubkey: bobPubkey, role: "member" },
     ],
     relayAgents: [
       {
@@ -107,11 +116,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("company-team-screen")).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByTestId("sidebar-team-count")).toHaveText("3");
+  await expect(page.getByTestId("sidebar-team-count")).toHaveText("4");
   await expect(page.getByTestId("company-team-list")).toContainText(
     EMPLOYEE_NAME,
   );
   await expect(page.getByTestId("company-team-list")).toContainText("alice");
+  await expect(page.getByTestId("company-team-list")).toContainText("bob");
   await expect(page.getByTestId("company-team-list")).not.toContainText(
     "Mina worker",
   );
@@ -141,6 +151,15 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Responsibilities",
+  );
+  await expect(page.getByTestId("company-human-direct-reports")).toContainText(
+    "bob",
+  );
+
+  await page.getByTestId(`company-human-report-${bobPubkey}`).click();
+  await expect(page).toHaveURL(new RegExp(`/team/detail/${bobPubkey}$`));
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Designer",
   );
 
   await page.getByRole("button", { name: "Back", exact: true }).click();

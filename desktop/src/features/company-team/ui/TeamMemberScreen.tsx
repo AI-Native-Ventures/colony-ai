@@ -89,6 +89,28 @@ export function TeamMemberScreen({
     : member?.role === "owner"
       ? "Company owner"
       : "";
+  const directReports = React.useMemo(
+    () =>
+      member
+        ? otherMembers
+            .filter(
+              (candidate) =>
+                candidate.position?.head.managerPubkey?.toLowerCase() ===
+                member.pubkey.toLowerCase(),
+            )
+            .map((candidate) => ({
+              pubkey: candidate.pubkey,
+              name:
+                allProfiles[candidate.pubkey]?.displayName?.trim() ||
+                candidate.fallbackName?.trim() ||
+                truncateNpub(candidate.pubkey),
+              title:
+                candidate.position?.head.title ||
+                (candidate.kind === "employee" ? "Employee" : "Human"),
+            }))
+        : [],
+    [allProfiles, member, otherMembers],
+  );
   const [titleInput, setTitleInput] = React.useState("");
   const [managerInput, setManagerInput] = React.useState("");
   const [reasonInput, setReasonInput] = React.useState("");
@@ -332,6 +354,35 @@ export function TeamMemberScreen({
           </button>
         </div>
         <div className="grid gap-10 py-6 md:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
+          <section
+            aria-labelledby="team-direct-reports-heading"
+            data-testid="company-human-direct-reports"
+          >
+            <h2
+              className="mb-5 text-base font-semibold"
+              id="team-direct-reports-heading"
+            >
+              Direct reports
+            </h2>
+            {directReports.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No direct reports.
+              </p>
+            ) : (
+              directReports.map((report) => (
+                <button
+                  aria-label={`${report.name} · ${report.title}`}
+                  className="block min-h-12 w-full border-b border-border px-3 py-4 text-left text-sm hover:bg-muted/40"
+                  data-testid={`company-human-report-${report.pubkey}`}
+                  key={report.pubkey}
+                  onClick={() => void goTeamMember(report.pubkey)}
+                  type="button"
+                >
+                  {report.name} · {report.title}
+                </button>
+              ))
+            )}
+          </section>
           <aside className="border-l border-border pl-8">
             <h2 className="mb-4 text-base font-semibold">Role and reporting</h2>
             <p className="mb-5 text-sm text-muted-foreground">
