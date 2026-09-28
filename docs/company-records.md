@@ -290,6 +290,11 @@ the list, org chart, or member counts. Existing relay roles remain owner,
 admin, member, guest, and bot. The company position `kind` is not a membership
 role and does not grant spending, credential, or administrative authority.
 
+Human and employee profile overviews derive Direct reports from member-position
+heads in the same community. A report row opens that member's own profile:
+humans use the human profile and employees use the existing agent profile.
+Managed-agent workers stay invisible in both views.
+
 An approval ask for a member change uses ask type `approval`, subject kind
 `companyMember`, the target pubkey as its subject id, and a typed
 `memberProposal` containing the exact-head action. A termination or rehire
