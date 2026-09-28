@@ -423,7 +423,7 @@ body:has(.w20-settings-shell) {
   gap: 0;
   overflow: hidden;
   padding: 9px 8px 9px 1px;
-  background: transparent;
+  background: hsl(var(--background));
   color: #282532;
   font-synthesis: none;
   font-variant: normal;

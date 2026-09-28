@@ -741,6 +741,10 @@ test("settings nav uses Buzz active pill + hover (dark)", async ({ page }) => {
   await expectBuzzSettingsPalette(page, "dark");
   await expect(page.getByTestId("settings-content-surface")).toHaveCSS(
     "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(page.getByTestId("settings-view")).toHaveCSS(
+    "background-color",
     "rgb(33, 30, 38)",
   );
   await waitForAnimations(page);
@@ -1023,11 +1027,11 @@ test("settings content uses the same inset surface as the main app", async ({
 
   expect(searchBox.y - backToAppBox.y).toBe(70);
 
-  // Match the r19 settings shell: a fixed 60px top chrome strip, a 1px
-  // top/left inset, and the measured right/bottom content insets.
+  // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
+  // padding and surface margin, plus the measured bottom inset.
   expect(surfaceBox.y - viewBox.y).toBe(61);
-  expect(surfaceBox.x - viewBox.x).toBe(1);
-  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(8);
+  expect(surfaceBox.x - viewBox.x).toBe(2);
+  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(9);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
     9,
   );
@@ -1124,9 +1128,9 @@ test("glass controls keep settings content solid", async ({ page }) => {
   await expect(opacitySlider).toBeVisible();
   await expect(opacitySlider).toHaveValue("65");
   await expect(root).toHaveAttribute("data-glass-background", "");
-  await expect(page.getByTestId("settings-content-surface")).not.toHaveCSS(
+  await expect(page.getByTestId("settings-view")).toHaveCSS(
     "background-color",
-    "rgba(0, 0, 0, 0)",
+    "rgb(255, 254, 253)",
   );
   await expect
     .poll(() =>
