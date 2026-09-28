@@ -7054,6 +7054,10 @@ void main() {
         find.widgetWithText(FilledButton, 'Join'),
       );
       expect(join.onPressed, isNotNull);
+      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await tester.pumpAndSettle();
+      expect(find.text('A quick conversation.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('huddle-join-muted')), findsOneWidget);
     });
 
     testWidgets('disables a different Huddle card during an active call', (
@@ -7090,10 +7094,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey('huddle-Join-$_huddleChannelId')),
-      );
-      await tester.pumpAndSettle();
+      await _tapHuddleJoin(tester);
       await tester.tap(find.byKey(const ValueKey('huddle-minimize')));
       await tester.pumpAndSettle();
 
@@ -7169,7 +7170,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         expect(
@@ -7230,7 +7231,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         // A denied microphone must NOT surface the generic "Try again" that
@@ -7283,7 +7284,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('huddle-minimize')));
       await tester.pumpAndSettle();
@@ -7334,7 +7335,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('huddle-leave')));
@@ -7372,7 +7373,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester, waitForConnected: false);
       await tester.pump();
       await tester.pump();
 
@@ -7450,7 +7451,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 200));
@@ -7583,7 +7584,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
         await tester.pump(const Duration(milliseconds: 200));
@@ -7637,7 +7638,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       transport.emitRemoteAudio(peerIndex: 2);
@@ -7710,7 +7711,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       // Turn 1: audio speaks, then late same-turn typing must stay suppressed.
@@ -7808,7 +7809,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final baseline = relaySession.profileSubscriptions;
@@ -7895,7 +7896,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         expect(navigator.pushedRoutes.last, isA<PageRouteBuilder<void>>());
@@ -8527,7 +8528,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final remoteRegion = find.byKey(
@@ -8656,7 +8657,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
         for (
           var attempt = 0;
@@ -8727,7 +8728,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final stage = find.byKey(const ValueKey('huddle-participant-stage'));
@@ -8795,7 +8796,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final desktopAvatar = find.byKey(
@@ -8943,7 +8944,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         membersNotifier.replace([
@@ -9017,7 +9018,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       final hangup = find.byKey(const ValueKey('huddle-leave'));
       expect(
@@ -9096,7 +9097,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       relaySession.connect();
       await tester.pump();
@@ -9157,7 +9158,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('huddle-leave')));
         final huddleContainer = ProviderScope.containerOf(
@@ -9222,7 +9223,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final controller = ProviderScope.containerOf(
@@ -9328,7 +9329,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -9401,7 +9402,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         media.emitFailure();
@@ -9464,7 +9465,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         media.emitFailure();
@@ -9532,7 +9533,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -9607,7 +9608,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -9682,7 +9683,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -9754,7 +9755,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -16794,6 +16795,19 @@ GoalHeadRecord _goalBannerCaptureRecord() {
   );
   final event = NostrEvent.fromJson(signed.toMap());
   return parseGoalHeadEvent(event, event.pubkey)!;
+}
+
+Future<void> _tapHuddleJoin(
+  WidgetTester tester, {
+  bool waitForConnected = true,
+}) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Join').first);
+  await tester.pumpAndSettle();
+  final lobbyButton = find.byKey(const ValueKey('huddle-join-muted'));
+  if (lobbyButton.evaluate().isEmpty) return;
+  await tester.tap(lobbyButton);
+  await tester.pump();
+  if (waitForConnected) await tester.pumpAndSettle();
 }
 
 class _CaptureFileComparator extends LocalFileComparator {
