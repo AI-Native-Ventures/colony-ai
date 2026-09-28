@@ -1,4 +1,4 @@
-import { ListTodo, Target, UsersRound, Workflow } from "lucide-react";
+import { CalendarCheck2, Target, UsersRound, Workflow } from "lucide-react";
 
 import { useCompanyTeamCountQuery } from "@/features/company-team/teamRelay";
 import { FeatureGate } from "@/shared/features";
@@ -90,7 +90,7 @@ export function SidebarCompanyGroup({
             tooltip="Work"
             type="button"
           >
-            <ListTodo className="h-4 w-4" />
+            <CalendarCheck2 className="h-4 w-4" />
             <SidebarMenuLabel>Work</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>

@@ -17,6 +17,8 @@ type FocusThreadDrawerProps = {
   label?: string;
   hasActiveEdit?: boolean;
   onClose: () => void;
+  responsiveOverlay?: boolean;
+  restoreFocusOnDismiss?: boolean;
   /** Resolve an explicit focus target after this drawer has been dismissed. */
   restoreFocusTarget?: () => HTMLElement | null;
 };
@@ -25,7 +27,7 @@ type FocusThreadDrawerProps = {
  * Scrim over the channel content area behind the focus drawer.
  *
  * Veil, not shadow, and no blur: the channel fades toward the surface colour
- * rather than being darkened. A black wash is a multiply — it scales text and
+ * rather than being darkened. A black wash is a multiply; it scales text and
  * background down together, so dark-on-light text keeps its contrast ratio and
  * stays readable at any opacity short of a solid bar. Fading toward
  * `background` instead compresses text against the surface in both themes,
@@ -38,7 +40,7 @@ const FOCUS_SCRIM_CLASS = "bg-background/75 dark:bg-background/80";
 /**
  * Hover eases the veil one step in both themes.
  *
- * Feedback that the sliver is a target — deliberately not a peek: one step is
+ * Feedback that the sliver is a target, deliberately not a peek: one step is
  * enough to register as interactive without making the channel readable.
  */
 const FOCUS_SCRIM_HOVER_CLASS =
@@ -54,7 +56,7 @@ const ENTER_EASE = [0.32, 0.72, 0, 1] as const;
  * The "exits accelerate away" rule assumes the whole travel is visible; an
  * ease-in spends its opening frames barely moving and pays that back at the end.
  * Here the tail is hidden under the opacity fade, so acceleration buys nothing
- * and those opening frames are the entire perception of responsiveness — a
+ * and those opening frames are the entire perception of responsiveness. A
  * dismissal that hasn't visibly moved 40ms in reads as hesitation regardless of
  * its total duration. Decisiveness comes from the duration below instead.
  */
@@ -75,7 +77,7 @@ const SCRIM_EXIT_SECONDS = 0.12;
  * Enter: opacity front-loaded, transform long.
  *
  * The two channels animate over deliberately different windows, and that
- * asymmetry is the whole point. Short travel *requires* an opacity fade — an
+ * asymmetry is the whole point. Short travel *requires* an opacity fade because an
  * opaque surface this large appearing 120px off its mark with no fade is a hard
  * cut, not a slide. But pairing both properties on one timing function (as a
  * single CSS keyframe must) welds them together for the full duration, and since
@@ -97,15 +99,15 @@ const ENTER_TRANSITION = {
 /**
  * Exit: half the enter's duration, opacity barely back-loaded.
  *
- * Opening and closing are not symmetric tasks. The enter has something to say —
- * it establishes where the thread came from and that the channel is still behind
+ * Opening and closing are not symmetric tasks. The enter has something to say.
+ * It establishes where the thread came from and that the channel is still behind
  * it. The exit has nothing to say: attention has already left for the channel,
  * so its only job is to get out of the way without popping. That makes duration
  * the thing to spend, and 140ms is about the floor before the drawer reads as
  * vanishing rather than leaving.
  *
  * The opacity hold shrinks with it. Its purpose is to let the drawer commit to
- * moving before it dissolves, so it reads as sliding out — but at this duration a
+ * moving before it dissolves, so it reads as sliding out, but at this duration a
  * hold proportional to the old one would eat half the animation. 20ms is enough
  * to register solidity in the first frame or two.
  */
@@ -170,10 +172,10 @@ function useViewportRightInsetPx(
  * Must be rendered inside `ChannelPane`'s relative layout root, and beneath an
  * `AnimatePresence` so the exit animation can run: everything here is absolutely
  * positioned against the channel content area, so the app sidebar is never
- * covered. The channel stays mounted underneath — a narrow scrim-dimmed sliver
+ * covered. The channel stays mounted underneath with a narrow scrim-dimmed sliver
  * of it remains visible for depth, and the whole scrim (sliver included) is one
  * tall click target back to the channel. Orientation lives in the drawer
- * header's breadcrumb, where the eye already is — the sliver carries no label of
+ * header's breadcrumb, where the eye already is. The sliver carries no label of
  * its own.
  *
  * `z-41` places the drawer above the channel section (whose inner `isolate`
@@ -190,6 +192,8 @@ export function FocusThreadDrawer({
   label = "Thread",
   hasActiveEdit = false,
   onClose,
+  responsiveOverlay = false,
+  restoreFocusOnDismiss = false,
   restoreFocusTarget,
 }: FocusThreadDrawerProps) {
   const prefersReducedMotion = useReducedMotion();
@@ -240,12 +244,15 @@ export function FocusThreadDrawer({
         }
         // A real dismissal keeps focus mode selected; a presentation switch
         // has already selected split mode and owns focus inside the new panel.
-        if (getThreadViewMode() === "focus") {
+        if (
+          previousFocus?.isConnected &&
+          (restoreFocusOnDismiss || getThreadViewMode() === "focus")
+        ) {
           previousFocus?.focus({ preventScroll: true });
         }
       });
     };
-  }, [restoreFocusTarget]);
+  }, [restoreFocusOnDismiss, restoreFocusTarget]);
 
   return (
     <div
@@ -281,15 +288,6 @@ export function FocusThreadDrawer({
 
       <motion.div
         animate={{ opacity: 1, x: 0 }}
-        className={cn(
-          // Left corners only, at the app content surface's own `rounded-2xl`:
-          // the drawer is flush to that surface's right edge, so it is *clipped*
-          // to its right corners rather than nesting inside them. Flush edges
-          // share a radius — a smaller one here would put two radii on one
-          // element. `shadow-panel-left` draws the left edge and its corners;
-          // see the token for why a `border-l` cannot.
-          "absolute inset-y-0 right-0 flex flex-col overflow-hidden rounded-l-2xl bg-background shadow-panel-left outline-hidden",
-        )}
         aria-label={label}
         data-testid="focus-thread-drawer"
         ref={drawerRef}
@@ -303,7 +301,16 @@ export function FocusThreadDrawer({
           x: travelPx,
         }}
         initial={{ opacity: 0, x: travelPx }}
-        style={{ left: THREAD_FOCUS_SLIVER_WIDTH_PX }}
+        style={
+          responsiveOverlay ? undefined : { left: THREAD_FOCUS_SLIVER_WIDTH_PX }
+        }
+        data-responsive-overlay={responsiveOverlay || undefined}
+        className={cn(
+          // Wide drawers stay flush to the content surface. Responsive overlays
+          // use the compact placement from the frozen thread reference.
+          "absolute inset-y-0 right-0 flex flex-col overflow-hidden rounded-l-2xl bg-background shadow-panel-left outline-hidden",
+          responsiveOverlay && "focus-thread-drawer-responsive",
+        )}
         transition={
           prefersReducedMotion ? REDUCED_MOTION_TRANSITION : ENTER_TRANSITION
         }
