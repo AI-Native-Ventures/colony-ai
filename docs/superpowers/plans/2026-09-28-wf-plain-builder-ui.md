@@ -52,4 +52,3 @@ Gate Advanced behind the actual relay owner/admin role. Route supported workflow
 ## Task 6: Acceptance evidence
 
 Update Playwright mock-bridge journeys for create from example, edit/reorder/remove, preview, review and activate, pause, and live draft edit without active-version mutation. Run the affected smoke and integration specs in the prescribed Playwright Linux image with two CPUs, one run at a time, including `pnpm build:e2e`. Run the real-relay workflow journey and compare the frozen v7 routes at 1728x1117 and 1440x900 in light and dark themes. Verify keyboard operation for every control, including step reordering. Push only after focused local checks pass, then wait for every hosted PR check to pass.
-
