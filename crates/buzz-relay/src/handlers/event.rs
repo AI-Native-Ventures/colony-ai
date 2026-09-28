@@ -791,6 +791,14 @@ pub async fn handle_event(event: Event, conn: Arc<ConnectionState>, state: Arc<A
             ));
         }
         Err(e) => {
+            if let IngestError::Internal(detail) = &e {
+                error!(
+                    event_id = %event_id_hex,
+                    kind = kind_u32,
+                    detail = %detail,
+                    "Persistent event ingestion failed"
+                );
+            }
             // Sanitize internal errors — don't leak DB/system details over WS.
             let (msg, reason) = match &e {
                 IngestError::Rejected(m) => (m.clone(), "invalid"),
