@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { GoalReferenceCard } from "@/features/goals/ui/GoalReferenceCard";
 import { useProjectsQuery } from "@/features/projects/hooks";
 import type { Project } from "@/features/projects/projectModels";
 import {
@@ -156,6 +157,13 @@ function entityLinkPresentation(link: ParsedEntityLink) {
         label: link.dtag,
         tooltipFooter: "Project",
       };
+    case "goal":
+      return {
+        ariaLabel: `Open goal ${link.id.slice(0, 8)}`,
+        icon: "goal" as const,
+        label: `Goal ${link.id.slice(0, 8)}`,
+        tooltipFooter: "Goal",
+      };
   }
 }
 
@@ -165,9 +173,13 @@ function entityLinkPresentation(link: ParsedEntityLink) {
  * route id, so no read-model resolution is needed.
  */
 export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
-  const { goProject } = useAppNavigation();
+  const { goGoal, goProject } = useAppNavigation();
   return React.useCallback(
     (link: ParsedEntityLink) => {
+      if (link.type === "goal") {
+        void goGoal(link.id, { entityNavigationId: crypto.randomUUID() });
+        return;
+      }
       const tab =
         (link.type === "repo" || link.type === "project") && link.tab
           ? link.tab
@@ -186,7 +198,7 @@ export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
           : {}),
       });
     },
-    [goProject],
+    [goGoal, goProject],
   );
 }
 
@@ -215,6 +227,41 @@ function resolveEntityHref(
  * default anchor.
  */
 export function EntityLinkAnchor({
+  children,
+  href,
+  onOpenEntityLink,
+  relayOrigin,
+  interactive = true,
+  asChip = true,
+}: {
+  children?: React.ReactNode;
+  href: string;
+  onOpenEntityLink: (link: ParsedEntityLink) => void;
+  relayOrigin: string | null;
+  interactive?: boolean;
+  asChip?: boolean;
+}): React.ReactElement | null {
+  const canonicalHref = resolveEntityHref(href, relayOrigin);
+  const parsed = canonicalHref ? parseEntityLink(canonicalHref) : null;
+  if (parsed?.ok && parsed.value.type === "goal") {
+    return (
+      <GoalReferenceCard goalId={parsed.value.id} interactive={interactive} />
+    );
+  }
+  return (
+    <ProjectEntityLinkAnchor
+      asChip={asChip}
+      href={href}
+      interactive={interactive}
+      onOpenEntityLink={onOpenEntityLink}
+      relayOrigin={relayOrigin}
+    >
+      {children}
+    </ProjectEntityLinkAnchor>
+  );
+}
+
+function ProjectEntityLinkAnchor({
   children,
   href,
   onOpenEntityLink,

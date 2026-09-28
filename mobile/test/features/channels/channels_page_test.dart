@@ -15,17 +15,18 @@ import 'package:buzz/features/channels/channel_sort/channel_sort_provider.dart';
 import 'package:buzz/features/channels/channel_sort/channel_sort_storage.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_provider.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_storage.dart';
-import 'package:buzz/features/channels/channel_stars/channel_stars_provider.dart';
-import 'package:buzz/features/channels/channel_stars/channel_stars_storage.dart';
 import 'package:buzz/features/channels/channels_page.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
+import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/community/community_icon_provider.dart';
+import 'package:buzz/shared/identity/identity_components.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -51,6 +52,7 @@ void main() {
     bool includeShell = false,
     bool captureShell = false,
     Brightness brightness = Brightness.light,
+    Map<String, String> presenceByPubkey = const {},
   }) {
     final channelsPage = ChannelsPage(
       settingsPageBuilder: _buildSettingsPage,
@@ -92,7 +94,10 @@ void main() {
     final home = captureShell
         ? RepaintBoundary(
             key: const ValueKey('channels-fullscreen-capture'),
-            child: page,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [page, _ConversationCaptureSystemBars(brightness)],
+            ),
           )
         : page;
     return ProviderScope(
@@ -102,6 +107,9 @@ void main() {
         // different identity (the page reads its pubkey from profileProvider).
         profileProvider.overrideWith(() => profile ?? _FakeProfileNotifier()),
         presenceProvider.overrideWith(() => _FakePresenceNotifier()),
+        presenceCacheProvider.overrideWith(
+          () => _FakePresenceCacheNotifier(presenceByPubkey),
+        ),
         communityIconProvider.overrideWith((ref, relayUrl) async {
           onCommunityIconLoad?.call(relayUrl);
           return communityIcons[relayUrl];
@@ -177,22 +185,15 @@ void main() {
     ),
   ];
 
-  testWidgets('captures R19 chats at both mobile sizes and themes', (
+  testWidgets('captures v5 conversations at both mobile sizes and themes', (
     tester,
   ) async {
-    const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_CHATS');
+    const captureScreenshots = bool.fromEnvironment('CAPTURE_M2B_CHATS');
     if (!captureScreenshots) return;
 
-    final now = DateTime.now();
-    int timestamp(int hour, int minute, {int daysAgo = 0}) =>
-        DateTime(
-          now.year,
-          now.month,
-          now.day - daysAgo,
-          hour,
-          minute,
-        ).toUtc().millisecondsSinceEpoch ~/
-        1000;
+    final now = DateTime.now().toUtc();
+    int minutesAgo(int minutes) =>
+        now.subtract(Duration(minutes: minutes)).millisecondsSinceEpoch ~/ 1000;
     Channel fixture({
       required String id,
       required String name,
@@ -222,77 +223,56 @@ void main() {
       isMember: true,
     );
 
-    final campaign = fixture(
-      id: 'fixture-campaign',
-      name: 'Campaign studio',
-      type: 'stream',
-      preview: 'Maya: September designs are ready',
-      sentAt: timestamp(10, 38),
-      memberCount: 8,
-    );
     final olive = fixture(
       id: 'fixture-olive',
-      name: 'Olive Studio',
+      name: 'olive-studio',
       type: 'stream',
-      preview: 'You: Brief approved. Let’s get started.',
-      sentAt: timestamp(9, 12),
+      preview: 'Mina: The October plan is ready for your eye.',
+      sentAt: minutesAgo(2),
       memberCount: 6,
+    );
+    final marketing = fixture(
+      id: 'fixture-marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Sam: I’ve added the launch artwork.',
+      sentAt: minutesAgo(18),
+    );
+    final sales = fixture(
+      id: 'fixture-sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Aya: Three promising leads to explore.',
+      sentAt: minutesAgo(32),
     );
     final updates = fixture(
       id: 'fixture-updates',
       name: 'Team updates',
       type: 'forum',
-      preview: 'Weekly plan · 3 new replies',
-      sentAt: timestamp(16, 20, daysAgo: 1),
-      memberCount: 8,
+      preview: 'September wins, and what we learned',
+      sentAt: minutesAgo(60),
     );
-    final newBusiness = fixture(
-      id: 'fixture-new-business',
-      name: 'New business',
-      type: 'stream',
-      preview: 'Scout: Added 12 qualified prospects',
-      sentAt: timestamp(15, 10, daysAgo: 1),
-      memberCount: 5,
-    );
-    final maya = fixture(
-      id: 'fixture-maya',
-      name: 'DM',
+    final mina = fixture(
+      id: 'fixture-mina',
+      name: 'Mina',
       type: 'dm',
-      preview: 'Can you check the second slide?',
-      sentAt: timestamp(10, 42),
+      preview: 'Want me to walk you through the plan?',
+      sentAt: minutesAgo(5),
       memberCount: 2,
-      participants: const ['Maya Ndlovu', 'Lerato'],
-      participantPubkeys: const ['maya', 'aabb'],
+      participants: const ['Mina', 'Lerato'],
+      participantPubkeys: const ['mina', 'aabb'],
     );
-    final scout = fixture(
-      id: 'fixture-scout',
-      name: 'Scout',
+    final aya = fixture(
+      id: 'fixture-aya',
+      name: 'Aya',
       type: 'dm',
-      preview: 'Research is ready when you are',
-      sentAt: timestamp(9, 48),
+      preview: 'I have a shortlist ready for you.',
+      sentAt: minutesAgo(21),
       memberCount: 2,
-      participants: const ['Scout', 'Lerato'],
-      participantPubkeys: const ['scout', 'aabb'],
+      participants: const ['Aya', 'Lerato'],
+      participantPubkeys: const ['aya', 'aabb'],
     );
-    final lowerUnread = fixture(
-      id: 'fixture-lower-dm',
-      name: 'DM',
-      type: 'dm',
-      preview: 'Thanks, I will take a look',
-      sentAt: timestamp(8, 30, daysAgo: 1),
-      memberCount: 2,
-      participants: const ['Zuri', 'Lerato'],
-      participantPubkeys: const ['zuri', 'aabb'],
-    );
-    final channels = [
-      campaign,
-      olive,
-      updates,
-      newBusiness,
-      maya,
-      scout,
-      lowerUnread,
-    ];
+    final channels = [olive, marketing, sales, updates, mina, aya];
     final unreadSince =
         DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 - 3600;
     final activeCommunity = Community(
@@ -315,11 +295,12 @@ void main() {
     for (final size in captureSizes.entries) {
       for (final brightness in [Brightness.light, Brightness.dark]) {
         final mode = brightness == Brightness.light ? 'light' : 'dark';
-        final output = Directory('/tmp/w23-mobile-chats/${size.key}/$mode');
+        final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
         output.createSync(recursive: true);
         final previousComparator = goldenFileComparator;
-        goldenFileComparator = LocalFileComparator(
+        goldenFileComparator = _CaptureFileComparator(
           Uri.file('${output.path}/golden_test.dart'),
+          output.path,
         );
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
@@ -334,6 +315,7 @@ void main() {
               pubkey: 'aabb',
               displayName: 'Lerato Molefe',
             ),
+            presenceByPubkey: const {'mina': 'online', 'aya': 'online'},
             overrides: [
               channelSortProvider.overrideWith(
                 () => _FixtureChannelSortNotifier(),
@@ -345,11 +327,18 @@ void main() {
                 () => _FakeNotifier(
                   channels,
                   observedEventsByChannel: {
-                    campaign.id: [
+                    olive.id: [
+                      for (var index = 0; index < 2; index++)
+                        _observed(
+                          id: 'fixture-olive-unread-$index',
+                          createdAt: unreadSince + 120 + index,
+                        ),
+                    ],
+                    sales.id: [
                       for (var index = 0; index < 3; index++)
                         _observed(
-                          id: 'fixture-campaign-unread-$index',
-                          createdAt: unreadSince + 120 + index,
+                          id: 'fixture-sales-unread-$index',
+                          createdAt: unreadSince + 160 + index,
                         ),
                     ],
                     updates.id: [
@@ -358,16 +347,10 @@ void main() {
                         createdAt: unreadSince + 240,
                       ),
                     ],
-                    maya.id: [
+                    aya.id: [
                       _observed(
-                        id: 'fixture-maya-unread',
+                        id: 'fixture-aya-unread',
                         createdAt: unreadSince + 360,
-                      ),
-                    ],
-                    lowerUnread.id: [
-                      _observed(
-                        id: 'fixture-lower-unread',
-                        createdAt: unreadSince + 480,
                       ),
                     ],
                   },
@@ -385,16 +368,46 @@ void main() {
                   ),
                 ),
               ),
-              channelStarsProvider.overrideWith(
-                () => _FixtureChannelStarsNotifier({campaign.id, olive.id}),
+              userCacheProvider.overrideWith(
+                () => _FakeUserCacheNotifier(const {
+                  'mina': UserProfile(
+                    pubkey: 'mina',
+                    displayName: 'Mina',
+                    ownerPubkey: 'aabb',
+                  ),
+                  'aya': UserProfile(
+                    pubkey: 'aya',
+                    displayName: 'Aya',
+                    ownerPubkey: 'aabb',
+                  ),
+                }),
               ),
             ],
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('ls'), findsOneWidget);
+        debugPrint(
+          'VISUAL_LAYOUT conversations ${size.key} $mode '
+          'title=${tester.getRect(find.text('Conversations').first)} '
+          'search=${tester.getRect(find.byKey(const ValueKey('channels-search-field')))} '
+          'filters=${tester.getRect(find.byKey(const ValueKey('conversation-filter-all')))} '
+          'firstRow=${tester.getRect(find.byKey(ValueKey('conversation-row-${channels.first.id}')))} '
+          'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
+        );
+        expect(find.text('Conversations'), findsOneWidget);
         expect(find.text('LM'), findsOneWidget);
-        expect(_dmTileAvatarInitial(tester, 'Maya Ndlovu'), 'MN');
+        expect(_dmTileAvatarInitial(tester, 'Mina'), 'M');
+        expect(_dmTileAvatarInitial(tester, 'Aya'), 'A');
+        for (final channelId in ['fixture-mina', 'fixture-aya']) {
+          expect(
+            tester
+                .widget<IdentityAvatar>(
+                  find.byKey(ValueKey('conversation-avatar-$channelId')),
+                )
+                .kind,
+            IdentityKind.agent,
+          );
+        }
         await expectLater(
           find.byKey(const ValueKey('channels-fullscreen-capture')),
           matchesGoldenFile('channels.png'),
@@ -408,7 +421,7 @@ void main() {
     tester.view.resetDevicePixelRatio();
   });
 
-  testWidgets('uses the reference Maya tint and solid unread badges', (
+  testWidgets('uses reference conversation identity colors and unread badges', (
     tester,
   ) async {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
@@ -437,9 +450,27 @@ void main() {
     );
     final campaign = fixture(
       id: 'campaign-unread',
-      name: 'Campaign studio',
+      name: 'olive-studio',
       type: 'stream',
       preview: 'Maya: September designs are ready',
+    );
+    final marketing = fixture(
+      id: 'marketing',
+      name: 'marketing',
+      type: 'stream',
+      preview: 'Launch artwork is ready',
+    );
+    final sales = fixture(
+      id: 'sales',
+      name: 'sales',
+      type: 'stream',
+      preview: 'Three promising leads',
+    );
+    final updates = fixture(
+      id: 'team-updates',
+      name: 'Team updates',
+      type: 'forum',
+      preview: 'September wins',
     );
     final maya = fixture(
       id: 'dm-maya',
@@ -452,6 +483,7 @@ void main() {
     await tester.pumpWidget(
       buildTestable(
         brightness: Brightness.dark,
+        presenceByPubkey: const {'maya': 'online'},
         profile: _FakeProfileNotifier(
           pubkey: 'aabb',
           displayName: 'Lerato Molefe',
@@ -459,7 +491,7 @@ void main() {
         overrides: [
           channelsProvider.overrideWith(
             () => _FakeNotifier(
-              [campaign, maya],
+              [campaign, marketing, sales, updates, maya],
               observedEventsByChannel: {
                 campaign.id: [
                   _observed(id: 'campaign-message', createdAt: now),
@@ -482,29 +514,75 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final mayaSurface = tester.widget<ColoredBox>(
-      find.byKey(const ValueKey('conversation-avatar-surface-dm-maya')),
+    final mayaAvatar = tester.widget<IdentityAvatar>(
+      find.byKey(const ValueKey('conversation-avatar-dm-maya')),
     );
-    expect(mayaSurface.color, const Color(0xFFF4E6DF));
+    expect(mayaAvatar.kind, IdentityKind.person);
+    expect(mayaAvatar.tone, IdentityAvatarTone.peach);
+    expect(mayaAvatar.isOnline, isTrue);
     final mayaInitial = tester.widget<Text>(
       find.descendant(
         of: find.byKey(const ValueKey('conversation-avatar-dm-maya')),
         matching: find.text('MN'),
       ),
     );
-    expect(mayaInitial.style?.color, const Color(0xFF98715E));
+    expect(
+      mayaInitial.style?.color,
+      AppTheme.dark().extension<AppColors>()!.identityPersonForeground,
+    );
+
+    final appColors = AppTheme.dark().extension<AppColors>()!;
+    for (final entry in [
+      ('campaign-unread', appColors.agentAvatarGradient),
+      ('marketing', appColors.personAvatarGradient),
+      ('sales', appColors.sageAvatarGradient),
+      ('team-updates', appColors.personAvatarGradient),
+    ]) {
+      final avatar = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey('conversation-avatar-${entry.$1}')),
+      );
+      expect((avatar.decoration as BoxDecoration).gradient, entry.$2);
+    }
 
     final badge = tester.widget<Container>(
       find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
     );
-    expect((badge.decoration! as BoxDecoration).color, const Color(0xFF486AAB));
+    expect(
+      (badge.decoration! as BoxDecoration).color,
+      appColors.conversationUnreadBadgeBackground,
+    );
+    expect(
+      (badge.decoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(Radii.sm),
+    );
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('channel-unread-badge-campaign-unread')),
+      ),
+      const Size(19, 19),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey('channel-unread-badge-campaign-unread'),
+              ),
+              matching: find.byType(Text),
+            ),
+          )
+          .style
+          ?.color,
+      appColors.conversationUnreadBadgeForeground,
+    );
   });
 
-  testWidgets('keeps the R19 gap between search and chat filters', (
+  testWidgets('matches the v5 gap between search and conversation filters', (
     tester,
   ) async {
     await tester.pumpWidget(
       buildTestable(
+        brightness: Brightness.dark,
         overrides: [channelsProvider.overrideWith(() => _FakeNotifier([]))],
       ),
     );
@@ -514,10 +592,36 @@ void main() {
       find.byKey(const ValueKey('channels-search-field')),
     );
     final allFilter = tester.getRect(find.widgetWithText(TextButton, 'All'));
-    expect(allFilter.top - search.bottom, 34);
+    expect(allFilter.top - search.bottom, 16);
+    final selectedFilter = tester.widget<TextButton>(
+      find.byKey(const ValueKey('conversation-filter-all')),
+    );
+    final filterTokens = tester
+        .element(find.byKey(const ValueKey('conversation-filter-all')))
+        .mobileTokens;
+    expect(
+      selectedFilter.style?.backgroundColor?.resolve({}),
+      filterTokens.action,
+    );
+    expect(
+      selectedFilter.style?.foregroundColor?.resolve({}),
+      filterTokens.onAction,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(LucideIcons.search)).size,
+      MobileLayoutTokens.conversationSearchIconSize,
+    );
+    final appBarFinder = find.byType(FrostedAppBar);
+    final appBar = tester.widget<FrostedAppBar>(appBarFinder);
+    expect(
+      appBar.gradient,
+      tester.element(appBarFinder).appColors.companyWashGradient,
+    );
   });
 
-  testWidgets('shows grouped channel list when data loads', (tester) async {
+  testWidgets('shows the v5 recent conversation list when data loads', (
+    tester,
+  ) async {
     // Valid fixture keys whose npub encodings were verified against the
     // NIP-19 codec independently of the code under test.
     const a11ce =
@@ -561,16 +665,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Chats'), findsOneWidget);
+    expect(find.text('Conversations'), findsOneWidget);
     expect(find.text('general'), findsOneWidget);
     expect(find.text('design-forum'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
-    expect(find.text('CHANNELS'), findsOneWidget);
-    expect(find.text('DIRECT MESSAGES'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsNothing);
+    expect(find.text('DIRECT MESSAGES'), findsNothing);
+    expect(find.text('PINNED'), findsNothing);
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Channels'), findsOneWidget);
+    expect(find.text('Forums'), findsOneWidget);
+    expect(find.text('DMs'), findsOneWidget);
     expect(find.text('Community'), findsNothing);
-    expect(find.byTooltip('Create or start conversation'), findsOneWidget);
+    expect(find.byTooltip('Quick actions'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('channel-quick-actions-trigger')),
+      find.byKey(const ValueKey('channels-quick-actions')),
       findsOneWidget,
     );
     expect(
@@ -586,6 +695,14 @@ void main() {
     expect(find.text(shortPubkey(a11ce)), findsOneWidget);
     expect(_dmTileAvatarInitial(tester, shortPubkey(a11ce)), 'A');
     expect(_dmTileAvatarInitial(tester, 'Alice'), 'A');
+    expect(
+      tester
+          .widget<IdentityAvatar>(
+            find.byKey(const ValueKey('conversation-avatar-dm-unnamed')),
+          )
+          .isOnline,
+      isFalse,
+    );
     final groupTile = _dmTileFor('${shortPubkey(a11ce)}, ${shortPubkey(b0b)}');
     expect(
       find.descendant(of: groupTile, matching: find.byType(AvatarImageContent)),
@@ -599,7 +716,7 @@ void main() {
     for (final label in ['general', 'Alice']) {
       final text = tester.widget<Text>(find.text(label));
       expect(text.style?.fontWeight, FontWeight.w700);
-      expect(text.style?.color, const Color(0xFF292632));
+      expect(text.style?.color, MobileDesignTokens.light.ink);
     }
   });
 
@@ -700,7 +817,9 @@ void main() {
     expect(_dmTileAvatarInitial(tester, shortPubkey(b0b)), 'B');
   });
 
-  testWidgets('sizes the community header for accessible text', (tester) async {
+  testWidgets('sizes the Conversations header for accessible text', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildTestable(
         textScaler: const TextScaler.linear(2),
@@ -715,7 +834,10 @@ void main() {
       find.byType(FrostedAppBar).last,
     );
     final titleStyle = appBar.titleStyle!;
-    expect(titleStyle.fontSize, 16);
+    expect(
+      titleStyle.fontSize,
+      MobileTypographyTokens.v5.companyHubTitle.fontSize,
+    );
     expect(
       tester
           .getSize(
@@ -802,7 +924,9 @@ void main() {
     expect((padding.padding as EdgeInsets).bottom, footerClearance);
   });
 
-  testWidgets('keeps forum channels in the r17 channel list', (tester) async {
+  testWidgets('keeps forum rows before direct messages in Recent', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildTestable(
         overrides: [
@@ -812,14 +936,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final heading = tester.getRect(find.text('CHANNELS'));
-    final forumRow = tester.getRect(find.text('design-forum'));
-    final directHeading = tester.getRect(find.text('DIRECT MESSAGES'));
-    expect(forumRow.top, greaterThan(heading.bottom));
-    expect(directHeading.top, greaterThan(forumRow.bottom));
+    final forumRow = tester.getRect(
+      find.byKey(const ValueKey('conversation-row-2')),
+    );
+    final directRow = tester.getRect(
+      find.byKey(const ValueKey('conversation-row-3')),
+    );
+    expect(directRow.top, greaterThan(forumRow.bottom));
   });
 
-  testWidgets('uses the r17 paper surface and nonfrosted header', (
+  testWidgets('uses the v5 paper surface and nonfrosted header', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -840,7 +966,7 @@ void main() {
     expect(appBar.bottomHeight, Grid.xxs);
   });
 
-  testWidgets('scrolls the Chats toolbar with the channel list', (
+  testWidgets('scrolls the Conversations toolbar with the channel list', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 160);
@@ -880,8 +1006,9 @@ void main() {
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
 
-    expect(find.text('Chats'), findsNothing);
-    expect(find.text('Your business, together'), findsOneWidget);
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
+    expect(find.text('Your business, together'), findsNothing);
     expect(
       tester.widget<FrostedAppBar>(find.byType(FrostedAppBar).last).frosted,
       isFalse,
@@ -1041,7 +1168,7 @@ void main() {
     expect(deleteIcon.color, error);
   });
 
-  testWidgets('aligns the r17 business header and skeleton labels', (
+  testWidgets('keeps the v5 header and reconnect skeleton labels', (
     tester,
   ) async {
     final relaySession = _ReconnectingRelaySession();
@@ -1056,14 +1183,10 @@ void main() {
     relaySession.connect();
     await tester.pumpAndSettle();
 
-    final businessTitleX = tester
-        .getTopLeft(find.text('Your business, together'))
-        .dx;
-    final chatTitleX = tester.getTopLeft(find.text('Chats')).dx;
-    final sectionLabelX = tester.getTopLeft(find.text('CHANNELS')).dx;
-    final rowLabelX = tester.getTopLeft(find.text('general')).dx;
-    expect(businessTitleX, greaterThan(chatTitleX));
-    expect(sectionLabelX, lessThan(rowLabelX));
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.text('Where your company comes together'), findsOneWidget);
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsNothing);
 
     relaySession.setReconnecting();
     await tester.pump();
@@ -1083,7 +1206,7 @@ void main() {
     expect(skeletonSectionLabelX, skeletonRowLabelX);
   });
 
-  testWidgets('centers both business switcher icons in the header', (
+  testWidgets('keeps the identity switcher in the Conversations header', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1095,23 +1218,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final appBar = find.byType(FrostedAppBar).last;
-    final community = find.descendant(
-      of: appBar,
-      matching: find.byKey(const ValueKey('community-indicator')),
-    );
-    final businessSwitch = find.descendant(
-      of: appBar,
-      matching: find.byKey(const ValueKey('switch-business-button')),
-    );
-    expect(tester.getSize(community), const Size.square(36));
-    expect(tester.getSize(businessSwitch), const Size.square(36));
-    expect(
-      tester.getRect(community).center.dy,
-      tester.getRect(businessSwitch).center.dy,
+    final switcher = find.byKey(
+      const ValueKey('conversation-community-switcher'),
     );
     final semantics = tester.widget<Semantics>(
-      find.descendant(of: businessSwitch, matching: find.byType(Semantics)),
+      find.descendant(of: switcher, matching: find.byType(Semantics)),
+    );
+    expect(
+      tester.getSize(switcher),
+      Size.square(MobileLayoutTokens.companyHeaderAvatarSize),
     );
     expect(semantics.properties.label, 'Switch business');
     expect(
@@ -1231,7 +1346,7 @@ void main() {
 
     expect(find.byType(Hero), findsNothing);
     await tester.longPress(
-      find.byKey(const ValueKey('switch-business-button')),
+      find.byKey(const ValueKey('conversation-community-switcher')),
     );
     await tester.pumpAndSettle();
 
@@ -1257,7 +1372,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.longPress(
-      find.byKey(const ValueKey('switch-business-button')),
+      find.byKey(const ValueKey('conversation-community-switcher')),
     );
     await tester.pump();
     expect(progress, isNotEmpty);
@@ -1295,7 +1410,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.longPress(
-      find.byKey(const ValueKey('switch-business-button')),
+      find.byKey(const ValueKey('conversation-community-switcher')),
     );
     await tester.pump();
 
@@ -1382,14 +1497,16 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.longPress(
-      find.byKey(const ValueKey('switch-business-button')),
+      find.byKey(const ValueKey('conversation-community-switcher')),
     );
     await tester.pumpAndSettle();
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.lightImpact');
 
     Navigator.of(tester.element(find.text('Injected settings'))).pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('switch-business-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pump();
     expect(hapticCalls.last.arguments, 'HapticFeedbackType.selectionClick');
   });
@@ -1436,7 +1553,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('switch-business-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Switch Community'), findsOneWidget);
@@ -1604,7 +1723,9 @@ void main() {
     await tester.pumpAndSettle();
     final initialIconLoads = iconLoads;
 
-    await tester.tap(find.byKey(const ValueKey('switch-business-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(iconLoads, greaterThan(initialIconLoads));
@@ -1634,7 +1755,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('switch-business-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -1672,7 +1795,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('switch-business-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-community-switcher')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Edit'));
     await tester.pump();
@@ -1765,7 +1890,7 @@ void main() {
     final surface = find.byKey(const Key('quick-actions-surface'));
     expect(tester.getSize(surface), const Size.square(56));
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
 
     var largestHeight = tester.getSize(surface).height;
@@ -1908,7 +2033,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1944,7 +2069,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -1983,7 +2108,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2034,7 +2159,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2101,7 +2226,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('quick-action-browse-channels-card')),
@@ -2157,7 +2282,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create channel'));
     await tester.pumpAndSettle();
@@ -2260,7 +2385,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2419,7 +2544,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2462,7 +2587,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New direct message'));
     await tester.pumpAndSettle();
@@ -2640,7 +2765,7 @@ void main() {
     readState.markContextRead('1', 20);
     await tester.pump();
 
-    expect(find.text('Unread 0'), findsOneWidget);
+    expect(find.text('Unread'), findsOneWidget);
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
       FontWeight.w700,
@@ -3027,21 +3152,19 @@ class _FakeProfileNotifier extends ProfileNotifier {
       UserProfile(pubkey: pubkey, displayName: displayName);
 }
 
-class _FixtureChannelStarsNotifier extends ChannelStarsNotifier {
-  _FixtureChannelStarsNotifier(this.starredChannelIds);
+class _FakeUserCacheNotifier extends UserCacheNotifier {
+  _FakeUserCacheNotifier(this._users);
 
-  final Set<String> starredChannelIds;
+  final Map<String, UserProfile> _users;
 
   @override
-  ChannelStarsState build() => ChannelStarsState(
-    isReady: true,
-    store: ChannelStarStore(
-      channels: {
-        for (final channelId in starredChannelIds)
-          channelId: const ChannelStarEntry(starred: true, updatedAt: 1),
-      },
-    ),
-  );
+  Map<String, UserProfile> build() => _users;
+
+  @override
+  UserProfile? get(String pubkey) => _users[pubkey.toLowerCase()];
+
+  @override
+  Future<bool> preload(List<String> pubkeys) async => true;
 }
 
 class _FixtureChannelSortNotifier extends ChannelSortNotifier {
@@ -3061,6 +3184,15 @@ class _FixtureChannelSortNotifier extends ChannelSortNotifier {
 class _FakePresenceNotifier extends PresenceNotifier {
   @override
   Future<String> build() async => 'online';
+}
+
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this.initial);
+
+  final Map<String, String> initial;
+
+  @override
+  Map<String, String> build() => initial;
 }
 
 class _FakeReadStateNotifier extends ReadStateNotifier {
@@ -3133,4 +3265,76 @@ String _dmTileAvatarInitial(WidgetTester tester, String labelText) {
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _ConversationCaptureSystemBars extends StatelessWidget {
+  const _ConversationCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

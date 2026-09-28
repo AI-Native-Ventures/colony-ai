@@ -177,10 +177,10 @@ pub struct GoalAction {
     /// Progress for the progress action.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress: Option<GoalProgress>,
-    /// Target status for set_status: active, off_pace or achieved.
+    /// Explicit target status for progress or set_status: active, off_pace or achieved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<GoalStatus>,
-    /// Required for set_status, archive and delete.
+    /// Required for set_status; optional for archive and delete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -499,8 +499,8 @@ pub struct AskHead {
 // ── Coordinates ──────────────────────────────────────────────────────────────
 
 /// d-tag of a goal command or head.
-pub fn goal_d_tag(community_id: Uuid, goal_id: Uuid) -> String {
-    format!("company:{community_id}:goal:{goal_id}")
+pub fn goal_d_tag(goal_id: Uuid) -> String {
+    format!("company:goal:{goal_id}")
 }
 
 /// d-tag of an ask command or head.
@@ -508,13 +508,9 @@ pub fn ask_d_tag(channel_id: Uuid, ask_id: Uuid) -> String {
     format!("channel:{channel_id}:ask:{ask_id}")
 }
 
-/// Checks a goal command's d-tag against its community and goal id.
-pub fn validate_goal_d_tag(
-    d_tag: &str,
-    community_id: Uuid,
-    goal_id: Uuid,
-) -> Result<(), CompanyRecordError> {
-    if d_tag == goal_d_tag(community_id, goal_id) {
+/// Checks a goal command's d-tag against its goal id.
+pub fn validate_goal_d_tag(d_tag: &str, goal_id: Uuid) -> Result<(), CompanyRecordError> {
+    if d_tag == goal_d_tag(goal_id) {
         Ok(())
     } else {
         Err(CompanyRecordError::DTagMismatch)
@@ -734,10 +730,7 @@ pub fn validate_goal_action(action: &GoalAction) -> Result<(), CompanyRecordErro
                 && action.reason.is_none()
         }
         A::Progress => {
-            action.goal.is_none()
-                && action.progress.is_some()
-                && action.status.is_none()
-                && action.reason.is_none()
+            action.goal.is_none() && action.progress.is_some() && action.reason.is_none()
         }
         A::SetStatus => {
             action.goal.is_none()
@@ -746,10 +739,7 @@ pub fn validate_goal_action(action: &GoalAction) -> Result<(), CompanyRecordErro
                 && action.reason.is_some()
         }
         A::Archive | A::Delete => {
-            action.goal.is_none()
-                && action.progress.is_none()
-                && action.status.is_none()
-                && action.reason.is_some()
+            action.goal.is_none() && action.progress.is_none() && action.status.is_none()
         }
         A::Restore => {
             action.goal.is_none()
@@ -775,7 +765,7 @@ pub fn validate_goal_action(action: &GoalAction) -> Result<(), CompanyRecordErro
             GoalStatus::Active | GoalStatus::OffPace | GoalStatus::Achieved
         ) {
             return Err(CompanyRecordError::Invalid(
-                "set_status only moves between active, off_pace and achieved",
+                "goal status must be active, off_pace or achieved",
             ));
         }
     }
@@ -1228,20 +1218,16 @@ mod tests {
 
     #[test]
     fn d_tags_are_namespaced_and_checked() {
-        let community = Uuid::from_u128(5);
         let channel = Uuid::from_u128(6);
         let id = Uuid::from_u128(7);
-        assert_eq!(
-            goal_d_tag(community, id),
-            format!("company:{community}:goal:{id}")
-        );
+        assert_eq!(goal_d_tag(id), format!("company:goal:{id}"));
         assert_eq!(
             ask_d_tag(channel, id),
             format!("channel:{channel}:ask:{id}")
         );
-        assert!(validate_goal_d_tag(&goal_d_tag(community, id), community, id).is_ok());
+        assert!(validate_goal_d_tag(&goal_d_tag(id), id).is_ok());
         assert_eq!(
-            validate_goal_d_tag(&goal_d_tag(community, id), Uuid::from_u128(8), id),
+            validate_goal_d_tag(&goal_d_tag(Uuid::from_u128(8)), id),
             Err(CompanyRecordError::DTagMismatch)
         );
         assert_eq!(
@@ -1291,14 +1277,33 @@ mod tests {
         assert!(validate_goal_action(&update_without_head).is_err());
 
         let mut archive = goal_action(GoalActionKind::Archive);
-        assert!(
-            validate_goal_action(&archive).is_err(),
-            "archive needs a reason"
-        );
+        assert!(validate_goal_action(&archive).is_ok());
         archive.reason = Some("Client paused the retainer".into());
         assert!(validate_goal_action(&archive).is_ok());
+        archive.reason = Some("  ".into());
+        assert!(validate_goal_action(&archive).is_err());
+
+        let delete = goal_action(GoalActionKind::Delete);
+        assert!(validate_goal_action(&delete).is_ok());
+        let mut delete_with_empty_reason = delete.clone();
+        delete_with_empty_reason.reason = Some(" ".into());
+        assert!(validate_goal_action(&delete_with_empty_reason).is_err());
+
+        let mut progress = goal_action(GoalActionKind::Progress);
+        progress.progress = Some(GoalProgress {
+            current: None,
+            evidence: "The client approved the draft".into(),
+            evidence_refs: Vec::new(),
+        });
+        progress.status = Some(GoalStatus::Achieved);
+        assert!(validate_goal_action(&progress).is_ok());
+
+        progress.reason = Some("A second payload is not allowed".into());
+        assert!(validate_goal_action(&progress).is_err());
 
         let mut status = goal_action(GoalActionKind::SetStatus);
+        status.status = Some(GoalStatus::Active);
+        assert!(validate_goal_action(&status).is_err());
         status.reason = Some("Confirmed with the client".into());
         status.status = Some(GoalStatus::Archived);
         assert!(

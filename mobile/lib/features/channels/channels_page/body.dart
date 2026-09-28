@@ -100,217 +100,120 @@ class _ChatListToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final paper = _chatPaper(context);
     final filters = [
       (filter: _ChatFilter.all, label: 'All'),
-      (filter: _ChatFilter.unread, label: 'Unread $unreadConversationCount'),
-      (filter: _ChatFilter.direct, label: 'Direct'),
+      (filter: _ChatFilter.channels, label: 'Channels'),
+      (filter: _ChatFilter.forums, label: 'Forums'),
+      (filter: _ChatFilter.direct, label: 'DMs'),
+      (
+        filter: _ChatFilter.unread,
+        label: unreadConversationCount == 0
+            ? 'Unread'
+            : 'Unread $unreadConversationCount',
+      ),
     ];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(color: paper),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              if (_isChatDark(context))
-                Positioned.fill(
-                  child: const CustomPaint(painter: _DarkChatHeaderWash()),
-                ),
-              if (!_isChatDark(context))
-                Positioned.fill(
-                  child: Stack(
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(-0.65, -1),
-                            radius: 1.4,
-                            colors: [
-                              const Color(0x88F4DFED),
-                              const Color(0x00F4DFED),
-                            ],
-                          ),
-                        ),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(0.65, -0.8),
-                            radius: 1.4,
-                            colors: [
-                              const Color(0x66E0E9FA),
-                              const Color(0x00E0E9FA),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 25, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Chats',
-                      style: context.textTheme.headlineSmall?.copyWith(
-                        color: _chatInk(context),
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -1.1,
-                        height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 17),
-                    Container(
-                      key: const ValueKey('channels-search-field'),
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: _chatPaper(context),
-                        border: Border.all(color: _chatLine(context)),
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          Icon(
-                            LucideIcons.search,
-                            size: 17,
-                            color: _chatMuted(context),
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            child: TextField(
-                              controller: searchController,
-                              cursorColor: _chatBlue(context),
-                              style: context.textTheme.bodySmall?.copyWith(
-                                color: _chatInk(context),
-                                fontSize: 13,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: 'Find a conversation',
-                                hintStyle: context.textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: _chatMuted(context),
-                                      fontSize: 13,
-                                    ),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(
+            MobileLayoutTokens.contentGutter,
+            Grid.quarter,
+            MobileLayoutTokens.contentGutter,
+            0,
+          ),
+          child: Container(
+            key: const ValueKey('channels-search-field'),
+            height: MobileLayoutTokens.minimumTapTarget,
+            decoration: BoxDecoration(
+              color: context.mobileTokens.paper,
+              border: Border.all(color: context.mobileTokens.line),
+              borderRadius: BorderRadius.circular(Radii.field),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
             child: Row(
               children: [
-                for (final entry in filters)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 5),
-                    child: TextButton(
-                      onPressed: () => onFilterChanged(entry.filter),
-                      style: TextButton.styleFrom(
-                        minimumSize: Size.zero,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 8,
-                        ),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        backgroundColor: activeFilter == entry.filter
-                            ? _chatSoft(context)
-                            : Colors.transparent,
-                        foregroundColor: activeFilter == entry.filter
-                            ? _chatInk(context)
-                            : _chatMuted(context),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(9),
-                        ),
+                Icon(
+                  LucideIcons.search,
+                  size: MobileLayoutTokens.conversationSearchIconSize,
+                  color: context.mobileTokens.muted,
+                ),
+                const SizedBox(width: Grid.half),
+                Expanded(
+                  child: TextField(
+                    controller: searchController,
+                    cursorColor: context.appColors.plum,
+                    style: context.mobileTypography.body.copyWith(
+                      color: context.mobileTokens.ink,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Find a conversation',
+                      hintStyle: context.mobileTypography.body.copyWith(
+                        color: context.mobileTokens.muted,
                       ),
-                      child: Text(
-                        entry.label,
-                        style: context.textTheme.labelMedium?.copyWith(
-                          fontSize: 12,
-                          fontWeight: activeFilter == entry.filter
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                        ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(
+            horizontal: MobileLayoutTokens.contentGutter,
+            vertical: Grid.xs,
+          ),
+          child: Row(
+            children: [
+              for (final entry in filters)
+                Padding(
+                  padding: const EdgeInsets.only(right: Grid.half),
+                  child: TextButton(
+                    key: ValueKey('conversation-filter-${entry.filter.name}'),
+                    onPressed: () => onFilterChanged(entry.filter),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(
+                        0,
+                        MobileLayoutTokens.minimumTapTarget,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      backgroundColor: activeFilter == entry.filter
+                          ? context.mobileTokens.action
+                          : context.mobileTokens.paper,
+                      foregroundColor: activeFilter == entry.filter
+                          ? context.mobileTokens.onAction
+                          : context.mobileTokens.muted,
+                      side: BorderSide(color: context.mobileTokens.line),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(Radii.tapTarget),
+                      ),
+                    ),
+                    child: Text(
+                      entry.label,
+                      style: context.mobileTypography.metadata.copyWith(
+                        fontWeight: activeFilter == entry.filter
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ],
     );
   }
-}
-
-const _darkChatHeaderWashColors = [
-  Color(0x78F4DFED),
-  Color(0x6BF4DFED),
-  Color(0x64E0E9FA),
-];
-
-class _DarkChatHeaderWash extends CustomPainter {
-  const _DarkChatHeaderWash();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
-    canvas.saveLayer(bounds, Paint());
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: _darkChatHeaderWashColors,
-          stops: [0, 0.5, 1],
-        ).createShader(bounds),
-    );
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..blendMode = BlendMode.dstIn
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            Color(0xF2FFFFFF),
-            Color(0xBFFFFFFF),
-            Color(0x8CFFFFFF),
-            Colors.transparent,
-            Colors.transparent,
-          ],
-          stops: [0, 0.14, 0.32, 0.48, 0.64, 1],
-        ).createShader(bounds),
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _DarkChatHeaderWash oldDelegate) => false;
 }
 
 class _SliverChannelsList extends HookConsumerWidget {
@@ -410,6 +313,13 @@ class _SliverChannelsList extends HookConsumerWidget {
           !unreadChannelIds.contains(channel.id)) {
         return false;
       }
+      if (activeFilter.value == _ChatFilter.channels &&
+          (channel.isDm || channel.isForum)) {
+        return false;
+      }
+      if (activeFilter.value == _ChatFilter.forums && !channel.isForum) {
+        return false;
+      }
       if (activeFilter.value == _ChatFilter.direct && !channel.isDm) {
         return false;
       }
@@ -423,6 +333,12 @@ class _SliverChannelsList extends HookConsumerWidget {
     }).toList();
     final displayedConversations = displayedChannels
         .where((channel) => !channel.isDm)
+        .toList();
+    final displayedForums = displayedChannels
+        .where((channel) => channel.isForum)
+        .toList();
+    final displayedStreamChannels = displayedChannels
+        .where((channel) => !channel.isDm && !channel.isForum)
         .toList();
     final displayedDms = sortDmChannelsByDisplayLabel(
       displayedChannels.where((channel) => channel.isDm),
@@ -448,11 +364,21 @@ class _SliverChannelsList extends HookConsumerWidget {
       sortState.sortModeFor('starred'),
     );
     final ungroupedStreamChannels = sortChannelsForList(
-      displayedConversations
+      displayedStreamChannels
           .where(
             (c) =>
                 !assignedChannelIds.contains(c.id) &&
                 !starredChannelIds.contains(c.id),
+          )
+          .toList(),
+      sortState.sortModeFor('channels'),
+    );
+    final ungroupedForums = sortChannelsForList(
+      displayedForums
+          .where(
+            (channel) =>
+                !assignedChannelIds.contains(channel.id) &&
+                !starredChannelIds.contains(channel.id),
           )
           .toList(),
       sortState.sortModeFor('channels'),
@@ -463,6 +389,15 @@ class _SliverChannelsList extends HookConsumerWidget {
         sortState.sortModeFor('dms') == ChannelSortMode.recent
         ? sortChannelsForList(displayedDms, ChannelSortMode.recent)
         : displayedDms;
+    final recentChannels = sortChannelsForList(
+      displayedChannels.where((channel) => !channel.isDm).toList(),
+      sortState.store.groups['channels'] ?? ChannelSortMode.recent,
+    );
+    final recentDms = sortChannelsForList(
+      displayedDms,
+      sortState.store.groups['dms'] ?? ChannelSortMode.recent,
+    );
+    final recentConversations = [...recentChannels, ...recentDms];
 
     final liveSectionIds = [for (final s in userSections) s.id];
     void setSortMode(String groupKey, ChannelSortMode mode) {
@@ -502,8 +437,35 @@ class _SliverChannelsList extends HookConsumerWidget {
             const _EmptyState()
           else if (displayedChannels.isEmpty)
             const SizedBox.shrink()
+          else if (starredStreamChannels.isEmpty && userSections.isEmpty)
+            for (final channel in recentConversations)
+              _ChannelTile(
+                channel: channel,
+                isUnread: unreadChannelIds.contains(channel.id),
+                isMuted: mutedChannelIds.contains(channel.id),
+                currentPubkey: currentPubkey,
+                sectionId: sectionAssignments[channel.id],
+                onTap: () => onSelectChannel(channel),
+                onMarkRead: () {
+                  final timestamp = dateTimeToUnixSeconds(
+                    channel.lastMessageAt,
+                  );
+                  if (timestamp == null) return;
+                  ref
+                      .read(readStateProvider.notifier)
+                      .markContextRead(
+                        channel.id,
+                        timestamp,
+                        clearForcedMessages: true,
+                      );
+                  ref
+                      .read(channelsProvider.notifier)
+                      .clearObservedUnreadCoveredByRead(channel.id, timestamp);
+                },
+              )
           else ...[
-            if (activeFilter.value != _ChatFilter.direct)
+            if (activeFilter.value != _ChatFilter.direct &&
+                activeFilter.value != _ChatFilter.forums)
               _ChannelSection(
                 title: 'PINNED',
                 icon: LucideIcons.star,
@@ -621,13 +583,19 @@ class _SliverChannelsList extends HookConsumerWidget {
               ),
             if (activeFilter.value != _ChatFilter.direct)
               _ChannelSection(
-                title: 'CHANNELS',
-                icon: LucideIcons.hash,
+                title: activeFilter.value == _ChatFilter.forums
+                    ? 'FORUMS'
+                    : 'CHANNELS',
+                icon: activeFilter.value == _ChatFilter.forums
+                    ? LucideIcons.fileText
+                    : LucideIcons.hash,
                 showTopDivider: false,
                 expanded: channelsExpanded.value,
                 onToggle: () =>
                     channelsExpanded.value = !channelsExpanded.value,
-                channels: ungroupedStreamChannels,
+                channels: activeFilter.value == _ChatFilter.forums
+                    ? ungroupedForums
+                    : [...ungroupedStreamChannels, ...ungroupedForums],
                 unreadChannelIds: unreadChannelIds,
                 mutedChannelIds: mutedChannelIds,
                 currentPubkey: currentPubkey,
@@ -638,23 +606,26 @@ class _SliverChannelsList extends HookConsumerWidget {
                 simpleStyle: true,
                 expandedTrailingPadding: 0,
               ),
-            _ChannelSection(
-              title: 'DIRECT MESSAGES',
-              icon: LucideIcons.messagesSquare,
-              showTopDivider: false,
-              expanded: dmsExpanded.value,
-              onToggle: () => dmsExpanded.value = !dmsExpanded.value,
-              channels: sortedDmChannels,
-              unreadChannelIds: unreadChannelIds,
-              mutedChannelIds: mutedChannelIds,
-              currentPubkey: currentPubkey,
-              emptyLabel: 'No direct messages yet',
-              sortMode: sortState.sortModeFor('dms'),
-              onSortModeChange: (mode) => setSortMode('dms', mode),
-              onSelectChannel: onSelectChannel,
-              simpleStyle: true,
-              simpleHeaderTopPadding: 5,
-            ),
+            if (activeFilter.value == _ChatFilter.direct ||
+                activeFilter.value == _ChatFilter.all ||
+                activeFilter.value == _ChatFilter.unread)
+              _ChannelSection(
+                title: 'DIRECT MESSAGES',
+                icon: LucideIcons.messagesSquare,
+                showTopDivider: false,
+                expanded: dmsExpanded.value,
+                onToggle: () => dmsExpanded.value = !dmsExpanded.value,
+                channels: sortedDmChannels,
+                unreadChannelIds: unreadChannelIds,
+                mutedChannelIds: mutedChannelIds,
+                currentPubkey: currentPubkey,
+                emptyLabel: 'No direct messages yet',
+                sortMode: sortState.sortModeFor('dms'),
+                onSortModeChange: (mode) => setSortMode('dms', mode),
+                onSelectChannel: onSelectChannel,
+                simpleStyle: true,
+                simpleHeaderTopPadding: 5,
+              ),
           ],
         ],
       ),

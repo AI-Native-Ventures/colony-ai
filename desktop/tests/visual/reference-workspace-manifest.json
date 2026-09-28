@@ -1360,6 +1360,1118 @@
           "selector": "button:has-text(\"Share in client channel\")"
         }
       ]
+    },
+    {
+      "id": "w10-discovery-light-1440",
+      "referenceInventoryRoute": "R070-discovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#discovery",
+      "appRoute": "/#/discovery",
+      "appReadySelector": "[data-testid=w10-discovery-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-campaign-light-1440",
+      "referenceInventoryRoute": "R062-campaign",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#campaign",
+      "appRoute": "/#/campaign",
+      "appReadySelector": "[data-testid=w10-campaign-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-leads-light-1440",
+      "referenceInventoryRoute": "leads",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#leads",
+      "appRoute": "/#/leads",
+      "appReadySelector": "[data-testid=w10-leads-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-pipeline-light-1440",
+      "referenceInventoryRoute": "R094-pipeline",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#pipeline",
+      "appRoute": "/#/pipeline",
+      "appReadySelector": "[data-testid=w10-pipeline-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-lead-detail-light-1440",
+      "referenceInventoryRoute": "R109-sales-lead-form-field",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/lead/form-field",
+      "appRoute": "/#/sales/lead/form-field",
+      "appReadySelector": "[data-testid=w10-prospect-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-service-light-1440",
+      "referenceInventoryRoute": "R111-sales-service",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/service",
+      "appRoute": "/#/sales/service",
+      "appReadySelector": "[data-testid=w10-service-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-proposal-light-1440",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-discovery-light-1728",
+      "referenceInventoryRoute": "R070-discovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#discovery",
+      "appRoute": "/#/discovery",
+      "appReadySelector": "[data-testid=w10-discovery-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-discovery-dark-1440",
+      "referenceInventoryRoute": "R070-discovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#discovery",
+      "appRoute": "/#/discovery",
+      "appReadySelector": "[data-testid=w10-discovery-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-discovery-dark-1728",
+      "referenceInventoryRoute": "R070-discovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#discovery",
+      "appRoute": "/#/discovery",
+      "appReadySelector": "[data-testid=w10-discovery-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-campaign-light-1728",
+      "referenceInventoryRoute": "R062-campaign",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#campaign",
+      "appRoute": "/#/campaign",
+      "appReadySelector": "[data-testid=w10-campaign-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-campaign-dark-1440",
+      "referenceInventoryRoute": "R062-campaign",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#campaign",
+      "appRoute": "/#/campaign",
+      "appReadySelector": "[data-testid=w10-campaign-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-campaign-dark-1728",
+      "referenceInventoryRoute": "R062-campaign",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#campaign",
+      "appRoute": "/#/campaign",
+      "appReadySelector": "[data-testid=w10-campaign-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-leads-light-1728",
+      "referenceInventoryRoute": "leads",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#leads",
+      "appRoute": "/#/leads",
+      "appReadySelector": "[data-testid=w10-leads-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-leads-dark-1440",
+      "referenceInventoryRoute": "leads",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#leads",
+      "appRoute": "/#/leads",
+      "appReadySelector": "[data-testid=w10-leads-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-leads-dark-1728",
+      "referenceInventoryRoute": "leads",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#leads",
+      "appRoute": "/#/leads",
+      "appReadySelector": "[data-testid=w10-leads-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-pipeline-light-1728",
+      "referenceInventoryRoute": "R094-pipeline",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#pipeline",
+      "appRoute": "/#/pipeline",
+      "appReadySelector": "[data-testid=w10-pipeline-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-pipeline-dark-1440",
+      "referenceInventoryRoute": "R094-pipeline",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#pipeline",
+      "appRoute": "/#/pipeline",
+      "appReadySelector": "[data-testid=w10-pipeline-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-pipeline-dark-1728",
+      "referenceInventoryRoute": "R094-pipeline",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#pipeline",
+      "appRoute": "/#/pipeline",
+      "appReadySelector": "[data-testid=w10-pipeline-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-lead-detail-light-1728",
+      "referenceInventoryRoute": "R109-sales-lead-form-field",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/lead/form-field",
+      "appRoute": "/#/sales/lead/form-field",
+      "appReadySelector": "[data-testid=w10-prospect-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-lead-detail-dark-1440",
+      "referenceInventoryRoute": "R109-sales-lead-form-field",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/lead/form-field",
+      "appRoute": "/#/sales/lead/form-field",
+      "appReadySelector": "[data-testid=w10-prospect-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-lead-detail-dark-1728",
+      "referenceInventoryRoute": "R109-sales-lead-form-field",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/lead/form-field",
+      "appRoute": "/#/sales/lead/form-field",
+      "appReadySelector": "[data-testid=w10-prospect-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-service-light-1728",
+      "referenceInventoryRoute": "R111-sales-service",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/service",
+      "appRoute": "/#/sales/service",
+      "appReadySelector": "[data-testid=w10-service-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-service-dark-1440",
+      "referenceInventoryRoute": "R111-sales-service",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/service",
+      "appRoute": "/#/sales/service",
+      "appReadySelector": "[data-testid=w10-service-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-service-dark-1728",
+      "referenceInventoryRoute": "R111-sales-service",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/service",
+      "appRoute": "/#/sales/service",
+      "appReadySelector": "[data-testid=w10-service-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-proposal-light-1728",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-proposal-dark-1440",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-proposal-dark-1728",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-proposals-light-1440",
+      "referenceInventoryRoute": "sales/proposals",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposals",
+      "appRoute": "/#/sales/proposals",
+      "appReadySelector": "[data-testid=w10-proposals-page]",
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "w10-proposals-light-1728",
+      "referenceInventoryRoute": "sales/proposals",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposals",
+      "appRoute": "/#/sales/proposals",
+      "appReadySelector": "[data-testid=w10-proposals-page]",
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "w10-proposals-dark-1440",
+      "referenceInventoryRoute": "sales/proposals",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposals",
+      "appRoute": "/#/sales/proposals",
+      "appReadySelector": "[data-testid=w10-proposals-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-proposals-dark-1728",
+      "referenceInventoryRoute": "sales/proposals",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposals",
+      "appRoute": "/#/sales/proposals",
+      "appReadySelector": "[data-testid=w10-proposals-page]",
+      "viewport": "1728x1117",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      }
+    },
+    {
+      "id": "w10-proposal-revision-light-1440",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1440x900",
+      "theme": "light",
+      "actions": [
+        {
+          "type": "click",
+          "target": "reference",
+          "selector": "[data-studio=\"cx-proposal-feedback\"]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=\"w10-request-revision\"]"
+        }
+      ]
+    },
+    {
+      "id": "w10-proposal-revision-dark-1440",
+      "referenceInventoryRoute": "R110-sales-proposal-proposal-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#sales/proposal/proposal-form",
+      "appRoute": "/#/sales/proposal/proposal-form",
+      "appReadySelector": "[data-testid=w10-proposal-page]",
+      "viewport": "1440x900",
+      "theme": "dark",
+      "referencePrefs": {
+        "localStorage": {
+          "colony-settings-review-v1": {
+            "version": 1,
+            "businesses": {
+              "Lerato Social": {
+                "mode": "dark",
+                "style": "default",
+                "color1": "#895AF6",
+                "color2": "#5A9CF6",
+                "accent": "Blue",
+                "glass": false,
+                "opacity": 65,
+                "prominent": true,
+                "links": "compact",
+                "threads": "split",
+                "size": "large"
+              }
+            },
+            "conversations": {
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          }
+        },
+        "sessionStorage": {}
+      },
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark",
+          "buzz-follow-system": "false",
+          "buzz-accent-color": "#3b82f6",
+          "buzz-glass-background": "false",
+          "buzz-glass-opacity": "65",
+          "buzz-prominent-active-tab": "true",
+          "buzz.appearance.fontSize": "larger",
+          "buzz.appearance.conversationDensity": "comfortable",
+          "buzz-sidebar-width": "220",
+          "buzz.channels.threadViewMode": "split"
+        },
+        "sessionStorage": {},
+        "cookies": {
+          "sidebar_state": "true"
+        }
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "reference",
+          "selector": "[data-studio=\"cx-proposal-feedback\"]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=\"w10-request-revision\"]"
+        }
+      ]
     }
   ]
 }

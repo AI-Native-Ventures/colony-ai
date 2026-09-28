@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod asks;
 pub mod channel_templates;
 pub mod channels;
 pub mod credits;
@@ -6,6 +7,7 @@ pub mod dms;
 pub mod emoji;
 pub mod feed;
 pub mod gifs;
+pub mod goals;
 pub mod issues;
 pub mod mem;
 pub mod messages;

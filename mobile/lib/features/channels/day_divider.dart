@@ -29,41 +29,13 @@ class DayDivider extends StatelessWidget {
             : const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
         opacity: isSticky ? 0 : 1,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: Divider(
-                  color: context.mobileTokens.line,
-                  height: 1,
-                  thickness: 1,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                flex: 3,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: conversationDateTextStyle.copyWith(
-                    color: context.mobileTokens.muted,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: Divider(
-                  color: context.mobileTokens.line,
-                  height: 1,
-                  thickness: 1,
-                ),
-              ),
-            ],
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: conversationDateTextStyle.copyWith(
+            color: context.mobileTokens.muted,
           ),
         ),
       ),
@@ -75,7 +47,7 @@ class DayDivider extends StatelessWidget {
     final activeTimestamp = stickyDayTimestamp;
     final timestamp = dayTimestamp;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 43, 0, 0),
+      padding: const EdgeInsets.symmetric(vertical: Grid.xs),
       child: Center(
         child: activeTimestamp == null || timestamp == null
             ? _buildOpacity(context, isSticky: false)

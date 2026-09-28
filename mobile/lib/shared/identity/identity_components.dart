@@ -9,6 +9,41 @@ enum IdentityKind { person, agent }
 /// Selects the person tint used by a shared identity avatar.
 enum IdentityAvatarTone { peach, sage }
 
+/// A small visual marker that labels an agent identity.
+class IdentityAgentBadge extends StatelessWidget {
+  /// Creates the shared AI identity badge.
+  const IdentityAgentBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Semantics(
+      label: 'AI agent',
+      child: ExcludeSemantics(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.actionSoft,
+            borderRadius: BorderRadius.circular(Radii.button),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Grid.half,
+              vertical: Grid.quarter,
+            ),
+            child: Text(
+              'AI',
+              style: context.mobileTypography.identityStatus.copyWith(
+                color: tokens.onActionSoft,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A shared avatar treatment that distinguishes people from agents.
 class IdentityAvatar extends StatelessWidget {
   /// Creates an identity avatar using shared person or agent colors.

@@ -17,6 +17,7 @@ import '../../shared/huddle/huddle.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/navigation/mobile_route.dart';
 import '../../shared/relay/relay.dart';
+import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -30,7 +31,6 @@ import '../../shared/widgets/ios_glass_navigation_button.dart';
 import '../../shared/widgets/message_author_meta.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../../shared/widgets/skeleton.dart';
-import '../profile/presence_cache_provider.dart';
 import '../profile/profile_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
@@ -69,6 +69,7 @@ import 'message_long_press_region.dart';
 import 'message_content.dart';
 import 'message_presentation.dart';
 import 'deliverable_preview_card.dart';
+import 'deliverable_business_records.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
 import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
@@ -255,6 +256,7 @@ enum InitialThreadRouteBehavior {
 class ChannelDetailPage extends HookConsumerWidget {
   final Channel channel;
   final MobileRouteRegistry? routeRegistry;
+  final VoidCallback? openQuickActions;
   final String? initialMessageId;
   final String? initialThreadRootId;
 
@@ -265,6 +267,7 @@ class ChannelDetailPage extends HookConsumerWidget {
     super.key,
     required this.channel,
     this.routeRegistry,
+    this.openQuickActions,
     this.initialMessageId,
     this.initialThreadRootId,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
@@ -522,9 +525,32 @@ class ChannelDetailPage extends HookConsumerWidget {
         !messagesNotifier.hasLoadedMessages;
     final appBarTitleContentHeight = _twoLineAppBarTitleContentHeight(context);
     final mobileTokens = context.mobileTokens;
-    final composerHintText = resolvedChannel.isDm
-        ? 'Message ${resolveDmChannelDisplayLabel(resolvedChannel, currentPubkey: currentPubkey).split(' ').first}...'
-        : 'Message ${resolvedChannel.name.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}...';
+    const composerHintText = 'Message the team...';
+    Future<void> openChannelDetails() async {
+      final shouldClose = await showChannelDetailsPage(
+        context: context,
+        channel: resolvedChannel,
+        currentPubkey: currentPubkey,
+        onMemberTap: showUserProfileSheet,
+        openQuickActions: openQuickActions,
+        sectionId: ref
+            .read(channelSectionsProvider)
+            .store
+            .assignments[resolvedChannel.id],
+      );
+      if (shouldClose == true && context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    Future<void> openDirectMessageActions() async {
+      await showChannelActionsSheet(
+        context: context,
+        channel: resolvedChannel,
+        isUnread: false,
+      );
+    }
+
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
@@ -577,7 +603,7 @@ class ChannelDetailPage extends HookConsumerWidget {
 
     return FrostedScaffold(
       backgroundColor: resolvedChannel.isForum
-          ? mobileTokens.paper
+          ? mobileTokens.canvas
           : conversationSurfaceColor(context),
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
@@ -594,14 +620,12 @@ class ChannelDetailPage extends HookConsumerWidget {
               )
             : null,
         iconColor: mobileTokens.ink,
+        gradient: context.appColors.companyWashGradient,
         titleContentHeight: resolvedChannel.isForum
             ? MobileLayoutTokens.appBarHeight
             : appBarTitleContentHeight,
-        titleStyle: context.mobileTypography.body.copyWith(
+        titleStyle: context.mobileTypography.companyHubTitle.copyWith(
           color: mobileTokens.ink,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          height: 1.25,
         ),
         frostedSurfaceOpacity: 0,
         frostedBlurSigma: 0,
@@ -620,21 +644,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                 )
               : _ChannelAppBarTitle(
                   channel: resolvedChannel,
-                  onTap: () async {
-                    final shouldClose = await showChannelDetailsPage(
-                      context: context,
-                      channel: resolvedChannel,
-                      currentPubkey: currentPubkey,
-                      onMemberTap: showUserProfileSheet,
-                      sectionId: ref
-                          .read(channelSectionsProvider)
-                          .store
-                          .assignments[resolvedChannel.id],
-                    );
-                    if (shouldClose == true && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
+                  onTap: openChannelDetails,
                 ),
         ),
         actions: resolvedChannel.isDm
@@ -647,6 +657,15 @@ class ChannelDetailPage extends HookConsumerWidget {
                       ...huddleLifecycle,
                     ],
                   ),
+                IconButton(
+                  key: const ValueKey('dm-conversation-actions'),
+                  tooltip: 'Conversation actions',
+                  style: IconButton.styleFrom(
+                    foregroundColor: mobileTokens.ink,
+                  ),
+                  onPressed: openDirectMessageActions,
+                  icon: const Icon(LucideIcons.ellipsis, size: 22),
+                ),
                 if (_showsMembersAction(resolvedChannel))
                   _MembersButton(
                     channelId: resolvedChannel.id,
@@ -655,12 +674,23 @@ class ChannelDetailPage extends HookConsumerWidget {
                   ),
               ]
             : [
+                if (!resolvedChannel.isForum)
+                  IconButton(
+                    key: const ValueKey('channel-info-action'),
+                    tooltip: 'Channel info',
+                    style: IconButton.styleFrom(
+                      foregroundColor: mobileTokens.ink,
+                    ),
+                    onPressed: openChannelDetails,
+                    icon: const Icon(LucideIcons.ellipsis, size: 22),
+                  ),
                 if (resolvedChannel.isForum &&
                     resolvedChannel.isMember &&
                     !resolvedChannel.isArchived &&
                     routeRegistry?.contains(ChannelForumRoutes.newPost) == true)
-                  TextButton(
+                  IconButton(
                     key: const ValueKey('forum-new-post-action'),
+                    tooltip: 'New forum post',
                     onPressed: () {
                       final arguments = ChannelForumEntryArguments(
                         channelId: resolvedChannel.id,
@@ -680,19 +710,15 @@ class ChannelDetailPage extends HookConsumerWidget {
                         ),
                       );
                     },
-                    style: TextButton.styleFrom(
-                      backgroundColor: mobileTokens.soft,
-                      foregroundColor: const Color(0xFF45669F),
+                    style: IconButton.styleFrom(
+                      backgroundColor: mobileTokens.paper,
+                      foregroundColor: context.appColors.plum,
+                      side: BorderSide(color: mobileTokens.line),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(0, 44),
-                      textStyle: context.mobileTypography.body.copyWith(
-                        fontSize: 12,
+                        borderRadius: BorderRadius.circular(Radii.button),
                       ),
                     ),
-                    child: const Text('New post'),
+                    icon: const Icon(LucideIcons.plus),
                   ),
                 if (showsComposer)
                   _HuddleButton(

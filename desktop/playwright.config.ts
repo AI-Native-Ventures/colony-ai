@@ -93,7 +93,9 @@ export default defineConfig({
         "**/relay-reconnect.spec.ts",
         "**/relay-reconnect-affordance.spec.ts",
         "**/workflows.spec.ts",
+        "**/company-asks.spec.ts",
         "**/factory.spec.ts",
+        "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
         "**/workflow-local-controls.spec.ts",
         "**/workflow-title-stability.spec.ts",
@@ -184,6 +186,7 @@ export default defineConfig({
         "**/needs-restart-screenshots.spec.ts",
         "**/team-catalog-screenshots.spec.ts",
         "**/w07-agents-smoke.spec.ts",
+        "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
       ],
       use: {
@@ -199,6 +202,7 @@ export default defineConfig({
         "**/onboarding.spec.ts",
         "**/stream.spec.ts",
         "**/integration.spec.ts",
+        "**/company-asks.live.spec.ts",
         "**/dm-double-notification.spec.ts",
         "**/profile.spec.ts",
         "**/sidebar.spec.ts",
@@ -210,6 +214,7 @@ export default defineConfig({
         "**/team-catalog.spec.ts",
         "**/agents-everywhere.live.spec.ts",
         "**/relay-restart.live.spec.ts",
+        "**/goals.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
       ],
       use: {

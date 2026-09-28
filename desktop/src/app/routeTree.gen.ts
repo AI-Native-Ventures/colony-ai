@@ -14,18 +14,28 @@ import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
 import { Route as powerRouteImport } from "./routes/power";
+import { Route as pipelineRouteImport } from "./routes/pipeline";
+import { Route as leadsRouteImport } from "./routes/leads";
+import { Route as goalsRouteImport } from "./routes/goals";
 import { Route as factoryRouteImport } from "./routes/factory";
+import { Route as discoveryRouteImport } from "./routes/discovery";
 import { Route as clientsRouteImport } from "./routes/clients";
+import { Route as campaignRouteImport } from "./routes/campaign";
 import { Route as agentsRouteImport } from "./routes/agents";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
+import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
+import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as goalsDotreferenceRouteImport } from "./routes/goals.reference";
+import { Route as goalsDotnewRouteImport } from "./routes/goals.new";
+import { Route as goalsDotgoalIdRouteImport } from "./routes/goals.$goalId";
 import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
 import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
@@ -33,10 +43,21 @@ import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
+import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
+import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
+import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
+import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
+import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
+import { Route as goalsDotgoalIdDoteditRouteImport } from "./routes/goals.$goalId.edit";
+import { Route as goalsDotgoalIdDotdeleteRouteImport } from "./routes/goals.$goalId.delete";
+import { Route as goalsDotgoalIdDotarchiveRouteImport } from "./routes/goals.$goalId.archive";
 import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.review.$runId";
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
+import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
@@ -84,14 +105,39 @@ const powerRoute = powerRouteImport.update({
   path: "/power",
   getParentRoute: () => rootRouteImport,
 } as any);
+const pipelineRoute = pipelineRouteImport.update({
+  id: "/pipeline",
+  path: "/pipeline",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const leadsRoute = leadsRouteImport.update({
+  id: "/leads",
+  path: "/leads",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsRoute = goalsRouteImport.update({
+  id: "/goals",
+  path: "/goals",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const factoryRoute = factoryRouteImport.update({
   id: "/factory",
   path: "/factory",
   getParentRoute: () => rootRouteImport,
 } as any);
+const discoveryRoute = discoveryRouteImport.update({
+  id: "/discovery",
+  path: "/discovery",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const clientsRoute = clientsRouteImport.update({
   id: "/clients",
   path: "/clients",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const campaignRoute = campaignRouteImport.update({
+  id: "/campaign",
+  path: "/campaign",
   getParentRoute: () => rootRouteImport,
 } as any);
 const agentsRoute = agentsRouteImport.update({
@@ -124,6 +170,16 @@ const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
   path: "/today/reviews-empty",
   getParentRoute: () => rootRouteImport,
 } as any);
+const salesDotserviceRoute = salesDotserviceRouteImport.update({
+  id: "/sales/service",
+  path: "/sales/service",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const salesDotproposalsRoute = salesDotproposalsRouteImport.update({
+  id: "/sales/proposals",
+  path: "/sales/proposals",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   id: "/projects/$projectId",
   path: "/projects/$projectId",
@@ -142,6 +198,21 @@ const navigationDothistoryRoute = navigationDothistoryRouteImport.update({
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotreferenceRoute = goalsDotreferenceRouteImport.update({
+  id: "/goals/reference",
+  path: "/goals/reference",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotnewRoute = goalsDotnewRouteImport.update({
+  id: "/goals/new",
+  path: "/goals/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdRoute = goalsDotgoalIdRouteImport.update({
+  id: "/goals/$goalId",
+  path: "/goals/$goalId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const factoryDotstatesRoute = factoryDotstatesRouteImport.update({
@@ -179,6 +250,63 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const salesDotproposalDotproposalFormRoute =
+  salesDotproposalDotproposalFormRouteImport.update({
+    id: "/sales/proposal/proposal-form",
+    path: "/sales/proposal/proposal-form",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const salesDotproposalDotproposalIdRoute =
+  salesDotproposalDotproposalIdRouteImport.update({
+    id: "/sales/proposal/$proposalId",
+    path: "/sales/proposal/$proposalId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const salesDotleadDotformFieldRoute =
+  salesDotleadDotformFieldRouteImport.update({
+    id: "/sales/lead/form-field",
+    path: "/sales/lead/form-field",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const salesDotleadDotprospectIdRoute =
+  salesDotleadDotprospectIdRouteImport.update({
+    id: "/sales/lead/$prospectId",
+    path: "/sales/lead/$prospectId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const goalsDotgoalIdDotsubgoalRoute =
+  goalsDotgoalIdDotsubgoalRouteImport.update({
+    id: "/goals/$goalId/subgoal",
+    path: "/goals/$goalId/subgoal",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const goalsDotgoalIdDotshareRoute = goalsDotgoalIdDotshareRouteImport.update({
+  id: "/goals/$goalId/share",
+  path: "/goals/$goalId/share",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotprogressRoute =
+  goalsDotgoalIdDotprogressRouteImport.update({
+    id: "/goals/$goalId/progress",
+    path: "/goals/$goalId/progress",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const goalsDotgoalIdDoteditRoute = goalsDotgoalIdDoteditRouteImport.update({
+  id: "/goals/$goalId/edit",
+  path: "/goals/$goalId/edit",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotdeleteRoute = goalsDotgoalIdDotdeleteRouteImport.update({
+  id: "/goals/$goalId/delete",
+  path: "/goals/$goalId/delete",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotgoalIdDotarchiveRoute =
+  goalsDotgoalIdDotarchiveRouteImport.update({
+    id: "/goals/$goalId/archive",
+    path: "/goals/$goalId/archive",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const factoryDotreviewDotrunIdRoute =
   factoryDotreviewDotrunIdRouteImport.update({
     id: "/factory/review/$runId",
@@ -202,6 +330,12 @@ const channelsDotpinsDotchannelIdRoute =
     path: "/channels/pins/$channelId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const asksDotchannelIdDotaskIdRoute =
+  asksDotchannelIdDotaskIdRouteImport.update({
+    id: "/asks/$channelId/$askId",
+    path: "/asks/$channelId/$askId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -212,8 +346,13 @@ const channelsDotchannelIdDotpostsDotpostIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
+  "/leads": typeof leadsRoute;
+  "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
@@ -230,25 +369,46 @@ export interface FileRoutesByFullPath {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/sales/proposals": typeof salesDotproposalsRoute;
+  "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
+  "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
+  "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
+  "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
+  "/leads": typeof leadsRoute;
+  "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
@@ -265,26 +425,47 @@ export interface FileRoutesByTo {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/sales/proposals": typeof salesDotproposalsRoute;
+  "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
+  "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
+  "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
+  "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/agents": typeof agentsRoute;
+  "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
+  "/discovery": typeof discoveryRoute;
   "/factory": typeof factoryRoute;
+  "/goals": typeof goalsRoute;
+  "/leads": typeof leadsRoute;
+  "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
@@ -301,18 +482,34 @@ export interface FileRoutesById {
   "/factory/projects": typeof factoryDotprojectsRoute;
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
+  "/goals/$goalId": typeof goalsDotgoalIdRoute;
+  "/goals/new": typeof goalsDotnewRoute;
+  "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
+  "/sales/proposals": typeof salesDotproposalsRoute;
+  "/sales/service": typeof salesDotserviceRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
   "/factory/review/$runId": typeof factoryDotreviewDotrunIdRoute;
+  "/goals/$goalId/archive": typeof goalsDotgoalIdDotarchiveRoute;
+  "/goals/$goalId/delete": typeof goalsDotgoalIdDotdeleteRoute;
+  "/goals/$goalId/edit": typeof goalsDotgoalIdDoteditRoute;
+  "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
+  "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
+  "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
+  "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
+  "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
+  "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
@@ -320,8 +517,13 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/agents"
+    | "/campaign"
     | "/clients"
+    | "/discovery"
     | "/factory"
+    | "/goals"
+    | "/leads"
+    | "/pipeline"
     | "/power"
     | "/projects"
     | "/pulse"
@@ -338,25 +540,46 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
     | "/projects/$projectId"
+    | "/sales/proposals"
+    | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
+    | "/sales/lead/$prospectId"
+    | "/sales/lead/form-field"
+    | "/sales/proposal/$proposalId"
+    | "/sales/proposal/proposal-form"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/agents"
+    | "/campaign"
     | "/clients"
+    | "/discovery"
     | "/factory"
+    | "/goals"
+    | "/leads"
+    | "/pipeline"
     | "/power"
     | "/projects"
     | "/pulse"
@@ -373,25 +596,46 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
     | "/projects/$projectId"
+    | "/sales/proposals"
+    | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
+    | "/sales/lead/$prospectId"
+    | "/sales/lead/form-field"
+    | "/sales/proposal/$proposalId"
+    | "/sales/proposal/proposal-form"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
     | "/"
     | "/agents"
+    | "/campaign"
     | "/clients"
+    | "/discovery"
     | "/factory"
+    | "/goals"
+    | "/leads"
+    | "/pipeline"
     | "/power"
     | "/projects"
     | "/pulse"
@@ -408,26 +652,47 @@ export interface FileRouteTypes {
     | "/factory/projects"
     | "/factory/sessions"
     | "/factory/states"
+    | "/goals/$goalId"
+    | "/goals/new"
+    | "/goals/reference"
     | "/messages/new"
     | "/navigation/history"
     | "/navigation/start"
     | "/projects/$projectId"
+    | "/sales/proposals"
+    | "/sales/service"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
     | "/factory/review/$runId"
+    | "/goals/$goalId/archive"
+    | "/goals/$goalId/delete"
+    | "/goals/$goalId/edit"
+    | "/goals/$goalId/progress"
+    | "/goals/$goalId/share"
+    | "/goals/$goalId/subgoal"
+    | "/sales/lead/$prospectId"
+    | "/sales/lead/form-field"
+    | "/sales/proposal/$proposalId"
+    | "/sales/proposal/proposal-form"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   agentsRoute: typeof agentsRoute;
+  campaignRoute: typeof campaignRoute;
   clientsRoute: typeof clientsRoute;
+  discoveryRoute: typeof discoveryRoute;
   factoryRoute: typeof factoryRoute;
+  goalsRoute: typeof goalsRoute;
+  leadsRoute: typeof leadsRoute;
+  pipelineRoute: typeof pipelineRoute;
   powerRoute: typeof powerRoute;
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
@@ -444,18 +709,34 @@ export interface RootRouteChildren {
   factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
   factoryDotsessionsRoute: typeof factoryDotsessionsRoute;
   factoryDotstatesRoute: typeof factoryDotstatesRoute;
+  goalsDotgoalIdRoute: typeof goalsDotgoalIdRoute;
+  goalsDotnewRoute: typeof goalsDotnewRoute;
+  goalsDotreferenceRoute: typeof goalsDotreferenceRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
+  salesDotproposalsRoute: typeof salesDotproposalsRoute;
+  salesDotserviceRoute: typeof salesDotserviceRoute;
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
+  asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
   factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
   factoryDotprojectDotprojectIdRoute: typeof factoryDotprojectDotprojectIdRoute;
   factoryDotreviewDotrunIdRoute: typeof factoryDotreviewDotrunIdRoute;
+  goalsDotgoalIdDotarchiveRoute: typeof goalsDotgoalIdDotarchiveRoute;
+  goalsDotgoalIdDotdeleteRoute: typeof goalsDotgoalIdDotdeleteRoute;
+  goalsDotgoalIdDoteditRoute: typeof goalsDotgoalIdDoteditRoute;
+  goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
+  goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
+  goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
+  salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
+  salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
+  salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
+  salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -524,6 +805,27 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof powerRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/pipeline": {
+      id: "/pipeline";
+      path: "/pipeline";
+      fullPath: "/pipeline";
+      preLoaderRoute: typeof pipelineRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/leads": {
+      id: "/leads";
+      path: "/leads";
+      fullPath: "/leads";
+      preLoaderRoute: typeof leadsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals": {
+      id: "/goals";
+      path: "/goals";
+      fullPath: "/goals";
+      preLoaderRoute: typeof goalsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/factory": {
       id: "/factory";
       path: "/factory";
@@ -531,11 +833,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof factoryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/discovery": {
+      id: "/discovery";
+      path: "/discovery";
+      fullPath: "/discovery";
+      preLoaderRoute: typeof discoveryRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/clients": {
       id: "/clients";
       path: "/clients";
       fullPath: "/clients";
       preLoaderRoute: typeof clientsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/campaign": {
+      id: "/campaign";
+      path: "/campaign";
+      fullPath: "/campaign";
+      preLoaderRoute: typeof campaignRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/agents": {
@@ -580,6 +896,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/sales/service": {
+      id: "/sales/service";
+      path: "/sales/service";
+      fullPath: "/sales/service";
+      preLoaderRoute: typeof salesDotserviceRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/sales/proposals": {
+      id: "/sales/proposals";
+      path: "/sales/proposals";
+      fullPath: "/sales/proposals";
+      preLoaderRoute: typeof salesDotproposalsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/projects/$projectId": {
       id: "/projects/$projectId";
       path: "/projects/$projectId";
@@ -606,6 +936,27 @@ declare module "@tanstack/react-router" {
       path: "/messages/new";
       fullPath: "/messages/new";
       preLoaderRoute: typeof messagesDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/reference": {
+      id: "/goals/reference";
+      path: "/goals/reference";
+      fullPath: "/goals/reference";
+      preLoaderRoute: typeof goalsDotreferenceRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/new": {
+      id: "/goals/new";
+      path: "/goals/new";
+      fullPath: "/goals/new";
+      preLoaderRoute: typeof goalsDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId": {
+      id: "/goals/$goalId";
+      path: "/goals/$goalId";
+      fullPath: "/goals/$goalId";
+      preLoaderRoute: typeof goalsDotgoalIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/factory/states": {
@@ -657,6 +1008,76 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/sales/proposal/proposal-form": {
+      id: "/sales/proposal/proposal-form";
+      path: "/sales/proposal/proposal-form";
+      fullPath: "/sales/proposal/proposal-form";
+      preLoaderRoute: typeof salesDotproposalDotproposalFormRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/sales/proposal/$proposalId": {
+      id: "/sales/proposal/$proposalId";
+      path: "/sales/proposal/$proposalId";
+      fullPath: "/sales/proposal/$proposalId";
+      preLoaderRoute: typeof salesDotproposalDotproposalIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/sales/lead/form-field": {
+      id: "/sales/lead/form-field";
+      path: "/sales/lead/form-field";
+      fullPath: "/sales/lead/form-field";
+      preLoaderRoute: typeof salesDotleadDotformFieldRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/sales/lead/$prospectId": {
+      id: "/sales/lead/$prospectId";
+      path: "/sales/lead/$prospectId";
+      fullPath: "/sales/lead/$prospectId";
+      preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/subgoal": {
+      id: "/goals/$goalId/subgoal";
+      path: "/goals/$goalId/subgoal";
+      fullPath: "/goals/$goalId/subgoal";
+      preLoaderRoute: typeof goalsDotgoalIdDotsubgoalRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/share": {
+      id: "/goals/$goalId/share";
+      path: "/goals/$goalId/share";
+      fullPath: "/goals/$goalId/share";
+      preLoaderRoute: typeof goalsDotgoalIdDotshareRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/progress": {
+      id: "/goals/$goalId/progress";
+      path: "/goals/$goalId/progress";
+      fullPath: "/goals/$goalId/progress";
+      preLoaderRoute: typeof goalsDotgoalIdDotprogressRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/edit": {
+      id: "/goals/$goalId/edit";
+      path: "/goals/$goalId/edit";
+      fullPath: "/goals/$goalId/edit";
+      preLoaderRoute: typeof goalsDotgoalIdDoteditRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/delete": {
+      id: "/goals/$goalId/delete";
+      path: "/goals/$goalId/delete";
+      fullPath: "/goals/$goalId/delete";
+      preLoaderRoute: typeof goalsDotgoalIdDotdeleteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/$goalId/archive": {
+      id: "/goals/$goalId/archive";
+      path: "/goals/$goalId/archive";
+      fullPath: "/goals/$goalId/archive";
+      preLoaderRoute: typeof goalsDotgoalIdDotarchiveRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/factory/review/$runId": {
       id: "/factory/review/$runId";
       path: "/factory/review/$runId";
@@ -685,6 +1106,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotpinsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/asks/$channelId/$askId": {
+      id: "/asks/$channelId/$askId";
+      path: "/asks/$channelId/$askId";
+      fullPath: "/asks/$channelId/$askId";
+      preLoaderRoute: typeof asksDotchannelIdDotaskIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -698,8 +1126,13 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   agentsRoute: agentsRoute,
+  campaignRoute: campaignRoute,
   clientsRoute: clientsRoute,
+  discoveryRoute: discoveryRoute,
   factoryRoute: factoryRoute,
+  goalsRoute: goalsRoute,
+  leadsRoute: leadsRoute,
+  pipelineRoute: pipelineRoute,
   powerRoute: powerRoute,
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
@@ -716,18 +1149,34 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotprojectsRoute: factoryDotprojectsRoute,
   factoryDotsessionsRoute: factoryDotsessionsRoute,
   factoryDotstatesRoute: factoryDotstatesRoute,
+  goalsDotgoalIdRoute: goalsDotgoalIdRoute,
+  goalsDotnewRoute: goalsDotnewRoute,
+  goalsDotreferenceRoute: goalsDotreferenceRoute,
   messagesDotnewRoute: messagesDotnewRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
+  salesDotproposalsRoute: salesDotproposalsRoute,
+  salesDotserviceRoute: salesDotserviceRoute,
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
   workDotworkIdRoute: workDotworkIdRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
+  asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
   factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,
   factoryDotprojectDotprojectIdRoute: factoryDotprojectDotprojectIdRoute,
   factoryDotreviewDotrunIdRoute: factoryDotreviewDotrunIdRoute,
+  goalsDotgoalIdDotarchiveRoute: goalsDotgoalIdDotarchiveRoute,
+  goalsDotgoalIdDotdeleteRoute: goalsDotgoalIdDotdeleteRoute,
+  goalsDotgoalIdDoteditRoute: goalsDotgoalIdDoteditRoute,
+  goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
+  goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
+  goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
+  salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
+  salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
+  salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,
+  salesDotproposalDotproposalFormRoute: salesDotproposalDotproposalFormRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

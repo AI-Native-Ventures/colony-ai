@@ -304,6 +304,69 @@ void main() {
     expect(feed.mentions.map((item) => item.id), ['fallback-mention']);
   });
 
+  test('only pending workflow approval requests need action', () async {
+    final session = _RecordingSessionNotifier()
+      ..seed(
+        const NostrEvent(
+          id: 'approval-open',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_001,
+          kind: 46010,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Review the draft',
+          sig: '',
+        ),
+      )
+      ..seed(
+        const NostrEvent(
+          id: 'approval-granted',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_002,
+          kind: 46011,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Review approved',
+          sig: '',
+        ),
+      )
+      ..seed(
+        const NostrEvent(
+          id: 'approval-denied',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_003,
+          kind: 46012,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Changes requested',
+          sig: '',
+        ),
+      );
+    final container = ProviderContainer(
+      overrides: [
+        relayConfigProvider.overrideWith(_FixedRelayConfigNotifier.new),
+        myPubkeyProvider.overrideWithValue('me_pk'),
+        relaySessionProvider.overrideWith(() => session),
+        channelsProvider.overrideWith(
+          () => _FixedChannelsNotifier(const <Channel>[]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(channelsProvider.future);
+    final feed = await container.read(activityProvider.future);
+
+    expect(feed.needsAction.map((item) => item.id), ['approval-open']);
+    expect(feed.activity.map((item) => item.id), [
+      'approval-denied',
+      'approval-granted',
+    ]);
+  });
+
   test(
     'refreshes the inbox projection when addressed activity arrives',
     () async {

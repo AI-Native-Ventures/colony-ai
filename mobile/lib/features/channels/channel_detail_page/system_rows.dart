@@ -121,12 +121,12 @@ class _SystemMessageRow extends HookConsumerWidget {
         child: Padding(
           padding: EdgeInsets.only(
             top: isHuddleEvent
-                ? 33
+                ? conversationSystemMessageTopPadding
                 : usesMessageStyleLayout
                 ? Grid.sm
                 : Grid.xxs,
             bottom: isHuddleEvent
-                ? Grid.eighteen / 2
+                ? Grid.fourteen
                 : usesMessageStyleLayout
                 ? 0
                 : Grid.xxs,
@@ -571,100 +571,120 @@ class _ThreadSummaryRow extends ConsumerWidget {
     final userCache = ref.watch(userCacheProvider);
     final knownAgents = ref.watch(agentMentionPubkeysProvider(channelId));
     final participants = summary.participantPubkeys.take(2).toList();
+    final replyLabel =
+        '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}';
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ThreadDetailPage(
-              threadHead: message,
-              allMessages: allMessages,
-              channelId: channelId,
-              currentPubkey: currentPubkey,
-              isMember: isMember,
-              isArchived: isArchived,
-              initialMessageId: message.id,
-              highlightInitialMessage: false,
-            ),
-          ),
-        );
-      },
-      child: Padding(
-        key: ValueKey('thread-summary-${message.id}'),
-        padding: const EdgeInsets.only(
-          left: conversationReplyIndent,
-          top: 14,
-          bottom: Grid.half,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            SizedBox(
-              width: participants.isEmpty
-                  ? 0
-                  : participants.length * conversationMiniAvatarSize +
-                        (participants.length - 1) * 6,
-              height: conversationMiniAvatarSize,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var index = 0; index < participants.length; index++) ...[
-                    if (index > 0) const SizedBox(width: 6),
-                    ConversationAvatar(
-                      profile: userCache[participants[index].toLowerCase()],
-                      pubkey: participants[index],
-                      size: conversationMiniAvatarSize,
-                      radius: conversationMiniAvatarRadius,
-                      tint: conversationAvatarTint(
-                        profile: userCache[participants[index].toLowerCase()],
-                        isAgent:
-                            knownAgents.contains(
-                              participants[index].toLowerCase(),
-                            ) ||
-                            userCache[participants[index].toLowerCase()]
-                                    ?.ownerPubkey !=
-                                null,
-                      ),
-                    ),
-                  ],
-                ],
+    return Semantics(
+      button: true,
+      label: 'Open thread: $replyLabel',
+      child: ExcludeSemantics(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(Radii.compactCard),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ThreadDetailPage(
+                    threadHead: message,
+                    allMessages: allMessages,
+                    channelId: channelId,
+                    currentPubkey: currentPubkey,
+                    isMember: isMember,
+                    isArchived: isArchived,
+                    initialMessageId: message.id,
+                    highlightInitialMessage: false,
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              key: ValueKey('thread-summary-${message.id}'),
+              padding: const EdgeInsets.only(
+                left: conversationReplyIndent,
+                top: Grid.half,
+                bottom: Grid.half,
               ),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text.rich(
-                TextSpan(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Grid.xxs,
+                  vertical: Grid.half,
+                ),
+                decoration: BoxDecoration(
+                  color: context.mobileTokens.actionSoft,
+                  borderRadius: BorderRadius.circular(Radii.compactCard),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
                   children: [
-                    TextSpan(
-                      text:
-                          '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}',
-                      style: conversationReplyTextStyle.copyWith(
-                        color: conversationAccentColor(context),
+                    SizedBox(
+                      width: participants.isEmpty
+                          ? 0
+                          : participants.length * conversationMiniAvatarSize +
+                                (participants.length - 1) * Grid.half,
+                      height: conversationMiniAvatarSize,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (
+                            var index = 0;
+                            index < participants.length;
+                            index++
+                          ) ...[
+                            if (index > 0) const SizedBox(width: Grid.half),
+                            ConversationAvatar(
+                              profile:
+                                  userCache[participants[index].toLowerCase()],
+                              pubkey: participants[index],
+                              size: conversationMiniAvatarSize,
+                              tint: conversationAvatarTint(
+                                profile:
+                                    userCache[participants[index]
+                                        .toLowerCase()],
+                                isAgent:
+                                    knownAgents.contains(
+                                      participants[index].toLowerCase(),
+                                    ) ||
+                                    userCache[participants[index].toLowerCase()]
+                                            ?.ownerPubkey !=
+                                        null,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (summary.lastReplyAt case final lastReplyAt?) ...[
-                      TextSpan(
-                        text: ' · ',
-                        style: conversationReplyTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant.withValues(
-                            alpha: 0.5,
-                          ),
+                    if (participants.isNotEmpty)
+                      const SizedBox(width: Grid.half),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: replyLabel,
+                              style: context.mobileTypography.metadata.copyWith(
+                                color: context.mobileTokens.onActionSoft,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      TextSpan(
-                        text: 'Last reply ${formatMessageTime(lastReplyAt)}',
-                        style: conversationReplyTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                    ),
+                    const SizedBox(width: Grid.half),
+                    Icon(
+                      LucideIcons.arrowUpRight,
+                      key: const ValueKey('thread-summary-open-arrow'),
+                      size: Grid.xs,
+                      color: context.mobileTokens.onActionSoft,
+                    ),
                   ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

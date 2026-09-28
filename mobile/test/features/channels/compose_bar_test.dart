@@ -697,7 +697,15 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(find.byTooltip('Add attachment').hitTestable(), findsOneWidget);
       expect(find.byTooltip('Record voice note').hitTestable(), findsOneWidget);
-      expect(find.byIcon(LucideIcons.arrowUp), findsNothing);
+      final sendFinder = find.byTooltip('Send message').hitTestable();
+      expect(sendFinder, findsOneWidget);
+      final idleSend = tester.widget<IconButton>(
+        find
+            .ancestor(of: sendFinder, matching: find.byType(IconButton))
+            .hitTestable(),
+      );
+      expect(idleSend.tooltip, 'Send message');
+      expect(idleSend.onPressed, isNull);
       expect(find.byKey(const ValueKey('composer-footer-gradient')), findsOne);
       final composerBackdrop = find.descendant(
         of: find.byKey(const ValueKey('composer-footer-gradient')),
@@ -758,7 +766,7 @@ void main() {
       expect(find.byIcon(LucideIcons.aLargeSmall), findsOneWidget);
     });
 
-    testWidgets('uses the R19 rounded rectangle for a full-width composer', (
+    testWidgets('uses the v5 container shape for a full-width composer', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -776,7 +784,7 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(decoration.borderRadius, BorderRadius.circular(14));
+      expect(decoration.borderRadius, BorderRadius.circular(Radii.container));
       expect((decoration.border! as Border).top.width, 1);
     });
 

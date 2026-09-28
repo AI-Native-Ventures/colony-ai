@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
@@ -45,6 +46,7 @@ import 'message_long_press_region.dart';
 import 'message_content.dart';
 import 'message_presentation.dart';
 import 'deliverable_preview_card.dart';
+import 'deliverable_business_records.dart';
 import 'reaction_row.dart';
 import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
@@ -65,45 +67,6 @@ const _landingHighlightDuration = Duration(seconds: 3);
 const _landingHighlightDelay = Duration(milliseconds: 50);
 const _landingHighlightTransitionDuration = Duration(milliseconds: 300);
 const _landingHighlightOpacity = 0.12;
-
-class _ThreadContextStrip extends StatelessWidget {
-  final String channelSlug;
-  final String title;
-
-  const _ThreadContextStrip({required this.channelSlug, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
-    return Container(
-      key: const ValueKey('thread-context-strip'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      decoration: BoxDecoration(
-        color: tokens.soft,
-        border: Border(bottom: BorderSide(color: tokens.line)),
-      ),
-      child: Text.rich(
-        TextSpan(
-          style: TextStyle(
-            fontFamily: 'Manrope',
-            fontSize: 11,
-            height: 1.35,
-            color: tokens.muted,
-          ),
-          children: [
-            const TextSpan(text: 'In '),
-            TextSpan(
-              text: '# $channelSlug',
-              style: TextStyle(color: tokens.ink, fontWeight: FontWeight.w600),
-            ),
-            TextSpan(text: ' · $title'),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Full-screen thread detail page.
 ///
@@ -896,31 +859,22 @@ class ThreadDetailPage extends HookConsumerWidget {
       }
     });
     final mobileTokens = context.mobileTokens;
-    final titleStyle = context.mobileTypography.body.copyWith(
+    final titleStyle = context.mobileTypography.companyHubTitle.copyWith(
       color: mobileTokens.ink,
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      height: 1.25,
     );
-    final subtitleStyle = context.mobileTypography.metadata.copyWith(
+    final subtitleStyle = context.mobileTypography.identityDetails.copyWith(
       color: mobileTokens.muted,
-      fontSize: 11,
-      height: 1.25,
     );
     final textScaler = MediaQuery.textScalerOf(context);
     final titleContentHeight =
         textScaler.scale(titleStyle.fontSize ?? 16) * (titleStyle.height ?? 1) +
-        (hasFetchedReplies
+        (channel != null
             ? textScaler.scale(subtitleStyle.fontSize ?? 10) *
                   (subtitleStyle.height ?? 1)
             : 0);
-    final replyLabel = '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}';
-    final deliverableTitle = threadHeadPresentation?.deliverable?.title;
-    final threadLabel = deliverableTitle ?? 'Thread';
-    final channelSlug = channel?.name.toLowerCase().replaceAll(
-      RegExp(r'\s+'),
-      '-',
-    );
+    // A thread topic is not part of the relay contract yet. Keep the title
+    // generic instead of presenting message or attachment content as a topic.
+    const threadTitle = 'Thread';
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
@@ -954,15 +908,13 @@ class ThreadDetailPage extends HookConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Thread',
+                threadTitle,
                 key: const ValueKey('thread-app-bar-title'),
                 style: titleStyle,
               ),
-              if (hasFetchedReplies)
+              if (channel != null)
                 Text(
-                  deliverableTitle == null
-                      ? replyLabel
-                      : '$deliverableTitle · $replyLabel',
+                  'Thread in #${channel.name}',
                   key: const ValueKey('thread-app-bar-summary'),
                   style: subtitleStyle,
                 ),
@@ -991,14 +943,14 @@ class ThreadDetailPage extends HookConsumerWidget {
         fit: StackFit.expand,
         children: [
           Padding(
-            padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+            padding: EdgeInsets.only(
+              top: frostedAppBarHeight(
+                context,
+                titleContentHeight: titleContentHeight,
+              ),
+            ),
             child: Column(
               children: [
-                if (channelSlug != null && deliverableTitle != null)
-                  _ThreadContextStrip(
-                    channelSlug: channelSlug,
-                    title: threadLabel,
-                  ),
                 Expanded(
                   child: _ThreadMessageList(
                     viewport: listViewport,
@@ -1073,7 +1025,12 @@ class ThreadDetailPage extends HookConsumerWidget {
             Positioned(
               left: 0,
               right: 0,
-              top: frostedAppBarHeight(context) + Grid.twelve,
+              top:
+                  frostedAppBarHeight(
+                    context,
+                    titleContentHeight: titleContentHeight,
+                  ) +
+                  Grid.twelve,
               child: StickyDateHeader(
                 key: const ValueKey('thread-sticky-date-header'),
                 state: stickyDateHeaderState,
@@ -1099,7 +1056,7 @@ class ThreadDetailPage extends HookConsumerWidget {
                           fillWidth: true,
                           onFocusRestorerChanged: (restoreFocus) =>
                               restoreComposerFocus.value = restoreFocus,
-                          hintText: 'Reply in thread...',
+                          hintText: 'Reply to the thread...',
                           threadHeadId: threadHead.id,
                           rootId: effectiveRootId,
                           onFocusRequested: followThreadTailFromComposer,

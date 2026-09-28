@@ -27,6 +27,7 @@ import {
   KIND_JOB_REQUEST,
   KIND_JOB_RESULT,
   KIND_HUDDLE_STARTED,
+  KIND_ASK_ACTION,
   KIND_DELETION,
   KIND_NIP29_DELETE_EVENT,
   KIND_REACTION,
@@ -46,6 +47,7 @@ import { formatTime } from "@/features/messages/lib/dateFormatters";
 // can exercise the exact same source the renderer uses.
 import { applyEditTagOverlay } from "@/features/messages/lib/applyEditTagOverlay.mjs";
 import { truncateNpub } from "@/shared/lib/pubkey";
+import { askIdFromAction } from "@/features/company-asks/askRecords";
 
 const HEX_RE = /^[0-9a-f]+$/i;
 
@@ -61,7 +63,8 @@ export function isTimelineContentEvent(event: RelayEvent) {
     event.kind === KIND_JOB_RESULT ||
     event.kind === KIND_JOB_CANCEL ||
     event.kind === KIND_JOB_ERROR ||
-    event.kind === KIND_HUDDLE_STARTED
+    event.kind === KIND_HUDDLE_STARTED ||
+    (event.kind === KIND_ASK_ACTION && askIdFromAction(event.content) !== null)
   );
 }
 

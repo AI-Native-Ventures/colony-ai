@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('uses the reference ink, muted and accent colors', (
-    tester,
-  ) async {
+  testWidgets('uses the shared v5 ink, muted and plum tokens', (tester) async {
     for (final brightness in [Brightness.light, Brightness.dark]) {
       late Color ink;
       late Color muted;
       late Color accent;
+      late Color expectedInk;
+      late Color expectedMuted;
+      late Color expectedAccent;
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
@@ -23,6 +24,9 @@ void main() {
                 ink = conversationInkColor(context);
                 muted = conversationMutedColor(context);
                 accent = conversationAccentColor(context);
+                expectedInk = context.mobileTokens.ink;
+                expectedMuted = context.mobileTokens.muted;
+                expectedAccent = context.appColors.plum;
                 return const SizedBox.shrink();
               },
             ),
@@ -30,24 +34,9 @@ void main() {
         ),
       );
 
-      expect(
-        ink,
-        brightness == Brightness.dark
-            ? const Color(0xFFEEE8F0)
-            : const Color(0xFF292632),
-      );
-      expect(
-        muted,
-        brightness == Brightness.dark
-            ? const Color(0xFFAAA1B1)
-            : const Color(0xFF8B8590),
-      );
-      expect(
-        accent,
-        brightness == Brightness.dark
-            ? const Color(0xFFA1BCE9)
-            : const Color(0xFF45669F),
-      );
+      expect(ink, expectedInk);
+      expect(muted, expectedMuted);
+      expect(accent, expectedAccent);
     }
   });
 }

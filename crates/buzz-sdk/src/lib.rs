@@ -12,10 +12,14 @@
 //! The caller signs with their own keys: `builder.sign_with_keys(&keys)?`.
 //! No keys are held here. No network calls are made.
 
+/// Typed event builders and record types for channel-scoped asks.
+pub mod asks;
 pub mod broker;
 pub mod builders;
 /// Typed event builders for Colony business records.
 pub mod business_records;
+/// Typed event builders for Colony company records.
+pub mod company_records;
 pub mod mentions;
 pub mod nip_oa;
 

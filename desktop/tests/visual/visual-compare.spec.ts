@@ -454,17 +454,21 @@ test.describe("visual comparison captures", () => {
           await expect(workspaceTopBar.locator("svg.lucide-globe")).toHaveCount(
             1,
           );
-          for (const unavailableDestination of [
-            "Website",
-            "Social",
-            "Discovery",
-            "Pipeline",
-            "Leads",
-            "Money",
-          ]) {
+          for (const unavailableDestination of ["Website", "Social", "Money"]) {
             await expect(
               appPage.getByText(unavailableDestination, { exact: true }),
             ).toHaveCount(0);
+          }
+          const businessDestinations = appPage.getByTestId(
+            "sidebar-business-destinations",
+          );
+          for (const destination of ["Discovery", "Leads", "Pipeline"]) {
+            await expect(
+              businessDestinations.getByRole("link", {
+                name: destination,
+                exact: true,
+              }),
+            ).toBeVisible();
           }
           const clientsDestination = appPage.getByTestId(
             "sidebar-business-clients",

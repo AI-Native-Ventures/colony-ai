@@ -17,8 +17,8 @@ double _scaledTextHeight(BuildContext context, TextStyle style) {
 
 double _twoLineAppBarTitleContentHeight(BuildContext context) {
   final typography = context.mobileTypography;
-  final titleStyle = typography.body.copyWith(fontSize: 14, height: 1.25);
-  final subtitleStyle = typography.metadata.copyWith(fontSize: 10, height: 1.3);
+  final titleStyle = typography.companyHubTitle;
+  final subtitleStyle = typography.identityDetails;
   return _scaledTextHeight(context, titleStyle) +
       _scaledTextHeight(context, subtitleStyle);
 }
@@ -35,10 +35,12 @@ class _ChannelAppBarTitle extends ConsumerWidget {
     final members = membersAsync.asData?.value;
     final memberCount = members?.length ?? channel.memberCount;
     final agentCount = members?.where((member) => member.isBot).length;
-    final memberLabel =
-        '${channel.isForum ? 'Forum · ' : ''}'
-        '$memberCount ${memberCount == 1 ? 'member' : 'members'}'
-        '${agentCount == null || agentCount == 0 ? '' : ' · $agentCount agents'}';
+    final memberLabel = channel.isForum
+        ? channel.visibility == 'private'
+              ? 'Forum · Private'
+              : 'Forum · Company-wide'
+        : '$memberCount ${memberCount == 1 ? 'member' : 'members'}'
+              '${agentCount == null || agentCount == 0 ? '' : ' · $agentCount agents'}';
     final tokens = context.mobileTokens;
     final typography = context.mobileTypography;
 
@@ -67,15 +69,14 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              channel.name,
+                              channel.isForum
+                                  ? channel.name
+                                  : '# ${channel.name}',
                               key: const ValueKey('channel-header-name'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: typography.body.copyWith(
+                              style: typography.companyHubTitle.copyWith(
                                 color: tokens.ink,
-                                fontSize: channel.isForum ? 16 : 14,
-                                fontWeight: FontWeight.w700,
-                                height: 1.25,
                               ),
                             ),
                           ),
@@ -101,10 +102,8 @@ class _ChannelAppBarTitle extends ConsumerWidget {
                         key: const ValueKey('channel-header-member-count'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: typography.metadata.copyWith(
+                        style: typography.identityDetails.copyWith(
                           color: tokens.muted,
-                          fontSize: channel.isForum ? 11 : 10,
-                          height: 1.3,
                         ),
                       ),
                     ],
@@ -196,19 +195,10 @@ class _DmAppBarTitle extends ConsumerWidget {
         (profiles) => otherPubkey == null ? null : profiles[otherPubkey],
       ),
     );
-    final presence = ref.watch(
-      presenceCacheProvider.select(
-        (presenceMap) => otherPubkey == null
-            ? 'offline'
-            : (presenceMap[otherPubkey] ?? 'offline'),
-      ),
-    );
-
     if (otherPubkey != null) {
       if (profile == null) {
         ref.read(userCacheProvider.notifier).preload([otherPubkey]);
       }
-      ref.read(presenceCacheProvider.notifier).track([otherPubkey]);
     }
 
     final isAgent =
@@ -217,11 +207,7 @@ class _DmAppBarTitle extends ConsumerWidget {
                 .watch(agentMentionPubkeysProvider(channel.id))
                 .contains(otherPubkey)) ||
         profile?.ownerPubkey != null;
-    final presenceLabel = switch (presence) {
-      'online' => isAgent ? 'Agent · Ready' : 'Available',
-      'away' => isAgent ? 'Agent · Away' : 'Away',
-      _ => isAgent ? 'Agent · Offline' : 'Offline',
-    };
+    final subtitle = isAgent ? 'Direct message · AI agent' : 'Direct message';
     final tokens = context.mobileTokens;
     final typography = context.mobileTypography;
 
@@ -241,12 +227,7 @@ class _DmAppBarTitle extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 key: const ValueKey('dm-header-name'),
-                style: typography.body.copyWith(
-                  color: tokens.ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  height: 1.25,
-                ),
+                style: typography.companyHubTitle.copyWith(color: tokens.ink),
               ),
             ),
             if (channel.isEphemeral) ...[
@@ -256,12 +237,9 @@ class _DmAppBarTitle extends ConsumerWidget {
           ],
         ),
         Text(
-          presenceLabel,
-          key: const ValueKey('dm-header-presence'),
-          style: typography.metadata.copyWith(
-            color: tokens.muted,
-            fontSize: 10,
-          ),
+          subtitle,
+          key: const ValueKey('dm-header-subtitle'),
+          style: typography.identityDetails.copyWith(color: tokens.muted),
         ),
       ],
     );

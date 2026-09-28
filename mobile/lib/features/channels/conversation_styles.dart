@@ -1,77 +1,33 @@
 import 'package:flutter/material.dart';
 
+import '../../shared/identity/identity_components.dart';
 import '../../shared/theme/theme.dart';
 
-const conversationAvatarSize = 34.0;
+const conversationAvatarSize = 28.0;
 const conversationAvatarGap = 10.0;
+const conversationSystemMessageTopPadding = Grid.sm + Grid.fourteen;
 
-const conversationBodyTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 13,
-  fontWeight: FontWeight.w400,
-  height: 1.6,
-  letterSpacing: 0,
-);
+final conversationBodyTextStyle = MobileTypographyTokens.v5.conversation;
 
-const conversationAuthorTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 12,
-  fontWeight: FontWeight.w700,
-  height: 1.42,
-  letterSpacing: 0,
-);
+final conversationAuthorTextStyle = MobileTypographyTokens.v5.identityName;
 
-const conversationTimestampTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 10,
-  fontWeight: FontWeight.w400,
-  height: 1.4,
-  letterSpacing: 0,
-);
+final conversationTimestampTextStyle = MobileTypographyTokens.v5.identityStatus;
 
-const conversationDateTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 10,
-  fontWeight: FontWeight.w400,
-  height: 1.4,
-  letterSpacing: 0,
-);
+final conversationDateTextStyle = MobileTypographyTokens.v5.identityStatus;
 
-const conversationReplyTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 11,
-  fontWeight: FontWeight.w500,
-  height: 1.4,
-  letterSpacing: 0,
-);
+final conversationReplyTextStyle = MobileTypographyTokens.v5.identityDetails;
 
-const conversationComposerTextStyle = TextStyle(
-  fontFamily: 'Manrope',
-  fontSize: 13,
-  fontWeight: FontWeight.w400,
-  height: 1.4,
-  letterSpacing: 0,
-);
+final conversationComposerTextStyle = MobileTypographyTokens.v5.conversation;
 
-Color conversationAccentColor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFFA1BCE9)
-    : const Color(0xFF45669F);
+Color conversationAccentColor(BuildContext context) => context.appColors.plum;
 
-Color conversationInkColor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFFEEE8F0)
-    : const Color(0xFF292632);
+Color conversationInkColor(BuildContext context) => context.mobileTokens.ink;
 
 Color conversationMutedColor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFFAAA1B1)
-    : const Color(0xFF8B8590);
+    context.mobileTokens.muted;
 
 Color conversationSurfaceColor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? context.mobileTokens.paper
-    : Colors.white;
+    context.mobileTokens.canvas;
 
 EdgeInsets conversationMessageVerticalPadding({
   required bool showAuthor,
@@ -83,34 +39,13 @@ EdgeInsets conversationMessageVerticalPadding({
 
 const conversationReplyIndent = conversationAvatarSize + conversationAvatarGap;
 
-const conversationAvatarRadius = 11.0;
 const conversationMiniAvatarSize = 17.0;
-const conversationMiniAvatarRadius = 5.0;
 
 class ConversationAgentBadge extends StatelessWidget {
   const ConversationAgentBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('conversation-agent-badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE7EEE8),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFFD4E2D6)),
-      ),
-      child: const Text(
-        'AGENT',
-        style: TextStyle(
-          fontFamily: 'Manrope',
-          fontSize: 8,
-          fontWeight: FontWeight.w700,
-          height: 1,
-          color: Color(0xFF678371),
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
+    return const IdentityAgentBadge(key: ValueKey('conversation-agent-badge'));
   }
 }

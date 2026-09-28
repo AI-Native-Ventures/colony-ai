@@ -17,10 +17,15 @@ import {
   KIND_HUDDLE_PARTICIPANT_JOINED,
   KIND_HUDDLE_PARTICIPANT_LEFT,
   KIND_HUDDLE_ENDED,
+  KIND_ASK_ACTION,
 } from "./kinds.ts";
 
 test("isConversationalUnreadKind_streamMessage_counts", () => {
   assert.equal(isConversationalUnreadKind(KIND_STREAM_MESSAGE), true);
+});
+
+test("isConversationalUnreadKind_askAction_counts", () => {
+  assert.equal(isConversationalUnreadKind(KIND_ASK_ACTION), true);
 });
 
 test("isConversationalUnreadKind_streamMessageV2_counts", () => {

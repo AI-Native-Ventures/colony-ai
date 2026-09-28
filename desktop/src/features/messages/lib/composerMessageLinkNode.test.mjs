@@ -30,6 +30,7 @@ const ISSUE_ID = "b".repeat(64);
 const ISSUE_HREF = `buzz://issue?id=${ISSUE_ID}&owner=${OWNER}&d=buzz-world`;
 const PR_ID = "c".repeat(64);
 const PR_HREF = `buzz://pr?id=${PR_ID}&owner=${OWNER}&d=buzz-world`;
+const GOAL_HREF = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
 
 test("resolves a composer preview and canonicalizes the underlying href", () => {
   assert.deepEqual(
@@ -75,6 +76,10 @@ test("resolves channel and entity links as composer chips", () => {
     resolveComposerMessageLinkAttributes(ISSUE_HREF, () => undefined),
     { channelName: "", href: ISSUE_HREF },
   );
+  assert.deepEqual(
+    resolveComposerMessageLinkAttributes(GOAL_HREF, () => undefined),
+    { channelName: "", href: GOAL_HREF },
+  );
 });
 
 const resolveKnownChannel = (channelId) =>
@@ -101,6 +106,7 @@ const EXACT_LINK_PASTE_ACCEPTED_CASES = [
   ["project", PROJECT_HREF, PROJECT_HREF],
   ["pull request", PR_HREF, PR_HREF],
   ["issue", ISSUE_HREF, ISSUE_HREF],
+  ["goal", GOAL_HREF, GOAL_HREF],
 ];
 
 for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {
@@ -700,6 +706,11 @@ test("composer node renders channel and entity chip presentations", () => {
   assert.equal(pullRequest[1]["data-buzz-link-kind"], "pr");
   assert.match(pullRequest[1].class, /inline-chip-icon-pr/);
   assert.equal(renderedChipLabel(pullRequest), "buzz-world");
+
+  const goal = render(GOAL_HREF);
+  assert.equal(goal[1]["data-buzz-link-kind"], "goal");
+  assert.match(goal[1].class, /inline-chip-icon-goal/);
+  assert.equal(renderedChipLabel(goal), "Goal 123e4567");
 });
 
 test("markdown rendering stores identity in attributes, not visible id text", () => {

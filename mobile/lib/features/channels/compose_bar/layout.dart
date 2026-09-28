@@ -281,8 +281,10 @@ class _ComposeBarLayout extends HookWidget {
       animation: Listenable.merge([expansionAnimation, recordingTransition]),
       child: content,
       builder: (context, child) {
-        final collapsedRadius = fillWidth ? 14.0 : Radii.dialog + Grid.quarter;
-        final expandedRadius = fillWidth ? 14.0 : Radii.dialog;
+        final collapsedRadius = fillWidth
+            ? Radii.container
+            : Radii.dialog + Grid.quarter;
+        final expandedRadius = fillWidth ? Radii.container : Radii.dialog;
         final restingRadius = hasVoiceNoteAttachment
             ? collapsedRadius
             : lerpDouble(
@@ -333,9 +335,12 @@ class _ComposeBarLayout extends HookWidget {
 
   Widget _trailingAction(BuildContext context) {
     if (controller.text.trim().isEmpty && attachments.isEmpty && !isSending) {
-      return _VoiceNoteButton(
-        isDisabled: hasPendingUploads,
-        onTap: onVoiceNote,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _VoiceNoteButton(isDisabled: hasPendingUploads, onTap: onVoiceNote),
+          _SendButton(isDisabled: true, isSending: false, onTap: onSend),
+        ],
       );
     }
     return _SendButton(
