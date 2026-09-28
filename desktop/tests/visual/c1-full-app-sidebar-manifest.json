@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "defaults": {
+    "appMockData": {
+      "referenceWorkspace": true,
+      "referenceSidebarShell": true
+    },
+    "referenceIgnoreSelectors": [
+      ".full-sidebar .nav-section button[data-go='team']"
+    ],
+    "appPrefs": {
+      "localStorage": {
+        "buzz-follow-system": "false",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "false",
+        "buzz.appearance.fontSize": "default",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz-sidebar-width": "244"
+      },
+      "sessionStorage": {},
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "clip": {
+      "referenceSelector": ".full-sidebar",
+      "appSelector": "[data-testid=app-sidebar]"
+    },
+    "referenceReadySelector": ".full-sidebar .nav-search",
+    "appReadySelector": "[data-testid=sidebar-nav-conversations]"
+  },
+  "cases": [
+    {
+      "id": "c1-sidebar-light-1728",
+      "referenceInventoryRoute": "company-shell",
+      "referenceUrl": "http://127.0.0.1:5240/20260927-company-v7/company-shell-review/screen.html?theme=light#inbox",
+      "appRoute": "/",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz"
+        }
+      },
+      "viewport": "1728x1117",
+      "theme": "light"
+    },
+    {
+      "id": "c1-sidebar-light-1440",
+      "referenceInventoryRoute": "company-shell",
+      "referenceUrl": "http://127.0.0.1:5240/20260927-company-v7/company-shell-review/screen.html?theme=light#inbox",
+      "appRoute": "/",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz"
+        }
+      },
+      "viewport": "1440x900",
+      "theme": "light"
+    },
+    {
+      "id": "c1-sidebar-dark-1728",
+      "referenceInventoryRoute": "company-shell",
+      "referenceUrl": "http://127.0.0.1:5240/20260927-company-v7/company-shell-review/screen.html?theme=dark#inbox",
+      "appRoute": "/",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark"
+        }
+      },
+      "viewport": "1728x1117",
+      "theme": "dark"
+    },
+    {
+      "id": "c1-sidebar-dark-1440",
+      "referenceInventoryRoute": "company-shell",
+      "referenceUrl": "http://127.0.0.1:5240/20260927-company-v7/company-shell-review/screen.html?theme=dark#inbox",
+      "appRoute": "/",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-theme": "buzz-dark"
+        }
+      },
+      "viewport": "1440x900",
+      "theme": "dark"
+    }
+  ]
+}

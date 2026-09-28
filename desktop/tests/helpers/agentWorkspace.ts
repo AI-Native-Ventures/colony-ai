@@ -1,9 +1,18 @@
 import { expect, type Page } from "@playwright/test";
 
+/** Opens the existing agent directory route without relying on shell placement. */
+export async function openAgentsDirectoryView(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.location.hash = "/agents";
+  });
+  await expect(page).toHaveURL(/#\/agents(?:\?|$)/, { timeout: 10_000 });
+  await expect(page.getByTestId("agents-page-content")).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
 export async function openAgentTemplatesView(page: Page): Promise<void> {
-  const agentsNavigation = page.getByTestId("open-agents-view");
-  await expect(agentsNavigation).toBeVisible({ timeout: 10_000 });
-  await agentsNavigation.click();
+  await openAgentsDirectoryView(page);
   await showAgentTemplates(page);
 }
 

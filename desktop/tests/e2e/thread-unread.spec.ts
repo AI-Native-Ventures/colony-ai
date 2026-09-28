@@ -778,11 +778,11 @@ test.describe("thread unread indicator", () => {
       mentionPubkeys: [SELF_PUBKEY],
       createdAt: unreadTimestamp(),
     });
-    // A thread reply keeps the channel bold and retains the thread-activity dot;
+    // A thread reply keeps the regular row weight and retains the thread-activity dot;
     // the room itself does not show a numeric badge.
     await expect(page.getByTestId("channel-all-replies")).toHaveCSS(
       "font-weight",
-      "700",
+      "450",
     );
     await expect(page.getByTestId("channel-unread-all-replies")).toHaveCount(0);
     await expect(
@@ -799,7 +799,7 @@ test.describe("thread unread indicator", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await expect(page.getByTestId("channel-all-replies")).toHaveCSS(
       "font-weight",
-      "700",
+      "450",
     );
     await expect(
       page.getByTestId("channel-unread-dot-all-replies"),

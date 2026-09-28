@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, openCreateChannelDialog } from "../helpers/bridge";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 async function getTimelineMetrics(page: import("@playwright/test").Page) {
   return page.getByTestId("message-timeline").evaluate((element) => {
@@ -145,7 +146,7 @@ test("Buzz shared compute explains automatic model selection", async ({
       }
     ).__BUZZ_E2E_SET_MESH__?.({ models: [] });
   });
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await page.getByTestId("agent-add-button").click();
   await chooseSharedComputeProvider(page);
 
@@ -173,7 +174,7 @@ test("create agent persists Buzz shared compute with auto model", async ({
   const agentName = `Shared compute agent ${Date.now()}`;
 
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await page.getByTestId("agent-add-button").click();
   await page.locator("#persona-display-name").fill(agentName);
 
@@ -220,7 +221,7 @@ test("create agent supports parallelism and system prompt overrides", async ({
   const systemPrompt = "You are concise and parallelize independent work.";
 
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
   await page.getByTestId("agent-add-button").click();
 
   await page.locator("#persona-display-name").fill(agentName);

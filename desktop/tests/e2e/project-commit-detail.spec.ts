@@ -21,6 +21,7 @@ async function enableProjectsFeature(page: import("@playwright/test").Page) {
 }
 
 async function openCreateProjectDialog(page: import("@playwright/test").Page) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   await page.getByTestId("projects-overview-create-project").click();
 }
@@ -29,6 +30,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");
@@ -46,7 +48,7 @@ async function openProjectRepository(
   const target = await page.evaluate((id) => {
     const url = new URL(window.location.href);
     url.searchParams.set("repositoryId", id);
-    return `${url.pathname}${url.search}`;
+    return `${url.pathname}${url.search}${url.hash}`;
   }, repositoryId);
   await page.goto(target, { waitUntil: "domcontentloaded" });
 }
@@ -627,7 +629,8 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(nestedChannel).toHaveAttribute("data-active", "true");
   await expect(projectRow).toHaveAttribute("data-active", "false");
-  await expect(page.getByTestId("sidebar-projects-section")).toBeHidden();
+  await expect(page.getByTestId("sidebar-projects-section")).toBeVisible();
+  await expect(nestedChannel).toBeVisible();
   await page.getByTestId("open-factory-view").click();
   await expect(page).toHaveURL(/#\/factory$/);
   await expect(
@@ -689,7 +692,10 @@ test("project sidebar rows open the home channel and nest extra channels", async
 
   await page.getByTestId("sidebar-project-buzz").click();
   await expect(page.getByTestId("project-home-context-panel")).toBeVisible();
-  await page.getByTestId("add-project-repository").click();
+  await page
+    .getByTestId("project-home-context-codebase")
+    .getByRole("button", { name: "Add repository", exact: true })
+    .click();
   await expect(page.getByTestId("attach-project-repository")).toBeVisible();
   await page.getByTestId("create-project-repository").click();
   await page.getByTestId("add-project-repository-name").fill("mobile-app");
@@ -719,7 +725,10 @@ test("project sidebar rows open the home channel and nest extra channels", async
     addedEvents.find((event) => event.kind === 30617)?.tags,
   ).toContainEqual(["buzz-channel", "cf63feec-21bb-5bf0-a2f8-0e4c3de8ec73"]);
 
-  await page.getByTestId("add-project-repository").click();
+  await page
+    .getByTestId("project-home-context-codebase")
+    .getByRole("button", { name: "Add repository", exact: true })
+    .click();
   await page.getByTestId("attach-project-repository").click();
   await expect(
     page.getByTestId("attach-project-repository-dialog"),

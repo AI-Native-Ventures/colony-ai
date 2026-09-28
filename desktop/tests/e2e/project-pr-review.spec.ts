@@ -71,6 +71,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");
@@ -1175,7 +1176,7 @@ test("Factory navigation stays separate from legacy project browsing", async ({
   );
   await expect(sidebarProject.locator('[data-sidebar="menu-label"]')).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
 
   await sidebarProject.click();

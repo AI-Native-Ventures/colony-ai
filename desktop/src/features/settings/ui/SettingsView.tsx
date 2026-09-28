@@ -62,7 +62,6 @@ const settingsNavGroups: Array<{
       "shortcuts",
       "custom-emoji",
       "local-archive",
-      "channel-templates",
     ],
   },
   {
@@ -132,7 +131,7 @@ export function SettingsView({
   const featureState = useFeatureSnapshot();
   const visibleSections = React.useMemo(() => {
     return settingsSections.filter((s) => {
-      // Feature gate check. Manifest is preview-only — if the gate id is in
+      // Feature gate check. Manifest is preview-only - if the gate id is in
       // the manifest, it's preview and needs an opt-in; if it's not, it's
       // stable and renders unconditionally (fail-open).
       if (s.featureGate) {
