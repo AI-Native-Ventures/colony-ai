@@ -1,6 +1,7 @@
 import type * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCompanyWorkMessageContext } from "@/features/company-work/companyWorkMessageContext";
 import { useGoalHeadsQuery } from "../goalRelay";
 
 function shortGoalId(goalId: string): string {
@@ -23,7 +24,8 @@ export function GoalReferenceCard({
   interactive?: boolean;
 }) {
   const goalsQuery = useGoalHeadsQuery();
-  const { goGoal } = useAppNavigation();
+  const { goCompanyWorkFromChat, goGoal } = useAppNavigation();
+  const messageContext = useCompanyWorkMessageContext();
   const record = goalsQuery.data?.find(
     (candidate) => candidate.head.goalId === goalId,
   );
@@ -84,15 +86,39 @@ export function GoalReferenceCard({
     return <GoalReferenceCardFrame>{contents}</GoalReferenceCardFrame>;
   }
 
-  return (
+  const card = (
     <button
       aria-label={`Open goal: ${record.head.title}`}
-      className="my-3 flex w-full max-w-[740px] items-center gap-3 rounded-lg border border-border bg-[#f8f7f8] p-5 text-left transition-colors hover:bg-[#f4f0f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-[#302b38] dark:hover:bg-[#39313f]"
+      className="flex w-full items-center gap-3 rounded-lg border border-border bg-[#f8f7f8] p-5 text-left transition-colors hover:bg-[#f4f0f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-[#302b38] dark:hover:bg-[#39313f]"
       data-testid={`goal-reference-card-${goal.goalId}`}
       onClick={() => void goGoal(goal.goalId)}
       type="button"
     >
       {contents}
     </button>
+  );
+
+  if (!messageContext) {
+    return <div className="my-3 w-full max-w-[740px]">{card}</div>;
+  }
+
+  return (
+    <div className="my-3 w-full max-w-[740px]">
+      {card}
+      <button
+        className="mt-2 text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid={`create-company-work-from-message-${messageContext.sourceEventId}`}
+        onClick={() =>
+          void goCompanyWorkFromChat(messageContext.sourceEventId, {
+            channel: messageContext.channelId,
+            threadRoot: messageContext.threadRootEventId,
+            goal: goal.goalId,
+          })
+        }
+        type="button"
+      >
+        Create work from this discussion
+      </button>
+    </div>
   );
 }

@@ -635,3 +635,25 @@
   [data-testid="drop-zone-overlay"] {
   border-radius: 0;
 }
+
+.focus-thread-drawer-responsive {
+  left: 72px;
+}
+
+@media (min-width: 900px) and (max-width: 1023px) {
+  .focus-thread-drawer-responsive {
+    top: 21%;
+    right: 40px;
+    bottom: 8.5%;
+    left: auto;
+    width: min(510px, calc(100% - 112px));
+    border: 1px solid hsl(var(--border) / 0.6);
+    border-radius: 0.75rem;
+    box-shadow: 0 14px 38px rgb(38 30 50 / 18%);
+  }
+
+  :root.dark .focus-thread-drawer-responsive {
+    border-color: hsl(var(--border) / 0.8);
+    box-shadow: 0 14px 38px rgb(0 0 0 / 48%);
+  }
+}
