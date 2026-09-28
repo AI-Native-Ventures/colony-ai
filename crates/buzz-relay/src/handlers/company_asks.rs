@@ -1024,6 +1024,7 @@ mod postgres_tests {
             decide_by: None,
             options,
             items,
+            tool_consent: None,
             subject: None,
         }
     }

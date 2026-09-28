@@ -79,9 +79,11 @@ abstract final class EventKind {
   /// heads plus the member commands that produce them.
   static const goalHead = 30642;
   static const askHead = 30643;
+  static const toolPermissionHead = 30645;
   static const goalAction = 47031;
   static const askAction = 47032;
   static const askResponse = 47033;
+  static const toolPermissionAction = 47035;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -91,6 +93,8 @@ abstract final class EventKind {
     goalAction,
     askAction,
     askResponse,
+    toolPermissionHead,
+    toolPermissionAction,
   ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.
