@@ -425,6 +425,9 @@ body:has(.w20-settings-shell) {
   padding: 9px 8px 9px 1px;
   background: transparent;
   color: #282532;
+  font-synthesis: none;
+  font-variant: normal;
+  text-rendering: auto;
   --background: 30 100% 99.61%;
   --foreground: 258.46 13.98% 18.24%;
   --muted: 280 18% 96%;
