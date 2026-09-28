@@ -28,6 +28,7 @@ import {
   useCompanyWorkHeadsQuery,
 } from "../hooks";
 import {
+  companyWorkPrimaryButtonClass,
   CompanyWorkBackButton,
   CompanyWorkPageHeader,
 } from "./CompanyWorkPresentation";
@@ -94,6 +95,7 @@ export function CompanyWorkFormScreen({
   threadRootEventId,
 }: CompanyWorkFormScreenProps) {
   const isEdit = Boolean(workItemId);
+  const pageTitle = isEdit ? "Edit work item" : "Create work item";
   const [workId] = React.useState(() => workItemId ?? crypto.randomUUID());
   const [title, setTitle] = React.useState("");
   const [doneCondition, setDoneCondition] = React.useState("");
@@ -271,7 +273,7 @@ export function CompanyWorkFormScreen({
   if (isEdit && (headsQuery.isPending || channelsQuery.isPending)) {
     return (
       <>
-        <CompanyWorkPageHeader title="Work" />
+        <CompanyWorkPageHeader title={pageTitle} />
         <div
           className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
           role="status"
@@ -284,7 +286,7 @@ export function CompanyWorkFormScreen({
   if (isEdit && (headsQuery.isError || channelsQuery.isError)) {
     return (
       <>
-        <CompanyWorkPageHeader title="Work" />
+        <CompanyWorkPageHeader title={pageTitle} />
         <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
           <CompanyWorkBackButton onClick={onBack} />
           <h1 className="text-2xl font-bold tracking-tight">Edit work item</h1>
@@ -313,7 +315,7 @@ export function CompanyWorkFormScreen({
   if (isEdit && (!record || record.head.status === "archived")) {
     return (
       <>
-        <CompanyWorkPageHeader title="Work" />
+        <CompanyWorkPageHeader title={pageTitle} />
         <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
           <CompanyWorkBackButton onClick={onBack} />
           <h1 className="text-2xl font-bold tracking-tight">Edit work item</h1>
@@ -322,7 +324,7 @@ export function CompanyWorkFormScreen({
               This work item is unavailable.
             </h2>
             <Button className="mt-5" onClick={onBack} variant="outline">
-              Back to work
+              Back
             </Button>
           </div>
         </main>
@@ -330,7 +332,6 @@ export function CompanyWorkFormScreen({
     );
   }
 
-  const pageTitle = isEdit ? "Edit work item" : "Create work item";
   const membersReady = membersQuery.isSuccess && members.length > 0;
   const selectedGoalExists =
     !goalId ||
@@ -353,7 +354,7 @@ export function CompanyWorkFormScreen({
 
   return (
     <>
-      <CompanyWorkPageHeader title="Work" />
+      <CompanyWorkPageHeader title={pageTitle} />
       <main
         className="mx-auto w-full max-w-[1230px] px-8 py-8"
         data-testid="company-work-form"
@@ -407,7 +408,7 @@ export function CompanyWorkFormScreen({
             No conversation members are available for this work item.
           </p>
         ) : null}
-        <form className="mt-7 grid max-w-3xl gap-5" onSubmit={submit}>
+        <form className="mt-7 grid max-w-[740px] gap-5" onSubmit={submit}>
           <Field htmlFor="company-work-title" label="Commitment">
             <Input
               autoComplete="off"
@@ -543,7 +544,11 @@ export function CompanyWorkFormScreen({
             </p>
           ) : null}
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Button disabled={!canSubmit} type="submit">
+            <Button
+              className={companyWorkPrimaryButtonClass}
+              disabled={!canSubmit}
+              type="submit"
+            >
               {mutation.isPending
                 ? isEdit
                   ? "Saving work item"

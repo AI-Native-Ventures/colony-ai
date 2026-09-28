@@ -56,12 +56,16 @@ async function waitForMockLiveSubscription(
     .toBe(true);
 }
 
-async function installCompanyWorkMock(page: import("@playwright/test").Page) {
+async function installCompanyWorkMock(
+  page: import("@playwright/test").Page,
+  companyWorkActionErrors: string[] = [],
+) {
   const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
   await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
     companyWorkEvents: [],
+    companyWorkActionErrors,
     companyWorkRelayPrivateKey: bytesToHex(relaySecret),
     goalEvents: [goalHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey)],
     goalRelayPrivateKey: bytesToHex(relaySecret),
@@ -101,6 +105,7 @@ test("company work keeps its chat source, review history, and goal link", async 
 
   const form = page.getByTestId("company-work-form");
   await expect(form).toBeVisible();
+  await expect(page.getByText("Company / Create work item")).toBeVisible();
   await expect(page.getByTestId("company-work-goal")).toHaveValue(GOAL_ID);
   await expect(page.getByTestId("company-work-conversation")).toHaveValue(
     GENERAL_CHANNEL_ID,
@@ -128,6 +133,13 @@ test("company work keeps its chat source, review history, and goal link", async 
   const detail = page.getByTestId("company-work-detail");
   await expect(detail).toBeVisible();
   await expect(detail).toContainText("Review launch brief");
+  await expect(page.getByText("Company / Review launch brief")).toBeVisible();
+  await expect(page.getByTestId("company-work-goal-card")).toContainText(
+    "Complete the launch brief",
+  );
+  await expect(detail.getByRole("button", { name: /# general/ })).toContainText(
+    "The launch brief is tracked here",
+  );
   const workItemId = page.url().match(/#\/work\/detail\/([0-9a-f-]{36})$/)?.[1];
   if (!workItemId) throw new Error("The saved work item route has no id.");
 
@@ -164,6 +176,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(detail).toContainText("Review final launch brief");
 
   await page.getByRole("button", { name: "Update status" }).click();
+  await expect(page.getByText("Done condition", { exact: true })).toBeVisible();
   await page.getByTestId("company-work-status").selectOption("done_unverified");
   await page
     .getByTestId("company-work-status-reason")
@@ -174,6 +187,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Review and verify" }).click();
+  await expect(page.getByText("Done condition", { exact: true })).toBeVisible();
   await page
     .getByTestId("company-work-verdict")
     .selectOption("revision_requested");
@@ -229,4 +243,65 @@ test("company work keeps its chat source, review history, and goal link", async 
   await goalDetail.getByRole("button", { name: "Link work" }).click();
   await expect(page.getByTestId("company-work-form")).toBeVisible();
   await expect(page.getByTestId("company-work-goal")).toHaveValue(GOAL_ID);
+});
+
+test("company work keeps entered fields after a rejected create", async ({
+  page,
+}) => {
+  const failureMessage = "The relay rejected this work item. Try again.";
+  await installCompanyWorkMock(page, [failureMessage]);
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await page
+    .getByTestId("chat-header")
+    .getByRole("button", { name: "Join" })
+    .click();
+  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await page.goto("/#/work/new");
+
+  const form = page.getByTestId("company-work-form");
+  await page
+    .getByTestId("company-work-conversation")
+    .selectOption(GENERAL_CHANNEL_ID);
+  await page.getByTestId("company-work-title").fill("Retain this launch brief");
+  await page
+    .getByTestId("company-work-done-condition")
+    .fill("A reviewer approves this launch brief.");
+  await page
+    .getByTestId("company-work-owner")
+    .selectOption(TEST_IDENTITIES.tyler.pubkey);
+  await page
+    .getByTestId("company-work-requester")
+    .selectOption(TEST_IDENTITIES.tyler.pubkey);
+  await page
+    .getByTestId("company-work-evidence")
+    .fill("Keep these notes after a failed save.");
+
+  const createButton = page.getByRole("button", {
+    name: "Create commitment",
+  });
+  await createButton.click();
+  await expect(form.getByRole("alert")).toContainText(failureMessage);
+  await expect(page.getByTestId("company-work-conversation")).toHaveValue(
+    GENERAL_CHANNEL_ID,
+  );
+  await expect(page.getByTestId("company-work-title")).toHaveValue(
+    "Retain this launch brief",
+  );
+  await expect(page.getByTestId("company-work-done-condition")).toHaveValue(
+    "A reviewer approves this launch brief.",
+  );
+  await expect(page.getByTestId("company-work-owner")).toHaveValue(
+    TEST_IDENTITIES.tyler.pubkey,
+  );
+  await expect(page.getByTestId("company-work-requester")).toHaveValue(
+    TEST_IDENTITIES.tyler.pubkey,
+  );
+  await expect(page.getByTestId("company-work-evidence")).toHaveValue(
+    "Keep these notes after a failed save.",
+  );
+
+  await createButton.click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Retain this launch brief",
+  );
 });

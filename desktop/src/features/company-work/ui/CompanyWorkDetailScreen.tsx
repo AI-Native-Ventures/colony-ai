@@ -1,7 +1,10 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowUpRight, CircleDot } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import {
@@ -10,6 +13,11 @@ import {
 } from "@/features/profile/lib/identity";
 import { useGoalHeadsQuery } from "@/features/goals/goalRelay";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { relayClient } from "@/shared/api/relayClient";
+import {
+  KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_V2,
+} from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
 import {
   useCompanyWorkActionMutation,
@@ -22,6 +30,7 @@ import type {
 } from "../companyWorkModels";
 import { COMPANY_WORK_SCHEMA_VERSION } from "../companyWorkModels";
 import {
+  companyWorkPrimaryButtonClass,
   CompanyWorkBackButton,
   CompanyWorkPageHeader,
   CompanyWorkStatusBadge,
@@ -83,6 +92,7 @@ export function CompanyWorkDetailScreen({
   workItemId: string;
 }) {
   const headsQuery = useCompanyWorkHeadsQuery();
+  const { activeCommunity } = useCommunities();
   const channelsQuery = useChannelsQuery();
   const goalsQuery = useGoalHeadsQuery();
   const identityQuery = useIdentityQuery();
@@ -100,6 +110,34 @@ export function CompanyWorkDetailScreen({
   const communityRole = membershipQuery.data?.role;
   const communityAdmin = communityRole === "owner" || communityRole === "admin";
   const head = record?.head;
+  const goalRecords = goalsQuery.data ?? [];
+  const linkedGoal = head?.goalId
+    ? goalRecords.find((candidate) => candidate.head.goalId === head.goalId)
+    : undefined;
+  const parentGoalId = linkedGoal?.head.goal?.parentGoalId;
+  const parentGoal = parentGoalId
+    ? goalRecords.find((candidate) => candidate.head.goalId === parentGoalId)
+    : undefined;
+  const conversationRootQuery = useQuery({
+    enabled: Boolean(record?.channelId && head?.threadRootEventId),
+    queryKey: [
+      "company-work-thread-root",
+      activeCommunity?.relayUrl ?? null,
+      record?.channelId ?? null,
+      head?.threadRootEventId ?? null,
+    ],
+    queryFn: async () => {
+      if (!record?.channelId || !head?.threadRootEventId) return null;
+      const events = await relayClient.fetchEvents({
+        kinds: [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2],
+        ids: [head.threadRootEventId],
+        "#h": [record.channelId],
+        limit: 1,
+      });
+      return events[0]?.content ?? null;
+    },
+    staleTime: 60_000,
+  });
   const history = historyQuery.data ?? [];
   const pubkeys = React.useMemo(
     () => [
@@ -108,16 +146,16 @@ export function CompanyWorkDetailScreen({
           ...(head?.assignedPubkeys ?? []),
           head?.requesterPubkey,
           head?.verification?.reviewerPubkey,
+          linkedGoal?.head.goal?.ownerPubkey,
           ...history.map((entry) => entry.event.pubkey),
         ].filter((pubkey): pubkey is string => Boolean(pubkey)),
       ),
     ],
-    [head, history],
+    [head, history, linkedGoal],
   );
   const profilesQuery = useUsersBatchQuery(pubkeys);
   const profiles: UserProfileLookup | undefined = profilesQuery.data?.profiles;
   const channels = channelsQuery.data ?? [];
-  const goals = goalsQuery.data ?? [];
   const {
     goCompanyWork,
     goCompanyWorkArchive,
@@ -231,14 +269,36 @@ export function CompanyWorkDetailScreen({
   const channel = channels.find(
     (candidate) => candidate.id === record.channelId,
   );
-  const linkedGoal = head.goalId
-    ? goals.find((candidate) => candidate.head.goalId === head.goalId)
-    : undefined;
+  const goalOwnerLabel = linkedGoal?.head.goal
+    ? resolveUserLabel({
+        currentPubkey,
+        profiles,
+        pubkey: linkedGoal.head.goal.ownerPubkey,
+        preferResolvedSelfLabel: true,
+      })
+    : "";
   const review = head.verification;
+  const conversationPreview = conversationRootQuery.data
+    ?.split(/\r?\n/, 1)[0]
+    ?.replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 64);
+  const conversationMessageId = head.sourceEventId ?? head.threadRootEventId;
+  const openConversation = () => {
+    if (!channel) return;
+    void goChannel(record.channelId, {
+      ...(conversationMessageId
+        ? {
+            messageId: conversationMessageId,
+            threadRootId: head.threadRootEventId ?? null,
+          }
+        : {}),
+    });
+  };
 
   return (
     <>
-      <CompanyWorkPageHeader title="Work" />
+      <CompanyWorkPageHeader title={head.title} />
       <main
         className="mx-auto w-full max-w-[1230px] px-8 py-8"
         data-testid="company-work-detail"
@@ -279,17 +339,41 @@ export function CompanyWorkDetailScreen({
             <h2 className="mt-7 text-base font-semibold">Goal</h2>
             {head.goalId && linkedGoal?.head.goal ? (
               <button
-                className="mt-3 block text-left text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Open goal: ${linkedGoal.head.title}`}
+                className="mt-3 flex w-full items-center gap-3 rounded-lg border border-border bg-[#f8f7f8] p-5 text-left transition-colors hover:bg-[#f4f0f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-[#302b38] dark:hover:bg-[#39313f]"
+                data-testid="company-work-goal-card"
                 onClick={() => void goGoal(head.goalId ?? "")}
                 type="button"
               >
-                {linkedGoal.head.title}
+                <CircleDot
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-primary"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-2xs text-muted-foreground">
+                    {linkedGoal.head.goal.parentGoalId
+                      ? "SUB-GOAL"
+                      : "COMPANY GOAL"}{" "}
+                    · {linkedGoal.head.goalId.slice(0, 8).toUpperCase()}
+                  </span>
+                  <span className="mt-1 block text-sm font-semibold leading-6">
+                    {linkedGoal.head.title}
+                  </span>
+                  <span className="mt-1 block text-2xs text-muted-foreground">
+                    {goalOwnerLabel} · {linkedGoal.head.status}
+                    {parentGoal ? ` · Part of ${parentGoal.head.title}` : ""}
+                  </span>
+                </span>
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
               </button>
-            ) : (
+            ) : head.goalId ? (
               <p className="mt-2 text-sm text-muted-foreground">
-                {head.goalId ? "Linked goal unavailable." : "No goal linked."}
+                Linked goal unavailable.
               </p>
-            )}
+            ) : null}
             <h2 className="mt-7 text-base font-semibold">
               Deliverable and evidence
             </h2>
@@ -341,11 +425,6 @@ export function CompanyWorkDetailScreen({
                 title="History is unavailable."
               />
             ) : null}
-            {historyQuery.isSuccess && history.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                No history available.
-              </p>
-            ) : null}
             {history.length > 0 ? (
               <ol className="mt-3 pl-0">
                 {history.map((entry) => (
@@ -376,30 +455,22 @@ export function CompanyWorkDetailScreen({
                 ))}
               </ol>
             ) : null}
-            <div className="mt-6 rounded-lg border border-border p-4">
-              <strong className="text-sm">
-                Verification is a separate decision.
-              </strong>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                The owner can submit completed work. A reviewer checks it
-                against the done condition.
-              </p>
-            </div>
           </div>
           <aside className="border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <h2 className="text-base font-semibold">Conversation</h2>
             <Button
-              className="mt-3 w-full justify-start"
+              className="mt-3 w-full justify-center font-semibold"
               disabled={!channel}
-              onClick={() => channel && void goChannel(record.channelId)}
+              onClick={openConversation}
               variant="outline"
             >
-              {channel ? `# ${channel.name}` : "Conversation unavailable"}
+              {channel
+                ? `# ${channel.name}${conversationPreview ? ` · ${conversationPreview}` : ""}`
+                : "Conversation unavailable"}
             </Button>
-            <h2 className="mt-7 text-base font-semibold">Manage work</h2>
             {canEdit && head.status !== "archived" ? (
               <Button
-                className="mt-3 w-full"
+                className="mt-2 w-full font-semibold"
                 onClick={() => void goCompanyWorkEdit(workItemId)}
                 variant="outline"
               >
@@ -410,7 +481,7 @@ export function CompanyWorkDetailScreen({
             head.status !== "archived" &&
             head.status !== "done_verified" ? (
               <Button
-                className="mt-2 w-full"
+                className="mt-2 w-full font-semibold"
                 onClick={() => void goCompanyWorkStatus(workItemId)}
                 variant="outline"
               >
@@ -419,7 +490,7 @@ export function CompanyWorkDetailScreen({
             ) : null}
             {canVerify && head.status === "done_unverified" ? (
               <Button
-                className="mt-2 w-full"
+                className={`mt-2 w-full font-semibold ${companyWorkPrimaryButtonClass}`}
                 onClick={() => void goCompanyWorkVerify(workItemId)}
               >
                 Review and verify
@@ -427,7 +498,7 @@ export function CompanyWorkDetailScreen({
             ) : null}
             {canArchive && head.status !== "archived" ? (
               <Button
-                className="mt-2 w-full"
+                className="mt-2 w-full font-semibold"
                 onClick={() => void goCompanyWorkArchive(workItemId)}
                 variant="ghost"
               >
@@ -436,7 +507,7 @@ export function CompanyWorkDetailScreen({
             ) : null}
             {canArchive && head.status === "archived" ? (
               <Button
-                className="mt-3 w-full"
+                className="mt-2 w-full font-semibold"
                 disabled={mutation.isPending}
                 onClick={() => void handleSimpleAction("restore")}
                 variant="outline"

@@ -661,6 +661,8 @@ type E2eConfig = {
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
     companyWorkRelayPrivateKey?: string;
+    /** Reject company work action publishes in order, then accept them. */
+    companyWorkActionErrors?: string[];
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
@@ -13783,6 +13785,12 @@ function sendToMockSocket(args: {
         (tag) => tag[0] === "d" && tag[1]?.startsWith("company:work:"),
       )
     ) {
+      const configuredError =
+        getConfig()?.mock?.companyWorkActionErrors?.shift();
+      if (configuredError) {
+        sendWsText(socket.handler, ["OK", event.id, false, configuredError]);
+        return;
+      }
       const error = brokerMockCompanyWorkAction(event);
       if (error) {
         sendWsText(socket.handler, ["OK", event.id, false, error]);

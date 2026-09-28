@@ -173,9 +173,8 @@ test.describe("company work local relay journey", () => {
       page.getByTestId(`community-rail-button-${COMMUNITY_B_ID}`),
     ).toHaveAttribute("aria-current", "true");
     await page.goto("/#/company-work");
-    await expect(page.getByTestId("company-work-list")).toContainText(
-      "No work items yet",
-    );
+    await expect(page.getByTestId("company-work-list")).toBeVisible();
+    await expect(page.getByTestId("company-work-rows")).toHaveCount(0);
     await page.getByTestId(`community-rail-button-${COMMUNITY_A_ID}`).click();
     await expect(
       page.getByTestId(`community-rail-button-${COMMUNITY_A_ID}`),

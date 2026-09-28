@@ -4,6 +4,9 @@ import type {
   CompanyWorkStatus,
 } from "../companyWorkModels";
 
+export const companyWorkPrimaryButtonClass =
+  "bg-[#536d9c] text-white shadow hover:bg-[#4d668f] disabled:bg-[#536d9c] disabled:text-white disabled:opacity-100";
+
 export function companyWorkStatusLabel(status: CompanyWorkStatus): string {
   return status.replaceAll("_", " ");
 }
@@ -71,7 +74,7 @@ export function CompanyWorkPageHeader({ title }: { title: string }) {
 }
 
 export function CompanyWorkBackButton({
-  label = "Back to work",
+  label = "Back",
   onClick,
 }: {
   label?: string;

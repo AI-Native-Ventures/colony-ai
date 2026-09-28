@@ -18,9 +18,9 @@ import {
   useCompanyWorkHeadsQuery,
 } from "../hooks";
 import {
+  companyWorkPrimaryButtonClass,
   CompanyWorkBackButton,
   CompanyWorkPageHeader,
-  CompanyWorkStatusBadge,
 } from "./CompanyWorkPresentation";
 
 function messageOf(error: unknown) {
@@ -31,14 +31,16 @@ function messageOf(error: unknown) {
 
 function WorkActionPage({
   title,
+  headerTitle = title,
   children,
 }: {
   title: string;
+  headerTitle?: string;
   children: React.ReactNode;
 }) {
   return (
     <>
-      <CompanyWorkPageHeader title="Work" />
+      <CompanyWorkPageHeader title={headerTitle} />
       <main
         aria-label={title}
         className="mx-auto w-full max-w-[1230px] px-8 py-8"
@@ -242,7 +244,13 @@ export function CompanyWorkStatusScreen({
         onClick={() => void goCompanyWorkDetail(workItemId)}
       />
       <h1 className="text-2xl font-bold tracking-tight">Update work status</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{record.head.title}</p>
+      <h2 className="mt-7 text-base font-semibold">{record.head.title}</h2>
+      <div className="mt-5 max-w-[740px] bg-[#f8f7f8] p-4 dark:bg-[#302b38]">
+        <strong className="text-sm">Done condition</strong>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+          {record.head.doneCondition}
+        </p>
+      </div>
       {mutation.isError ? (
         <p
           className="mt-5 rounded-lg border border-destructive/40 p-4 text-sm text-destructive"
@@ -251,7 +259,7 @@ export function CompanyWorkStatusScreen({
           {messageOf(mutation.error)}
         </p>
       ) : null}
-      <form className="mt-7 grid max-w-3xl gap-5" onSubmit={onSubmit}>
+      <form className="mt-5 grid max-w-[740px] gap-5" onSubmit={onSubmit}>
         <label
           className="grid gap-2 text-sm font-medium"
           htmlFor="company-work-status"
@@ -288,7 +296,11 @@ export function CompanyWorkStatusScreen({
           />
         </label>
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button disabled={mutation.isPending || !reason.trim()} type="submit">
+          <Button
+            className={companyWorkPrimaryButtonClass}
+            disabled={mutation.isPending || !reason.trim()}
+            type="submit"
+          >
             {mutation.isPending ? "Saving status" : "Save status"}
           </Button>
           <Button
@@ -435,21 +447,20 @@ export function CompanyWorkVerifyScreen({
       <h1 className="text-2xl font-bold tracking-tight">
         Review completed work
       </h1>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-semibold">{record.head.title}</h2>
-        <CompanyWorkStatusBadge status={record.head.status} />
-      </div>
-      <div className="mt-6 max-w-3xl rounded-lg border border-border p-4">
+      <h2 className="mt-7 text-base font-semibold">{record.head.title}</h2>
+      <div className="mt-6 max-w-[740px] bg-[#f8f7f8] p-4 dark:bg-[#302b38]">
         <strong className="text-sm">Done condition</strong>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
           {record.head.doneCondition}
         </p>
       </div>
-      <div className="mt-4 max-w-3xl rounded-lg border border-border p-4">
-        <p className="whitespace-pre-wrap text-sm leading-6">
-          {record.head.evidence || "No deliverable supplied."}
-        </p>
-      </div>
+      {record.head.evidence ? (
+        <div className="mt-5 max-w-[740px] rounded-lg border border-border bg-[#f8f7f8] p-4 dark:bg-[#302b38]">
+          <p className="whitespace-pre-wrap text-sm leading-6">
+            {record.head.evidence}
+          </p>
+        </div>
+      ) : null}
       {mutation.isError ? (
         <p
           className="mt-5 max-w-3xl rounded-lg border border-destructive/40 p-4 text-sm text-destructive"
@@ -458,7 +469,7 @@ export function CompanyWorkVerifyScreen({
           {messageOf(mutation.error)}
         </p>
       ) : null}
-      <form className="mt-5 grid max-w-3xl gap-5" onSubmit={onSubmit}>
+      <form className="mt-1 grid max-w-[740px] gap-5" onSubmit={onSubmit}>
         <div className="grid gap-2 text-sm">
           <span className="font-medium">Reviewer</span>
           <span className="rounded-lg border border-border bg-muted/30 px-3 py-2">
@@ -500,7 +511,11 @@ export function CompanyWorkVerifyScreen({
           />
         </label>
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button disabled={mutation.isPending || !reason.trim()} type="submit">
+          <Button
+            className={companyWorkPrimaryButtonClass}
+            disabled={mutation.isPending || !reason.trim()}
+            type="submit"
+          >
             {mutation.isPending ? "Recording verdict" : "Record verdict"}
           </Button>
           <Button
@@ -540,7 +555,10 @@ export function CompanyWorkArchiveScreen({
     membershipQuery.isPending
   ) {
     return (
-      <WorkActionPage title="Archive work item">
+      <WorkActionPage
+        title="Archive work item"
+        headerTitle="Archive work item?"
+      >
         <div
           className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
           role="status"
@@ -552,7 +570,10 @@ export function CompanyWorkArchiveScreen({
   }
   if (headsQuery.isError || identityQuery.isError || membershipQuery.isError) {
     return (
-      <WorkActionPage title="Archive work item">
+      <WorkActionPage
+        title="Archive work item"
+        headerTitle="Archive work item?"
+      >
         <CompanyWorkBackButton
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />
@@ -569,7 +590,10 @@ export function CompanyWorkArchiveScreen({
   }
   if (!record || !currentPubkey || record.head.status === "archived") {
     return (
-      <WorkActionPage title="Archive work item">
+      <WorkActionPage
+        title="Archive work item"
+        headerTitle="Archive work item?"
+      >
         <CompanyWorkBackButton
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />
@@ -586,7 +610,10 @@ export function CompanyWorkArchiveScreen({
   }
   if (!isOwner && !isRequester && !communityAdmin) {
     return (
-      <WorkActionPage title="Archive work item">
+      <WorkActionPage
+        title="Archive work item"
+        headerTitle="Archive work item?"
+      >
         <CompanyWorkBackButton
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />
@@ -620,12 +647,11 @@ export function CompanyWorkArchiveScreen({
   };
 
   return (
-    <WorkActionPage title="Archive work item">
-      <CompanyWorkBackButton
-        onClick={() => void goCompanyWorkDetail(workItemId)}
-      />
-      <h1 className="text-2xl font-bold tracking-tight">Archive work item?</h1>
-      <div className="mt-7 max-w-3xl rounded-lg border border-border p-6">
+    <WorkActionPage title="Archive work item" headerTitle="Archive work item?">
+      <h1 className="mt-3 text-2xl font-bold tracking-tight">
+        Archive work item?
+      </h1>
+      <div className="mt-8 max-w-[650px] rounded-lg border border-border p-6">
         <h2 className="text-base font-semibold">{record.head.title}</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           The commitment leaves active work. Its conversation and history
@@ -638,6 +664,7 @@ export function CompanyWorkArchiveScreen({
         ) : null}
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <Button
+            className={companyWorkPrimaryButtonClass}
             disabled={mutation.isPending}
             onClick={() => void onArchive()}
           >

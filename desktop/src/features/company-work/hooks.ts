@@ -80,9 +80,7 @@ async function fetchCompanyWorkHeads(
     seen.add(record.head.workItemId);
     records.push(record);
   }
-  return records.sort((left, right) =>
-    left.head.title.localeCompare(right.head.title),
-  );
+  return records;
 }
 
 async function fetchCompanyWorkHistory(

@@ -9,6 +9,7 @@ import { Button } from "@/shared/ui/button";
 import { useCompanyWorkHeadsQuery } from "../hooks";
 import type { CompanyWorkStatus } from "../companyWorkModels";
 import {
+  companyWorkPrimaryButtonClass,
   CompanyWorkListRow,
   CompanyWorkPageHeader,
 } from "./CompanyWorkPresentation";
@@ -72,7 +73,10 @@ export function CompanyWorkScreen() {
               condition.
             </p>
           </div>
-          <Button onClick={() => void goNewCompanyWork()} variant="outline">
+          <Button
+            className={companyWorkPrimaryButtonClass}
+            onClick={() => void goNewCompanyWork()}
+          >
             Create work item
           </Button>
         </div>
@@ -127,29 +131,7 @@ export function CompanyWorkScreen() {
               Try again
             </Button>
           </div>
-        ) : visibleRecords.length === 0 ? (
-          <div className="mt-8 rounded-lg border border-border p-6">
-            <h2 className="text-base font-semibold">
-              {records.length === 0
-                ? "No work items yet"
-                : "No work in this state"}
-            </h2>
-            {records.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Create a commitment from a conversation or add one here.
-              </p>
-            ) : null}
-            {records.length === 0 ? (
-              <Button
-                className="mt-5"
-                onClick={() => void goNewCompanyWork()}
-                variant="outline"
-              >
-                Create work item
-              </Button>
-            ) : null}
-          </div>
-        ) : (
+        ) : visibleRecords.length > 0 ? (
           <div className="mt-5" data-testid="company-work-rows">
             {visibleRecords.map((record) => {
               const channel = channels.find(
@@ -170,7 +152,7 @@ export function CompanyWorkScreen() {
               );
             })}
           </div>
-        )}
+        ) : null}
         {headsQuery.liveError ? (
           <p className="mt-4 text-xs text-muted-foreground" role="status">
             Live updates are reconnecting. The list will refresh when the
