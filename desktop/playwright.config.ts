@@ -189,6 +189,7 @@ export default defineConfig({
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
         "**/workflow-plain-builder.spec.ts",
+        "**/money.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

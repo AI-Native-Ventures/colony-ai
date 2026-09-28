@@ -57,6 +57,14 @@ pub enum BusinessCommand {
     DeliverableVersion(DeliverableVersion),
     /// Exact-version deliverable approval decision.
     DeliverableApproval(DeliverableApproval),
+    /// Immutable invoice revision request and lifecycle transition.
+    InvoiceVersion(InvoiceVersion),
+    /// Append-only evidence that a client payment was received.
+    PaymentEvidence(PaymentEvidence),
+    /// Append-only credit, refund, or write-off evidence.
+    MoneyAdjustment(MoneyAdjustment),
+    /// Draft, review, or approval of an overdue follow-up intent.
+    MoneyFollowUp(MoneyFollowUpAction),
 }
 
 /// A business or client record action.
@@ -655,10 +663,36 @@ pub struct ProposalConversionReceipt {
     pub acceptance_event_id: String,
 }
 
-/// A draft invoice created from one accepted proposal revision.
+/// Lifecycle state of an invoice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvoiceStatus {
+    /// Invoice is editable and excluded from revenue totals.
+    Draft,
+    /// Invoice is issued and may receive payment evidence.
+    Issued,
+    /// Invoice was voided with a reason.
+    Void,
+}
+
+/// Operation represented by an immutable invoice version event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvoiceVersionAction {
+    /// Initial draft produced by accepting a proposal.
+    ProposalAcceptance,
+    /// Draft terms were edited before issue.
+    DraftEdit,
+    /// Draft invoice was issued.
+    Issue,
+    /// Invoice was voided with a reason.
+    Void,
+}
+
+/// Relay-authored current invoice head created from an accepted proposal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct DraftInvoiceHead {
+pub struct InvoiceHead {
     /// Schema version.
     pub schema_version: u8,
     /// Stable client UUID and private client channel UUID.
@@ -675,8 +709,211 @@ pub struct DraftInvoiceHead {
     pub lines: Vec<ProposalLine>,
     /// Sum of line totals in minor currency units, rounded down from hundredths.
     pub total_minor: i64,
-    /// Draft lifecycle state.
-    pub status: String,
+    /// Total credit notes applied to this invoice in minor units.
+    pub credited_minor: i64,
+    /// Total write-offs applied to this invoice in minor units.
+    pub written_off_minor: i64,
+    /// Net payment evidence less recorded refunds in minor units.
+    pub collected_minor: i64,
+    /// Remaining amount due after credits, write-offs, and collections.
+    pub outstanding_minor: i64,
+    /// Count of payment records, including later-refunded payments.
+    pub payment_evidence_count: u32,
+    /// Current invoice version number.
+    pub version: u32,
+    /// Exact current invoice version event id.
+    pub current_version_event_id: String,
+    /// Current lifecycle state.
+    pub status: InvoiceStatus,
+    /// Due time in Unix seconds when supplied.
+    pub due_at: Option<i64>,
+    /// Issue time in Unix seconds, absent for a draft.
+    pub issued_at: Option<i64>,
+    /// Event that produced this head.
+    pub source_event_id: String,
+}
+
+/// Compatibility alias for callers that used the original draft-only name.
+pub type DraftInvoiceHead = InvoiceHead;
+
+/// Immutable invoice version event and the member action that produced it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct InvoiceVersion {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable client UUID and private client channel UUID.
+    pub client_id: Uuid,
+    /// Stable invoice UUID.
+    pub invoice_id: Uuid,
+    /// Monotonically increasing invoice version number.
+    pub version: u32,
+    /// Exact prior invoice version event id, absent only for proposal acceptance.
+    pub previous_version_event_id: Option<String>,
+    /// Exact accepted proposal revision, when the invoice originated from one.
+    pub proposal_version_event_id: Option<String>,
+    /// Expected relay-signed invoice head event id for a mutation.
+    pub expected_head_event_id: Option<String>,
+    /// Operation represented by this version.
+    pub action: InvoiceVersionAction,
+    /// ISO 4217 currency code.
+    pub currency: String,
+    /// Invoice line items, without tax fields.
+    pub lines: Vec<ProposalLine>,
+    /// Checked sum of line totals in minor units.
+    pub total_minor: i64,
+    /// Invoice lifecycle state after this operation.
+    pub status: InvoiceStatus,
+    /// Due time in Unix seconds when supplied.
+    pub due_at: Option<i64>,
+    /// Required reason for a void operation.
+    pub void_reason: Option<String>,
+}
+
+/// Evidence that a client payment has already been received outside Colony.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PaymentEvidence {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable client UUID and private client channel UUID.
+    pub client_id: Uuid,
+    /// Invoice that received the payment.
+    pub invoice_id: Uuid,
+    /// Stable payment evidence UUID.
+    pub payment_id: Uuid,
+    /// `manual` or the name of the external provider that supplied the evidence.
+    pub provider: String,
+    /// Provider transaction reference when one exists.
+    pub provider_reference: Option<String>,
+    /// Positive payment amount in integer minor units.
+    pub amount_minor: i64,
+    /// ISO 4217 currency code.
+    pub currency: String,
+    /// Time the payment was received in Unix seconds.
+    pub occurred_at: i64,
+    /// Non-secret reference to the supporting evidence.
+    pub evidence_ref: String,
+    /// Exact relay-signed invoice head used for validation.
+    pub expected_invoice_head_event_id: String,
+}
+
+/// Type of invoice adjustment represented by an evidence record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MoneyAdjustmentType {
+    /// Reduces the invoice amount and outstanding balance.
+    CreditNote,
+    /// Records a refund already made outside Colony against a client credit.
+    Refund,
+    /// Reduces the outstanding balance without recording a cash payment.
+    WriteOff,
+}
+
+/// Evidence for a credit note, completed refund, or write-off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct MoneyAdjustment {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable client UUID and private client channel UUID.
+    pub client_id: Uuid,
+    /// Invoice affected by this adjustment.
+    pub invoice_id: Uuid,
+    /// Stable adjustment UUID.
+    pub adjustment_id: Uuid,
+    /// Adjustment operation.
+    pub adjustment_type: MoneyAdjustmentType,
+    /// Positive amount in integer minor units.
+    pub amount_minor: i64,
+    /// ISO 4217 currency code.
+    pub currency: String,
+    /// Date the credit, refund, or write-off took effect in Unix seconds.
+    pub occurred_at: i64,
+    /// Required explanation for the adjustment.
+    pub reason: String,
+    /// Non-secret reference to the supporting evidence.
+    pub evidence_ref: String,
+    /// Exact relay-signed invoice head used for validation.
+    pub expected_invoice_head_event_id: String,
+}
+
+/// Action in the overdue follow-up review lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MoneyFollowUpActionKind {
+    /// Create a follow-up draft for review.
+    Draft,
+    /// Move the current draft into review.
+    Review,
+    /// Approve the draft and record intent only.
+    Approve,
+}
+
+/// Current state of an overdue follow-up intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MoneyFollowUpStatus {
+    /// Draft has not been submitted for review.
+    Draft,
+    /// Draft is awaiting an owner or admin decision.
+    InReview,
+    /// An owner or admin approved intent to follow up.
+    Approved,
+}
+
+/// Member command for drafting, reviewing, or approving a follow-up intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct MoneyFollowUpAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable client UUID and private client channel UUID.
+    pub client_id: Uuid,
+    /// Invoice with an overdue outstanding balance.
+    pub invoice_id: Uuid,
+    /// Stable follow-up UUID.
+    pub follow_up_id: Uuid,
+    /// Lifecycle action.
+    pub action: MoneyFollowUpActionKind,
+    /// Exact prior relay-signed follow-up head, absent only when drafting.
+    pub expected_head_event_id: Option<String>,
+    /// Exact relay-signed invoice head that proves the balance is still overdue.
+    pub expected_invoice_head_event_id: String,
+    /// Intended follow-up time in Unix seconds when supplied.
+    pub due_at: Option<i64>,
+    /// Human-reviewed draft text; persisted exactly and never sent automatically.
+    pub draft_content: String,
+}
+
+/// Relay-signed current state of one follow-up intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct MoneyFollowUpHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable client UUID and private client channel UUID.
+    pub client_id: Uuid,
+    /// Invoice with an overdue outstanding balance.
+    pub invoice_id: Uuid,
+    /// Stable follow-up UUID.
+    pub follow_up_id: Uuid,
+    /// Current lifecycle state.
+    pub status: MoneyFollowUpStatus,
+    /// Current immutable follow-up version number.
+    pub version: u32,
+    /// Exact current follow-up command event id.
+    pub current_version_event_id: String,
+    /// Intended follow-up time in Unix seconds when supplied.
+    pub due_at: Option<i64>,
+    /// Human-reviewed draft text; no external message is sent.
+    pub draft_content: String,
+    /// Whether an approval represents intent only.
+    pub approval_intent_only: bool,
+    /// Pubkey that approved the follow-up intent, when approved.
+    pub approved_by_pubkey: Option<String>,
+    /// Approval time in Unix seconds, when approved.
+    pub approved_at: Option<i64>,
     /// Event that produced this head.
     pub source_event_id: String,
 }
@@ -727,6 +964,49 @@ pub fn deliverable_version_d_tag(client_id: Uuid, deliverable_id: Uuid, revision
 /// Build the append-only d-tag for a decision on one exact deliverable version.
 pub fn deliverable_approval_d_tag(client_id: Uuid, version_event_id: &str) -> String {
     format!("client:{client_id}:deliverable-approval:{version_event_id}")
+}
+
+/// Build the current relay-signed head coordinate for one client invoice.
+pub fn invoice_head_d_tag(client_id: Uuid, invoice_id: Uuid) -> String {
+    client_d_tag(client_id, "invoice", invoice_id)
+}
+
+/// Build the immutable d-tag for one client invoice revision.
+pub fn invoice_version_d_tag(client_id: Uuid, invoice_id: Uuid, version: u32) -> String {
+    format!(
+        "{}:version:{version}",
+        invoice_head_d_tag(client_id, invoice_id)
+    )
+}
+
+/// Build the append-only d-tag for one payment evidence record.
+pub fn payment_d_tag(client_id: Uuid, payment_id: Uuid) -> String {
+    client_d_tag(client_id, "payment", payment_id)
+}
+
+/// Build the append-only d-tag for one money adjustment record.
+pub fn money_adjustment_d_tag(client_id: Uuid, adjustment_id: Uuid) -> String {
+    client_d_tag(client_id, "money-adjustment", adjustment_id)
+}
+
+/// Build the follow-up command and head coordinate for one client record.
+pub fn money_follow_up_d_tag(client_id: Uuid, follow_up_id: Uuid) -> String {
+    client_d_tag(client_id, "money-follow-up", follow_up_id)
+}
+
+/// Return the checked sum of invoice lines in integer minor currency units.
+pub fn invoice_lines_total_minor(lines: &[ProposalLine]) -> Option<i64> {
+    lines.iter().try_fold(0_i64, |total, line| {
+        let line_total = i64::from(line.quantity_hundredths)
+            .checked_mul(line.unit_amount_minor)?
+            .checked_div(100)?;
+        total.checked_add(line_total)
+    })
+}
+
+/// Return whether a currency uses the uppercase three-letter ISO code form.
+pub fn is_iso_currency_code(currency: &str) -> bool {
+    currency.len() == 3 && currency.bytes().all(|byte| byte.is_ascii_uppercase())
 }
 
 /// Check a supplied d-tag against the exact client-scoped coordinate.
@@ -833,6 +1113,36 @@ pub fn validate_business_command_scope(
                 Err(BusinessRecordError::DTagMismatch)
             }
         }
+        BusinessCommand::InvoiceVersion(value) => {
+            validate_client_channel(value.client_id, channel_id)?;
+            if d_tag == invoice_version_d_tag(value.client_id, value.invoice_id, value.version) {
+                Ok(())
+            } else {
+                Err(BusinessRecordError::DTagMismatch)
+            }
+        }
+        BusinessCommand::PaymentEvidence(value) => {
+            validate_client_channel(value.client_id, channel_id)?;
+            validate_client_d_tag(d_tag, value.client_id, "payment", value.payment_id)
+        }
+        BusinessCommand::MoneyAdjustment(value) => {
+            validate_client_channel(value.client_id, channel_id)?;
+            validate_client_d_tag(
+                d_tag,
+                value.client_id,
+                "money-adjustment",
+                value.adjustment_id,
+            )
+        }
+        BusinessCommand::MoneyFollowUp(value) => {
+            validate_client_channel(value.client_id, channel_id)?;
+            validate_client_d_tag(
+                d_tag,
+                value.client_id,
+                "money-follow-up",
+                value.follow_up_id,
+            )
+        }
     }
 }
 
@@ -895,6 +1205,10 @@ pub fn parse_business_command(
         crate::kind::KIND_PROPOSAL_ACCEPTANCE => parse!(ProposalAcceptance, ProposalAcceptance)?,
         crate::kind::KIND_DELIVERABLE_VERSION => parse!(DeliverableVersion, DeliverableVersion)?,
         crate::kind::KIND_DELIVERABLE_APPROVAL => parse!(DeliverableApproval, DeliverableApproval)?,
+        crate::kind::KIND_INVOICE_VERSION => parse!(InvoiceVersion, InvoiceVersion)?,
+        crate::kind::KIND_PAYMENT => parse!(PaymentEvidence, PaymentEvidence)?,
+        crate::kind::KIND_MONEY_ADJUSTMENT => parse!(MoneyAdjustment, MoneyAdjustment)?,
+        crate::kind::KIND_MONEY_FOLLOW_UP => parse!(MoneyFollowUpAction, MoneyFollowUp)?,
         _ => return Err(BusinessRecordError::UnsupportedKind),
     };
 
@@ -908,6 +1222,10 @@ pub fn parse_business_command(
         BusinessCommand::ProposalAcceptance(value) => value.schema_version,
         BusinessCommand::DeliverableVersion(value) => value.schema_version,
         BusinessCommand::DeliverableApproval(value) => value.schema_version,
+        BusinessCommand::InvoiceVersion(value) => value.schema_version,
+        BusinessCommand::PaymentEvidence(value) => value.schema_version,
+        BusinessCommand::MoneyAdjustment(value) => value.schema_version,
+        BusinessCommand::MoneyFollowUp(value) => value.schema_version,
     };
     if schema_version != BUSINESS_RECORD_SCHEMA_VERSION {
         return Err(BusinessRecordError::UnsupportedSchemaVersion);
@@ -1135,5 +1453,190 @@ mod tests {
         let acceptance: ProposalAcceptance =
             serde_json::from_value(json).expect("deserialize legacy acceptance");
         assert_eq!(acceptance.evidence, None);
+    }
+
+    #[test]
+    fn money_coordinates_bind_each_record_to_the_client_channel() {
+        let client_id = Uuid::from_u128(31);
+        let invoice_id = Uuid::from_u128(32);
+        let other_client_id = Uuid::from_u128(33);
+        let invoice_version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: 2,
+            previous_version_event_id: Some("a".repeat(64)),
+            proposal_version_event_id: Some("b".repeat(64)),
+            expected_head_event_id: Some("c".repeat(64)),
+            action: InvoiceVersionAction::DraftEdit,
+            currency: "ZAR".into(),
+            lines: vec![ProposalLine {
+                service_id: None,
+                description: "Monthly service".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 12_345,
+            }],
+            total_minor: 12_345,
+            status: InvoiceStatus::Draft,
+            due_at: Some(1_800_000_000),
+            void_reason: None,
+        };
+        let parsed_invoice = parse_business_command(
+            crate::kind::KIND_INVOICE_VERSION,
+            &serde_json::to_string(&invoice_version).expect("serialize invoice version"),
+        )
+        .expect("parse invoice version");
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                client_id,
+                &invoice_version_d_tag(client_id, invoice_id, 2),
+                &parsed_invoice,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                other_client_id,
+                &invoice_version_d_tag(client_id, invoice_id, 2),
+                &parsed_invoice,
+            ),
+            Err(BusinessRecordError::ClientChannelMismatch)
+        );
+
+        let payment = PaymentEvidence {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            payment_id: Uuid::from_u128(34),
+            provider: "manual".into(),
+            provider_reference: Some("bank-ref-1".into()),
+            amount_minor: 500,
+            currency: "ZAR".into(),
+            occurred_at: 1_800_000_001,
+            evidence_ref: "receipt:one".into(),
+            expected_invoice_head_event_id: "d".repeat(64),
+        };
+        let parsed_payment = parse_business_command(
+            crate::kind::KIND_PAYMENT,
+            &serde_json::to_string(&payment).expect("serialize payment"),
+        )
+        .expect("parse payment");
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                client_id,
+                &payment_d_tag(client_id, payment.payment_id),
+                &parsed_payment,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                other_client_id,
+                &payment_d_tag(client_id, payment.payment_id),
+                &parsed_payment,
+            ),
+            Err(BusinessRecordError::ClientChannelMismatch)
+        );
+
+        let adjustment = MoneyAdjustment {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            adjustment_id: Uuid::from_u128(35),
+            adjustment_type: MoneyAdjustmentType::CreditNote,
+            amount_minor: 100,
+            currency: "ZAR".into(),
+            occurred_at: 1_800_000_001,
+            reason: "Scope reduced".into(),
+            evidence_ref: "credit-note:one".into(),
+            expected_invoice_head_event_id: "e".repeat(64),
+        };
+        let parsed_adjustment = parse_business_command(
+            crate::kind::KIND_MONEY_ADJUSTMENT,
+            &serde_json::to_string(&adjustment).expect("serialize adjustment"),
+        )
+        .expect("parse adjustment");
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                client_id,
+                &money_adjustment_d_tag(client_id, adjustment.adjustment_id),
+                &parsed_adjustment,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                other_client_id,
+                &money_adjustment_d_tag(client_id, adjustment.adjustment_id),
+                &parsed_adjustment,
+            ),
+            Err(BusinessRecordError::ClientChannelMismatch)
+        );
+
+        let follow_up = MoneyFollowUpAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            follow_up_id: Uuid::from_u128(36),
+            action: MoneyFollowUpActionKind::Draft,
+            expected_head_event_id: None,
+            expected_invoice_head_event_id: "f".repeat(64),
+            due_at: Some(1_800_000_002),
+            draft_content: "Please review the outstanding invoice.".into(),
+        };
+        let parsed_follow_up = parse_business_command(
+            crate::kind::KIND_MONEY_FOLLOW_UP,
+            &serde_json::to_string(&follow_up).expect("serialize follow-up"),
+        )
+        .expect("parse follow-up");
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                client_id,
+                &money_follow_up_d_tag(client_id, follow_up.follow_up_id),
+                &parsed_follow_up,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                client_id,
+                other_client_id,
+                &money_follow_up_d_tag(client_id, follow_up.follow_up_id),
+                &parsed_follow_up,
+            ),
+            Err(BusinessRecordError::ClientChannelMismatch)
+        );
+    }
+
+    #[test]
+    fn money_helpers_use_checked_integer_totals_and_currency_code_form() {
+        let lines = [ProposalLine {
+            service_id: None,
+            description: "Fractional quantity".into(),
+            quantity_hundredths: 125,
+            unit_amount_minor: 999,
+        }];
+        assert_eq!(invoice_lines_total_minor(&lines), Some(1_248));
+        assert_eq!(
+            invoice_lines_total_minor(&[ProposalLine {
+                service_id: None,
+                description: "Overflow".into(),
+                quantity_hundredths: u32::MAX,
+                unit_amount_minor: i64::MAX,
+            }]),
+            None
+        );
+        assert!(is_iso_currency_code("ZAR"));
+        assert!(is_iso_currency_code("USD"));
+        assert!(!is_iso_currency_code("zar"));
+        assert!(!is_iso_currency_code("US"));
+        assert!(!is_iso_currency_code("US1"));
     }
 }

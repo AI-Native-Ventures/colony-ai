@@ -225,7 +225,8 @@ desktop-tauri-check: _ensure-sidecar-stubs
 
 # Run desktop Tauri Rust unit tests
 desktop-tauri-test: _ensure-sidecar-stubs
-    cd desktop/src-tauri && cargo test --workspace
+    cd desktop/src-tauri && cargo test --workspace --exclude buzz-desktop
+    cd desktop/src-tauri && cargo test -p buzz-desktop --no-default-features --features electron-host
 
 # Run the native terminal latency gate explicitly on a known-idle host.
 # This is intentionally excluded from shared CI: scheduler contention makes a
