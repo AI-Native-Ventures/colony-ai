@@ -1,4 +1,4 @@
-import { ListTodo, Target, Workflow } from "lucide-react";
+import { CalendarCheck2, Target, Workflow } from "lucide-react";
 
 import { FeatureGate } from "@/shared/features";
 import {
@@ -57,7 +57,7 @@ export function SidebarCompanyGroup({
             tooltip="Work"
             type="button"
           >
-            <ListTodo className="h-4 w-4" />
+            <CalendarCheck2 className="h-4 w-4" />
             <SidebarMenuLabel>Work</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>

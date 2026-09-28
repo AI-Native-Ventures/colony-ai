@@ -500,7 +500,8 @@ export const ChannelPane = React.memo(function ChannelPane({
   const hasThreadSurface =
     Boolean(threadHeadMessage) || shouldShowThreadSkeleton;
   const useFocusThreadDrawer =
-    threadViewMode === "focus" && useSplitAuxiliaryPane && hasThreadSurface;
+    hasThreadSurface &&
+    (isOverlay || (threadViewMode === "focus" && useSplitAuxiliaryPane));
   const selectedAgent = React.useMemo(
     () =>
       agentSessionSelection.resolveSelectedAgentSession({
@@ -601,6 +602,8 @@ export const ChannelPane = React.memo(function ChannelPane({
       covered={threadSurface.covered}
       hasActiveEdit={threadEditTarget !== null}
       isFocusDrawer={useFocusThreadDrawer}
+      responsiveOverlay={isOverlay}
+      restoreFocusOnDismiss={isOverlay}
       key={THREAD_SURFACE_KEY}
       onClose={onCloseThread}
       ref={threadSurface.ref}

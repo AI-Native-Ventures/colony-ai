@@ -1,11 +1,11 @@
 import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
+  CalendarCheck2,
   ChevronDown,
   CircleDollarSign,
   FileText,
   KanbanSquare,
-  ListTodo,
   Search,
   Users,
 } from "lucide-react";
@@ -81,7 +81,7 @@ export function AppSidebarBusinessSection({
             tooltip="Work"
             type="button"
           >
-            <ListTodo aria-hidden="true" />
+            <CalendarCheck2 aria-hidden="true" />
             <SidebarMenuLabel>Work</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>
