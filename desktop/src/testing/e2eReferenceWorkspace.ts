@@ -109,6 +109,7 @@ export function referenceBusinessRecordEvents(
     clientStatus?: string;
     workStatus?: string;
     workShare?: boolean;
+    moneyRecordsAvailable?: boolean;
   } = {},
 ): RelayEvent[] {
   const entries = [
@@ -361,7 +362,9 @@ export function referenceBusinessRecordEvents(
       });
     }
   }
-  events.push(...referenceMoneyRecordEvents(selfPubkey, index));
+  if (overrides.moneyRecordsAvailable !== false) {
+    events.push(...referenceMoneyRecordEvents(selfPubkey, index));
+  }
   return events;
 }
 
@@ -464,6 +467,9 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
       action: "proposal_acceptance",
       currency: "ZAR",
       lines: [line],
+      taxLines: [],
+      sellerTaxNumber: null,
+      customerTaxNumber: null,
       totalMinor: seed.amountMinor,
       status: "draft",
       dueAt: seed.dueAt,
@@ -477,6 +483,9 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
       proposalVersionEventId,
       currency: "ZAR",
       lines: [line],
+      taxLines: [],
+      sellerTaxNumber: null,
+      customerTaxNumber: null,
       totalMinor: seed.amountMinor,
       creditedMinor: 0,
       writtenOffMinor: 0,

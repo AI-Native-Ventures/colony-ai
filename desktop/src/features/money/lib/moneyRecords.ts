@@ -34,6 +34,11 @@ export type InvoiceLine = {
   unitAmountMinor: number;
 };
 
+export type InvoiceTaxLine = {
+  label: string | null;
+  rateBasisPoints: number;
+};
+
 export type MoneyInvoiceHead = {
   schemaVersion: number;
   clientId: string;
@@ -42,6 +47,9 @@ export type MoneyInvoiceHead = {
   proposalVersionEventId: string;
   currency: string;
   lines: InvoiceLine[];
+  taxLines: InvoiceTaxLine[];
+  sellerTaxNumber: string | null;
+  customerTaxNumber: string | null;
   totalMinor: number;
   creditedMinor: number;
   writtenOffMinor: number;
@@ -67,6 +75,9 @@ export type MoneyInvoiceVersion = {
   action: InvoiceVersionAction;
   currency: string;
   lines: InvoiceLine[];
+  taxLines: InvoiceTaxLine[];
+  sellerTaxNumber: string | null;
+  customerTaxNumber: string | null;
   totalMinor: number;
   status: InvoiceStatus;
   dueAt: number | null;
@@ -452,6 +463,51 @@ export function formatMoneyMinor(
   return `${sign}${prefix}${groupedWhole}${fractional && decimal ? decimal + fractional : ""}${suffix}`;
 }
 
+export function invoiceLineMinor(line: InvoiceLine): number {
+  const amount =
+    (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n;
+  if (amount > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new BusinessRecordParseError(
+      "invoice line amount exceeds the safe display range",
+    );
+  }
+  return Number(amount);
+}
+
+export function invoiceTaxTotalMinor(
+  lines: readonly InvoiceLine[],
+  taxLines: readonly InvoiceTaxLine[],
+): number {
+  let total = 0n;
+  for (const line of lines) {
+    const lineMinor = BigInt(invoiceLineMinor(line));
+    for (const taxLine of taxLines) {
+      const taxMinor =
+        (lineMinor * BigInt(taxLine.rateBasisPoints) + 5_000n) / 10_000n;
+      total += taxMinor;
+    }
+  }
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Invoice tax exceeds the supported display range.");
+  }
+  return Number(total);
+}
+
+export function totalInvoiceMinor(
+  lines: readonly InvoiceLine[],
+  taxLines: readonly InvoiceTaxLine[],
+): number {
+  const subtotal = lines.reduce(
+    (total, line) => total + BigInt(invoiceLineMinor(line)),
+    0n,
+  );
+  const total = subtotal + BigInt(invoiceTaxTotalMinor(lines, taxLines));
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Invoice total exceeds the supported display range.");
+  }
+  return Number(total);
+}
+
 export function parseMoneyInput(
   value: string,
   currency: string,
@@ -487,27 +543,32 @@ export function parseMoneyInput(
 }
 
 function parseInvoiceHead(event: RelayEvent): MoneyInvoiceHead {
-  const value = parseContent(event, KIND_INVOICE_HEAD, [
-    "schemaVersion",
-    "clientId",
-    "invoiceId",
-    "proposalId",
-    "proposalVersionEventId",
-    "currency",
-    "lines",
-    "totalMinor",
-    "creditedMinor",
-    "writtenOffMinor",
-    "collectedMinor",
-    "outstandingMinor",
-    "paymentEvidenceCount",
-    "version",
-    "currentVersionEventId",
-    "status",
-    "dueAt",
-    "issuedAt",
-    "sourceEventId",
-  ]);
+  const value = parseContent(
+    event,
+    KIND_INVOICE_HEAD,
+    [
+      "schemaVersion",
+      "clientId",
+      "invoiceId",
+      "proposalId",
+      "proposalVersionEventId",
+      "currency",
+      "lines",
+      "totalMinor",
+      "creditedMinor",
+      "writtenOffMinor",
+      "collectedMinor",
+      "outstandingMinor",
+      "paymentEvidenceCount",
+      "version",
+      "currentVersionEventId",
+      "status",
+      "dueAt",
+      "issuedAt",
+      "sourceEventId",
+    ],
+    ["taxLines", "sellerTaxNumber", "customerTaxNumber"],
+  );
   const clientId = readUuid(value, "clientId");
   const invoiceId = readUuid(value, "invoiceId");
   validateCoordinates(event, clientId, moneyInvoiceDTag(clientId, invoiceId));
@@ -519,6 +580,13 @@ function parseInvoiceHead(event: RelayEvent): MoneyInvoiceHead {
     proposalVersionEventId: readHex(value, "proposalVersionEventId"),
     currency: readCurrency(value, "currency"),
     lines: readLines(value, "lines"),
+    taxLines: readTaxLines(value, "taxLines"),
+    sellerTaxNumber: readOptionalNonEmptyString(value, "sellerTaxNumber", 128),
+    customerTaxNumber: readOptionalNonEmptyString(
+      value,
+      "customerTaxNumber",
+      128,
+    ),
     totalMinor: readInteger(value, "totalMinor", 0),
     creditedMinor: readInteger(value, "creditedMinor", 0),
     writtenOffMinor: readInteger(value, "writtenOffMinor", 0),
@@ -535,22 +603,27 @@ function parseInvoiceHead(event: RelayEvent): MoneyInvoiceHead {
 }
 
 function parseInvoiceVersion(event: RelayEvent): MoneyInvoiceVersion {
-  const value = parseContent(event, KIND_INVOICE_VERSION, [
-    "schemaVersion",
-    "clientId",
-    "invoiceId",
-    "version",
-    "previousVersionEventId",
-    "proposalVersionEventId",
-    "expectedHeadEventId",
-    "action",
-    "currency",
-    "lines",
-    "totalMinor",
-    "status",
-    "dueAt",
-    "voidReason",
-  ]);
+  const value = parseContent(
+    event,
+    KIND_INVOICE_VERSION,
+    [
+      "schemaVersion",
+      "clientId",
+      "invoiceId",
+      "version",
+      "previousVersionEventId",
+      "proposalVersionEventId",
+      "expectedHeadEventId",
+      "action",
+      "currency",
+      "lines",
+      "totalMinor",
+      "status",
+      "dueAt",
+      "voidReason",
+    ],
+    ["taxLines", "sellerTaxNumber", "customerTaxNumber"],
+  );
   const clientId = readUuid(value, "clientId");
   const invoiceId = readUuid(value, "invoiceId");
   const version = readInteger(value, "version", 1);
@@ -575,6 +648,13 @@ function parseInvoiceVersion(event: RelayEvent): MoneyInvoiceVersion {
     ]),
     currency: readCurrency(value, "currency"),
     lines: readLines(value, "lines"),
+    taxLines: readTaxLines(value, "taxLines"),
+    sellerTaxNumber: readOptionalNonEmptyString(value, "sellerTaxNumber", 128),
+    customerTaxNumber: readOptionalNonEmptyString(
+      value,
+      "customerTaxNumber",
+      128,
+    ),
     totalMinor: readInteger(value, "totalMinor", 0),
     status: readEnum(value, "status", ["draft", "issued", "void"]),
     dueAt: readNullableInteger(value, "dueAt"),
@@ -722,6 +802,7 @@ function parseContent(
   event: RelayEvent,
   expectedKind: number,
   expectedKeys: readonly string[],
+  optionalKeys: readonly string[] = [],
 ): Record<string, unknown> {
   if (event.kind !== expectedKind || !Number.isSafeInteger(event.created_at)) {
     throw new BusinessRecordParseError(
@@ -740,9 +821,10 @@ function parseContent(
     );
   }
   const actualKeys = Object.keys(parsed).sort();
+  const allowedKeys = new Set([...expectedKeys, ...optionalKeys]);
   if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key, index) => key !== [...expectedKeys].sort()[index])
+    expectedKeys.some((key) => !actualKeys.includes(key)) ||
+    actualKeys.some((key) => !allowedKeys.has(key))
   ) {
     throw new BusinessRecordParseError("money record fields are invalid");
   }
@@ -801,6 +883,32 @@ function readLines(
   });
 }
 
+function readTaxLines(
+  record: Record<string, unknown>,
+  key: string,
+): InvoiceTaxLine[] {
+  const value = record[key] ?? [];
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new BusinessRecordParseError(
+      `money record ${key} must contain no more than 100 tax lines`,
+    );
+  }
+  return value.map((taxLine) => {
+    if (
+      !isRecord(taxLine) ||
+      Object.keys(taxLine).sort().join(",") !== "label,rateBasisPoints"
+    ) {
+      throw new BusinessRecordParseError("invoice tax line fields are invalid");
+    }
+    const label = readOptionalNonEmptyString(taxLine, "label", 200);
+    const rateBasisPoints = readInteger(taxLine, "rateBasisPoints", 0);
+    if (rateBasisPoints > 4_294_967_295) {
+      throw new BusinessRecordParseError("invoice tax rate is invalid");
+    }
+    return { label, rateBasisPoints };
+  });
+}
+
 function readString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string") {
@@ -816,6 +924,19 @@ function readNonEmptyString(
   const value = readString(record, key);
   if (!value.trim())
     throw new BusinessRecordParseError(`money record ${key} is empty`);
+  return value;
+}
+
+function readOptionalNonEmptyString(
+  record: Record<string, unknown>,
+  key: string,
+  maxBytes: number,
+): string | null {
+  if (record[key] === undefined || record[key] === null) return null;
+  const value = readNonEmptyString(record, key);
+  if (new TextEncoder().encode(value).length > maxBytes) {
+    throw new BusinessRecordParseError(`money record ${key} is too long`);
+  }
   return value;
 }
 

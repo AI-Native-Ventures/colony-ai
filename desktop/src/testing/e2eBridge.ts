@@ -121,6 +121,7 @@ import {
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
   KIND_HUDDLE_STARTED,
+  KIND_INVOICE_HEAD,
   KIND_INVOICE_VERSION,
   KIND_MONEY_ADJUSTMENT,
   KIND_MONEY_FOLLOW_UP,
@@ -376,6 +377,13 @@ type E2eConfig = {
     /** Override record statuses to exercise reference workspace boundaries. */
     referenceWorkspaceClientStatus?: string;
     referenceWorkspaceWorkStatus?: string;
+    /** Exclude the existing invoice/payment records to exercise unavailable source data. */
+    referenceWorkspaceMoneyRecords?: boolean;
+    /** Reject the listed business record writes once in reference workspace tests. */
+    referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /** Seed the r19 work-reference card in The Olive House client channel. */
     referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
@@ -4880,6 +4888,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }),
   );
   mockChannels.splice(0, mockChannels.length, ...channels);
+  window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+    ...(config.mock?.referenceWorkspaceRejectBusinessRecordEvents ?? []),
+  ];
   if (sidebarShell) {
     for (const [channelId, events] of Object.entries(
       referenceSidebarUnreadMessages(self),
@@ -4892,6 +4903,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
     workShare: config.mock?.referenceWorkspaceWorkShare,
+    moneyRecordsAvailable: config.mock?.referenceWorkspaceMoneyRecords,
   })) {
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     if (!channelId) continue;
@@ -6106,7 +6118,168 @@ function publishReferenceBusinessCommand(
     return prior ? parseMockBusinessContent<T>(prior) : null;
   };
 
-  if (event.kind === KIND_SERVICE_ACTION) {
+  if (event.kind === KIND_INVOICE_VERSION) {
+    const version = parseMockBusinessContent<{
+      clientId?: string;
+      invoiceId?: string;
+      version?: number;
+      previousVersionEventId?: string | null;
+      expectedHeadEventId?: string | null;
+      action?: string;
+      currency?: string;
+      lines?: Array<{
+        quantityHundredths: number;
+        unitAmountMinor: number;
+      }>;
+      taxLines?: Array<{
+        label?: string | null;
+        rateBasisPoints: number;
+      }>;
+      sellerTaxNumber?: string | null;
+      customerTaxNumber?: string | null;
+      totalMinor?: number;
+      status?: string;
+      dueAt?: number | null;
+    }>(event);
+    const invoiceDTag =
+      version?.clientId && version.invoiceId
+        ? `client:${version.clientId}:invoice:${version.invoiceId}`
+        : null;
+    const store = getMockMessageStore(channelId);
+    const headIndex = invoiceDTag
+      ? store.findIndex(
+          (candidate) =>
+            candidate.kind === KIND_INVOICE_HEAD &&
+            businessDTagOf(candidate) === invoiceDTag,
+        )
+      : -1;
+    const priorHeadEvent = headIndex >= 0 ? store[headIndex] : null;
+    const priorHead = priorHeadEvent
+      ? parseMockBusinessContent<{
+          clientId: string;
+          invoiceId: string;
+          currency: string;
+          lines: Array<{
+            quantityHundredths: number;
+            unitAmountMinor: number;
+          }>;
+          taxLines?: Array<{ label: string | null; rateBasisPoints: number }>;
+          sellerTaxNumber?: string | null;
+          customerTaxNumber?: string | null;
+          totalMinor: number;
+          collectedMinor: number;
+          outstandingMinor: number;
+          paymentEvidenceCount: number;
+          version: number;
+          currentVersionEventId: string;
+          status: string;
+          dueAt: number | null;
+          issuedAt: number | null;
+          [key: string]: unknown;
+        }>(priorHeadEvent)
+      : null;
+    const taxNumberValid = (value: unknown) =>
+      value === null ||
+      (typeof value === "string" &&
+        value.trim().length > 0 &&
+        new TextEncoder().encode(value).length <= 128);
+    if (!version || !priorHead || !priorHeadEvent || !invoiceDTag) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lines = version.lines;
+    const taxLines = version.taxLines;
+    if (taxLines === undefined) {
+      version.taxLines = [];
+    }
+    const configuredTaxLines = version.taxLines;
+    if (
+      version.clientId !== channelId ||
+      dTag !== `${invoiceDTag}:version:${version.version}` ||
+      version.action !== "draft_edit" ||
+      version.status !== "draft" ||
+      version.currency !== priorHead.currency ||
+      version.invoiceId !== priorHead.invoiceId ||
+      version.version !== priorHead.version + 1 ||
+      version.previousVersionEventId !== priorHead.currentVersionEventId ||
+      version.expectedHeadEventId !== priorHeadEvent.id ||
+      priorHead.status !== "draft" ||
+      !Array.isArray(lines) ||
+      lines.length === 0 ||
+      lines.length > 100 ||
+      !lines.every(
+        (line) =>
+          Number.isSafeInteger(line.quantityHundredths) &&
+          line.quantityHundredths > 0 &&
+          Number.isSafeInteger(line.unitAmountMinor) &&
+          line.unitAmountMinor > 0,
+      ) ||
+      !Array.isArray(configuredTaxLines) ||
+      configuredTaxLines.length > 100 ||
+      !configuredTaxLines.every(
+        (line) =>
+          (line.label === null ||
+            line.label === undefined ||
+            (typeof line.label === "string" &&
+              line.label.trim().length > 0 &&
+              new TextEncoder().encode(line.label).length <= 200)) &&
+          Number.isInteger(line.rateBasisPoints) &&
+          line.rateBasisPoints >= 0 &&
+          line.rateBasisPoints <= 0xffff_ffff,
+      ) ||
+      !taxNumberValid(version.sellerTaxNumber) ||
+      !taxNumberValid(version.customerTaxNumber)
+    ) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lineAmounts = lines.map(
+      (line) =>
+        (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n,
+    );
+    const subtotal = lineAmounts.reduce((sum, amount) => sum + amount, 0n);
+    const taxTotal = lineAmounts.reduce(
+      (sum, lineAmount) =>
+        sum +
+        configuredTaxLines.reduce(
+          (lineTax, taxLine) =>
+            lineTax +
+            (lineAmount * BigInt(taxLine.rateBasisPoints) + 5_000n) / 10_000n,
+          0n,
+        ),
+      0n,
+    );
+    const total = subtotal + taxTotal;
+    if (
+      total > BigInt(Number.MAX_SAFE_INTEGER) ||
+      version.totalMinor !== Number(total)
+    ) {
+      fail("invoice total does not match its integer line and tax amounts");
+      return true;
+    }
+
+    storeReferenceBusinessEvent(channelId, event, false, false);
+    const nextHead = referenceRecordEvent(
+      KIND_INVOICE_HEAD,
+      channelId,
+      invoiceDTag,
+      {
+        ...priorHead,
+        taxLines: configuredTaxLines,
+        sellerTaxNumber: version.sellerTaxNumber,
+        customerTaxNumber: version.customerTaxNumber,
+        totalMinor: Number(total),
+        outstandingMinor: Number(total) - priorHead.collectedMinor,
+        version: version.version,
+        currentVersionEventId: event.id,
+        sourceEventId: event.id,
+      },
+      event,
+    );
+    store[headIndex] = nextHead;
+    emitMockLiveEvent(channelId, event);
+    emitMockLiveEvent(channelId, nextHead);
+  } else if (event.kind === KIND_SERVICE_ACTION) {
     const action = parseMockBusinessContent<ReferenceServiceAction>(event);
     if (!action || action.serviceId !== action.service.serviceId) {
       fail("service action is invalid");
@@ -13076,6 +13249,7 @@ function sendToMockSocket(args: {
     if (
       referenceWorkspaceActive &&
       [
+        KIND_INVOICE_VERSION,
         KIND_SERVICE_ACTION,
         KIND_PROSPECT_ACTION,
         KIND_PROPOSAL_VERSION,

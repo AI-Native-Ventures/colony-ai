@@ -400,6 +400,12 @@ div.money-list-heading > span {
   color: var(--w10-ink);
 }
 
+.money-invoice-address.money-tax-number-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  margin-bottom: 1rem;
+}
+
 .money-invoice-address > div {
   display: flex;
   flex-direction: column;

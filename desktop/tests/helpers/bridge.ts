@@ -169,6 +169,13 @@ type MockBridgeOptions = {
   /** Override record statuses to exercise reference workspace boundaries. */
   referenceWorkspaceClientStatus?: string;
   referenceWorkspaceWorkStatus?: string;
+  /** Exclude invoice/payment records for unavailable source-state scenarios. */
+  referenceWorkspaceMoneyRecords?: boolean;
+  /** Reject listed business record writes once in reference workspace tests. */
+  referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+    kind: number;
+    reason: string;
+  }>;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
