@@ -109,10 +109,16 @@ impl Server {
             task,
         }
     }
+    /// A client that trusts only this server's certificate.
+    ///
+    /// `tls_certs_only` verifies with rustls' WebPKI verifier on every OS.
+    /// Merging the root into the platform verifier instead sent each first
+    /// handshake through macOS Security.framework, which took over 3 seconds
+    /// for this self-signed certificate and broke the 3 second waits below.
     pub fn builder(&self) -> ClientBuilder {
         let builder = Client::builder().no_proxy();
         match &self.cert {
-            Some(cert) => builder.add_root_certificate(cert.clone()),
+            Some(cert) => builder.tls_certs_only([cert.clone()]),
             None => builder,
         }
     }

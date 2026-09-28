@@ -4,8 +4,11 @@ name: CI cache warm
 # push for main and release. PRs into codex/phase2-integration therefore never
 # found a Hermit toolchain cache: each Mobile, Android runtime and Android
 # interop job primed Flutter from scratch (~14 minutes) and raced its sibling
-# jobs to save the same key inside its own PR scope. Seeding the integration
-# branch scope after each merge gives every PR a warm restore.
+# jobs to save the same key inside its own PR scope. The weekly service image
+# cache had the same gap, so a PR's first relay job pulled Postgres, Redis,
+# MinIO and the AWS CLI anonymously and could fail on public.ecr.aws
+# "Data limit exceeded". Seeding the integration branch scope after each merge
+# gives every PR a warm restore.
 on:
   push:
     branches: [codex/phase2-integration]
@@ -65,3 +68,15 @@ jobs:
         with:
           path: ~/.pub-cache
           key: pub-${{ runner.os }}-${{ hashFiles('mobile/pubspec.lock') }}
+
+  service-images:
+    name: Service image cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      # Restores the weekly key, or pulls with retries and saves it in this
+      # branch scope on a miss (see the action).
+      - name: Warm cached service images
+        uses: ./.github/actions/cached-service-images
