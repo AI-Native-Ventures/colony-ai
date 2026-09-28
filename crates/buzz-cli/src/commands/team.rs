@@ -110,7 +110,7 @@ async fn cmd_set_manager(
         action: buzz_core::company_members::MemberPositionActionKind::SetManager,
         expected_head_event_id: Some(event_id(&current)?),
         title: None,
-        manager_pubkey: manager,
+        manager_pubkey: Some(manager),
         reason: None,
     };
     submit_member_action(client, &action).await
