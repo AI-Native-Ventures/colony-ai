@@ -292,6 +292,26 @@ every action except create. The relay stores the member action and emits the
 relay-signed kind 30634 head in one transaction. Client work validation and
 W11 behavior remain unchanged.
 
+### Work tracking API boundary
+
+The desktop timeline is a projection of signed kind 47006 actions and current
+kind 30634 heads. It may show only fields carried by those records. The work
+head has no due date, and the action stream has no attachment, detected
+commitment, watchdog check-in, or automatic verdict event.
+
+Auto-detected commitments require an authoritative, persisted suggestion
+source that identifies its source message and proposed work fields. The person
+must explicitly accept a suggestion before the client creates a work item.
+There is no suggestion record or acceptance action in the current contract.
+Until one is specified and brokered, clients must not infer suggestions from
+message text or show a `Track this?` action for an ordinary message.
+
+The watchdog requires a company-scoped settings record, explicit opt-in,
+owner-entered timing with no preset interval, and a scheduler that can deliver
+check-ins with durable retry and cancellation. No such settings or scheduler
+API exists yet. It remains off; clients must not claim that settings were saved
+or that a check-in was scheduled.
+
 ## Proof boundaries
 
 This document is the batch 1 contract. Kind registration, typed content and

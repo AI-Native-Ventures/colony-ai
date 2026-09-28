@@ -188,6 +188,16 @@ have identical active membership sets. The member action uses the current
 source `h`; the relay derives the destination `h` from the root message and
 replaces the work head atomically. Client work item actions are unchanged.
 
+WORK-2 tracking does not add a parallel work record. Activity is derived from
+the shared work head and action events. There is currently no persisted
+commitment-suggestion kind or company-scoped watchdog settings and scheduling
+API. A suggestion must identify a real source event and require an explicit
+person acceptance before creating a work item. Watchdog configuration must be
+off by default, accept timing from the business owner without a preset, and
+have durable check-in delivery, retry, and cancellation before a client can
+claim it is configured. Until those APIs exist, suggestions and watchdog
+saves are unavailable, and the watchdog stays off.
+
 ### Service action, kind 47002
 
 `ServiceAction` fields: `schemaVersion`, `serviceId`, `action`,

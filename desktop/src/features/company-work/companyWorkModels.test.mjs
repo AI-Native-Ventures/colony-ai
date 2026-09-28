@@ -6,6 +6,17 @@ import {
   companyWorkDTag,
   parseCompanyWorkHeadEvent,
 } from "./companyWorkModels.ts";
+import {
+  clearCompanyWorkFilter,
+  emptyCompanyWorkFilters,
+  filterCompanyWorkRecords,
+  goalFilterScope,
+} from "./companyWorkFilters.ts";
+import {
+  hasSameCompanyWorkAudience,
+  parseCompanyWorkThreadRoots,
+} from "./companyWorkMove.ts";
+import { projectCompanyWorkTimeline } from "./companyWorkTimeline.ts";
 
 const RELAY_SECRET = new Uint8Array(32).fill(4);
 const OTHER_SECRET = new Uint8Array(32).fill(5);
@@ -16,9 +27,11 @@ const WORK_ID = "123e4567-e89b-12d3-a456-426614174011";
 function signedHead({
   workItemId = WORK_ID,
   status = "active",
+  assignedPubkeys = ["a".repeat(64)],
+  goalId,
   tags = [
     ["h", CHANNEL_ID],
-    ["d", companyWorkDTag(WORK_ID)],
+    ["d", companyWorkDTag(workItemId)],
   ],
   content,
   secret = RELAY_SECRET,
@@ -28,11 +41,12 @@ function signedHead({
     workItemId,
     title: "Prepare the launch checklist",
     status,
-    assignedPubkeys: ["a".repeat(64)],
+    assignedPubkeys,
     approverPubkeys: [],
     deliverables: [],
     requesterPubkey: "b".repeat(64),
     doneCondition: "Every launch task has an owner",
+    ...(goalId ? { goalId } : {}),
     sourceActionEventId: "c".repeat(64),
   };
   return finalizeEvent(
@@ -44,6 +58,16 @@ function signedHead({
     },
     secret,
   );
+}
+
+function workRecord({ workItemId, status, ownerPubkey, goalId }) {
+  const event = signedHead({
+    workItemId,
+    status,
+    assignedPubkeys: [ownerPubkey],
+    goalId,
+  });
+  return parseCompanyWorkHeadEvent(event, RELAY_PUBKEY);
 }
 
 test("company work coordinates contain the item UUID and no community id", () => {
@@ -131,4 +155,230 @@ test("company work head parsing requires a pass record for done verified", () =>
     }),
   });
   assert.equal(parseCompanyWorkHeadEvent(event, RELAY_PUBKEY), null);
+});
+
+test("company work filters intersect owner, status, and goal descendants", () => {
+  const parentGoalId = "123e4567-e89b-12d3-a456-426614174020";
+  const childGoalId = "123e4567-e89b-12d3-a456-426614174021";
+  const unrelatedGoalId = "123e4567-e89b-12d3-a456-426614174022";
+  const parent = { head: { goal: { goalId: parentGoalId } } };
+  const child = {
+    head: { goal: { goalId: childGoalId, parentGoalId } },
+  };
+  const unrelated = {
+    head: { goal: { goalId: unrelatedGoalId } },
+  };
+  const goals = [parent, child, unrelated];
+  const records = [
+    workRecord({
+      workItemId: "123e4567-e89b-12d3-a456-426614174030",
+      status: "active",
+      ownerPubkey: "a".repeat(64),
+      goalId: parentGoalId,
+    }),
+    workRecord({
+      workItemId: "123e4567-e89b-12d3-a456-426614174031",
+      status: "active",
+      ownerPubkey: "a".repeat(64),
+      goalId: childGoalId,
+    }),
+    workRecord({
+      workItemId: "123e4567-e89b-12d3-a456-426614174032",
+      status: "blocked",
+      ownerPubkey: "a".repeat(64),
+      goalId: childGoalId,
+    }),
+    workRecord({
+      workItemId: "123e4567-e89b-12d3-a456-426614174033",
+      status: "active",
+      ownerPubkey: "b".repeat(64),
+      goalId: unrelatedGoalId,
+    }),
+  ];
+
+  const result = filterCompanyWorkRecords(
+    records,
+    {
+      status: "active",
+      ownerPubkey: "A".repeat(64),
+      goalId: parentGoalId,
+    },
+    goals,
+  );
+  assert.deepEqual(
+    result.map((record) => record.head.workItemId),
+    [records[0].head.workItemId, records[1].head.workItemId],
+  );
+  assert.deepEqual(
+    [...goalFilterScope(parentGoalId, goals)].sort(),
+    [parentGoalId, childGoalId].sort(),
+  );
+  assert.deepEqual(
+    filterCompanyWorkRecords(records, emptyCompanyWorkFilters, goals),
+    records,
+  );
+});
+
+test("company work filter chips clear independently and clear all", () => {
+  const filters = {
+    status: "blocked",
+    ownerPubkey: "a".repeat(64),
+    goalId: "123e4567-e89b-12d3-a456-426614174020",
+  };
+  assert.deepEqual(clearCompanyWorkFilter(filters, "ownerPubkey"), {
+    ...filters,
+    ownerPubkey: null,
+  });
+  assert.deepEqual(clearCompanyWorkFilter(filters, "goalId"), {
+    ...filters,
+    goalId: null,
+  });
+  assert.deepEqual(clearCompanyWorkFilter(filters, "status"), {
+    ...filters,
+    status: "all",
+  });
+  assert.deepEqual(
+    clearCompanyWorkFilter(
+      clearCompanyWorkFilter(
+        clearCompanyWorkFilter(filters, "ownerPubkey"),
+        "goalId",
+      ),
+      "status",
+    ),
+    emptyCompanyWorkFilters,
+  );
+  assert.deepEqual(
+    filterCompanyWorkRecords([], emptyCompanyWorkFilters, []),
+    [],
+    "an empty real record set stays empty",
+  );
+});
+
+test("move destinations include only real top-level messages in accessible streams", () => {
+  const destinationChannelId = "123e4567-e89b-12d3-a456-426614174012";
+  const channel = {
+    id: CHANNEL_ID,
+    channelType: "stream",
+    isMember: true,
+    archivedAt: null,
+  };
+  const event = {
+    id: "d".repeat(64),
+    kind: 9,
+    created_at: 10,
+    tags: [["h", CHANNEL_ID]],
+    content: "A launch discussion",
+  };
+  const reply = {
+    ...event,
+    id: "e".repeat(64),
+    tags: [
+      ["h", CHANNEL_ID],
+      ["e", "f".repeat(64), "", "reply"],
+    ],
+  };
+  const outsideChannel = {
+    ...event,
+    id: "1".repeat(64),
+    tags: [["h", destinationChannelId]],
+  };
+  const roots = parseCompanyWorkThreadRoots(
+    [event, reply, outsideChannel],
+    [channel],
+  );
+  assert.equal(roots.length, 1);
+  assert.equal(roots[0].event.id, event.id);
+  assert.equal(roots[0].preview, "A launch discussion");
+});
+
+test("move eligibility requires identical visibility, members, and roles", () => {
+  const source = {
+    id: CHANNEL_ID,
+    visibility: "private",
+  };
+  const destination = {
+    id: "123e4567-e89b-12d3-a456-426614174012",
+    visibility: "private",
+  };
+  const members = [
+    { pubkey: "a".repeat(64), role: "owner" },
+    { pubkey: "b".repeat(64), role: "member" },
+  ];
+  assert.equal(
+    hasSameCompanyWorkAudience(
+      source,
+      destination,
+      members,
+      [...members].reverse(),
+    ),
+    true,
+  );
+  assert.equal(
+    hasSameCompanyWorkAudience(source, destination, members, [
+      members[0],
+      { ...members[1], role: "admin" },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasSameCompanyWorkAudience(
+      source,
+      { ...destination, visibility: "open" },
+      members,
+      members,
+    ),
+    false,
+  );
+});
+
+test("work activity comes from signed actions and labels thread moves", () => {
+  const actionEvent = (id, created_at, channelId, action) => ({
+    event: {
+      id,
+      created_at,
+      pubkey: "a".repeat(64),
+    },
+    channelId,
+    action,
+  });
+  const history = [
+    actionEvent("f", 6, CHANNEL_ID, { action: "restore" }),
+    actionEvent("e", 5, CHANNEL_ID, { action: "archive" }),
+    actionEvent("d", 4, CHANNEL_ID, {
+      action: "verify",
+      verification: {
+        verdict: "revision_requested",
+        reason: "Add the missing source.",
+        evidence: "The source link is not attached.",
+      },
+    }),
+    actionEvent("c", 3, CHANNEL_ID, {
+      action: "set_status",
+      status: "done_unverified",
+      reason: "The owner submitted the work.",
+    }),
+    actionEvent("b", 2, CHANNEL_ID, {
+      action: "update",
+      head: { threadRootEventId: "b".repeat(64) },
+    }),
+    actionEvent("a", 1, CHANNEL_ID, {
+      action: "create",
+      head: { threadRootEventId: "a".repeat(64) },
+    }),
+  ];
+  const timeline = projectCompanyWorkTimeline(history);
+  assert.deepEqual(
+    timeline.map((entry) => entry.label),
+    [
+      "restored this work item.",
+      "archived this work item.",
+      "requested revisions.",
+      "changed the status to done unverified.",
+      "moved this work item to a new thread.",
+      "created this commitment.",
+    ],
+  );
+  assert.equal(timeline[2].reason, "Add the missing source.");
+  assert.equal(timeline[2].evidence, "The source link is not attached.");
+  assert.deepEqual(projectCompanyWorkTimeline([]), []);
 });

@@ -69,6 +69,7 @@ import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/fact
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
+import { Route as workDottrackingDotscreenDotresourceIdRouteImport } from "./routes/work.tracking.$screen.$resourceId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
@@ -406,6 +407,12 @@ const asksDotchannelIdDotaskIdRoute =
     path: "/asks/$channelId/$askId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const workDottrackingDotscreenDotresourceIdRoute =
+  workDottrackingDotscreenDotresourceIdRouteImport.update({
+    id: "/work/tracking/$screen/$resourceId",
+    path: "/work/tracking/$screen/$resourceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -479,6 +486,7 @@ export interface FileRoutesByFullPath {
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
@@ -546,6 +554,7 @@ export interface FileRoutesByTo {
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -614,6 +623,7 @@ export interface FileRoutesById {
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -682,7 +692,8 @@ export interface FileRouteTypes {
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -749,7 +760,8 @@ export interface FileRouteTypes {
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   id:
     | "__root__"
     | "/"
@@ -816,7 +828,8 @@ export interface FileRouteTypes {
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -885,6 +898,7 @@ export interface RootRouteChildren {
   salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
   workDotscreenDotresourceIdRoute: typeof workDotscreenDotresourceIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  workDottrackingDotscreenDotresourceIdRoute: typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -1337,6 +1351,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof asksDotchannelIdDotaskIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/work/tracking/$screen/$resourceId": {
+      id: "/work/tracking/$screen/$resourceId";
+      path: "/work/tracking/$screen/$resourceId";
+      fullPath: "/work/tracking/$screen/$resourceId";
+      preLoaderRoute: typeof workDottrackingDotscreenDotresourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -1414,6 +1435,8 @@ const rootRouteChildren: RootRouteChildren = {
   workDotscreenDotresourceIdRoute: workDotscreenDotresourceIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
+  workDottrackingDotscreenDotresourceIdRoute:
+    workDottrackingDotscreenDotresourceIdRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

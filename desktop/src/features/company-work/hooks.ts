@@ -25,12 +25,24 @@ import {
 
 const companyWorkHeadsKey = (relayUrl: string | null, channelIdsKey: string) =>
   ["company-work-heads", relayUrl, channelIdsKey] as const;
+const companyWorkMoveReferencesKey = (
+  relayUrl: string | null,
+  channelIdsKey: string,
+) => ["company-work-move-references", relayUrl, channelIdsKey] as const;
+
+export type CompanyWorkMoveReference = {
+  workItemId: string;
+  fromRootId: string | null;
+  toRootId: string | null;
+  eventId: string;
+  actorPubkey: string;
+};
 
 export const companyWorkHistoryKey = (
   relayUrl: string | null,
-  channelId: string,
+  channelIdsKey: string,
   workItemId: string,
-) => ["company-work-history", relayUrl, channelId, workItemId] as const;
+) => ["company-work-history", relayUrl, channelIdsKey, workItemId] as const;
 
 function channelListKey(channelIds: readonly string[]) {
   return [...new Set(channelIds.map((id) => id.toLowerCase()))]
@@ -84,13 +96,17 @@ async function fetchCompanyWorkHeads(
 }
 
 async function fetchCompanyWorkHistory(
-  channelId: string,
+  channelIds: readonly string[],
   workItemId: string,
 ): Promise<CompanyWorkHistoryEntry[]> {
+  if (channelIds.length === 0) return [];
+  if (channelIds.length > 4096) {
+    throw new Error("Too many conversation channels to load work history.");
+  }
   const dTag = companyWorkDTag(workItemId);
   const events = await relayClient.fetchEvents({
     kinds: [KIND_WORK_ITEM_ACTION],
-    "#h": [channelId],
+    "#h": [...channelIds],
     "#d": [dTag],
     limit: COMPANY_WORK_HISTORY_QUERY_LIMIT + 1,
   });
@@ -100,7 +116,7 @@ async function fetchCompanyWorkHistory(
     );
   }
   const history = events.map((event) => {
-    const entry = parseCompanyWorkActionEvent(event, channelId, workItemId);
+    const entry = parseCompanyWorkActionEvent(event, channelIds, workItemId);
     if (!entry) {
       throw new Error("The relay returned an invalid company work action.");
     }
@@ -109,6 +125,70 @@ async function fetchCompanyWorkHistory(
   return history.sort(
     (left, right) => right.event.created_at - left.event.created_at,
   );
+}
+
+async function fetchCompanyWorkMoveReferences(
+  channelIds: readonly string[],
+): Promise<CompanyWorkMoveReference[]> {
+  if (channelIds.length === 0) return [];
+  if (channelIds.length > 4096) {
+    throw new Error("Too many conversation channels to load work history.");
+  }
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_WORK_ITEM_ACTION],
+    "#h": [...channelIds],
+    limit: COMPANY_WORK_HISTORY_QUERY_LIMIT * 10 + 1,
+  });
+  if (events.length > COMPANY_WORK_HISTORY_QUERY_LIMIT * 10) {
+    throw new Error(
+      "Company work history exceeds the supported move-reference limit.",
+    );
+  }
+
+  const histories = new Map<string, CompanyWorkHistoryEntry[]>();
+  for (const event of events) {
+    const dTag = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+    const match = /^company:work:([0-9a-f-]{36})$/i.exec(dTag);
+    if (!match) continue;
+    const workItemId = match[1].toLowerCase();
+    const entry = parseCompanyWorkActionEvent(event, channelIds, workItemId);
+    if (!entry) {
+      throw new Error("The relay returned an invalid company work action.");
+    }
+    const history = histories.get(workItemId) ?? [];
+    history.push(entry);
+    histories.set(workItemId, history);
+  }
+
+  const references: CompanyWorkMoveReference[] = [];
+  for (const [workItemId, history] of histories) {
+    history.sort(
+      (left, right) =>
+        left.event.created_at - right.event.created_at ||
+        left.event.id.localeCompare(right.event.id),
+    );
+    let previousRootId: string | null = null;
+    for (const entry of history) {
+      if (entry.action.action === "create") {
+        previousRootId =
+          entry.action.head?.threadRootEventId?.toLowerCase() ?? null;
+      } else if (entry.action.action === "update") {
+        const nextRootId =
+          entry.action.head?.threadRootEventId?.toLowerCase() ?? null;
+        if (previousRootId !== nextRootId) {
+          references.push({
+            workItemId,
+            fromRootId: previousRootId,
+            toRootId: nextRootId,
+            eventId: entry.event.id,
+            actorPubkey: entry.event.pubkey,
+          });
+        }
+        previousRootId = nextRootId;
+      }
+    }
+  }
+  return references;
 }
 
 export function useCompanyWorkHeadsQuery(enabled = true) {
@@ -218,16 +298,62 @@ export function useCompanyWorkHistoryQuery(
 ) {
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
+  const channelsQuery = useChannelsQuery({ enabled });
+  const channelIds = React.useMemo(
+    () =>
+      (channelsQuery.data ?? [])
+        .filter(
+          (channel) =>
+            channel.channelType === "stream" &&
+            channel.isMember &&
+            channel.archivedAt === null,
+        )
+        .map((channel) => channel.id.toLowerCase())
+        .sort(),
+    [channelsQuery.data],
+  );
+  const channelIdsKey = channelListKey(channelIds);
   return useQuery({
     enabled:
-      enabled && relayUrl !== null && channelId !== null && workItemId !== null,
-    queryKey: companyWorkHistoryKey(
-      relayUrl,
-      channelId ?? "",
-      workItemId ?? "",
-    ),
-    queryFn: () =>
-      fetchCompanyWorkHistory(channelId as string, workItemId as string),
+      enabled &&
+      relayUrl !== null &&
+      channelsQuery.isSuccess &&
+      channelId !== null &&
+      channelIds.includes(channelId.toLowerCase()) &&
+      workItemId !== null,
+    queryKey: companyWorkHistoryKey(relayUrl, channelIdsKey, workItemId ?? ""),
+    queryFn: () => fetchCompanyWorkHistory(channelIds, workItemId as string),
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCompanyWorkMoveReferencesQuery(enabled = true) {
+  const { activeCommunity } = useCommunities();
+  const relayUrl = activeCommunity?.relayUrl ?? null;
+  const channelsQuery = useChannelsQuery({ enabled });
+  const channelIds = React.useMemo(
+    () =>
+      (channelsQuery.data ?? [])
+        .filter(
+          (channel) =>
+            channel.channelType === "stream" &&
+            channel.isMember &&
+            channel.archivedAt === null,
+        )
+        .map((channel) => channel.id.toLowerCase())
+        .sort(),
+    [channelsQuery.data],
+  );
+  const channelIdsKey = channelListKey(channelIds);
+  return useQuery({
+    enabled:
+      enabled &&
+      relayUrl !== null &&
+      channelsQuery.isSuccess &&
+      channelIds.length > 0,
+    queryKey: companyWorkMoveReferencesKey(relayUrl, channelIdsKey),
+    queryFn: () => fetchCompanyWorkMoveReferences(channelIds),
     staleTime: 15_000,
     refetchOnWindowFocus: true,
   });
@@ -272,17 +398,16 @@ export function useCompanyWorkActionMutation() {
       );
       return event;
     },
-    onSettled: async (_data, _error, variables) => {
+    onSettled: async (_data, _error, _variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: companyWorkHeadsKey(relayUrl, channelIdsKey),
         }),
         queryClient.invalidateQueries({
-          queryKey: companyWorkHistoryKey(
-            relayUrl,
-            variables.channelId,
-            variables.action.workItemId,
-          ),
+          queryKey: ["company-work-history", relayUrl],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: companyWorkMoveReferencesKey(relayUrl, channelIdsKey),
         }),
         queryClient.invalidateQueries({
           queryKey: ["company-goals", relayUrl],
