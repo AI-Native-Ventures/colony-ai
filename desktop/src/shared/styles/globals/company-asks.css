@@ -42,7 +42,7 @@
 
 .colony-ask-create-context {
   border: 1px solid hsl(var(--border));
-  border-left: 0.2rem solid hsl(var(--primary));
+  border-left: 0.2rem solid #536d9c;
   border-radius: 0.45rem;
   background: hsl(var(--muted) / 0.35);
   margin: 0 0 1.1rem;
@@ -71,6 +71,14 @@
 
 .colony-ask-create-type {
   min-width: 0;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+}
+
+.colony-ask-create-type[aria-pressed="true"] {
+  border-color: #536d9c;
+  background: #536d9c;
+  color: #fff;
 }
 
 .colony-ask-create-recipient-state {
@@ -163,6 +171,11 @@
   flex-wrap: wrap;
   gap: 0.55rem;
   margin-top: 0.6rem;
+}
+
+.colony-ask-compose-actions > button:first-child {
+  background: #536d9c;
+  color: #fff;
 }
 
 .colony-ask-create-aside h2 {
@@ -364,6 +377,151 @@
   max-width: 47.5rem;
 }
 
+.colony-ask-detail-content > .colony-ask-card-specialized-detail {
+  max-width: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.colony-ask-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+}
+
+.colony-ask-detail-title-row > h1 {
+  min-width: 0;
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.colony-ask-special-raise,
+.colony-ask-special-work-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.45rem;
+  background: hsl(var(--card));
+  padding: 0.55rem 0.9rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-xs);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.colony-ask-special-raise:hover,
+.colony-ask-special-work-link:hover {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.colony-ask-special-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 0.95fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.colony-ask-special-request,
+.colony-ask-special-context {
+  min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+  padding: 1.5rem;
+}
+
+.colony-ask-special-request > h2,
+.colony-ask-special-context > h2 {
+  margin: 0 0 1.25rem;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-ask-special-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.colony-ask-special-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.colony-ask-special-identity > span + div {
+  min-width: 0;
+}
+
+.colony-ask-special-identity strong {
+  display: block;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.colony-ask-special-identity p {
+  margin: 0.1rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+.colony-ask-special-description {
+  margin: 0.5rem 0 1.5rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.colony-ask-special-context dl {
+  display: grid;
+  margin: 1.25rem 0 0;
+}
+
+.colony-ask-special-context dl > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.75rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0.75rem 0;
+}
+
+.colony-ask-special-context dt,
+.colony-ask-special-context dd {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: 1.55;
+}
+
+.colony-ask-special-context dt {
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-ask-special-context dd {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.colony-ask-special-work-link {
+  margin-top: 1.25rem;
+}
+
 .colony-ask-card > h2 {
   margin: 0.85rem 0 0.5rem;
   font-size: var(--text-base);
@@ -555,6 +713,12 @@
   margin: 1.75rem 0 1.25rem;
 }
 
+.colony-today-needs-me-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .colony-today-needs-me-heading p,
 .colony-today-moving-forward > h2 {
   margin: 0;
@@ -625,15 +789,15 @@
 
 .colony-needs-me-group-controls button[aria-pressed="true"],
 .colony-needs-me-overdue-toggle[aria-pressed="true"] {
-  border-color: hsl(var(--primary));
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  border-color: #536d9c;
+  background: #536d9c;
+  color: #fff;
 }
 
 .colony-needs-me-overdue-note {
   width: min(100%, 22rem);
   border: 1px solid hsl(var(--border));
-  border-left: 0.2rem solid hsl(var(--warning, var(--primary)));
+  border-left: 0.2rem solid #ad843c;
   border-radius: 0.5rem;
   background: hsl(var(--muted) / 0.35);
   margin: 0 0 1.1rem;
@@ -642,7 +806,7 @@
 
 .colony-needs-me-overdue-note strong {
   display: block;
-  color: hsl(var(--warning, var(--primary)));
+  color: #ad843c;
   font-size: var(--text-xs);
 }
 
@@ -703,17 +867,16 @@ button.colony-needs-me-row:hover {
 .colony-needs-me-type,
 .colony-needs-me-overdue {
   flex: none;
-  border: 0;
+  border: 1px solid hsl(var(--border));
   border-radius: 0.35rem;
-  background: hsl(var(--primary) / 0.12);
+  background: transparent;
   padding: 0.3rem 0.5rem;
-  color: hsl(var(--primary));
+  color: hsl(var(--foreground));
   font-size: var(--text-2xs);
 }
 
 .colony-needs-me-overdue {
-  background: hsl(var(--destructive) / 0.12);
-  color: hsl(var(--destructive));
+  color: #ad843c;
 }
 
 .colony-needs-me-chevron {
@@ -793,6 +956,24 @@ button.colony-needs-me-row:hover {
 
   .colony-ask-detail-content > h1 {
     font-size: 1.375rem;
+  }
+
+  .colony-ask-detail-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .colony-ask-detail-title-row > h1 {
+    font-size: 1.375rem;
+  }
+
+  .colony-ask-special-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .colony-ask-special-request,
+  .colony-ask-special-context {
+    padding: 1rem;
   }
 
   .colony-ask-detail-actions {

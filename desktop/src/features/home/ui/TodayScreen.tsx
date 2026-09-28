@@ -408,7 +408,7 @@ export function TodayScreen({
       <TodayTopBar onOpenInbox={() => void goHome()} />
       <div className="colony-today-scroll">
         <div className="colony-today-heading">
-          <h1>Today</h1>
+          <h1>Needs me</h1>
           {showUpdatesAction ? (
             <Button
               className="colony-secondary-button"
@@ -424,51 +424,50 @@ export function TodayScreen({
 
         <section aria-label="Needs me" className="colony-today-needs-me">
           <div className="colony-today-needs-me-heading">
-            <p>
-              Needs me ·{" "}
-              {needsMeErrors.length > 0
-                ? "Unavailable"
-                : `${needItems.length} open`}
-            </p>
+            <div className="colony-today-needs-me-summary">
+              <p>
+                {needsMeErrors.length > 0
+                  ? "Open asks unavailable"
+                  : `${needItems.length} open`}
+              </p>
+              {needItems.length > 0 && overdueItems.length > 0 ? (
+                <button
+                  aria-label={
+                    showingOverdueOnly
+                      ? "Show all decisions"
+                      : "Show overdue decisions"
+                  }
+                  aria-pressed={showingOverdueOnly}
+                  className="colony-needs-me-overdue-toggle"
+                  data-testid="needs-me-overdue-toggle"
+                  onClick={() => setShowOverdueOnly((current) => !current)}
+                  type="button"
+                >
+                  {overdueItems.length} overdue
+                </button>
+              ) : null}
+            </div>
             {needItems.length > 0 ? (
-              <div className="colony-needs-me-toolbar">
-                {overdueItems.length > 0 ? (
+              <fieldset className="colony-needs-me-group-controls">
+                <legend className="sr-only">Group decisions</legend>
+                {(
+                  [
+                    ["deadline", "By deadline"],
+                    ["type", "By type"],
+                    ["channel", "By channel"],
+                  ] as const
+                ).map(([value, label]) => (
                   <button
-                    aria-label={
-                      showingOverdueOnly
-                        ? "Show all decisions"
-                        : "Show overdue decisions"
-                    }
-                    aria-pressed={showingOverdueOnly}
-                    className="colony-needs-me-overdue-toggle"
-                    data-testid="needs-me-overdue-toggle"
-                    onClick={() => setShowOverdueOnly((current) => !current)}
+                    aria-pressed={needsMeGrouping === value}
+                    data-testid={`needs-me-group-${value}`}
+                    key={value}
+                    onClick={() => setNeedsMeGrouping(value)}
                     type="button"
                   >
-                    {overdueItems.length} overdue
+                    {label}
                   </button>
-                ) : null}
-                <fieldset className="colony-needs-me-group-controls">
-                  <legend className="sr-only">Group decisions</legend>
-                  {(
-                    [
-                      ["deadline", "By deadline"],
-                      ["type", "By type"],
-                      ["channel", "By channel"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      aria-pressed={needsMeGrouping === value}
-                      data-testid={`needs-me-group-${value}`}
-                      key={value}
-                      onClick={() => setNeedsMeGrouping(value)}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </fieldset>
-              </div>
+                ))}
+              </fieldset>
             ) : null}
           </div>
           {overdueItems.length > 0 ? (
@@ -485,7 +484,7 @@ export function TodayScreen({
                   {groupedItems.overdue.map(renderNeedsMeItem)}
                 </section>
               ) : null}
-              {!showingOverdueOnly
+              {!showingOverdueOnly || needsMeGrouping !== "deadline"
                 ? groupedItems.groups.map((group) => (
                     <section
                       aria-label={group.label}
@@ -518,8 +517,8 @@ export function TodayScreen({
             </p>
           ) : needsMeErrors.length === 0 ? (
             <div className="colony-today-needs-me-empty" role="status">
-              <h3>You’re clear for now.</h3>
-              <p>No open decisions need your attention.</p>
+              <h3>You’re up to date.</h3>
+              <p>No open asks are addressed to you.</p>
             </div>
           ) : null}
           {needsMeErrors.length > 0 ? (

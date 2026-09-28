@@ -6,11 +6,12 @@ import type { RelayEvent } from "../../src/shared/api/types";
 import { KIND_STREAM_MESSAGE } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
-const CHANNEL_ROOTS = ["general", "marketing"] as const;
+const CHANNEL_ROOTS = ["general", "buzz"] as const;
 
 async function openAskThread(
   page: import("@playwright/test").Page,
   askActionErrors: string[] = [],
+  openThread = true,
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
   const relaySecret = generateSecretKey();
@@ -61,16 +62,24 @@ async function openAskThread(
   );
 
   await page.goto(
-    `/#/channels/${thread.channelId}?messageId=${thread.rootId}&threadRootId=${thread.rootId}&thread=${thread.rootId}`,
+    openThread
+      ? `/#/channels/${thread.channelId}?messageId=${thread.rootId}&threadRootId=${thread.rootId}&thread=${thread.rootId}`
+      : `/#/channels/${thread.channelId}`,
   );
-  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  if (openThread) {
+    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  }
   return { ...thread, relaySelf };
 }
 
 test("raise an ask from the message composer and retry the same signed action", async ({
   page,
 }) => {
-  const thread = await openAskThread(page, ["Temporary relay write failure"]);
+  const thread = await openAskThread(
+    page,
+    ["Temporary relay write failure"],
+    false,
+  );
   await page.getByTestId("raise-ask-from-composer").click();
   await expect(
     page.getByRole("heading", { name: "Raise an ask" }),
@@ -304,9 +313,7 @@ test("busy Needs me groups the full deadline-sorted queue", async ({
   await expect(
     needsMe.getByRole("heading", { name: "#general" }),
   ).toBeVisible();
-  await expect(
-    needsMe.getByRole("heading", { name: "#marketing" }),
-  ).toBeVisible();
+  await expect(needsMe.getByRole("heading", { name: "#buzz" })).toBeVisible();
   await expect(page.locator('[data-testid^="today-ask-"]')).toHaveCount(18);
 
   await page.getByTestId("needs-me-overdue-toggle").click();

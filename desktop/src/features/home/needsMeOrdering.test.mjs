@@ -136,19 +136,21 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
   });
 
   const byType = groupNeedsMeItems(items, "type", { now });
-  assert.deepEqual(byType.overdue.map(needsMeItemKey), [
-    "ask:channel-a:overdue",
-  ]);
+  assert.deepEqual(byType.overdue, []);
   assert.deepEqual(
     byType.groups.map((group) => group.label),
-    ["Funding", "Questions & checks", "Approvals & consent"],
+    ["Approvals & consent", "Funding", "Questions & checks"],
   );
   assert.deepEqual(
     byType.groups.map((group) => group.items.map(needsMeItemKey)),
     [
+      [
+        "ask:channel-a:overdue",
+        "ask:channel-a:tool",
+        "ask:channel-c:unassigned",
+      ],
       ["ask:channel-a:funding"],
       ["ask:channel-b:choice"],
-      ["ask:channel-a:tool", "ask:channel-c:unassigned"],
     ],
   );
 
@@ -178,7 +180,7 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
   assert.deepEqual(
     byChannel.groups.map((group) => group.items.map(needsMeItemKey)),
     [
-      ["ask:channel-a:funding", "ask:channel-a:tool"],
+      ["ask:channel-a:overdue", "ask:channel-a:funding", "ask:channel-a:tool"],
       ["ask:channel-b:choice"],
       ["ask:channel-c:unassigned"],
     ],

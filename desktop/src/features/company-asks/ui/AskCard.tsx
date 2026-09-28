@@ -6,6 +6,7 @@ import { useChannelMembersQuery } from "@/features/channels/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useRelayAgentsQuery } from "@/features/agents/hooks";
+import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
@@ -442,6 +443,22 @@ export function AskCard({
   const resolverPubkey = identityQuery.data?.pubkey ?? currentPubkey;
   const headRecord = query.data;
   const head = headRecord?.head;
+  const workItemSubjectId =
+    head?.ask.subject?.kind === "workItem" ? head.ask.subject.id : null;
+  const subjectWorkQuery = useClientRecordsQuery(
+    channelId,
+    Boolean(workItemSubjectId),
+  );
+  const matchingWorkItems =
+    workItemSubjectId && subjectWorkQuery.workItemsQuery.data
+      ? subjectWorkQuery.workItemsQuery.data.filter(
+          (workItem) =>
+            workItem.value.clientId === channelId &&
+            workItem.value.workItemId === workItemSubjectId,
+        )
+      : [];
+  const linkedWorkItem =
+    matchingWorkItems.length === 1 ? matchingWorkItems[0] : null;
 
   if (!channelId) {
     return (
@@ -580,6 +597,7 @@ export function AskCard({
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
   const specializedVariant = mapSpecializedAskCard(head.ask);
+  const specializedDetail = Boolean(specializedVariant && !showDetailLink);
   const asker = resolveUserLabel({
     pubkey: head.askerPubkey,
     currentPubkey,
@@ -606,12 +624,143 @@ export function AskCard({
   return (
     <section
       aria-label={`${typeLabel(head.ask.type)} ask`}
-      className={`colony-ask-card${specializedVariant ? ` colony-ask-card-${specializedVariant.kind}` : ""}`}
+      className={`colony-ask-card${specializedVariant ? ` colony-ask-card-${specializedVariant.kind}` : ""}${specializedDetail ? " colony-ask-card-specialized-detail" : ""}`}
       data-ask-id={askId}
       data-ask-variant={specializedVariant?.kind}
       data-testid="ask-card"
     >
-      {specializedVariant ? (
+      {specializedDetail ? (
+        <div className="colony-ask-special-grid">
+          <section
+            aria-label="Decision requested"
+            className="colony-ask-special-request"
+          >
+            <h2>Decision requested</h2>
+            <header className="colony-ask-special-header">
+              <div className="colony-ask-special-identity">
+                <span aria-hidden="true">
+                  <UserAvatar
+                    avatarUrl={askerProfile?.avatarUrl ?? null}
+                    displayName={asker}
+                    size="md"
+                  />
+                </span>
+                <div>
+                  <strong>{asker}</strong>
+                  <p>
+                    {askerIsAgent ? "AI employee" : "Person"} · #{channelName} ·{" "}
+                    {new Intl.DateTimeFormat("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }).format(new Date(Date.parse(head.createdAt)))}
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`colony-ask-status colony-ask-status-${isOverdue ? "overdue" : head.status}`}
+                data-testid="ask-status"
+              >
+                {needsYou ? "Needs you" : statusText}
+              </span>
+            </header>
+            {head.ask.body ? (
+              <p className="colony-ask-special-description">{head.ask.body}</p>
+            ) : null}
+            {head.status === "open" ? (
+              checksReady && !deniedReason ? (
+                <AskResponseForm record={headRecord} />
+              ) : (
+                <div
+                  className="colony-ask-denied"
+                  data-testid="ask-cannot-resolve"
+                  role={accessFailure ? "alert" : "status"}
+                >
+                  <strong>You can view this ask, but cannot respond.</strong>
+                  <p>
+                    {accessFailure
+                      ? "Access could not be verified. Try again after the relay is available."
+                      : !checksReady
+                        ? "Checking whether you can respond…"
+                        : deniedReason}
+                  </p>
+                </div>
+              )
+            ) : (
+              <AskResolution
+                currentPubkey={currentPubkey}
+                head={head}
+                profiles={profiles}
+              />
+            )}
+            {head.status !== "open" ? (
+              <Link
+                className="colony-ask-special-work-link"
+                params={{ channelId }}
+                search={{
+                  messageId: head.ask.threadRootEventId,
+                  threadRootId: head.ask.threadRootEventId,
+                  thread: head.ask.threadRootEventId,
+                }}
+                to="/channels/$channelId"
+              >
+                Open conversation
+              </Link>
+            ) : null}
+          </section>
+          <aside
+            aria-label="Decision context"
+            className="colony-ask-special-context"
+          >
+            <h2>Decision context</h2>
+            <dl>
+              <div>
+                <dt>Addressed to</dt>
+                <dd>
+                  {head.ask.addresseePubkey
+                    ? resolveUserLabel({
+                        pubkey: head.ask.addresseePubkey,
+                        currentPubkey,
+                        profiles,
+                        preferResolvedSelfLabel: Boolean(
+                          profiles?.[normalizePubkey(head.ask.addresseePubkey)],
+                        ),
+                      })
+                    : "Owner or administrator"}
+                </dd>
+              </div>
+              <div>
+                <dt>Can decide</dt>
+                <dd>Owner or administrator</dd>
+              </div>
+              <div>
+                <dt>Deadline</dt>
+                <dd>
+                  {head.ask.decideBy
+                    ? (formatAskDate(head.ask.decideBy) ?? head.ask.decideBy)
+                    : "No deadline"}
+                </dd>
+              </div>
+              {linkedWorkItem ? (
+                <div>
+                  <dt>Linked work</dt>
+                  <dd>{linkedWorkItem.value.title}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {linkedWorkItem ? (
+              <Link
+                aria-label={`Open work item ${linkedWorkItem.value.title}`}
+                className="colony-ask-special-work-link"
+                params={{ workId: linkedWorkItem.value.workItemId }}
+                search={{ client: linkedWorkItem.value.clientId }}
+                to="/work/$workId"
+              >
+                Open work
+              </Link>
+            ) : null}
+          </aside>
+        </div>
+      ) : specializedVariant ? (
         <>
           <header className="colony-ask-special-header">
             <div className="colony-ask-special-identity">
@@ -687,75 +836,79 @@ export function AskCard({
           ) : null}
         </div>
       )}
-      {specializedVariant ? (
-        <p className="colony-ask-special-kind">
-          {specializedVariant.decisionTitle}
-        </p>
-      ) : null}
-      <h2>{head.ask.title}</h2>
-      {head.ask.body ? (
-        <p className="colony-ask-body">{head.ask.body}</p>
-      ) : null}
-      {!specializedVariant && head.ask.addresseePubkey ? (
-        <p className="colony-ask-addressed">
-          Addressed to{" "}
-          {resolveUserLabel({
-            pubkey: head.ask.addresseePubkey,
-            currentPubkey,
-            profiles,
-            preferResolvedSelfLabel: Boolean(
-              profiles?.[normalizePubkey(head.ask.addresseePubkey)],
-            ),
-          })}
-          .{" "}
-          {head.ask.category === "money"
-            ? "Only an authorized human may resolve spending decisions."
-            : head.ask.category === "general"
-              ? "The named recipient can respond."
-              : "Only an authorized human may resolve this ask."}
-        </p>
-      ) : null}
-      {head.status === "open" ? (
-        checksReady && !deniedReason ? (
-          <AskResponseForm record={headRecord} />
-        ) : (
-          <div
-            className="colony-ask-denied"
-            data-testid="ask-cannot-resolve"
-            role={accessFailure ? "alert" : "status"}
-          >
-            <strong>You can view this ask, but cannot respond.</strong>
-            <p>
-              {accessFailure
-                ? "Access could not be verified. Try again after the relay is available."
-                : !checksReady
-                  ? "Checking whether you can respond…"
-                  : deniedReason}
+      {!specializedDetail ? (
+        <>
+          {specializedVariant ? (
+            <p className="colony-ask-special-kind">
+              {specializedVariant.decisionTitle}
             </p>
-          </div>
-        )
-      ) : (
-        <AskResolution
-          currentPubkey={currentPubkey}
-          head={head}
-          profiles={profiles}
-        />
-      )}
-      {liveState === "unavailable" && head.status === "open" ? (
-        <p className="colony-ask-live-status" role="status">
-          Live updates are unavailable. The ask will refresh when the relay
-          reconnects.
-        </p>
-      ) : null}
-      {showDetailLink && channelId ? (
-        <Link
-          className="colony-ask-detail-link"
-          data-testid="ask-detail-link"
-          params={{ askId, channelId }}
-          to="/asks/$channelId/$askId"
-        >
-          Open decision
-        </Link>
+          ) : null}
+          <h2>{head.ask.title}</h2>
+          {head.ask.body ? (
+            <p className="colony-ask-body">{head.ask.body}</p>
+          ) : null}
+          {!specializedVariant && head.ask.addresseePubkey ? (
+            <p className="colony-ask-addressed">
+              Addressed to{" "}
+              {resolveUserLabel({
+                pubkey: head.ask.addresseePubkey,
+                currentPubkey,
+                profiles,
+                preferResolvedSelfLabel: Boolean(
+                  profiles?.[normalizePubkey(head.ask.addresseePubkey)],
+                ),
+              })}
+              .{" "}
+              {head.ask.category === "money"
+                ? "Only an authorized human may resolve spending decisions."
+                : head.ask.category === "general"
+                  ? "The named recipient can respond."
+                  : "Only an authorized human may resolve this ask."}
+            </p>
+          ) : null}
+          {head.status === "open" ? (
+            checksReady && !deniedReason ? (
+              <AskResponseForm record={headRecord} />
+            ) : (
+              <div
+                className="colony-ask-denied"
+                data-testid="ask-cannot-resolve"
+                role={accessFailure ? "alert" : "status"}
+              >
+                <strong>You can view this ask, but cannot respond.</strong>
+                <p>
+                  {accessFailure
+                    ? "Access could not be verified. Try again after the relay is available."
+                    : !checksReady
+                      ? "Checking whether you can respond…"
+                      : deniedReason}
+                </p>
+              </div>
+            )
+          ) : (
+            <AskResolution
+              currentPubkey={currentPubkey}
+              head={head}
+              profiles={profiles}
+            />
+          )}
+          {liveState === "unavailable" && head.status === "open" ? (
+            <p className="colony-ask-live-status" role="status">
+              Live updates are unavailable. The ask will refresh when the relay
+              reconnects.
+            </p>
+          ) : null}
+          {showDetailLink && channelId ? (
+            <Link
+              className="colony-ask-detail-link"
+              data-testid="ask-detail-link"
+              params={{ askId, channelId }}
+              to="/asks/$channelId/$askId"
+            >
+              Open decision
+            </Link>
+          ) : null}
+        </>
       ) : null}
     </section>
   );

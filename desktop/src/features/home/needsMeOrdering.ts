@@ -130,7 +130,7 @@ export function groupNeedsMeItems(
   const groups = new Map<string, NeedsMeGroup>();
 
   for (const item of items) {
-    if (isNeedsMeItemOverdue(item, now)) {
+    if (grouping === "deadline" && isNeedsMeItemOverdue(item, now)) {
       overdue.push(item);
       continue;
     }
