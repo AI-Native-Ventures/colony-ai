@@ -47,7 +47,7 @@ test("settings card keeps owner emoji removable and community emoji read-only", 
   await expect(card).toContainText("Shared marks for your business.");
   const mine = card.getByTestId("custom-emoji-mine");
   await expect(mine.getByRole("heading", { name: "Your emoji" })).toBeVisible();
-  await expect(mine).toContainText("buzz");
+  await expect(mine).toContainText(":buzz:");
   await expect(
     mine.getByRole("button", { name: "Remove :buzz:" }),
   ).toBeVisible();

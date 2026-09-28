@@ -1,4 +1,4 @@
-import { CheckCircle2, LoaderCircle, X } from "lucide-react";
+import { Check, LoaderCircle, X } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -109,44 +109,40 @@ export function SendFeedbackDialog({
 
         {sent ? (
           <div
-            className="flex min-h-0 flex-1 flex-col justify-between px-6 py-5"
+            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 py-5 text-center"
             data-testid="feedback-sent"
           >
-            <div className="flex items-start gap-3">
-              <CheckCircle2
-                aria-hidden="true"
-                className="mt-0.5 size-5 shrink-0 text-green-600 dark:text-green-400"
-              />
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Your feedback was sent</p>
-                <p className="text-sm text-muted-foreground">
-                  You can keep working. We’ll reply to your account email if
-                  more detail is needed.
-                </p>
-              </div>
+            <Check
+              aria-hidden="true"
+              className="size-6 text-muted-foreground"
+            />
+            <div className="mx-auto w-full max-w-[440px] space-y-4">
+              <p className="text-xl font-semibold">Your feedback was sent</p>
+              <p className="text-sm text-muted-foreground">
+                You can keep working. We’ll reply to your account email if more
+                detail is needed.
+              </p>
             </div>
-            <div className="flex justify-end">
-              <Button
-                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-                data-testid="feedback-done"
-                onClick={() => onOpenChange(false)}
-                type="button"
-              >
-                Done
-              </Button>
-            </div>
+            <Button
+              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              data-testid="feedback-done"
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              Done
+            </Button>
           </div>
         ) : isPending ? (
           <div className="flex min-h-0 flex-1 flex-col px-[25px] py-5">
             <div
               aria-live="polite"
-              className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
+              className="flex flex-1 -translate-y-2.5 flex-col items-center justify-center gap-4 px-6 text-center"
               data-testid="feedback-sending"
               role="status"
             >
               <LoaderCircle
                 aria-hidden="true"
-                className="size-6 animate-spin dark:text-[#a9bee8]"
+                className="size-6 animate-spin text-[#315fae] dark:text-[#a9bee8]"
               />
               <div className="space-y-1">
                 <p className="text-base font-medium">Sending your feedback…</p>

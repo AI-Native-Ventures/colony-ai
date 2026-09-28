@@ -158,7 +158,7 @@ export function CustomEmojiSettingsCard() {
                     draggable={false}
                   />
                   <span className="min-w-0 flex-1 truncate text-sm">
-                    {e.shortcode}
+                    :{e.shortcode}:
                   </span>
                   <Button
                     aria-label={`Remove :${e.shortcode}:`}

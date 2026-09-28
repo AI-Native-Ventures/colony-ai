@@ -30,6 +30,10 @@ test("feedback keeps its message after a relay rejection and accepts a retry", a
 
   await page.getByTestId("feedback-submit").click();
   await expect(page.getByTestId("feedback-sent")).toBeVisible();
+  const sentMessageBounds = await page
+    .getByText(/You can keep working/)
+    .boundingBox();
+  expect(sentMessageBounds?.width).toBe(440);
   await page.getByTestId("feedback-done").click();
   await expect(dialog).not.toBeVisible();
 });

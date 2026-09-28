@@ -309,15 +309,15 @@
             "emojis": [
               {
                 "shortcode": "celebrate",
-                "url": "https://example.com/e2e/visual-settings-emoji/celebrate.svg"
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzI5MjYzMSIgZD0iTTEyIDEgMTQuOCA5LjIgMjMgMTJsLTguMiAyLjhMMTIgMjNsLTIuOC04LjJMMSAxMmw4LjItMi44TDEyIDF6Ii8+PC9zdmc+"
               },
               {
                 "shortcode": "approved",
-                "url": "https://example.com/e2e/visual-settings-emoji/approved.svg"
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0ibTQgMTIgNSA1TDIwIDYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzI5MjYzMSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2Utd2lkdGg9IjIuNSIvPjwvc3ZnPg=="
               },
               {
                 "shortcode": "colony",
-                "url": "https://example.com/e2e/visual-settings-emoji/colony.svg"
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgZmlsbD0iIzI5MjYzMSI+PGNpcmNsZSBjeD0iMTIiIGN5PSI1IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxOC4xIiBjeT0iOC41IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxOC4xIiBjeT0iMTUuNSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxOSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iNS45IiBjeT0iMTUuNSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iNS45IiBjeT0iOC41IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIyLjQiLz48L2c+PC9zdmc+"
               }
             ]
           }
@@ -1199,7 +1199,7 @@
       "referenceCanvas": true,
       "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
       "appMockData": {
-        "feedbackPublishDelayMs": 4000
+        "feedbackPublishDelayMs": 30000
       },
       "clip": {
         "referenceSelector": ".modal",
