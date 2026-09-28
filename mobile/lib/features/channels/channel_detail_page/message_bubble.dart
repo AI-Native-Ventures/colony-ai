@@ -37,8 +37,16 @@ class _MessageBubble extends HookConsumerWidget {
     final presentation = ref.watch(
       channelMessagePresentationProvider.select((items) => items[message.id]),
     );
+    final workItemReference = workItemReferenceFromTags(
+      message.tags,
+      clientId: currentChannelId,
+    );
     // Watch only this user's profile to avoid rebuilding on unrelated cache changes.
     final pk = message.pubkey.toLowerCase();
+    ref.read(presenceCacheProvider.notifier).track([pk]);
+    final isOnline = ref.watch(
+      presenceCacheProvider.select((presence) => presence[pk] == 'online'),
+    );
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
@@ -172,6 +180,7 @@ class _MessageBubble extends HookConsumerWidget {
                               profile: profile,
                               isAgent: isAgent,
                             ),
+                            isOnline: isOnline,
                           ),
                         )
                       else
@@ -297,7 +306,14 @@ class _MessageBubble extends HookConsumerWidget {
                                 onMentionTap: (pubkey) =>
                                     showUserProfileSheet(context, pubkey),
                               ),
-                              if (presentation?.deliverable
+                              if (workItemReference != null)
+                                DeliverableReferenceCard(
+                                  reference: workItemReference,
+                                  clientName:
+                                      channelNames[currentChannelId] ??
+                                      currentChannelId,
+                                )
+                              else if (presentation?.deliverable
                                   case final deliverable?)
                                 DeliverablePreviewCard(data: deliverable),
                               if (presentation?.quote case final quote?)

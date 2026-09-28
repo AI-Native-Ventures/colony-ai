@@ -1,8 +1,123 @@
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/theme/theme.dart';
+import '../../shared/widgets/buzz_loading_indicator.dart';
+import 'deliverable_business_records.dart';
+import 'deliverable_review_provider.dart';
 import 'message_presentation.dart';
+
+class DeliverableReferenceCard extends ConsumerWidget {
+  const DeliverableReferenceCard({
+    required this.reference,
+    required this.clientName,
+    super.key,
+  });
+
+  final WorkItemReference reference;
+  final String clientName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final request = DeliverableReviewRequest(
+      reference: reference,
+      clientName: clientName,
+    );
+    final review = ref.watch(deliverableReviewProvider(request));
+    return review.when(
+      loading: () => const SizedBox(
+        height: MobileLayoutTokens.minimumRowHeight,
+        child: Center(child: BuzzLoadingIndicator()),
+      ),
+      error: (_, _) => _unavailableCard(context),
+      data: (bundle) {
+        if (!bundle.isAvailable) return _unavailableCard(context);
+        final version = bundle.version!;
+        final head = bundle.head!;
+        final title = version.title ?? head.title;
+        final nextRequest = DeliverableReviewRequest(
+          reference: reference,
+          clientName: clientName,
+          deliverableId: version.deliverableId,
+          versionEventId: version.event.id,
+        );
+        return Semantics(
+          button: true,
+          label: 'Review $title, version ${version.version}',
+          child: ExcludeSemantics(
+            child: InkWell(
+              key: ValueKey('deliverable-reference-${version.event.id}'),
+              borderRadius: BorderRadius.circular(Radii.companyCard),
+              onTap: () => MobileNavigation.push(
+                context,
+                ChannelDeliverableRoutes.review,
+                nextRequest,
+              ),
+              child: Container(
+                margin: const EdgeInsets.only(top: Grid.xxs),
+                padding: const EdgeInsets.all(Grid.xs),
+                decoration: BoxDecoration(
+                  color: context.mobileTokens.paper,
+                  border: Border.all(color: context.mobileTokens.line),
+                  borderRadius: BorderRadius.circular(Radii.companyCard),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.fileText, color: context.appColors.plum),
+                    const SizedBox(width: Grid.xs),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.mobileTypography.identityName
+                                .copyWith(color: context.mobileTokens.ink),
+                          ),
+                          const SizedBox(height: Grid.quarter),
+                          Text(
+                            'Version ${version.version}',
+                            style: context.mobileTypography.metadata.copyWith(
+                              color: context.mobileTokens.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      LucideIcons.chevronRight,
+                      color: context.mobileTokens.muted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _unavailableCard(BuildContext context) => Container(
+    margin: const EdgeInsets.only(top: Grid.xxs),
+    padding: const EdgeInsets.all(Grid.xs),
+    decoration: BoxDecoration(
+      color: context.mobileTokens.paper,
+      border: Border.all(color: context.mobileTokens.line),
+      borderRadius: BorderRadius.circular(Radii.companyCard),
+    ),
+    child: Text(
+      'Deliverable unavailable',
+      style: context.mobileTypography.metadata.copyWith(
+        color: context.mobileTokens.muted,
+      ),
+    ),
+  );
+}
 
 class DeliverablePreviewCard extends StatelessWidget {
   final DeliverablePreviewData data;

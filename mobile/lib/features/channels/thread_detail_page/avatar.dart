@@ -4,11 +4,13 @@ class _Avatar extends StatelessWidget {
   final UserProfile? profile;
   final String pubkey;
   final bool isAgent;
+  final bool isOnline;
 
   const _Avatar({
     required this.profile,
     required this.pubkey,
     required this.isAgent,
+    required this.isOnline,
   });
 
   @override
@@ -17,6 +19,7 @@ class _Avatar extends StatelessWidget {
       profile: profile,
       pubkey: pubkey,
       tint: conversationAvatarTint(profile: profile, isAgent: isAgent),
+      isOnline: isOnline,
     );
   }
 }
