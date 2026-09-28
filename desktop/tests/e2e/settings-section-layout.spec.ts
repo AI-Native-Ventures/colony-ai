@@ -180,6 +180,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     .evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).lineHeight),
     );
+  const breadcrumbFontSizes = await page
+    .locator(".w20-topbar-title > span")
+    .evaluateAll((elements) =>
+      elements.map((element) => getComputedStyle(element).fontSize),
+    );
+  const topbarPadding = await page
+    .locator(".w20-settings-topbar")
+    .evaluate((element) => getComputedStyle(element).padding);
   const profileAvatarSize = await page
     .getByTestId("settings-profile-avatar")
     .evaluate((element) => {
@@ -189,12 +197,15 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
 
   expect(titleFontSize).toBe("27.2px");
   expect(breadcrumbLineHeights).toEqual(["21px", "21px"]);
+  expect(breadcrumbFontSizes).toEqual(["14px", "14px"]);
+  expect(topbarPadding).toBe("0px 25px");
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
   for (const expected of [
     {
       viewport: { width: 1440, height: 900 },
       fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
+      settingsSurface: { x: 240, y: 61, width: 1191, height: 830 },
       title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
       profileCard: { x: 314, y: 267.1875, width: 631.96875 },
       businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
@@ -204,6 +215,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     {
       viewport: { width: 1728, height: 1117 },
       fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
+      settingsSurface: { x: 240, y: 61, width: 1479, height: 1047 },
       title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
       profileCard: { x: 322, y: 275.1875, width: 801.328125 },
       businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
@@ -232,6 +244,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       }
       return {
         fieldLayer: bounds(".buzz-theme-gradient-underlay"),
+        settingsSurface: bounds(".w20-settings-surface"),
         fieldFrame: (() => {
           const layer = document.querySelector(".buzz-theme-gradient-layer");
           if (!layer) throw new Error("Missing settings field frame");
@@ -269,6 +282,16 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     expectCoordinate(geometry.fieldLayer.y, expected.fieldLayer.y);
     expectCoordinate(geometry.fieldLayer.width, expected.fieldLayer.width);
     expectCoordinate(geometry.fieldLayer.height, expected.fieldLayer.height);
+    expectCoordinate(geometry.settingsSurface.x, expected.settingsSurface.x);
+    expectCoordinate(geometry.settingsSurface.y, expected.settingsSurface.y);
+    expectCoordinate(
+      geometry.settingsSurface.width,
+      expected.settingsSurface.width,
+    );
+    expectCoordinate(
+      geometry.settingsSurface.height,
+      expected.settingsSurface.height,
+    );
     expect(geometry.fieldFrame).toEqual({
       rootBackground: "rgba(0, 0, 0, 0)",
       borderRadius: "12px",

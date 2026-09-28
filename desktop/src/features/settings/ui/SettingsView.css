@@ -464,11 +464,11 @@ body:has(.w20-settings-shell) {
   margin-left: 1px;
   align-items: center;
   gap: 10px;
-  padding: 0 12px 0 25px;
-  border: 1px solid rgb(232 224 230 / 40%);
-  border-bottom-color: #eae7eb;
-  border-radius: 11px 11px 0 0;
-  background: #fffefd;
+  padding: 0 25px;
+  border: 0;
+  border-bottom: 1px solid #eae7eb;
+  border-radius: 0;
+  background: transparent;
   color: #79747f;
   font-size: var(--text-sm);
   cursor: default;
@@ -476,9 +476,8 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-settings-topbar {
-  border-color: rgb(60 53 68 / 75%);
-  border-bottom-color: #3c3544;
-  background: #211e26;
+  border-bottom-color: #39323f;
+  background: transparent;
   color: #ece6ef;
 }
 
@@ -555,18 +554,15 @@ body:has(.w20-settings-shell) {
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgb(232 224 230 / 40%);
-  border-top: 0;
-  border-bottom: 0;
-  border-radius: 0 0 11px 11px;
-  background: #fffefd;
+  margin-right: 1px;
+  margin-left: 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .dark .w20-settings-surface {
-  border-color: rgb(60 53 68 / 75%);
-  border-top: 0;
-  border-radius: 0 0 11px 11px;
-  background: #211e26;
+  background: transparent;
 }
 
 .w20-inner-tabs {
