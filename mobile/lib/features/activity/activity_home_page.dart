@@ -22,12 +22,14 @@ typedef ActivityUpdatesPageBuilder =
 class ActivityHomePage extends HookConsumerWidget {
   const ActivityHomePage({
     required this.onOpenItem,
+    this.onComposeUpdate,
     required this.updatesPageBuilder,
     this.tabReselection,
     super.key,
   });
 
   final ValueChanged<FeedItem> onOpenItem;
+  final ValueChanged<BuildContext>? onComposeUpdate;
   final ActivityUpdatesPageBuilder updatesPageBuilder;
   final ValueListenable<int>? tabReselection;
 
@@ -81,6 +83,7 @@ class ActivityHomePage extends HookConsumerWidget {
             bottom: false,
             child: _ActivityHeader(
               onBack: () => unawaited(Navigator.of(context).maybePop()),
+              onComposeUpdate: onComposeUpdate,
             ),
           ),
           _ActivityTabs(
@@ -106,9 +109,10 @@ class ActivityHomePage extends HookConsumerWidget {
 }
 
 class _ActivityHeader extends StatelessWidget {
-  const _ActivityHeader({required this.onBack});
+  const _ActivityHeader({required this.onBack, this.onComposeUpdate});
 
   final VoidCallback onBack;
+  final ValueChanged<BuildContext>? onComposeUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -160,11 +164,8 @@ class _ActivityHeader extends StatelessWidget {
               children: [
                 Text(
                   'Updates',
-                  style: context.textTheme.titleMedium?.copyWith(
+                  style: context.mobileTypography.companyHubTitle.copyWith(
                     color: tokens.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.35,
                   ),
                 ),
                 Text(
@@ -178,6 +179,22 @@ class _ActivityHeader extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            key: const ValueKey('activity-new-team-update'),
+            tooltip: 'New team update',
+            onPressed: onComposeUpdate == null
+                ? null
+                : () => onComposeUpdate!(context),
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              side: BorderSide(color: tokens.line),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+              ),
+            ),
+            icon: const Icon(LucideIcons.plus),
           ),
         ],
       ),

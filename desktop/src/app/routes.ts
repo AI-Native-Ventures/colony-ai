@@ -6,6 +6,7 @@ export const routes = rootRoute("root.tsx", [
   route("/supervision", "supervision.tsx"),
   route("/power", "power.tsx"),
   route("/today", "today.tsx"),
+  route("/asks/$channelId/$askId", "asks.$channelId.$askId.tsx"),
   route("/today/updates", "today.updates.tsx"),
   route("/today/reviews-empty", "today.reviews-empty.tsx"),
   route("/navigation/history", "navigation.history.tsx"),

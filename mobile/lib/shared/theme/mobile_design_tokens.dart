@@ -192,6 +192,11 @@ abstract final class MobileLayoutTokens {
   static const bottomNavigationHeight = 59.0;
   static const minimumTapTarget = 44.0;
   static const minimumRowHeight = 64.0;
+  static const conversationSearchIconSize = 17.0;
+  static const conversationUnreadBadgeSize = 19.0;
+  static const deliverableFeedbackSheetHeaderHeight = 80.0;
+  static const deliverableFeedbackFieldMinHeight = 86.0;
+  static const deliverableFeedbackSheetBottomPadding = 13.0;
   static const contentGutter = 20.0;
   static const scrollTopPadding = 22.0;
   static const scrollBottomPadding = 28.0;
@@ -210,6 +215,126 @@ abstract final class MobileLayoutTokens {
 
   /// Interior padding for a Company hub destination card.
   static const companyCardPadding = 17.0;
+
+  /// Interior padding for a company goal card.
+  static const goalCardPadding = 19.0;
+
+  /// Horizontal inset for Goals content and headers.
+  static const goalContentHorizontalInset = 21.0;
+
+  /// Target icon size in shared goal reference rows.
+  static const goalReferenceIconSize = 20.0;
+
+  /// Space after the shared goal banner before channel messages.
+  static const goalReferenceBannerBottomGap = 22.0;
+
+  /// Visible square size for the Goals header actions.
+  static const goalHeaderButtonSize = 42.0;
+
+  /// Maximum line width for a goal card title.
+  static const goalCardTitleMaxWidth = 225.0;
+
+  /// Horizontal inset inside goal card status chips.
+  static const goalCardChipHorizontalPadding = 8.0;
+
+  /// Vertical inset inside goal card status chips.
+  static const goalCardChipVerticalPadding = 5.0;
+
+  /// Gap between goal cards and the following section heading.
+  static const goalSectionSpacing = 23.0;
+
+  /// Space between a goal section heading and its first card.
+  static const goalSectionTitleGap = 13.0;
+
+  /// Vertical gap between the status row and a goal card title.
+  static const goalCardHeaderGap = 14.0;
+
+  /// Gap above the owner row in goal cards.
+  static const goalCardOwnerGap = 15.0;
+
+  /// Padding inside the goal detail gradient hero.
+  static const goalHeroPadding = 22.0;
+
+  /// Top inset before the goal detail hero.
+  static const goalDetailTopInset = 7.0;
+
+  /// Gap between the goal status chip and its title.
+  static const goalHeroStatusTitleGap = 14.0;
+
+  /// Gap after a goal hero title before the next value or hero edge.
+  static const goalHeroTitleContentGap = 14.0;
+
+  /// Bottom margin after a goal hero progress meter.
+  static const goalHeroProgressBottomGap = 10.0;
+
+  /// Space beneath a goal hero when it leads into a parent reference row.
+  static const goalHeroBottomGap = 20.0;
+
+  /// Height of goal progress indicators.
+  static const goalProgressHeight = 6.0;
+
+  /// Margin around goal progress indicators.
+  static const goalProgressMargin = 12.0;
+
+  /// Gap between the goal detail action buttons.
+  static const goalActionsGap = 9.0;
+
+  /// Height of each action in the goal context sheet.
+  static const goalContextActionRowHeight = 44.0;
+
+  /// Horizontal inset around actions in the goal context sheet.
+  static const goalContextActionHorizontalInset = 22.0;
+
+  /// Space between the goal context sheet header and its first action.
+  static const goalContextActionTopGap = 10.0;
+
+  /// Gap between goal context sheet actions.
+  static const goalContextActionGap = 22.0;
+
+  /// Content padding below the last action in the goal context sheet.
+  static const goalContextActionBottomPadding = 35.0;
+
+  /// Height of the primary submit button inside a goal form sheet.
+  static const goalFormButtonHeight = 44.0;
+
+  /// Space below the progress sheet heading and before its first field.
+  static const goalProgressHeaderFieldGap = 25.0;
+
+  /// Gap between labeled controls in the goal progress sheet.
+  static const goalProgressFieldGap = 20.0;
+
+  /// Horizontal inset of the v5 goal form sheet content.
+  static const goalFormHorizontalInset = 22.0;
+
+  /// Space after the goal form sheet heading before the first field.
+  static const goalFormHeaderFieldGap = 26.0;
+
+  /// Vertical gap between labeled fields in goal forms.
+  static const goalFormFieldGap = 18.0;
+
+  /// Gap between goal progress evidence and its submit action.
+  static const goalProgressSubmitGap = 8.0;
+
+  /// Bottom content inset below the goal form action.
+  static const goalFormBottomPadding = 13.0;
+
+  /// Height of a single-line control in the goal form sheet.
+  static const goalFormFieldHeight = 41.0;
+
+  /// Height of the status control in the goal progress sheet.
+  static const goalProgressStatusHeight = 43.0;
+
+  /// Height of a multiline control in goal forms.
+  static const goalFormMultilineHeight = 71.0;
+
+  /// Vertical padding within a multiline goal form control.
+  static const goalFormMultilineVerticalPadding = 4.0;
+
+  /// Vertical margin around goal detail actions.
+  static const goalActionsMargin = 23.0;
+
+  /// Vertical padding for goal owner and due date rows.
+  static const goalInfoRowPadding = 15.0;
 
   /// Icon size within a Company hub destination card.
   static const companyCardIconSize = 18.0;

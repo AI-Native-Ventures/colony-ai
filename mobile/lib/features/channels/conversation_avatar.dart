@@ -12,6 +12,7 @@ class ConversationAvatar extends StatelessWidget {
   final String pubkey;
   final double size;
   final ConversationAvatarTint tint;
+  final bool isOnline;
 
   const ConversationAvatar({
     super.key,
@@ -19,6 +20,7 @@ class ConversationAvatar extends StatelessWidget {
     required this.pubkey,
     this.size = conversationAvatarSize,
     this.tint = ConversationAvatarTint.lilac,
+    this.isOnline = false,
   });
 
   @override
@@ -44,6 +46,7 @@ class ConversationAvatar extends StatelessWidget {
         },
         imageUrl: animatedAvatar?.posterUrl ?? avatarUrl,
         size: size,
+        isOnline: isOnline,
         excludeSemantics: true,
       ),
     );

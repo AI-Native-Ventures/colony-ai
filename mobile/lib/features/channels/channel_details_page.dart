@@ -267,7 +267,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
         bottomDividerOpacity: 1,
         horizontalInset: Grid.xs - Grid.half,
         titleContentHeight: MobileLayoutTokens.appBarHeight,
-        titleStyle: context.mobileTypography.identityName.copyWith(
+        titleStyle: context.mobileTypography.companyHubTitle.copyWith(
           color: context.mobileTokens.ink,
         ),
         title: Column(
@@ -279,7 +279,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
               key: const ValueKey('channel-details-collapsed-title'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: context.mobileTypography.identityName.copyWith(
+              style: context.mobileTypography.companyHubTitle.copyWith(
                 color: context.mobileTokens.ink,
               ),
             ),
@@ -622,7 +622,7 @@ class _ChannelDetailsHero extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(Grid.xs),
         decoration: BoxDecoration(
-          gradient: context.appColors.companyWashGradient,
+          gradient: context.appColors.channelInfoHeroGradient,
           borderRadius: BorderRadius.circular(Radii.companyCard),
         ),
         child: Column(
@@ -634,7 +634,7 @@ class _ChannelDetailsHero extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: context.mobileTypography.companyHubTitle.copyWith(
-                color: context.mobileTokens.ink,
+                color: context.appColors.channelInfoHeroForeground,
               ),
             ),
             if (description.isNotEmpty) ...[
@@ -645,7 +645,9 @@ class _ChannelDetailsHero extends StatelessWidget {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: context.mobileTypography.identityDetails.copyWith(
-                  color: context.mobileTokens.muted,
+                  color: context.appColors.channelInfoHeroForeground.withValues(
+                    alpha: 0.8,
+                  ),
                 ),
               ),
             ],

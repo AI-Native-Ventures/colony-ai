@@ -42,9 +42,6 @@ const GENERIC_ERROR_AGENT = {
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
-    timeout: 10_000,
-  });
   await openAgentTemplatesView(page);
 }
 

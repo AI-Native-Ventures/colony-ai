@@ -206,6 +206,7 @@ export const CHANNEL_MESSAGE_EVENT_KINDS = [
   KIND_STREAM_MESSAGE_V2,
   KIND_FORUM_POST,
   KIND_FORUM_COMMENT,
+  KIND_ASK_ACTION,
 ] as const;
 
 // Keep this in sync with the Home-feed mention query in buzz-db.
@@ -260,6 +261,7 @@ export const CHANNEL_TIMELINE_CONTENT_KINDS = [
   KIND_JOB_CANCEL, // 43005
   KIND_JOB_ERROR, // 43006
   KIND_HUDDLE_STARTED, // 48100 — huddle session card
+  KIND_ASK_ACTION, // 47032, ask create card in its thread
 ] as const;
 
 // Timeline kinds that are NOT conversational: relay-signed system rows

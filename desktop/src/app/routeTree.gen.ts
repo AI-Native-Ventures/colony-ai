@@ -56,6 +56,7 @@ import { Route as factoryDotreviewDotrunIdRouteImport } from "./routes/factory.r
 import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/factory.project.$projectId";
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
+import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
@@ -323,6 +324,12 @@ const channelsDotpinsDotchannelIdRoute =
     path: "/channels/pins/$channelId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const asksDotchannelIdDotaskIdRoute =
+  asksDotchannelIdDotaskIdRouteImport.update({
+    id: "/asks/$channelId/$askId",
+    path: "/asks/$channelId/$askId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -368,6 +375,7 @@ export interface FileRoutesByFullPath {
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
@@ -422,6 +430,7 @@ export interface FileRoutesByTo {
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
@@ -477,6 +486,7 @@ export interface FileRoutesById {
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/workflows/$workflowId": typeof workflowsDotworkflowIdRoute;
+  "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
   "/factory/plan/$planId": typeof factoryDotplanDotplanIdRoute;
   "/factory/project/$projectId": typeof factoryDotprojectDotprojectIdRoute;
@@ -533,6 +543,7 @@ export interface FileRouteTypes {
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
@@ -587,6 +598,7 @@ export interface FileRouteTypes {
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
@@ -641,6 +653,7 @@ export interface FileRouteTypes {
     | "/today/updates"
     | "/work/$workId"
     | "/workflows/$workflowId"
+    | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
     | "/factory/plan/$planId"
     | "/factory/project/$projectId"
@@ -696,6 +709,7 @@ export interface RootRouteChildren {
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
   workflowsDotworkflowIdRoute: typeof workflowsDotworkflowIdRoute;
+  asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
   factoryDotplanDotplanIdRoute: typeof factoryDotplanDotplanIdRoute;
   factoryDotprojectDotprojectIdRoute: typeof factoryDotprojectDotprojectIdRoute;
@@ -1072,6 +1086,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotpinsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/asks/$channelId/$askId": {
+      id: "/asks/$channelId/$askId";
+      path: "/asks/$channelId/$askId";
+      fullPath: "/asks/$channelId/$askId";
+      preLoaderRoute: typeof asksDotchannelIdDotaskIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -1120,6 +1141,7 @@ const rootRouteChildren: RootRouteChildren = {
   todayDotupdatesRoute: todayDotupdatesRoute,
   workDotworkIdRoute: workDotworkIdRoute,
   workflowsDotworkflowIdRoute: workflowsDotworkflowIdRoute,
+  asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
   factoryDotplanDotplanIdRoute: factoryDotplanDotplanIdRoute,
   factoryDotprojectDotprojectIdRoute: factoryDotprojectDotprojectIdRoute,

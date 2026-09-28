@@ -323,16 +323,29 @@ pub async fn get_workflow_draft(
 pub async fn get_workflow_runs(
     workflow_id: String,
     limit: Option<u32>,
+    before: Option<String>,
+    before_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<WorkflowRunsWire, String> {
     let workflow_id =
         uuid::Uuid::parse_str(&workflow_id).map_err(|_| "invalid workflow id".to_string())?;
     let limit = limit.unwrap_or(20).clamp(1, 100);
-    get_relay_json(
-        &state,
-        &format!("/workflows/{workflow_id}/runs?limit={limit}"),
-    )
-    .await
+    if before.is_some() != before_id.is_some() {
+        return Err("before and beforeId must be supplied together".to_string());
+    }
+    let query = {
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query.append_pair("limit", &limit.to_string());
+        if let (Some(before), Some(before_id)) = (before, before_id) {
+            uuid::Uuid::parse_str(&before_id)
+                .map_err(|_| "invalid workflow run cursor id".to_string())?;
+            query
+                .append_pair("before", &before)
+                .append_pair("before_id", &before_id);
+        }
+        query.finish()
+    };
+    get_relay_json(&state, &format!("/workflows/{workflow_id}/runs?{query}")).await
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────

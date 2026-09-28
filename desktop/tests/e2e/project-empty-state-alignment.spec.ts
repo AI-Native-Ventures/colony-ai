@@ -20,6 +20,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");

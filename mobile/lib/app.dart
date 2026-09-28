@@ -17,6 +17,7 @@ import 'features/activity/activity_provider.dart';
 import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
+import 'features/activity/compose_drafts_provider.dart';
 import 'features/auth/account_claim_prompt.dart';
 import 'features/auth/account_claim_status_provider.dart';
 import 'features/auth/auth_entry_page.dart';
@@ -28,6 +29,8 @@ import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
 import 'features/home/company_hub_page.dart';
+import 'features/goals/goal_detail_page.dart';
+import 'features/goals/goals_page.dart';
 import 'features/today/today_models.dart';
 import 'features/today/today_page.dart';
 import 'features/invites/invite_join_provider.dart';
@@ -41,6 +44,8 @@ import 'features/pulse/team_updates_page.dart';
 import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
+import 'features/channels/deliverable_approval_page.dart';
+import 'features/channels/deliverable_review_provider.dart';
 import 'features/channels/deep_link_dispatcher.dart';
 import 'features/channels/compose_bar.dart';
 import 'features/channels/message_content.dart';
@@ -79,6 +84,9 @@ import 'features/settings/settings_privacy_page.dart';
 import 'features/settings/settings_clear_cache_page.dart';
 import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
+import 'shared/business/mobile_business_entry_points.dart';
+import 'shared/company/goals/goal_records.dart';
+import 'shared/company/goals/goal_repository.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/navigation/mobile_route.dart';
@@ -199,6 +207,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             profileName: profile?.displayName,
             profileInitials: profile?.initials,
             profileAvatarUrl: profile?.avatarUrl,
+            profilePubkey: profile?.pubkey,
             reviewItems: reviewItems,
             movingItems: movingItems,
             teamUpdate: teamUpdate,
@@ -229,6 +238,18 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     .register(MobileRoutes.activity, (context, routeContext) {
       return ActivityHomePage(
         tabReselection: routeContext.tabReselection,
+        onComposeUpdate: (composeContext) async {
+          final container = ProviderScope.containerOf(
+            composeContext,
+            listen: false,
+          );
+          final published = await MobileNavigation.openUpdateCompose(
+            composeContext,
+          );
+          if (published == true) {
+            container.invalidate(globalNotesProvider);
+          }
+        },
         updatesPageBuilder: (_, published) =>
             TeamUpdatesPage(initiallyPublished: published),
         onOpenItem: (item) => Navigator.of(context).push(
@@ -236,6 +257,67 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             builder: (_) => ActivityPage(initialItemId: item.id),
           ),
         ),
+      );
+    })
+    .register(MobileBusinessRoutes.goals, (context, _) => const GoalsPage())
+    .register(MobileBusinessRoutes.goalDetail, (context, goalId) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final goalAsync = ref.watch(goalHeadProvider(goalId));
+          final goalHeads =
+              ref.watch(goalHeadsProvider).asData?.value ?? const [];
+          final currentGoal = goalAsync.asData?.value;
+          final parentGoalId = currentGoal?.head.goal?.parentGoalId;
+          final parentGoal = parentGoalId == null
+              ? null
+              : goalHeads
+                    .where((record) => record.head.goalId == parentGoalId)
+                    .firstOrNull;
+          final channels =
+              ref.watch(channelsProvider).asData?.value ?? const [];
+          final linkedChannelIds = <String>{
+            ...?currentGoal?.head.goal?.linkedChannelIds,
+            ...?parentGoal?.head.goal?.linkedChannelIds,
+          };
+          final linkedChannels = channels
+              .where(
+                (channel) =>
+                    !channel.isForum && linkedChannelIds.contains(channel.id),
+              )
+              .toList();
+          VoidCallback? onShareInChat;
+          VoidCallback? onOpenDiscussion;
+          if (linkedChannels.length == 1) {
+            final channel = linkedChannels.single;
+            onOpenDiscussion = () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => ChannelDetailPage(
+                    channel: channel,
+                    routeRegistry: _mobileRouteRegistry,
+                    openQuickActions: () =>
+                        ChannelQuickActionsLauncher.openFromHome(ref),
+                  ),
+                ),
+              );
+            };
+            onShareInChat = () {
+              ref
+                  .read(composeDraftsProvider.notifier)
+                  .save(
+                    key: composeDraftKey(channel.id),
+                    channelId: channel.id,
+                    text: buildGoalLink(goalId),
+                  );
+              onOpenDiscussion!();
+            };
+          }
+          return GoalDetailPage(
+            goalId: goalId,
+            onShareInChat: onShareInChat,
+            onOpenDiscussion: onOpenDiscussion,
+          );
+        },
       );
     })
     .register(MobileRoutes.business, (context, routeContext) {
@@ -478,7 +560,11 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         memberCount: arguments.memberCount,
         presentation: _forumPresentation(),
       );
-    });
+    })
+    .register(
+      ChannelDeliverableRoutes.review,
+      (context, request) => DeliverableApprovalPage(request: request),
+    );
 
 final _currentDeviceName = switch (defaultTargetPlatform) {
   TargetPlatform.iOS => 'This iPhone',

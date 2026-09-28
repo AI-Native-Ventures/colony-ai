@@ -142,20 +142,24 @@ class _ChannelTile extends ConsumerWidget {
                   const SizedBox(height: Grid.half),
                   Container(
                     key: ValueKey('channel-unread-badge-${channel.id}'),
-                    constraints: const BoxConstraints(minWidth: Grid.lg),
+                    constraints: const BoxConstraints(
+                      minWidth: MobileLayoutTokens.conversationUnreadBadgeSize,
+                      minHeight: MobileLayoutTokens.conversationUnreadBadgeSize,
+                    ),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: Grid.half,
-                      vertical: Grid.quarter,
+                      horizontal: Grid.quarter,
                     ),
                     decoration: BoxDecoration(
-                      color: context.appColors.plum,
-                      borderRadius: BorderRadius.circular(Radii.tapTarget),
+                      color:
+                          context.appColors.conversationUnreadBadgeBackground,
+                      borderRadius: BorderRadius.circular(Radii.sm),
                     ),
                     alignment: Alignment.center,
                     child: Text(
                       unreadCount == 99 ? '99+' : '$unreadCount',
                       style: context.mobileTypography.identityStatus.copyWith(
-                        color: context.mobileTokens.onAction,
+                        color:
+                            context.appColors.conversationUnreadBadgeForeground,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -217,14 +221,33 @@ class _ConversationAvatar extends ConsumerWidget {
     final size = MobileLayoutTokens.companyHeaderAvatarSize;
     if (!channel.isDm) {
       final appColors = context.appColors;
+      final normalizedName = channel.name.toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]+'),
+        '-',
+      );
       final channelTone = channel.name.toLowerCase().runes.fold<int>(
         0,
         (sum, rune) => sum + rune,
       );
-      final backgroundGradient = switch (channelTone % 3) {
-        0 => appColors.personAvatarGradient,
-        1 => appColors.sageAvatarGradient,
-        _ => appColors.agentAvatarGradient,
+      final tone = switch (normalizedName) {
+        'olive-studio' => _ConversationAvatarTone.lilac,
+        'marketing' || 'team-updates' => _ConversationAvatarTone.apricot,
+        'sales' => _ConversationAvatarTone.sage,
+        _ => switch (channelTone % 3) {
+          0 => _ConversationAvatarTone.apricot,
+          1 => _ConversationAvatarTone.sage,
+          _ => _ConversationAvatarTone.lilac,
+        },
+      };
+      final backgroundGradient = switch (tone) {
+        _ConversationAvatarTone.apricot => appColors.personAvatarGradient,
+        _ConversationAvatarTone.sage => appColors.sageAvatarGradient,
+        _ConversationAvatarTone.lilac => appColors.agentAvatarGradient,
+      };
+      final channelForeground = switch (tone) {
+        _ConversationAvatarTone.apricot => appColors.identityPersonForeground,
+        _ConversationAvatarTone.sage => appColors.identitySageForeground,
+        _ConversationAvatarTone.lilac => appColors.identityAgentForeground,
       };
       return DecoratedBox(
         key: ValueKey('conversation-avatar-${channel.id}'),
@@ -239,12 +262,12 @@ class _ConversationAvatar extends ConsumerWidget {
                 ? Icon(
                     LucideIcons.fileText,
                     size: Grid.sm,
-                    color: appColors.plum,
+                    color: channelForeground,
                   )
                 : Text(
                     '#',
                     style: context.mobileTypography.conversation.copyWith(
-                      color: context.appColors.plum,
+                      color: channelForeground,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -293,6 +316,16 @@ class _ConversationAvatar extends ConsumerWidget {
     if (otherPubkey != null && profile == null) {
       ref.read(userCacheProvider.notifier).preload([otherPubkey]);
     }
+    if (otherPubkey != null) {
+      ref.read(presenceCacheProvider.notifier).track([otherPubkey]);
+    }
+    final isOnline =
+        otherPubkey != null &&
+        ref.watch(
+          presenceCacheProvider.select(
+            (presence) => presence[otherPubkey] == 'online',
+          ),
+        );
     final fallbackInitial =
         profile?.initials ??
         dmAvatarInitial(channel, currentPubkey: currentPubkey);
@@ -303,6 +336,7 @@ class _ConversationAvatar extends ConsumerWidget {
       kind: isAgent ? IdentityKind.agent : IdentityKind.person,
       imageUrl: profile?.avatarUrl,
       size: size,
+      isOnline: isOnline,
       semanticLabel: resolveDmChannelDisplayLabel(
         channel,
         currentPubkey: currentPubkey,
@@ -311,3 +345,5 @@ class _ConversationAvatar extends ConsumerWidget {
     );
   }
 }
+
+enum _ConversationAvatarTone { apricot, sage, lilac }

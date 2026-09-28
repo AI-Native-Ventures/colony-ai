@@ -86,6 +86,11 @@ type RawWorkflowRunsResponse = {
   next: RawWorkflowRunCursor | null;
 };
 
+export type WorkflowRunsPage = {
+  runs: WorkflowRun[];
+  next: RawWorkflowRunCursor | null;
+};
+
 type RawWorkflowApproval = {
   approval_ref: string;
   workflow_id: string;
@@ -350,11 +355,25 @@ export async function getWorkflowRuns(
   workflowId: string,
   limit?: number,
 ): Promise<WorkflowRun[]> {
+  const page = await getWorkflowRunsPage(workflowId, limit);
+  return page.runs;
+}
+
+export async function getWorkflowRunsPage(
+  workflowId: string,
+  limit = 100,
+  cursor?: RawWorkflowRunCursor | null,
+): Promise<WorkflowRunsPage> {
   const raw = await invokeTauri<RawWorkflowRunsResponse>("get_workflow_runs", {
     workflowId,
-    limit: limit ?? null,
+    limit,
+    before: cursor?.before ?? null,
+    beforeId: cursor?.before_id ?? null,
   });
-  return raw.runs.map(fromRawWorkflowRun);
+  return {
+    runs: raw.runs.map(fromRawWorkflowRun),
+    next: raw.next,
+  };
 }
 
 export async function getRunApprovals(

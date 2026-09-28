@@ -33,6 +33,18 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Warm gradient for the Company hub heading.
   final Gradient companyWashGradient;
 
+  /// Light lilac-to-apricot gradient used by the channel information hero.
+  final Gradient channelInfoHeroGradient;
+
+  /// Foreground color used on the channel information hero gradient.
+  final Color channelInfoHeroForeground;
+
+  /// Fill used for unread counts in the conversation list.
+  final Color conversationUnreadBadgeBackground;
+
+  /// Text color used for unread counts in the conversation list.
+  final Color conversationUnreadBadgeForeground;
+
   /// Gradient for peach person avatars.
   final Gradient personAvatarGradient;
 
@@ -63,6 +75,10 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.identityAgentForeground,
     required this.identityPresence,
     required this.companyWashGradient,
+    required this.channelInfoHeroGradient,
+    required this.channelInfoHeroForeground,
+    required this.conversationUnreadBadgeBackground,
+    required this.conversationUnreadBadgeForeground,
     required this.personAvatarGradient,
     required this.sageAvatarGradient,
     required this.agentAvatarGradient,
@@ -85,6 +101,10 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? identityAgentForeground,
     Color? identityPresence,
     Gradient? companyWashGradient,
+    Gradient? channelInfoHeroGradient,
+    Color? channelInfoHeroForeground,
+    Color? conversationUnreadBadgeBackground,
+    Color? conversationUnreadBadgeForeground,
     Gradient? personAvatarGradient,
     Gradient? sageAvatarGradient,
     Gradient? agentAvatarGradient,
@@ -107,6 +127,16 @@ class AppColors extends ThemeExtension<AppColors> {
         identityAgentForeground ?? this.identityAgentForeground,
     identityPresence: identityPresence ?? this.identityPresence,
     companyWashGradient: companyWashGradient ?? this.companyWashGradient,
+    channelInfoHeroGradient:
+        channelInfoHeroGradient ?? this.channelInfoHeroGradient,
+    channelInfoHeroForeground:
+        channelInfoHeroForeground ?? this.channelInfoHeroForeground,
+    conversationUnreadBadgeBackground:
+        conversationUnreadBadgeBackground ??
+        this.conversationUnreadBadgeBackground,
+    conversationUnreadBadgeForeground:
+        conversationUnreadBadgeForeground ??
+        this.conversationUnreadBadgeForeground,
     personAvatarGradient: personAvatarGradient ?? this.personAvatarGradient,
     sageAvatarGradient: sageAvatarGradient ?? this.sageAvatarGradient,
     agentAvatarGradient: agentAvatarGradient ?? this.agentAvatarGradient,
@@ -157,6 +187,26 @@ class AppColors extends ThemeExtension<AppColors> {
       companyWashGradient: Gradient.lerp(
         companyWashGradient,
         other.companyWashGradient,
+        t,
+      )!,
+      channelInfoHeroGradient: Gradient.lerp(
+        channelInfoHeroGradient,
+        other.channelInfoHeroGradient,
+        t,
+      )!,
+      channelInfoHeroForeground: Color.lerp(
+        channelInfoHeroForeground,
+        other.channelInfoHeroForeground,
+        t,
+      )!,
+      conversationUnreadBadgeBackground: Color.lerp(
+        conversationUnreadBadgeBackground,
+        other.conversationUnreadBadgeBackground,
+        t,
+      )!,
+      conversationUnreadBadgeForeground: Color.lerp(
+        conversationUnreadBadgeForeground,
+        other.conversationUnreadBadgeForeground,
         t,
       )!,
       personAvatarGradient: Gradient.lerp(

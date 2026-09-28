@@ -57,6 +57,94 @@ const companyEntryDescriptionTextStyle = TextStyle(
   height: 1.2,
 );
 
+const goalCardTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 15,
+  fontWeight: FontWeight.w700,
+  height: 1.55,
+  letterSpacing: -0.4,
+);
+
+const goalCardChipTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 9,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+);
+
+const goalReferenceLabelTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 10,
+  fontWeight: FontWeight.w400,
+  height: 1.6,
+);
+
+const goalReferenceTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 11,
+  fontWeight: FontWeight.w700,
+  height: 1.6,
+);
+
+const goalSectionTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 15,
+  fontWeight: FontWeight.w700,
+  height: 1.3,
+  letterSpacing: -0.35,
+);
+
+const goalDetailTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 23,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+  letterSpacing: -0.8,
+);
+
+const goalMetricTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 26,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+  letterSpacing: -0.7,
+);
+
+const goalBodyTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 12,
+  fontWeight: FontWeight.w400,
+  height: 1.9,
+  letterSpacing: 0,
+);
+
+/// Typography for labels in the goal create and progress sheets.
+const goalFormLabelTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 11,
+  fontWeight: FontWeight.w700,
+  height: 1.25,
+  letterSpacing: 0,
+);
+
+/// Typography for values and hints in the goal form controls.
+const goalFormControlTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 13,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+  letterSpacing: 0,
+);
+
+/// Typography for left-aligned titles in mobile sheets.
+const sheetHeaderTitleTextStyle = TextStyle(
+  fontFamily: _fontFamily,
+  fontSize: 20,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+  letterSpacing: -0.15,
+);
+
 const identityInitialsTextStyle = TextStyle(
   fontFamily: _fontFamily,
   fontSize: 12,

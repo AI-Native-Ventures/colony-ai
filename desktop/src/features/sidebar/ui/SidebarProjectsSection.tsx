@@ -117,15 +117,25 @@ const SECTION_LABEL_CHEVRON_ICON_CLASS =
  * only when the Projects experiment is enabled, and only includes projects
  * the viewer owns or contributes to (optionally owned-only).
  */
-export function SidebarProjectsSection() {
+export function SidebarProjectsSection({
+  onProjectChannelSelect,
+}: {
+  onProjectChannelSelect?: (channelId: string) => void;
+}) {
   return (
     <FeatureGate feature="projects">
-      <SidebarProjectsSectionContent />
+      <SidebarProjectsSectionContent
+        onProjectChannelSelect={onProjectChannelSelect}
+      />
     </FeatureGate>
   );
 }
 
-function SidebarProjectsSectionContent() {
+function SidebarProjectsSectionContent({
+  onProjectChannelSelect,
+}: {
+  onProjectChannelSelect?: (channelId: string) => void;
+}) {
   const projectsQuery = useProjectsQuery();
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
@@ -345,6 +355,7 @@ function SidebarProjectsSectionContent() {
                                 data-testid={`sidebar-project-channel-${project.dtag}-${channel.name}`}
                                 isActive={channel.id === routeChannelId}
                                 onClick={() => {
+                                  onProjectChannelSelect?.(channel.id);
                                   void goChannel(channel.id);
                                 }}
                                 tooltip={`#${channel.name}`}

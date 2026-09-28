@@ -42,7 +42,15 @@ class _ThreadMessage extends HookConsumerWidget {
     final presentation = ref.watch(
       channelMessagePresentationProvider.select((items) => items[message.id]),
     );
+    final workItemReference = workItemReferenceFromTags(
+      message.tags,
+      clientId: channelId,
+    );
     final pk = message.pubkey.toLowerCase();
+    ref.read(presenceCacheProvider.notifier).track([pk]);
+    final isOnline = ref.watch(
+      presenceCacheProvider.select((presence) => presence[pk] == 'online'),
+    );
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
@@ -173,6 +181,7 @@ class _ThreadMessage extends HookConsumerWidget {
                               profile: profile,
                               pubkey: message.pubkey,
                               isAgent: isAgent,
+                              isOnline: isOnline,
                             ),
                           )
                         else
@@ -297,7 +306,13 @@ class _ThreadMessage extends HookConsumerWidget {
                                   onMentionTap: (pubkey) =>
                                       showUserProfileSheet(context, pubkey),
                                 ),
-                                if (presentation?.deliverable
+                                if (workItemReference != null)
+                                  DeliverableReferenceCard(
+                                    reference: workItemReference,
+                                    clientName:
+                                        channelNames[channelId] ?? channelId,
+                                  )
+                                else if (presentation?.deliverable
                                     case final deliverable?)
                                   DeliverablePreviewCard(data: deliverable),
                                 if (presentation?.quote case final quote?)

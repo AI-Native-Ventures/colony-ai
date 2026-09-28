@@ -50,10 +50,12 @@ import 'package:buzz/features/channels/thread_replies_provider.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
+import 'package:buzz/shared/company/goals/goal_repository.dart';
+import 'package:buzz/shared/company/goals/goal_records.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
-import 'package:buzz/features/profile/presence_cache_provider.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/identity/identity_components.dart';
@@ -90,6 +92,9 @@ const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
 const _otherChannelId = '22222222-3333-4444-8555-666666666666';
 const _otherHuddleChannelId = '9e875211-ae90-45df-8da9-7e9ace84ca9d';
+const _goalBannerCaptureId = '423e4567-e89b-12d3-a456-426614174000';
+const _goalBannerCaptureSecret =
+    '2222222222222222222222222222222222222222222222222222222222222222';
 
 final _mutableHuddleMembersProvider =
     NotifierProvider<_MutableHuddleMembersNotifier, List<ChannelMember>>(
@@ -272,12 +277,14 @@ Widget _buildTestable({
   HuddleHumanCountLoader? huddleHumanCountLoader,
   List<NostrEvent> huddleLifecycle = const [],
   String? huddleCurrentPubkey,
+  List<GoalHeadRecord> goalRecords = const [],
   http.Client? mediaClient,
   Widget? home,
   Brightness? brightness,
   Key? captureKey,
   bool routeInNavigationStack = false,
   String profileDisplayName = 'Self',
+  bool showCaptureSystemBars = false,
 }) {
   final resolvedChannel = channel ?? _testChannel;
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -339,6 +346,7 @@ Widget _buildTestable({
             ? huddleMembers
             : ref.watch(_mutableHuddleMembersProvider),
       ),
+      goalHeadsProvider.overrideWith((ref) async => goalRecords),
       if (forumPostsResponse != null)
         forumPostsProvider(
           _channelId,
@@ -462,7 +470,14 @@ Widget _buildTestable({
         ),
         child: RepaintBoundary(
           key: captureKey,
-          child: MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+              if (showCaptureSystemBars)
+                _DetailCaptureSystemBars(brightness ?? Brightness.light),
+            ],
+          ),
         ),
       ),
       navigatorObservers: navigatorObservers,
@@ -610,6 +625,7 @@ Widget _buildNavigationTestable({
       channelMembersProvider(
         channelB.id,
       ).overrideWith((ref) async => const <ChannelMember>[]),
+      goalHeadsProvider.overrideWith((ref) async => const []),
       userCacheProvider.overrideWith(() => _FakeUserCacheNotifier({})),
       profileProvider.overrideWith(() => _FakeProfileNotifier()),
       channelsProvider.overrideWith(
@@ -733,6 +749,125 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
+    testWidgets('channel info uses the shared title and hero wash tokens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: _testChannel,
+          brightness: Brightness.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('channel-info-action')));
+      await tester.pumpAndSettle();
+
+      final titleFinder = find.byKey(const ValueKey('channel-details-name'));
+      final title = tester.widget<Text>(titleFinder);
+      final context = tester.element(titleFinder);
+      expect(
+        title.style,
+        context.mobileTypography.companyHubTitle.copyWith(
+          color: context.appColors.channelInfoHeroForeground,
+        ),
+      );
+      final hero = tester.widget<Container>(
+        find.byKey(const ValueKey('channel-details-hero')),
+      );
+      expect(
+        (hero.decoration! as BoxDecoration).gradient,
+        context.appColors.channelInfoHeroGradient,
+      );
+    });
+
+    testWidgets(
+      'captures the v5 channel goal banner at both sizes and themes',
+      (tester) async {
+        const captureScreenshots = bool.fromEnvironment('CAPTURE_M3B_GOALS');
+        if (!captureScreenshots) return;
+
+        final fontLoader = FontLoader('Manrope')
+          ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+        await fontLoader.load();
+        final iconFontLoader =
+            FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(
+              rootBundle.load(
+                'packages/lucide_icons_flutter/assets/lucide.ttf',
+              ),
+            );
+        await iconFontLoader.load();
+
+        const captureSizes = {
+          '390x844': Size(390, 844),
+          '412x915': Size(412, 915),
+        };
+        const captureKey = ValueKey('m3b-channel-goal-banner-capture');
+        final goal = _goalBannerCaptureRecord();
+
+        for (final size in captureSizes.entries) {
+          tester.view.physicalSize = size.value;
+          tester.view.devicePixelRatio = 1;
+          tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+          tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+          for (final brightness in [Brightness.light, Brightness.dark]) {
+            final mode = brightness == Brightness.light ? 'light' : 'dark';
+            final output = Directory(
+              '/tmp/m3b-goals-visual-sheets/${size.key}/$mode',
+            );
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = _CaptureFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+              output.path,
+            );
+
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: const [],
+                goalRecords: [goal],
+                channel: _testChannel,
+                brightness: brightness,
+                disableAnimations: true,
+                captureKey: captureKey,
+                showCaptureSystemBars: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+              findsOneWidget,
+            );
+            expect(
+              find.text('A client-approved October campaign'),
+              findsOneWidget,
+            );
+            final banner = tester.getRect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+            );
+            debugPrint(
+              'VISUAL_CHANNEL_GOAL_BANNER ${size.key} $mode rect=$banner',
+            );
+            expect(banner.left, 21);
+            expect(banner.width, size.value.width - 42);
+            expect(banner.height, closeTo(57.6, 1));
+            await expectLater(
+              find.byKey(captureKey),
+              matchesGoldenFile('channel-goal-banner.png'),
+            );
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+            goldenFileComparator = previousComparator;
+          }
+        }
+        tester.view.resetPadding();
+        tester.view.resetViewPadding();
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      },
+    );
+
     testWidgets('captures v5 conversation routes at both sizes and themes', (
       tester,
     ) async {
@@ -1046,8 +1181,9 @@ void main() {
             );
             output.createSync(recursive: true);
             final previousComparator = goldenFileComparator;
-            goldenFileComparator = LocalFileComparator(
+            goldenFileComparator = _CaptureFileComparator(
               Uri.file('${output.path}/capture_test.dart'),
+              output.path,
             );
             await tester.pumpWidget(
               _buildTestable(
@@ -1070,9 +1206,30 @@ void main() {
                 routeInNavigationStack: true,
                 profileDisplayName: 'Lerato Molefe',
                 disableAnimations: true,
+                showCaptureSystemBars: true,
+                presence: const {
+                  'self': 'online',
+                  'mina': 'online',
+                  'sam': 'online',
+                  'noluthando': 'online',
+                },
               ),
             );
             await tester.pumpAndSettle();
+
+            final headerTitle = switch (route.name) {
+              'channel' || 'conversation-marketing' || 'conversation-sales' =>
+                find.text('# ${route.channel.name}').first,
+              'thread' => find.byKey(const ValueKey('thread-app-bar-title')),
+              _ => find.byKey(const ValueKey('dm-header-name')),
+            };
+            debugPrint(
+              'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
+              'header=${tester.getRect(headerTitle)} '
+              'date=${tester.getRect(find.text('Today · 28 September').first)} '
+              'firstMessage=${tester.getRect(find.text(route.messages.first.content).first)} '
+              'composer=${tester.getRect(find.byKey(const ValueKey('composer-surface')))}',
+            );
 
             if (route.name == 'channel') {
               expect(find.text('# olive-studio'), findsOneWidget);
@@ -1173,6 +1330,14 @@ void main() {
                 find.byKey(const ValueKey('channel-info-action')),
               );
               await tester.pumpAndSettle();
+              debugPrint(
+                'VISUAL_LAYOUT channel-info ${size.key} $mode '
+                'header=${tester.getRect(find.text('Olive Studio').first)} '
+                'hero=${tester.getRect(find.byKey(const ValueKey('channel-details-hero')))} '
+                'members=${tester.getRect(find.byKey(const ValueKey('channel-details-members-card')))} '
+                'list=${tester.getRect(find.byKey(const ValueKey('channel-details-page-list')))} '
+                'safeTop=${MediaQuery.paddingOf(tester.element(find.byKey(const ValueKey('channel-details-page-list')))).top}',
+              );
               expect(find.text('Olive Studio'), findsOneWidget);
               expect(find.text('Client channel'), findsOneWidget);
               expect(find.text('In this conversation'), findsOneWidget);
@@ -11368,6 +11533,7 @@ void main() {
             channelsProvider.overrideWith(
               () => _FakeChannelsNotifier([_testChannel]),
             ),
+            goalHeadsProvider.overrideWith((ref) async => const []),
             relayClientProvider.overrideWithValue(
               RelayClient(baseUrl: 'http://localhost:3000'),
             ),
@@ -16590,4 +16756,114 @@ class _R19ForumCaptureMediaUploadService extends MediaUploadService {
     uploaded: DateTime.utc(2026, 9, 26).millisecondsSinceEpoch ~/ 1000,
     filename: pickedFile.name,
   );
+}
+
+GoalHeadRecord _goalBannerCaptureRecord() {
+  const title = 'A client-approved October campaign';
+  final dueDate = DateTime.now().add(const Duration(days: 2));
+  final dueDateValue =
+      '${dueDate.year.toString().padLeft(4, '0')}-'
+      '${dueDate.month.toString().padLeft(2, '0')}-'
+      '${dueDate.day.toString().padLeft(2, '0')}';
+  final content = jsonEncode({
+    'schemaVersion': 1,
+    'goalId': _goalBannerCaptureId,
+    'status': 'active',
+    'title': title,
+    'goal': {
+      'schemaVersion': 1,
+      'goalId': _goalBannerCaptureId,
+      'title': title,
+      'ownerPubkey':
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'doneCondition': 'Every campaign has an owner and approved direction.',
+      'linkedChannelIds': [_channelId],
+      'dueDate': dueDateValue,
+    },
+    'sourceActionEventId': List.filled(64, 'f').join(),
+  });
+  final signed = nostr.Event.from(
+    kind: EventKind.goalHead,
+    content: content,
+    tags: [
+      ['d', goalDTag(_goalBannerCaptureId)],
+    ],
+    secretKey: _goalBannerCaptureSecret,
+    createdAt: 1791800000,
+    verify: false,
+  );
+  final event = NostrEvent.fromJson(signed.toMap());
+  return parseGoalHeadEvent(event, event.pubkey)!;
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _DetailCaptureSystemBars extends StatelessWidget {
+  const _DetailCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

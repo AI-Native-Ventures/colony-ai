@@ -112,6 +112,38 @@ Run each command, verify exit code 0 and check output. Most commands
 return JSON (pipe through `jq .` to validate). Commands are ordered so
 earlier ones create resources that later ones need.
 
+### 6.0 Company asks
+
+Create commands take a typed `AskRecord` JSON object. The record includes its
+own ask UUID and thread root event ID. Use `-` to read JSON from stdin:
+
+```bash
+ASK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+jq -n --arg ask_id "$ASK_ID" --arg root_id "$EVENT_ID" '{
+  schemaVersion: 1,
+  askId: $ask_id,
+  type: "question",
+  category: "general",
+  title: "Should we ship this change?",
+  threadRootEventId: $root_id
+}' | buzz asks create --channel "$CHANNEL_ID" --ask - | jq .
+
+# Use the ask UUID and current head event ID returned by `buzz asks list`.
+buzz asks list --channel "$CHANNEL_ID" | jq .
+buzz asks respond --channel "$CHANNEL_ID" --ask "$ASK_ID" \
+  --expected-head-event-id "$ASK_HEAD_EVENT_ID" --outcome answered \
+  --answer "Ship after the review is complete." | jq .
+
+# Cancel an open ask at its current head.
+buzz asks cancel --channel "$CHANNEL_ID" --ask "$ASK_ID" \
+  --expected-head-event-id "$ASK_HEAD_EVENT_ID" --reason "The decision changed." | jq .
+```
+
+Approval and verdict responses require `--reason`. Choice responses use
+`--option-id`. Checklist responses use `--checked-item-ids` with a JSON array
+containing every item ID. Ask command failures print the relay rejection
+message so the agent can refresh the current head and retry with new context.
+
 ### 6.1 Channels
 
 ```bash

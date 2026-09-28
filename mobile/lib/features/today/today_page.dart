@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/identity/identity_components.dart';
+import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import 'today_models.dart';
 
@@ -23,6 +24,7 @@ class TodayPage extends StatelessWidget {
     required this.onRetryActivity,
     this.profileInitials,
     this.profileAvatarUrl,
+    this.profilePubkey,
     this.now,
     super.key,
   });
@@ -31,6 +33,7 @@ class TodayPage extends StatelessWidget {
   final String? profileName;
   final String? profileInitials;
   final String? profileAvatarUrl;
+  final String? profilePubkey;
   final AsyncValue<List<TodayReviewItem>> reviewItems;
   final AsyncValue<List<TodayProgressItem>> movingItems;
   final AsyncValue<TodayTeamUpdate?> teamUpdate;
@@ -65,6 +68,7 @@ class TodayPage extends StatelessWidget {
               profileName: profileName,
               profileInitials: profileInitials,
               profileAvatarUrl: profileAvatarUrl,
+              profilePubkey: profilePubkey,
               onOpenUpdates: onOpenUpdates,
             ),
           ),
@@ -107,12 +111,13 @@ class TodayPage extends StatelessWidget {
   }
 }
 
-class _TodayHeader extends StatelessWidget {
+class _TodayHeader extends ConsumerWidget {
   const _TodayHeader({
     required this.communityName,
     required this.profileName,
     required this.profileInitials,
     required this.profileAvatarUrl,
+    required this.profilePubkey,
     required this.onOpenUpdates,
   });
 
@@ -120,20 +125,29 @@ class _TodayHeader extends StatelessWidget {
   final String? profileName;
   final String? profileInitials;
   final String? profileAvatarUrl;
+  final String? profilePubkey;
   final ValueChanged<BuildContext> onOpenUpdates;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.mobileTokens;
     final name = communityName?.trim();
     final personName = profileName?.trim();
+    final pubkey = profilePubkey?.toLowerCase();
+    if (pubkey != null && pubkey.isNotEmpty) {
+      ref.read(presenceCacheProvider.notifier).track([pubkey]);
+    }
+    final isOnline =
+        pubkey != null &&
+        ref.watch(
+              presenceCacheProvider.select((presence) => presence[pubkey]),
+            ) ==
+            'online';
     return Container(
+      key: const ValueKey('today-header'),
       height: 66,
       padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
-      decoration: BoxDecoration(
-        color: tokens.paper,
-        border: Border(bottom: BorderSide(color: tokens.line)),
-      ),
+      decoration: BoxDecoration(color: tokens.paper),
       child: Row(
         children: [
           IdentityAvatar(
@@ -141,6 +155,7 @@ class _TodayHeader extends StatelessWidget {
             kind: IdentityKind.person,
             imageUrl: profileAvatarUrl,
             size: 39,
+            isOnline: isOnline,
             semanticLabel: personName?.isNotEmpty == true ? personName : null,
           ),
           const SizedBox(width: Grid.xs),

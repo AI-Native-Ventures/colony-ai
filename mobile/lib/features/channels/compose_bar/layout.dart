@@ -335,9 +335,12 @@ class _ComposeBarLayout extends HookWidget {
 
   Widget _trailingAction(BuildContext context) {
     if (controller.text.trim().isEmpty && attachments.isEmpty && !isSending) {
-      return _VoiceNoteButton(
-        isDisabled: hasPendingUploads,
-        onTap: onVoiceNote,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _VoiceNoteButton(isDisabled: hasPendingUploads, onTap: onVoiceNote),
+          _SendButton(isDisabled: true, isSending: false, onTap: onSend),
+        ],
       );
     }
     return _SendButton(

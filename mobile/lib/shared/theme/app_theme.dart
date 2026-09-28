@@ -22,6 +22,7 @@ class Radii {
   static const double container = 20.0;
   static const double card = container; // Backwards-compatible card alias.
   static const double companyCard = 18.0;
+  static const double tag = 7.0;
   static const double companyPinned = 13.0;
   static const double compactCard = 15.0;
   static const double field = 12.0;
@@ -103,6 +104,19 @@ class AppTheme {
     end: Alignment.bottomRight,
     colors: [Color(0x1AD7B8E4), Color(0x1AEFCBB5)],
   );
+  static const _companyWashGradientDark = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0x33D7B8E4), Color(0x33EFCBB5)],
+  );
+  static const _channelInfoHeroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFE3D3F0), Color(0xFFF4DFD6)],
+  );
+  static const _channelInfoHeroForeground = Color(0xFF684674);
+  static const _conversationUnreadBadgeBackground = Color(0xFF805C99);
+  static const _conversationUnreadBadgeForeground = Color(0xFFFFFFFF);
   static const _personAvatarGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
@@ -140,6 +154,10 @@ class AppTheme {
       identityAgentForeground: const Color(0xFF583775),
       identityPresence: const Color(0xFF64A28A),
       companyWashGradient: _companyWashGradient,
+      channelInfoHeroGradient: _channelInfoHeroGradient,
+      channelInfoHeroForeground: _channelInfoHeroForeground,
+      conversationUnreadBadgeBackground: _conversationUnreadBadgeBackground,
+      conversationUnreadBadgeForeground: _conversationUnreadBadgeForeground,
       personAvatarGradient: _personAvatarGradient,
       sageAvatarGradient: _sageAvatarGradient,
       agentAvatarGradient: _agentAvatarGradient,
@@ -185,7 +203,11 @@ class AppTheme {
       identitySageForeground: const Color(0xFF315F53),
       identityAgentForeground: const Color(0xFF583775),
       identityPresence: const Color(0xFF64A28A),
-      companyWashGradient: _companyWashGradient,
+      companyWashGradient: _companyWashGradientDark,
+      channelInfoHeroGradient: _channelInfoHeroGradient,
+      channelInfoHeroForeground: _channelInfoHeroForeground,
+      conversationUnreadBadgeBackground: _conversationUnreadBadgeBackground,
+      conversationUnreadBadgeForeground: _conversationUnreadBadgeForeground,
       personAvatarGradient: _personAvatarGradient,
       sageAvatarGradient: _sageAvatarGradient,
       agentAvatarGradient: _agentAvatarGradient,

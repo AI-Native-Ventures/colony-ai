@@ -29,11 +29,14 @@ import {
   THREAD_REPLY_LINE_WIDTH_REM,
 } from "@/features/messages/lib/threadTreeLayout";
 import {
+  KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
   KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_DIFF,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
+import { AskCard } from "@/features/company-asks/ui/AskCard";
+import { askIdFromAction } from "@/features/company-asks/askRecords";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -433,6 +436,19 @@ export const MessageRow = React.memo(
               message={message}
             />
           );
+        case KIND_ASK_ACTION: {
+          const askId = askIdFromAction(message.body);
+          return askId ? (
+            <AskCard
+              askId={askId}
+              channelId={channelId}
+              currentPubkey={currentPubkey}
+              profiles={profiles}
+            />
+          ) : (
+            <p role="alert">This ask request could not be read.</p>
+          );
+        }
         default: {
           const waveMessage = parseWaveMessageContent(message.body);
           if (waveMessage) {

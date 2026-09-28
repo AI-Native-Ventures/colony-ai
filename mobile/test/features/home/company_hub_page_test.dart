@@ -34,6 +34,10 @@ void main() {
     final routes = MobileRouteRegistry.empty()
         .register(MobileBusinessRoutes.team, (_, _) => const Text('Team route'))
         .register(
+          MobileBusinessRoutes.goals,
+          (_, _) => const Text('Goals route'),
+        )
+        .register(
           MobileBusinessRoutes.discovery,
           (_, _) => const Text('Discovery route'),
         );
@@ -45,15 +49,27 @@ void main() {
     expect(find.text('LM'), findsOneWidget);
     expect(find.text('RUN THE COMPANY'), findsOneWidget);
     expect(find.text('Team'), findsOneWidget);
+    expect(find.text('Goals'), findsOneWidget);
     expect(find.text('People & agents'), findsOneWidget);
     expect(find.text('GROW THE BUSINESS'), findsOneWidget);
     expect(find.text('Discovery'), findsOneWidget);
-    expect(find.text('Goals'), findsNothing);
     expect(find.text('Work'), findsNothing);
     expect(find.text('Workflows'), findsNothing);
     expect(find.text('Social'), findsNothing);
     expect(find.text('Website'), findsNothing);
     expect(find.text('Money'), findsNothing);
+
+    await tester.tap(find.text('Goals'));
+    await tester.pumpAndSettle();
+    expect(find.text('Goals route'), findsOneWidget);
+  });
+
+  testWidgets('opens a registered Team destination', (tester) async {
+    final routes = MobileRouteRegistry.empty().register(
+      MobileBusinessRoutes.team,
+      (_, _) => const Text('Team route'),
+    );
+    await tester.pumpWidget(_companyApp(routes));
 
     await tester.tap(find.text('Team'));
     await tester.pumpAndSettle();
