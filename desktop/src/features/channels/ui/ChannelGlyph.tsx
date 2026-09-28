@@ -1,4 +1,4 @@
-import { FileText, Hash, Lock } from "lucide-react";
+import { Hash, Lock, MessageSquare } from "lucide-react";
 
 import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
 import { ProjectChannelIcon } from "@/features/projects/ui/ProjectChannelIcon";
@@ -23,7 +23,7 @@ export function ChannelGlyph({
     return <Lock className={iconClass} />;
   }
   if (channel.channelType === "forum") {
-    return <FileText className={iconClass} />;
+    return <MessageSquare className={iconClass} />;
   }
   return <Hash className={iconClass} />;
 }

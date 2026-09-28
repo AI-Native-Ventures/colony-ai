@@ -71,6 +71,24 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(page.getByTestId("sidebar-settings")).toBeVisible();
   await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
 
+  for (const group of ["conversations", "company", "business", "library"]) {
+    const chevron = sidebar
+      .getByTestId(`sidebar-nav-${group}-toggle`)
+      .locator("svg");
+    await expect(chevron).toHaveCSS("width", "20px");
+    await expect(chevron).toHaveCSS("border-top-width", "1px");
+    await expect(chevron).toHaveCSS("border-radius", "4px");
+  }
+
+  await expect(sidebar.locator(".sidebar-navigation-utility")).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
+  await expect(sidebar.locator(".sidebar-navigation-profile")).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
+
   for (const label of [
     "Team",
     "Discovery",
