@@ -557,7 +557,6 @@ body:has(.w20-settings-shell) {
   border-bottom: 0;
   border-radius: 0 0 11px 11px;
   background: #fffefd;
-  box-shadow: 0 5px 20px rgb(48 32 56 / 5%);
 }
 
 .dark .w20-settings-surface {
@@ -565,7 +564,6 @@ body:has(.w20-settings-shell) {
   border-top: 0;
   border-radius: 0 0 11px 11px;
   background: #211e26;
-  box-shadow: 0 5px 20px rgb(0 0 0 / 15%);
 }
 
 .w20-inner-tabs {
