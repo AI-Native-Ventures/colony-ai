@@ -17,6 +17,7 @@ import 'features/activity/activity_provider.dart';
 import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
+import 'features/activity/compose_drafts_provider.dart';
 import 'features/auth/account_claim_prompt.dart';
 import 'features/auth/account_claim_status_provider.dart';
 import 'features/auth/auth_entry_page.dart';
@@ -28,6 +29,8 @@ import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
 import 'features/home/company_hub_page.dart';
+import 'features/goals/goal_detail_page.dart';
+import 'features/goals/goals_page.dart';
 import 'features/today/today_models.dart';
 import 'features/today/today_page.dart';
 import 'features/invites/invite_join_provider.dart';
@@ -81,6 +84,9 @@ import 'features/settings/settings_privacy_page.dart';
 import 'features/settings/settings_clear_cache_page.dart';
 import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
+import 'shared/business/mobile_business_entry_points.dart';
+import 'shared/company/goals/goal_records.dart';
+import 'shared/company/goals/goal_repository.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/navigation/mobile_route.dart';
@@ -251,6 +257,48 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             builder: (_) => ActivityPage(initialItemId: item.id),
           ),
         ),
+      );
+    })
+    .register(MobileBusinessRoutes.goals, (context, _) => const GoalsPage())
+    .register(MobileBusinessRoutes.goalDetail, (context, goalId) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final goalAsync = ref.watch(goalHeadProvider(goalId));
+          final channels =
+              ref.watch(channelsProvider).asData?.value ?? const [];
+          final linkedChannelIds =
+              goalAsync.asData?.value?.head.goal?.linkedChannelIds ?? const [];
+          final linkedChannels = channels
+              .where(
+                (channel) =>
+                    !channel.isForum && linkedChannelIds.contains(channel.id),
+              )
+              .toList();
+          VoidCallback? onShareInChat;
+          if (linkedChannels.length == 1) {
+            final channel = linkedChannels.single;
+            onShareInChat = () {
+              ref
+                  .read(composeDraftsProvider.notifier)
+                  .save(
+                    key: composeDraftKey(channel.id),
+                    channelId: channel.id,
+                    text: buildGoalLink(goalId),
+                  );
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => ChannelDetailPage(
+                    channel: channel,
+                    routeRegistry: _mobileRouteRegistry,
+                    openQuickActions: () =>
+                        ChannelQuickActionsLauncher.openFromHome(ref),
+                  ),
+                ),
+              );
+            };
+          }
+          return GoalDetailPage(goalId: goalId, onShareInChat: onShareInChat);
+        },
       );
     })
     .register(MobileRoutes.business, (context, routeContext) {

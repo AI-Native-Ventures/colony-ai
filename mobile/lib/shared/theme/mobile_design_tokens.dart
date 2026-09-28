@@ -216,6 +216,42 @@ abstract final class MobileLayoutTokens {
   /// Interior padding for a Company hub destination card.
   static const companyCardPadding = 17.0;
 
+  /// Interior padding for a company goal card.
+  static const goalCardPadding = 19.0;
+
+  /// Gap between goal cards and the following section heading.
+  static const goalSectionSpacing = 23.0;
+
+  /// Space between a goal section heading and its first card.
+  static const goalSectionTitleGap = 13.0;
+
+  /// Vertical gap between the status row and a goal card title.
+  static const goalCardHeaderGap = 14.0;
+
+  /// Gap above the owner row in goal cards.
+  static const goalCardOwnerGap = 15.0;
+
+  /// Padding inside the goal detail gradient hero.
+  static const goalHeroPadding = 22.0;
+
+  /// Space beneath the goal detail gradient hero.
+  static const goalHeroBottomGap = 20.0;
+
+  /// Height of goal progress indicators.
+  static const goalProgressHeight = 6.0;
+
+  /// Margin around goal progress indicators.
+  static const goalProgressMargin = 12.0;
+
+  /// Gap between the goal detail action buttons.
+  static const goalActionsGap = 9.0;
+
+  /// Vertical margin around goal detail actions.
+  static const goalActionsMargin = 23.0;
+
+  /// Vertical padding for goal owner and due date rows.
+  static const goalInfoRowPadding = 15.0;
+
   /// Icon size within a Company hub destination card.
   static const companyCardIconSize = 18.0;
 

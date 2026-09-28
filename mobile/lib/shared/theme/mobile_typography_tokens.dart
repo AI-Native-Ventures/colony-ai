@@ -18,6 +18,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     required this.companySection,
     required this.companyEntryTitle,
     required this.companyEntryDescription,
+    required this.goalCardTitle,
+    required this.goalSectionTitle,
+    required this.goalDetailTitle,
+    required this.goalMetric,
+    required this.goalBody,
     required this.identityInitials,
     required this.identityName,
     required this.identityDetails,
@@ -70,6 +75,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     companySection: companySectionTextStyle,
     companyEntryTitle: companyEntryTitleTextStyle,
     companyEntryDescription: companyEntryDescriptionTextStyle,
+    goalCardTitle: goalCardTitleTextStyle,
+    goalSectionTitle: goalSectionTitleTextStyle,
+    goalDetailTitle: goalDetailTitleTextStyle,
+    goalMetric: goalMetricTextStyle,
+    goalBody: goalBodyTextStyle,
     identityInitials: identityInitialsTextStyle,
     identityName: identityNameTextStyle,
     identityDetails: identityDetailsTextStyle,
@@ -102,6 +112,21 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
   /// Typography for Company hub destination descriptions.
   final TextStyle companyEntryDescription;
 
+  /// Typography for goal cards in the Company Goals view.
+  final TextStyle goalCardTitle;
+
+  /// Typography for goal section headings.
+  final TextStyle goalSectionTitle;
+
+  /// Typography for a goal title inside its gradient hero.
+  final TextStyle goalDetailTitle;
+
+  /// Typography for the current progress value in a goal hero.
+  final TextStyle goalMetric;
+
+  /// Typography for goal descriptions and done conditions.
+  final TextStyle goalBody;
+
   /// Typography for identity initials.
   final TextStyle identityInitials;
 
@@ -131,6 +156,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     TextStyle? companySection,
     TextStyle? companyEntryTitle,
     TextStyle? companyEntryDescription,
+    TextStyle? goalCardTitle,
+    TextStyle? goalSectionTitle,
+    TextStyle? goalDetailTitle,
+    TextStyle? goalMetric,
+    TextStyle? goalBody,
     TextStyle? identityInitials,
     TextStyle? identityName,
     TextStyle? identityDetails,
@@ -150,6 +180,11 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
     companyEntryTitle: companyEntryTitle ?? this.companyEntryTitle,
     companyEntryDescription:
         companyEntryDescription ?? this.companyEntryDescription,
+    goalCardTitle: goalCardTitle ?? this.goalCardTitle,
+    goalSectionTitle: goalSectionTitle ?? this.goalSectionTitle,
+    goalDetailTitle: goalDetailTitle ?? this.goalDetailTitle,
+    goalMetric: goalMetric ?? this.goalMetric,
+    goalBody: goalBody ?? this.goalBody,
     identityInitials: identityInitials ?? this.identityInitials,
     identityName: identityName ?? this.identityName,
     identityDetails: identityDetails ?? this.identityDetails,
@@ -200,6 +235,19 @@ class MobileTypographyTokens extends ThemeExtension<MobileTypographyTokens> {
         other.companyEntryDescription,
         t,
       )!,
+      goalCardTitle: TextStyle.lerp(goalCardTitle, other.goalCardTitle, t)!,
+      goalSectionTitle: TextStyle.lerp(
+        goalSectionTitle,
+        other.goalSectionTitle,
+        t,
+      )!,
+      goalDetailTitle: TextStyle.lerp(
+        goalDetailTitle,
+        other.goalDetailTitle,
+        t,
+      )!,
+      goalMetric: TextStyle.lerp(goalMetric, other.goalMetric, t)!,
+      goalBody: TextStyle.lerp(goalBody, other.goalBody, t)!,
       identityInitials: TextStyle.lerp(
         identityInitials,
         other.identityInitials,
