@@ -953,7 +953,6 @@ export function AppSidebar({
                       selectedView === "channel" ? selectedChannelId : null
                     }
                     onSelectFactory={onSelectFactory}
-                    onSelectSettings={onSelectSettings}
                     scope={factoryScope}
                   />
 
