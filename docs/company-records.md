@@ -1,7 +1,7 @@
 # Colony company record contracts
 
-Status: company layer batch 1 contract (Asks, Goals) plus the reserved company
-work item shape for batch 2. Schema version: `1`. Design baseline:
+Status: company layer batches 1 and 3 contract (Asks, Goals, member positions)
+plus the reserved company work item shape for batch 2. Schema version: `1`. Design baseline:
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
 (approved 27 September 2026) and owner decisions C1 to C6 and D1 to D3.
 
@@ -26,9 +26,11 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | ---: | --- | --- |
 | 30642 | Goal head | Relay signed, replaceable |
 | 30643 | Ask head | Relay signed, replaceable |
+| 30645 | Member position head | Relay signed, replaceable |
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
 | 47033 | Ask response | Brokered, append only |
+| 47035 | Member position action | Brokered |
 
 ## Scope and storage
 
@@ -41,6 +43,9 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 - **Asks are channel-scoped.** Ask commands carry exactly one `h` tag (the
   channel of the thread) and one d-tag
   `channel:<channel-uuid>:ask:<ask-uuid>`. Reading follows channel access.
+- **Member positions are community-wide.** Commands and heads carry no `h`
+  tag. The relay resolves the community from the host. The d-tag is
+  `company:member:<pubkey>`. A position head is keyed by member pubkey.
 - **Asks sit in their thread.** The asker-signed `create` action (kind 47032)
   carries NIP-10 `e` tags to the thread root and is stored with thread
   metadata inside the broker transaction, so it takes its place in the thread,
@@ -70,13 +75,21 @@ Owner decision D2 (27 September 2026):
   rejected at create time.
 - An ask with no addressee and category `general` may be resolved by any human
   member of the ask's channel.
-- Managers resolving asks for their direct reports is reserved until reporting
-  lines exist (company layer batch 3). The `resolverPolicy` value `manager` is
-  rejected until then.
+- A human direct manager may resolve an addressed general approval ask for
+  their report once the member position head establishes the reporting line.
+  Agent managers cannot resolve approval asks. Owner and admin authority stays
+  available for every member proposal.
 - Goal authority: community owners and admins create root goals and may edit,
   archive, restore, mark achieved or delete any goal. A goal's owner may edit
   it, record progress, mark it achieved and create sub-goals under it.
   Sub-goals created by a manager for their team arrive with reporting lines.
+
+- **Member position authority:** community owners and admins may directly change
+  titles, reporting lines, and employee lifecycle state. Other members can
+  propose a change through an approval ask. A human direct manager may resolve
+  an approval ask for their report; an agent manager cannot approve it. A
+  proposal does not change the member head until the ask and member head update
+  commit in one relay transaction.
 
 A viewer without authority sees the ask or goal with a reason ("Only company
 owners and admins can decide spending"), never an enabled control that fails on
@@ -105,7 +118,9 @@ came up.
   - optional `decideBy` timestamp
   - `options` for `choice` (2 to 8 items of `{ id, label }`), `items` for
     `checklist` (1 to 20 items of `{ id, label }`), omitted otherwise
-  - optional `subject`: `{ kind: "goal" | "workflowRun" | "workItem", id }`
+  - optional `subject`: `{ kind: "goal" | "workflowRun" | "workItem" | "companyMember", id }`
+  - optional `memberProposal`: an exact-head `MemberPositionAction`, only for
+    an approval ask whose subject is the same company member
 - The asker is the signer. Any human member or managed agent of the channel may
   create a `general` ask. `money`, `hire`, `tool` and `secret` asks may be
   created by members and agents but only resolved per [Authority](#authority).
@@ -224,6 +239,73 @@ links) and messages render it as a card that opens that exact goal, sub-goals
 included. A reference to a deleted goal renders the deleted marker; a reference
 the viewer may not read renders "Goal unavailable".
 
+## Member positions
+
+Every community member may have one relay-signed kind 30645 head, addressed by
+`company:member:<lowercase-pubkey>`. The relay determines the community from the
+request host. Kind 47035 commands and kind 30645 heads carry no `h` tag and are
+community-wide. The kind integers are mirrored in the Rust, desktop, and mobile
+registries. This batch does not add mobile Team screens.
+
+`MemberPosition` contains `schemaVersion`, `pubkey`, `title`, optional
+`managerPubkey`, `kind` (`human` or `employee`), `status` (`active`, `paused`,
+or `terminated`), and optional `reason`. Pubkeys are 64 lowercase hex
+characters. A manager must be another active member in the same community. A
+member cannot report to themself, and reporting lines cannot contain cycles.
+The relay verifies the target against real community membership and derives
+human or employee kind from authoritative account and managed-agent data.
+
+`MemberPositionAction` contains `schemaVersion`, `pubkey`, `action`,
+`expectedHeadEventId`, and only the action's payload:
+
+| `action` | Payload | Rule |
+| --- | --- | --- |
+| `set_title` | `title` | Create-only when no position head exists; otherwise names the exact current head. |
+| `set_manager` | `managerPubkey` | Names the exact current head. JSON null clears the manager. |
+| `set_position` | `title` and/or `managerPubkey` | One atomic save when the edit form changes both fields. |
+| `pause` | `reason` | Employee only. Reason is required. |
+| `terminate` | `reason` | Employee only. Reason is required. Definition, lessons, and history remain. |
+| `rehire` | none | Employee only. Restores terminated status after the retained profile has been reviewed. |
+
+`set_title` and `set_position` may create an initial head only when
+`expectedHeadEventId` is absent and no head exists. Every later mutation must
+name the exact current head. The relay rejects stale heads and commits the
+action event and replacement head in one transaction. Position, manager, kind,
+status, and reason are preserved or changed as one snapshot.
+
+The relay serializes manager changes under one community-scoped advisory lock.
+It checks the complete reporting chain while holding that lock, then applies
+the exact-head precondition and replacement in the same transaction. A cycle or
+a race rejects the action without changing the head.
+
+Pause and termination keep the managed-agent definition and event history.
+Desktop actions stop a managed AI employee through the existing
+`stop_managed_agent` path before publishing the position action. If stopping
+fails, the position action is not published. Rehire restores active status
+after the retained definition and history have been reviewed.
+
+The Team list joins current relay membership with the managed-agent directory
+by pubkey and removes duplicates. Workers are not employees and never appear in
+the list, org chart, or member counts. Existing relay roles remain owner,
+admin, member, guest, and bot. The company position `kind` is not a membership
+role and does not grant spending, credential, or administrative authority.
+
+An approval ask for a member change uses ask type `approval`, subject kind
+`companyMember`, the target pubkey as its subject id, and a typed
+`memberProposal` containing the exact-head action. A termination or rehire
+proposal uses category `hire` and is addressed to an owner or admin. Other
+proposals use category `general` and are addressed to the human direct manager,
+or an owner when there is no human manager. A human direct manager may resolve
+a general proposal for their report. The relay applies an approved proposal in
+the same transaction as the ask response and member head update. Rejected,
+stale, or failed proposals change neither head.
+
+NEEDS_DESIGN: the frozen Team routes do not show where a non-owner starts a
+member-change approval ask, or how a paused employee's status and reason appear
+on message rows. Those surfaces remain unimplemented until their placement and
+behavior are approved. The reference Team list also includes a Hire employee
+action while HIRE-1 is out of scope; this batch does not implement that action.
+
 ## Company work items (reserved, batch 2)
 
 Company work items are commitments inside conversations. They extend the
@@ -243,9 +325,8 @@ the W11 client work lane merges.
 
 ## Proof boundaries
 
-This document is the batch 1 contract. Kind registration, typed content and
-validation live in `buzz-core` with unit tests. The relay brokers, desktop
-screens and mobile follow in the batch 1 lanes, each with its own proof gates:
-relay integration tests for authority and exact-head races, desktop E2E
-journeys with reload and community switching, and visual comparison against the
-approved baseline routes.
+Kind registration and typed content live in `buzz-core`; relay, SDK, CLI, and
+desktop implementation each have their own proof gates. Relay integration
+tests cover authority, exact-head races, and lifecycle side effects. Desktop
+E2E covers the list, org chart, lifecycle screens, reload, and community
+switching, with visual comparison against the approved baseline routes.

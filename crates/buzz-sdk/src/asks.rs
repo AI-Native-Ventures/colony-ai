@@ -105,6 +105,7 @@ mod tests {
             options: None,
             items: None,
             subject: None,
+            member_proposal: None,
         }
     }
 

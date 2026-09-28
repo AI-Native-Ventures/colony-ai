@@ -79,18 +79,22 @@ abstract final class EventKind {
   /// heads plus the member commands that produce them.
   static const goalHead = 30642;
   static const askHead = 30643;
+  static const memberPositionHead = 30645;
   static const goalAction = 47031;
   static const askAction = 47032;
   static const askResponse = 47033;
+  static const memberPositionAction = 47035;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
   static const companyRecordKinds = [
     goalHead,
     askHead,
+    memberPositionHead,
     goalAction,
     askAction,
     askResponse,
+    memberPositionAction,
   ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.
