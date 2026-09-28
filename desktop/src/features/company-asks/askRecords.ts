@@ -1,5 +1,6 @@
 import { verifyEvent } from "nostr-tools/pure";
 
+import { parseMemberPositionAction } from "@/features/company-team/teamModels";
 import { KIND_ASK_HEAD } from "@/shared/constants/kinds";
 import { MAX_EXPLICIT_CHANNEL_VALUES } from "@/shared/api/relayClientShared";
 import { relayClient } from "@/shared/api/relayClient";
@@ -37,7 +38,13 @@ export type AskRecord = {
   decideBy?: string | null;
   options?: AskOption[] | null;
   items?: AskOption[] | null;
-  subject?: { kind: "goal" | "workflowRun" | "workItem"; id: string } | null;
+  subject?: {
+    kind: "goal" | "workflowRun" | "workItem" | "companyMember";
+    id: string;
+  } | null;
+  memberProposal?:
+    | import("@/features/company-team/teamModels").MemberPositionAction
+    | null;
 };
 
 export type AskHead = {
@@ -128,6 +135,19 @@ function parseAskHead(content: string): AskHead {
   }
   const head = value as unknown as AskHead;
   const ask = value.ask;
+  const rawSubject = ask.subject;
+  const subject =
+    rawSubject === undefined || rawSubject === null
+      ? null
+      : isRecord(rawSubject) &&
+          typeof rawSubject.kind === "string" &&
+          typeof rawSubject.id === "string"
+        ? { kind: rawSubject.kind, id: rawSubject.id }
+        : undefined;
+  const memberProposal =
+    ask.memberProposal === undefined || ask.memberProposal === null
+      ? null
+      : parseMemberPositionAction(ask.memberProposal);
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -147,6 +167,27 @@ function parseAskHead(content: string): AskHead {
   ) {
     throw new Error(
       "The relay returned an ask head with an unsupported shape.",
+    );
+  }
+  if (
+    (rawSubject !== undefined &&
+      rawSubject !== null &&
+      subject === undefined) ||
+    (ask.memberProposal !== undefined &&
+      ask.memberProposal !== null &&
+      !memberProposal) ||
+    (memberProposal !== null &&
+      (ask.type !== "approval" ||
+        subject?.kind !== "companyMember" ||
+        subject.id !== memberProposal.pubkey ||
+        (memberProposal.action === "terminate" ||
+        memberProposal.action === "rehire"
+          ? ask.category !== "hire"
+          : ask.category !== "general"))) ||
+    (subject?.kind === "companyMember" && memberProposal === null)
+  ) {
+    throw new Error(
+      "The relay returned a malformed member-position proposal ask.",
     );
   }
   return head;

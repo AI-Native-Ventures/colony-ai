@@ -139,6 +139,7 @@ export function AppSidebar({
   onSelectSavedForLater,
   onSelectFactory,
   onSelectGoals,
+  onSelectTeam,
   onSelectClients,
   onSelectWork,
   onSelectPower,
@@ -884,6 +885,7 @@ export function AppSidebar({
 
                   <SidebarCompanyGroup
                     onSelectGoals={onSelectGoals}
+                    onSelectTeam={onSelectTeam}
                     onSelectWork={onSelectWork}
                     onSelectWorkflows={onSelectWorkflows}
                     selectedView={selectedView}

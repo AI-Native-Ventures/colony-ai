@@ -8,6 +8,7 @@ import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
 import { Route as workRouteImport } from "./routes/work";
 import { Route as todayRouteImport } from "./routes/today";
+import { Route as teamRouteImport } from "./routes/team";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
 import { Route as remindersRouteImport } from "./routes/reminders";
@@ -27,6 +28,7 @@ import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
+import { Route as teamDotorgRouteImport } from "./routes/team.org";
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
@@ -42,6 +44,10 @@ import { Route as factoryDotprojectsRouteImport } from "./routes/factory.project
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as teamDotpauseDotmemberPubkeyRouteImport } from "./routes/team.pause.$memberPubkey";
+import { Route as teamDoteditDotmemberPubkeyRouteImport } from "./routes/team.edit.$memberPubkey";
+import { Route as teamDotdetailDotmemberPubkeyRouteImport } from "./routes/team.detail.$memberPubkey";
+import { Route as teamDotarchiveDotmemberPubkeyRouteImport } from "./routes/team.archive.$memberPubkey";
 import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
@@ -72,6 +78,11 @@ const workRoute = workRouteImport.update({
 const todayRoute = todayRouteImport.update({
   id: "/today",
   path: "/today",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const teamRoute = teamRouteImport.update({
+  id: "/team",
+  path: "/team",
   getParentRoute: () => rootRouteImport,
 } as any);
 const supervisionRoute = supervisionRouteImport.update({
@@ -169,6 +180,11 @@ const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
   path: "/today/reviews-empty",
   getParentRoute: () => rootRouteImport,
 } as any);
+const teamDotorgRoute = teamDotorgRouteImport.update({
+  id: "/team/org",
+  path: "/team/org",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const salesDotserviceRoute = salesDotserviceRouteImport.update({
   id: "/sales/service",
   path: "/sales/service",
@@ -244,6 +260,30 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const teamDotpauseDotmemberPubkeyRoute =
+  teamDotpauseDotmemberPubkeyRouteImport.update({
+    id: "/team/pause/$memberPubkey",
+    path: "/team/pause/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDoteditDotmemberPubkeyRoute =
+  teamDoteditDotmemberPubkeyRouteImport.update({
+    id: "/team/edit/$memberPubkey",
+    path: "/team/edit/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDotdetailDotmemberPubkeyRoute =
+  teamDotdetailDotmemberPubkeyRouteImport.update({
+    id: "/team/detail/$memberPubkey",
+    path: "/team/detail/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDotarchiveDotmemberPubkeyRoute =
+  teamDotarchiveDotmemberPubkeyRouteImport.update({
+    id: "/team/archive/$memberPubkey",
+    path: "/team/archive/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const salesDotproposalDotproposalFormRoute =
   salesDotproposalDotproposalFormRouteImport.update({
     id: "/sales/proposal/proposal-form",
@@ -353,6 +393,7 @@ export interface FileRoutesByFullPath {
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
@@ -371,6 +412,7 @@ export interface FileRoutesByFullPath {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -390,6 +432,10 @@ export interface FileRoutesByFullPath {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
@@ -408,6 +454,7 @@ export interface FileRoutesByTo {
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
@@ -426,6 +473,7 @@ export interface FileRoutesByTo {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -445,6 +493,10 @@ export interface FileRoutesByTo {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
@@ -464,6 +516,7 @@ export interface FileRoutesById {
   "/reminders": typeof remindersRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
@@ -482,6 +535,7 @@ export interface FileRoutesById {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -501,6 +555,10 @@ export interface FileRoutesById {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
@@ -521,6 +579,7 @@ export interface FileRouteTypes {
     | "/reminders"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/work"
     | "/workflows"
@@ -539,6 +598,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -558,6 +618,10 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -576,6 +640,7 @@ export interface FileRouteTypes {
     | "/reminders"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/work"
     | "/workflows"
@@ -594,6 +659,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -613,6 +679,10 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
@@ -631,6 +701,7 @@ export interface FileRouteTypes {
     | "/reminders"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/work"
     | "/workflows"
@@ -649,6 +720,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -668,6 +740,10 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
@@ -687,6 +763,7 @@ export interface RootRouteChildren {
   remindersRoute: typeof remindersRoute;
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
+  teamRoute: typeof teamRoute;
   todayRoute: typeof todayRoute;
   workRoute: typeof workRoute;
   workflowsRoute: typeof workflowsRoute;
@@ -705,6 +782,7 @@ export interface RootRouteChildren {
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
+  teamDotorgRoute: typeof teamDotorgRoute;
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
@@ -724,6 +802,10 @@ export interface RootRouteChildren {
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
   salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
+  teamDotarchiveDotmemberPubkeyRoute: typeof teamDotarchiveDotmemberPubkeyRoute;
+  teamDotdetailDotmemberPubkeyRoute: typeof teamDotdetailDotmemberPubkeyRoute;
+  teamDoteditDotmemberPubkeyRoute: typeof teamDoteditDotmemberPubkeyRoute;
+  teamDotpauseDotmemberPubkeyRoute: typeof teamDotpauseDotmemberPubkeyRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -748,6 +830,13 @@ declare module "@tanstack/react-router" {
       path: "/today";
       fullPath: "/today";
       preLoaderRoute: typeof todayRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team": {
+      id: "/team";
+      path: "/team";
+      fullPath: "/team";
+      preLoaderRoute: typeof teamRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/supervision": {
@@ -883,6 +972,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/team/org": {
+      id: "/team/org";
+      path: "/team/org";
+      fullPath: "/team/org";
+      preLoaderRoute: typeof teamDotorgRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sales/service": {
       id: "/sales/service";
       path: "/sales/service";
@@ -986,6 +1082,34 @@ declare module "@tanstack/react-router" {
       path: "/channels/$channelId";
       fullPath: "/channels/$channelId";
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/pause/$memberPubkey": {
+      id: "/team/pause/$memberPubkey";
+      path: "/team/pause/$memberPubkey";
+      fullPath: "/team/pause/$memberPubkey";
+      preLoaderRoute: typeof teamDotpauseDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/edit/$memberPubkey": {
+      id: "/team/edit/$memberPubkey";
+      path: "/team/edit/$memberPubkey";
+      fullPath: "/team/edit/$memberPubkey";
+      preLoaderRoute: typeof teamDoteditDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/detail/$memberPubkey": {
+      id: "/team/detail/$memberPubkey";
+      path: "/team/detail/$memberPubkey";
+      fullPath: "/team/detail/$memberPubkey";
+      preLoaderRoute: typeof teamDotdetailDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/archive/$memberPubkey": {
+      id: "/team/archive/$memberPubkey";
+      path: "/team/archive/$memberPubkey";
+      fullPath: "/team/archive/$memberPubkey";
+      preLoaderRoute: typeof teamDotarchiveDotmemberPubkeyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/sales/proposal/proposal-form": {
@@ -1119,6 +1243,7 @@ const rootRouteChildren: RootRouteChildren = {
   remindersRoute: remindersRoute,
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
+  teamRoute: teamRoute,
   todayRoute: todayRoute,
   workRoute: workRoute,
   workflowsRoute: workflowsRoute,
@@ -1137,6 +1262,7 @@ const rootRouteChildren: RootRouteChildren = {
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,
+  teamDotorgRoute: teamDotorgRoute,
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
   workDotworkIdRoute: workDotworkIdRoute,
@@ -1156,6 +1282,10 @@ const rootRouteChildren: RootRouteChildren = {
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,
   salesDotproposalDotproposalFormRoute: salesDotproposalDotproposalFormRoute,
+  teamDotarchiveDotmemberPubkeyRoute: teamDotarchiveDotmemberPubkeyRoute,
+  teamDotdetailDotmemberPubkeyRoute: teamDotdetailDotmemberPubkeyRoute,
+  teamDoteditDotmemberPubkeyRoute: teamDoteditDotmemberPubkeyRoute,
+  teamDotpauseDotmemberPubkeyRoute: teamDotpauseDotmemberPubkeyRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

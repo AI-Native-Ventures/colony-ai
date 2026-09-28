@@ -1,0 +1,164 @@
+import { expect, test } from "@playwright/test";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+} from "nostr-tools/pure";
+
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+
+const OWNER_PUBKEY = "deadbeef".repeat(8);
+const MEMBER_POSITION_HEAD_KIND = 30_645;
+const EMPLOYEE_NAME = "Mina";
+const EMPLOYEE_TITLE = "Social Media Manager";
+
+function positionHead(input: {
+  relaySecret: Uint8Array;
+  pubkey: string;
+  title: string;
+  kind: "human" | "employee";
+  managerPubkey?: string;
+}) {
+  return finalizeEvent(
+    {
+      kind: MEMBER_POSITION_HEAD_KIND,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [["d", `company:member:${input.pubkey}`]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        pubkey: input.pubkey,
+        title: input.title,
+        ...(input.managerPubkey ? { managerPubkey: input.managerPubkey } : {}),
+        kind: input.kind,
+        status: "active",
+        sourceActionEventId: "b".repeat(64),
+        updatedAt: new Date().toISOString(),
+      }),
+    },
+    input.relaySecret,
+  );
+}
+
+test("Team shows mixed reporting lines and lets an owner edit and pause an employee", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const relaySecret = generateSecretKey();
+  const relaySelf = getPublicKey(relaySecret);
+  const employeeSecret = generateSecretKey();
+  const employeePubkey = getPublicKey(employeeSecret);
+  const workerPubkey = getPublicKey(generateSecretKey());
+  const alicePubkey = TEST_IDENTITIES.alice.pubkey;
+  await installMockBridge(page, {
+    relaySelf,
+    companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyMemberPositionEvents: [
+      positionHead({
+        relaySecret,
+        pubkey: alicePubkey,
+        title: "Account Manager",
+        kind: "human",
+        managerPubkey: OWNER_PUBKEY,
+      }),
+      positionHead({
+        relaySecret,
+        pubkey: employeePubkey,
+        title: EMPLOYEE_TITLE,
+        kind: "employee",
+        managerPubkey: OWNER_PUBKEY,
+      }),
+    ],
+    relayMembers: [
+      { pubkey: OWNER_PUBKEY, role: "owner" },
+      { pubkey: alicePubkey, role: "member" },
+    ],
+    relayAgents: [
+      {
+        pubkey: employeePubkey,
+        ownerPubkey: OWNER_PUBKEY,
+        name: EMPLOYEE_NAME,
+        agentType: "agent",
+      },
+      {
+        pubkey: workerPubkey,
+        ownerPubkey: OWNER_PUBKEY,
+        name: "Mina worker",
+        agentType: "worker",
+      },
+    ],
+    managedAgents: [
+      {
+        pubkey: employeePubkey,
+        name: EMPLOYEE_NAME,
+        status: "running",
+        channelNames: ["general"],
+      },
+      {
+        pubkey: workerPubkey,
+        name: "Mina worker",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
+
+  await page.goto("/#/team");
+  await expect(page.getByTestId("company-team-screen")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("sidebar-team-count")).toHaveText("3");
+  await expect(page.getByTestId("company-team-list")).toContainText(
+    EMPLOYEE_NAME,
+  );
+  await expect(page.getByTestId("company-team-list")).toContainText("alice");
+  await expect(page.getByTestId("company-team-list")).not.toContainText(
+    "Mina worker",
+  );
+
+  await page.getByRole("tab", { name: "Reporting lines" }).click();
+  const tree = page.getByRole("tree", { name: "Reporting lines" });
+  const treeItems = tree.getByRole("treeitem");
+  await treeItems.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(treeItems.nth(1)).toBeFocused();
+
+  await page.getByRole("tab", { name: "Everyone" }).click();
+  await page.getByTestId(`company-team-member-${alicePubkey}`).click();
+  await expect(page).toHaveURL(new RegExp(`/team/detail/${alicePubkey}$`));
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await page.getByRole("button", { name: "Edit role and reporting" }).click();
+  await expect(page).toHaveURL(new RegExp(`/team/edit/${alicePubkey}$`));
+  await page.getByLabel("Title").fill("Chief of Staff");
+  await page.getByLabel("Reports to").selectOption(employeePubkey);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(new RegExp(`/team/detail/${alicePubkey}$`));
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Chief of Staff",
+  );
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    `Reports to ${EMPLOYEE_NAME}`,
+  );
+
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByTestId(`company-team-member-${employeePubkey}`).click();
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
+  await page.getByRole("button", { name: "Pause employee" }).click();
+  await expect(page.getByTestId("company-team-pause-screen")).toBeVisible();
+  await page.getByLabel("Reason").fill("Reviewing the October workload.");
+  await page.getByRole("button", { name: "Pause employee" }).click();
+  await expect(page.getByTestId("company-paused-banner")).toContainText(
+    "Reviewing the October workload.",
+  );
+
+  await page.getByRole("button", { name: "Terminate employee" }).click();
+  await expect(page.getByTestId("company-team-archive-screen")).toBeVisible();
+  await page.getByLabel("Reason").fill("The role has ended after review.");
+  await page.getByRole("button", { name: "Terminate employee" }).click();
+  await expect(page.getByTestId("company-position-header")).toContainText(
+    EMPLOYEE_TITLE,
+  );
+  await expect(
+    page.getByTestId("agent-profile").getByText("Archived"),
+  ).toBeVisible();
+});

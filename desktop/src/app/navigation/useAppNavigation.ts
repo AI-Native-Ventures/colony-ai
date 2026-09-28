@@ -113,6 +113,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAgentProfile = React.useCallback(
+    (agentPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/agents",
+          search: { agent: agentPubkey },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goSupervision = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/supervision" }, behavior),
@@ -162,6 +174,54 @@ export function useAppNavigation() {
   const goGoals = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/goals" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeam = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamOrg = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team/org" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamMember = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/detail/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamEdit = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/edit/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamPause = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/pause/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamArchive = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/archive/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
     [commitNavigation],
   );
 
@@ -669,6 +729,7 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAgentProfile,
     goAskDetail,
     goChannel,
     goClient,
@@ -683,6 +744,12 @@ export function useAppNavigation() {
     goGoalProgress,
     goGoalReference,
     goGoals,
+    goTeam,
+    goTeamOrg,
+    goTeamMember,
+    goTeamEdit,
+    goTeamPause,
+    goTeamArchive,
     goNewGoal,
     goEditGoal,
     goShareGoal,

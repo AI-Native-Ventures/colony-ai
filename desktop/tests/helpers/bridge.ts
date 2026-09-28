@@ -208,6 +208,12 @@ type MockBridgeOptions = {
   goalEvents?: RelayEvent[];
   /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
   goalRelayPrivateKey?: string;
+  /** Relay-signed member-position heads for Company Team E2E coverage. */
+  companyMemberPositionEvents?: RelayEvent[];
+  /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
+  companyMemberRelayPrivateKeyHex?: string;
+  /** Reject successive member-position writes in order, then accept them. */
+  companyMemberActionErrors?: string[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

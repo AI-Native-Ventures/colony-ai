@@ -157,6 +157,7 @@ export function AppShell() {
     goNewMessage,
     goFactory,
     goGoals,
+    goTeam,
     goClients,
     goWork,
     goToday,
@@ -931,6 +932,7 @@ export function AppShell() {
                           onSelectHome={() => void goHome()}
                           onSelectFactory={() => void goFactory()}
                           onSelectGoals={() => void goGoals()}
+                          onSelectTeam={() => void goTeam()}
                           onSelectClients={() => void goClients()}
                           onSelectWork={() => void goWork()}
                           onSelectSettings={handleOpenSettings}
