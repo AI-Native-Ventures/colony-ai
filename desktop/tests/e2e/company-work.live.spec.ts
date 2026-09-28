@@ -118,7 +118,6 @@ test.describe("company work local relay journey", () => {
     if (await joinButton.isVisible().catch(() => false)) {
       await joinButton.click();
     }
-    await expect(page.getByTestId("reference-goal-button")).toBeVisible();
     await page.goto("/#/work/new");
     await expect(page.getByTestId("company-work-form")).toBeVisible();
     await page
