@@ -16,8 +16,15 @@ import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
-import { normalizePubkey } from "@/shared/lib/pubkey";
-import { buildNeedsMeItems } from "@/features/home/needsMeOrdering";
+import {
+  buildNeedsMeItems,
+  groupNeedsMeItems,
+  isNeedsMeItemOverdue,
+  needsMeItemKey,
+  type NeedsMeGrouping,
+  type NeedsMeItem,
+} from "@/features/home/needsMeOrdering";
+import { needsMeAskLabel } from "@/features/company-asks/askCardMapping";
 
 function formatActivityTime(createdAt: number) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -71,6 +78,18 @@ function deadlineLabel(deadline: string | null | undefined) {
   return `${day}, ${time}`;
 }
 
+function needsMeDateLabel(deadline: string | null | undefined) {
+  if (!deadline) return "No deadline";
+  const timestamp = Date.parse(deadline);
+  if (!Number.isFinite(timestamp)) return "Deadline unavailable";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
 function AskNeedsMeRow({
   record,
   currentPubkey,
@@ -90,16 +109,6 @@ function AskNeedsMeRow({
     currentPubkey,
     profiles,
   });
-  const recipient = currentPubkey
-    ? resolveUserLabel({
-        pubkey: currentPubkey,
-        currentPubkey,
-        profiles,
-        preferResolvedSelfLabel: Boolean(
-          profiles?.[normalizePubkey(currentPubkey)],
-        ),
-      })
-    : "You";
   const overdue =
     ask.decideBy !== undefined &&
     ask.decideBy !== null &&
@@ -116,10 +125,10 @@ function AskNeedsMeRow({
       <span className="colony-needs-me-copy">
         <strong>{ask.title}</strong>
         <small>
-          {asker} → {recipient} · #{channelName} · {deadlineLabel(ask.decideBy)}
+          {asker} · #{channelName} · {needsMeDateLabel(ask.decideBy)}
         </small>
       </span>
-      <span className="colony-needs-me-type">{ask.type}</span>
+      <span className="colony-needs-me-type">{needsMeAskLabel(ask)}</span>
       {overdue ? (
         <span className="colony-needs-me-overdue">Overdue</span>
       ) : null}
@@ -290,6 +299,10 @@ export function TodayScreen({
   const needsMe = useNeedsMeQuery();
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
+  const [needsMeGrouping, setNeedsMeGrouping] =
+    React.useState<NeedsMeGrouping>("deadline");
+  const [showOverdueOnly, setShowOverdueOnly] = React.useState(false);
+  const [visibleLimit, setVisibleLimit] = React.useState(6);
   const needsMeProfilePubkeys = React.useMemo(
     () => [
       ...new Set([
@@ -347,6 +360,40 @@ export function TodayScreen({
       "conversation",
     [channelsQuery.data],
   );
+  const groupingNow = Date.now();
+  const overdueItems = needItems.filter((item) =>
+    isNeedsMeItemOverdue(item, groupingNow),
+  );
+  const showingOverdueOnly = showOverdueOnly && overdueItems.length > 0;
+  const visibleSource = showingOverdueOnly ? overdueItems : needItems;
+  const visibleItems = visibleSource.slice(0, visibleLimit);
+  const groupedItems = groupNeedsMeItems(visibleItems, needsMeGrouping, {
+    now: groupingNow,
+    channelLabel: (channelId) => `#${channelName(channelId)}`,
+  });
+
+  const renderNeedsMeItem = (item: NeedsMeItem) => {
+    if (item.kind === "ask") {
+      return (
+        <AskNeedsMeRow
+          channelName={channelName(item.record.channelId)}
+          currentPubkey={identityQuery.data?.pubkey}
+          profiles={needsMeProfiles}
+          key={needsMeItemKey(item)}
+          onOpen={openAsk}
+          record={item.record}
+        />
+      );
+    }
+    return (
+      <WorkflowApprovalRow
+        channelName={channelName(item.record.channelId)}
+        key={needsMeItemKey(item)}
+        onChanged={refreshNeedsMe}
+        record={item.record}
+      />
+    );
+  };
 
   const retryNeedsMe = React.useCallback(() => {
     void needsMe.refetch();
@@ -361,7 +408,7 @@ export function TodayScreen({
       <TodayTopBar onOpenInbox={() => void goHome()} />
       <div className="colony-today-scroll">
         <div className="colony-today-heading">
-          <h1>Today</h1>
+          <h1>Needs me</h1>
           {showUpdatesAction ? (
             <Button
               className="colony-secondary-button"
@@ -377,34 +424,92 @@ export function TodayScreen({
 
         <section aria-label="Needs me" className="colony-today-needs-me">
           <div className="colony-today-needs-me-heading">
-            <p>
-              Needs me ·{" "}
-              {needsMeErrors.length > 0
-                ? "Unavailable"
-                : `${needItems.length} open decisions`}
-            </p>
+            <div className="colony-today-needs-me-summary">
+              <p>
+                {needsMeErrors.length > 0
+                  ? "Open asks unavailable"
+                  : `${needItems.length} open`}
+              </p>
+              {needItems.length > 0 && overdueItems.length > 0 ? (
+                <button
+                  aria-label={
+                    showingOverdueOnly
+                      ? "Show all decisions"
+                      : "Show overdue decisions"
+                  }
+                  aria-pressed={showingOverdueOnly}
+                  className="colony-needs-me-overdue-toggle"
+                  data-testid="needs-me-overdue-toggle"
+                  onClick={() => setShowOverdueOnly((current) => !current)}
+                  type="button"
+                >
+                  {overdueItems.length} overdue
+                </button>
+              ) : null}
+            </div>
+            {needItems.length > 0 ? (
+              <fieldset className="colony-needs-me-group-controls">
+                <legend className="sr-only">Group decisions</legend>
+                {(
+                  [
+                    ["deadline", "By deadline"],
+                    ["type", "By type"],
+                    ["channel", "By channel"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    aria-pressed={needsMeGrouping === value}
+                    data-testid={`needs-me-group-${value}`}
+                    key={value}
+                    onClick={() => setNeedsMeGrouping(value)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </fieldset>
+            ) : null}
           </div>
+          {overdueItems.length > 0 ? (
+            <div className="colony-needs-me-overdue-note" role="status">
+              <strong>{overdueItems.length} asks are overdue</strong>
+              <p>They stay open until answered, withdrawn or expired.</p>
+            </div>
+          ) : null}
           {needItems.length > 0 ? (
             <div className="colony-today-needs-me-list">
-              {needItems.map((item) =>
-                item.kind === "ask" ? (
-                  <AskNeedsMeRow
-                    channelName={channelName(item.record.channelId)}
-                    currentPubkey={identityQuery.data?.pubkey}
-                    profiles={needsMeProfiles}
-                    key={`ask-${item.record.channelId}-${item.record.head.askId}`}
-                    onOpen={openAsk}
-                    record={item.record}
-                  />
-                ) : (
-                  <WorkflowApprovalRow
-                    channelName={channelName(item.record.channelId)}
-                    key={`approval-${item.record.approval.approvalRef}`}
-                    onChanged={refreshNeedsMe}
-                    record={item.record}
-                  />
-                ),
-              )}
+              {groupedItems.overdue.length > 0 ? (
+                <section aria-label="Overdue" className="colony-needs-me-group">
+                  <h3>Overdue</h3>
+                  {groupedItems.overdue.map(renderNeedsMeItem)}
+                </section>
+              ) : null}
+              {!showingOverdueOnly || needsMeGrouping !== "deadline"
+                ? groupedItems.groups.map((group) => (
+                    <section
+                      aria-label={group.label}
+                      className="colony-needs-me-group"
+                      key={group.key}
+                    >
+                      <h3>{group.label}</h3>
+                      {group.items.map(renderNeedsMeItem)}
+                    </section>
+                  ))
+                : null}
+              {visibleSource.length > visibleItems.length ? (
+                <div className="colony-needs-me-show-more">
+                  <Button
+                    data-testid="needs-me-show-more"
+                    onClick={() => setVisibleLimit((current) => current + 12)}
+                    type="button"
+                    variant="outline"
+                  >
+                    Show{" "}
+                    {Math.min(12, visibleSource.length - visibleItems.length)}{" "}
+                    more
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : needsMe.isPending ? (
             <p className="colony-today-needs-me-loading" role="status">
@@ -412,8 +517,8 @@ export function TodayScreen({
             </p>
           ) : needsMeErrors.length === 0 ? (
             <div className="colony-today-needs-me-empty" role="status">
-              <h3>You’re clear for now.</h3>
-              <p>No open decisions need your attention.</p>
+              <h3>You’re up to date.</h3>
+              <p>No open asks are addressed to you.</p>
             </div>
           ) : null}
           {needsMeErrors.length > 0 ? (

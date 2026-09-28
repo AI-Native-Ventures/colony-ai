@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Check, Code, Pencil, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import { stringify as yamlStringify } from "yaml";
 
@@ -7,6 +8,10 @@ import {
   useCreateWorkflowMutation,
   useUpdateWorkflowMutation,
 } from "@/features/workflows/hooks";
+import {
+  getWorkflowDraft,
+  saveWorkflowDraft,
+} from "@/shared/api/tauriWorkflows";
 import { generateBackupPassphrase } from "@/shared/api/tauriIdentity";
 import type { Channel, Workflow } from "@/shared/api/types";
 import { getRelayHttpUrl } from "@/shared/api/tauri";
@@ -60,6 +65,7 @@ type DialogMode = "create" | "edit" | "duplicate";
 
 type WorkflowDialogProps = {
   channels: Channel[];
+  draftOnly?: boolean;
   initialChannelId?: string;
   mode: DialogMode;
   onDeleteWorkflow: (workflow: Workflow) => void;
@@ -70,6 +76,7 @@ type WorkflowDialogProps = {
   onTriggerWorkflow: (workflowId: string) => void;
   open: boolean;
   pane: WorkflowEditorPane;
+  readOnly?: boolean;
   workflow?: Workflow | null;
 };
 
@@ -101,6 +108,8 @@ const SUBMIT_LABELS: Record<DialogMode, string> = {
   edit: "Save changes",
   duplicate: "Create copy",
 };
+
+const DRAFT_SUBMIT_LABEL = "Save draft";
 
 const PENDING_LABELS: Record<DialogMode, string> = {
   create: "Creating…",
@@ -215,6 +224,7 @@ function WorkflowNameEditor({
 
 export function WorkflowDialog({
   channels,
+  draftOnly = false,
   initialChannelId,
   mode,
   onDeleteWorkflow,
@@ -225,8 +235,10 @@ export function WorkflowDialog({
   onTriggerWorkflow,
   open,
   pane,
+  readOnly = false,
   workflow,
 }: WorkflowDialogProps) {
+  const queryClient = useQueryClient();
   const formBuilderRef = React.useRef<WorkflowFormBuilderHandle>(null);
   const workflowSnapshotRef = React.useRef(workflow);
   const workflowSnapshot = workflowSnapshotRef.current;
@@ -270,6 +282,10 @@ export function WorkflowDialog({
   const [secretConfirmationOpen, setSecretConfirmationOpen] =
     React.useState(false);
   const [generatingName, setGeneratingName] = React.useState(false);
+  const [draftSavePending, setDraftSavePending] = React.useState(false);
+  const [draftSaveError, setDraftSaveError] = React.useState<string | null>(
+    null,
+  );
   const initialValuesRef = React.useRef({
     channelId,
     yaml: getInitialYaml(mode, workflowSnapshot),
@@ -343,13 +359,14 @@ export function WorkflowDialog({
   }, [mode, resetCreate, resetUpdate, workflowSnapshot]);
 
   const closeDialog = React.useCallback(() => {
+    if (draftSavePending) return;
     resetCreate();
     resetUpdate();
     setDiscardConfirmationOpen(false);
     setActivationConfirmationOpen(false);
     setPendingCreateYaml(null);
     onOpenChange(false);
-  }, [onOpenChange, resetCreate, resetUpdate]);
+  }, [draftSavePending, onOpenChange, resetCreate, resetUpdate]);
 
   const isDirty =
     yamlDefinition !== initialValuesRef.current.yaml ||
@@ -401,6 +418,8 @@ export function WorkflowDialog({
     (nextOpen: boolean) => {
       if (nextOpen) {
         onOpenChange(true);
+      } else if (draftSavePending) {
+        return;
       } else if (savedWebhookInfo) {
         setSecretConfirmationOpen(true);
       } else if (isDirty) {
@@ -409,10 +428,43 @@ export function WorkflowDialog({
         closeDialog();
       }
     },
-    [closeDialog, isDirty, onOpenChange, savedWebhookInfo],
+    [closeDialog, draftSavePending, isDirty, onOpenChange, savedWebhookInfo],
   );
 
   async function saveWorkflow(yaml: string) {
+    if (readOnly) return;
+    if (draftOnly && mode === "edit" && workflowSnapshot) {
+      setDraftSavePending(true);
+      setDraftSaveError(null);
+      try {
+        const currentDraft = await getWorkflowDraft(workflowSnapshot.id);
+        const savedDraft = await saveWorkflowDraft(
+          workflowSnapshot.id,
+          selectedChannelId,
+          yaml,
+          currentDraft?.revision,
+        );
+        queryClient.setQueryData(
+          ["workflow-draft", workflowSnapshot.id],
+          savedDraft,
+        );
+        initialValuesRef.current = {
+          channelId: selectedChannelId,
+          yaml,
+        };
+        allowNavigationRef.current = true;
+        onEditWorkflow(workflowSnapshot.id);
+      } catch (error) {
+        setDraftSaveError(
+          error instanceof Error
+            ? `${error.message} Your changes are still here.`
+            : "Could not save this workflow draft. Your changes are still here.",
+        );
+      } finally {
+        setDraftSavePending(false);
+      }
+      return;
+    }
     try {
       const saved = await mutation.mutateAsync(yaml);
       initialValuesRef.current = {
@@ -450,6 +502,7 @@ export function WorkflowDialog({
   }
 
   function handleSubmit() {
+    if (readOnly || draftSavePending) return;
     if (!selectedChannelId || !yamlDefinition.trim() || !formValid) return;
 
     const documentEnabled = readWorkflowDocumentFields(yamlDefinition).enabled;
@@ -585,7 +638,12 @@ export function WorkflowDialog({
               </DialogDescription>
               <div className="flex items-center gap-2">
                 <WorkflowNameEditor
-                  disabled={mutation.isPending || !canEditWorkflowName}
+                  disabled={
+                    readOnly ||
+                    draftSavePending ||
+                    mutation.isPending ||
+                    !canEditWorkflowName
+                  }
                   generating={generatingName}
                   name={workflowName}
                   onCommit={handleWorkflowNameCommit}
@@ -593,7 +651,10 @@ export function WorkflowDialog({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {mode === "edit" && workflowSnapshot ? (
+              {mode === "edit" &&
+              workflowSnapshot &&
+              !draftOnly &&
+              !readOnly ? (
                 <>
                   <Popover onOpenChange={setHistoryOpen} open={historyOpen}>
                     {/* TODO(workflow-run-history-capability): Restore this
@@ -658,6 +719,7 @@ export function WorkflowDialog({
                 <Button
                   aria-label="Close"
                   className="h-8 w-8 text-muted-foreground"
+                  disabled={draftSavePending}
                   size="icon"
                   type="button"
                   variant="ghost"
@@ -671,7 +733,7 @@ export function WorkflowDialog({
           <div className="min-h-0 flex-1">
             <WorkflowFormBuilder
               channels={channels}
-              disabled={mutation.isPending}
+              disabled={readOnly || draftSavePending || mutation.isPending}
               mode={editorMode}
               nameLeadingContainer={null}
               onChange={(yaml) => {
@@ -693,7 +755,9 @@ export function WorkflowDialog({
                         editorMode === "form" &&
                         !selectedChannelId
                       }
-                      disabled={mutation.isPending}
+                      disabled={
+                        readOnly || draftSavePending || mutation.isPending
+                      }
                       id="wf-channel-select"
                       onAutoOpen={() => setChannelAutoOpenPending(false)}
                       onChange={(value) => {
@@ -740,19 +804,29 @@ export function WorkflowDialog({
             </p>
           ) : null}
 
+          {draftSaveError ? (
+            <p
+              aria-live="polite"
+              className="mx-6 mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              {draftSaveError}
+            </p>
+          ) : null}
+
           <div className="flex flex-shrink-0 items-center justify-between gap-4 px-6 pt-2 pb-4">
             <Tabs onValueChange={handleEditorModeChange} value={editorMode}>
               <TabsList aria-label="Workflow editor mode" className="h-8 p-0.5">
                 <TabsTrigger
                   className="h-7 px-3 text-xs"
-                  disabled={mutation.isPending}
+                  disabled={readOnly || draftSavePending || mutation.isPending}
                   value="form"
                 >
                   Form
                 </TabsTrigger>
                 <TabsTrigger
                   className="h-7 gap-1.5 px-3 text-xs"
-                  disabled={mutation.isPending}
+                  disabled={readOnly || draftSavePending || mutation.isPending}
                   value="yaml"
                 >
                   <Code className="h-3.5 w-3.5" />
@@ -762,13 +836,14 @@ export function WorkflowDialog({
             </Tabs>
             <div className="flex items-center gap-2">
               <Button
+                disabled={draftSavePending}
                 onClick={() => handleOpenChange(false)}
                 type="button"
                 variant="outline"
               >
                 Cancel
               </Button>
-              {isAddingFirstStep ? (
+              {readOnly ? null : isAddingFirstStep ? (
                 <Button
                   aria-label="Add first step"
                   data-testid="workflow-dialog-primary-action"
@@ -785,14 +860,20 @@ export function WorkflowDialog({
                     !selectedChannelId ||
                     !yamlDefinition.trim() ||
                     !formValid ||
+                    readOnly ||
+                    draftSavePending ||
                     mutation.isPending
                   }
                   onClick={handleSubmit}
                   type="button"
                 >
-                  {mutation.isPending
-                    ? PENDING_LABELS[mode]
-                    : SUBMIT_LABELS[mode]}
+                  {draftSavePending
+                    ? "Saving draft…"
+                    : draftOnly
+                      ? DRAFT_SUBMIT_LABEL
+                      : mutation.isPending
+                        ? PENDING_LABELS[mode]
+                        : SUBMIT_LABELS[mode]}
                 </Button>
               )}
             </div>

@@ -19,10 +19,15 @@ import {
   workItemDTag,
 } from "./businessRecords.ts";
 import {
+  moneyPaymentDTag,
+  moneyRecordTemplate,
+} from "@/features/money/lib/moneyRecords";
+import {
   KIND_CLIENT_ACTION,
   KIND_CLIENT_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_PAYMENT,
   KIND_WORK_ITEM_ACTION,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
@@ -30,6 +35,8 @@ import {
 const CLIENT_ID = "abcdefab-cdef-4abc-8def-abcdefabcdef";
 const PARTY_ID = "22222222-2222-4222-8222-222222222222";
 const WORK_ID = "33333333-3333-4333-8333-333333333333";
+const INVOICE_ID = "44444444-4444-4444-8444-444444444444";
+const PAYMENT_ID = "55555555-5555-4555-8555-555555555555";
 const PUBKEY = "ab".repeat(32);
 const EVENT_ID = "01".repeat(32);
 const HEAD_ID = "02".repeat(32);
@@ -372,6 +379,59 @@ test("business submission confirms an uncertain acknowledgement by exact event i
   assert.deepEqual(confirmedFilter.ids, [signedEvent.id]);
   assert.deepEqual(confirmedFilter.kinds, [KIND_CLIENT_ACTION]);
   assert.deepEqual(confirmedFilter["#h"], [CLIENT_ID]);
+});
+
+test("money payment submission validates its client coordinate before signing", async () => {
+  let signCalls = 0;
+  let publishedEvent = null;
+  const service = createBusinessRecordService(
+    {
+      fetchEvents: async () => [],
+      publishEvent: async (event) => {
+        publishedEvent = event;
+      },
+      subscribeLive: async () => async () => {},
+    },
+    async (template) => {
+      signCalls += 1;
+      return makeEvent(
+        template.kind,
+        JSON.parse(template.content),
+        template.tags,
+        "06".repeat(32),
+      );
+    },
+  );
+  const payment = {
+    schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
+    clientId: CLIENT_ID,
+    invoiceId: INVOICE_ID,
+    paymentId: PAYMENT_ID,
+    provider: "manual",
+    providerReference: null,
+    amountMinor: 500,
+    currency: "ZAR",
+    occurredAt: 1_750_000_000,
+    evidenceRef: "receipt:test",
+    expectedInvoiceHeadEventId: HEAD_ID,
+  };
+  const template = moneyRecordTemplate(
+    KIND_PAYMENT,
+    payment,
+    moneyPaymentDTag(CLIENT_ID, PAYMENT_ID),
+  );
+
+  const result = await service.submit(template);
+  assert.equal(result.accepted.id, result.event.id);
+  assert.equal(publishedEvent.kind, KIND_PAYMENT);
+  assert.deepEqual(publishedEvent.tags, [
+    ["h", CLIENT_ID],
+    ["d", moneyPaymentDTag(CLIENT_ID, PAYMENT_ID)],
+  ]);
+
+  template.tags[1][1] = moneyPaymentDTag(CLIENT_ID, INVOICE_ID);
+  await assert.rejects(service.submit(template), /d tag does not match/);
+  assert.equal(signCalls, 1);
 });
 
 test("a rejected stale-head action propagates without changing its expected id", async () => {

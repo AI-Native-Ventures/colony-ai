@@ -41,6 +41,7 @@ abstract final class EventKind {
   static const contentPostHead = 30639;
   static const siteHead = 30640;
   static const invoiceHead = 30641;
+  static const moneyFollowUpHead = 30645;
   static const partyAction = 47000;
   static const clientAction = 47001;
   static const serviceAction = 47002;
@@ -111,6 +112,7 @@ abstract final class EventKind {
     contentPostHead,
     siteHead,
     invoiceHead,
+    moneyFollowUpHead,
     partyAction,
     clientAction,
     serviceAction,

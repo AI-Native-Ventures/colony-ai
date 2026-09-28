@@ -44,7 +44,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use buzz_core::kind::{event_kind_u32, is_workflow_execution_kind, KIND_REACTION};
+use buzz_core::kind::{
+    event_kind_u32, is_workflow_execution_kind, KIND_REACTION, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_V2,
+};
 use buzz_core::tenant::CommunityId;
 use buzz_db::workflow::RunStatus;
 use buzz_db::Db;
@@ -221,58 +224,29 @@ impl WorkflowEngine {
 
         match result {
             Ok(result) => {
+                if result.approval_token.is_some() || result.agent_wait.is_some() {
+                    tracing::info!(run_id = %run_id, "Workflow run durably suspended");
+                    return;
+                }
                 let mut full_trace = prefix;
                 full_trace.extend(result.trace);
                 let trace_json = serde_json::Value::Array(full_trace);
                 let step_count = result.step_index as i32;
 
-                if result.approval_token.is_some() {
-                    // Approval gates are not yet implemented (WF-08).
-                    // Fail explicitly rather than creating unreachable WaitingApproval rows.
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_index = result.step_index,
-                        "Workflow hit approval gate — not yet implemented, marking as failed"
-                    );
-                    if let Err(e) = self
-                        .db
-                        .update_workflow_run(
-                            community_id,
-                            run_id,
-                            RunStatus::Failed,
-                            step_count,
-                            &trace_json,
-                            Some(buzz_db::workflow::WorkflowRunFailure {
-                                code: "approval_not_supported",
-                                message: "approval gates not yet implemented — see WF-08",
-                            }),
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            run_id = %run_id,
-                            "Failed to update run to Failed (approval gate): {e}"
-                        );
-                    }
-                } else {
-                    tracing::info!(run_id = %run_id, "Workflow run completed");
-                    if let Err(e) = self
-                        .db
-                        .update_workflow_run(
-                            community_id,
-                            run_id,
-                            RunStatus::Completed,
-                            step_count,
-                            &trace_json,
-                            None,
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            run_id = %run_id,
-                            "Failed to update run to Completed: {e}"
-                        );
-                    }
+                tracing::info!(run_id = %run_id, "Workflow run completed");
+                if let Err(e) = self
+                    .db
+                    .update_workflow_run(
+                        community_id,
+                        run_id,
+                        RunStatus::Completed,
+                        step_count,
+                        &trace_json,
+                        None,
+                    )
+                    .await
+                {
+                    tracing::error!(run_id = %run_id, "Failed to update run to Completed: {e}");
                 }
             }
             Err((e, progress)) => {
@@ -336,6 +310,42 @@ impl WorkflowEngine {
         // Exclude workflow execution events to prevent infinite loops.
         if is_workflow_execution_kind(kind_u32) {
             return Ok(());
+        }
+
+        // Workflow-authored request messages are already represented by their
+        // durable run and must not recursively trigger message workflows.
+        if event_has_workflow_tag(&event.event) {
+            return Ok(());
+        }
+
+        if matches!(kind_u32, KIND_STREAM_MESSAGE | KIND_STREAM_MESSAGE_V2) {
+            if let Some(thread) = self
+                .db
+                .get_thread_metadata_by_event(community_id, event.event.id.as_bytes())
+                .await
+                .map_err(WorkflowError::from)?
+            {
+                if let Some(request_event_id) = thread.root_event_id {
+                    if let Some(run) = self
+                        .db
+                        .complete_workflow_agent_wait(
+                            buzz_db::workflow::CompleteWorkflowAgentWaitParams {
+                                community_id,
+                                channel_id,
+                                request_event_id: &request_event_id,
+                                agent_pubkey: &event.event.pubkey.to_bytes(),
+                                reply_event_id: event.event.id.as_bytes(),
+                                reply_text: &event.event.content,
+                                now: Utc::now(),
+                            },
+                        )
+                        .await
+                        .map_err(WorkflowError::from)?
+                    {
+                        self.resume_after_agent_reply(community_id, run).await;
+                    }
+                }
+            }
         }
 
         let cache_key = (community_id, channel_id);
@@ -404,11 +414,13 @@ impl WorkflowEngine {
             let trigger_event_id_bytes = event.event.id.as_bytes().to_vec();
             let run_id = match self
                 .db
-                .create_workflow_run(
+                .create_workflow_run_versioned(
                     community_id,
                     workflow.id,
                     Some(&trigger_event_id_bytes),
                     Some(&trigger_ctx_json),
+                    &workflow.definition_hash,
+                    &workflow.definition,
                 )
                 .await
             {
@@ -493,6 +505,21 @@ impl WorkflowEngine {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
             let now = Utc::now();
+
+            match self.db.expire_workflow_agent_waits(now, 100).await {
+                Ok(expired) if expired > 0 => {
+                    tracing::info!(expired, "Expired workflow agent waits");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::error!("Failed to expire workflow agent waits: {e}"),
+            }
+            match self.db.expire_workflow_approvals(now, 100).await {
+                Ok(expired) if expired > 0 => {
+                    tracing::info!(expired, "Expired workflow approval waits");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::error!("Failed to expire workflow approvals: {e}"),
+            }
 
             let workflows = match self.db.list_all_enabled_workflows().await {
                 Ok(wf) => wf,
@@ -666,11 +693,13 @@ impl WorkflowEngine {
 
                 let run_id = match self
                     .db
-                    .create_workflow_run(
+                    .create_workflow_run_versioned(
                         community_id,
                         workflow.id,
                         None, // no trigger event for cron
                         trigger_ctx_json.as_ref(),
+                        &workflow.definition_hash,
+                        &workflow.definition,
                     )
                     .await
                 {
@@ -747,6 +776,133 @@ impl WorkflowEngine {
             self.last_fired.retain(|key, _| active_ids.contains(key));
         }
     }
+
+    async fn resume_after_agent_reply(
+        self: &Arc<Self>,
+        community_id: CommunityId,
+        run: buzz_db::workflow::WorkflowRunRecord,
+    ) {
+        let workflow = match self.db.get_workflow(community_id, run.workflow_id).await {
+            Ok(workflow) => workflow,
+            Err(error) => {
+                tracing::error!(run_id = %run.id, "Agent reply matched a run but workflow load failed: {error}");
+                self.finalize_run(
+                    community_id,
+                    run.id,
+                    Err((
+                        WorkflowError::from(error),
+                        PartialProgress {
+                            step_index: run.current_step.max(0) as usize,
+                            trace: vec![],
+                        },
+                    )),
+                    Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+                )
+                .await;
+                return;
+            }
+        };
+        let definition = run
+            .definition_snapshot
+            .clone()
+            .unwrap_or_else(|| workflow.definition.clone());
+        let def: WorkflowDef = match serde_json::from_value(definition) {
+            Ok(def) => def,
+            Err(error) => {
+                self.finalize_run(
+                    community_id,
+                    run.id,
+                    Err((
+                        WorkflowError::InvalidDefinition(error.to_string()),
+                        PartialProgress {
+                            step_index: run.current_step.max(0) as usize,
+                            trace: vec![],
+                        },
+                    )),
+                    Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+                )
+                .await;
+                return;
+            }
+        };
+        let Some(channel_id) = run.workflow_channel_id.or(workflow.channel_id) else {
+            self.finalize_run(
+                community_id,
+                run.id,
+                Err((
+                    WorkflowError::Unauthorized("workflow no longer has a channel".into()),
+                    PartialProgress {
+                        step_index: run.current_step.max(0) as usize,
+                        trace: vec![],
+                    },
+                )),
+                Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+            )
+            .await;
+            return;
+        };
+        if let Err(error) = self
+            .check_owner_authority(community_id, channel_id, &workflow.owner_pubkey, &def)
+            .await
+        {
+            self.finalize_run(
+                community_id,
+                run.id,
+                Err((
+                    error,
+                    PartialProgress {
+                        step_index: run.current_step.max(0) as usize,
+                        trace: vec![],
+                    },
+                )),
+                Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+            )
+            .await;
+            return;
+        }
+
+        let mut initial_outputs = HashMap::new();
+        if let Some(entries) = run.execution_trace.as_array() {
+            for entry in entries {
+                if let (Some(step_id), Some(output)) = (
+                    entry.get("step_id").and_then(serde_json::Value::as_str),
+                    entry.get("output"),
+                ) {
+                    initial_outputs.insert(step_id.to_owned(), output.clone());
+                }
+            }
+        }
+        let trigger_ctx: executor::TriggerContext = run
+            .trigger_context
+            .as_ref()
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default();
+        let resume_index = run.current_step.max(0) as usize;
+        let existing_trace = run.execution_trace.as_array().cloned().unwrap_or_default();
+        let engine = Arc::clone(self);
+        tokio::spawn(async move {
+            let result = executor::execute_from_step(
+                &engine,
+                community_id,
+                run.id,
+                &def,
+                &trigger_ctx,
+                resume_index,
+                Some(initial_outputs),
+            )
+            .await;
+            engine
+                .finalize_run(community_id, run.id, result, Some(existing_trace))
+                .await;
+        });
+    }
+}
+
+fn event_has_workflow_tag(event: &nostr::Event) -> bool {
+    event.tags.iter().any(|tag| {
+        tag.kind().to_string() == "buzz:workflow"
+            && tag.content().is_some_and(|value| value == "true")
+    })
 }
 
 /// Find the cron schedule instant that fired within the `window_secs`-wide
@@ -905,7 +1061,7 @@ async fn should_fire_workflow(
         TriggerDef::MessagePosted { filter }
         | TriggerDef::ReactionAdded { filter, .. }
         | TriggerDef::DiffPosted { filter } => filter.as_ref(),
-        TriggerDef::Schedule { .. } | TriggerDef::Webhook => None,
+        TriggerDef::Schedule { .. } | TriggerDef::Webhook | TriggerDef::Manual => None,
     };
     if let Some(expr) = filter {
         match executor::evaluate_condition(expr, trigger_ctx, &HashMap::new()).await {
@@ -1041,8 +1197,8 @@ fn trigger_matches_event(trigger: &TriggerDef, kind_u32: u32) -> bool {
         TriggerDef::MessagePosted { .. } => kind_u32 == KIND_STREAM_MESSAGE,
         TriggerDef::ReactionAdded { .. } => kind_u32 == KIND_REACTION,
         TriggerDef::DiffPosted { .. } => kind_u32 == KIND_STREAM_MESSAGE_DIFF,
-        // Schedule and Webhook triggers are not fired by channel events.
-        TriggerDef::Schedule { .. } | TriggerDef::Webhook => false,
+        // Schedule, manual, and webhook triggers are not fired by channel events.
+        TriggerDef::Schedule { .. } | TriggerDef::Webhook | TriggerDef::Manual => false,
     }
 }
 

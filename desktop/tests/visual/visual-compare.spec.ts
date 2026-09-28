@@ -15,7 +15,7 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type: "click" | "hover" | "select";
+  type: "click" | "hover" | "select" | "fill";
   target?: "reference" | "app" | "both";
   selector: string;
   value?: string;
@@ -137,8 +137,6 @@ function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
 }
 
 test.describe("visual comparison captures", () => {
-  test.describe.configure({ mode: "serial" });
-
   for (const entry of cases) {
     test(`${entry.id} ${entry.viewport}`, async ({ browser }) => {
       const { width, height } = parseViewport(entry.viewport);
@@ -163,14 +161,34 @@ test.describe("visual comparison captures", () => {
         // typeface decision in memory. The reference font request is served
         // with its Manrope file and its family alias is normalized here.
         await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
-          const response = await route.fetch({ timeout: 30_000 });
+          const requestedUrl = new URL(route.request().url());
+          const r19TypographyRequest = requestedUrl.pathname.endsWith(
+            "/20260927-company-v7/20260926-r19/typography.css",
+          );
+          const response = await route.fetch({
+            timeout: 30_000,
+            ...(r19TypographyRequest
+              ? {
+                  url: new URL(
+                    "/20260926-r19/typography.css",
+                    requestedUrl,
+                  ).toString(),
+                }
+              : {}),
+          });
           const stylesheet = await response.text();
+          const correctedTypography = r19TypographyRequest
+            ? stylesheet.replace(
+                /url\((["']?)assets\//g,
+                `url($1${new URL("/20260926-r19/assets/", requestedUrl)}`,
+              )
+            : stylesheet;
           const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
             .map((selector) => `${selector} { display: none !important; }`)
             .join("\n");
           await route.fulfill({
             response,
-            body: `${stylesheet.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
+            body: `${correctedTypography.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
           });
         });
         await referencePage.route(
@@ -821,7 +839,32 @@ async function waitForCaptureReady(
   readySelector?: string,
 ) {
   if (readySelector) {
-    await page.locator(readySelector).first().waitFor({ state: "visible" });
+    try {
+      await page
+        .locator(readySelector)
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+    } catch (error) {
+      console.log("Visual page was not capture-ready", {
+        url: page.url(),
+        readySelector,
+        text: (
+          await page
+            .locator("body")
+            .innerText()
+            .catch(() => "")
+        ).slice(0, 1_000),
+        testIds: await page
+          .locator("[data-testid]")
+          .evaluateAll((elements) =>
+            elements
+              .slice(0, 24)
+              .map((element) => element.getAttribute("data-testid")),
+          )
+          .catch(() => []),
+      });
+      throw error;
+    }
   }
   await page.evaluate(async (family) => {
     // Faces load lazily on first use; request the expected face explicitly.
@@ -1454,6 +1497,11 @@ async function performActions(
           throw new Error("Select visual actions need a value.");
         }
         await locator.selectOption(action.value);
+      } else if (action.type === "fill") {
+        if (action.value === undefined) {
+          throw new Error("Fill visual actions need a value.");
+        }
+        await locator.fill(action.value, options);
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }

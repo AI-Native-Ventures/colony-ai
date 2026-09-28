@@ -121,6 +121,7 @@ const entrypointCases = [
     files: [
       { relativeFile: "src-tauri/src/oversized.rs", maxLines: 1500 },
       { relativeFile: "src-tauri/crates/oversized.rs", maxLines: 1500 },
+      { relativeFile: "src/app/routeTree.gen.ts", maxLines: 2000 },
       { relativeFile: "src/app/oversized.ts", maxLines: 1200 },
       { relativeFile: "src/features/oversized.tsx", maxLines: 1200 },
       { relativeFile: "src/shared/api/oversized.ts", maxLines: 1200 },
@@ -203,6 +204,7 @@ test("surface entrypoints expose the exact ordered production policies", () => {
     [
       desktopPolicy,
       [
+        ["src/app/routeTree.gen.ts", [".ts"], 2000],
         ["src-tauri/src", [".rs"], 1500],
         ["src-tauri/crates", [".rs"], 1500],
         ["src/app", [".ts", ".tsx"], 1200],

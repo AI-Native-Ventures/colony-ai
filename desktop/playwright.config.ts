@@ -95,6 +95,7 @@ export default defineConfig({
         "**/workflows.spec.ts",
         "**/company-asks.spec.ts",
         "**/company-team.spec.ts",
+        "**/asks-2.spec.ts",
         "**/factory.spec.ts",
         "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
@@ -189,6 +190,9 @@ export default defineConfig({
         "**/w07-agents-smoke.spec.ts",
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
+        "**/workflow-plain-builder.spec.ts",
+        "**/money.spec.ts",
+        "**/money-tax.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -219,6 +223,7 @@ export default defineConfig({
         "**/relay-restart.live.spec.ts",
         "**/goals.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
+        "**/workflow-plain-builder.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
