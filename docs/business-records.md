@@ -102,6 +102,7 @@ channel and binds the client UUID in the content to the `h` UUID.
 | Conversion acceptance or receipt | `business:<community-uuid>:conversion:<conversion-uuid>` |
 | Client head or action | `client:<client-uuid>:client:<client-uuid>` |
 | Work item head or action | `client:<client-uuid>:work:<work-item-uuid>` |
+| Company work item head or action | `company:work:<work-item-uuid>` |
 | Deliverable version revision `n` | `client:<client-uuid>:deliverable:<deliverable-uuid>:version:<n>` |
 | Approval of version event `id` | `client:<client-uuid>:deliverable-approval:<id>` |
 | Invoice head | `client:<client-uuid>:invoice:<invoice-uuid>` |
@@ -147,7 +148,7 @@ owner or admin membership in that client's private stream channel. Archive
 sets the status to `archived`; restore sets it to `active`. The client record
 coordinate is the client channel UUID.
 
-### Work item action, kind 47006
+### Client work item action, kind 47006
 
 `WorkItemAction` fields: `clientId`, `workItemId`, `action`,
 `expectedHeadEventId`, and `head`. The member-supplied head contains
@@ -159,6 +160,15 @@ member. A non-admin assigned member cannot change assignees, approvers, title,
 or deliverable pointers. Only a deliverable-version command can advance a
 deliverable pointer. Archive sets the work status to `archived`; restore sets
 it to `open`. The relay emits kind 30634.
+
+### Company work item action, kind 47006
+
+Company work uses the same 30634 head and 47006 action kinds, but has no
+`clientId`. Its coordinate is `company:work:<work-item-uuid>` and its single
+`h` tag is the channel where the commitment lives. The company is resolved from
+the relay host. The company work fields and state transitions are defined in
+[company-records.md](company-records.md#company-work-items). This separate
+scope preserves the existing client work payload and W11 behavior.
 
 ### Service action, kind 47002
 
