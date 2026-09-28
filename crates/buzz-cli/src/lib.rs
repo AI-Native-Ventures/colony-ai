@@ -246,6 +246,9 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// Review client invoices and record money evidence
+    #[command(subcommand)]
+    Money(MoneyCmd),
     /// List, grant, and revoke standing tool permissions
     #[command(subcommand)]
     Permissions(PermissionsCmd),
@@ -1187,6 +1190,186 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyCmd {
+    /// List and transition client invoices
+    #[command(subcommand)]
+    Invoices(MoneyInvoicesCmd),
+    /// Record evidence for a payment already received outside Colony
+    #[command(subcommand)]
+    Payments(MoneyPaymentsCmd),
+    /// Record a credit note, external refund, or write-off
+    #[command(subcommand)]
+    Adjustments(MoneyAdjustmentsCmd),
+    /// Draft, review, or approve a follow-up intent without sending it
+    #[command(subcommand)]
+    FollowUps(MoneyFollowUpsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum MoneyInvoicesCmd {
+    /// List invoice heads in one authorized client channel
+    List {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+    },
+    /// Show an invoice and its recorded versions, payments, and adjustments
+    Show {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+    },
+    /// Issue the current draft invoice
+    Issue {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+    },
+    /// Void a draft or unpaid issued invoice with a reason
+    Void {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Required reason for voiding
+        #[arg(long)]
+        reason: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyPaymentsCmd {
+    /// Record evidence for a payment already received outside Colony
+    Record {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Positive integer amount in minor currency units
+        #[arg(long)]
+        amount_minor: i64,
+        /// Evidence source, such as manual or a named provider
+        #[arg(long, default_value = "manual")]
+        provider: String,
+        /// Provider transaction reference, required for named providers
+        #[arg(long)]
+        provider_reference: Option<String>,
+        /// Payment currency, defaults to the invoice currency
+        #[arg(long)]
+        currency: Option<String>,
+        /// Unix seconds when payment was received, defaults to now
+        #[arg(long)]
+        occurred_at: Option<i64>,
+        /// Non-secret evidence reference
+        #[arg(long)]
+        evidence_ref: String,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum MoneyAdjustmentArg {
+    #[value(name = "credit-note")]
+    CreditNote,
+    Refund,
+    #[value(name = "write-off")]
+    WriteOff,
+}
+
+impl MoneyAdjustmentArg {
+    pub(crate) fn to_wire(self) -> buzz_core::business_records::MoneyAdjustmentType {
+        match self {
+            Self::CreditNote => buzz_core::business_records::MoneyAdjustmentType::CreditNote,
+            Self::Refund => buzz_core::business_records::MoneyAdjustmentType::Refund,
+            Self::WriteOff => buzz_core::business_records::MoneyAdjustmentType::WriteOff,
+        }
+    }
+}
+
+#[derive(Subcommand)]
+pub enum MoneyAdjustmentsCmd {
+    /// Record evidence for an adjustment already agreed or made outside Colony
+    Create {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Adjustment kind
+        #[arg(long, value_enum)]
+        adjustment_type: MoneyAdjustmentArg,
+        /// Positive integer amount in minor currency units
+        #[arg(long)]
+        amount_minor: i64,
+        /// Date the adjustment took effect in Unix seconds, defaults to now
+        #[arg(long)]
+        occurred_at: Option<i64>,
+        /// Required explanation
+        #[arg(long)]
+        reason: String,
+        /// Non-secret evidence reference
+        #[arg(long)]
+        evidence_ref: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyFollowUpsCmd {
+    /// Draft a follow-up intent for an overdue invoice
+    Draft {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up text to review, not send
+        #[arg(long)]
+        content: String,
+        /// Intended follow-up time in Unix seconds
+        #[arg(long)]
+        due_at: Option<i64>,
+        /// Follow-up UUID; generated when omitted
+        #[arg(long)]
+        follow_up: Option<String>,
+    },
+    /// Move a follow-up draft into review
+    Review {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up UUID
+        #[arg(long)]
+        follow_up: String,
+    },
+    /// Approve follow-up intent without sending email or a reminder
+    Approve {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up UUID
+        #[arg(long)]
+        follow_up: String,
     },
 }
 
@@ -2391,6 +2574,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
@@ -2570,6 +2754,7 @@ mod tests {
             "mem",
             "messages",
             "moderation",
+            "money",
             "notes",
             "pack",
             "patches",
@@ -2796,8 +2981,10 @@ mod tests {
             ("issues", 6),
             ("media", 1),
             ("messages", 8),
+            ("money", 4),
             ("pack", 2),
             ("patches", 4),
+            ("permissions", 3),
             ("pr", 5),
             ("projects", 8),
             ("reactions", 3),
@@ -2992,5 +3179,108 @@ mod tests {
             .is_err(),
             "--visibility chartreuse on update must be rejected at parse time"
         );
+    }
+
+    #[test]
+    fn money_command_tree_accepts_requested_operations() {
+        let channel = "11111111-1111-4111-8111-111111111111";
+        let invoice = "22222222-2222-4222-8222-222222222222";
+        let commands: &[&[&str]] = &[
+            &["buzz", "money", "invoices", "list", "--channel", channel],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "show",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+            ],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "issue",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+            ],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "void",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--reason",
+                "duplicate draft",
+            ],
+            &[
+                "buzz",
+                "money",
+                "payments",
+                "record",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--amount-minor",
+                "1234",
+                "--evidence-ref",
+                "receipt-1",
+            ],
+            &[
+                "buzz",
+                "money",
+                "adjustments",
+                "create",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--adjustment-type",
+                "credit-note",
+                "--amount-minor",
+                "100",
+                "--reason",
+                "scope reduced",
+                "--evidence-ref",
+                "credit-note-1",
+            ],
+            &[
+                "buzz",
+                "money",
+                "follow-ups",
+                "draft",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--content",
+                "Review this balance",
+            ],
+            &[
+                "buzz",
+                "money",
+                "follow-ups",
+                "approve",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--follow-up",
+                "33333333-3333-4333-8333-333333333333",
+            ],
+        ];
+        for args in commands {
+            assert!(
+                Cli::try_parse_from(*args).is_ok(),
+                "failed to parse {args:?}"
+            );
+        }
     }
 }

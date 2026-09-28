@@ -8,10 +8,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
-use buzz_core::kind::KIND_STREAM_MESSAGE;
+use buzz_core::kind::{KIND_STREAM_MESSAGE, KIND_WORKFLOW_APPROVAL_REQUESTED};
 use buzz_core::tenant::CommunityId;
-use buzz_workflow::action_sink::{ActionSink, ActionSinkError};
-use chrono::Utc;
+use buzz_workflow::action_sink::{
+    ActionSink, ActionSinkError, ActionSinkFuture, AgentTaskParams, ApprovalRequestParams,
+};
+use chrono::{Duration, Utc};
 use nostr::{EventBuilder, Kind, Tag};
 use tracing::info;
 use uuid::Uuid;
@@ -471,6 +473,343 @@ impl ActionSink for RelayActionSink {
             }
 
             Ok(event_id_hex)
+        })
+    }
+
+    fn ask_agent(&self, params: AgentTaskParams<'_>) -> ActionSinkFuture<'_, String> {
+        let AgentTaskParams {
+            community_id,
+            run_id,
+            step_id,
+            step_index,
+            agent_pubkey,
+            instruction,
+            expected_result,
+            timeout_secs,
+            owner_pubkey,
+            prior_trace,
+        } = params;
+        let step_id = step_id.to_owned();
+        let agent_pubkey = agent_pubkey.to_owned();
+        let instruction = instruction.to_owned();
+        let expected_result = expected_result.map(str::to_owned);
+        let owner_pubkey = owner_pubkey.to_owned();
+        let prior_trace = prior_trace.clone();
+
+        Box::pin(async move {
+            let state = self
+                .state
+                .upgrade()
+                .ok_or_else(|| ActionSinkError::Database("relay is shutting down".into()))?;
+            if timeout_secs == 0 || timeout_secs > buzz_workflow::schema::MAX_AGENT_TIMEOUT_SECS {
+                return Err(ActionSinkError::InvalidInput(
+                    "agent timeout is outside the supported bound".into(),
+                ));
+            }
+
+            let run = state
+                .db
+                .get_workflow_run(community_id, run_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            let workflow = state
+                .db
+                .get_workflow(community_id, run.workflow_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            let channel_uuid =
+                run.workflow_channel_id
+                    .or(workflow.channel_id)
+                    .ok_or_else(|| {
+                        ActionSinkError::InvalidInput(
+                            "agent tasks require a workflow channel".into(),
+                        )
+                    })?;
+            let channel_id = channel_uuid.to_string();
+            let channel = state
+                .db
+                .get_channel_for_event_write(community_id, channel_uuid)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            if channel.archived_at.is_some() {
+                return Err(ActionSinkError::ChannelArchived(channel_id));
+            }
+
+            let owner = nostr::PublicKey::from_hex(&owner_pubkey)
+                .map_err(|e| ActionSinkError::InvalidInput(e.to_string()))?;
+            if workflow.owner_pubkey != owner.to_bytes() {
+                return Err(ActionSinkError::InvalidInput(
+                    "workflow owner does not match the run definition".into(),
+                ));
+            }
+            let agent = nostr::PublicKey::from_hex(&agent_pubkey)
+                .map_err(|e| ActionSinkError::InvalidInput(e.to_string()))?;
+            let agent_bytes = agent.to_bytes();
+            if !state
+                .is_member_cached(community_id, channel_uuid, &agent_bytes)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?
+            {
+                return Err(ActionSinkError::InvalidInput(
+                    "assigned agent is not a member of the workflow channel".into(),
+                ));
+            }
+            if !state
+                .is_member_cached(community_id, channel_uuid, &owner.to_bytes())
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?
+            {
+                return Err(ActionSinkError::InvalidInput(
+                    "workflow owner is no longer a member of the workflow channel".into(),
+                ));
+            }
+
+            let mut content = instruction.clone();
+            if let Some(expected_result) = expected_result.as_deref() {
+                if !expected_result.trim().is_empty() {
+                    content.push_str("\n\nReport back with: ");
+                    content.push_str(expected_result);
+                }
+            }
+            if content.trim().is_empty() {
+                return Err(ActionSinkError::EmptyContent);
+            }
+            let owner_hex = owner.to_hex();
+            let agent_hex = agent.to_hex();
+            let tags = vec![
+                Tag::parse(["p", &owner_hex])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("owner tag: {e}")))?,
+                Tag::parse(["p", &agent_hex])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("agent tag: {e}")))?,
+                Tag::parse(["h", &channel_id])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("channel tag: {e}")))?,
+                Tag::parse(["buzz:workflow", "true"])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("workflow tag: {e}")))?,
+                Tag::parse(["buzz:workflow-owner", &owner_hex]).map_err(|e| {
+                    ActionSinkError::EventBuild(format!("owner provenance tag: {e}"))
+                })?,
+                Tag::parse(["buzz:workflow-mention", &agent_hex])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("agent task tag: {e}")))?,
+            ];
+            let event = EventBuilder::new(Kind::from(KIND_STREAM_MESSAGE as u16), &content)
+                .tags(tags)
+                .sign_with_keys(&state.relay_keypair)
+                .map_err(|e| ActionSinkError::EventBuild(format!("signing: {e}")))?;
+            let request_event_id = event.id.as_bytes().to_vec();
+            let request_event_id_hex = event.id.to_hex();
+            let trace_entry = serde_json::json!({
+                "step_id": step_id,
+                "status": "waiting_agent",
+                "output": {
+                    "agent_pubkey": agent_hex,
+                    "request_event_id": request_event_id_hex,
+                    "reply_event_id": null,
+                }
+            });
+            let host = state
+                .db
+                .lookup_community_host(community_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?
+                .ok_or_else(|| {
+                    ActionSinkError::Database(
+                        "workflow community no longer has a host mapping".into(),
+                    )
+                })?;
+            let tenant = buzz_core::tenant::TenantContext::resolved(community_id, host);
+            let (stored_event, was_inserted) = state
+                .db
+                .create_workflow_agent_wait(buzz_db::workflow::CreateWorkflowAgentWaitParams {
+                    community_id,
+                    workflow_id: run.workflow_id,
+                    run_id,
+                    step_id: &step_id,
+                    step_index: step_index as i32,
+                    channel_id: channel_uuid,
+                    agent_pubkey: &agent_bytes,
+                    request_event_id: &request_event_id,
+                    request_event: &event,
+                    expires_at: Utc::now() + Duration::seconds(timeout_secs as i64),
+                    prior_trace: &prior_trace,
+                    trace_entry: &trace_entry,
+                })
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            if was_inserted {
+                let _ = dispatch_persistent_event(
+                    &tenant,
+                    &state,
+                    &stored_event,
+                    KIND_STREAM_MESSAGE,
+                    &owner_hex,
+                    None,
+                )
+                .await;
+            }
+            Ok(request_event_id_hex)
+        })
+    }
+
+    fn request_approval(
+        &self,
+        params: ApprovalRequestParams<'_>,
+    ) -> ActionSinkFuture<'_, (String, String)> {
+        let ApprovalRequestParams {
+            community_id,
+            run_id,
+            step_id,
+            step_index,
+            approver_spec,
+            message,
+            timeout_secs,
+            prior_trace,
+            approval_token,
+        } = params;
+        let step_id = step_id.to_owned();
+        let approver_spec = approver_spec.trim().to_owned();
+        let message = message.to_owned();
+        let prior_trace = prior_trace.clone();
+        let approval_token = approval_token.to_owned();
+
+        Box::pin(async move {
+            let state = self
+                .state
+                .upgrade()
+                .ok_or_else(|| ActionSinkError::Database("relay is shutting down".into()))?;
+            if timeout_secs == 0 || timeout_secs > buzz_workflow::schema::MAX_APPROVAL_TIMEOUT_SECS
+            {
+                return Err(ActionSinkError::InvalidInput(
+                    "approval timeout is outside the supported bound".into(),
+                ));
+            }
+            let run = state
+                .db
+                .get_workflow_run(community_id, run_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            let workflow = state
+                .db
+                .get_workflow(community_id, run.workflow_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            let channel_uuid =
+                run.workflow_channel_id
+                    .or(workflow.channel_id)
+                    .ok_or_else(|| {
+                        ActionSinkError::InvalidInput(
+                            "approval requests require a workflow channel".into(),
+                        )
+                    })?;
+            let channel_id = channel_uuid.to_string();
+            let allowed_role =
+                matches!(approver_spec.as_str(), "owner_or_admin" | "channel_member");
+            let explicit_pubkey = if approver_spec.len() == 64
+                && approver_spec.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                Some(
+                    nostr::PublicKey::from_hex(&approver_spec)
+                        .map_err(|e| ActionSinkError::InvalidInput(e.to_string()))?,
+                )
+            } else {
+                None
+            };
+            if approver_spec != "any" && !allowed_role && explicit_pubkey.is_none() {
+                return Err(ActionSinkError::InvalidInput(
+                    "approver must be any, owner_or_admin, channel_member, or a pubkey".into(),
+                ));
+            }
+            let token_hash: [u8; 32] = {
+                use sha2::Digest;
+                sha2::Sha256::digest(approval_token.as_bytes()).into()
+            };
+            let token_hash_hex = hex::encode(token_hash);
+            let expires_at = Utc::now() + Duration::seconds(timeout_secs as i64);
+            let content = serde_json::json!({
+                "workflow_id": workflow.id,
+                "run_id": run_id,
+                "step_id": step_id,
+                "step_index": step_index,
+                "approver_spec": approver_spec,
+                "message": message,
+                "expires_at": expires_at,
+            })
+            .to_string();
+            let mut tags = vec![
+                Tag::parse(["h", &channel_id])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("channel tag: {e}")))?,
+                Tag::parse(["d", &token_hash_hex])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("approval tag: {e}")))?,
+                Tag::parse(["buzz:workflow", "true"])
+                    .map_err(|e| ActionSinkError::EventBuild(format!("workflow tag: {e}")))?,
+            ];
+            if let Some(pubkey) = &explicit_pubkey {
+                let pubkey_hex = pubkey.to_hex();
+                tags.push(
+                    Tag::parse(["p", &pubkey_hex])
+                        .map_err(|e| ActionSinkError::EventBuild(format!("approver tag: {e}")))?,
+                );
+            }
+            let event = EventBuilder::new(
+                Kind::from(KIND_WORKFLOW_APPROVAL_REQUESTED as u16),
+                &content,
+            )
+            .tags(tags)
+            .sign_with_keys(&state.relay_keypair)
+            .map_err(|e| ActionSinkError::EventBuild(format!("signing: {e}")))?;
+            let event_id = event.id.to_hex();
+            let trace_entry = serde_json::json!({
+                "step_id": step_id,
+                "status": "waiting_approval",
+                "output": {
+                    "approval_token_hash": token_hash_hex,
+                    "request_event_id": event_id,
+                    "approver_spec": approver_spec,
+                    "expires_at": expires_at,
+                }
+            });
+            let host = state
+                .db
+                .lookup_community_host(community_id)
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?
+                .ok_or_else(|| {
+                    ActionSinkError::Database(
+                        "workflow community no longer has a host mapping".into(),
+                    )
+                })?;
+            let tenant = buzz_core::tenant::TenantContext::resolved(community_id, host);
+            let (stored_event, was_inserted) = state
+                .db
+                .create_approval_and_suspend_run(
+                    buzz_db::workflow::CreateApprovalParams {
+                        community_id,
+                        token: &approval_token,
+                        workflow_id: workflow.id,
+                        run_id,
+                        step_id: &step_id,
+                        step_index: step_index as i32,
+                        approver_spec: &approver_spec,
+                        expires_at,
+                    },
+                    &prior_trace,
+                    &trace_entry,
+                    &event,
+                    channel_uuid,
+                )
+                .await
+                .map_err(|e| ActionSinkError::Database(e.to_string()))?;
+            if was_inserted {
+                let _ = dispatch_persistent_event(
+                    &tenant,
+                    &state,
+                    &stored_event,
+                    KIND_WORKFLOW_APPROVAL_REQUESTED,
+                    &state.relay_keypair.public_key().to_hex(),
+                    None,
+                )
+                .await;
+            }
+            Ok((approval_token, event_id))
         })
     }
 }

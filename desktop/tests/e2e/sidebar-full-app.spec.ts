@@ -77,7 +77,6 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
     "Clients",
     "Social media",
     "Website",
-    "Money",
     "Files & assets",
     "Knowledge",
   ]) {
@@ -135,6 +134,13 @@ test("Company Work and Business destinations open existing routes", async ({
   await expect(
     page.getByRole("heading", { name: "Clients", exact: true }),
   ).toBeVisible();
+
+  const money = page.getByTestId("sidebar-business-money");
+  await expect(money).toBeVisible();
+  await money.click();
+  await expect(page).toHaveURL(/#\/money$/);
+  await expect(page.getByTestId("money-overview")).toBeVisible();
+  await expect(money).toHaveAttribute("data-active", "true");
 
   await page.goto("/#/clients");
   await expect(page.getByTestId("sidebar-nav-business-toggle")).toHaveAttribute(

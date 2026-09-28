@@ -15,6 +15,7 @@ import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
 import { Route as powerRouteImport } from "./routes/power";
 import { Route as pipelineRouteImport } from "./routes/pipeline";
+import { Route as moneyRouteImport } from "./routes/money";
 import { Route as leadsRouteImport } from "./routes/leads";
 import { Route as goalsRouteImport } from "./routes/goals";
 import { Route as factoryRouteImport } from "./routes/factory";
@@ -33,6 +34,10 @@ import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$pro
 import { Route as permissionDotsplatRouteImport } from "./routes/permission.$";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
+import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
+import { Route as moneyDotinvoicesRouteImport } from "./routes/money.invoices";
+import { Route as moneyDotfollowUpsRouteImport } from "./routes/money.follow-ups";
+import { Route as moneyDotadjustmentsRouteImport } from "./routes/money.adjustments";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
 import { Route as goalsDotreferenceRouteImport } from "./routes/goals.reference";
 import { Route as goalsDotnewRouteImport } from "./routes/goals.new";
@@ -47,6 +52,8 @@ import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sa
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
+import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
 import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
@@ -108,6 +115,11 @@ const powerRoute = powerRouteImport.update({
 const pipelineRoute = pipelineRouteImport.update({
   id: "/pipeline",
   path: "/pipeline",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyRoute = moneyRouteImport.update({
+  id: "/money",
+  path: "/money",
   getParentRoute: () => rootRouteImport,
 } as any);
 const leadsRoute = leadsRouteImport.update({
@@ -200,6 +212,26 @@ const navigationDothistoryRoute = navigationDothistoryRouteImport.update({
   path: "/navigation/history",
   getParentRoute: () => rootRouteImport,
 } as any);
+const moneyDotrevenueRoute = moneyDotrevenueRouteImport.update({
+  id: "/money/revenue",
+  path: "/money/revenue",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotinvoicesRoute = moneyDotinvoicesRouteImport.update({
+  id: "/money/invoices",
+  path: "/money/invoices",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotfollowUpsRoute = moneyDotfollowUpsRouteImport.update({
+  id: "/money/follow-ups",
+  path: "/money/follow-ups",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotadjustmentsRoute = moneyDotadjustmentsRouteImport.update({
+  id: "/money/adjustments",
+  path: "/money/adjustments",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
@@ -272,6 +304,18 @@ const salesDotleadDotprospectIdRoute =
   salesDotleadDotprospectIdRouteImport.update({
     id: "/sales/lead/$prospectId",
     path: "/sales/lead/$prospectId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotrevenueDotinvoiceIdRoute =
+  moneyDotrevenueDotinvoiceIdRouteImport.update({
+    id: "/money/revenue/$invoiceId",
+    path: "/money/revenue/$invoiceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotinvoiceDotinvoiceIdRoute =
+  moneyDotinvoiceDotinvoiceIdRouteImport.update({
+    id: "/money/invoice/$invoiceId",
+    path: "/money/invoice/$invoiceId",
     getParentRoute: () => rootRouteImport,
   } as any);
 const goalsDotgoalIdDotsubgoalRoute =
@@ -352,6 +396,7 @@ export interface FileRoutesByFullPath {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -372,6 +417,10 @@ export interface FileRoutesByFullPath {
   "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/permission/$": typeof permissionDotsplatRoute;
@@ -393,6 +442,8 @@ export interface FileRoutesByFullPath {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -408,6 +459,7 @@ export interface FileRoutesByTo {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -428,6 +480,10 @@ export interface FileRoutesByTo {
   "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/permission/$": typeof permissionDotsplatRoute;
@@ -449,6 +505,8 @@ export interface FileRoutesByTo {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -465,6 +523,7 @@ export interface FileRoutesById {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -485,6 +544,10 @@ export interface FileRoutesById {
   "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
   "/permission/$": typeof permissionDotsplatRoute;
@@ -506,6 +569,8 @@ export interface FileRoutesById {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
@@ -523,6 +588,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -543,6 +609,10 @@ export interface FileRouteTypes {
     | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
     | "/permission/$"
@@ -564,6 +634,8 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/money/invoice/$invoiceId"
+    | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -579,6 +651,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -599,6 +672,10 @@ export interface FileRouteTypes {
     | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
     | "/permission/$"
@@ -620,6 +697,8 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/money/invoice/$invoiceId"
+    | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -635,6 +714,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -655,6 +735,10 @@ export interface FileRouteTypes {
     | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
     | "/permission/$"
@@ -676,6 +760,8 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/money/invoice/$invoiceId"
+    | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
@@ -692,6 +778,7 @@ export interface RootRouteChildren {
   factoryRoute: typeof factoryRoute;
   goalsRoute: typeof goalsRoute;
   leadsRoute: typeof leadsRoute;
+  moneyRoute: typeof moneyRoute;
   pipelineRoute: typeof pipelineRoute;
   powerRoute: typeof powerRoute;
   projectsRoute: typeof projectsRoute;
@@ -712,6 +799,10 @@ export interface RootRouteChildren {
   goalsDotnewRoute: typeof goalsDotnewRoute;
   goalsDotreferenceRoute: typeof goalsDotreferenceRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
+  moneyDotadjustmentsRoute: typeof moneyDotadjustmentsRoute;
+  moneyDotfollowUpsRoute: typeof moneyDotfollowUpsRoute;
+  moneyDotinvoicesRoute: typeof moneyDotinvoicesRoute;
+  moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
   permissionDotsplatRoute: typeof permissionDotsplatRoute;
@@ -733,6 +824,8 @@ export interface RootRouteChildren {
   goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
   goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
   goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
+  moneyDotinvoiceDotinvoiceIdRoute: typeof moneyDotinvoiceDotinvoiceIdRoute;
+  moneyDotrevenueDotinvoiceIdRoute: typeof moneyDotrevenueDotinvoiceIdRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
@@ -810,6 +903,13 @@ declare module "@tanstack/react-router" {
       path: "/pipeline";
       fullPath: "/pipeline";
       preLoaderRoute: typeof pipelineRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money": {
+      id: "/money";
+      path: "/money";
+      fullPath: "/money";
+      preLoaderRoute: typeof moneyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/leads": {
@@ -938,6 +1038,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof navigationDothistoryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/money/revenue": {
+      id: "/money/revenue";
+      path: "/money/revenue";
+      fullPath: "/money/revenue";
+      preLoaderRoute: typeof moneyDotrevenueRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/invoices": {
+      id: "/money/invoices";
+      path: "/money/invoices";
+      fullPath: "/money/invoices";
+      preLoaderRoute: typeof moneyDotinvoicesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/follow-ups": {
+      id: "/money/follow-ups";
+      path: "/money/follow-ups";
+      fullPath: "/money/follow-ups";
+      preLoaderRoute: typeof moneyDotfollowUpsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/adjustments": {
+      id: "/money/adjustments";
+      path: "/money/adjustments";
+      fullPath: "/money/adjustments";
+      preLoaderRoute: typeof moneyDotadjustmentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/messages/new": {
       id: "/messages/new";
       path: "/messages/new";
@@ -1036,6 +1164,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/money/revenue/$invoiceId": {
+      id: "/money/revenue/$invoiceId";
+      path: "/money/revenue/$invoiceId";
+      fullPath: "/money/revenue/$invoiceId";
+      preLoaderRoute: typeof moneyDotrevenueDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/invoice/$invoiceId": {
+      id: "/money/invoice/$invoiceId";
+      path: "/money/invoice/$invoiceId";
+      fullPath: "/money/invoice/$invoiceId";
+      preLoaderRoute: typeof moneyDotinvoiceDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/goals/$goalId/subgoal": {
       id: "/goals/$goalId/subgoal";
       path: "/goals/$goalId/subgoal";
@@ -1132,6 +1274,7 @@ const rootRouteChildren: RootRouteChildren = {
   factoryRoute: factoryRoute,
   goalsRoute: goalsRoute,
   leadsRoute: leadsRoute,
+  moneyRoute: moneyRoute,
   pipelineRoute: pipelineRoute,
   powerRoute: powerRoute,
   projectsRoute: projectsRoute,
@@ -1152,6 +1295,10 @@ const rootRouteChildren: RootRouteChildren = {
   goalsDotnewRoute: goalsDotnewRoute,
   goalsDotreferenceRoute: goalsDotreferenceRoute,
   messagesDotnewRoute: messagesDotnewRoute,
+  moneyDotadjustmentsRoute: moneyDotadjustmentsRoute,
+  moneyDotfollowUpsRoute: moneyDotfollowUpsRoute,
+  moneyDotinvoicesRoute: moneyDotinvoicesRoute,
+  moneyDotrevenueRoute: moneyDotrevenueRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
   permissionDotsplatRoute: permissionDotsplatRoute,
@@ -1173,6 +1320,8 @@ const rootRouteChildren: RootRouteChildren = {
   goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
   goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
   goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
+  moneyDotinvoiceDotinvoiceIdRoute: moneyDotinvoiceDotinvoiceIdRoute,
+  moneyDotrevenueDotinvoiceIdRoute: moneyDotrevenueDotinvoiceIdRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,

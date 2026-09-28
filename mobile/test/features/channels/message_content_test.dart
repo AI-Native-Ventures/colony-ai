@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -14,6 +15,7 @@ import 'package:nostr/nostr.dart' as nostr;
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/features/channels/conversation_styles.dart';
+import 'package:buzz/features/channels/goal_reference_card.dart';
 import 'package:buzz/features/channels/message_content.dart';
 import 'package:buzz/features/channels/media_viewer_page.dart';
 import 'package:buzz/features/channels/voice_note_attachment.dart';
@@ -21,6 +23,8 @@ import 'package:buzz/features/channels/voice_note_waveform.dart';
 import 'package:buzz/features/channels/voice_note_recording.dart';
 import 'package:buzz/shared/deeplink/deep_link.dart';
 import 'package:buzz/shared/deeplink/pending_deep_link_provider.dart';
+import 'package:buzz/shared/company/goals/goal_records.dart';
+import 'package:buzz/shared/company/goals/goal_repository.dart';
 import 'package:buzz/shared/emoji/emoji_only.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -2516,6 +2520,61 @@ Photos
           }
         },
       );
+
+      testWidgets('renders a goal reference as a live goal card', (
+        tester,
+      ) async {
+        const goalId = '123e4567-e89b-12d3-a456-426614174000';
+        const relaySecret =
+            '1111111111111111111111111111111111111111111111111111111111111111';
+        const ownerPubkey =
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        final content = jsonEncode({
+          'schemaVersion': 1,
+          'goalId': goalId,
+          'status': 'active',
+          'title': 'Every client plan, ready on time',
+          'goal': {
+            'schemaVersion': 1,
+            'goalId': goalId,
+            'title': 'Every client plan, ready on time',
+            'ownerPubkey': ownerPubkey,
+            'doneCondition': 'Each active client has an approved plan.',
+            'linkedChannelIds': <String>[],
+          },
+          'sourceActionEventId': List.filled(64, 'f').join(),
+        });
+        final wireEvent = nostr.Event.from(
+          kind: EventKind.goalHead,
+          content: content,
+          tags: [
+            ['d', 'company:goal:$goalId'],
+          ],
+          secretKey: relaySecret,
+          createdAt: 1758700000,
+          verify: false,
+        );
+        final event = NostrEvent.fromJson(wireEvent.toMap());
+        final record = parseGoalHeadEvent(event, event.pubkey)!;
+
+        await tester.pumpWidget(
+          _testable(
+            const MessageContent(
+              content:
+                  'See [the shared goal](buzz://goal/123e4567-e89b-12d3-a456-426614174000).',
+            ),
+            overrides: [
+              goalHeadsProvider.overrideWith((ref) async => [record]),
+            ],
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 30));
+
+        expect(find.byType(GoalReferenceCard), findsOneWidget);
+        expect(find.text('Every client plan, ready on time'), findsOneWidget);
+        expect(find.text('On track'), findsOneWidget);
+      });
 
       testWidgets('uses shortened channel identifiers when names are missing', (
         tester,

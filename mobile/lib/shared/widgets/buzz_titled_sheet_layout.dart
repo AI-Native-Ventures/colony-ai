@@ -15,6 +15,7 @@ class BuzzTitledSheetLayout extends HookWidget {
     this.trailing,
     this.titleKey,
     this.showDragHandle = false,
+    this.centerTitle = true,
     this.surfaceColor,
   });
 
@@ -24,6 +25,7 @@ class BuzzTitledSheetLayout extends HookWidget {
   final Widget? trailing;
   final Key? titleKey;
   final bool showDragHandle;
+  final bool centerTitle;
   final Color? surfaceColor;
 
   @override
@@ -80,6 +82,7 @@ class BuzzTitledSheetLayout extends HookWidget {
                 leading: leading,
                 trailing: trailing,
                 showDragHandle: showDragHandle,
+                centerTitle: centerTitle,
               ),
             ),
             Flexible(

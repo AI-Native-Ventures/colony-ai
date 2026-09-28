@@ -54,6 +54,7 @@ class IdentityAvatar extends StatelessWidget {
     this.imageUrl,
     this.size = 39,
     this.isOnline = false,
+    this.roundedSquare = false,
     this.semanticLabel,
     this.excludeSemantics = false,
     super.key,
@@ -76,6 +77,9 @@ class IdentityAvatar extends StatelessWidget {
 
   /// Whether to show the shared online indicator.
   final bool isOnline;
+
+  /// Draws a person identity with the compact rounded-square treatment.
+  final bool roundedSquare;
 
   /// Optional accessible image label.
   final String? semanticLabel;
@@ -100,12 +104,13 @@ class IdentityAvatar extends StatelessWidget {
             IdentityAvatarTone.peach => colors.identityPersonForeground,
             IdentityAvatarTone.sage => colors.identitySageForeground,
           };
+    final useRoundedSquare = isAgent || roundedSquare;
     final borderRadius = BorderRadius.circular(size * 0.32);
     final fallback = DecoratedBox(
       decoration: BoxDecoration(
         gradient: backgroundGradient,
-        shape: isAgent ? BoxShape.rectangle : BoxShape.circle,
-        borderRadius: isAgent ? borderRadius : null,
+        shape: useRoundedSquare ? BoxShape.rectangle : BoxShape.circle,
+        borderRadius: useRoundedSquare ? borderRadius : null,
       ),
       child: Center(
         child: Text(
@@ -127,6 +132,7 @@ class IdentityAvatar extends StatelessWidget {
           radius: size / 2,
           backgroundColor: colors.lilac,
           fallback: fallback,
+          borderRadius: roundedSquare ? borderRadius : null,
           isAgent: isAgent,
         ),
         if (isOnline)

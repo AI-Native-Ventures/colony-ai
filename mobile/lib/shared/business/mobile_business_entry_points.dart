@@ -20,6 +20,9 @@ abstract final class MobileBusinessRoutes {
   /// Destination for shared company outcomes.
   static const goals = MobileRoute<NoMobileRouteArguments>('goals');
 
+  /// Destination for one company goal or sub-goal.
+  static const goalDetail = MobileRoute<String>('goal');
+
   /// Destination for company work commitments.
   static const work = MobileRoute<NoMobileRouteArguments>('work');
 

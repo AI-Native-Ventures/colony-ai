@@ -14,8 +14,10 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../shared/animated_avatar.dart';
 import '../../shared/emoji/emoji_burst.dart';
 import '../../shared/huddle/huddle.dart';
+import '../../shared/business/mobile_business_entry_points.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/navigation/mobile_route.dart';
+import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/theme/theme.dart';
@@ -70,6 +72,7 @@ import 'message_content.dart';
 import 'message_presentation.dart';
 import 'deliverable_preview_card.dart';
 import 'deliverable_business_records.dart';
+import 'goal_reference_card.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
 import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
@@ -735,6 +738,21 @@ class ChannelDetailPage extends HookConsumerWidget {
         children: [
           Column(
             children: [
+              if (!resolvedChannel.isDm)
+                ChannelGoalBannerSlot(
+                  channelId: resolvedChannel.id,
+                  topPadding: frostedAppBarHeight(
+                    context,
+                    titleContentHeight: appBarTitleContentHeight,
+                  ),
+                  onOpenGoal: (goalId) => unawaited(
+                    MobileNavigation.push<String, void>(
+                      context,
+                      MobileBusinessRoutes.goalDetail,
+                      goalId,
+                    ),
+                  ),
+                ),
               Expanded(
                 child: resolvedChannel.isForum
                     ? Stack(

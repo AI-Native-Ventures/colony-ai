@@ -73,6 +73,8 @@ pub async fn handle_command(
         KIND_DM_ADD_MEMBER => handle_dm_add_member(tenant, state, &event, &auth).await,
         KIND_DM_HIDE => handle_dm_hide(tenant, state, &event, &auth).await,
         KIND_WORKFLOW_DEF => handle_workflow_def(tenant, state, &event, &auth).await,
+        KIND_WORKFLOW_DRAFT => handle_workflow_draft(tenant, state, &event, &auth).await,
+        KIND_WORKFLOW_STATUS => handle_workflow_status(tenant, state, &event, &auth).await,
         KIND_WORKFLOW_TRIGGER => handle_workflow_trigger(tenant, state, &event, &auth).await,
         KIND_APPROVAL_GRANT => handle_approval_grant(tenant, state, &event, &auth).await,
         KIND_APPROVAL_DENY => handle_approval_deny(tenant, state, &event, &auth).await,
@@ -168,7 +170,8 @@ async fn persist_command_event(
             ParameterizedReplaceStatus::Inserted => Ok(PersistResult::Inserted(tx)),
             ParameterizedReplaceStatus::Duplicate => Ok(PersistResult::Duplicate),
             ParameterizedReplaceStatus::Superseded
-                if kind == KIND_WORKFLOW_DEF as i32 && expected_revision.is_some() =>
+                if (kind == KIND_WORKFLOW_DEF as i32 || kind == KIND_WORKFLOW_DRAFT as i32)
+                    && expected_revision.is_some() =>
             {
                 Err(IngestError::Rejected(
                     "conflict: workflow update was superseded; refresh and try again".into(),
@@ -205,7 +208,7 @@ fn parse_expected_workflow_revision(
     kind: i32,
     expected_revision: Option<&str>,
 ) -> Result<Option<Vec<u8>>, IngestError> {
-    if kind != KIND_WORKFLOW_DEF as i32 {
+    if kind != KIND_WORKFLOW_DEF as i32 && kind != KIND_WORKFLOW_DRAFT as i32 {
         return Ok(None);
     }
 
@@ -644,6 +647,89 @@ async fn handle_dm_hide(
     })
 }
 
+async fn handle_workflow_draft(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    auth: &IngestAuth,
+) -> Result<IngestResult, IngestError> {
+    let self_bytes = auth.pubkey().to_bytes().to_vec();
+    let channel_id_str = extract_h_tag(event)
+        .ok_or_else(|| IngestError::Rejected("invalid: missing h tag (channel_id)".into()))?;
+    let channel_id = Uuid::parse_str(&channel_id_str)
+        .map_err(|_| IngestError::Rejected("invalid: bad channel_id format".into()))?;
+    let workflow_id_str = extract_d_tag(event)
+        .ok_or_else(|| IngestError::Rejected("invalid: missing d tag (workflow_id)".into()))?;
+    let workflow_id = Uuid::parse_str(&workflow_id_str)
+        .map_err(|_| IngestError::Rejected("invalid: bad workflow_id format".into()))?;
+    let (def, _) = buzz_workflow::WorkflowEngine::parse_yaml(&event.content)
+        .map_err(|e| IngestError::Rejected(format!("invalid: workflow YAML parse error: {e}")))?;
+    let is_member = state
+        .is_member_cached(tenant.community(), channel_id, &self_bytes)
+        .await
+        .map_err(|e| IngestError::Internal(format!("error: membership check: {e}")))?;
+    if !is_member {
+        return Err(IngestError::Rejected(
+            "forbidden: not a member of this channel".into(),
+        ));
+    }
+    state
+        .db
+        .get_channel_for_event_write(tenant.community(), channel_id)
+        .await
+        .map_err(|_| IngestError::Rejected("invalid: workflow channel not found".into()))?;
+    match state.db.get_workflow(tenant.community(), workflow_id).await {
+        Ok(workflow) => {
+            if workflow.owner_pubkey != self_bytes || workflow.channel_id != Some(channel_id) {
+                return Err(IngestError::Rejected(
+                    "forbidden: workflow belongs to a different owner or channel".into(),
+                ));
+            }
+        }
+        Err(DbError::NotFound(_)) => {}
+        Err(error) => {
+            return Err(IngestError::Internal(format!(
+                "error: load existing workflow draft target: {error}"
+            )));
+        }
+    }
+    if def.requires_elevated_authority() {
+        let role = state
+            .db
+            .get_member_role(tenant.community(), channel_id, &self_bytes)
+            .await
+            .map_err(|e| IngestError::Internal(format!("error: role check: {e}")))?;
+        if !matches!(role.as_deref(), Some("owner") | Some("admin")) {
+            return Err(IngestError::Rejected(
+                "forbidden: workflows with call_webhook actions require the owner or admin role"
+                    .into(),
+            ));
+        }
+    }
+
+    let tx = match persist_command_event(&state.db, tenant, event, Some(channel_id)).await? {
+        PersistResult::Duplicate => {
+            return Ok(IngestResult {
+                event_id: event.id.to_hex(),
+                accepted: true,
+                message: "duplicate: already processed".into(),
+            });
+        }
+        PersistResult::Inserted(tx) => tx,
+    };
+    tx.commit()
+        .await
+        .map_err(|e| IngestError::Internal(format!("error: commit workflow draft: {e}")))?;
+    Ok(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: format!(
+            "response:{}",
+            serde_json::json!({"workflow_id": workflow_id, "draft": true})
+        ),
+    })
+}
+
 async fn handle_workflow_def(
     tenant: &TenantContext,
     state: &Arc<AppState>,
@@ -818,6 +904,99 @@ async fn handle_workflow_def(
     })
 }
 
+async fn handle_workflow_status(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    auth: &IngestAuth,
+) -> Result<IngestResult, IngestError> {
+    let self_bytes = auth.pubkey().to_bytes().to_vec();
+    let workflow_id_str = extract_tag(event, "workflow")
+        .ok_or_else(|| IngestError::Rejected("invalid: missing workflow tag".into()))?;
+    let workflow_id = Uuid::parse_str(&workflow_id_str)
+        .map_err(|_| IngestError::Rejected("invalid: bad workflow_id format".into()))?;
+    let channel_id_str = extract_h_tag(event)
+        .ok_or_else(|| IngestError::Rejected("invalid: missing h tag (channel_id)".into()))?;
+    let channel_id = Uuid::parse_str(&channel_id_str)
+        .map_err(|_| IngestError::Rejected("invalid: bad channel_id format".into()))?;
+    let payload: serde_json::Value = serde_json::from_str(&event.content)
+        .map_err(|_| IngestError::Rejected("invalid: workflow status must be JSON".into()))?;
+    let status = payload
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| IngestError::Rejected("invalid: workflow status is required".into()))?;
+    let enabled = match status {
+        "active" => true,
+        "paused" => false,
+        _ => {
+            return Err(IngestError::Rejected(
+                "invalid: workflow status must be active or paused".into(),
+            ));
+        }
+    };
+    let workflow = state
+        .db
+        .get_workflow(tenant.community(), workflow_id)
+        .await
+        .map_err(|_| IngestError::Rejected("invalid: workflow not found".into()))?;
+    if workflow.channel_id != Some(channel_id) {
+        return Err(IngestError::Rejected(
+            "forbidden: workflow belongs to a different channel".into(),
+        ));
+    }
+    if workflow.owner_pubkey != self_bytes {
+        let relay_member = state
+            .db
+            .get_relay_member(tenant.community(), &hex::encode(&self_bytes))
+            .await
+            .map_err(|e| {
+                IngestError::Internal(format!("error: workflow status role lookup: {e}"))
+            })?;
+        if !relay_member.is_some_and(|member| matches!(member.role.as_str(), "owner" | "admin")) {
+            return Err(IngestError::Rejected(
+                "forbidden: only the workflow owner or a community admin may change status".into(),
+            ));
+        }
+    }
+
+    let mut tx = match persist_command_event(&state.db, tenant, event, Some(channel_id)).await? {
+        PersistResult::Duplicate => {
+            return Ok(IngestResult {
+                event_id: event.id.to_hex(),
+                accepted: true,
+                message: "duplicate: already processed".into(),
+            });
+        }
+        PersistResult::Inserted(tx) => tx,
+    };
+    state
+        .db
+        .set_workflow_lifecycle_in_transaction(
+            &mut tx,
+            tenant.community(),
+            workflow_id,
+            if enabled {
+                buzz_db::workflow::WorkflowStatus::Active
+            } else {
+                buzz_db::workflow::WorkflowStatus::Disabled
+            },
+            enabled,
+        )
+        .await
+        .map_err(|e| IngestError::Internal(format!("error: update workflow status: {e}")))?;
+    state
+        .workflow_engine
+        .invalidate_channel_workflows(tenant.community(), channel_id);
+    tx.commit()
+        .await
+        .map_err(|e| IngestError::Internal(format!("error: commit workflow status: {e}")))?;
+    Ok(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: format!("response:{}", serde_json::json!({"status": status})),
+    })
+}
+
 async fn handle_workflow_trigger(
     tenant: &TenantContext,
     state: &Arc<AppState>,
@@ -919,11 +1098,13 @@ async fn handle_workflow_trigger(
     let event_id_bytes = event.id.as_bytes().to_vec();
     let run_id = state
         .db
-        .create_workflow_run(
+        .create_workflow_run_versioned(
             community_id,
             workflow_id,
             Some(&event_id_bytes),
             trigger_ctx_json.as_ref(),
+            &workflow.definition_hash,
+            &workflow.definition,
         )
         .await
         .map_err(|e| IngestError::Internal(format!("error: db create_workflow_run: {e}")))?;
@@ -993,12 +1174,18 @@ async fn handle_workflow_trigger(
 
 /// Enforce the approver_spec field against the requesting pubkey.
 ///
-/// Accepted specs:
-/// - `""` or `"any"` — any authenticated user may approve.
-/// - 64-char lowercase hex string — only that exact pubkey may approve.
+/// Accepted specs are `""`/`"any"`, a 64-character pubkey, `owner_or_admin`,
+/// or `channel_member`. Role membership is checked at decision time.
 ///
 /// All other formats are rejected (fail-closed).
-fn check_approver_spec(approver_spec: &str, requester_hex: &str) -> Result<(), IngestError> {
+async fn check_approver_spec(
+    db: &buzz_db::Db,
+    community_id: CommunityId,
+    workflow_id: Uuid,
+    run_id: Uuid,
+    approver_spec: &str,
+    requester_hex: &str,
+) -> Result<(), IngestError> {
     let spec = approver_spec.trim();
 
     // Empty or "any" — anyone may approve
@@ -1016,11 +1203,83 @@ fn check_approver_spec(approver_spec: &str, requester_hex: &str) -> Result<(), I
         ));
     }
 
+    if spec == "owner_or_admin" {
+        let member = db
+            .get_relay_member(community_id, requester_hex)
+            .await
+            .map_err(|e| IngestError::Internal(format!("error: approver role lookup: {e}")))?;
+        if role_approver_matches(
+            spec,
+            member.as_ref().map(|member| member.role.as_str()),
+            false,
+        ) {
+            return Ok(());
+        }
+        return Err(IngestError::Rejected(
+            "forbidden: community owner or admin role required".into(),
+        ));
+    }
+
+    if spec == "channel_member" {
+        let run = db
+            .get_workflow_run(community_id, run_id)
+            .await
+            .map_err(|e| IngestError::Internal(format!("error: approver run lookup: {e}")))?;
+        if run.workflow_id != workflow_id {
+            return Err(IngestError::Rejected(
+                "forbidden: approval run does not belong to this workflow".into(),
+            ));
+        }
+        let workflow = db
+            .get_workflow(community_id, workflow_id)
+            .await
+            .map_err(|e| IngestError::Internal(format!("error: approver workflow lookup: {e}")))?;
+        let channel_id = approval_channel_id(run.workflow_channel_id, workflow.channel_id)
+            .ok_or_else(|| {
+                IngestError::Rejected(
+                    "forbidden: workflow has no channel for member approval".into(),
+                )
+            })?;
+        let requester_bytes = hex::decode(requester_hex)
+            .map_err(|_| IngestError::Rejected("invalid: malformed approver pubkey".into()))?;
+        let role = db
+            .get_member_role(community_id, channel_id, &requester_bytes)
+            .await
+            .map_err(|e| IngestError::Internal(format!("error: channel approver lookup: {e}")))?;
+        if role_approver_matches(spec, None, role.is_some()) {
+            return Ok(());
+        }
+        return Err(IngestError::Rejected(
+            "forbidden: channel membership required".into(),
+        ));
+    }
+
     // Role-based or unrecognised — fail closed
     Err(IngestError::Rejected(format!(
         "forbidden: approver spec '{}' is not yet supported",
         spec
     )))
+}
+
+fn role_approver_matches(
+    approver_spec: &str,
+    community_role: Option<&str>,
+    is_channel_member: bool,
+) -> bool {
+    match approver_spec {
+        "owner_or_admin" => {
+            matches!(community_role, Some("owner") | Some("admin"))
+        }
+        "channel_member" => is_channel_member,
+        _ => false,
+    }
+}
+
+fn approval_channel_id(
+    run_channel_id: Option<Uuid>,
+    current_workflow_channel_id: Option<Uuid>,
+) -> Option<Uuid> {
+    run_channel_id.or(current_workflow_channel_id)
 }
 
 async fn handle_approval_grant(
@@ -1064,7 +1323,15 @@ async fn handle_approval_grant(
     }
 
     // 4. Validate caller is authorized approver
-    check_approver_spec(&approval.approver_spec, &self_hex)?;
+    check_approver_spec(
+        &state.db,
+        tenant.community(),
+        approval.workflow_id,
+        approval.run_id,
+        &approval.approver_spec,
+        &self_hex,
+    )
+    .await?;
 
     // Persist the command event — returns open transaction
     let tx = match persist_command_event(&state.db, tenant, event, None).await? {
@@ -1175,7 +1442,15 @@ async fn handle_approval_deny(
     }
 
     // 4. Validate caller is authorized approver
-    check_approver_spec(&approval.approver_spec, &self_hex)?;
+    check_approver_spec(
+        &state.db,
+        tenant.community(),
+        approval.workflow_id,
+        approval.run_id,
+        &approval.approver_spec,
+        &self_hex,
+    )
+    .await?;
 
     // Persist the command event — returns open transaction
     let tx = match persist_command_event(&state.db, tenant, event, None).await? {
@@ -1309,8 +1584,11 @@ async fn resume_workflow_after_approval(
         }
     };
 
-    let def: buzz_workflow::WorkflowDef = match serde_json::from_value(workflow.definition.clone())
-    {
+    let definition = run
+        .definition_snapshot
+        .clone()
+        .unwrap_or_else(|| workflow.definition.clone());
+    let def: buzz_workflow::WorkflowDef = match serde_json::from_value(definition) {
         Ok(d) => d,
         Err(e) => {
             tracing::error!("resume_workflow: failed to parse workflow definition: {e}");
@@ -1333,6 +1611,48 @@ async fn resume_workflow_after_approval(
             return;
         }
     };
+
+    let Some(channel_id) = run.workflow_channel_id.or(workflow.channel_id) else {
+        if let Err(db_err) = db
+            .update_workflow_run(
+                community_id,
+                run_id,
+                RunStatus::Failed,
+                run.current_step,
+                &run.execution_trace,
+                Some(buzz_db::workflow::WorkflowRunFailure {
+                    code: "workflow_channel_missing",
+                    message: "workflow run has no channel snapshot",
+                }),
+            )
+            .await
+        {
+            tracing::error!("resume_workflow: failed to mark run as failed: {db_err}");
+        }
+        return;
+    };
+    if let Err(error) = engine
+        .check_owner_authority(community_id, channel_id, &workflow.owner_pubkey, &def)
+        .await
+    {
+        if let Err(db_err) = db
+            .update_workflow_run(
+                community_id,
+                run_id,
+                RunStatus::Failed,
+                run.current_step,
+                &run.execution_trace,
+                Some(buzz_db::workflow::WorkflowRunFailure {
+                    code: "workflow_owner_authority_revoked",
+                    message: &format!("workflow owner authority is no longer valid: {error}"),
+                }),
+            )
+            .await
+        {
+            tracing::error!("resume_workflow: failed to mark run as failed: {db_err}");
+        }
+        return;
+    }
 
     // Reconstruct step_outputs from execution trace for template resolution
     let mut initial_outputs: std::collections::HashMap<String, serde_json::Value> =
@@ -1375,7 +1695,45 @@ async fn resume_workflow_after_approval(
 #[cfg(test)]
 mod postgres_tests {
     use super::*;
+    use buzz_core::channel::{ChannelType, ChannelVisibility, MemberRole};
     use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+
+    #[test]
+    fn role_approver_rules_use_community_roles_and_channel_membership() {
+        assert!(role_approver_matches(
+            "owner_or_admin",
+            Some("owner"),
+            false
+        ));
+        assert!(role_approver_matches(
+            "owner_or_admin",
+            Some("admin"),
+            false
+        ));
+        assert!(!role_approver_matches(
+            "owner_or_admin",
+            Some("member"),
+            true
+        ));
+        assert!(!role_approver_matches("owner_or_admin", None, true));
+        assert!(role_approver_matches("channel_member", None, true));
+        assert!(!role_approver_matches(
+            "channel_member",
+            Some("admin"),
+            false
+        ));
+
+        let run_channel = Uuid::new_v4();
+        let active_channel = Uuid::new_v4();
+        assert_eq!(
+            approval_channel_id(Some(run_channel), Some(active_channel)),
+            Some(run_channel)
+        );
+        assert_eq!(
+            approval_channel_id(None, Some(active_channel)),
+            Some(active_channel)
+        );
+    }
 
     async fn persistence_test_context() -> (buzz_db::Db, TenantContext) {
         let url = std::env::var("BUZZ_TEST_DATABASE_URL")
@@ -1397,6 +1755,183 @@ mod postgres_tests {
             .expect("create workflow persistence test community")
             .id;
         (db, TenantContext::resolved(community, host))
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn relay_approver_resolution_uses_current_scoped_roles() {
+        let (db, tenant) = persistence_test_context().await;
+        let community = tenant.community();
+        let owner = Keys::generate();
+        let member = Keys::generate();
+        let admin = Keys::generate();
+        let outsider = Keys::generate();
+        let owner_bytes = owner.public_key().to_bytes().to_vec();
+        let owner_hex = owner.public_key().to_hex();
+        let member_bytes = member.public_key().to_bytes().to_vec();
+        let admin_bytes = admin.public_key().to_bytes().to_vec();
+        let admin_hex = admin.public_key().to_hex();
+        let member_hex = member.public_key().to_hex();
+        let outsider_hex = outsider.public_key().to_hex();
+
+        for pubkey in [&owner_bytes, &member_bytes, &admin_bytes] {
+            db.ensure_user(community, pubkey)
+                .await
+                .expect("ensure test user");
+        }
+        db.add_relay_member(community, &admin_hex, "admin", None)
+            .await
+            .expect("add community admin");
+        db.add_relay_member(community, &owner_hex, "owner", None)
+            .await
+            .expect("add community owner");
+        let channel = db
+            .create_channel(
+                community,
+                &format!("approval-{}", Uuid::new_v4().simple()),
+                ChannelType::Stream,
+                ChannelVisibility::Open,
+                None,
+                &owner_bytes,
+                None,
+            )
+            .await
+            .expect("create workflow channel");
+        db.add_member(
+            community,
+            channel.id,
+            &member_bytes,
+            MemberRole::Member,
+            Some(&owner_bytes),
+        )
+        .await
+        .expect("add channel member");
+        let workflow_id = db
+            .create_workflow(
+                community,
+                Some(channel.id),
+                &owner_bytes,
+                "approval-test",
+                r#"{"name":"approval-test","trigger":{"on":"manual"},"steps":[{"id":"review","action":"request_approval","from":"channel_member","message":"Review"}],"enabled":true}"#,
+                &[0x5a; 32],
+            )
+            .await
+            .expect("create approval workflow");
+        let run_id = db
+            .create_workflow_run(community, workflow_id, None, None)
+            .await
+            .expect("create role resolution run");
+
+        assert!(check_approver_spec(
+            &db,
+            community,
+            workflow_id,
+            run_id,
+            "owner_or_admin",
+            &admin_hex,
+        )
+        .await
+        .is_ok());
+        assert!(check_approver_spec(
+            &db,
+            community,
+            workflow_id,
+            run_id,
+            "owner_or_admin",
+            &owner_hex,
+        )
+        .await
+        .is_ok());
+        assert!(check_approver_spec(
+            &db,
+            community,
+            workflow_id,
+            run_id,
+            "channel_member",
+            &member_hex,
+        )
+        .await
+        .is_ok());
+        assert!(matches!(
+            check_approver_spec(
+                &db,
+                community,
+                workflow_id,
+                run_id,
+                "channel_member",
+                &outsider_hex,
+            )
+            .await,
+            Err(IngestError::Rejected(_))
+        ));
+        assert!(matches!(
+            check_approver_spec(
+                &db,
+                community,
+                workflow_id,
+                run_id,
+                "owner_or_admin",
+                &member_hex,
+            )
+            .await,
+            Err(IngestError::Rejected(_))
+        ));
+
+        let role_approvals = [
+            ("owner_or_admin", &admin_hex, &admin_bytes),
+            ("channel_member", &member_hex, &member_bytes),
+        ];
+        for (index, (approver_spec, requester_hex, requester_bytes)) in
+            role_approvals.into_iter().enumerate()
+        {
+            let run_id = db
+                .create_workflow_run(community, workflow_id, None, None)
+                .await
+                .expect("create role approval run");
+            let token = format!("role-approval-{index}-{}", Uuid::new_v4());
+            db.create_approval(buzz_db::workflow::CreateApprovalParams {
+                community_id: community,
+                token: &token,
+                workflow_id,
+                run_id,
+                step_id: "review",
+                step_index: 0,
+                approver_spec,
+                expires_at: Utc::now() + chrono::Duration::hours(1),
+            })
+            .await
+            .expect("persist role approval");
+            check_approver_spec(
+                &db,
+                community,
+                workflow_id,
+                run_id,
+                approver_spec,
+                requester_hex,
+            )
+            .await
+            .expect("role member can approve");
+            let token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
+            assert!(db
+                .update_approval_by_stored_hash(
+                    community,
+                    &token_hash,
+                    ApprovalStatus::Granted,
+                    Some(requester_bytes),
+                    Some("Approved"),
+                )
+                .await
+                .expect("record role approval"));
+            let approval = db
+                .get_approval_by_stored_hash(community, &token_hash)
+                .await
+                .expect("load role approval");
+            assert_eq!(
+                approval.approver_pubkey.as_deref(),
+                Some(requester_bytes.as_slice())
+            );
+            assert_eq!(approval.status, ApprovalStatus::Granted);
+        }
     }
 
     fn workflow_event(
@@ -1448,6 +1983,14 @@ mod postgres_tests {
                 Some(&hex::encode(revision)),
             )
             .expect("valid revision"),
+            Some(revision.to_vec())
+        );
+        assert_eq!(
+            parse_expected_workflow_revision(
+                KIND_WORKFLOW_DRAFT as i32,
+                Some(&hex::encode(revision)),
+            )
+            .expect("draft revision"),
             Some(revision.to_vec())
         );
     }
