@@ -83,7 +83,7 @@ class ProfileAvatarPage extends HookConsumerWidget {
 
     final initials = _profileInitials(profile);
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

@@ -21,28 +21,51 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
       const Size.fromHeight(MobileLayoutTokens.appBarHeight);
 
   @override
-  Widget build(BuildContext context) => AppBar(
-    toolbarHeight: MobileLayoutTokens.appBarHeight - 1,
-    title: Text(
-      title,
-      style: context.textTheme.titleSmall?.copyWith(
-        color: context.colors.onSurface,
-        fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return AppBar(
+      backgroundColor: tokens.canvas,
+      foregroundColor: tokens.ink,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: MobileLayoutTokens.appBarHeight - 1,
+      titleSpacing: 16,
+      title: Text(
+        title,
+        style: context.textTheme.titleSmall?.copyWith(
+          color: tokens.ink,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-    ),
-    leading: IconButton(
-      tooltip: backLabel,
-      onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-      icon: const Icon(LucideIcons.chevronLeft),
-    ),
-    bottom: PreferredSize(
-      preferredSize: const Size.fromHeight(1),
-      child: Divider(height: 1, color: context.mobileTokens.line),
-    ),
-  );
+      leadingWidth: 60,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 16),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: tokens.paper,
+                border: Border.all(color: tokens.line),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: IconButton(
+                tooltip: backLabel,
+                onPressed: onBack ?? () => Navigator.of(context).maybePop(),
+                icon: const Icon(LucideIcons.chevronLeft),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// Applies the frozen r19 action color while keeping shared button sizing.
+/// Applies the approved mobile action color while keeping shared button sizing.
 ButtonStyle mobileFlowActionButtonStyle(BuildContext context) =>
     FilledButton.styleFrom(
       backgroundColor: context.mobileTokens.flowAction,

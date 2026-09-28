@@ -140,7 +140,7 @@ class ProfileAvatarStatePage extends HookConsumerWidget {
               .join()
               .toUpperCase();
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +245,7 @@ class _CameraDeniedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Camera access'),
       body: Column(
         children: [
@@ -364,7 +364,7 @@ class _MessagePage extends StatelessWidget {
               : const Color(0xFF9B586B)
         : foreground;
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: MobileFlowAppBar(title: appBarTitle),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

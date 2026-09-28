@@ -45,7 +45,7 @@ class ProfileAvatarReviewPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Review your avatar'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

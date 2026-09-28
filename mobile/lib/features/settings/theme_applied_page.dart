@@ -10,7 +10,7 @@ class ThemeAppliedPage extends ConsumerWidget {
     final theme = findTheme(themeName) ?? findTheme('buzz')!;
     final preference = ref.watch(appearanceDisplayPreferenceProvider);
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Appearance'),
       body: ListView(
         padding: const EdgeInsets.all(Grid.gutter),

@@ -37,7 +37,7 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
   /// Foreground color for content placed on [action].
   final Color onAction;
 
-  /// Primary color retained by profile and settings flows on the r19 design.
+  /// Primary color used for profile and settings flow actions.
   final Color flowAction;
 
   /// Foreground color for profile and settings flow actions.
@@ -59,8 +59,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     soft: Color(0xFFEEE7F2),
     action: Color(0xFF694180),
     onAction: Color(0xFFFFFDFD),
-    flowAction: Color(0xFF45669F),
-    flowActionForeground: Color(0xFFFFFFFF),
+    flowAction: Color(0xFF694180),
+    flowActionForeground: Color(0xFFFFFDFD),
     actionSoft: Color(0xFFEEE7F2),
     onActionSoft: Color(0xFF694180),
     info: Color(0xFFEAE3F0),
@@ -79,8 +79,8 @@ class MobileDesignTokens extends ThemeExtension<MobileDesignTokens> {
     soft: Color(0xFF382B43),
     action: Color(0xFFD1ABEA),
     onAction: Color(0xFF201927),
-    flowAction: Color(0xFF45669F),
-    flowActionForeground: Color(0xFFFFFFFF),
+    flowAction: Color(0xFFD1ABEA),
+    flowActionForeground: Color(0xFF201927),
     actionSoft: Color(0xFF382B43),
     onActionSoft: Color(0xFFD1ABEA),
     info: Color(0xFF382B43),

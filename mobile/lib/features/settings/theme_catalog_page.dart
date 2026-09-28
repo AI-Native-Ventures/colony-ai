@@ -37,7 +37,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
     final colors = context.colors;
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Themes'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

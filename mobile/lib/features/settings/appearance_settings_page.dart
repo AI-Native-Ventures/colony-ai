@@ -40,7 +40,7 @@ class AppearanceSettingsPage extends HookConsumerWidget {
 
     final previewTheme = findTheme(themeName.value) ?? findTheme('buzz')!;
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Appearance'),
       body: Column(
         children: [

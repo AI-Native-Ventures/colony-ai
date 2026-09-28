@@ -44,7 +44,7 @@ class ProfileAvatarCropRoutePage extends HookWidget {
     }
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Crop photo'),
       body: Column(
         children: [

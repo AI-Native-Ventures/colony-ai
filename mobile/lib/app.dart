@@ -50,6 +50,7 @@ import 'features/channels/deep_link_dispatcher.dart';
 import 'features/channels/compose_bar.dart';
 import 'features/channels/message_content.dart';
 import 'features/channels/channel_forum_route.dart';
+import 'features/credits/credits_pages.dart';
 import 'features/forum/forum_new_post_page.dart';
 import 'features/forum/forum_posts_view.dart';
 import 'features/forum/forum_presentation.dart';
@@ -334,6 +335,10 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         },
       );
     })
+    .register(
+      MobileBusinessRoutes.money,
+      (context, _) => const CreditsBalancePage(),
+    )
     .register(MobileRoutes.updates, (context, _) => const TeamUpdatesPage())
     .register(
       MobileRoutes.updateNote,
@@ -372,7 +377,11 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
     .register(
       MobileRoutes.settingsHome,
       (context, _) => Consumer(
-        builder: (context, ref, _) => _personalSettingsHomePage(ref),
+        builder: (context, ref, _) => _personalSettingsHomePage(
+          ref,
+          onOpenBusiness: () => Navigator.of(context).maybePop(),
+          onOpenAgents: () => Navigator.of(context).maybePop(),
+        ),
       ),
     )
     .register(
@@ -1092,24 +1101,45 @@ class App extends HookConsumerWidget {
   }
 }
 
-Widget _buildSettingsPage(BuildContext context) => const _SettingsPageContent();
+Widget _buildSettingsPage(BuildContext context) => _SettingsPageContent(
+  onOpenBusiness: () => Navigator.of(context).maybePop(),
+  onOpenAgents: () => Navigator.of(context).maybePop(),
+);
 
 class _SettingsPageContent extends ConsumerWidget {
-  const _SettingsPageContent();
+  const _SettingsPageContent({
+    required this.onOpenBusiness,
+    required this.onOpenAgents,
+  });
+
+  final VoidCallback onOpenBusiness;
+  final VoidCallback onOpenAgents;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) =>
-      _personalSettingsHomePage(ref);
+      _personalSettingsHomePage(
+        ref,
+        onOpenBusiness: onOpenBusiness,
+        onOpenAgents: onOpenAgents,
+      );
 }
 
-Widget _personalSettingsHomePage(WidgetRef ref) {
+Widget _personalSettingsHomePage(
+  WidgetRef ref, {
+  VoidCallback? onOpenBusiness,
+  VoidCallback? onOpenAgents,
+}) {
   final profile = ref.watch(profileProvider).asData?.value;
   final account = ref.watch(accountProfileProvider).asData?.value;
+  final communityName = ref.watch(activeCommunityProvider).asData?.value?.name;
   final profileName = profile?.displayName?.trim() ?? '';
   return PersonalSettingsHomePage(
     displayName: profileName.isEmpty ? 'Your profile' : profileName,
     email: account?.email,
     avatarUrl: profile?.avatarUrl,
+    communityName: communityName ?? '',
+    onOpenBusiness: onOpenBusiness,
+    onOpenAgents: onOpenAgents,
   );
 }
 

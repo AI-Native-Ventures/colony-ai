@@ -43,6 +43,7 @@ import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/relay/relay.dart';
+import 'package:buzz/shared/shell/mobile_shell.dart';
 import 'package:buzz/shared/theme/theme.dart';
 
 ui.Image? _avatarCameraPreviewImage;
@@ -111,10 +112,10 @@ void main() {
               Uri.file('${output.path}/proof_test.dart'),
             );
             tester.view.viewPadding = const FakeViewPadding(
-              top: 46,
+              top: 72,
               bottom: 20,
             );
-            tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+            tester.view.padding = const FakeViewPadding(top: 72, bottom: 20);
           }
           addTearDown(() {
             debugDefaultTargetPlatformOverride = null;
@@ -132,16 +133,19 @@ void main() {
           final rootKey = GlobalKey();
           final app = MaterialApp(
             debugShowCheckedModeBanner: false,
-            theme: AppTheme.light(
-              colorScheme: generateColorScheme(findTheme('buzz')!),
-            ),
-            darkTheme: AppTheme.dark(
-              colorScheme: generateColorScheme(findTheme('buzz-dark')!),
-            ),
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
             themeMode: brightness == Brightness.dark
                 ? ThemeMode.dark
                 : ThemeMode.light,
-            home: screen.build(),
+            home: screen.name == 'settings-home'
+                ? MobileShell(
+                    destination: MobileShellDestination.company,
+                    onDestinationSelected: (_) {},
+                    showBrandBar: false,
+                    child: screen.build(),
+                  )
+                : screen.build(),
           );
           await tester.pumpWidget(
             ProviderScope(
@@ -223,6 +227,9 @@ final _screenCases = <_ScreenCase>[
       displayName: 'Lerato Molefe',
       email: 'lerato@example.com',
       avatarUrl: null,
+      communityName: 'Lerato Social',
+      onOpenBusiness: _noop,
+      onOpenAgents: _noop,
     ),
   ),
   _ScreenCase(
@@ -434,7 +441,7 @@ class _ProofStatusBar extends StatelessWidget {
       brightness == Brightness.dark ? 0xffeee8f0 : 0xff292632,
     );
     return Positioned(
-      top: 0,
+      top: 26,
       left: 0,
       right: 0,
       child: IgnorePointer(

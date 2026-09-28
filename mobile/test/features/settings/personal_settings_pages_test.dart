@@ -36,13 +36,18 @@ void main() {
           displayName: 'Lerato Molefe',
           email: 'lerato@example.com',
           avatarUrl: null,
+          communityName: 'Lerato Social',
+          onOpenBusiness: _noop,
+          onOpenAgents: _noop,
         ),
       ),
     );
 
     expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('A little more you.'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Preferences'), findsOneWidget);
+    expect(find.text('Business'), findsOneWidget);
     final editButton = tester.widget<TextButton>(
       find.widgetWithText(TextButton, 'Edit'),
     );
@@ -309,3 +314,5 @@ Widget _testApp({
     home: MobileRouteScope(registry: registry, child: child),
   ),
 );
+
+void _noop() {}

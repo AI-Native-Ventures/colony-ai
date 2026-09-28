@@ -51,7 +51,7 @@ class SettingsPrivacyPage extends HookConsumerWidget {
         : 'Colony · You have a new notification.';
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Preview privacy'),
       body: Column(
         children: [

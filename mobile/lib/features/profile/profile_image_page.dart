@@ -110,7 +110,7 @@ class ProfileImagePage extends HookConsumerWidget {
     };
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: Column(
         children: [

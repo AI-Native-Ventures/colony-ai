@@ -539,7 +539,7 @@ class _EditorialNoteCard extends ConsumerWidget {
             TextButton(
               onPressed: onTap,
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xff345c99),
+                foregroundColor: context.mobileTokens.action,
                 padding: const EdgeInsets.symmetric(
                   vertical: 10,
                   horizontal: 3,
@@ -688,8 +688,8 @@ class _FeedFooter extends StatelessWidget {
         child: FilledButton(
           onPressed: onCompose,
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xff45669f),
-            foregroundColor: Colors.white,
+            backgroundColor: tokens.action,
+            foregroundColor: tokens.onAction,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
