@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   definitionToPlainDraft,
+  plainDraftMatchesDefinition,
   plainDraftToDefinition,
   plainScheduleDescription,
   plainScheduleFromCron,
@@ -104,7 +105,10 @@ test("manual workflows never receive a scheduled trigger", () => {
   };
   assert.deepEqual(plainDraftToDefinition(manual).trigger, { on: "manual" });
   assert.equal(plainScheduleToCron(manual.schedule), null);
-  assert.equal(plainScheduleDescription(manual.schedule), "When I start it");
+  assert.equal(
+    plainScheduleDescription(manual.schedule),
+    "When you choose Run workflow",
+  );
 });
 
 test("returns a plain reason when the engine definition cannot be edited safely", () => {
@@ -146,5 +150,60 @@ test("returns a plain reason when the engine definition cannot be edited safely"
     if (result.supported)
       assert.fail("unsupported engine definition was editable");
     assert.ok(result.reasons.length > 0);
+  }
+});
+
+test("maps an incomplete saved draft while rejecting an empty active definition", () => {
+  const definition = {
+    name: "Weekly review",
+    description: "Prepare then review",
+    enabled: true,
+    trigger: { on: "manual" },
+    steps: [],
+  };
+
+  assert.equal(definitionToPlainDraft(definition).supported, false);
+  const mappedDraft = definitionToPlainDraft(definition, {
+    allowEmptySteps: true,
+  });
+  assert.equal(mappedDraft.supported, true);
+  if (mappedDraft.supported) assert.deepEqual(mappedDraft.draft.steps, []);
+  assert.deepEqual(
+    plainDraftToDefinition(
+      {
+        name: "Weekly review",
+        description: "Prepare then review",
+        schedule: { frequency: "manual", day: 1, time: "08:00" },
+        steps: [],
+      },
+      { allowEmptySteps: true },
+    ).steps,
+    [],
+  );
+});
+
+test("compares a paused definition without treating its status flag as draft edits", () => {
+  const definition = {
+    name: "Weekly review",
+    description: "Prepare a plan and review it.",
+    enabled: false,
+    trigger: { on: "schedule", cron: "0 8 * * 1" },
+    steps: [
+      {
+        id: "prepare",
+        name: "Prepare the plan",
+        timeout_secs: 900,
+        action: "ask_agent",
+        agent_pubkey: "a".repeat(64),
+        instruction: "Prepare a plan.",
+        expected_result: "A complete plan.",
+      },
+    ],
+  };
+  const mapping = definitionToPlainDraft(definition);
+
+  assert.equal(mapping.supported, true);
+  if (mapping.supported) {
+    assert.equal(plainDraftMatchesDefinition(mapping.draft, definition), true);
   }
 });

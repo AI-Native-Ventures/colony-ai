@@ -111,7 +111,7 @@ export function plainDayName(day: number): string {
 }
 
 export function plainScheduleDescription(schedule: PlainSchedule): string {
-  if (schedule.frequency === "manual") return "When I start it";
+  if (schedule.frequency === "manual") return "When you choose Run workflow";
   const time = parseTime(schedule.time);
   if (!time) return "Choose a start time";
   const formatted = new Intl.DateTimeFormat("en-ZA", {
@@ -130,10 +130,13 @@ export function plainDraftToDefinition(
     PlainWorkflowDraft,
     "name" | "description" | "schedule" | "steps"
   >,
+  options: { allowEmptySteps?: boolean } = {},
 ): Record<string, unknown> {
   const name = draft.name.trim();
   if (!name) throw new Error("Add a workflow name.");
-  if (draft.steps.length === 0) throw new Error("Add at least one step.");
+  if (draft.steps.length === 0 && !options.allowEmptySteps) {
+    throw new Error("Add at least one step.");
+  }
   const cron = plainScheduleToCron(draft.schedule);
   const steps = draft.steps.map((step) => {
     if (step.kind === "agent") {
@@ -176,6 +179,7 @@ export function plainDraftToDefinition(
 
 export function definitionToPlainDraft(
   definitionValue: unknown,
+  options: { allowEmptySteps?: boolean } = {},
 ): PlainWorkflowMapping {
   const reasons = new Set<string>();
   const definition = record(definitionValue);
@@ -204,9 +208,6 @@ export function definitionToPlainDraft(
   ) {
     reasons.add("Its description cannot be shown in the plain builder.");
   }
-  if (definition.enabled === false)
-    reasons.add("Its run state is stored in the workflow definition.");
-
   const trigger = record(definition.trigger);
   let schedule: PlainSchedule = { frequency: "manual", day: 1, time: "08:00" };
   if (!trigger) {
@@ -232,7 +233,7 @@ export function definitionToPlainDraft(
   }
 
   const sourceSteps = Array.isArray(definition.steps) ? definition.steps : null;
-  if (!sourceSteps || sourceSteps.length === 0) {
+  if (!sourceSteps || (sourceSteps.length === 0 && !options.allowEmptySteps)) {
     reasons.add("It needs at least one supported step.");
   }
   const steps: PlainWorkflowStep[] = [];
@@ -332,4 +333,23 @@ export function definitionToPlainDraft(
       steps,
     },
   };
+}
+
+export function plainDraftMatchesDefinition(
+  draft: Pick<
+    PlainWorkflowDraft,
+    "name" | "description" | "schedule" | "steps"
+  >,
+  definition: unknown,
+): boolean {
+  const mapping = definitionToPlainDraft(definition);
+  if (!mapping.supported) return false;
+  try {
+    return (
+      JSON.stringify(plainDraftToDefinition(draft)) ===
+      JSON.stringify(plainDraftToDefinition(mapping.draft))
+    );
+  } catch {
+    return false;
+  }
 }

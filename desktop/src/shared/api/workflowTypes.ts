@@ -17,6 +17,31 @@ export type WorkflowSaveResult = {
   webhookSecret: string | null;
 };
 
+export type WorkflowDraft = {
+  id: string;
+  revision: string;
+  name: string;
+  ownerPubkey: string;
+  channelId: string;
+  definition: Record<string, unknown>;
+  updatedAt: number;
+};
+
+export type WorkflowPreviewStep = {
+  stepId: string;
+  outcome: string;
+  action: string;
+  definition: Record<string, unknown> | null;
+  paths: string[];
+  note: string | null;
+};
+
+export type WorkflowPreview = {
+  preview: boolean;
+  sideEffects: boolean;
+  steps: WorkflowPreviewStep[];
+};
+
 export type WorkflowRunStatus =
   | "pending"
   | "running"

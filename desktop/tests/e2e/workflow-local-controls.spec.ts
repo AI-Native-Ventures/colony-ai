@@ -1,880 +1,478 @@
-import { expect, test } from "@playwright/test";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { expect, test, type Page } from "@playwright/test";
 
-import { truncateNpub } from "../../src/shared/lib/pubkey";
-import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge } from "../helpers/bridge";
+import { invokeMockCommand } from "../helpers/welcomeTeam";
+import {
+  AGENTS_CHANNEL_ID,
+  createPlainWorkflow,
+  installWorkflowAdminBridge,
+  openAdvancedWorkflow,
+  seedWorkflow,
+} from "../helpers/workflows";
 
-declare global {
-  interface Window {
-    __BUZZ_WORKFLOW_BATCH_CALLS__?: {
-      eventBatches: number[];
-      userBatches: number[];
-    };
-  }
+async function openWorkflows(page: Page) {
+  await page.goto("/");
+  await page.getByTestId("open-workflows-view").click();
+  await expect(page.getByTestId("workflows-view")).toBeVisible();
+}
+
+async function bootWithDefinition(
+  page: Page,
+  name: string,
+  definition: Record<string, unknown>,
+) {
+  await page.goto("/");
+  const workflow = await seedWorkflow(page, name, { definition });
+  await page.getByTestId("open-workflows-view").click();
+  await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();
+  return workflow;
+}
+
+async function expectAdvancedReadOnly(page: Page, workflowId: string) {
+  await openAdvancedWorkflow(page, workflowId);
+  const editor = page.getByRole("dialog", { name: "Edit workflow" });
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole("tab", { name: "Form" })).toBeDisabled();
+  await expect(editor.getByRole("tab", { name: "YAML" })).toBeDisabled();
+  await expect(
+    editor.getByTestId("workflow-dialog-primary-action"),
+  ).toHaveCount(0);
+  return editor;
 }
 
 test.beforeEach(async ({ page }) => {
-  await installMockBridge(page);
+  await installWorkflowAdminBridge(page);
 });
 
-async function openCreateWorkflow(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
-  await page.goto("/");
-  await page.getByTestId("open-workflows-view").click();
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  const channelList = page.getByTestId("channel-combobox-list");
-  if (!(await channelList.isVisible())) {
-    await dialog.getByRole("combobox", { name: "Channel" }).click();
-  }
-  await channelList
-    .getByRole("option", { name: "agents", exact: true })
-    .click();
-  await dialog.getByRole("button", { name: "Edit workflow name" }).click();
-  await dialog.getByRole("textbox", { name: "Workflow name" }).fill(name);
-  await dialog.getByRole("button", { name: "Save workflow name" }).click();
-  return dialog;
-}
-
-async function selectTrigger(
-  page: import("@playwright/test").Page,
-  dialog: import("@playwright/test").Locator,
-  trigger: string,
-) {
-  await dialog.getByRole("button", { name: "Trigger event" }).click();
-  await page.getByRole("menuitem", { name: trigger, exact: true }).click();
-}
-
-async function openTriggerInspector(
-  dialog: import("@playwright/test").Locator,
-) {
-  const menu = dialog.getByRole("button", { name: "Trigger event" });
-  if (!(await menu.isVisible())) {
-    await dialog.getByRole("button", { name: /^Trigger:/ }).click();
-  }
-  await expect(menu).toBeVisible();
-}
-
-async function addMessageStep(
-  page: import("@playwright/test").Page,
-  dialog: import("@playwright/test").Locator,
-) {
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
-  await dialog
-    .locator('textarea[id^="wf-step-"][id$="-text"]')
-    .fill("Workflow notification");
-}
-
-async function createEnabled(
-  page: import("@playwright/test").Page,
-  dialog: import("@playwright/test").Locator,
-) {
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const confirmation = page.getByRole("alertdialog", {
-    name: "This workflow may run often",
-  });
-  if (await confirmation.isVisible()) {
-    await confirmation.getByRole("button", { name: "Turn on" }).click();
-  }
-}
-
-async function reopenWorkflow(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
-  const card = page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: name });
-  await card.getByRole("button", { name: "Workflow actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
-  return page.getByRole("dialog", { name: "Edit workflow" });
-}
-
-test("confirms activation after create and preserves a safe disabled path", async ({
+test("activation review requires checking the people, timing and steps", async ({
   page,
 }) => {
-  const name = `activation_confirmation_${Date.now()}`;
-  const dialog = await openCreateWorkflow(page, name);
-  await addMessageStep(page, dialog);
+  await openWorkflows(page);
+  await page.getByRole("button", { name: "Use this example" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await builder.getByLabel("Give this workflow a name").fill("Review gate");
+  await builder
+    .getByLabel("Describe the routine")
+    .fill("Prepare a result, then ask a person to review it.");
+  await builder.getByRole("button", { name: "Continue" }).click();
+  await builder.getByRole("button", { name: "Preview a sample run" }).click();
+  await builder.getByRole("button", { name: "Review activation" }).click();
+  const review = builder.getByTestId("workflow-activation-review");
+  const activate = review.getByRole("button", { name: "Turn on workflow" });
+  await expect(activate).toBeDisabled();
+  await review
+    .getByLabel("I have reviewed the steps, people and schedule.")
+    .check();
+  await expect(activate).toBeEnabled();
+});
 
-  await expect(
-    dialog.getByRole("switch", { name: "Enable workflow" }),
-  ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const confirmation = page.getByRole("alertdialog", {
-    name: "This workflow may run often",
+test("normal workflows use plain fields while an unsupported legacy template stays unchanged", async ({
+  page,
+}) => {
+  await openWorkflows(page);
+  await page.getByRole("button", { name: "Start from scratch" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await expect(builder.getByLabel("Give this workflow a name")).toBeVisible();
+  await expect(builder.getByLabel("Describe the routine")).toBeVisible();
+  await expect(builder.getByLabel("Start with")).toBeVisible();
+  await expect(builder.getByLabel("Workflow YAML")).toHaveCount(0);
+  await expect(builder.getByLabel("Advanced expression")).toHaveCount(0);
+  await builder.getByRole("button", { name: "Back to workflows" }).click();
+
+  const definition = {
+    name: "Legacy template workflow",
+    enabled: true,
+    trigger: { on: "manual" },
+    steps: [
+      { id: "step_1", action: "send_message", text: "Hello {{member.name}}" },
+    ],
+  };
+  const workflow = await seedWorkflow(page, `legacy_template_${Date.now()}`, {
+    definition,
   });
-  await expect(confirmation).toBeVisible();
-  await expect(
-    confirmation.getByRole("button", { name: "Back" }),
-  ).toBeFocused();
+  await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toHaveCount(0);
+  const stored = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(stored.definition).toEqual(definition);
+});
 
-  await confirmation.getByRole("button", { name: "Back" }).click();
-  await expect(confirmation).toBeHidden();
-  await expect(dialog).toBeVisible();
+test("schedule choices map to the engine without showing cron", async ({
+  page,
+}) => {
+  await openWorkflows(page);
+  const name = `daily_schedule_${Date.now()}`;
+  const { builder, workflowId } = await createPlainWorkflow(page, name);
+  const activeBeforeTiming = await invokeMockCommand<{
+    definition: { trigger: { cron: string } };
+    revision: string;
+  }>(page, "get_workflow", { workflowId });
+  const savesBeforeTiming = await page.evaluate(
+    () =>
+      (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).filter(
+        (call) => call.command === "save_workflow_draft",
+      ).length,
+  );
+  await builder.getByRole("button", { name: "Edit workflow" }).click();
+  await builder
+    .getByRole("button", { name: "Change timing & updates" })
+    .click();
+  await builder.getByLabel("Start").selectOption("daily");
+  await builder.getByLabel("Time").fill("09:15");
+  await builder
+    .getByLabel("Where should updates appear?")
+    .selectOption(AGENTS_CHANNEL_ID);
+  await builder.getByRole("button", { name: "Save timing" }).click();
   await expect
     .poll(() =>
       page.evaluate(
         () =>
           (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).filter(
-            (call) => call.command === "create_workflow",
+            (call) => call.command === "save_workflow_draft",
           ).length,
       ),
     )
-    .toBe(0);
-
-  await dialog.getByRole("button", { name: "Create" }).click();
-  await confirmation.getByRole("button", { name: "Keep off" }).click();
-  await expect(dialog).toBeHidden();
-
-  const yaml = await page.evaluate(() => {
-    const call = [...(window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [])]
-      .reverse()
-      .find((candidate) => candidate.command === "create_workflow");
-    return (call?.payload as { yamlDefinition?: string } | undefined)
-      ?.yamlDefinition;
-  });
-  expect(parseYaml(yaml ?? "").enabled).toBe(false);
-  const card = page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: name })
-    .first();
+    .toBe(savesBeforeTiming + 1);
   await expect(
-    card.getByRole("switch", { name: "Enable workflow" }),
-  ).not.toBeChecked();
-});
-
-test("inserts template variables with keyboard control and restores the caret", async ({
-  page,
-}) => {
-  const dialog = await openCreateWorkflow(page, "template_variables_keyboard");
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
-
-  const textarea = dialog.locator('textarea[id^="wf-step-"][id$="-text"]');
-  const listbox = page.getByRole("listbox");
-  await textarea.fill("Hello {{trig");
-  await expect(listbox).toBeVisible();
-  await expect(listbox.getByRole("option")).toHaveCount(5);
-  await waitForAnimations(page);
-  expect(await page.locator("body").screenshot()).toMatchSnapshot(
-    "workflow-template-variable-autocomplete.png",
-  );
-
-  await textarea.press("ArrowUp");
-  await expect(textarea).toHaveAttribute(
-    "aria-activedescendant",
-    /-variables-option-4$/,
-  );
-  await textarea.press("ArrowDown");
-  await expect(textarea).toHaveAttribute(
-    "aria-activedescendant",
-    /-variables-option-0$/,
-  );
-  await textarea.press("Enter");
-  await expect(textarea).toHaveValue("Hello {{trigger.text}}");
-  await expect(textarea).toBeFocused();
-  await expect
-    .poll(() =>
-      textarea.evaluate((element) =>
-        element instanceof HTMLTextAreaElement ? element.selectionStart : -1,
-      ),
-    )
-    .toBe("Hello {{trigger.text}}".length);
-
-  await textarea.fill("Keep {{auth");
-  await expect(listbox).toBeVisible();
-  await textarea.press("Escape");
-  await expect(listbox).toBeHidden();
-  await expect(textarea).toBeFocused();
-  await expect(textarea).toHaveValue("Keep {{auth");
-
-  await textarea.fill("By {{auth");
-  await textarea.press("Tab");
-  await expect(textarea).toHaveValue("By {{trigger.author}}");
-  await expect(textarea).toBeFocused();
-});
-
-test("round-trips schedule presets and saves a custom UTC cron", async ({
-  page,
-}) => {
-  const name = `schedule_controls_${Date.now()}`;
-  const dialog = await openCreateWorkflow(page, name);
-  await selectTrigger(page, dialog, "Schedule");
-
-  await expect(dialog.getByRole("radio", { name: "Daily" })).toBeChecked();
-  await expect(dialog.getByLabel("Run time (UTC)")).toHaveValue("09:00");
-
-  await dialog.getByText("Every 15 minutes", { exact: true }).click();
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  let definition = parseYaml(await yamlEditor.inputValue());
-  expect(definition.trigger).toEqual({ on: "schedule", interval: "15m" });
-
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await expect(
-    dialog.getByRole("radio", { name: "Every 15 minutes" }),
-  ).toBeChecked();
-
-  await dialog.getByText("Monthly", { exact: true }).click();
-  await dialog.getByLabel("Day of month").selectOption("31");
-  await expect(
-    dialog.getByText("This schedule won’t run in some months."),
+    builder.getByRole("button", { name: "Preview a sample run" }),
   ).toBeVisible();
+  await expect(builder.getByText(/cron|yaml/i)).toHaveCount(0);
+  const savedDraft = await invokeMockCommand<{
+    definition: { trigger: { cron: string } };
+    channel_id: string;
+  }>(page, "get_workflow_draft", { workflowId });
+  expect(savedDraft.definition.trigger.cron).toBe("15 7 * * *");
+  expect(savedDraft.channel_id).toBe(AGENTS_CHANNEL_ID);
+  const activeBeforePublish = await invokeMockCommand<{
+    revision: string;
+    definition: { trigger: { cron: string } };
+  }>(page, "get_workflow", { workflowId });
+  expect(activeBeforePublish.revision).toBe(activeBeforeTiming.revision);
+  expect(activeBeforePublish.definition.trigger.cron).toBe(
+    activeBeforeTiming.definition.trigger.cron,
+  );
+  await builder.getByRole("button", { name: "Preview a sample run" }).click();
+  await builder.getByRole("button", { name: "Review activation" }).click();
+  const review = builder.getByTestId("workflow-activation-review");
+  await review
+    .getByLabel("I have reviewed the steps, people and schedule.")
+    .check();
+  await review.getByRole("button", { name: "Save and turn on" }).click();
+  await expect(builder.getByRole("alert")).toContainText(
+    "Choose people and agents who belong to the selected channel",
+  );
+  const stillActive = await invokeMockCommand<{
+    revision: string;
+  }>(page, "get_workflow", { workflowId });
+  expect(stillActive.revision).toBe(activeBeforeTiming.revision);
 
-  await dialog.getByText("Custom cron", { exact: true }).click();
-  await dialog.getByRole("textbox", { name: "Minute", exact: true }).fill("5");
-  await dialog.getByRole("textbox", { name: "Hour", exact: true }).fill("*/2");
-  await dialog.getByRole("textbox", { name: "Day", exact: true }).fill("*");
-  await dialog.getByRole("textbox", { name: "Month", exact: true }).fill("*");
-  await dialog
-    .getByRole("textbox", { name: "Weekday", exact: true })
-    .fill("2-4");
-  await expect(dialog.getByText(/UTC · Paste all 5 fields/)).toBeVisible();
-
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  definition = parseYaml(await yamlEditor.inputValue());
-  expect(definition.trigger).toEqual({
+  const channelMembers = await invokeMockCommand<{
+    members: Array<{ is_agent: boolean; pubkey: string }>;
+  }>(page, "get_channel_members", { channelId: AGENTS_CHANNEL_ID });
+  const agent = channelMembers.members.find((member) => member.is_agent);
+  const reviewer = channelMembers.members.find((member) => !member.is_agent);
+  expect(agent).toBeTruthy();
+  expect(reviewer).toBeTruthy();
+  await builder.getByRole("button", { name: "Edit steps" }).click();
+  await builder.getByRole("button", { name: "Edit step 1" }).click();
+  const agentSelector = builder.getByLabel("Who is responsible?");
+  const agentOptions = await agentSelector
+    .locator("option")
+    .evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+  expect(agentOptions).toContain(agent?.pubkey);
+  await agentSelector.selectOption(agent?.pubkey ?? "");
+  await builder.getByRole("button", { name: "Save step" }).click();
+  await builder.getByRole("button", { name: "Edit step 2" }).click();
+  const reviewerSelector = builder.getByLabel("Who is responsible?");
+  const reviewerOptions = await reviewerSelector
+    .locator("option")
+    .evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+  expect(reviewerOptions).toContain(reviewer?.pubkey);
+  await reviewerSelector.selectOption(reviewer?.pubkey ?? "");
+  await builder.getByRole("button", { name: "Save step" }).click();
+  await builder.getByRole("button", { name: "Preview a sample run" }).click();
+  await builder.getByRole("button", { name: "Review activation" }).click();
+  await builder
+    .getByTestId("workflow-activation-review")
+    .getByLabel("I have reviewed the steps, people and schedule.")
+    .check();
+  await builder
+    .getByTestId("workflow-activation-review")
+    .getByRole("button", { name: "Save and turn on" })
+    .click();
+  const active = await invokeMockCommand<{
+    channel_id: string;
+    definition: { trigger: { on: string; cron: string } };
+    revision: string;
+  }>(page, "get_workflow", { workflowId });
+  expect(active.revision).not.toBe(activeBeforeTiming.revision);
+  expect(active.channel_id).toBe(AGENTS_CHANNEL_ID);
+  expect(active.definition.trigger).toEqual({
     on: "schedule",
-    cron: "5 */2 * * 2-4",
+    cron: "15 7 * * *",
   });
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await expect(
-    dialog.getByRole("radio", { name: "Custom cron" }),
-  ).toBeChecked();
-  await expect(
-    dialog.getByRole("textbox", { name: "Weekday", exact: true }),
-  ).toHaveValue("2-4");
-
-  await addMessageStep(page, dialog);
-  await createEnabled(page, dialog);
-  const reopened = await reopenWorkflow(page, name);
-  await openTriggerInspector(reopened);
-  await expect(
-    reopened.getByRole("radio", { name: "Custom cron" }),
-  ).toBeChecked();
-  await expect(
-    reopened.getByRole("textbox", { name: "Minute", exact: true }),
-  ).toHaveValue("5");
-  await expect(
-    reopened.getByRole("textbox", { name: "Weekday", exact: true }),
-  ).toHaveValue("2-4");
+  await expect(builder.getByTestId("plain-workflow-detail")).toContainText(
+    "Every day at 09:15 · Johannesburg time",
+  );
 });
 
-test("round-trips and reopens structured message-text conditions", async ({
+test("custom cron schedules remain unchanged in read-only Advanced", async ({
   page,
 }) => {
-  const name = `message_condition_${Date.now()}`;
-  const text = 'deploy "buzz"\\path';
-  const expression = 'str_ends_with(trigger_text, "deploy \\"buzz\\"\\\\path")';
-  const dialog = await openCreateWorkflow(page, name);
-
-  await dialog
-    .getByRole("group", { name: "Match" })
-    .getByRole("button", {
-      name: "ends with",
-    })
-    .click();
-  await dialog.getByLabel("Message text").fill(text);
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  const definition = parseYaml(await yamlEditor.inputValue());
-  expect(definition.trigger.filter).toBe(expression);
-
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await waitForAnimations(page);
-  const matchControls = dialog.getByRole("group", { name: "Match" });
-  const operatorButtons = matchControls.getByRole("button");
-  const firstOperatorBox = await operatorButtons.nth(0).boundingBox();
-  const secondOperatorBox = await operatorButtons.nth(1).boundingBox();
-  const thirdOperatorBox = await operatorButtons.nth(2).boundingBox();
-  expect(firstOperatorBox).not.toBeNull();
-  expect(secondOperatorBox).not.toBeNull();
-  expect(thirdOperatorBox).not.toBeNull();
-  expect(secondOperatorBox?.x).toBeGreaterThan(firstOperatorBox?.x ?? 0);
-  expect(
-    Math.abs((secondOperatorBox?.y ?? 0) - (firstOperatorBox?.y ?? 0)),
-  ).toBeLessThan(1);
-  expect(thirdOperatorBox?.y).toBeGreaterThan(firstOperatorBox?.y ?? 0);
-  await waitForAnimations(page);
-  await matchControls.screenshot({
-    path: "test-results/workflow-message-condition-operators.png",
-  });
-  await expect(
-    matchControls.getByRole("button", { name: "ends with" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(dialog.getByLabel("Message text")).toHaveValue(text);
-  await dialog.getByRole("tab", { name: "Advanced" }).click();
-  await expect(dialog.getByLabel("Advanced expression")).toHaveValue(
-    expression,
+  const definition = {
+    name: "Custom schedule workflow",
+    enabled: true,
+    trigger: { on: "schedule", cron: "5 9 * * 2-4" },
+    steps: [{ id: "step_1", action: "send_message", text: "Review" }],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `custom_cron_${Date.now()}`,
+    definition,
   );
-  await dialog.getByRole("tab", { name: "Basic" }).click();
-
-  await addMessageStep(page, dialog);
-  await createEnabled(page, dialog);
-  const reopened = await reopenWorkflow(page, name);
-  await openTriggerInspector(reopened);
-  await expect(
-    reopened
-      .getByRole("group", { name: "Match" })
-      .getByRole("button", { name: "ends with" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(reopened.getByLabel("Message text")).toHaveValue(text);
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
 });
 
-test("renders deterministic trigger, step, and workflow-card summaries", async ({
+test("message-text conditions remain unchanged in read-only Advanced", async ({
   page,
 }) => {
-  const name = `semantic_summaries_${Date.now()}`;
-  await page.addInitScript((workflowName) => {
-    const positions: number[] = [];
-    Object.defineProperty(window, "__WORKFLOW_METADATA_POSITIONS__", {
-      configurable: true,
-      value: positions,
-    });
-
-    const findTarget = () => {
-      const target = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '[data-testid="workflow-card-name"]',
-        ),
-      ).find((element) => element.textContent === workflowName);
-      if (!target) {
-        requestAnimationFrame(findTarget);
-        return;
-      }
-
-      let remainingFrames = 12;
-      const sample = () => {
-        positions.push(target.getBoundingClientRect().y);
-        remainingFrames -= 1;
-        if (remainingFrames > 0) requestAnimationFrame(sample);
-      };
-      sample();
-    };
-    requestAnimationFrame(findTarget);
-  }, name);
-  const dialog = await openCreateWorkflow(page, name);
-
-  await dialog.getByLabel("Message text").fill("deploy");
-  const triggerNode = dialog.getByRole("button", {
-    name: "Trigger: Message contains “deploy”",
-  });
-  await expect(triggerNode).toContainText("Trigger");
-  await expect(triggerNode).toContainText("Message contains “deploy”");
-
-  await addMessageStep(page, dialog);
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  const definition = parseYaml(await yamlEditor.inputValue());
-  definition.steps[0].channel = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
-  await yamlEditor.fill(stringifyYaml(definition));
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  const stepNode = dialog.getByRole("button", {
-    name: "Step 1: “Workflow notification” in #agents",
-  });
-  await expect(stepNode).toContainText("Send Message");
-  await expect(stepNode).toContainText("“Workflow notification” in #agents");
-  await createEnabled(page, dialog);
-
-  const card = page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: name })
-    .first();
-  const semanticLabel = card.getByTestId("workflow-card-semantic-label");
-  const workflowName = card.getByTestId("workflow-card-name");
-  const channelName = card.getByTestId("workflow-card-channel");
-  await expect(card.getByTestId("workflow-card-trigger-summary")).toHaveCount(
-    0,
+  const definition = {
+    name: "Message condition workflow",
+    enabled: true,
+    trigger: {
+      on: "message_posted",
+      filter: 'str_contains(trigger_text, "deploy")',
+    },
+    steps: [{ id: "step_1", action: "send_message", text: "Review" }],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `message_condition_${Date.now()}`,
+    definition,
   );
-  await expect(semanticLabel).toHaveText(
-    "When a message contains “deploy”, send “Workflow notification”",
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
+});
+
+test("webhook workflows stay unchanged in read-only Advanced", async ({
+  page,
+}) => {
+  const definition = {
+    name: "Webhook workflow",
+    enabled: true,
+    trigger: { on: "webhook", secret: "synthetic-webhook-secret" },
+    steps: [{ id: "step_1", action: "send_message", text: "Webhook received" }],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `webhook_${Date.now()}`,
+    definition,
   );
-  await expect(workflowName).toHaveText(name);
-  await expect(channelName).toHaveText("#agents");
-  const semanticBox = await semanticLabel.boundingBox();
-  const nameBox = await workflowName.boundingBox();
-  const channelBox = await channelName.boundingBox();
-  expect(semanticBox).not.toBeNull();
-  expect(nameBox).not.toBeNull();
-  expect(channelBox).not.toBeNull();
-  expect(semanticBox?.y).toBeLessThan(nameBox?.y ?? 0);
-  expect(channelBox?.y).toBeLessThan(nameBox?.y ?? 0);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as typeof window & {
-              __WORKFLOW_METADATA_POSITIONS__?: number[];
-            }
-          ).__WORKFLOW_METADATA_POSITIONS__?.length ?? 0,
-      ),
-    )
-    .toBe(12);
-  const metadataPositions = await page.evaluate(
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
+});
+
+test("workflow rows show a stable schedule, step count and channel summary", async ({
+  page,
+}) => {
+  await openWorkflows(page);
+  const name = `summary_${Date.now()}`;
+  const { builder, workflowId } = await createPlainWorkflow(page, name);
+  await expect(builder.getByTestId("plain-workflow-detail")).toContainText(
+    "Every Monday at 08:00 · Johannesburg time",
+  );
+  await builder.getByRole("button", { name: "Back to workflows" }).click();
+  const row = page.getByTestId(`workflow-card-${workflowId}`);
+  await expect(row).toContainText("Schedule");
+  await expect(row).toContainText("2 steps");
+  await expect(row).toContainText("#general");
+  await expect(row).toContainText("Active");
+});
+
+test("the workflow list uses a single batched workflow read", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const names = [
+    "Batch summary one",
+    "Batch summary two",
+    "Batch summary three",
+  ];
+  for (const name of names) await seedWorkflow(page, name);
+  await page.getByTestId("open-workflows-view").click();
+  for (const name of names) {
+    await expect(page.getByTestId("workflows-view")).toContainText(name);
+  }
+  const listReads = await page.evaluate(
     () =>
-      (
-        window as typeof window & {
-          __WORKFLOW_METADATA_POSITIONS__?: number[];
-        }
-      ).__WORKFLOW_METADATA_POSITIONS__ ?? [],
+      (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).filter(
+        (call) => call.command === "get_channels_workflows",
+      ).length,
   );
-  expect(
-    Math.max(...metadataPositions) - Math.min(...metadataPositions),
-  ).toBeLessThan(0.5);
+  expect(listReads).toBe(1);
 });
 
-test("Escape closes a filter picker, restores disclosure focus, then closes its inspector", async ({
+test("people selectors are limited to members of the selected channel", async ({
   page,
 }) => {
-  for (const width of [760, 1280]) {
-    await page.setViewportSize({ width, height: 820 });
-    await page.goto(
-      "/#/workflows?view=create&channel=94a444a4-c0a3-5966-ab05-530c6ddc2301&pane=trigger",
-    );
-
-    const dialog = page.getByRole("dialog", { name: "Create workflow" });
-    const inspector = dialog.getByTestId("workflow-node-inspector");
-    await selectTrigger(page, dialog, "Reaction Added");
-    for (const field of [
-      {
-        label: "Author",
-        picker: "workflow-author-picker",
-        search: "Search authors or paste a public key",
-      },
-      {
-        label: "Message",
-        picker: "workflow-message-picker",
-        search: "Search messages or paste a message ID",
-      },
-    ]) {
-      const disclosure = dialog
-        .getByText(field.label, { exact: true })
-        .locator("..");
-      await disclosure.click();
-      const picker = dialog.getByTestId(field.picker);
-      const search = dialog.getByRole("combobox", { name: field.search });
-      await expect(picker).toBeVisible();
-
-      await search.press("Escape");
-      await expect(picker).toBeHidden();
-      await expect(disclosure).toBeFocused();
-      await expect(inspector).toBeVisible();
-    }
-
-    await page.keyboard.press("Escape");
-    await expect(inspector).toBeHidden();
-    await expect(dialog).toBeVisible();
-  }
-});
-
-test("workflow grid batches card author and message presentation reads", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.waitForFunction(
-    () => typeof window.__TAURI_INTERNALS__?.invoke === "function",
-  );
-  await page.evaluate(async () => {
-    const invoke = window.__TAURI_INTERNALS__?.invoke;
-    if (!invoke) throw new Error("mock invoke bridge unavailable");
-    for (let index = 0; index < 40; index += 1) {
-      const messageId = (index + 1).toString(16).padStart(64, "0");
-      const author = (index + 101).toString(16).padStart(64, "0");
-      await invoke("create_workflow", {
-        channelId: "94a444a4-c0a3-5966-ab05-530c6ddc2301",
-        yamlDefinition: JSON.stringify({
-          name: `batched_card_${index}`,
-          trigger: {
-            on: "reaction_added",
-            filter: `trigger_author == "${author}" && trigger_message_id == "${messageId}"`,
-          },
-          steps: [],
-        }),
-      });
-    }
-
-    const calls = { eventBatches: [], userBatches: [] };
-    window.__BUZZ_WORKFLOW_BATCH_CALLS__ = calls;
-    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
-      if (command === "get_events") {
-        calls.eventBatches.push(
-          (args?.eventIds as unknown[] | undefined)?.length ?? 0,
-        );
-      }
-      if (command === "get_users_batch") {
-        calls.userBatches.push(
-          (args?.pubkeys as unknown[] | undefined)?.length ?? 0,
-        );
-      }
-      return invoke(command, args);
-    };
-  });
-
-  await page.getByTestId("open-workflows-view").click();
-  await expect(
-    page.locator('[data-testid^="workflow-card-mock-wf-"]'),
-  ).toHaveCount(40);
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const calls = window.__BUZZ_WORKFLOW_BATCH_CALLS__;
-        return {
-          eventBatchCount: calls?.eventBatches.filter((size) => size === 40)
-            .length,
-          userBatchCount: calls?.userBatches.filter((size) => size === 40)
-            .length,
-        };
-      }),
-    )
-    .toEqual({ eventBatchCount: 1, userBatchCount: 1 });
-});
-
-test("does not select stale picker results when Enter outruns deferred filtering", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.waitForFunction(
-    () => typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function",
-  );
-  await page.evaluate(() => {
-    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "agents",
-      content: "Deferred message candidate",
-      id: "d".repeat(64),
-    });
-  });
-  await page.getByTestId("open-workflows-view").click();
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  const channelList = page.getByTestId("channel-combobox-list");
-  if (!(await channelList.isVisible())) {
-    await dialog.getByRole("combobox", { name: "Channel" }).click();
-  }
-  await channelList
-    .getByRole("option", { name: "agents", exact: true })
-    .click();
-  await selectTrigger(page, dialog, "Reaction Added");
-
-  await dialog.getByText("Author", { exact: true }).locator("..").click();
-  const authorSearch = dialog.getByRole("combobox", {
-    name: "Search authors or paste a public key",
-  });
-  await expect(dialog.getByRole("option").first()).toBeVisible();
-  await authorSearch.evaluate((input: HTMLInputElement) => {
-    input.value = "no-such-author";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-    );
-  });
-
-  await dialog.getByText("Message", { exact: true }).locator("..").click();
-  const messageSearch = dialog.getByRole("combobox", {
-    name: "Search messages or paste a message ID",
-  });
-  await expect(
-    dialog.getByRole("option", { name: /Deferred message/ }),
-  ).toBeVisible();
-  await messageSearch.evaluate((input: HTMLInputElement) => {
-    input.value = "no-such-message";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-    );
-  });
-
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const definition = parseYaml(
-    await dialog.getByRole("textbox", { name: "Workflow YAML" }).inputValue(),
-  );
-  expect(definition.trigger.filter).toBeUndefined();
-});
-
-test("round-trips manual author and reaction message IDs through save and reopen", async ({
-  page,
-}) => {
-  const name = `manual_trigger_ids_${Date.now()}`;
-  const author = "a".repeat(64);
-  const messageId = "b".repeat(64);
-  const dialog = await openCreateWorkflow(page, name);
-  await selectTrigger(page, dialog, "Reaction Added");
-  await addMessageStep(page, dialog);
-  await dialog.getByRole("button", { name: /^Trigger:/ }).click();
-  await openTriggerInspector(dialog);
-
-  await dialog.getByText("Author", { exact: true }).locator("..").click();
-  const authorResults = dialog.getByTestId("workflow-author-picker-results");
-  await expect
-    .poll(() =>
-      authorResults.evaluate((results) => {
-        const template = results.querySelector<HTMLElement>("[role=option]");
-        if (!template) return false;
-        for (let index = 0; index < 20; index += 1) {
-          const clone = template.cloneNode(true) as HTMLElement;
-          clone.dataset.scrollFixture = "true";
-          clone.removeAttribute("id");
-          results.append(clone);
-        }
-        return results.scrollHeight > results.clientHeight;
-      }),
-    )
-    .toBe(true);
-  await authorResults.hover();
-  await page.mouse.wheel(0, 240);
-  await expect
-    .poll(() => authorResults.evaluate((node) => node.scrollTop))
-    .toBeGreaterThan(0);
-  await authorResults.evaluate((results) => {
-    for (const fixture of results.querySelectorAll("[data-scroll-fixture]")) {
-      fixture.remove();
-    }
-    results.scrollTop = 0;
-  });
-  const authorSearch = dialog.getByRole("combobox", {
-    name: "Search authors or paste a public key",
-  });
-  await authorSearch.fill(author);
-  await expect(
-    dialog.getByRole("option", { name: truncateNpub(author) }),
-  ).toBeVisible();
-  await authorSearch.press("Enter");
-  await expect(
-    dialog.getByRole("option", { name: truncateNpub(author) }),
-  ).toHaveAttribute("aria-selected", "true");
-  await expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const correctionEditor = dialog.getByRole("textbox", {
-    name: "Workflow YAML",
-  });
-  const correctedDefinition = parseYaml(await correctionEditor.inputValue());
-  delete correctedDefinition.trigger.filter;
-  await correctionEditor.fill(stringifyYaml(correctedDefinition));
-  await expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await dialog.getByText("Author", { exact: true }).locator("..").click();
-  const correctedAuthorSearch = dialog.getByRole("combobox", {
-    name: "Search authors or paste a public key",
-  });
-  await correctedAuthorSearch.fill(author);
-  await expect(
-    dialog.getByRole("option", { name: truncateNpub(author) }),
-  ).toBeVisible();
-  await correctedAuthorSearch.press("Enter");
-  await dialog
-    .getByRole("group", { name: "Match" })
-    .getByRole("button", { name: "is not", exact: true })
-    .click();
-
-  await dialog.getByText("Message", { exact: true }).locator("..").click();
-  const messageSearch = dialog.getByRole("combobox", {
-    name: "Search messages or paste a message ID",
-  });
-  await messageSearch.fill(messageId);
-  await messageSearch.press("Enter");
-  await expect(
-    dialog.getByRole("option", { name: new RegExp(messageId.slice(0, 12)) }),
-  ).toHaveAttribute("aria-selected", "true");
-
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  let definition = parseYaml(await yamlEditor.inputValue());
-  expect(definition.trigger).toEqual({
-    on: "reaction_added",
-    filter: `trigger_author != "${author}" && trigger_message_id == "${messageId}"`,
-  });
-
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await createEnabled(page, dialog);
-
-  const reopened = await reopenWorkflow(page, name);
-  await openTriggerInspector(reopened);
-  await reopened.getByText("Author", { exact: true }).locator("..").click();
-  await expect(
-    reopened.getByRole("option", { name: truncateNpub(author) }),
-  ).toHaveAttribute("aria-selected", "true");
-  await reopened.getByText("Message", { exact: true }).locator("..").click();
-  await expect(
-    reopened.getByRole("option", {
-      name: new RegExp(messageId.slice(0, 12)),
-    }),
-  ).toHaveAttribute("aria-selected", "true");
-  await reopened.getByRole("tab", { name: "YAML" }).click();
-  definition = parseYaml(
-    await reopened.getByRole("textbox", { name: "Workflow YAML" }).inputValue(),
-  );
-  expect(definition.trigger.filter).toContain(messageId);
-});
-
-test("toggles selected author and message filters while preserving sibling conditions", async ({
-  page,
-}) => {
-  const author = "a".repeat(64);
-  const replacementAuthor = "c".repeat(64);
-  const messageId = "b".repeat(64);
-  const dialog = await openCreateWorkflow(
+  await openWorkflows(page);
+  const { workflowId } = await createPlainWorkflow(
     page,
-    `toggle_trigger_ids_${Date.now()}`,
+    `member_selector_${Date.now()}`,
   );
-  await selectTrigger(page, dialog, "Reaction Added");
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  const definition = parseYaml(await yamlEditor.inputValue());
-  definition.trigger.filter =
-    `trigger_emoji == "👍" && trigger_author == "${author.toUpperCase()}" && ` +
-    `trigger_message_id == "${messageId.toUpperCase()}"`;
-  await yamlEditor.fill(stringifyYaml(definition));
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  const authorField = dialog
-    .getByText("Author", { exact: true })
-    .locator("..")
-    .locator("..");
-  await authorField.getByText("Author", { exact: true }).locator("..").click();
-  const authorOption = dialog.getByRole("option", {
-    name: truncateNpub(author),
-  });
-  await expect(authorOption).toHaveAttribute("aria-selected", "true");
-  await expect(
-    authorField.getByRole("button", { name: "Clear filter" }),
-  ).toHaveCount(0);
-  await authorOption.click();
-
-  const authorSearch = dialog.getByRole("combobox", {
-    name: "Search authors or paste a public key",
-  });
-  await authorSearch.fill(replacementAuthor);
-  const replacementAuthorOption = dialog.getByRole("option", {
-    name: truncateNpub(replacementAuthor),
-  });
-  await expect(replacementAuthorOption).toBeVisible();
-  await authorSearch.press("Enter");
-  await expect(replacementAuthorOption).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await expect(authorSearch).toHaveValue(replacementAuthor);
-  await authorSearch.press("Enter");
-  await expect(authorSearch).toHaveValue(replacementAuthor);
-
-  const messageField = dialog
-    .getByText("Message", { exact: true })
-    .locator("..")
-    .locator("..");
-  await messageField
-    .getByText("Message", { exact: true })
-    .locator("..")
-    .click();
-  const messageSearch = dialog.getByRole("combobox", {
-    name: "Search messages or paste a message ID",
-  });
-  await expect(
-    dialog.getByRole("option", { name: new RegExp(messageId.slice(0, 12)) }),
-  ).toHaveAttribute("aria-selected", "true");
-  await expect(
-    messageField.getByRole("button", { name: "Clear filter" }),
-  ).toHaveCount(0);
-  await messageSearch.fill(messageId);
-  await messageSearch.press("Enter");
-  await expect(messageSearch).toHaveValue(messageId);
-  await messageSearch.press("Enter");
-  const selectedMessage = dialog.getByRole("option", {
-    name: new RegExp(messageId.slice(0, 12)),
-  });
-  await expect(selectedMessage).toHaveAttribute("aria-selected", "true");
-  await selectedMessage.click();
-  await expect(messageSearch).toHaveValue(messageId);
-
-  await dialog.getByRole("button", { name: "Reaction emoji" }).click();
-  await expect(
-    dialog.getByRole("button", { name: "Clear filter" }),
-  ).toBeVisible();
-
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  expect(parseYaml(await yamlEditor.inputValue()).trigger.filter).toBe(
-    'trigger_emoji == "👍"',
-  );
+  const workflow = await invokeMockCommand<{
+    channel_id: string;
+  }>(page, "get_workflow", { workflowId });
+  const channelMembers = await invokeMockCommand<{
+    members: Array<{ is_agent: boolean; pubkey: string }>;
+  }>(page, "get_channel_members", { channelId: workflow.channel_id });
+  await page.getByRole("button", { name: "Edit workflow" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await builder.getByRole("button", { name: "Edit step 1" }).click();
+  const responsible = builder.getByLabel("Who is responsible?");
+  const actualValues = await responsible
+    .locator("option")
+    .evaluateAll((options) =>
+      options
+        .map((option) => (option as HTMLOptionElement).value)
+        .filter(Boolean),
+    );
+  const agents = channelMembers.members
+    .filter((member) => member.is_agent)
+    .map((member) => member.pubkey);
+  expect(actualValues).toEqual(agents);
+  expect(agents).toContain(await responsible.inputValue());
 });
 
-test("hides and clears message-text step conditions for schedule triggers", async ({
+test("legacy author and reaction filters remain unchanged when opened", async ({
   page,
 }) => {
-  const dialog = await openCreateWorkflow(
+  const definition = {
+    name: "Legacy author and reaction filters",
+    enabled: true,
+    trigger: {
+      on: "reaction_added",
+      author: "member-key",
+      emoji: "🚀",
+      message_id: "event-123",
+    },
+    steps: [{ id: "step_1", action: "add_reaction", emoji: "✅" }],
+  };
+  const workflow = await bootWithDefinition(
     page,
-    `schedule_step_condition_${Date.now()}`,
+    `legacy_author_reaction_${Date.now()}`,
+    definition,
   );
-  await addMessageStep(page, dialog);
-  await dialog.getByRole("button", { name: "Run controls" }).click();
-  await dialog.getByLabel("Text to match").fill("deploy");
-
-  await dialog.getByRole("button", { name: /^Trigger:/ }).click();
-  await selectTrigger(page, dialog, "Schedule");
-  await dialog.getByRole("button", { name: /^Step 1:/ }).click();
-  await dialog.getByRole("button", { name: "Run controls" }).click();
-
-  await expect(dialog.getByLabel("Text to match")).toHaveCount(0);
-  await expect(
-    dialog.getByRole("textbox", { name: "Timeout", exact: true }),
-  ).toBeVisible();
-
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const definition = parseYaml(
-    await dialog.getByRole("textbox", { name: "Workflow YAML" }).inputValue(),
-  );
-  expect(definition.steps[0].if).toBeUndefined();
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
 });
 
-test("keeps advanced and malformed definitions lossless", async ({ page }) => {
-  const advanced =
-    'str_contains(trigger_text, "deploy") && trigger_author == "abc"';
-  const dialog = await openCreateWorkflow(page, `lossless_${Date.now()}`);
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  const yamlEditor = dialog.getByRole("textbox", { name: "Workflow YAML" });
-  const initialYaml = await yamlEditor.inputValue();
-  await yamlEditor.fill(
-    initialYaml.replace(
-      "trigger:\n  on: message_posted",
-      `trigger:\n  on: message_posted\n  filter: '${advanced}'`,
-    ),
-  );
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await openTriggerInspector(dialog);
-  await expect(dialog.getByRole("tab", { name: "Advanced" })).toHaveAttribute(
-    "data-state",
-    "active",
-  );
-  await expect(dialog.getByLabel("Advanced expression")).toHaveValue(advanced);
-  await dialog.getByRole("tab", { name: "Basic" }).click();
-  await expect(
-    dialog.getByText(/advanced expression is active/i),
-  ).toBeVisible();
+test("Escape leaves the plain schedule fields available without opening technical filters", async ({
+  page,
+}) => {
+  await openWorkflows(page);
+  await page.getByRole("button", { name: "Start from scratch" }).click();
+  const builder = page.getByTestId("plain-workflow-builder");
+  await builder.getByLabel("Give this workflow a name").fill("Keyboard fields");
+  await builder
+    .getByLabel("Describe the routine")
+    .fill("Prepare a result for review.");
+  await builder.getByRole("button", { name: "Continue" }).click();
+  await builder
+    .getByRole("button", { name: "Change timing & updates" })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(builder.getByLabel("Start")).toBeVisible();
+  await expect(builder.getByLabel("Message text")).toHaveCount(0);
+  await expect(builder.getByLabel("Advanced expression")).toHaveCount(0);
+});
 
-  await expect(
-    dialog.getByRole("switch", { name: "Enable workflow" }),
-  ).toHaveCount(0);
-  await dialog.getByRole("tab", { name: "YAML" }).click();
-  expect(parseYaml(await yamlEditor.inputValue()).trigger.filter).toBe(
-    advanced,
+test("author and message filters stay unchanged in read-only Advanced", async ({
+  page,
+}) => {
+  const definition = {
+    name: "Author filter workflow",
+    enabled: true,
+    trigger: {
+      on: "message_posted",
+      filter: 'author == "member" && str_contains(trigger_text, "deploy")',
+    },
+    steps: [{ id: "step_1", action: "send_message", text: "Review" }],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `author_filter_${Date.now()}`,
+    definition,
   );
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
+});
 
-  const malformedYaml = (await yamlEditor.inputValue()).replace(
-    /trigger:\n {2}on: message_posted\n {2}filter:.*\n/,
-    'trigger:\n  on: schedule\n  cron: "0 9 * * *"\n  interval: 1h\n',
+test("schedule definitions with step conditions stay unchanged", async ({
+  page,
+}) => {
+  const definition = {
+    name: "Conditional schedule workflow",
+    enabled: true,
+    trigger: { on: "schedule", cron: "0 6 * * 1" },
+    steps: [
+      {
+        id: "step_1",
+        action: "send_message",
+        text: "Prepare the update.",
+        if: 'trigger_text == "deploy"',
+      },
+    ],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `conditional_step_${Date.now()}`,
+    definition,
   );
-  await yamlEditor.fill(malformedYaml);
-  await dialog.getByRole("tab", { name: "Form" }).click();
-  await expect(
-    dialog.getByText(/cannot specify both cron and interval/i),
-  ).toBeVisible();
-  await expect(yamlEditor).toHaveValue(malformedYaml);
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
+});
+
+test("advanced and malformed-shape definitions are not rewritten by opening the editor", async ({
+  page,
+}) => {
+  const definition = {
+    name: "Extra settings workflow",
+    enabled: true,
+    trigger: { on: "manual" },
+    execution: { max_retries: 4 },
+    steps: [{ id: "step_1", action: "send_message", text: "Keep this" }],
+  };
+  const workflow = await bootWithDefinition(
+    page,
+    `extra_settings_${Date.now()}`,
+    definition,
+  );
+  await expectAdvancedReadOnly(page, workflow.id);
+  const after = await invokeMockCommand<{
+    definition: Record<string, unknown>;
+  }>(page, "get_workflow", { workflowId: workflow.id });
+  expect(after.definition).toEqual(definition);
 });

@@ -4,6 +4,8 @@ import type {
   TriggerWorkflowResponse,
   Workflow,
   WorkflowApproval,
+  WorkflowDraft,
+  WorkflowPreview,
   WorkflowRun,
   WorkflowSaveResult,
   TraceEntry,
@@ -25,6 +27,31 @@ type RawWorkflow = {
 
 type RawWorkflowSaveResponse = RawWorkflow & {
   webhook_secret?: string | null;
+};
+
+type RawWorkflowDraft = {
+  id: string;
+  revision: string;
+  name: string;
+  owner_pubkey: string;
+  channel_id: string;
+  definition: Record<string, unknown>;
+  updated_at: number;
+};
+
+type RawWorkflowPreviewStep = {
+  step_id: string;
+  outcome: string;
+  action: string;
+  definition: Record<string, unknown> | null;
+  paths: string[];
+  note: string | null;
+};
+
+type RawWorkflowPreview = {
+  preview: boolean;
+  side_effects: boolean;
+  steps: RawWorkflowPreviewStep[];
 };
 
 type RawTraceEntry = {
@@ -110,6 +137,33 @@ function fromRawWorkflowSave(raw: RawWorkflowSaveResponse): WorkflowSaveResult {
   return {
     workflow: fromRawWorkflow(raw),
     webhookSecret: raw.webhook_secret ?? null,
+  };
+}
+
+function fromRawWorkflowDraft(raw: RawWorkflowDraft): WorkflowDraft {
+  return {
+    id: raw.id,
+    revision: raw.revision,
+    name: raw.name,
+    ownerPubkey: raw.owner_pubkey,
+    channelId: raw.channel_id,
+    definition: raw.definition,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function fromRawWorkflowPreview(raw: RawWorkflowPreview): WorkflowPreview {
+  return {
+    preview: raw.preview,
+    sideEffects: raw.side_effects,
+    steps: raw.steps.map((step) => ({
+      stepId: step.step_id,
+      outcome: step.outcome,
+      action: step.action,
+      definition: step.definition,
+      paths: step.paths,
+      note: step.note,
+    })),
   };
 }
 
@@ -206,6 +260,62 @@ export async function getChannelsWorkflows(
 export async function getWorkflow(workflowId: string): Promise<Workflow> {
   const raw = await invokeTauri<RawWorkflow>("get_workflow", { workflowId });
   return fromRawWorkflow(raw);
+}
+
+export async function getWorkflowDraft(
+  workflowId: string,
+): Promise<WorkflowDraft | null> {
+  const raw = await invokeTauri<RawWorkflowDraft | null>("get_workflow_draft", {
+    workflowId,
+  });
+  return raw ? fromRawWorkflowDraft(raw) : null;
+}
+
+export async function saveWorkflowDraft(
+  workflowId: string,
+  channelId: string,
+  yamlDefinition: string,
+  expectedRevision?: string,
+): Promise<WorkflowDraft> {
+  const raw = await invokeTauri<RawWorkflowDraft>("save_workflow_draft", {
+    workflowId,
+    channelId,
+    yamlDefinition,
+    expectedRevision: expectedRevision ?? null,
+  });
+  return fromRawWorkflowDraft(raw);
+}
+
+export async function publishWorkflowDraft(
+  workflowId: string,
+  draftRevision: string,
+  expectedActiveRevision?: string,
+): Promise<WorkflowSaveResult> {
+  const raw = await invokeTauri<RawWorkflowSaveResponse>(
+    "publish_workflow_draft",
+    {
+      workflowId,
+      draftRevision,
+      expectedActiveRevision: expectedActiveRevision ?? null,
+    },
+  );
+  return fromRawWorkflowSave(raw);
+}
+
+export async function setWorkflowStatus(
+  workflowId: string,
+  status: "active" | "paused",
+): Promise<string> {
+  return invokeTauri<string>("set_workflow_status", { workflowId, status });
+}
+
+export async function previewWorkflow(
+  yamlDefinition: string,
+): Promise<WorkflowPreview> {
+  const raw = await invokeTauri<RawWorkflowPreview>("preview_workflow", {
+    yamlDefinition,
+  });
+  return fromRawWorkflowPreview(raw);
 }
 
 export async function createWorkflow(
