@@ -104,7 +104,7 @@ The feedback states compare 540px-wide dialog crops. Their route means are 4.88%
 - `workspace-account-accessibility`: content is 7.47% exact changed at light 1440x900, 7.14% above delta 4, and 5.37% above 16. The reference presents boxed Reading and motion controls plus a keyboard card. The app presents summary rows and a longer shortcut list.
 - `workspace-account-notifications`: content is 7.59% exact changed, 7.44% above delta 4, and 5.16% above 16 at light 1440x900. The reference presents Channel messages, Agent updates, client approvals, invoice follow-ups, quiet hours, Save activity preferences, and Desktop alerts. The app still presents while-viewing, per-event sound, and Home badge controls. Existing UI tests cover Home badge behavior, so that behavior was not silently removed.
 - `workspace-account-security`: content is 3.71% exact changed and 3.07% above delta 16 at light 1440x900. The reference shows email/password reset/change controls and signed-in devices; the app shows local sign-out and data-removal actions, which are represented separately by `desktop-07`.
-- `workspace-settings-device`: content is 5.12% exact changed, 5.03% above delta 4, and 4.61% above 16 at light 1440x900. The reference includes Connected work rows and a waiting state in addition to local preferences. The app currently exposes the two local preference toggles; compute-host controls remain excluded under NEEDS_DESIGN item 55.
+- `workspace-settings-device`: content is 5.12% exact changed, 5.03% above delta 4, and 4.61% above 16 at light 1440x900. The reference includes Connected work rows and a waiting state in addition to local preferences. The app currently exposes the two local preference toggles. The separate r19 `desktop/#10` Compute hosts screen is designed, but host registry data is not available from the current API.
 - `workspace-settings-emoji`: content is 3.26% exact changed at light 1440x900. The reference marks the three listed emoji as Built in; the app shows delete affordances and a styled upload form where the reference uses native file controls.
 - `workspace-settings-experiments`: content is 3.80% exact changed at light 1440x900. The reference has an empty Experiments state; the app exposes five existing feature toggles. The discrepancy is content and control count, not shell geometry.
 - `workspace-settings-people`: content is 5.13% exact changed, 4.98% above delta 4, and 4.64% above 16 at light 1440x900. Both screens contain the same two people, but the reference uses a member table plus Client access card and the app uses an Invites page with search and member cards.
@@ -122,10 +122,18 @@ The feedback states compare 540px-wide dialog crops. Their route means are 4.88%
 ### NEEDS_DESIGN
 
 - Desktop privacy settings: r19 contains the mobile `settings/privacy` screen only. There is no frozen desktop privacy route or state, so no desktop privacy UI was added.
-- Compute hosts and unavailable/failure behavior: NEEDS_DESIGN item 55. No compute-host screen was added.
-- Blocks catalog permissions and failure behavior: NEEDS_DESIGN item 56. No Blocks route was added.
-- Business defaults/connections unavailable or failure behavior: NEEDS_DESIGN item 57. Those routes remain out of this slice.
-- AI provider connections unavailable or failure behavior: NEEDS_DESIGN item 58. Those routes remain out of this slice.
+- Legacy Share compute controls: `MeshComputeSettingsCard` exposes model selection and local mesh start/stop controls, but neither the workspace Device page nor the r19 `desktop/#10` host list shows those controls or their lifecycle states. The existing smoke tests cover those behaviors. A design is needed before re-exposing the legacy panel in the redesigned settings.
+
+### NEEDS_API
+
+- Compute host registry and worker list. Existing `tauriMesh` calls report this device's mesh runtime, installed models and serving usage; they do not list business hosts or workers.
+- Blocks catalog manifest and business permission records. The local channel template store is a separate feature.
+- Business defaults read and atomic save for default reviewer and external-action policy. Failed and saved states also need a durable write result, with the form draft retained on failure.
+- Business connection records and access scope. No list or update API exists.
+- AI source records and provider connection status. Global agent configuration exposes one provider and model default, not provider connections; new AI connection surfaces remain under the owner hold.
+- Credential store metadata and availability. Existing OS-backed storage serves identity and device pairing; there is no business credential catalog API.
+
+The company-v8 package supplies designed recovery routes for these states. They remain out of this implementation until real data and write APIs exist; no sample records or simulated retry success are shown.
 
 ### OWNER HOLD and route mapping
 
