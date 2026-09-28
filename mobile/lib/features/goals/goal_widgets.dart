@@ -323,20 +323,6 @@ class GoalLoadError extends StatelessWidget {
 String _longDueDate(String dueDate) {
   final parsed = DateTime.tryParse(dueDate);
   if (parsed == null) return dueDate;
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
   return '${parsed.day} ${_longMonths[parsed.month - 1]}';
 }
 

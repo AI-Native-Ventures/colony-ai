@@ -57,10 +57,9 @@ class GoalDetailPage extends HookConsumerWidget {
         goal?.target != null && record?.head.progress?.current == null;
     final canRecordProgress = canUpdate && !targetNeedsUnspecifiedInput;
     final pubkeys = [
-      if (goal != null) goal.ownerPubkey,
-      if (parent?.head.goal != null) parent!.head.goal!.ownerPubkey,
-      for (final child in children)
-        if (child.head.goal?.ownerPubkey case final childOwner?) childOwner,
+      ?goal?.ownerPubkey,
+      ?parent?.head.goal?.ownerPubkey,
+      for (final child in children) ?child.head.goal?.ownerPubkey,
     ];
 
     useEffect(() {
