@@ -5462,11 +5462,12 @@ function assertExpectedSigner(
 }
 
 function getIdentity(config: E2eConfig | undefined): TestIdentity | undefined {
+  if (config?.identity) return config.identity;
   if (!isRelayMode(config)) {
     return undefined;
   }
 
-  return config?.identity ?? DEFAULT_REAL_IDENTITY;
+  return DEFAULT_REAL_IDENTITY;
 }
 
 function getActiveIdentity(config: E2eConfig | undefined) {
