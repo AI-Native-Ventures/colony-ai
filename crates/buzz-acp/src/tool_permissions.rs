@@ -1177,6 +1177,7 @@ mod tests {
             answer: None,
             option_id: None,
             checked_item_ids: None,
+            secret_binding_id: None,
         };
         let event = buzz_sdk::asks::build_ask_response(channel_id, &response)
             .expect("build ask resolution")
