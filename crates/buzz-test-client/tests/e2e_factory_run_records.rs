@@ -11,7 +11,7 @@ use buzz_core::factory_run_records::{
 };
 use buzz_core::kind::KIND_FACTORY_RUN_HEAD;
 use buzz_test_client::BuzzTestClient;
-use nostr::{Alphabet, Event, EventBuilder, Filter, Keys, Kind, SingleLetterTag};
+use nostr::{Alphabet, Event, Filter, Keys, Kind, SingleLetterTag};
 use serde_json::Value;
 use uuid::Uuid;
 
