@@ -46,6 +46,9 @@ pub async fn handle(
         buzz_core::kind::KIND_TOOL_PERMISSION_ACTION => {
             super::company_permissions::handle(tenant, state, event, auth).await
         }
+        buzz_core::kind::KIND_EMPLOYEE_REVISION_ACTION => {
+            super::company_employee_history::handle(tenant, state, event, auth).await
+        }
         _ => handle_goal_action(tenant, state, event, auth).await,
     }
 }

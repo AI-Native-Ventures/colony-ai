@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::agent_management::{build_create, build_update, CreateAgentDraft, UpdateAgentDraft};
 use crate::client::BuzzClient;
+use crate::commands::employee_history;
 use crate::error::CliError;
 use crate::validate::{read_or_stdin, validate_hex64};
 use crate::{AgentsCmd, RespondToArg};
@@ -164,6 +165,13 @@ pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), Cli
         }
 
         AgentsCmd::Archived => cmd_archived(client).await,
+        AgentsCmd::History { employee_pubkey } => {
+            employee_history::history(client, &employee_pubkey).await
+        }
+        AgentsCmd::Undo {
+            employee_pubkey,
+            revision_event_id,
+        } => employee_history::undo(client, &employee_pubkey, &revision_event_id).await,
     }
 }
 

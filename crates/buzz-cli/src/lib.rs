@@ -428,6 +428,21 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+    /// Read the append-only configuration history for a company employee.
+    History {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+    },
+    /// Append a new revision restoring an earlier employee configuration.
+    Undo {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+        /// Immutable revision event to undo to its before snapshot.
+        #[arg(long)]
+        revision_event_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2999,6 +3014,8 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
+                "history",
+                "undo",
                 "unarchive"
             ]
         );

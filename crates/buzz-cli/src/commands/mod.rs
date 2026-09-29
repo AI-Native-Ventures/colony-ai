@@ -5,6 +5,7 @@ pub mod channels;
 pub mod credits;
 pub mod dms;
 pub mod emoji;
+pub mod employee_history;
 pub mod feed;
 pub mod gifs;
 pub mod goals;
