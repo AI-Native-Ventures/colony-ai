@@ -1,6 +1,84 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf, process::Child};
 
+/// Human-reviewed risk label for a tool named by company role metadata.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanyToolRisk {
+    Low,
+    Medium,
+    High,
+}
+
+/// One tool name and its descriptive risk label in a role catalog entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyRoleTool {
+    pub name: String,
+    pub risk: CompanyToolRisk,
+}
+
+/// Non-authoritative company role metadata stored on a real persona catalog entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CompanyRoleMetadata {
+    pub job: String,
+    pub skills: Vec<String>,
+    pub tools: Vec<CompanyRoleTool>,
+    /// Runtime identifiers sourced from live ACP discovery.
+    pub worker_menu: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_allowance: Option<String>,
+}
+
+/// Validate company role metadata before persisting or publishing it.
+pub fn validate_company_role_metadata(value: &CompanyRoleMetadata) -> Result<(), String> {
+    let has_text =
+        |text: &str, max: usize| !text.trim().is_empty() && text.trim().chars().count() <= max;
+    if !has_text(&value.job, 2_000) {
+        return Err("company role job must be non-empty and at most 2000 characters".to_string());
+    }
+    if value.skills.len() > 32 || value.skills.iter().any(|skill| !has_text(skill, 120)) {
+        return Err("company role skills must be non-empty and limited to 32 entries".to_string());
+    }
+    if value.tools.len() > 64 || value.tools.iter().any(|tool| !has_text(&tool.name, 120)) {
+        return Err("company role tools must be named and limited to 64 entries".to_string());
+    }
+    let mut names = std::collections::HashSet::new();
+    if value
+        .tools
+        .iter()
+        .any(|tool| !names.insert(tool.name.trim().to_ascii_lowercase()))
+    {
+        return Err("company role tool names must be unique".to_string());
+    }
+    if value.worker_menu.is_empty()
+        || value.worker_menu.len() > 32
+        || value
+            .worker_menu
+            .iter()
+            .any(|runtime| !has_text(runtime, 120))
+    {
+        return Err("company role worker menu must name 1 to 32 runtimes".to_string());
+    }
+    let mut runtimes = std::collections::HashSet::new();
+    if value
+        .worker_menu
+        .iter()
+        .any(|runtime| !runtimes.insert(runtime.trim().to_string()))
+    {
+        return Err("company role worker menu entries must be unique".to_string());
+    }
+    if let Some(allowance) = value.default_allowance.as_deref() {
+        if allowance.len() > 24 || !buzz_core_pkg::company_records::is_decimal(allowance) {
+            return Err(
+                "company role default allowance must be a non-negative decimal".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BackendKind {
@@ -22,6 +100,9 @@ pub struct AgentDefinition {
     /// event. EXCLUDED from `persona_content_hash` (no restart badge).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional role catalog metadata. It describes the role and grants no permissions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub company_role: Option<CompanyRoleMetadata>,
     pub system_prompt: String,
     /// Preferred ACP runtime ID (e.g., 'goose', 'claude', 'codex'). Determines which agent binary
     /// Buzz spawns. When deploying from this persona, this runtime is pre-selected in the UI.
@@ -186,6 +267,7 @@ impl ManagedAgentRecord {
     pub fn to_definition_view(&self) -> Option<AgentDefinition> {
         let slug = self.slug.clone()?;
         Some(AgentDefinition {
+            company_role: None,
             id: slug,
             display_name: self
                 .display_name

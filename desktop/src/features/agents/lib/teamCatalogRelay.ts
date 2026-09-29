@@ -1,5 +1,5 @@
 import { invokeTauri } from "@/shared/api/tauri";
-import type { AgentTeam } from "@/shared/api/types";
+import type { AgentTeam, CompanyRoleMetadata } from "@/shared/api/types";
 
 /**
  * Presentation and local-linkage for the kind:30178 team catalog.
@@ -34,6 +34,7 @@ export type CatalogTeamMember = {
   runtime: string | null;
   model: string | null;
   provider: string | null;
+  companyRole?: CompanyRoleMetadata | null;
 };
 
 export type TeamCatalogPublication = {

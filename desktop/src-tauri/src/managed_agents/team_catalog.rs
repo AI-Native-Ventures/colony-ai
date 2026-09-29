@@ -22,7 +22,8 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
 use super::{
-    validate_agent_definition_text, validate_visible_text, AgentDefinition, RespondTo, TeamRecord,
+    validate_agent_definition_text, validate_company_role_metadata, validate_visible_text,
+    AgentDefinition, CompanyRoleMetadata, RespondTo, TeamRecord,
 };
 
 /// Schema version of the 30178 content body. A reader that does not recognize
@@ -166,6 +167,13 @@ pub struct TeamCatalogMember {
     /// gated rather than name-trusting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projection_hash: Option<String>,
+    /// Optional company role metadata, appended for older event compatibility.
+    #[serde(
+        default,
+        rename = "companyRole",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub company_role: Option<CompanyRoleMetadata>,
 }
 
 /// Resolve the members of `team` from `personas`, in the team's own
@@ -313,6 +321,7 @@ fn member_projection(record: &AgentDefinition) -> TeamCatalogMember {
         session_policy: record.session_policy,
         builtin_slug: None,
         projection_hash: None,
+        company_role: record.company_role.clone(),
     }
 }
 
@@ -514,6 +523,9 @@ fn validate_member(member: &TeamCatalogMember) -> Result<(), String> {
             MAX_SYSTEM_PROMPT_BYTES,
             &format!("the system prompt for '{who}'"),
         )?;
+    }
+    if let Some(company_role) = member.company_role.as_ref() {
+        validate_company_role_metadata(company_role)?;
     }
     if let Some(avatar) = &member.avatar_url {
         bounded(

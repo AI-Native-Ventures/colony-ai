@@ -10,6 +10,7 @@ const UUID: &str = "11111111-2222-3333-4444-555555555555"; // sadscan:disable sq
 /// IS its UUID id. Carries env_vars + source_team that must survive a patch.
 fn local_in_app() -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: UUID.to_string(),
@@ -40,6 +41,7 @@ fn local_in_app() -> AgentDefinition {
 /// slug = Some(d-tag), empty env_vars, source_team None.
 fn inbound_for(d_tag: &str, display_name: &str) -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: d_tag.to_string(),

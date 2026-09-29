@@ -345,6 +345,7 @@ mod tests {
                 idle_timeout_seconds: None,
                 max_turn_duration_seconds: None,
                 source_is_builtin: false,
+                company_role: None,
             },
             profile: AgentSnapshotProfile {
                 display_name: "Locked Test".to_string(),

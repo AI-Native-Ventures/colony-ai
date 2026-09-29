@@ -1097,6 +1097,18 @@ pub enum AsksCmd {
         #[arg(long)]
         ask: String,
     },
+    /// Propose a typed employee hire in an existing channel thread
+    ProposeHire {
+        /// Channel UUID containing the thread
+        #[arg(long)]
+        channel: String,
+        /// Existing thread root event ID
+        #[arg(long)]
+        thread_root: String,
+        /// HireProposal JSON with the selected real role and runtime values, or '-' for stdin
+        #[arg(long)]
+        proposal: String,
+    },
     /// Cancel an open ask at its exact current head
     Cancel {
         /// Channel UUID containing the ask
@@ -3135,7 +3147,7 @@ mod tests {
         );
         assert_eq!(
             names(&cmd, "asks"),
-            vec!["cancel", "create", "list", "respond"]
+            vec!["cancel", "create", "list", "propose-hire", "respond"]
         );
         assert_eq!(
             names(&cmd, "messages"),
@@ -3295,7 +3307,7 @@ mod tests {
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
             ("agents", 7),
-            ("asks", 4),
+            ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),

@@ -14,9 +14,9 @@ use buzz_core::company_records::{
     ask_resolution_denied_reason, parse_company_command, validate_ask_action, validate_ask_d_tag,
     validate_ask_response, AskAction, AskActionKind, AskCancellation, AskCategory, AskHead,
     AskRecord, AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, AskType,
-    CommunityRole, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
+    CommunityRole, CompanyCommand, HireStatus, COMPANY_RECORD_SCHEMA_VERSION,
 };
-use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE};
+use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE, KIND_HIRE_HEAD};
 use buzz_core::tenant::TenantContext;
 use buzz_core::StoredEvent;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
@@ -44,7 +44,7 @@ pub(super) async fn handle(
 
     match command {
         CompanyCommand::AskAction(action) => {
-            handle_ask_action(tenant, state, event, auth, action).await
+            handle_ask_action(tenant, state, event, auth, *action).await
         }
         CompanyCommand::AskResponse(response) => {
             handle_ask_response(tenant, state, event, auth, response).await
@@ -65,6 +65,9 @@ pub(super) async fn handle(
         CompanyCommand::EmployeeRevisionAction(_) => Err(IngestError::Rejected(
             "restricted: employee history commands are handled by the employee history broker"
                 .into(),
+        )),
+        CompanyCommand::HireAction(_) => Err(IngestError::Rejected(
+            "restricted: hire commands are handled by the company hire broker".into(),
         )),
     }
 }
@@ -121,6 +124,27 @@ async fn handle_ask_action(
                 }
                 validate_member_proposal_route(tenant, state, ask).await?;
             }
+            let hire_head = if let Some(proposal) = ask.hire_proposal.as_ref() {
+                if !actor.is_community_member && !actor.is_agent {
+                    return Err(forbidden(
+                        "only a company member or employee can propose a hire",
+                    ));
+                }
+                Some(
+                    super::company_hires::prepare_ask_proposal(
+                        tenant,
+                        state,
+                        proposal,
+                        &actor.pubkey,
+                        channel_id,
+                        action.ask_id,
+                        &event.id.to_hex(),
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
 
             let thread_meta = super::ingest::resolve_nip10_thread_meta(
                 tenant.community(),
@@ -166,6 +190,7 @@ async fn handle_ask_action(
                     previous_head: None,
                     thread_meta: Some(thread_meta),
                     member_position_action: None,
+                    hire_head,
                 },
             )
             .await
@@ -212,6 +237,7 @@ async fn handle_ask_action(
                     previous_head: Some(current),
                     thread_meta: None,
                     member_position_action: None,
+                    hire_head: None,
                 },
             )
             .await
@@ -270,6 +296,54 @@ async fn handle_ask_response(
     }
 
     let response_event_id = event.id.to_hex();
+    let hire_head = if let Some(proposal) = head.ask.hire_proposal.as_ref() {
+        match response.outcome {
+            buzz_core::company_records::AskOutcome::Approved
+            | buzz_core::company_records::AskOutcome::Rejected => {
+                let hire_d_tag = buzz_core::company_records::hire_d_tag(proposal.hire_id);
+                let stored =
+                    super::company_hires::current_hire_head(state, tenant.community(), &hire_d_tag)
+                        .await?
+                        .ok_or_else(|| conflict("linked hire does not exist"))?;
+                let mut hire = super::company_hires::parse_hire_head(&stored)?;
+                if hire.source_ask_id != Some(head.ask.ask_id)
+                    || hire.source_ask_channel_id != Some(channel_id)
+                    || hire.proposal.hire_id != proposal.hire_id
+                    || hire.status != HireStatus::Proposed
+                {
+                    return Err(conflict("linked hire changed; refresh the ask"));
+                }
+                if response.outcome == buzz_core::company_records::AskOutcome::Approved {
+                    if actor.community_role == Some(CommunityRole::Owner) {
+                        hire.status = HireStatus::Approved;
+                        hire.founder_pubkey = Some(actor.pubkey.clone());
+                    } else {
+                        hire.status = HireStatus::AwaitingFounder;
+                    }
+                    hire.denial_reason = None;
+                } else {
+                    hire.status = HireStatus::Denied;
+                    hire.denial_reason = response.reason.clone();
+                }
+                hire.source_action_event_id = response_event_id.clone();
+                let hire_event = super::company_hires::relay_hire_head_event(
+                    &hire,
+                    &hire_d_tag,
+                    Some(&stored),
+                    state,
+                )?;
+                Some(super::company_hires::PreparedHireHead {
+                    d_tag: hire_d_tag,
+                    expected_head_id: Some(stored.event.id.to_bytes().to_vec()),
+                    display_name: hire.proposal.display_name.clone(),
+                    event: hire_event,
+                })
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
     head.status = AskStatus::Resolved;
     head.resolution = Some(AskResolution {
         response: AskResolutionPayload {
@@ -301,6 +375,7 @@ async fn handle_ask_response(
                 == buzz_core::company_records::AskOutcome::Approved)
                 .then(|| head.ask.member_proposal.clone())
                 .flatten(),
+            hire_head,
         },
     )
     .await
@@ -314,6 +389,7 @@ struct AskCommandWrite<'a> {
     previous_head: Option<StoredEvent>,
     thread_meta: Option<ThreadMetadataOwned>,
     member_position_action: Option<MemberPositionAction>,
+    hire_head: Option<super::company_hires::PreparedHireHead>,
 }
 
 async fn persist_ask_command(
@@ -329,6 +405,7 @@ async fn persist_ask_command(
         previous_head,
         thread_meta,
         member_position_action,
+        hire_head,
     } = write;
     before_ask_persist_for_test(d_tag).await;
     let mut tx = state
@@ -364,6 +441,36 @@ async fn persist_ask_command(
         return Err(conflict(format!(
             "ask head changed before the command committed; current head is {current}"
         )));
+    }
+
+    if let Some(prepared_hire) = hire_head.as_ref() {
+        let locked_hire_head_id =
+            buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+                &mut tx,
+                tenant.community(),
+                KIND_HIRE_HEAD,
+                &state.relay_keypair.public_key().to_bytes(),
+                &prepared_hire.d_tag,
+            )
+            .await
+            .map_err(internal)?;
+        if locked_hire_head_id.as_deref() != prepared_hire.expected_head_id.as_deref() {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "hire changed before the linked ask could commit; refresh and retry",
+            ));
+        }
+        if prepared_hire.expected_head_id.is_none() {
+            super::company_hires::validate_unique_name_in_transaction(
+                &mut tx,
+                tenant,
+                state,
+                &prepared_hire.display_name,
+                None,
+                None,
+            )
+            .await?;
+        }
     }
 
     let member_head = match member_position_action.as_ref() {
@@ -452,6 +559,16 @@ async fn persist_ask_command(
             stored_member_head,
             state.relay_keypair.public_key().to_hex(),
         ));
+    }
+    if let Some(prepared_hire) = hire_head.as_ref() {
+        let stored_hire = super::company_hires::replace_prepared_hire_head(
+            &mut tx,
+            tenant.community(),
+            prepared_hire,
+            state,
+        )
+        .await?;
+        stored_events.push((stored_hire, state.relay_keypair.public_key().to_hex()));
     }
     tx.commit().await.map_err(internal)?;
 
@@ -1287,6 +1404,7 @@ mod postgres_tests {
                     allowed_use: "Prepare campaign drafts".into(),
                 }
             }),
+            hire_proposal: None,
         }
     }
 

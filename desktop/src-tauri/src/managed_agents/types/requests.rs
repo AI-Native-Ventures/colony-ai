@@ -84,6 +84,9 @@ pub struct CreatePersonaRequest {
     /// Optional short, PUBLIC description (max 280 chars).
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional non-authoritative company role metadata.
+    #[serde(default)]
+    pub company_role: Option<super::CompanyRoleMetadata>,
     pub system_prompt: String,
     #[serde(default)]
     pub runtime: Option<String>,
@@ -115,6 +118,9 @@ pub struct UpdatePersonaRequest {
     /// sends the current value, so absent and empty both clear it.
     #[serde(default)]
     pub description: Option<String>,
+    /// Absent leaves existing metadata unchanged; `null` clears it.
+    #[serde(default)]
+    pub company_role: Option<Option<super::CompanyRoleMetadata>>,
     pub system_prompt: String,
     #[serde(default)]
     pub runtime: Option<String>,
@@ -291,6 +297,7 @@ mod tests {
 
     fn record_without_quad() -> AgentDefinition {
         AgentDefinition {
+            company_role: None,
             session_policy: Default::default(),
             description: None,
             id: "p-1".to_string(),

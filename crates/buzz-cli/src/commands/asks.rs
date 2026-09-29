@@ -1,6 +1,6 @@
 use buzz_core::company_records::{
-    ask_d_tag, AskAction, AskActionKind, AskHead, AskOutcome, AskRecord, AskResponse,
-    COMPANY_RECORD_SCHEMA_VERSION,
+    ask_d_tag, AskAction, AskActionKind, AskCategory, AskHead, AskOutcome, AskRecord, AskResponse,
+    AskSubject, AskSubjectKind, AskType, HireProposal, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use serde_json::{json, Value};
 
@@ -9,12 +9,18 @@ use crate::commands::parse_write_response;
 use crate::error::CliError;
 use crate::validate::{parse_event_id, parse_uuid, read_or_stdin};
 use crate::AsksCmd;
+use uuid::Uuid;
 
 /// Query and mutate channel-scoped company asks.
 pub async fn dispatch(command: AsksCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
         AsksCmd::List { channel } => list(client, &channel).await,
         AsksCmd::Create { channel, ask } => create(client, &channel, &ask).await,
+        AsksCmd::ProposeHire {
+            channel,
+            thread_root,
+            proposal,
+        } => propose_hire(client, &channel, &thread_root, &proposal).await,
         AsksCmd::Cancel {
             channel,
             ask,
@@ -45,6 +51,63 @@ pub async fn dispatch(command: AsksCmd, client: &BuzzClient) -> Result<(), CliEr
             .await
         }
     }
+}
+
+async fn propose_hire(
+    client: &BuzzClient,
+    channel: &str,
+    thread_root: &str,
+    proposal_json: &str,
+) -> Result<(), CliError> {
+    let channel_id = parse_uuid(channel)?;
+    let thread_root = parse_event_id(thread_root)?.to_hex();
+    let input = read_or_stdin(proposal_json)?;
+    let proposal: HireProposal = serde_json::from_str(&input)
+        .map_err(|error| CliError::Usage(format!("invalid hire proposal JSON: {error}")))?;
+    let ask_id = Uuid::new_v4();
+    let ask = AskRecord {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        ask_id,
+        ask_type: AskType::Approval,
+        category: AskCategory::Hire,
+        title: format!("Hire {}", proposal.role_pack.title),
+        body: None,
+        thread_root_event_id: thread_root,
+        addressee_pubkey: None,
+        decide_by: None,
+        options: None,
+        items: None,
+        tool_consent: None,
+        subject: Some(AskSubject {
+            kind: AskSubjectKind::Hire,
+            id: proposal.hire_id.to_string(),
+        }),
+        member_proposal: None,
+        secret_request: None,
+        hire_proposal: Some(proposal.clone()),
+    };
+    let action = AskAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        ask_id,
+        action: AskActionKind::Create,
+        expected_head_event_id: None,
+        ask: Some(ask),
+        reason: None,
+    };
+    let builder =
+        buzz_sdk::asks::build_ask_action(channel_id, &action).map_err(crate::validate::sdk_err)?;
+    let event = client.sign_event(builder)?;
+    let response = client.submit_event(event).await?;
+    parse_write_response(&response, "hire proposal ask was rejected")?;
+    println!(
+        "{}",
+        crate::client::create_response_with_id_if_accepted(
+            &response,
+            "ask_id",
+            &ask_id.to_string(),
+        )
+    );
+    Ok(())
 }
 
 async fn list(client: &BuzzClient, channel: &str) -> Result<(), CliError> {

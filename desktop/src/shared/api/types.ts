@@ -766,6 +766,9 @@ export type UpdateManagedAgentInput = {
 export type {
   AgentPersona,
   CatalogSourceCoordinate,
+  CompanyRoleMetadata,
+  CompanyRoleTool,
+  CompanyToolRisk,
   CreatePersonaInput,
   PersonaBehaviorInput,
   UpdatePersonaInput,
