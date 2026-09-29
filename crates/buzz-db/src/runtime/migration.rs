@@ -922,7 +922,7 @@ mod postgres_tests {
         assert!(migrations[32].sql.as_str().contains("search_tsv"));
         assert!(!migrations[0].sql.as_str().contains("30179"));
         assert!(include_str!("../../../../schema/schema.sql")
-            .contains("kind IN (1059, 30179, 30300, 30350, 30622, 30642, 30643, 30647, 44100, 44101, 44200, 47031, 47032, 47033, 47036)"));
+            .contains("kind IN (1059, 30179, 30300, 30350, 30622, 30642, 30643, 30646, 30647, 30648, 44100, 44101, 44200, 47031, 47032, 47033, 47035, 47036, 47037)"));
 
         // Public push-gateway authority is intentionally deployment-global and
         // durable: immediate revocation and hostile-relay admission cannot be

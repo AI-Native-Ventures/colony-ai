@@ -124,6 +124,55 @@ test("decodeRelayAskHead rejects a tampered signature and reports malformed sign
   );
 });
 
+test("decodeRelayAskHead accepts and validates member-position proposal asks", () => {
+  const memberPubkey = "f".repeat(64);
+  const content = headContent({
+    ask: {
+      schemaVersion: 1,
+      askId: ASK_ID,
+      type: "approval",
+      category: "general",
+      title: "Change reporting line",
+      threadRootEventId: THREAD_ROOT,
+      addresseePubkey: "e".repeat(64),
+      subject: { kind: "companyMember", id: memberPubkey },
+      memberProposal: {
+        schemaVersion: 1,
+        pubkey: memberPubkey,
+        action: "set_title",
+        expectedHeadEventId: "a".repeat(64),
+        title: "Operations lead",
+      },
+    },
+  });
+  const decoded = decodeRelayAskHead(signHead({ content }), RELAY_PUBKEY);
+  assert.equal(decoded?.head.ask.memberProposal?.pubkey, memberPubkey);
+
+  const invalid = headContent({
+    ask: {
+      schemaVersion: 1,
+      askId: ASK_ID,
+      type: "question",
+      category: "general",
+      title: "Change reporting line",
+      threadRootEventId: THREAD_ROOT,
+      addresseePubkey: "e".repeat(64),
+      subject: { kind: "companyMember", id: memberPubkey },
+      memberProposal: {
+        schemaVersion: 1,
+        pubkey: memberPubkey,
+        action: "set_title",
+        expectedHeadEventId: "a".repeat(64),
+        title: "Operations lead",
+      },
+    },
+  });
+  assert.throws(
+    () => decodeRelayAskHead(signHead({ content: invalid }), RELAY_PUBKEY),
+    /malformed member-position proposal/i,
+  );
+});
+
 test("decodeRelayAskHead accepts a tool consent ask with an exact preview", () => {
   const value = JSON.parse(headContent());
   value.ask.type = "tool_consent";

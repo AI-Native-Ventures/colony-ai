@@ -106,6 +106,7 @@ mod tests {
             items: None,
             tool_consent: None,
             subject: None,
+            member_proposal: None,
             secret_request: None,
         }
     }

@@ -25,6 +25,7 @@ mod repo_default_branch;
 pub mod repos;
 pub mod secrets;
 pub mod social;
+pub mod team;
 pub mod upload;
 pub mod users;
 pub mod work;

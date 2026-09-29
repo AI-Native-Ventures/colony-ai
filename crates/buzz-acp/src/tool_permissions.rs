@@ -318,6 +318,7 @@ async fn create_tool_consent_ask(
             action_preview: preview.to_string(),
         }),
         subject: None,
+        member_proposal: None,
         secret_request: None,
     };
     let action_command = AskAction {

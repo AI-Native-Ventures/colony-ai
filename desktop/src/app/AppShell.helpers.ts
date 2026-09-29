@@ -15,6 +15,7 @@ export type AppView =
   | "projects"
   | "business"
   | "factory"
+  | "team"
   | "goals"
   | "pins";
 
@@ -295,6 +296,13 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "goals",
+    };
+  }
+
+  if (pathname === "/team" || pathname.startsWith("/team/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "team",
     };
   }
 

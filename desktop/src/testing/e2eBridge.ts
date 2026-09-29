@@ -131,6 +131,8 @@ import {
   KIND_MONEY_ADJUSTMENT,
   KIND_MONEY_FOLLOW_UP,
   KIND_MEMBER_ADDED_NOTIFICATION,
+  KIND_MEMBER_POSITION_ACTION,
+  KIND_MEMBER_POSITION_HEAD,
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_PAYMENT,
   KIND_PERSONA,
@@ -701,6 +703,12 @@ type E2eConfig = {
     goalEvents?: RelayEvent[];
     /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
     goalRelayPrivateKey?: string;
+    /** Relay-signed member-position heads for Company Team E2E coverage. */
+    companyMemberPositionEvents?: RelayEvent[];
+    /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
+    companyMemberRelayPrivateKeyHex?: string;
+    /** Reject successive member-position writes in order, then accept them. */
+    companyMemberActionErrors?: string[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -3829,6 +3837,9 @@ const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
+const mockCompanyMemberPositionEvents: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-events-v1";
 const mockCompanyToolPermissionHeads: RelayEvent[] = [];
 const mockAskActionIds = new Set<string>();
 const mockCompanySecretBindingHeads: RelayEvent[] = [];
@@ -5184,6 +5195,9 @@ let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
   const config = getConfig();
+  const relayAgentsByPubkey = new Map(
+    mockRelayAgents.map((relayAgent) => [relayAgent.pubkey, relayAgent]),
+  );
   const baseAgents = mockRelayAgents.filter(
     (agent) =>
       !mockManagedAgents.some((managed) => managed.pubkey === agent.pubkey),
@@ -5191,11 +5205,13 @@ function syncMockRelayAgentsFromManagedAgents() {
   const managedAgentsAsRelay: RawRelayAgent[] = mockManagedAgents.map(
     (agent) => {
       const memberships = getManagedAgentRelayMembership(agent.pubkey, config);
+      const relayAgent = relayAgentsByPubkey.get(agent.pubkey);
 
       return {
         pubkey: agent.pubkey,
+        owner_pubkey: relayAgent?.owner_pubkey ?? null,
         name: agent.name,
-        agent_type: agent.agent_command,
+        agent_type: relayAgent?.agent_type ?? agent.agent_command,
         channels: memberships.channels,
         channel_ids: memberships.channelIds,
         capabilities: ["messages", "channels", "mcp"],
@@ -5965,6 +5981,289 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyMemberPositionEvents
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function acceptMockMemberPositionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError = config?.mock?.companyMemberActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1 || event.tags.length !== 1) {
+    reject(
+      "invalid: member position action needs one d tag and no other tags.",
+    );
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    pubkey?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    title?: string;
+    managerPubkey?: string | null;
+    reason?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: member position action is not JSON.");
+    return;
+  }
+  const memberPubkey = action.pubkey?.toLowerCase();
+  const dTag = dTags[0]?.[1];
+  if (
+    action.schemaVersion !== 1 ||
+    !memberPubkey ||
+    dTag !== `company:member:${memberPubkey}` ||
+    !/^[0-9a-f]{64}$/.test(memberPubkey)
+  ) {
+    reject("invalid: member position action does not match its d tag.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject(
+      "restricted: only a company owner or admin can change member positions.",
+    );
+    return;
+  }
+  const currentEvent = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (currentEvent?.id !== action.expectedHeadEventId) {
+    reject(
+      `conflict: member position changed; current head is ${currentEvent?.id ?? "missing"}`,
+    );
+    return;
+  }
+  let current: Record<string, unknown> | null = null;
+  if (currentEvent) {
+    try {
+      current = JSON.parse(currentEvent.content) as Record<string, unknown>;
+    } catch {
+      reject("error: stored mock member position head is invalid.");
+      return;
+    }
+  }
+  const relayAgent = mockRelayAgents.find(
+    (candidate) => candidate.pubkey.toLowerCase() === memberPubkey,
+  );
+  const managedAgent = mockManagedAgents.find(
+    (candidate) => candidate.pubkey.toLowerCase() === memberPubkey,
+  );
+  const isWorker = relayAgent?.agent_type.toLowerCase() === "worker";
+  if (isWorker) {
+    reject("invalid: runtime workers do not have company member positions.");
+    return;
+  }
+  const isEmployee = Boolean(
+    managedAgent || (relayAgent?.owner_pubkey && !isWorker),
+  );
+  if (
+    !isEmployee &&
+    !mockRelayMembers.some(
+      (member) => member.pubkey.toLowerCase() === memberPubkey,
+    )
+  ) {
+    reject("invalid: target is not a community member or managed employee.");
+    return;
+  }
+  if (current?.kind === "employee" && !isEmployee) {
+    reject("invalid: managed employees must exist in the agent directory.");
+    return;
+  }
+
+  let title = typeof current?.title === "string" ? current.title : "";
+  let managerPubkey =
+    typeof current?.managerPubkey === "string"
+      ? current.managerPubkey
+      : undefined;
+  let status = typeof current?.status === "string" ? current.status : "active";
+  let reason = typeof current?.reason === "string" ? current.reason : undefined;
+  switch (action.action) {
+    case "set_title":
+      if (!action.title?.trim()) {
+        reject("invalid: title is required.");
+        return;
+      }
+      title = action.title.trim();
+      break;
+    case "set_manager":
+      if (action.managerPubkey === undefined) {
+        reject("invalid: managerPubkey is required.");
+        return;
+      }
+      managerPubkey = action.managerPubkey?.toLowerCase() || undefined;
+      break;
+    case "set_position":
+      if (action.title !== undefined) title = action.title.trim();
+      if (action.managerPubkey !== undefined) {
+        managerPubkey = action.managerPubkey?.toLowerCase() || undefined;
+      }
+      if (!current && !title) {
+        reject("invalid: initial member positions need a title.");
+        return;
+      }
+      break;
+    case "pause":
+    case "terminate":
+      if (!isEmployee || !action.reason?.trim()) {
+        reject("invalid: lifecycle changes need an employee and reason.");
+        return;
+      }
+      status = action.action === "pause" ? "paused" : "terminated";
+      reason = action.reason.trim();
+      break;
+    case "rehire":
+      if (!isEmployee || status !== "terminated") {
+        reject("conflict: only a terminated employee can be rehired.");
+        return;
+      }
+      status = "active";
+      reason = undefined;
+      break;
+    default:
+      reject("invalid: unsupported member position action.");
+      return;
+  }
+  if (!title) {
+    reject("invalid: member title is required.");
+    return;
+  }
+  if (managerPubkey) {
+    const managerIsMember = mockRelayMembers.some(
+      (member) => member.pubkey.toLowerCase() === managerPubkey,
+    );
+    const managerAgent = mockRelayAgents.find(
+      (candidate) => candidate.pubkey.toLowerCase() === managerPubkey,
+    );
+    const managerIsWorker = managerAgent?.agent_type.toLowerCase() === "worker";
+    const managerIsEmployee = Boolean(
+      mockManagedAgents.some(
+        (candidate) => candidate.pubkey.toLowerCase() === managerPubkey,
+      ) ||
+        (managerAgent?.owner_pubkey && managerAgent.agent_type !== "worker"),
+    );
+    if (
+      managerPubkey === memberPubkey ||
+      managerIsWorker ||
+      (!managerIsMember && !managerIsEmployee)
+    ) {
+      reject("invalid: manager must be another community member or employee.");
+      return;
+    }
+    const byPubkey = new Map(
+      mockCompanyMemberPositionEvents.map((headEvent) => {
+        const content = JSON.parse(headEvent.content) as {
+          pubkey: string;
+          managerPubkey?: string;
+        };
+        return [
+          content.pubkey.toLowerCase(),
+          content.managerPubkey?.toLowerCase(),
+        ];
+      }),
+    );
+    byPubkey.set(memberPubkey, managerPubkey);
+    let currentManager: string | undefined = managerPubkey;
+    const visited = new Set<string>();
+    for (let depth = 0; currentManager && depth < 128; depth += 1) {
+      if (currentManager === memberPubkey || visited.has(currentManager)) {
+        reject("invalid: reporting lines cannot contain a cycle.");
+        return;
+      }
+      visited.add(currentManager);
+      currentManager = byPubkey.get(currentManager);
+    }
+    if (currentManager) {
+      reject("invalid: reporting line exceeds the supported depth.");
+      return;
+    }
+  }
+
+  const privateKeyHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("error: mock relay signer is not configured for member positions.");
+    return;
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("error: mock member-position signer does not match relay self.");
+    return;
+  }
+  const head = {
+    schemaVersion: 1,
+    pubkey: memberPubkey,
+    title,
+    ...(managerPubkey ? { managerPubkey } : {}),
+    kind: isEmployee ? "employee" : "human",
+    status,
+    ...(reason ? { reason } : {}),
+    sourceActionEventId: event.id,
+    updatedAt: new Date().toISOString(),
+  };
+  const nextEvent = finalizeEvent(
+    {
+      kind: KIND_MEMBER_POSITION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = mockCompanyMemberPositionEvents.findIndex(
+      (candidate) => candidate.id === currentEvent.id,
+    );
+    if (index >= 0) mockCompanyMemberPositionEvents.splice(index, 1);
+  }
+  mockCompanyMemberPositionEvents.push(nextEvent);
+  window.localStorage.setItem(
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+    JSON.stringify(mockCompanyMemberPositionEvents),
+  );
+  emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanySecretBindingHeads(filter: MockFilter) {
@@ -14758,6 +15057,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_MEMBER_POSITION_HEAD)) {
+      for (const event of filterMockCompanyMemberPositions(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_SECRET_BINDING_HEAD)) {
       for (const event of filterMockCompanySecretBindingHeads(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -14876,6 +15183,10 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_MEMBER_POSITION_ACTION) {
+      acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
     if (event.kind === KIND_SECRET_BINDING_ACTION) {
       acceptMockSecretBindingAction(socket, event, getConfig());
       return;
@@ -15200,6 +15511,20 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyAskHeads.length,
     ...(config.mock?.companyAskHeads ?? []),
+  );
+  const storedMemberPositionEvents = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+  );
+  const memberPositionEvents = storedMemberPositionEvents
+    ? (JSON.parse(storedMemberPositionEvents) as RelayEvent[])
+    : (config.mock?.companyMemberPositionEvents ?? []);
+  if (!Array.isArray(memberPositionEvents)) {
+    throw new Error("Stored mock member position events must be an array.");
+  }
+  mockCompanyMemberPositionEvents.splice(
+    0,
+    mockCompanyMemberPositionEvents.length,
+    ...memberPositionEvents,
   );
   mockCompanyToolPermissionHeads.splice(
     0,

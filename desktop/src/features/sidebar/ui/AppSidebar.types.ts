@@ -55,6 +55,7 @@ export type AppSidebarProps = {
     | "projects"
     | "business"
     | "factory"
+    | "team"
     | "goals"
     | "pins";
   unreadChannelCounts: ReadonlyMap<string, number>;
@@ -99,6 +100,7 @@ export type AppSidebarProps = {
   onSelectSavedForLater: () => void;
   onSelectFactory: () => void;
   onSelectGoals: () => void;
+  onSelectTeam: () => void;
   onSelectPower: () => void;
   onSelectWorkflows: () => void;
   onSelectClients?: () => void;

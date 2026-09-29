@@ -89,8 +89,15 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
     "1px",
   );
 
+  await expect(sidebar.getByTestId("sidebar-company-team")).toBeVisible();
+  await sidebar.getByTestId("sidebar-company-team").click();
+  await expect(page).toHaveURL(/#\/team$/);
+  await expect(sidebar.getByTestId("sidebar-company-team")).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+
   for (const label of [
-    "Team",
     "Discovery",
     "Clients",
     "Social media",

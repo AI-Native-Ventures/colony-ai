@@ -18,6 +18,10 @@ import {
 
 import { ownsAuthorAgent } from "@/features/profile/lib/identity";
 import { useUserProfileQuery } from "@/features/profile/hooks";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { CompanyEmployeeProfileActions } from "@/features/company-team/ui/CompanyEmployeeProfileActions";
+import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { useIdentityArchive } from "@/features/identity-archive/hooks";
 import { useIsManagedAgent } from "@/features/agent-memory/hooks";
 import {
@@ -138,6 +142,20 @@ export function AgentProfileView({
   const managedOwner = useIsManagedAgent(agent.pubkey);
   const identity = useIdentityQuery();
   const profileQuery = useUserProfileQuery(agent.pubkey);
+  const companyTeamQuery = useCompanyTeamQuery();
+  const { goTeamArchive, goTeamEdit, goTeamMember, goTeamPause } =
+    useAppNavigation();
+  const companyMember = companyTeamQuery.data?.members.find(
+    (member) => member.pubkey.toLowerCase() === agent.pubkey.toLowerCase(),
+  );
+  const position = companyMember?.position?.head;
+  const viewerCompanyRole = companyTeamQuery.data?.relayMembers.find(
+    (member) =>
+      member.pubkey.toLowerCase() === identity.data?.pubkey.toLowerCase(),
+  )?.role;
+  const canManageCompany =
+    viewerCompanyRole === "owner" || viewerCompanyRole === "admin";
+  const managerProfileQuery = useUserProfileQuery(position?.managerPubkey);
   const ownerProfileQuery = useUserProfileQuery(
     profileQuery.data?.ownerPubkey ?? undefined,
   );
@@ -178,6 +196,10 @@ export function AgentProfileView({
     managedOwner === true ||
     ownsAuthorAgent(profileQuery.data, identity.data?.pubkey);
   const role = profileQuery.data?.about?.trim() || null;
+  const managerName = managerProfileQuery.data?.displayName?.trim() || null;
+  const companyPosition = position
+    ? `${position.title} · Employee${managerName ? ` · Reports to ${managerName}` : ""}`
+    : null;
   const ownerName = ownerProfileQuery.data?.displayName?.trim() || null;
   const description = linkedPersona?.description?.trim() || null;
   const presenceLabel =
@@ -267,7 +289,25 @@ export function AgentProfileView({
                   {ownerName}
                 </p>
               ) : null}
+              {companyPosition ? (
+                <p
+                  className="truncate text-xs text-muted-foreground"
+                  data-testid="company-position-header"
+                >
+                  {companyPosition}
+                </p>
+              ) : null}
             </div>
+            {position ? (
+              <Badge
+                className="ml-1 shrink-0 rounded-[5px] border border-border px-2 py-0.5 text-2xs font-medium normal-case tracking-normal"
+                variant={position.status === "active" ? "secondary" : "outline"}
+              >
+                {position.status === "terminated"
+                  ? "Archived"
+                  : position.status}
+              </Badge>
+            ) : null}
             <Badge
               className="ml-1 shrink-0 rounded-[5px] border border-[#dce9df] bg-[#edf4ef] px-2 py-0.5 text-2xs font-medium normal-case tracking-normal text-[#507d69] dark:border-[#3c5445] dark:bg-[#25392e] dark:text-[#9ebda8]"
               variant={profileStatus === "Working" ? "default" : "success"}
@@ -342,6 +382,16 @@ export function AgentProfileView({
         ) : null}
       </header>
 
+      {position?.status === "paused" ? (
+        <Alert className="mx-8 mt-4" data-testid="company-paused-banner">
+          <AlertTitle>Paused · {position.reason}</AlertTitle>
+          <AlertDescription>
+            Work remains visible with a paused reason. The employee can be
+            resumed later.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {agent.needsRestart ? (
         <div className="flex items-center gap-2 border-b border-border/60 bg-primary/10 px-8 py-2.5 text-sm text-primary">
           <span>Saved changes apply on the next start.</span>
@@ -400,30 +450,44 @@ export function AgentProfileView({
         >
           <div className="max-w-[58.75rem]">
             {tab === "overview" ? (
-              <OverviewTab
-                agent={agent}
-                activeTurns={activeTurns}
-                channelOptions={channelOptions}
-                channelsLoading={
-                  channelsQuery.isLoading || relayAgentsQuery.isLoading
-                }
-                channelError={
-                  channelsQuery.error instanceof Error
-                    ? channelsQuery.error
-                    : relayAgentsQuery.error instanceof Error
-                      ? relayAgentsQuery.error
-                      : null
-                }
-                description={description}
-                harnessLabel={runtime?.label ?? "Not reported"}
-                onOpenChannel={onOpenChannel}
-                onTabChange={onTabChange}
-                providerLabel={
-                  agent.provider
-                    ? providerDisplayLabel(agent.provider)
-                    : "Not reported"
-                }
-              />
+              <>
+                <OverviewTab
+                  agent={agent}
+                  activeTurns={activeTurns}
+                  channelOptions={channelOptions}
+                  channelsLoading={
+                    channelsQuery.isLoading || relayAgentsQuery.isLoading
+                  }
+                  channelError={
+                    channelsQuery.error instanceof Error
+                      ? channelsQuery.error
+                      : relayAgentsQuery.error instanceof Error
+                        ? relayAgentsQuery.error
+                        : null
+                  }
+                  description={description}
+                  harnessLabel={runtime?.label ?? "Not reported"}
+                  onOpenChannel={onOpenChannel}
+                  onTabChange={onTabChange}
+                  providerLabel={
+                    agent.provider
+                      ? providerDisplayLabel(agent.provider)
+                      : "Not reported"
+                  }
+                />
+                {companyMember?.kind === "employee" ? (
+                  <CompanyEmployeeProfileActions
+                    canManage={canManageCompany}
+                    employeePubkey={agent.pubkey}
+                    managerName={managerName}
+                    onEdit={() => void goTeamEdit(agent.pubkey)}
+                    onOpenReport={(pubkey) => void goTeamMember(pubkey)}
+                    onPause={() => void goTeamPause(agent.pubkey)}
+                    onTerminate={() => void goTeamArchive(agent.pubkey)}
+                    position={position}
+                  />
+                ) : null}
+              </>
             ) : null}
             {tab === "model-runtime" ? (
               <ModelRuntimeTab

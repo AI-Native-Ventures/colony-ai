@@ -9,10 +9,11 @@ use chrono::{SecondsFormat, Utc};
 use nostr::{Event, EventBuilder, Kind, Tag};
 use uuid::Uuid;
 
+use buzz_core::company_members::{MemberKind, MemberPositionAction, MemberPositionActionKind};
 use buzz_core::company_records::{
     ask_resolution_denied_reason, parse_company_command, validate_ask_action, validate_ask_d_tag,
-    validate_ask_response, AskAction, AskActionKind, AskCancellation, AskHead, AskRecord,
-    AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, AskType,
+    validate_ask_response, AskAction, AskActionKind, AskCancellation, AskCategory, AskHead,
+    AskRecord, AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, AskType,
     CommunityRole, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE};
@@ -50,6 +51,9 @@ pub(super) async fn handle(
         }
         CompanyCommand::GoalAction(_) => Err(IngestError::Rejected(
             "restricted: goal commands are handled by the company goal broker".into(),
+        )),
+        CompanyCommand::MemberPositionAction(_) => Err(IngestError::Rejected(
+            "restricted: member-position commands are handled by the member-position broker".into(),
         )),
         CompanyCommand::SecretBindingAction(_) => Err(IngestError::Rejected(
             "restricted: secret binding commands are handled by the company secret broker".into(),
@@ -105,6 +109,14 @@ async fn handle_ask_action(
             };
             validate_ask_action(&action, addressee_is_agent)
                 .map_err(|error| invalid(format!("ask action: {error}")))?;
+            if ask.member_proposal.is_some() {
+                if !actor.is_community_member {
+                    return Err(forbidden(
+                        "only community members can propose a member-position change",
+                    ));
+                }
+                validate_member_proposal_route(tenant, state, ask).await?;
+            }
 
             let thread_meta = super::ingest::resolve_nip10_thread_meta(
                 tenant.community(),
@@ -149,6 +161,7 @@ async fn handle_ask_action(
                     head: head_event,
                     previous_head: None,
                     thread_meta: Some(thread_meta),
+                    member_position_action: None,
                 },
             )
             .await
@@ -194,6 +207,7 @@ async fn handle_ask_action(
                     head: head_event,
                     previous_head: Some(current),
                     thread_meta: None,
+                    member_position_action: None,
                 },
             )
             .await
@@ -247,6 +261,9 @@ async fn handle_ask_response(
     if let Some(reason) = ask_resolution_denied_reason(&head.ask, resolver) {
         return Err(forbidden(reason));
     }
+    if let Some(proposal) = head.ask.member_proposal.as_ref() {
+        validate_member_proposal_resolver(tenant, state, &head.ask, proposal, &actor).await?;
+    }
 
     let response_event_id = event.id.to_hex();
     head.status = AskStatus::Resolved;
@@ -276,6 +293,10 @@ async fn handle_ask_response(
             head: head_event,
             previous_head: Some(current),
             thread_meta: None,
+            member_position_action: (response.outcome
+                == buzz_core::company_records::AskOutcome::Approved)
+                .then(|| head.ask.member_proposal.clone())
+                .flatten(),
         },
     )
     .await
@@ -288,6 +309,7 @@ struct AskCommandWrite<'a> {
     head: Event,
     previous_head: Option<StoredEvent>,
     thread_meta: Option<ThreadMetadataOwned>,
+    member_position_action: Option<MemberPositionAction>,
 }
 
 async fn persist_ask_command(
@@ -302,6 +324,7 @@ async fn persist_ask_command(
         head,
         previous_head,
         thread_meta,
+        member_position_action,
     } = write;
     before_ask_persist_for_test(d_tag).await;
     let mut tx = state
@@ -338,6 +361,20 @@ async fn persist_ask_command(
             "ask head changed before the command committed; current head is {current}"
         )));
     }
+
+    let member_head = match member_position_action.as_ref() {
+        Some(action) => Some(
+            super::company_member_records::prepare_member_position_proposal(
+                &mut tx,
+                tenant,
+                state,
+                action,
+                &command.id.to_hex(),
+            )
+            .await?,
+        ),
+        None => None,
+    };
 
     let (stored_command, inserted) = match thread_meta.as_ref() {
         Some(meta) => buzz_db::event::insert_event_with_thread_metadata_in_transaction(
@@ -399,6 +436,19 @@ async fn persist_ask_command(
             ));
         }
     }
+    if let Some(member_head) = member_head.as_ref() {
+        let stored_member_head = super::company_member_records::replace_prepared_member_position(
+            &mut tx,
+            tenant.community(),
+            member_head,
+            state,
+        )
+        .await?;
+        stored_events.push((
+            stored_member_head,
+            state.relay_keypair.public_key().to_hex(),
+        ));
+    }
     tx.commit().await.map_err(internal)?;
 
     for (stored, actor) in stored_events {
@@ -425,6 +475,7 @@ struct ActorFacts {
     pubkey: String,
     is_agent: bool,
     community_role: Option<CommunityRole>,
+    is_community_member: bool,
     is_channel_member: bool,
 }
 
@@ -473,8 +524,148 @@ async fn actor_facts(
         pubkey,
         is_agent,
         community_role,
+        is_community_member: community_member.is_some(),
         is_channel_member: channel_role.is_some(),
     })
+}
+
+async fn validate_member_proposal_route(
+    tenant: &TenantContext,
+    state: &AppState,
+    ask: &AskRecord,
+) -> Result<(), IngestError> {
+    let proposal = ask
+        .member_proposal
+        .as_ref()
+        .ok_or_else(|| invalid("memberProposal is required"))?;
+    let addressee = ask
+        .addressee_pubkey
+        .as_deref()
+        .ok_or_else(|| invalid("member proposal must have an addressee"))?;
+    let target_member = state
+        .db
+        .get_relay_member(tenant.community(), &proposal.pubkey)
+        .await
+        .map_err(internal)?;
+    if target_member.is_none()
+        && !super::company_member_records::is_registered_employee(
+            state,
+            tenant.community(),
+            &proposal.pubkey,
+        )
+        .await?
+    {
+        return Err(invalid("proposal target is not a member of this community"));
+    }
+    let position = super::company_member_records::load_position_for_proposal(
+        state,
+        tenant.community(),
+        &proposal.pubkey,
+    )
+    .await?;
+    match (
+        proposal.expected_head_event_id.as_deref(),
+        position.as_ref(),
+    ) {
+        (None, None)
+            if matches!(
+                proposal.action,
+                MemberPositionActionKind::SetTitle | MemberPositionActionKind::SetPosition
+            ) => {}
+        (Some(expected), Some((stored, _))) if expected == stored.event.id.to_hex() => {}
+        (Some(_), Some((stored, _))) => {
+            return Err(conflict(format!(
+                "member position changed; current head is {}",
+                stored.event.id.to_hex()
+            )));
+        }
+        (None, Some((stored, _))) => {
+            return Err(conflict(format!(
+                "member position already exists at {}",
+                stored.event.id.to_hex()
+            )));
+        }
+        (Some(_), None) => return Err(conflict("member position does not exist")),
+        (None, None) => return Err(invalid("expectedHeadEventId is required for this proposal")),
+    }
+
+    let addressee_member = state
+        .db
+        .get_relay_member(tenant.community(), addressee)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| invalid("proposal addressee is not a member of this community"))?;
+    if is_managed_agent(state, tenant, addressee).await? {
+        return Err(invalid("member proposals must be addressed to a human"));
+    }
+
+    if ask.category == AskCategory::Hire {
+        if !matches!(addressee_member.role.as_str(), "owner" | "admin") {
+            return Err(invalid(
+                "termination and rehire proposals must be addressed to an owner or admin",
+            ));
+        }
+        return Ok(());
+    }
+
+    let current_human_manager = if let Some((_, head)) = position.as_ref() {
+        match head.manager_pubkey.as_deref() {
+            Some(manager_pubkey) if !is_managed_agent(state, tenant, manager_pubkey).await? => {
+                Some(manager_pubkey)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    if let Some(manager_pubkey) = current_human_manager {
+        if addressee != manager_pubkey {
+            return Err(invalid(
+                "member proposal must be addressed to the target's human direct manager",
+            ));
+        }
+    } else if !matches!(addressee_member.role.as_str(), "owner" | "admin") {
+        return Err(invalid(
+            "member proposal without a human direct manager must be addressed to an owner or admin",
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_member_proposal_resolver(
+    tenant: &TenantContext,
+    state: &AppState,
+    ask: &AskRecord,
+    proposal: &MemberPositionAction,
+    actor: &ActorFacts,
+) -> Result<(), IngestError> {
+    if actor.is_agent {
+        return Err(forbidden("agents cannot approve member-position proposals"));
+    }
+    if actor.is_community_admin() || ask.category == AskCategory::Hire {
+        return Ok(());
+    }
+    let Some((_, position)) = super::company_member_records::load_position_for_proposal(
+        state,
+        tenant.community(),
+        &proposal.pubkey,
+    )
+    .await?
+    else {
+        return Err(forbidden(
+            "only a company owner or admin can approve an initial member position",
+        ));
+    };
+    if position.kind != MemberKind::Human
+        || position.status != buzz_core::company_members::MemberStatus::Active
+        || position.manager_pubkey.as_deref() != Some(actor.pubkey.as_str())
+        || ask.addressee_pubkey.as_deref() != Some(actor.pubkey.as_str())
+    {
+        return Err(forbidden(
+            "only the target's current human direct manager can resolve this proposal",
+        ));
+    }
+    Ok(())
 }
 
 async fn is_managed_agent(
@@ -1084,6 +1275,7 @@ mod postgres_tests {
             items,
             tool_consent,
             subject: None,
+            member_proposal: None,
             secret_request: (category == AskCategory::Secret).then(|| {
                 buzz_core::company_records::SecretAskRequest {
                     tool_name: "Social publishing".into(),

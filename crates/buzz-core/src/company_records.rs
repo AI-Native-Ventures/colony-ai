@@ -1,10 +1,10 @@
 //! Shared typed content and validation for Colony company records.
 //!
-//! Company records (goals, asks, tool permissions and secret bindings) are
-//! brokered like business records: a member signs a command, the relay validates
-//! it and emits a relay-signed replaceable head. Goals, permissions and secret
-//! bindings are community-wide (no `h` tag); asks live in a channel thread. See
-//! `docs/company-records.md` for the full contract.
+//! Company records (goals, asks, member positions, tool permissions and secret
+//! bindings) are brokered like business records: a member signs a command, the
+//! relay validates it and emits a relay-signed replaceable head. Goals,
+//! positions, permissions and secret bindings are community-wide (no `h` tag);
+//! asks live in a channel thread. See `docs/company-records.md` for the contract.
 //!
 //! This module holds the pure parts of the contract: typed content that
 //! rejects unknown fields, per-action payload rules, the goal-tree cycle
@@ -16,6 +16,8 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::company_members::MemberPositionActionKind;
 
 /// Current company-record JSON schema version.
 pub const COMPANY_RECORD_SCHEMA_VERSION: u8 = 1;
@@ -79,6 +81,8 @@ pub enum CompanyCommand {
     SecretBindingAction(SecretBindingAction),
     /// Standing tool permission mutation (kind 47035).
     ToolPermissionAction(ToolPermissionAction),
+    /// Member-position mutation (kind 47037).
+    MemberPositionAction(crate::company_members::MemberPositionAction),
 }
 
 /// Storage location for a secret value. The value is never part of a company record.
@@ -552,6 +556,8 @@ pub enum AskSubjectKind {
     WorkflowRun,
     /// A work item.
     WorkItem,
+    /// A community member position.
+    CompanyMember,
 }
 
 /// Optional link from an ask to the record it is about.
@@ -602,6 +608,9 @@ pub struct AskRecord {
     /// Optional record the ask is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<AskSubject>,
+    /// Member-position mutation requested by an approval ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_proposal: Option<crate::company_members::MemberPositionAction>,
     /// Non-secret tool and scope details for a secret request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_request: Option<SecretAskRequest>,
@@ -873,6 +882,10 @@ pub fn parse_company_command(
             serde_json::from_str::<ToolPermissionAction>(content)
                 .map(CompanyCommand::ToolPermissionAction)
         }
+        crate::kind::KIND_MEMBER_POSITION_ACTION => {
+            serde_json::from_str::<crate::company_members::MemberPositionAction>(content)
+                .map(CompanyCommand::MemberPositionAction)
+        }
         _ => return Err(CompanyRecordError::UnsupportedKind),
     }
     .map_err(|_| CompanyRecordError::InvalidContent)?;
@@ -883,6 +896,7 @@ pub fn parse_company_command(
         CompanyCommand::AskResponse(value) => value.schema_version,
         CompanyCommand::SecretBindingAction(value) => value.schema_version,
         CompanyCommand::ToolPermissionAction(value) => value.schema_version,
+        CompanyCommand::MemberPositionAction(value) => value.schema_version,
     };
     if schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
@@ -1428,12 +1442,53 @@ pub fn validate_ask_record(
         let ok = match subject.kind {
             AskSubjectKind::Goal | AskSubjectKind::WorkItem => Uuid::parse_str(&subject.id).is_ok(),
             AskSubjectKind::WorkflowRun => !subject.id.is_empty() && subject.id.len() <= 64,
+            AskSubjectKind::CompanyMember => {
+                subject.id.len() == 64
+                    && subject
+                        .id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            }
         };
         if !ok {
             return Err(CompanyRecordError::Invalid(
                 "subject id does not match its kind",
             ));
         }
+    }
+    match (&ask.subject, &ask.member_proposal) {
+        (Some(subject), Some(proposal)) => {
+            let required_category = match proposal.action {
+                MemberPositionActionKind::Terminate | MemberPositionActionKind::Rehire => {
+                    AskCategory::Hire
+                }
+                _ => AskCategory::General,
+            };
+            if subject.kind != AskSubjectKind::CompanyMember
+                || subject.id != proposal.pubkey
+                || ask.ask_type != AskType::Approval
+                || ask.category != required_category
+                || ask.addressee_pubkey.is_none()
+                || ask.options.is_some()
+                || ask.items.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "member proposals need an addressed general approval ask for that member",
+                ));
+            }
+            crate::company_members::validate_member_position_action(proposal)?;
+        }
+        (Some(subject), None) if subject.kind == AskSubjectKind::CompanyMember => {
+            return Err(CompanyRecordError::Invalid(
+                "company member subjects need a memberProposal",
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(CompanyRecordError::Invalid(
+                "memberProposal needs a company member subject",
+            ));
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -1748,6 +1803,17 @@ pub fn ask_resolution_denied_reason(
             _ => Some("Only company owners and admins can decide this"),
         };
     }
+    if ask.member_proposal.is_some() {
+        if resolver.is_agent {
+            return Some("Agents cannot approve member-position proposals");
+        }
+        if matches!(
+            resolver.community_role,
+            Some(CommunityRole::Owner | CommunityRole::Admin)
+        ) {
+            return None;
+        }
+    }
     match &ask.addressee_pubkey {
         Some(addressee) if addressee != resolver.pubkey => {
             Some("This ask is addressed to someone else")
@@ -1817,6 +1883,7 @@ mod tests {
             items: None,
             tool_consent: None,
             subject: None,
+            member_proposal: None,
             secret_request: None,
         }
     }
@@ -1926,6 +1993,36 @@ mod tests {
             parse_company_command(crate::kind::KIND_WORK_ITEM_ACTION, &json),
             Err(CompanyRecordError::UnsupportedKind)
         );
+    }
+
+    #[test]
+    fn member_proposals_require_an_addressed_general_approval_for_that_member() {
+        let proposal = crate::company_members::MemberPositionAction {
+            schema_version: 1,
+            pubkey: PK_A.into(),
+            action: crate::company_members::MemberPositionActionKind::SetTitle,
+            expected_head_event_id: Some(EV.into()),
+            title: Some("Operations lead".into()),
+            manager_pubkey: None,
+            reason: None,
+        };
+        let mut request = ask(AskType::Approval);
+        request.addressee_pubkey = Some(PK_B.into());
+        request.subject = Some(AskSubject {
+            kind: AskSubjectKind::CompanyMember,
+            id: PK_A.into(),
+        });
+        request.member_proposal = Some(proposal);
+        assert!(validate_ask_record(&request, false).is_ok());
+
+        request.ask_type = AskType::Question;
+        assert!(validate_ask_record(&request, false).is_err());
+        request.ask_type = AskType::Approval;
+        request.category = AskCategory::Hire;
+        assert!(validate_ask_record(&request, false).is_err());
+        request.category = AskCategory::General;
+        request.subject.as_mut().expect("subject").id = PK_B.into();
+        assert!(validate_ask_record(&request, false).is_err());
     }
 
     #[test]
