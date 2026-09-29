@@ -52,6 +52,7 @@ struct TeamCatalogMemberProjection {
     runtime: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    company_role: Option<crate::managed_agents::CompanyRoleMetadata>,
 }
 
 /// Fetches the active community's relay-confirmed team catalog.
@@ -302,6 +303,7 @@ fn publication(
                 runtime: member.runtime,
                 model: member.model,
                 provider: member.provider,
+                company_role: member.company_role,
             })
             .collect(),
     }

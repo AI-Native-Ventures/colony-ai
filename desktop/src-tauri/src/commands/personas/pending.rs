@@ -310,6 +310,7 @@ mod tests {
 
     fn persona() -> AgentDefinition {
         AgentDefinition {
+            company_role: None,
             session_policy: Default::default(),
             description: None,
             id: "catalog-reviewer".to_string(),

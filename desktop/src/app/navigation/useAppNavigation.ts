@@ -225,6 +225,61 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goHireRoles = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/hire/roles" }, behavior),
+    [commitNavigation],
+  );
+
+  const goHireConfigure = React.useCallback(
+    (
+      personaId: string,
+      hireId: string,
+      source?: { channelId?: string; askId?: string; nameTaken?: boolean },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/hire/configure",
+          search: {
+            personaId,
+            hireId,
+            channelId: source?.channelId,
+            askId: source?.askId,
+            nameTaken: source?.nameTaken ? "true" : undefined,
+          },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireReview = React.useCallback(
+    (
+      hireId: string,
+      source?: { channelId?: string; askId?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/hire/review",
+          search: {
+            hireId,
+            channelId: source?.channelId,
+            askId: source?.askId,
+          },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireSuccess = React.useCallback(
+    (hireId: string, behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/hire/success", search: { hireId } }, behavior),
+    [commitNavigation],
+  );
+
   const goGoal = React.useCallback(
     (
       goalId: string,
@@ -941,6 +996,10 @@ export function useAppNavigation() {
     goTeamEdit,
     goTeamPause,
     goTeamArchive,
+    goHireRoles,
+    goHireConfigure,
+    goHireReview,
+    goHireSuccess,
     goNewGoal,
     goEditGoal,
     goShareGoal,

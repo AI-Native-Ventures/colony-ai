@@ -42,6 +42,10 @@ import { Route as moneyDotinvoicesRouteImport } from "./routes/money.invoices";
 import { Route as moneyDotfollowUpsRouteImport } from "./routes/money.follow-ups";
 import { Route as moneyDotadjustmentsRouteImport } from "./routes/money.adjustments";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
+import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
+import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
+import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
 import { Route as goalsDotreferenceRouteImport } from "./routes/goals.reference";
 import { Route as goalsDotgoalIdRouteImport } from "./routes/goals.$goalId";
 import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
@@ -264,6 +268,26 @@ const moneyDotadjustmentsRoute = moneyDotadjustmentsRouteImport.update({
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const hireDotsuccessRoute = hireDotsuccessRouteImport.update({
+  id: "/hire/success",
+  path: "/hire/success",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const hireDotrolesRoute = hireDotrolesRouteImport.update({
+  id: "/hire/roles",
+  path: "/hire/roles",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const hireDotreviewRoute = hireDotreviewRouteImport.update({
+  id: "/hire/review",
+  path: "/hire/review",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
+  id: "/hire/configure",
+  path: "/hire/configure",
   getParentRoute: () => rootRouteImport,
 } as any);
 const goalsDotreferenceRoute = goalsDotreferenceRouteImport.update({
@@ -510,6 +534,10 @@ export interface FileRoutesByFullPath {
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
+  "/hire/configure": typeof hireDotconfigureRoute;
+  "/hire/review": typeof hireDotreviewRoute;
+  "/hire/roles": typeof hireDotrolesRoute;
+  "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/adjustments": typeof moneyDotadjustmentsRoute;
   "/money/follow-ups": typeof moneyDotfollowUpsRoute;
@@ -587,6 +615,10 @@ export interface FileRoutesByTo {
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
+  "/hire/configure": typeof hireDotconfigureRoute;
+  "/hire/review": typeof hireDotreviewRoute;
+  "/hire/roles": typeof hireDotrolesRoute;
+  "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/adjustments": typeof moneyDotadjustmentsRoute;
   "/money/follow-ups": typeof moneyDotfollowUpsRoute;
@@ -665,6 +697,10 @@ export interface FileRoutesById {
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
+  "/hire/configure": typeof hireDotconfigureRoute;
+  "/hire/review": typeof hireDotreviewRoute;
+  "/hire/roles": typeof hireDotrolesRoute;
+  "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/adjustments": typeof moneyDotadjustmentsRoute;
   "/money/follow-ups": typeof moneyDotfollowUpsRoute;
@@ -744,6 +780,10 @@ export interface FileRouteTypes {
     | "/factory/states"
     | "/goals/$goalId"
     | "/goals/reference"
+    | "/hire/configure"
+    | "/hire/review"
+    | "/hire/roles"
+    | "/hire/success"
     | "/messages/new"
     | "/money/adjustments"
     | "/money/follow-ups"
@@ -821,6 +861,10 @@ export interface FileRouteTypes {
     | "/factory/states"
     | "/goals/$goalId"
     | "/goals/reference"
+    | "/hire/configure"
+    | "/hire/review"
+    | "/hire/roles"
+    | "/hire/success"
     | "/messages/new"
     | "/money/adjustments"
     | "/money/follow-ups"
@@ -898,6 +942,10 @@ export interface FileRouteTypes {
     | "/factory/states"
     | "/goals/$goalId"
     | "/goals/reference"
+    | "/hire/configure"
+    | "/hire/review"
+    | "/hire/roles"
+    | "/hire/success"
     | "/messages/new"
     | "/money/adjustments"
     | "/money/follow-ups"
@@ -976,6 +1024,10 @@ export interface RootRouteChildren {
   factoryDotstatesRoute: typeof factoryDotstatesRoute;
   goalsDotgoalIdRoute: typeof goalsDotgoalIdRoute;
   goalsDotreferenceRoute: typeof goalsDotreferenceRoute;
+  hireDotconfigureRoute: typeof hireDotconfigureRoute;
+  hireDotreviewRoute: typeof hireDotreviewRoute;
+  hireDotrolesRoute: typeof hireDotrolesRoute;
+  hireDotsuccessRoute: typeof hireDotsuccessRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
   moneyDotadjustmentsRoute: typeof moneyDotadjustmentsRoute;
   moneyDotfollowUpsRoute: typeof moneyDotfollowUpsRoute;
@@ -1283,6 +1335,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof messagesDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/hire/success": {
+      id: "/hire/success";
+      path: "/hire/success";
+      fullPath: "/hire/success";
+      preLoaderRoute: typeof hireDotsuccessRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/hire/roles": {
+      id: "/hire/roles";
+      path: "/hire/roles";
+      fullPath: "/hire/roles";
+      preLoaderRoute: typeof hireDotrolesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/hire/review": {
+      id: "/hire/review";
+      path: "/hire/review";
+      fullPath: "/hire/review";
+      preLoaderRoute: typeof hireDotreviewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/hire/configure": {
+      id: "/hire/configure";
+      path: "/hire/configure";
+      fullPath: "/hire/configure";
+      preLoaderRoute: typeof hireDotconfigureRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/goals/reference": {
       id: "/goals/reference";
       path: "/goals/reference";
@@ -1584,6 +1664,10 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotstatesRoute: factoryDotstatesRoute,
   goalsDotgoalIdRoute: goalsDotgoalIdRoute,
   goalsDotreferenceRoute: goalsDotreferenceRoute,
+  hireDotconfigureRoute: hireDotconfigureRoute,
+  hireDotreviewRoute: hireDotreviewRoute,
+  hireDotrolesRoute: hireDotrolesRoute,
+  hireDotsuccessRoute: hireDotsuccessRoute,
   messagesDotnewRoute: messagesDotnewRoute,
   moneyDotadjustmentsRoute: moneyDotadjustmentsRoute,
   moneyDotfollowUpsRoute: moneyDotfollowUpsRoute,

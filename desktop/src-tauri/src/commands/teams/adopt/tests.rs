@@ -21,6 +21,7 @@ const TEAM_D_TAG: &str = "team-alpha";
 
 fn persona(id: &str, prompt: &str) -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         id: id.to_string(),
         display_name: id.to_string(),
@@ -62,6 +63,7 @@ fn member(member_key: &str, prompt: &str) -> TeamCatalogMember {
         parallelism: None,
         builtin_slug: None,
         projection_hash: None,
+        company_role: None,
     }
 }
 

@@ -11,6 +11,8 @@ pub mod agent_turn_metric;
 pub mod business_records;
 /// Channel and membership enums shared across crates.
 pub mod channel;
+/// Typed content and validation for employee configuration history.
+pub mod company_employee_history;
 /// Typed content and validation for company member positions.
 pub mod company_members;
 /// Typed content and validation for company records (goals and asks).
@@ -22,6 +24,7 @@ pub mod engram;
 pub mod error;
 /// Relay-side event wrapper with verification tracking.
 pub mod event;
+pub mod factory_run_records;
 /// NIP-01 subscription filter matching.
 pub mod filter;
 /// Git permission types — ref patterns, protection rules, policy evaluation.

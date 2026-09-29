@@ -19,6 +19,7 @@ import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
+import { KIND_ASK_RESPONSE } from "@/shared/constants/kinds";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
@@ -27,42 +28,14 @@ import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
+import { HireAskCard } from "./HireAskCard";
+import { formatAskDate } from "./askCardFormatting";
 import type {
   AskHead,
   AskHeadRecord,
   AskOutcome,
   AskType,
 } from "../askRecords";
-
-const KIND_ASK_RESPONSE = 47033;
-
-function formatAskDate(value: string | null | undefined) {
-  if (!value) return null;
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return null;
-  const date = new Date(timestamp);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const sameDay = (first: Date, second: Date) =>
-    first.getFullYear() === second.getFullYear() &&
-    first.getMonth() === second.getMonth() &&
-    first.getDate() === second.getDate();
-  const day = sameDay(date, today)
-    ? "Today"
-    : sameDay(date, tomorrow)
-      ? "Tomorrow"
-      : new Intl.DateTimeFormat("en-GB", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-        }).format(date);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-  return `${day}, ${time}`;
-}
 
 function outcomeLabel(outcome: AskOutcome) {
   switch (outcome) {
@@ -697,7 +670,10 @@ export function AskCard({
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
   const specializedVariant = mapSpecializedAskCard(head.ask);
-  const specializedDetail = Boolean(specializedVariant && !showDetailLink);
+  const specializedDetail = Boolean(
+    specializedVariant &&
+      (!showDetailLink || specializedVariant.kind === "hire"),
+  );
   const asker = resolveUserLabel({
     pubkey: head.askerPubkey,
     currentPubkey,
@@ -720,6 +696,35 @@ export function AskCard({
       : head.status === "resolved"
         ? "Decision recorded"
         : "Decision withdrawn";
+
+  const hireProposal = head.ask.hireProposal;
+  if (
+    specializedDetail &&
+    specializedVariant?.kind === "hire" &&
+    hireProposal
+  ) {
+    return (
+      <HireAskCard
+        accessFailure={accessFailure}
+        askId={askId}
+        askerIsAgent={askerIsAgent}
+        channelId={channelId}
+        channelName={channelName}
+        checksReady={checksReady}
+        currentPubkey={currentPubkey}
+        deniedReason={deniedReason}
+        headRecord={headRecord}
+        hireProposal={hireProposal}
+        isOverdue={isOverdue}
+        membershipRole={membershipQuery.data?.role}
+        needsYou={needsYou}
+        profiles={profiles}
+        query={query}
+        statusText={statusText}
+        key={askId}
+      />
+    );
+  }
 
   return (
     <section

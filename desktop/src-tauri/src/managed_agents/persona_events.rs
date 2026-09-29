@@ -12,7 +12,7 @@ use buzz_core_pkg::kind::{event_is_shared, KIND_PERSONA};
 use nostr::{EventBuilder, Kind, Tag};
 use serde::{Deserialize, Serialize};
 
-use super::{AgentDefinition, ManagedAgentRecord};
+use super::{AgentDefinition, CompanyRoleMetadata, ManagedAgentRecord};
 use crate::app_state::AppState;
 
 /// Serializes the retention-store flush publisher per `(relay, owner)` scope,
@@ -104,6 +104,13 @@ pub struct PersonaEventContent {
     /// order and omitted for the default channel behavior.
     #[serde(default, skip_serializing_if = "super::AcpSessionPolicy::is_channel")]
     pub session_policy: super::AcpSessionPolicy,
+    /// Optional company role metadata, appended to preserve older event bytes.
+    #[serde(
+        default,
+        rename = "companyRole",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub company_role: Option<CompanyRoleMetadata>,
 }
 
 /// Derive the d-tag (persona slug) from a `AgentDefinition`.
@@ -242,6 +249,7 @@ pub fn persona_from_event(event: &nostr::Event) -> Result<AgentDefinition, Strin
         display_name: content.display_name,
         avatar_url: content.avatar_url,
         description: content.description,
+        company_role: content.company_role,
         system_prompt: content.system_prompt.unwrap_or_default(),
         runtime: content.runtime,
         model: content.model,
@@ -515,6 +523,7 @@ pub fn persona_content_hash(content: &PersonaEventContent) -> String {
     use sha2::{Digest, Sha256};
     let hashed = PersonaEventContent {
         description: None,
+        company_role: None,
         ..content.clone()
     };
     let json = serde_json::to_vec(&hashed).unwrap_or_default();
@@ -547,6 +556,7 @@ pub fn persona_event_content(record: &AgentDefinition) -> PersonaEventContent {
         parallelism: record.parallelism,
         description: record.description.clone(),
         session_policy: record.session_policy,
+        company_role: record.company_role.clone(),
     }
 }
 

@@ -109,6 +109,13 @@ type MockPersonaSeed = {
   model?: string | null;
   /** Provider pinned on the persona. Leave empty for Codex/Claude runtimes. */
   provider?: string | null;
+  companyRole?: {
+    job: string;
+    skills: string[];
+    tools: Array<{ name: string; risk: "low" | "medium" | "high" }>;
+    workerMenu: string[];
+    defaultAllowance?: string | null;
+  } | null;
   namePool?: string[];
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
@@ -205,6 +212,8 @@ type MockBridgeOptions = {
   factoryProjects?: MockFactoryProjectSeed[];
   /** Native-like Factory runtime state for focused Factory E2E coverage. */
   factoryRuns?: MockFactoryRunSeed[];
+  /** Signed Factory run heads for Preview and Review pane coverage. */
+  factoryRunRecordEvents?: RelayEvent[];
   /** Run ids whose snapshot reads fail, exercising reconnect states. */
   factorySnapshotFailureRunIds?: string[];
   /** Local checkout paths returned by the E2E filesystem boundary. */
@@ -249,12 +258,24 @@ type MockBridgeOptions = {
   companyMemberRelayPrivateKeyHex?: string;
   /** Reject successive member-position writes in order, then accept them. */
   companyMemberActionErrors?: string[];
+  /** Relay-signed employee configuration actions for history E2E coverage. */
+  companyEmployeeRevisionActions?: RelayEvent[];
+  /** Relay-signed current employee history heads for history E2E coverage. */
+  companyEmployeeRevisionHeads?: RelayEvent[];
+  /** Reject employee history action publishes in order, then accept them. */
+  companyEmployeeRevisionActionErrors?: string[];
   /** Relay-signed company work events for company work UI E2E coverage. */
   companyWorkEvents?: RelayEvent[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
   companyWorkActionErrors?: string[];
+  /** Relay-signed company hire heads used by Company Hire E2E coverage. */
+  companyHireHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker hire actions in focused E2E tests. */
+  companyHireRelayPrivateKeyHex?: string;
+  /** Reject successive hire action publishes in order, then accept them. */
+  companyHireActionErrors?: string[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

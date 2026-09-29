@@ -224,6 +224,62 @@ test("decodeRelayAskHead rejects tool consent records without bounded previews",
   );
 });
 
+test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
+  const proposal = {
+    hireId: ASK_ID,
+    rolePack: {
+      personaId: "catalog:persona",
+      title: "Researcher",
+      job: "Prepare research summaries",
+      skills: ["Research"],
+      tools: [{ name: "read_reports", risk: "low" }],
+      workerMenu: ["runtime-discovered"],
+    },
+    displayName: "Imani",
+    title: "Researcher",
+    managerPubkey: "f".repeat(64),
+    introductionChannelId: CHANNEL_ID,
+    runtimeId: "runtime-discovered",
+    providerId: "provider-current",
+  };
+  const makeHireContent = () =>
+    headContent({
+      ask: {
+        schemaVersion: 1,
+        askId: ASK_ID,
+        type: "approval",
+        category: "hire",
+        title: "Hire Imani as a researcher",
+        threadRootEventId: THREAD_ROOT,
+        subject: { kind: "hire", id: proposal.hireId },
+        hireProposal: proposal,
+      },
+    });
+
+  const decoded = decodeRelayAskHead(
+    signHead({ content: makeHireContent() }),
+    RELAY_PUBKEY,
+  );
+  assert.equal(decoded?.head.ask.hireProposal?.managerPubkey, "f".repeat(64));
+
+  delete proposal.providerId;
+  const providerless = decodeRelayAskHead(
+    signHead({ content: makeHireContent() }),
+    RELAY_PUBKEY,
+  );
+  assert.equal(providerless?.head.ask.hireProposal?.providerId, undefined);
+
+  proposal.managerPubkey = "not-a-pubkey";
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: makeHireContent() }),
+        RELAY_PUBKEY,
+      ),
+    /malformed hire proposal/i,
+  );
+});
+
 test("askIdFromAction reads create commands only", () => {
   assert.equal(
     askIdFromAction(JSON.stringify({ action: "create", askId: ASK_ID })),

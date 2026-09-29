@@ -2,6 +2,7 @@ import type {
   AcpSessionPolicy,
   AgentPersona,
   CatalogSourceCoordinate,
+  CompanyRoleMetadata,
   RespondToMode,
 } from "@/shared/api/types";
 import { invokeTauri } from "@/shared/api/tauri";
@@ -13,6 +14,7 @@ type CatalogAgentProjection = {
   avatarUrl: string | null;
   /** Optional public description (validated server-side; max 280 chars). */
   description: string | null;
+  companyRole?: CompanyRoleMetadata | null;
   systemPrompt: string;
   runtime: string | null;
   model: string | null;
@@ -74,6 +76,7 @@ function publicationToPersona(
     displayName: publication.agent.displayName,
     avatarUrl: publication.agent.avatarUrl,
     description: publication.agent.description ?? null,
+    companyRole: publication.agent.companyRole ?? null,
     systemPrompt: publication.agent.systemPrompt,
     runtime: publication.agent.runtime,
     model: publication.agent.model,
