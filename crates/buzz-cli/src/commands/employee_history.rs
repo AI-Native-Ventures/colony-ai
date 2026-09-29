@@ -374,15 +374,3 @@ fn tag_values(event: &nostr::Event, name: &str) -> Vec<String> {
         .filter_map(|tag| tag.content().map(str::to_owned))
         .collect()
 }
-
-struct ValidatedRevision {
-    event: nostr::Event,
-    action: EmployeeRevisionAction,
-}
-
-struct HistoryData {
-    employee_pubkey: String,
-    head_event: Option<nostr::Event>,
-    head: Option<EmployeeRevisionHead>,
-    revisions: Vec<ValidatedRevision>,
-}
