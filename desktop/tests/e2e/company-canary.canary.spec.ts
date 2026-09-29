@@ -480,12 +480,18 @@ async function createMessage(
     .locator("[data-message-id]")
     .filter({ hasText: visibleText });
   await expect(row).toHaveCount(1);
+  await expect
+    .poll(() => row.getAttribute("data-message-id"), { timeout: 30_000 })
+    .toMatch(/^[0-9a-f]{64}$/);
   const id = await row.getAttribute("data-message-id");
   if (!id) throw new Error("The canary relay message omitted its event id.");
   await page.reload();
-  await expect(
-    page.getByTestId("message-timeline").getByText(visibleText),
-  ).toBeVisible();
+  const persistedRow = page
+    .getByTestId("message-timeline")
+    .locator(`[data-message-id="${id}"]`)
+    .first();
+  await expect(persistedRow).toBeVisible();
+  await expect(persistedRow).toContainText(visibleText);
   return id;
 }
 
