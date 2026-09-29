@@ -3129,8 +3129,8 @@ mod tests {
                 "draft-create",
                 "draft-update",
                 "history",
-                "undo",
-                "unarchive"
+                "unarchive",
+                "undo"
             ]
         );
         assert_eq!(
