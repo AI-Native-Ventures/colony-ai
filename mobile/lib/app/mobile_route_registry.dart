@@ -153,6 +153,32 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         ),
       );
     })
+    .register(
+      MobileBusinessRoutes.team,
+      (context, _) => Consumer(
+        builder: (context, ref, _) => TeamPage(
+          onInvite: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const CommunityInvitePage(),
+            ),
+          ),
+          onStartConversation: (detailContext, pubkey) async {
+            final channel = await ref
+                .read(channelActionsProvider)
+                .openDm(pubkeys: [pubkey]);
+            if (!detailContext.mounted) return;
+            await Navigator.of(detailContext).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => ChannelDetailPage(
+                  channel: channel,
+                  routeRegistry: _mobileRouteRegistry,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    )
     .register(MobileBusinessRoutes.goals, (context, _) => const GoalsPage())
     .register(MobileBusinessRoutes.discovery, (context, _) {
       return Consumer(
