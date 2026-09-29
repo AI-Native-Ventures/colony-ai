@@ -350,9 +350,14 @@ async fn current_employee_history_head(
     let head = rows.pop();
     if let Some(head) = &head {
         let parsed = parse_employee_history_head(head)?;
+        let tag_matches = head
+            .event
+            .tags
+            .iter()
+            .next()
+            .is_some_and(|tag| tag.kind().to_string() == "d" && tag.content() == Some(d_tag));
         if head.event.tags.len() != 1
-            || head.event.tags[0].kind().to_string() != "d"
-            || head.event.tags[0].content() != Some(d_tag)
+            || !tag_matches
             || d_tag != employee_revision_d_tag(&parsed.employee_pubkey)
         {
             return Err(internal("stored employee history head tags do not match"));
