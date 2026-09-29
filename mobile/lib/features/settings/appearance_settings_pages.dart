@@ -5,6 +5,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../channels/channels_provider.dart';
+import '../channels/date_formatters.dart';
+import '../profile/profile_provider.dart';
+import '../profile/user_status_provider.dart';
 import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/navigation/mobile_route.dart';
 import '../../shared/navigation/mobile_routes.dart';
@@ -24,11 +28,19 @@ class _AppearancePreview extends StatelessWidget {
     required this.theme,
     required this.density,
     required this.dark,
+    required this.displayName,
+    required this.initials,
+    required this.about,
+    required this.statusLabel,
   });
 
   final ThemeColors theme;
   final AppearanceDensity density;
   final bool dark;
+  final String? displayName;
+  final String? initials;
+  final String? about;
+  final String? statusLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +64,7 @@ class _AppearancePreview extends StatelessWidget {
               Grid.gutter,
               Grid.gutter,
               Grid.gutter,
-              16,
+              Grid.gutter,
             ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -71,68 +83,77 @@ class _AppearancePreview extends StatelessWidget {
             backgroundColor: defaultTheme
                 ? const Color(0xFFF2E5DD)
                 : theme.added ?? theme.comment,
-            child: Text(
-              'MN',
-              style: TextStyle(
-                color: defaultTheme && !dark
-                    ? const Color(0xFF98715E)
-                    : background,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: initials == null
+                ? null
+                : Text(
+                    initials!,
+                    style: TextStyle(
+                      color: defaultTheme && !dark
+                          ? const Color(0xFF98715E)
+                          : background,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
           const SizedBox(width: Grid.twelve),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Maya Ndlovu',
-                  style: context.mobileTypography.conversation.copyWith(
-                    color: defaultTheme && !dark
-                        ? const Color(0xFF292632)
-                        : foreground,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: Grid.twelve),
-                Text(
-                  'The next chapter looks good.',
-                  style: context.mobileTypography.body.copyWith(
-                    color: defaultTheme && !dark
-                        ? const Color(0xFF292632)
-                        : foreground,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: defaultTheme && !dark
-                        ? const Color(0xFFF6EEE1)
-                        : (theme.added ?? theme.comment).withValues(
-                            alpha: 0.18,
-                          ),
-                    borderRadius: BorderRadius.circular(Radii.sm),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Grid.xxs,
-                      vertical: Grid.half,
+                if (displayName != null) ...[
+                  Text(
+                    displayName!,
+                    style: context.mobileTypography.conversation.copyWith(
+                      color: defaultTheme && !dark
+                          ? const Color(0xFF292632)
+                          : foreground,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: Text(
-                      'Ready for review',
-                      style: TextStyle(
-                        color: defaultTheme && !dark
-                            ? const Color(0xFF997946)
-                            : foreground,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
+                  ),
+                  if (about != null) const SizedBox(height: Grid.twelve),
+                ],
+                if (about != null)
+                  Text(
+                    about!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.mobileTypography.body.copyWith(
+                      color: defaultTheme && !dark
+                          ? const Color(0xFF292632)
+                          : foreground,
+                    ),
+                  ),
+                if (statusLabel != null) ...[
+                  const SizedBox(height: 18),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: defaultTheme && !dark
+                          ? const Color(0xFFF6EEE1)
+                          : (theme.added ?? theme.comment).withValues(
+                              alpha: 0.18,
+                            ),
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Grid.xxs,
+                        vertical: Grid.half,
+                      ),
+                      child: Text(
+                        statusLabel!,
+                        style: TextStyle(
+                          color: defaultTheme && !dark
+                              ? const Color(0xFF997946)
+                              : foreground,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -156,39 +177,52 @@ class _AppearanceSelect<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: bodyExtraSmallTextStyle),
-      const SizedBox(height: Grid.xxs),
-      DropdownButtonFormField<T>(
-        initialValue: value,
-        isExpanded: true,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          constraints: BoxConstraints(minHeight: 48),
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: Grid.xs,
-            vertical: Grid.twelve,
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final outline = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(Radii.field),
+      borderSide: BorderSide(color: tokens.line),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: bodyExtraSmallTextStyle),
+        const SizedBox(height: Grid.xs),
+        DropdownButtonFormField<T>(
+          initialValue: value,
+          isExpanded: true,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: tokens.paper,
+            border: outline,
+            enabledBorder: outline,
+            focusedBorder: outline.copyWith(
+              borderSide: BorderSide(color: tokens.action),
+            ),
+            constraints: const BoxConstraints(minHeight: 48),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: Grid.xs,
+              vertical: Grid.twelve,
+            ),
           ),
+          style: context.mobileTypography.conversation.copyWith(
+            color: tokens.ink,
+          ),
+          items: labels.entries
+              .map(
+                (entry) => DropdownMenuItem<T>(
+                  value: entry.key,
+                  child: Text(entry.value),
+                ),
+              )
+              .toList(),
+          onChanged: (next) {
+            if (next != null) onChanged(next);
+          },
         ),
-        style: context.mobileTypography.conversation.copyWith(
-          color: context.mobileTokens.ink,
-        ),
-        items: labels.entries
-            .map(
-              (entry) => DropdownMenuItem<T>(
-                value: entry.key,
-                child: Text(entry.value),
-              ),
-            )
-            .toList(),
-        onChanged: (next) {
-          if (next != null) onChanged(next);
-        },
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _SettingsLinkRow extends StatelessWidget {
@@ -300,31 +334,30 @@ class _ThemeTile extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Campaign studio',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: theme.fg,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w600,
+                              Container(
+                                width: constraints.maxWidth * 0.42,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: theme.fg.withValues(alpha: 0.8),
+                                  borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
                               const SizedBox(height: 10),
-                              Text(
-                                'Ready for your review.',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: theme.fg, fontSize: 7),
+                              Container(
+                                width: constraints.maxWidth * 0.68,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: theme.fg.withValues(alpha: 0.56),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
                               ),
                               const SizedBox(height: 10),
-                              Text(
-                                '2 replies',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
+                              Container(
+                                width: constraints.maxWidth * 0.28,
+                                height: 4,
+                                decoration: BoxDecoration(
                                   color: theme.added ?? theme.fg,
-                                  fontSize: 7,
+                                  borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
                             ],
@@ -364,56 +397,77 @@ class _ThemeTile extends StatelessWidget {
   );
 }
 
-class _ConversationPreview extends StatelessWidget {
+class _ConversationPreview extends ConsumerWidget {
   const _ConversationPreview({required this.theme});
 
   final ThemeColors theme;
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: theme.bg,
-      border: Border.all(color: theme.fg.withValues(alpha: 0.2)),
-      borderRadius: BorderRadius.circular(Radii.dialog),
-    ),
-    child: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(Grid.xs),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '# Campaign studio',
-              style: TextStyle(color: theme.fg, fontWeight: FontWeight.w600),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final channels = ref.watch(channelsProvider).asData?.value;
+    if (channels == null) return const SizedBox.shrink();
+    final activeChannels =
+        channels
+            .where(
+              (channel) =>
+                  !channel.isDm &&
+                  !channel.isArchived &&
+                  channel.lastMessageContent?.trim().isNotEmpty == true &&
+                  channel.lastMessagePubkey != null &&
+                  channel.lastMessageCreatedAt != null,
+            )
+            .toList()
+          ..sort(
+            (left, right) => right.lastMessageCreatedAt!.compareTo(
+              left.lastMessageCreatedAt!,
+            ),
+          );
+    if (activeChannels.isEmpty) return const SizedBox.shrink();
+
+    final channel = activeChannels.first;
+    final authorPubkey = channel.lastMessagePubkey!;
+    final name = shortPubkey(authorPubkey);
+    final initials = name.substring(0, 1).toUpperCase();
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.bg,
+        border: Border.all(color: theme.fg.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(Radii.dialog),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(Grid.xs),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '# ${channel.name}',
+                style: TextStyle(color: theme.fg, fontWeight: FontWeight.w600),
+              ),
             ),
           ),
-        ),
-        const Divider(height: 1),
-        _PreviewMessage(
-          initials: 'MN',
-          name: 'Maya Ndlovu',
-          content: 'The September designs are ready.',
-          theme: theme,
-        ),
-        _PreviewMessage(
-          initials: 'LM',
-          name: 'Lerato Molefe',
-          content: 'Let’s bring more warmth into the headline.',
-          theme: theme,
-        ),
-        Padding(
-          padding: const EdgeInsets.all(Grid.xs),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Message Campaign studio…',
-              style: TextStyle(color: theme.comment, fontSize: 12),
+          const Divider(height: 1),
+          _PreviewMessage(
+            initials: initials,
+            name: name,
+            content: channel.lastMessageContent!.trim(),
+            time: formatMessageTime(channel.lastMessageCreatedAt!),
+            theme: theme,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(Grid.xs),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Message ${channel.name}…',
+                style: TextStyle(color: theme.comment, fontSize: 12),
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _PreviewMessage extends StatelessWidget {
@@ -421,12 +475,14 @@ class _PreviewMessage extends StatelessWidget {
     required this.initials,
     required this.name,
     required this.content,
+    required this.time,
     required this.theme,
   });
 
   final String initials;
   final String name;
   final String content;
+  final String time;
   final ThemeColors theme;
 
   @override
@@ -446,7 +502,7 @@ class _PreviewMessage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$name  10:42',
+                '$name  $time',
                 style: TextStyle(
                   color: theme.fg,
                   fontSize: 11,
@@ -469,11 +525,22 @@ class _PreferenceSummary extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: Grid.xs),
+  Widget build(BuildContext context) => Container(
+    height: 48,
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
+    ),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(label), Text(value)],
+      children: [
+        Text(
+          label,
+          style: context.mobileTypography.body.copyWith(
+            color: context.mobileTokens.muted,
+          ),
+        ),
+        Text(value, style: context.mobileTypography.body),
+      ],
     ),
   );
 }

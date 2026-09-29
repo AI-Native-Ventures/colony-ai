@@ -24,6 +24,15 @@ test("specialized cards map only verified approval categories", () => {
     mapSpecializedAskCard({ type: "approval", category: "tool" })?.kind,
     "tool",
   );
+  assert.deepEqual(
+    mapSpecializedAskCard({ type: "tool_consent", category: "tool" }),
+    {
+      kind: "tool",
+      listLabel: "Tool consent",
+      decisionTitle: "Tool consent",
+      submitLabel: "Record tool decision",
+    },
+  );
   assert.equal(
     mapSpecializedAskCard({ type: "approval", category: "hire" })?.kind,
     "hire",
@@ -37,6 +46,10 @@ test("Needs me labels keep category approvals recognizable", () => {
   );
   assert.equal(
     needsMeAskLabel({ type: "approval", category: "tool" }),
+    "Tool consent",
+  );
+  assert.equal(
+    needsMeAskLabel({ type: "tool_consent", category: "tool" }),
     "Tool consent",
   );
   assert.equal(

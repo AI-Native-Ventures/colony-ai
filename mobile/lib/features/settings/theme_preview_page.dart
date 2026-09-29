@@ -30,7 +30,7 @@ class ThemePreviewPage extends StatelessWidget {
       }
 
       return Scaffold(
-        backgroundColor: context.mobileTokens.paper,
+        backgroundColor: context.mobileTokens.canvas,
         appBar: const MobileFlowAppBar(title: 'Preview theme'),
         body: Column(
           children: [

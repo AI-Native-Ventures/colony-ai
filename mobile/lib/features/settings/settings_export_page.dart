@@ -22,7 +22,7 @@ class SettingsExportPage extends HookWidget {
     final selection = useState(_exportOptions.first);
     final colors = context.colors;
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Export data'),
       body: Column(
         children: [

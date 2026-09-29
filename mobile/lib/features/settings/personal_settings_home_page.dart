@@ -14,18 +14,24 @@ class PersonalSettingsHomePage extends StatelessWidget {
     required this.displayName,
     required this.email,
     required this.avatarUrl,
+    this.communityName = '',
+    this.onOpenBusiness,
+    this.onOpenAgents,
     super.key,
   });
 
   final String displayName;
   final String? email;
   final String? avatarUrl;
+  final String communityName;
+  final VoidCallback? onOpenBusiness;
+  final VoidCallback? onOpenAgents;
 
   @override
   Widget build(BuildContext context) {
     final initials = _initials(displayName);
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(
         title: 'Settings',
         backLabel: 'Close settings',
@@ -33,70 +39,78 @@ class PersonalSettingsHomePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           Grid.gutter,
-          Grid.thirty,
+          Grid.twelve,
           Grid.gutter,
-          Grid.lg,
+          Grid.md,
         ),
         children: [
-          Row(
-            children: [
-              AvatarImage(
-                imageUrl: avatarUrl,
-                radius: 24,
-                backgroundColor: const Color(0xFFEAE3ED),
-                borderRadius: BorderRadius.circular(14.4),
-                fallback: Text(
-                  initials,
-                  style: const TextStyle(
-                    color: Color(0xFF786980),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+          const _SettingsWelcomeCard(),
+          const SizedBox(height: 29),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: MediaQuery.sizeOf(context).width - 90,
+              child: Row(
+                children: [
+                  AvatarImage(
+                    imageUrl: avatarUrl,
+                    radius: 24,
+                    backgroundColor: context.mobileTokens.soft,
+                    borderRadius: BorderRadius.circular(14.4),
+                    fallback: Text(
+                      initials,
+                      style: context.mobileTypography.identityInitials.copyWith(
+                        color: context.mobileTokens.action,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: Grid.xs),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.mobileTypography.conversation.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (email != null)
-                      Text(
-                        email!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: bodyExtraSmallTextStyle.copyWith(
-                          color: context.mobileTokens.muted,
+                  const SizedBox(width: Grid.twelve),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.mobileTypography.conversation.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: context.mobileTokens.action,
-                  textStyle: context.mobileTypography.conversation,
-                ),
-                onPressed: () =>
-                    MobileNavigation.push<NoMobileRouteArguments, Object?>(
-                      context,
-                      MobileRoutes.settingsProfile,
-                      const NoMobileRouteArguments(),
+                        if (email != null)
+                          Text(
+                            email!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: bodyExtraSmallTextStyle.copyWith(
+                              color: context.mobileTokens.muted,
+                            ),
+                          ),
+                      ],
                     ),
-                child: const Text('Edit'),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.mobileTokens.action,
+                      textStyle: context.mobileTypography.conversation,
+                    ),
+                    onPressed: () =>
+                        MobileNavigation.push<NoMobileRouteArguments, Object?>(
+                          context,
+                          MobileRoutes.settingsProfile,
+                          const NoMobileRouteArguments(),
+                        ),
+                    child: const Text('Edit'),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: Grid.md),
+          const SizedBox(height: 39),
           const _SettingsSectionLabel('YOU'),
-          const SizedBox(height: Grid.xxs),
+          const SizedBox(height: 2),
           _PersonalSettingsRow(
             icon: LucideIcons.messageSquare,
             title: 'Account',
@@ -130,20 +144,25 @@ class PersonalSettingsHomePage extends StatelessWidget {
                   const NoMobileRouteArguments(),
                 ),
           ),
-          const SizedBox(height: Grid.md),
-          const _SettingsSectionLabel('THIS DEVICE'),
-          const SizedBox(height: Grid.xxs),
-          _PersonalSettingsRow(
-            icon: LucideIcons.smartphone,
-            title: 'App & devices',
-            subtitle: 'Manage this phone and signed-in devices',
-            onPressed: () =>
-                MobileNavigation.push<NoMobileRouteArguments, Object?>(
-                  context,
-                  MobileRoutes.settingsDevices,
-                  const NoMobileRouteArguments(),
-                ),
-          ),
+          if (communityName.trim().isNotEmpty) ...[
+            const SizedBox(height: 29),
+            _SettingsSectionLabel(communityName.trim().toUpperCase()),
+            const SizedBox(height: 12),
+            _PersonalSettingsRow(
+              icon: LucideIcons.briefcaseBusiness,
+              title: 'Business',
+              subtitle: 'People and business profile',
+              onPressed: onOpenBusiness,
+              compact: true,
+            ),
+            _PersonalSettingsRow(
+              icon: LucideIcons.activity,
+              title: 'Agents',
+              subtitle: 'Harnesses, models and access',
+              onPressed: onOpenAgents,
+              compact: true,
+            ),
+          ],
           const SizedBox(height: Grid.xs),
           TextButton(
             style: TextButton.styleFrom(
@@ -164,18 +183,78 @@ class PersonalSettingsHomePage extends StatelessWidget {
   }
 }
 
+class _SettingsWelcomeCard extends StatelessWidget {
+  const _SettingsWelcomeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(21, 28, 21, 28),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: dark
+              ? const [Color(0xFF49375C), Color(0xFF513D46)]
+              : const [Color(0xFFE5D6E9), Color(0xFFEFDDD1)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'MAKE COLONY YOURS',
+            style: context.mobileTypography.metadata.copyWith(
+              color: context.mobileTokens.ink,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'A little more you.',
+            style: context.mobileTypography.companyHubTitle.copyWith(
+              color: context.mobileTokens.ink,
+              fontSize: 21,
+              height: 1.2,
+              letterSpacing: -0.6,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: 280,
+            child: Text(
+              'Your profile, appearance and the company settings you can manage.',
+              style: context.mobileTypography.conversation.copyWith(
+                color: context.mobileTokens.ink,
+                fontSize: 13,
+                height: 1.55,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PersonalSettingsRow extends StatelessWidget {
   const _PersonalSettingsRow({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onPressed,
+    this.compact = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -187,20 +266,31 @@ class _PersonalSettingsRow extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 69),
+            constraints: BoxConstraints(minHeight: compact ? 58 : 72),
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: context.mobileTokens.line),
               ),
             ),
-            padding: const EdgeInsets.symmetric(vertical: Grid.xs),
+            padding: EdgeInsets.symmetric(
+              vertical: compact ? Grid.half : Grid.twelve,
+            ),
             child: Row(
               children: [
-                SizedBox(
-                  width: 40,
-                  child: Icon(icon, size: 19, color: context.mobileTokens.ink),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: context.mobileTokens.soft,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 19,
+                    color: context.mobileTokens.action,
+                  ),
                 ),
-                const SizedBox(width: Grid.xxs),
+                const SizedBox(width: Grid.ten),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

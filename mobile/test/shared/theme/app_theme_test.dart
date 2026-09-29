@@ -122,14 +122,22 @@ void main() {
     },
   );
 
-  testWidgets('keeps r19 action color in profile and settings flows', (
+  testWidgets('keeps the v6 action color in profile and settings flows', (
     tester,
   ) async {
     const buttonKey = Key('flow-action');
-    for (final theme in [AppTheme.light(), AppTheme.dark()]) {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      final expectedTokens = brightness == Brightness.dark
+          ? MobileDesignTokens.dark
+          : MobileDesignTokens.light;
       await tester.pumpWidget(
         MaterialApp(
-          theme: theme,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeAnimationDuration: Duration.zero,
+          themeMode: brightness == Brightness.dark
+              ? ThemeMode.dark
+              : ThemeMode.light,
           home: Builder(
             builder: (context) => FilledButton(
               key: buttonKey,
@@ -143,9 +151,12 @@ void main() {
       final button = tester.widget<FilledButton>(find.byKey(buttonKey));
       expect(
         button.style!.backgroundColor!.resolve({}),
-        const Color(0xFF45669F),
+        expectedTokens.flowAction,
       );
-      expect(button.style!.foregroundColor!.resolve({}), Colors.white);
+      expect(
+        button.style!.foregroundColor!.resolve({}),
+        expectedTokens.flowActionForeground,
+      );
     }
   });
 

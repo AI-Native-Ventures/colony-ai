@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/community/community_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
@@ -14,28 +15,23 @@ import 'activity_provider.dart';
 import 'feed_item.dart';
 import 'inbox_item.dart';
 
-enum ActivityHomeSection { forYou, updates }
-
-typedef ActivityUpdatesPageBuilder =
-    Widget Function(BuildContext context, bool showPublishedNotice);
-
 class ActivityHomePage extends HookConsumerWidget {
   const ActivityHomePage({
     required this.onOpenItem,
     this.onComposeUpdate,
-    required this.updatesPageBuilder,
+    this.onOpenConversations,
     this.tabReselection,
     super.key,
   });
 
   final ValueChanged<FeedItem> onOpenItem;
   final ValueChanged<BuildContext>? onComposeUpdate;
-  final ActivityUpdatesPageBuilder updatesPageBuilder;
+  final VoidCallback? onOpenConversations;
   final ValueListenable<int>? tabReselection;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = useState(ActivityHomeSection.forYou);
+    final community = ref.watch(activeCommunityProvider).value;
     final feed = ref.watch(activityProvider);
     final items = [...ref.watch(inboxItemsProvider)]
       ..sort((left, right) {
@@ -76,31 +72,26 @@ class ActivityHomePage extends HookConsumerWidget {
     }, [pubkeys.join('\u0000')]);
 
     return ColoredBox(
-      color: context.mobileTokens.paper,
+      color: context.mobileTokens.canvas,
       child: Column(
         children: [
           SafeArea(
             bottom: false,
             child: _ActivityHeader(
+              communityName: community?.name,
               onBack: () => unawaited(Navigator.of(context).maybePop()),
               onComposeUpdate: onComposeUpdate,
             ),
           ),
-          _ActivityTabs(
-            selected: selected.value,
-            onSelected: (next) => selected.value = next,
-          ),
           Expanded(
-            child: selected.value == ActivityHomeSection.updates
-                ? updatesPageBuilder(context, false)
-                : _ActivityContent(
-                    items: items,
-                    feed: feed,
-                    scrollController: scrollController,
-                    onOpenItem: onOpenItem,
-                    onRetry: () =>
-                        ref.read(activityProvider.notifier).refresh(),
-                  ),
+            child: _ActivityContent(
+              items: items,
+              feed: feed,
+              scrollController: scrollController,
+              onOpenItem: onOpenItem,
+              onOpenConversations: onOpenConversations,
+              onRetry: () => ref.read(activityProvider.notifier).refresh(),
+            ),
           ),
         ],
       ),
@@ -109,8 +100,13 @@ class ActivityHomePage extends HookConsumerWidget {
 }
 
 class _ActivityHeader extends StatelessWidget {
-  const _ActivityHeader({required this.onBack, this.onComposeUpdate});
+  const _ActivityHeader({
+    required this.communityName,
+    required this.onBack,
+    this.onComposeUpdate,
+  });
 
+  final String? communityName;
   final VoidCallback onBack;
   final ValueChanged<BuildContext>? onComposeUpdate;
 
@@ -118,7 +114,7 @@ class _ActivityHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Container(
-      height: 66,
+      height: 58,
       padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
       decoration: BoxDecoration(
         color: tokens.paper,
@@ -163,13 +159,20 @@ class _ActivityHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Updates',
-                  style: context.mobileTypography.companyHubTitle.copyWith(
+                  'Activity',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.titleMedium?.copyWith(
                     color: tokens.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.45,
                   ),
                 ),
                 Text(
-                  'The company, moving together',
+                  communityName?.trim().isNotEmpty == true
+                      ? communityName!.trim()
+                      : 'Colony',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.textTheme.bodySmall?.copyWith(
@@ -202,92 +205,13 @@ class _ActivityHeader extends StatelessWidget {
   }
 }
 
-class _ActivityTabs extends StatelessWidget {
-  const _ActivityTabs({required this.selected, required this.onSelected});
-
-  final ActivityHomeSection selected;
-  final ValueChanged<ActivityHomeSection> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ActivityTab(
-                label: 'For you',
-                selected: selected == ActivityHomeSection.forYou,
-                onTap: () => onSelected(ActivityHomeSection.forYou),
-              ),
-              _ActivityTab(
-                label: 'Team updates',
-                selected: selected == ActivityHomeSection.updates,
-                onTap: () => onSelected(ActivityHomeSection.updates),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityTab extends StatelessWidget {
-  const _ActivityTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      onTap: onTap,
-      child: ExcludeSemantics(
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? tokens.soft : Colors.transparent,
-              borderRadius: BorderRadius.circular(Radii.sm),
-            ),
-            child: Text(
-              label,
-              style: context.textTheme.labelMedium?.copyWith(
-                color: selected ? tokens.ink : tokens.muted,
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ActivityContent extends StatelessWidget {
   const _ActivityContent({
     required this.items,
     required this.feed,
     required this.scrollController,
     required this.onOpenItem,
+    required this.onOpenConversations,
     required this.onRetry,
   });
 
@@ -295,6 +219,7 @@ class _ActivityContent extends StatelessWidget {
   final AsyncValue<HomeFeedResponse> feed;
   final ScrollController scrollController;
   final ValueChanged<FeedItem> onOpenItem;
+  final VoidCallback? onOpenConversations;
   final Future<void> Function() onRetry;
 
   @override
@@ -304,34 +229,9 @@ class _ActivityContent extends StatelessWidget {
         return const Center(child: CircularProgressIndicator.adaptive());
       }
       if (feed.hasError) {
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Failed to load activity',
-                style: context.textTheme.bodyMedium?.copyWith(
-                  color: context.mobileTokens.muted,
-                ),
-              ),
-              const SizedBox(height: Grid.xxs),
-              TextButton.icon(
-                onPressed: () => unawaited(onRetry()),
-                icon: const Icon(LucideIcons.refreshCcw, size: 16),
-                label: const Text('Retry'),
-              ),
-            ],
-          ),
-        );
+        return _ActivityUnavailableState(onRetry: onRetry);
       }
-      return Center(
-        child: Text(
-          'No activity yet',
-          style: context.textTheme.bodyMedium?.copyWith(
-            color: context.mobileTokens.muted,
-          ),
-        ),
-      );
+      return _ActivityEmptyState(onOpenConversations: onOpenConversations);
     }
 
     return ListView.builder(
@@ -347,6 +247,200 @@ class _ActivityContent extends StatelessWidget {
           onTap: () => onOpenItem(item),
         );
       },
+    );
+  }
+}
+
+class _ActivityEmptyState extends StatelessWidget {
+  const _ActivityEmptyState({required this.onOpenConversations});
+
+  final VoidCallback? onOpenConversations;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        Grid.gutter,
+        15,
+        Grid.gutter,
+        Grid.gutter,
+      ),
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(22, 31, 22, 35),
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xff4f365d), Color(0xff563f46)],
+                  )
+                : context.appColors.channelInfoHeroGradient,
+            borderRadius: BorderRadius.circular(27),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ALL CAUGHT UP',
+                style: context.textTheme.labelSmall?.copyWith(
+                  color: tokens.ink.withValues(alpha: 0.78),
+                  fontSize: 9,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: Grid.xxs),
+              Text(
+                'A quieter\nmoment.',
+                style: context.mobileTypography.flowTitle.copyWith(
+                  color: tokens.ink,
+                  fontSize: 28,
+                  height: 1.15,
+                  letterSpacing: -0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 51),
+        Center(
+          child: Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+        ),
+        const SizedBox(height: Grid.sm),
+        Text(
+          'No recent activity',
+          textAlign: TextAlign.center,
+          style: context.textTheme.titleLarge?.copyWith(
+            color: tokens.ink,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.65,
+          ),
+        ),
+        const SizedBox(height: Grid.xxs + 7),
+        Text(
+          'New work and decisions will appear here when the workspace has something to show.',
+          textAlign: TextAlign.center,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: tokens.muted,
+            fontSize: 13,
+            height: 1.65,
+          ),
+        ),
+        const SizedBox(height: Grid.sm + 5),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: _FeedActionButton(
+            label: 'Open conversations',
+            onPressed: onOpenConversations,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActivityUnavailableState extends StatelessWidget {
+  const _ActivityUnavailableState({required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        Grid.gutter,
+        63,
+        Grid.gutter,
+        Grid.gutter,
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+          const SizedBox(height: 13),
+          Text(
+            'Could not load activity',
+            textAlign: TextAlign.center,
+            style: context.textTheme.titleLarge?.copyWith(
+              color: tokens.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.65,
+            ),
+          ),
+          const SizedBox(height: Grid.xxs + 10),
+          Text(
+            'The workspace connection is unavailable. This is not an empty list. Your local drafts are safe.',
+            textAlign: TextAlign.center,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: tokens.muted,
+              fontSize: 13,
+              height: 1.65,
+            ),
+          ),
+          const SizedBox(height: Grid.sm + 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: _FeedActionButton(
+              label: 'Retry connection',
+              onPressed: () => unawaited(onRetry()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedActionButton extends StatelessWidget {
+  const _FeedActionButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: tokens.action,
+          foregroundColor: tokens.onAction,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.button),
+          ),
+          textStyle: context.textTheme.labelLarge?.copyWith(
+            color: tokens.onAction,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: Text(label),
+      ),
     );
   }
 }

@@ -144,6 +144,68 @@ Approval and verdict responses require `--reason`. Choice responses use
 containing every item ID. Ask command failures print the relay rejection
 message so the agent can refresh the current head and retry with new context.
 
+### 6.0.1 Company work items
+
+The owner and requester must be members of the selected conversation. The CLI
+adds the shared kind tags and `company:work:<uuid>` coordinate for you. Use a
+member pubkey from `buzz channels members` for both people:
+
+```bash
+WORK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+OWNER_PUBKEY="<conversation-member-pubkey>"
+REQUESTER_PUBKEY="<requester-pubkey>"
+
+jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
+  --arg requester "$REQUESTER_PUBKEY" '{
+    schemaVersion: 1,
+    workItemId: $id,
+    title: "Review the launch brief",
+    status: "active",
+    assignedPubkeys: [$owner],
+    approverPubkeys: [],
+    deliverables: [],
+    requesterPubkey: $requester,
+    doneCondition: "The requester accepts the reviewed brief.",
+    evidence: "The first draft is ready for review."
+  }' | buzz work create --channel "$CHANNEL_ID" --record - | jq .
+
+buzz work list --channel "$CHANNEL_ID" | jq .
+buzz work get --work "$WORK_ID" | jq .
+
+# Supply a full replacement CompanyWorkItemInput with the same workItemId.
+jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
+  --arg requester "$REQUESTER_PUBKEY" '{
+    schemaVersion: 1,
+    workItemId: $id,
+    title: "Review the final launch brief",
+    status: "active",
+    assignedPubkeys: [$owner],
+    approverPubkeys: [],
+    deliverables: [],
+    requesterPubkey: $requester,
+    doneCondition: "The requester accepts the reviewed brief.",
+    evidence: "The final draft is ready for review."
+  }' | buzz work update --work "$WORK_ID" --record - | jq .
+
+# Only the assigned owner can submit work for verification.
+buzz work status --work "$WORK_ID" --status done_unverified \
+  --reason "The final brief is ready." | jq .
+
+# The requester or a community owner or admin can verify the evidence.
+buzz work verify --work "$WORK_ID" --verdict pass \
+  --reason "The brief meets the done condition." \
+  --evidence "Reviewed the final draft and confirmed the requested sections." | jq .
+
+buzz work archive --work "$WORK_ID" | jq .
+buzz work restore --work "$WORK_ID" | jq .
+```
+
+`revision_requested` returns the item to `active`. Every update uses the latest
+relay-signed head as its expected version. If another action wins the race,
+refresh with `buzz work get` before retrying. Client work continues to use
+`buzz clients` and the existing client-scoped `buzz work` UI flows; this CLI
+command group addresses company work coordinates only.
+
 ### 6.1 Channels
 
 ```bash
