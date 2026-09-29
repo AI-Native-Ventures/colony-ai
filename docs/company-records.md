@@ -35,6 +35,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30646 | Tool permission head | Relay signed, replaceable | Tool permissions |
 | 30647 | Secret binding head | Relay signed, replaceable | Secrets |
 | 30648 | Member position head | Relay signed, replaceable | Company team |
+| 30651 | Employee configuration revision head | Relay signed, replaceable | Company team |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -42,6 +43,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47035 | Tool permission action | Brokered | Tool permissions |
 | 47036 | Secret binding action | Brokered | Secrets |
 | 47037 | Member position action | Brokered | Company team |
+| 47040 | Employee configuration revision action | Brokered, append only | Company team |
 
 ## Scope and storage
 
@@ -164,6 +166,47 @@ status is `active`, its expiry is in the future, its agent and action match,
 and its scope matches exactly. Clients and the ACP harness query the current
 relay head for each tool call, so a revoke applies to the next call without a
 local cache invalidation window.
+
+## Employee configuration history
+
+Employee configuration history is community-wide and append-only. The relay
+stores every kind 47040 member action and advances one kind 30651 relay-signed
+head per employee in the same transaction. Its d-tag is
+`company:employee-history:<employee-pubkey>`. Each action carries that same
+d-tag and one `p` tag for the employee. Neither kind carries an `h` tag.
+
+The typed snapshot is an explicit allowlist containing only `instructions`,
+`provider`, `model`, and `runtime`. Instructions are limited to 20,000
+characters. Provider, model, and runtime identifiers are each limited to 256
+characters. The schema rejects unknown fields. Private keys, auth tags,
+environment variables, backend configuration, permission records, secret
+binding metadata, and secret values are never part of a snapshot.
+
+A `record` action contains `schemaVersion`, `employeePubkey`, `action`,
+`expectedHeadEventId`, `previousRevisionEventId`, `before`, and `after`. The
+expected head and prior revision are omitted only when no revision head exists.
+The `before` snapshot must exactly match the current head when one exists.
+`undoOfEventId` is omitted for a record action.
+An `undo` action contains those fields plus `undoOfEventId`, the event id of
+the earlier action being reverted. Its `after` snapshot must equal that
+action's `before` snapshot. The prior revision event id links each immutable
+action to its predecessor so clients can reconstruct order independent of
+client clocks. Undo never edits or deletes an earlier event; it stores a new
+action and head.
+
+The head contains `schemaVersion`, `employeePubkey`, `revisionEventId`,
+`previousRevisionEventId`, `snapshot`, `actorPubkey`, `updatedAt`, and
+`sourceActionEventId`. Revision event ids are the signed kind 47040 event ids.
+The actor is the authenticated action signer. `updatedAt` is relay acceptance
+time in RFC 3339 UTC. Readable actor and time values for older revisions come
+from their immutable signed action events.
+
+Only a community owner, admin, or the employee's direct manager in the current
+member-position head may record or undo a revision. A direct manager must be an
+active human member. The target must have a current employee position. Every
+write locks the company member tree and employee history coordinate, checks
+authority and the exact expected head, then stores the action and replaces the
+head atomically. History is excluded from full-text search.
 
 ## Asks
 
