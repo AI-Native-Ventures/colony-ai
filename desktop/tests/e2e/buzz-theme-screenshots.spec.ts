@@ -115,11 +115,10 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     "background-color",
     "var(--buzz-hover-surface)",
   );
-  const activeSurface = await resolveSidebarColor(
-    page,
-    "background-color",
-    "var(--sidebar-row-subtle-active-surface)",
-  );
+  const activeSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.56)"
+      : "rgba(255, 255, 255, 0.075)";
   const search = page.getByTestId("open-search");
   const pinnedHeader = page.getByTestId("sidebar-pinned-header");
   const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
@@ -800,11 +799,7 @@ test("prominent active tab is opt-in and switches selection surfaces", async ({
   await page.getByTestId("settings-close").click();
   await page.getByTestId("channel-general").click();
   const activeRow = page.getByTestId("channel-general");
-  const subtleSurface = await resolveSidebarColor(
-    page,
-    "background-color",
-    "var(--sidebar-row-subtle-active-surface)",
-  );
+  const subtleSurface = "rgba(255, 255, 255, 0.56)";
   const prominentSurface = await resolveSidebarColor(
     page,
     "background-color",
@@ -896,19 +891,21 @@ test("prominent channel and direct-message rows share one flat active state", as
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
 
-for (const { hoverSurface, mode, theme } of [
+for (const { activeSurface, hoverSurface, mode, theme } of [
   {
+    activeSurface: "rgba(255, 255, 255, 0.56)",
     hoverSurface: "rgba(255, 255, 255, 0.31)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
+    activeSurface: "rgba(255, 255, 255, 0.075)",
     hoverSurface: "rgba(255, 255, 255, 0.075)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
 ]) {
-  test(`non-prominent ${theme} selection uses the subtle C1 style`, async ({
+  test(`non-prominent ${theme} selection matches the C1 shell`, async ({
     page,
   }) => {
     await seedTheme(page, theme);
@@ -925,24 +922,19 @@ for (const { hoverSurface, mode, theme } of [
       new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
     );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-    const subtleSurface = await resolveSidebarColor(
-      page,
-      "background-color",
-      "var(--sidebar-row-subtle-active-surface)",
-    );
     const subtleForeground = await resolveSidebarColor(
       page,
       "color",
       "var(--colony-sidebar-foreground)",
     );
-    await expect(activeRow).toHaveCSS("background-color", subtleSurface);
+    await expect(activeRow).toHaveCSS("background-color", activeSurface);
     await expect(activeRow).toHaveCSS(
       "box-shadow",
       "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
     );
     await expect(activeRow).toHaveCSS("font-weight", "650");
     await activeRow.hover();
-    await expect(activeRow).toHaveCSS("background-color", subtleSurface);
+    await expect(activeRow).toHaveCSS("background-color", activeSurface);
     const inactiveRow = page.getByTestId("channel-random");
     await inactiveRow.hover();
     await expect(inactiveRow).toHaveCSS("background-color", hoverSurface);
@@ -965,46 +957,28 @@ for (const { mode, theme } of [
 
     const root = page.locator("html");
     const activeRow = page.getByTestId("channel-general");
+    await expect(page.getByTestId("app-sidebar")).toHaveAttribute(
+      "data-colony-full-app-shell",
+      "true",
+    );
     await expect(root).toHaveClass(
       new RegExp(`(^|\\s)${mode === "dark" ? "dark" : "light"}($|\\s)`),
     );
     await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
     await expect(root).not.toHaveAttribute("data-buzz-sidebar", "");
 
-    const productionStyle = await page.evaluate(() => {
-      const sidebar = document.querySelector<HTMLElement>(
-        '[data-testid="app-sidebar"]',
-      );
-      const row = document.querySelector<HTMLElement>(
-        '[data-testid="channel-general"]',
-      );
-      if (!sidebar || !row) return null;
-      const probe = document.createElement("span");
-      probe.style.backgroundColor = "hsl(var(--sidebar-active))";
-      probe.style.color = "hsl(var(--sidebar-active-foreground))";
-      sidebar.append(probe);
-      const probeStyles = getComputedStyle(probe);
-      const rowStyles = getComputedStyle(row);
-      const result = {
-        expectedBackground: probeStyles.backgroundColor,
-        expectedForeground: probeStyles.color,
-        background: rowStyles.backgroundColor,
-        color: rowStyles.color,
-        fontWeight: rowStyles.fontWeight,
-      };
-      probe.remove();
-      return result;
-    });
-
-    expect(productionStyle).not.toBeNull();
-    expect(productionStyle?.background).toBe(
-      productionStyle?.expectedBackground,
+    const expectedBackground =
+      mode === "light"
+        ? "rgba(255, 255, 255, 0.56)"
+        : "rgba(255, 255, 255, 0.075)";
+    const expectedForeground = await resolveSidebarColor(
+      page,
+      "color",
+      "hsl(var(--colony-sidebar-foreground))",
     );
-    expect(productionStyle?.color).toBe(productionStyle?.expectedForeground);
-    await expect(activeRow).toHaveCSS(
-      "font-weight",
-      productionStyle?.fontWeight ?? "",
-    );
+    await expect(activeRow).toHaveCSS("background-color", expectedBackground);
+    await expect(activeRow).toHaveCSS("color", expectedForeground);
+    await expect(activeRow).toHaveCSS("font-weight", "650");
   });
 }
 
