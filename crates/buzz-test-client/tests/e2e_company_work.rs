@@ -601,8 +601,9 @@ async fn company_work_watchdogs_require_explicit_config_retry_durably_deliver_an
         "watchdog starts OFF without a saved config"
     );
 
+    let explicit_interval_seconds = 60;
     let (config_event_id, config_head) =
-        configure_watchdog(&owner, &channel_id, work_item_id, 60).await;
+        configure_watchdog(&owner, &channel_id, work_item_id, explicit_interval_seconds).await;
     let CompanyWorkTrackingHead::WatchdogConfiguration(config) = config_head else {
         panic!("configure must create a watchdog head");
     };
@@ -612,8 +613,8 @@ async fn company_work_watchdogs_require_explicit_config_retry_durably_deliver_an
             .config
             .as_ref()
             .map(|item| item.check_interval_seconds),
-        Some(1),
-        "the test explicitly chooses its interval"
+        Some(explicit_interval_seconds),
+        "watchdog saves the explicitly chosen test interval"
     );
     let config_event_bytes = hex::decode(config_event_id).expect("config event id");
     let (delivery_id, scheduled_for) =
