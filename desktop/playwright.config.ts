@@ -195,6 +195,7 @@ export default defineConfig({
         "**/workflow-plain-builder.spec.ts",
         "**/money.spec.ts",
         "**/money-tax.spec.ts",
+        "**/secrets.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

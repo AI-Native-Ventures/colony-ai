@@ -11,7 +11,7 @@ class SettingsFeedbackFailedPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Feedback not sent'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

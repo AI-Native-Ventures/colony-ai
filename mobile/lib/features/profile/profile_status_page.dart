@@ -193,7 +193,7 @@ class ProfileStatusPage extends HookConsumerWidget {
     final hasContent = text.value.trim().isNotEmpty || emoji.value.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Set a status'),
       body: Column(
         children: [

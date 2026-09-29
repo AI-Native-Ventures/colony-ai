@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../shared/business/mobile_business_entry_points.dart';
 import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/navigation/mobile_route.dart';
+import '../../shared/navigation/mobile_routes.dart';
 import '../../shared/identity/identity_components.dart';
 import '../../shared/theme/theme.dart';
 
@@ -119,6 +120,13 @@ class CompanyHubPage extends StatelessWidget {
                           .toList(),
                       onOpen: (entry) => _openEntry(context, entry),
                     ),
+                  if (routeRegistry.contains(MobileRoutes.creditsBalance))
+                    _PinnedDestinationRow(
+                      label: 'AI spend & credits',
+                      icon: LucideIcons.wallet,
+                      onTap: () =>
+                          _openRoute(context, MobileRoutes.creditsBalance),
+                    ),
                   _AppearancePreferencesRow(
                     onTap: () => Navigator.of(context).push<void>(
                       MaterialPageRoute<void>(builder: settingsPageBuilder),
@@ -138,6 +146,19 @@ class CompanyHubPage extends StatelessWidget {
       MobileNavigation.push<NoMobileRouteArguments, void>(
         context,
         entry.route,
+        const NoMobileRouteArguments(),
+      ).then<void>((_) {}),
+    );
+  }
+
+  void _openRoute(
+    BuildContext context,
+    MobileRoute<NoMobileRouteArguments> route,
+  ) {
+    unawaited(
+      MobileNavigation.push<NoMobileRouteArguments, void>(
+        context,
+        route,
         const NoMobileRouteArguments(),
       ).then<void>((_) {}),
     );
@@ -300,7 +321,7 @@ class _AppearancePreferencesRow extends StatelessWidget {
     final tokens = context.mobileTokens;
     return Semantics(
       button: true,
-      label: 'Appearance and preferences',
+      label: 'Settings & appearance',
       onTap: onTap,
       child: ExcludeSemantics(
         child: Material(
@@ -323,12 +344,69 @@ class _AppearancePreferencesRow extends StatelessWidget {
                   const SizedBox(width: Grid.ten),
                   Expanded(
                     child: Text(
-                      'Appearance & preferences',
+                      'Settings & appearance',
                       style: context.mobileTypography.companyEntryDescription
                           .copyWith(color: tokens.action),
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PinnedDestinationRow extends StatelessWidget {
+  const _PinnedDestinationRow({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 5, 0, 22),
+      child: Semantics(
+        button: true,
+        label: label,
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Material(
+            color: tokens.soft,
+            borderRadius: BorderRadius.circular(13),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              overlayColor: WidgetStatePropertyAll(
+                context.appColors.plum.withValues(alpha: 0.08),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Grid.fifteen,
+                  vertical: Grid.twelve,
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: tokens.action, size: 18),
+                    const SizedBox(width: Grid.ten),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: context.mobileTypography.companyEntryDescription
+                            .copyWith(color: tokens.action),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -31,7 +31,7 @@ class PersonalPreferencesPage extends HookConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Preferences'),
       body: Column(
         children: [

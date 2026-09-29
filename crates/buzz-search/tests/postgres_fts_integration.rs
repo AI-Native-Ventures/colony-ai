@@ -8,8 +8,10 @@
 
 use buzz_core::{
     kind::{
-        AUTHOR_ONLY_KINDS, KIND_AGENT_TURN_METRIC, KIND_MEMBER_ADDED_NOTIFICATION,
-        KIND_MEMBER_REMOVED_NOTIFICATION, P_GATED_KINDS,
+        AUTHOR_ONLY_KINDS, KIND_AGENT_TURN_METRIC, KIND_ASK_ACTION, KIND_ASK_HEAD,
+        KIND_ASK_RESPONSE, KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_MEMBER_ADDED_NOTIFICATION,
+        KIND_MEMBER_REMOVED_NOTIFICATION, KIND_SECRET_BINDING_ACTION, KIND_SECRET_BINDING_HEAD,
+        P_GATED_KINDS,
     },
     CommunityId,
 };
@@ -30,6 +32,8 @@ const MIGRATION_0008_SQL: &str =
 const MIGRATION_0014_SQL: &str = include_str!("../../../migrations/0014_push_lease_fts.sql");
 const MIGRATION_0033_SQL: &str =
     include_str!("../../../migrations/0033_private_managed_agent_fts.sql");
+const MIGRATION_0052_SQL: &str =
+    include_str!("../../../migrations/0052_company_records_fts_exclusion.sql");
 
 async fn setup() -> (PgPool, String) {
     let url = std::env::var("BUZZ_TEST_DATABASE_URL").unwrap_or_else(|_| TEST_DB_URL.to_string());
@@ -86,6 +90,9 @@ async fn setup() -> (PgPool, String) {
     pool.execute(MIGRATION_0033_SQL)
         .await
         .expect("apply 0033 migration");
+    pool.execute(MIGRATION_0052_SQL)
+        .await
+        .expect("apply 0052 migration");
     (pool, schema)
 }
 
@@ -1509,6 +1516,69 @@ async fn p_gated_persistent_kinds_have_storage_null_tsvector() {
         "expected exactly 1 hit (the kind:9 control), got {} (kinds={kinds:?})",
         result.hits.len(),
     );
+
+    teardown(pool, &schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn company_record_kinds_have_storage_null_tsvector() {
+    let (pool, schema) = setup().await;
+    let community = mk_community(&pool, "company-record-fts.example").await;
+    let token = "company_sensitive_metadata_marker";
+    let company_kinds = [
+        KIND_GOAL_HEAD,
+        KIND_ASK_HEAD,
+        KIND_SECRET_BINDING_HEAD,
+        KIND_GOAL_ACTION,
+        KIND_ASK_ACTION,
+        KIND_ASK_RESPONSE,
+        KIND_SECRET_BINDING_ACTION,
+    ];
+
+    insert_event(
+        &pool,
+        community,
+        rand_bytes32(),
+        rand_bytes32(),
+        9,
+        &format!("public control {token}"),
+        None,
+        1_700_000_000,
+    )
+    .await;
+    for (index, kind) in company_kinds.iter().enumerate() {
+        insert_event(
+            &pool,
+            community,
+            rand_bytes32(),
+            rand_bytes32(),
+            *kind as i32,
+            &format!("company metadata kind:{kind} {token}"),
+            None,
+            1_700_000_100 + index as i64,
+        )
+        .await;
+    }
+
+    let service = SearchService::new(pool.clone());
+    let result = service
+        .search(&SearchQuery {
+            community,
+            q: token.into(),
+            channel_scope: ChannelScope::Any,
+            kinds: None,
+            authors: None,
+            since: None,
+            until: None,
+            page: 1,
+            per_page: 20,
+            mode: buzz_search::SearchMode::FullText,
+        })
+        .await
+        .expect("search ok");
+    let kinds: Vec<i32> = result.hits.iter().map(|hit| hit.kind).collect();
+    assert_eq!(kinds, vec![9]);
 
     teardown(pool, &schema).await;
 }

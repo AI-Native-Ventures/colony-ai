@@ -1,6 +1,7 @@
 import 'package:buzz/features/home/company_hub_page.dart';
 import 'package:buzz/shared/business/mobile_business_entry_points.dart';
 import 'package:buzz/shared/navigation/mobile_route.dart';
+import 'package:buzz/shared/navigation/mobile_routes.dart';
 import 'package:buzz/shared/navigation/mobile_route_scope.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
@@ -83,13 +84,42 @@ void main() {
     await tester.pumpWidget(_companyApp(routes));
 
     expect(find.text('Your company'), findsOneWidget);
-    expect(find.text('Appearance & preferences'), findsOneWidget);
+    expect(find.text('Settings & appearance'), findsOneWidget);
     expect(find.text('RUN THE COMPANY'), findsNothing);
     expect(find.text('GROW THE BUSINESS'), findsNothing);
 
-    await tester.tap(find.text('Appearance & preferences'));
+    await tester.tap(find.text('Settings & appearance'));
     await tester.pumpAndSettle();
     expect(find.text('Settings route'), findsOneWidget);
+  });
+
+  testWidgets('keeps business money and AI credits on separate routes', (
+    tester,
+  ) async {
+    final routes = MobileRouteRegistry.empty()
+        .register(
+          MobileBusinessRoutes.money,
+          (_, _) => const Text('Business money route'),
+        )
+        .register(
+          MobileRoutes.creditsBalance,
+          (_, _) => const Text('Credits balance route'),
+        );
+    await tester.pumpWidget(_companyApp(routes));
+
+    expect(find.text('Money'), findsOneWidget);
+    expect(find.text('AI spend & credits'), findsOneWidget);
+
+    await tester.tap(find.text('Money'));
+    await tester.pumpAndSettle();
+    expect(find.text('Business money route'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Business money route'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('AI spend & credits'));
+    await tester.tap(find.text('AI spend & credits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Credits balance route'), findsOneWidget);
   });
 
   testWidgets('opens the existing quick actions from the hub header', (

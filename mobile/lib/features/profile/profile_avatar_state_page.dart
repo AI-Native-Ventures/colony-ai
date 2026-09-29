@@ -140,7 +140,7 @@ class ProfileAvatarStatePage extends HookConsumerWidget {
               .join()
               .toUpperCase();
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Profile image'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +245,7 @@ class _CameraDeniedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Camera access'),
       body: Column(
         children: [
@@ -343,6 +343,7 @@ class _MessagePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final tokens = context.mobileTokens;
     final color = switch (messageKind) {
       _MessageKind.info => colors.secondaryContainer,
       _MessageKind.error => colors.errorContainer,
@@ -364,7 +365,7 @@ class _MessagePage extends StatelessWidget {
               : const Color(0xFF9B586B)
         : foreground;
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: MobileFlowAppBar(title: appBarTitle),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,7 +374,7 @@ class _MessagePage extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.fromLTRB(
                 Grid.gutter,
-                showPreview ? Grid.scrollInset : 29,
+                showPreview ? Grid.scrollInset : Grid.thirty + Grid.quarter,
                 Grid.gutter,
                 Grid.gutter,
               ),
@@ -387,36 +388,58 @@ class _MessagePage extends StatelessWidget {
                 ],
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(
-                    Grid.fourteen,
-                    Grid.fifteen,
-                    Grid.fourteen,
-                    Grid.fourteen + Grid.quarter,
-                  ),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: messageColor,
                     borderRadius: BorderRadius.circular(10),
+                    border: messageKind == _MessageKind.error
+                        ? Border.all(color: tokens.line)
+                        : null,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Stack(
                     children: [
-                      Text(
-                        messageTitle,
-                        style: context.textTheme.labelMedium?.copyWith(
-                          fontSize: 12,
-                          color: messageForeground,
-                          fontWeight: FontWeight.w600,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          Grid.fourteen,
+                          Grid.fifteen + Grid.half,
+                          Grid.fourteen,
+                          Grid.fourteen + Grid.quarter,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              messageTitle,
+                              style: context.textTheme.labelMedium?.copyWith(
+                                fontSize: 12,
+                                color: messageForeground,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: Grid.xxs),
+                            Text(
+                              message,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                fontSize: 12,
+                                height: 1.6,
+                                color: messageForeground,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: Grid.xxs),
-                      Text(
-                        message,
-                        style: context.textTheme.bodySmall?.copyWith(
-                          fontSize: 12,
-                          height: 1.6,
-                          color: messageForeground,
+                      if (messageKind == _MessageKind.error)
+                        Positioned(
+                          top: 0,
+                          bottom: 0,
+                          left: 0,
+                          child: SizedBox(
+                            width: Grid.half / 2,
+                            child: ColoredBox(
+                              color: tokens.action.withValues(alpha: 0.55),
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

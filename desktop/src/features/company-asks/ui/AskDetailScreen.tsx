@@ -336,6 +336,21 @@ function AskDetailMemberScreen({
               showDetailLink={false}
             />
           ) : null}
+          {record?.head.status === "open" &&
+          record.head.ask.category === "secret" ? (
+            <Link
+              className="inline-flex rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              search={{
+                askId,
+                bindingId: null,
+                channelId,
+                state: "request",
+              }}
+              to="/secrets"
+            >
+              Enter securely
+            </Link>
+          ) : null}
           {!specializedAskTitle ? (
             <nav
               aria-label="Ask navigation"

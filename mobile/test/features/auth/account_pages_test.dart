@@ -182,11 +182,11 @@ void main() {
       expect(button.onPressed, isNull);
       expect(
         button.style?.backgroundColor?.resolve({WidgetState.disabled}),
-        AccountFlowPalette.action.withValues(alpha: 0.45),
+        AccountFlowPalette.accent(Brightness.light).withValues(alpha: 0.45),
       );
       expect(
         button.style?.foregroundColor?.resolve({WidgetState.disabled}),
-        Colors.white,
+        AccountFlowPalette.onAccent(Brightness.light),
       );
       final buttonSemantics = tester.getSemantics(
         find.bySemanticsLabel('Create account'),
@@ -342,13 +342,13 @@ void main() {
         disabledContinue.style?.backgroundColor?.resolve({
           WidgetState.disabled,
         }),
-        AccountFlowPalette.action.withValues(alpha: 0.45),
+        AccountFlowPalette.accent(Brightness.light).withValues(alpha: 0.45),
       );
       expect(
         disabledContinue.style?.foregroundColor?.resolve({
           WidgetState.disabled,
         }),
-        Colors.white,
+        AccountFlowPalette.onAccent(Brightness.light),
       );
       expect(auth.lastVerifyResendCooldownSecs, 30);
       expect(

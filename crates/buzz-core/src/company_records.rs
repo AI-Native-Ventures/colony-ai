@@ -1,14 +1,14 @@
 //! Shared typed content and validation for Colony company records.
 //!
-//! Company records (goals, asks, member positions, and tool permissions) are
-//! brokered like business records: a member signs a command, the relay validates
-//! it and emits a relay-signed
-//! replaceable head. Goals are community-wide (no `h` tag); asks live in a
-//! channel thread. See `docs/company-records.md` for the full contract.
+//! Company records (goals, asks, member positions, tool permissions and secret
+//! bindings) are brokered like business records: a member signs a command, the
+//! relay validates it and emits a relay-signed replaceable head. Goals,
+//! positions, permissions and secret bindings are community-wide (no `h` tag);
+//! asks live in a channel thread. See `docs/company-records.md` for the contract.
 //!
 //! This module holds the pure parts of the contract: typed content that
 //! rejects unknown fields, per-action payload rules, the goal-tree cycle
-//! check, ask response rules and the ask authority decision. The relay
+//! check, ask response rules, secret binding rules and ask authority decision. The relay
 //! supplies everything that needs I/O (current heads, roles, agent status).
 
 use std::collections::BTreeSet;
@@ -36,6 +36,10 @@ pub const MAX_TOOL_CONSENT_PREVIEW_CHARS: usize = 4000;
 pub const MAX_TOOL_PERMISSION_ACTION_CHARS: usize = 180;
 /// Longest ask answer, in characters.
 pub const MAX_ANSWER_CHARS: usize = 4000;
+/// Longest human-readable secret binding name, in characters.
+pub const MAX_SECRET_NAME_CHARS: usize = 120;
+/// Longest tool name on a secret request or binding, in characters.
+pub const MAX_SECRET_TOOL_CHARS: usize = 120;
 /// Longest reason attached to a decision, status change or cancellation.
 pub const MAX_REASON_CHARS: usize = 1000;
 /// Longest target unit label, in characters.
@@ -73,10 +77,124 @@ pub enum CompanyCommand {
     AskAction(AskAction),
     /// Ask resolution (kind 47033).
     AskResponse(AskResponse),
+    /// Secret binding create, activation or revocation (kind 47036).
+    SecretBindingAction(SecretBindingAction),
     /// Standing tool permission mutation (kind 47035).
     ToolPermissionAction(ToolPermissionAction),
     /// Member-position mutation (kind 47037).
     MemberPositionAction(crate::company_members::MemberPositionAction),
+}
+
+/// Storage location for a secret value. The value is never part of a company record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretStorage {
+    /// The authenticated user's operating system credential store.
+    Device,
+    /// Shared encrypted relay storage. Unsupported by the current relay.
+    Server,
+}
+
+/// Lifecycle status of a secret binding head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretBindingStatus {
+    /// Metadata exists and is waiting for secure entry and activation.
+    Pending,
+    /// The binding may be used after the runtime verifies this current head.
+    Active,
+    /// Future use must be denied.
+    Revoked,
+}
+
+/// Secret binding actions supported by the relay broker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretBindingActionKind {
+    /// Create metadata without a value.
+    Create,
+    /// Activate after the value has been saved in the selected store.
+    Activate,
+    /// Revoke future uses of this binding.
+    Revoke,
+}
+
+/// A channel ask that requested a secret binding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretAskCoordinate {
+    /// Channel containing the secret ask.
+    pub channel_id: Uuid,
+    /// Secret ask UUID.
+    pub ask_id: Uuid,
+}
+
+/// Non-secret details an agent supplies when requesting a secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretAskRequest {
+    /// Name of the tool that needs the credential.
+    pub tool_name: String,
+    /// Client or service the requested credential is for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    /// Scope the requested binding should allow.
+    pub allowed_use: String,
+}
+
+/// Metadata for one binding. This type deliberately has no value field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingSpec {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable binding UUID.
+    pub binding_id: Uuid,
+    /// Human-readable connection name.
+    pub name: String,
+    /// Member or agent that may use this binding.
+    pub employee_pubkey: String,
+    /// Tool name this binding is scoped to.
+    pub tool_name: String,
+    /// Human-readable use scope.
+    pub allowed_use: String,
+    /// Device or server storage selection.
+    pub storage: SecretStorage,
+    /// Ask that led to this binding, when the binding resolves a request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask: Option<SecretAskCoordinate>,
+}
+
+/// Member-signed create, activation or revocation command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable binding UUID.
+    pub binding_id: Uuid,
+    /// Requested lifecycle transition.
+    pub action: SecretBindingActionKind,
+    /// Exact current head for activation and revocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Metadata, required only for create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<SecretBindingSpec>,
+}
+
+/// Relay-signed canonical secret binding head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Binding metadata, never the value.
+    pub binding: SecretBindingSpec,
+    /// Relay-controlled lifecycle state.
+    pub status: SecretBindingStatus,
+    /// Member command that last advanced this head.
+    pub source_action_event_id: String,
 }
 
 // ── Goals ────────────────────────────────────────────────────────────────────
@@ -493,6 +611,9 @@ pub struct AskRecord {
     /// Member-position mutation requested by an approval ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member_proposal: Option<crate::company_members::MemberPositionAction>,
+    /// Non-secret tool and scope details for a secret request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_request: Option<SecretAskRequest>,
 }
 
 /// Ask create or cancel.
@@ -546,6 +667,8 @@ pub enum AskOutcome {
     Pass,
     /// Verdict: fails.
     Fail,
+    /// A secret request was resolved by creating and activating a binding.
+    SecretBound,
 }
 
 /// Member resolution of an ask (kind 47033).
@@ -572,6 +695,9 @@ pub struct AskResponse {
     /// Every checklist item id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked_item_ids: Option<Vec<String>>,
+    /// Secret binding created for a secret ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_binding_id: Option<Uuid>,
 }
 
 /// Lifecycle status of an ask head.
@@ -620,6 +746,9 @@ pub struct AskResolutionPayload {
     /// Confirmed items, for checklists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked_item_ids: Option<Vec<String>>,
+    /// Binding created to resolve a secret ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_binding_id: Option<Uuid>,
 }
 
 /// Cancellation stored on the head.
@@ -670,6 +799,23 @@ pub fn goal_d_tag(goal_id: Uuid) -> String {
 /// d-tag of an ask command or head.
 pub fn ask_d_tag(channel_id: Uuid, ask_id: Uuid) -> String {
     format!("channel:{channel_id}:ask:{ask_id}")
+}
+
+/// Company-wide coordinate for a secret binding.
+pub fn secret_binding_d_tag(binding_id: Uuid) -> String {
+    format!("company:secret:{binding_id}")
+}
+
+/// Validates a secret binding d-tag against its UUID.
+pub fn validate_secret_binding_d_tag(
+    d_tag: &str,
+    binding_id: Uuid,
+) -> Result<(), CompanyRecordError> {
+    if d_tag == secret_binding_d_tag(binding_id) {
+        Ok(())
+    } else {
+        Err(CompanyRecordError::DTagMismatch)
+    }
 }
 
 /// d-tag of a standing tool permission command or head.
@@ -728,6 +874,10 @@ pub fn parse_company_command(
         crate::kind::KIND_ASK_RESPONSE => {
             serde_json::from_str::<AskResponse>(content).map(CompanyCommand::AskResponse)
         }
+        crate::kind::KIND_SECRET_BINDING_ACTION => {
+            serde_json::from_str::<SecretBindingAction>(content)
+                .map(CompanyCommand::SecretBindingAction)
+        }
         crate::kind::KIND_TOOL_PERMISSION_ACTION => {
             serde_json::from_str::<ToolPermissionAction>(content)
                 .map(CompanyCommand::ToolPermissionAction)
@@ -744,6 +894,7 @@ pub fn parse_company_command(
         CompanyCommand::GoalAction(value) => value.schema_version,
         CompanyCommand::AskAction(value) => value.schema_version,
         CompanyCommand::AskResponse(value) => value.schema_version,
+        CompanyCommand::SecretBindingAction(value) => value.schema_version,
         CompanyCommand::ToolPermissionAction(value) => value.schema_version,
         CompanyCommand::MemberPositionAction(value) => value.schema_version,
     };
@@ -1141,6 +1292,43 @@ pub fn validate_ask_record(
             ));
         }
     }
+    match (ask.category, ask.secret_request.as_ref()) {
+        (AskCategory::Secret, Some(request)) => {
+            if ask.ask_type != AskType::Question {
+                return Err(CompanyRecordError::Invalid(
+                    "a secret request must be a question",
+                ));
+            }
+            require_text(
+                &request.tool_name,
+                MAX_SECRET_TOOL_CHARS,
+                "secret tool name is required, 120 characters at most",
+            )?;
+            if let Some(client_name) = &request.client_name {
+                require_text(
+                    client_name,
+                    MAX_SECRET_NAME_CHARS,
+                    "secret client name must be 120 characters at most",
+                )?;
+            }
+            require_text(
+                &request.allowed_use,
+                MAX_DONE_CONDITION_CHARS,
+                "secret allowedUse is required, 1000 characters at most",
+            )?;
+        }
+        (AskCategory::Secret, None) => {
+            return Err(CompanyRecordError::Invalid(
+                "a secret ask needs non-secret tool and allowedUse details",
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(CompanyRecordError::Invalid(
+                "secret request details are only valid for secret asks",
+            ));
+        }
+        (_, None) => {}
+    }
     if !is_hex_id(&ask.thread_root_event_id) {
         return Err(CompanyRecordError::Invalid(
             "threadRootEventId must be an event id",
@@ -1356,6 +1544,26 @@ pub fn validate_ask_response(
             "expectedHeadEventId must name the current head",
         ));
     }
+    if ask.category == AskCategory::Secret {
+        if ask.ask_type != AskType::Question
+            || response.outcome != AskOutcome::SecretBound
+            || response.reason.is_some()
+            || response.answer.is_some()
+            || response.option_id.is_some()
+            || response.checked_item_ids.is_some()
+            || response.secret_binding_id.is_none()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "a secret ask resolves only to a secret binding id",
+            ));
+        }
+        return Ok(());
+    }
+    if response.outcome == AskOutcome::SecretBound || response.secret_binding_id.is_some() {
+        return Err(CompanyRecordError::Invalid(
+            "secret binding references are only valid for secret asks",
+        ));
+    }
     let (reason, answer, option, checked) = (
         response.reason.as_deref(),
         response.answer.as_deref(),
@@ -1470,6 +1678,79 @@ pub fn validate_ask_response(
             }
         }
     }
+}
+
+/// Validates metadata-only secret binding actions.
+pub fn validate_secret_binding_action(
+    action: &SecretBindingAction,
+) -> Result<(), CompanyRecordError> {
+    if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    match action.action {
+        SecretBindingActionKind::Create => {
+            if action.expected_head_event_id.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "create does not carry an expected head",
+                ));
+            }
+            let binding = action
+                .binding
+                .as_ref()
+                .ok_or(CompanyRecordError::Invalid("create needs binding metadata"))?;
+            if binding.binding_id != action.binding_id {
+                return Err(CompanyRecordError::Invalid(
+                    "binding.bindingId must equal bindingId",
+                ));
+            }
+            validate_secret_binding_spec(binding)
+        }
+        SecretBindingActionKind::Activate | SecretBindingActionKind::Revoke => {
+            if action.binding.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "activation and revocation do not carry binding metadata",
+                ));
+            }
+            let expected = action
+                .expected_head_event_id
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("action needs the current head"))?;
+            if !is_hex_id(expected) {
+                return Err(CompanyRecordError::Invalid(
+                    "expectedHeadEventId must name the current head",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Validates a secret binding's non-secret metadata.
+pub fn validate_secret_binding_spec(binding: &SecretBindingSpec) -> Result<(), CompanyRecordError> {
+    if binding.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    require_text(
+        &binding.name,
+        MAX_SECRET_NAME_CHARS,
+        "secret name is required, 120 characters at most",
+    )?;
+    if !is_hex_id(&binding.employee_pubkey) {
+        return Err(CompanyRecordError::Invalid(
+            "employeePubkey must be a pubkey",
+        ));
+    }
+    require_text(
+        &binding.tool_name,
+        MAX_SECRET_TOOL_CHARS,
+        "secret tool name is required, 120 characters at most",
+    )?;
+    require_text(
+        &binding.allowed_use,
+        MAX_DONE_CONDITION_CHARS,
+        "secret allowedUse is required, 1000 characters at most",
+    )?;
+    Ok(())
 }
 
 /// Community role of a would-be resolver, from the relay's member records.
@@ -1603,6 +1884,7 @@ mod tests {
             tool_consent: None,
             subject: None,
             member_proposal: None,
+            secret_request: None,
         }
     }
 
@@ -1625,7 +1907,19 @@ mod tests {
             answer: None,
             option_id: None,
             checked_item_ids: None,
+            secret_binding_id: None,
         }
+    }
+
+    fn secret_ask() -> AskRecord {
+        let mut ask = ask(AskType::Question);
+        ask.category = AskCategory::Secret;
+        ask.secret_request = Some(SecretAskRequest {
+            tool_name: "Social publishing".into(),
+            client_name: Some("Olive Studio".into()),
+            allowed_use: "Prepare Olive Studio drafts".into(),
+        });
+        ask
     }
 
     fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
@@ -2139,6 +2433,78 @@ mod tests {
         assert!(validate_ask_response(&verdict, &v).is_ok());
         v.answer = Some("extra".into());
         assert!(validate_ask_response(&verdict, &v).is_err());
+    }
+
+    #[test]
+    fn secret_asks_require_non_secret_request_details_and_bind_only_by_id() {
+        let mut secret_record = secret_ask();
+        assert!(validate_ask_record(&secret_record, false).is_ok());
+        secret_record.secret_request = None;
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+        secret_record
+            .secret_request
+            .as_mut()
+            .expect("secret request")
+            .client_name = Some("   ".into());
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+        secret_record
+            .secret_request
+            .as_mut()
+            .expect("secret request")
+            .client_name = Some("x".repeat(MAX_SECRET_NAME_CHARS + 1));
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+
+        let mut response = response(AskOutcome::SecretBound);
+        response.secret_binding_id = Some(Uuid::from_u128(11));
+        assert!(validate_ask_response(&secret_record, &response).is_ok());
+        response.answer = Some("must never be used for a credential".into());
+        assert!(validate_ask_response(&secret_record, &response).is_err());
+        response.answer = None;
+        response.secret_binding_id = None;
+        assert!(validate_ask_response(&secret_record, &response).is_err());
+
+        let mut ordinary = ask(AskType::Question);
+        ordinary.secret_request = Some(SecretAskRequest {
+            tool_name: "Social publishing".into(),
+            client_name: None,
+            allowed_use: "Prepare drafts".into(),
+        });
+        assert!(validate_ask_record(&ordinary, false).is_err());
+    }
+
+    #[test]
+    fn secret_binding_actions_are_metadata_only_and_reject_value_fields() {
+        let binding_id = Uuid::from_u128(12);
+        let action = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Create,
+            expected_head_event_id: None,
+            binding: Some(SecretBindingSpec {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                binding_id,
+                name: "Publishing credential".into(),
+                employee_pubkey: PK_A.into(),
+                tool_name: "Social publishing".into(),
+                allowed_use: "Prepare Olive Studio drafts".into(),
+                storage: SecretStorage::Device,
+                source_ask: None,
+            }),
+        };
+        assert!(validate_secret_binding_action(&action).is_ok());
+        let serialized = serde_json::to_string(&action).expect("metadata serialization");
+        assert!(!serialized.contains("value"));
+
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let attempted = format!(
+            "{{\"schemaVersion\":1,\"bindingId\":\"{binding_id}\",\"action\":\"create\",\"binding\":{{\"schemaVersion\":1,\"bindingId\":\"{binding_id}\",\"name\":\"Publishing credential\",\"employeePubkey\":\"{PK_A}\",\"toolName\":\"Social publishing\",\"allowedUse\":\"Prepare drafts\",\"storage\":\"device\",\"value\":\"{sentinel}\"}}}}"
+        );
+        let error = parse_company_command(crate::kind::KIND_SECRET_BINDING_ACTION, &attempted)
+            .expect_err("secret values are not part of the binding command");
+        assert!(!error.to_string().contains(&sentinel));
     }
 
     #[test]
