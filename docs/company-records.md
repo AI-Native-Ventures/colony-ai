@@ -369,6 +369,19 @@ that the source and thread are in the tagged channel. Once set, `sourceEventId`
 is immutable. `threadRootEventId` may change when the item moves to another
 thread.
 
+A move is an exact-head company work `update`. The signed action carries the
+source channel in `h`; the relay resolves the destination channel from the
+selected root message, rechecks source and destination state, and emits the
+replacement kind 30634 head with the destination `h`. The work UUID, `d` tag,
+original `sourceEventId`, goal link, owner, requester, done condition, status,
+evidence and prior action events remain attached to the same item. The relay
+allows the move only when the actor is the work owner, requester, community
+owner or admin, is a member of both active channels, and the source and
+destination have the same active membership set. A different audience is
+rejected; the move never grants channel membership or widens visibility. The
+action event remains in the source channel, and clients query history only from
+channels the viewer can currently access.
+
 An optional `goalId` must resolve to a non-deleted, non-archived goal in the
 same community. Goal deletion is refused while any company work head still
 references that goal, including an archived work item. The work form filters
@@ -395,6 +408,26 @@ Company work actions require channel membership and an exact current head for
 every action except create. The relay stores the member action and emits the
 relay-signed kind 30634 head in one transaction. Client work validation and
 W11 behavior remain unchanged.
+
+### Work tracking API boundary
+
+The desktop timeline is a projection of signed kind 47006 actions and current
+kind 30634 heads. It may show only fields carried by those records. The work
+head has no due date, and the action stream has no attachment, detected
+commitment, watchdog check-in, or automatic verdict event.
+
+Auto-detected commitments require an authoritative, persisted suggestion
+source that identifies its source message and proposed work fields. The person
+must explicitly accept a suggestion before the client creates a work item.
+There is no suggestion record or acceptance action in the current contract.
+Until one is specified and brokered, clients must not infer suggestions from
+message text or show a `Track this?` action for an ordinary message.
+
+The watchdog requires a company-scoped settings record, explicit opt-in,
+owner-entered timing with no preset interval, and a scheduler that can deliver
+check-ins with durable retry and cancellation. No such settings or scheduler
+API exists yet. It remains off; clients must not claim that settings were saved
+or that a check-in was scheduled.
 
 ## Proof boundaries
 

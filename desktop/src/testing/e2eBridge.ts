@@ -9587,6 +9587,7 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
   }
 
   let next: Record<string, unknown>;
+  let nextChannelId = channelId;
   if (actionKind === "create" || actionKind === "update") {
     const input = action.head;
     if (input === null || typeof input !== "object" || Array.isArray(input)) {
@@ -9649,28 +9650,109 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
     ) {
       return "conflict: linked company goal is unavailable.";
     }
+    const hasSourceEventId = head.sourceEventId !== undefined;
+    const hasThreadRootEventId = head.threadRootEventId !== undefined;
     if (
-      head.sourceEventId !== undefined ||
-      head.threadRootEventId !== undefined
+      (actionKind === "create" && hasSourceEventId !== hasThreadRootEventId) ||
+      (actionKind === "update" &&
+        Boolean(previous?.threadRootEventId) &&
+        !hasThreadRootEventId) ||
+      (hasSourceEventId &&
+        (typeof head.sourceEventId !== "string" ||
+          !/^[0-9a-f]{64}$/i.test(head.sourceEventId))) ||
+      (hasThreadRootEventId &&
+        (typeof head.threadRootEventId !== "string" ||
+          !/^[0-9a-f]{64}$/i.test(head.threadRootEventId))) ||
+      (hasSourceEventId && !hasThreadRootEventId)
     ) {
-      if (
-        typeof head.sourceEventId !== "string" ||
-        !/^[0-9a-f]{64}$/i.test(head.sourceEventId) ||
-        typeof head.threadRootEventId !== "string" ||
-        !/^[0-9a-f]{64}$/i.test(head.threadRootEventId)
-      ) {
-        return "invalid: source message and thread root must be provided together.";
+      return "invalid: source message and thread root must be provided together.";
+    }
+    const source = hasSourceEventId
+      ? findMockCompanyWorkMessage(head.sourceEventId as string)
+      : null;
+    const threadRoot = hasThreadRootEventId
+      ? findMockCompanyWorkMessage(head.threadRootEventId as string)
+      : null;
+    if (hasSourceEventId && !source) {
+      return "invalid: source message is unavailable.";
+    }
+    if (hasThreadRootEventId && !threadRoot) {
+      return "invalid: destination thread is unavailable.";
+    }
+    if (
+      actionKind === "create" &&
+      ((source && source.channelId.toLowerCase() !== channelId.toLowerCase()) ||
+        (threadRoot &&
+          threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()))
+    ) {
+      return "invalid: source message or thread root is outside the work channel.";
+    }
+    if (
+      actionKind === "update" &&
+      hasThreadRootEventId &&
+      head.threadRootEventId !== previous?.threadRootEventId
+    ) {
+      if (!threadRoot) {
+        return "invalid: destination thread is unavailable.";
       }
-      const source = findMockCompanyWorkMessage(head.sourceEventId);
-      const threadRoot = findMockCompanyWorkMessage(head.threadRootEventId);
+      const destinationChannelId = threadRoot.channelId;
+      const destinationChannel = [
+        ...buildVisualChannels(getConfig()),
+        ...mockChannels,
+      ].find(
+        (candidate) =>
+          candidate.id.toLowerCase() === destinationChannelId.toLowerCase(),
+      );
       if (
-        !source ||
-        !threadRoot ||
-        source.channelId.toLowerCase() !== channelId.toLowerCase() ||
-        threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()
+        destinationChannel?.channel_type !== "stream" ||
+        destinationChannel.archived_at !== null
       ) {
-        return "invalid: source message or thread root is outside the work channel.";
+        return "restricted: destination must be an active stream conversation.";
       }
+      if (getThreadReferenceFromTags(threadRoot.event.tags).parentEventId) {
+        return "invalid: work can only move to a conversation thread root.";
+      }
+      const sourceChannel = [
+        ...buildVisualChannels(getConfig()),
+        ...mockChannels,
+      ].find(
+        (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+      );
+      if (!sourceChannel) {
+        return "restricted: source conversation is unavailable.";
+      }
+      const roleSet = (candidate: MockChannel) =>
+        candidate.members
+          .map((member) => `${member.pubkey.toLowerCase()}:${member.role}`)
+          .sort();
+      const sourceRoles = roleSet(sourceChannel);
+      const destinationRoles = roleSet(destinationChannel);
+      if (
+        sourceChannel.visibility !== destinationChannel.visibility ||
+        sourceRoles.length !== destinationRoles.length ||
+        !sourceRoles.every((role, index) => role === destinationRoles[index])
+      ) {
+        return "restricted: moving work would change conversation membership or permissions.";
+      }
+      const destinationMembers = new Set(
+        destinationChannel.members.map((member) => member.pubkey.toLowerCase()),
+      );
+      if (
+        !destinationMembers.has(signer) ||
+        !destinationMembers.has(head.requesterPubkey.toLowerCase()) ||
+        !head.assignedPubkeys.every((pubkey) =>
+          destinationMembers.has(pubkey.toLowerCase()),
+        )
+      ) {
+        return "restricted: the work owner, requester, and actor must remain conversation members.";
+      }
+      nextChannelId = destinationChannelId;
+    } else if (
+      actionKind === "update" &&
+      threadRoot &&
+      threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()
+    ) {
+      return "invalid: the thread root does not match the work channel.";
     }
     next = {
       schemaVersion: 1,
@@ -9823,7 +9905,7 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
         (existingEvent?.created_at ?? 0) + 1,
       ),
       tags: [
-        ["h", channelId],
+        ["h", nextChannelId],
         ["d", dTag],
       ],
       content: JSON.stringify(next),
@@ -9839,6 +9921,7 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
   }
   store.push(headEvent);
   persistMockCompanyWorkEventStore();
+  emitMockLiveEvent(nextChannelId, headEvent);
   return null;
 }
 
@@ -14572,7 +14655,16 @@ function sendToMockSocket(args: {
       filter.kinds?.includes(KIND_WORK_ITEM_ACTION) &&
         filter["#d"]?.some((dTag) => dTag.startsWith("company:work:")),
     );
-    if (companyWorkHeadQuery || companyWorkHistoryQuery) {
+    const companyWorkMoveHistoryQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_ACTION) &&
+        filter["#h"]?.length &&
+        !filter["#d"],
+    );
+    if (
+      companyWorkHeadQuery ||
+      companyWorkHistoryQuery ||
+      companyWorkMoveHistoryQuery
+    ) {
       for (const event of filterMockCompanyWorkEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }

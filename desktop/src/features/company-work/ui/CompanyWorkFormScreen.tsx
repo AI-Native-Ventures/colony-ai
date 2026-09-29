@@ -217,6 +217,9 @@ export function CompanyWorkFormScreen({
       return;
     }
     const previous = record?.head;
+    const nextSourceEventId = previous?.sourceEventId ?? sourceEventId;
+    const nextThreadRootEventId =
+      previous?.threadRootEventId ?? threadRootEventId;
     const head: CompanyWorkInput = {
       schemaVersion: COMPANY_WORK_SCHEMA_VERSION,
       workItemId: workId,
@@ -228,16 +231,10 @@ export function CompanyWorkFormScreen({
       requesterPubkey: requesterPubkey.toLowerCase(),
       doneCondition: doneCondition.trim(),
       ...(goalId ? { goalId } : {}),
-      ...(previous?.sourceEventId
-        ? {
-            sourceEventId: previous.sourceEventId,
-            ...(previous.threadRootEventId
-              ? { threadRootEventId: previous.threadRootEventId }
-              : {}),
-          }
-        : sourceEventId && threadRootEventId
-          ? { sourceEventId, threadRootEventId }
-          : {}),
+      ...(nextSourceEventId ? { sourceEventId: nextSourceEventId } : {}),
+      ...(nextThreadRootEventId
+        ? { threadRootEventId: nextThreadRootEventId }
+        : {}),
       ...(evidence.trim() ? { evidence: evidence.trim() } : {}),
     };
     const action: CompanyWorkAction = isEdit

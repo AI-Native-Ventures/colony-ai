@@ -24,41 +24,15 @@ import {
   useCompanyWorkHeadsQuery,
   useCompanyWorkHistoryQuery,
 } from "../hooks";
-import type {
-  CompanyWorkAction,
-  CompanyWorkHistoryEntry,
-} from "../companyWorkModels";
+import type { CompanyWorkAction } from "../companyWorkModels";
 import { COMPANY_WORK_SCHEMA_VERSION } from "../companyWorkModels";
+import { projectCompanyWorkTimeline } from "../companyWorkTimeline";
 import {
   companyWorkPrimaryButtonClass,
   CompanyWorkBackButton,
   CompanyWorkPageHeader,
   CompanyWorkStatusBadge,
-  companyWorkStatusLabel,
 } from "./CompanyWorkPresentation";
-
-function actionLabel(entry: CompanyWorkHistoryEntry): string {
-  switch (entry.action.action) {
-    case "create":
-      return "created this commitment.";
-    case "update":
-      return "updated this work item.";
-    case "set_status":
-      return (
-        "changed the status to " +
-        companyWorkStatusLabel(entry.action.status ?? "active") +
-        "."
-      );
-    case "verify":
-      return entry.action.verification?.verdict === "pass"
-        ? "verified the done condition."
-        : "requested revisions.";
-    case "archive":
-      return "archived this work item.";
-    case "restore":
-      return "restored this work item.";
-  }
-}
 
 function errorText(error: unknown): string {
   return error instanceof Error
@@ -139,6 +113,10 @@ export function CompanyWorkDetailScreen({
     staleTime: 60_000,
   });
   const history = historyQuery.data ?? [];
+  const timeline = React.useMemo(
+    () => projectCompanyWorkTimeline(history),
+    [history],
+  );
   const pubkeys = React.useMemo(
     () => [
       ...new Set(
@@ -160,7 +138,9 @@ export function CompanyWorkDetailScreen({
     goCompanyWork,
     goCompanyWorkArchive,
     goCompanyWorkEdit,
+    goCompanyWorkMove,
     goCompanyWorkStatus,
+    goCompanyWorkTracking,
     goCompanyWorkVerify,
     goChannel,
     goGoal,
@@ -283,7 +263,7 @@ export function CompanyWorkDetailScreen({
     ?.replace(/\s+/g, " ")
     .trim()
     .slice(0, 64);
-  const conversationMessageId = head.sourceEventId ?? head.threadRootEventId;
+  const conversationMessageId = head.threadRootEventId ?? head.sourceEventId;
   const openConversation = () => {
     if (!channel) return;
     void goChannel(record.channelId, {
@@ -412,7 +392,18 @@ export function CompanyWorkDetailScreen({
                 {head.statusReason}
               </p>
             ) : null}
-            <h2 className="mt-7 text-base font-semibold">History</h2>
+            <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">History</h2>
+              <Button
+                className="h-auto p-0 text-sm"
+                onClick={() =>
+                  void goCompanyWorkTracking("timeline", workItemId)
+                }
+                variant="link"
+              >
+                Full timeline
+              </Button>
+            </div>
             {historyQuery.isPending ? (
               <p className="mt-3 text-sm text-muted-foreground" role="status">
                 Loading history
@@ -427,28 +418,34 @@ export function CompanyWorkDetailScreen({
             ) : null}
             {history.length > 0 ? (
               <ol className="mt-3 pl-0">
-                {history.map((entry) => (
+                {timeline.map((entry) => (
                   <li
                     className="relative border-l border-border pb-4 pl-4 before:absolute before:-left-[3px] before:top-1.5 before:size-1.5 before:rounded-full before:bg-primary"
-                    key={entry.event.id}
+                    key={entry.eventId}
                   >
                     <strong className="block text-xs font-semibold">
                       {resolveUserLabel({
                         currentPubkey,
                         profiles,
-                        pubkey: entry.event.pubkey,
+                        pubkey: entry.actorPubkey,
                         preferResolvedSelfLabel: true,
                       })}{" "}
-                      {actionLabel(entry)}
+                      {entry.label}
                     </strong>
-                    {entry.action.reason ? (
+                    <time
+                      className="mt-1 block text-2xs text-muted-foreground"
+                      dateTime={new Date(entry.createdAt * 1000).toISOString()}
+                    >
+                      {new Date(entry.createdAt * 1000).toLocaleString()}
+                    </time>
+                    {entry.reason ? (
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                        {entry.action.reason}
+                        {entry.reason}
                       </p>
                     ) : null}
-                    {entry.action.verification?.evidence ? (
+                    {entry.evidence ? (
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                        {entry.action.verification.evidence}
+                        {entry.evidence}
                       </p>
                     ) : null}
                   </li>
@@ -475,6 +472,15 @@ export function CompanyWorkDetailScreen({
                 variant="outline"
               >
                 Edit work item
+              </Button>
+            ) : null}
+            {canEdit && head.status !== "archived" ? (
+              <Button
+                className="mt-2 w-full font-semibold"
+                onClick={() => void goCompanyWorkMove(workItemId)}
+                variant="outline"
+              >
+                Move to another thread
               </Button>
             ) : null}
             {canChangeStatus &&

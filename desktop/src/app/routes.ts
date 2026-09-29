@@ -21,6 +21,10 @@ export const routes = rootRoute("root.tsx", [
   route("/clients/$clientId", "clients.$clientId.tsx"),
   route("/$workSurface", "work.tsx"),
   route("/work/$workId", "work.$workId.tsx"),
+  route(
+    "/work/tracking/$screen/$resourceId",
+    "work.tracking.$screen.$resourceId.tsx",
+  ),
   route("/work/$screen/$resourceId", "work.$screen.$resourceId.tsx"),
   route("/workflows", "workflows.tsx"),
   route("/workflows/$workflowId", "workflows.$workflowId.tsx"),

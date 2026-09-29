@@ -518,6 +518,189 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
 
 #[tokio::test]
 #[ignore]
+async fn company_work_moves_between_channels_only_for_authorized_same_audience_members() {
+    let admin = Keys::generate();
+    let requester = Keys::generate();
+    let owner = Keys::generate();
+    let intruder = Keys::generate();
+    seed_relay_member(&admin, "owner").await;
+    seed_relay_member(&requester, "member").await;
+    seed_relay_member(&owner, "member").await;
+    seed_relay_member(&intruder, "member").await;
+
+    let source_channel_id = create_test_channel(&admin).await;
+    let destination_channel_id = create_test_channel(&admin).await;
+    for member in [&requester, &owner, &intruder] {
+        add_channel_member(&admin, member, &source_channel_id).await;
+        add_channel_member(&admin, member, &destination_channel_id).await;
+    }
+    let source_event_id = send_message(&owner, &source_channel_id, "I will own this work").await;
+    let destination_root_id =
+        send_message(&admin, &destination_channel_id, "October client review").await;
+    let goal_id = Uuid::new_v4();
+    assert_accepted(
+        &send_goal_action(
+            &admin,
+            &goal_create_action(goal_id, &admin, &source_channel_id),
+        )
+        .await,
+    );
+
+    let work_item_id = Uuid::new_v4();
+    let create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            work_item_id,
+            &requester,
+            &owner,
+            Some(goal_id),
+            Some(source_event_id.clone()),
+            Some(source_event_id.clone()),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &source_channel_id, &create).await);
+    let (head_id, head) = current_work_head(&admin, &source_channel_id, work_item_id).await;
+
+    let destination_head = |root: &str| CompanyWorkItemInput {
+        schema_version: head.schema_version,
+        work_item_id,
+        title: head.title.clone(),
+        status: head.status,
+        assigned_pubkeys: head.assigned_pubkeys.clone(),
+        approver_pubkeys: head.approver_pubkeys.clone(),
+        deliverables: head.deliverables.clone(),
+        requester_pubkey: head.requester_pubkey.clone(),
+        done_condition: head.done_condition.clone(),
+        goal_id: head.goal_id,
+        source_event_id: head.source_event_id.clone(),
+        thread_root_event_id: Some(root.to_owned()),
+        evidence: head.evidence.clone(),
+    };
+    let denied_move = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Update,
+        expected_head_event_id: Some(head_id.clone()),
+        head: Some(destination_head(&destination_root_id)),
+        status: None,
+        reason: None,
+        verification: None,
+    };
+    assert_rejected(&submit_work_action(&intruder, &source_channel_id, &denied_move).await);
+    assert_eq!(
+        current_work_head(&admin, &source_channel_id, work_item_id)
+            .await
+            .1
+            .thread_root_event_id
+            .as_deref(),
+        Some(source_event_id.as_str())
+    );
+
+    let moved = CompanyWorkItemAction {
+        expected_head_event_id: Some(head_id),
+        head: Some(destination_head(&destination_root_id)),
+        ..denied_move
+    };
+    assert_accepted(&submit_work_action(&owner, &source_channel_id, &moved).await);
+    let (_, current) = current_work_head(&admin, &destination_channel_id, work_item_id).await;
+    assert_eq!(current.work_item_id, work_item_id);
+    assert_eq!(
+        current.source_event_id.as_deref(),
+        Some(source_event_id.as_str())
+    );
+    assert_eq!(
+        current.thread_root_event_id.as_deref(),
+        Some(destination_root_id.as_str())
+    );
+    assert_eq!(current.assigned_pubkeys, head.assigned_pubkeys);
+    assert_eq!(current.requester_pubkey, head.requester_pubkey);
+    assert_eq!(current.goal_id, Some(goal_id));
+    assert_eq!(current.done_condition, head.done_condition);
+    assert_eq!(current.status, head.status);
+    assert_eq!(current.evidence, head.evidence);
+}
+
+#[tokio::test]
+#[ignore]
+async fn company_work_move_rejects_a_changed_destination_audience() {
+    let admin = Keys::generate();
+    let requester = Keys::generate();
+    let owner = Keys::generate();
+    let extra_member = Keys::generate();
+    seed_relay_member(&admin, "owner").await;
+    seed_relay_member(&requester, "member").await;
+    seed_relay_member(&owner, "member").await;
+    seed_relay_member(&extra_member, "member").await;
+
+    let source_channel_id = create_test_channel(&admin).await;
+    let destination_channel_id = create_test_channel(&admin).await;
+    for member in [&requester, &owner] {
+        add_channel_member(&admin, member, &source_channel_id).await;
+        add_channel_member(&admin, member, &destination_channel_id).await;
+    }
+    add_channel_member(&admin, &extra_member, &source_channel_id).await;
+    let source_event_id = send_message(&owner, &source_channel_id, "Source root").await;
+    let destination_root_id = send_message(&admin, &destination_channel_id, "Target root").await;
+    let work_item_id = Uuid::new_v4();
+    let create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            work_item_id,
+            &requester,
+            &owner,
+            None,
+            Some(source_event_id.clone()),
+            Some(source_event_id.clone()),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &source_channel_id, &create).await);
+    let (head_id, head) = current_work_head(&admin, &source_channel_id, work_item_id).await;
+    let move_action = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Update,
+        expected_head_event_id: Some(head_id),
+        head: Some(CompanyWorkItemInput {
+            schema_version: head.schema_version,
+            work_item_id,
+            title: head.title.clone(),
+            status: head.status,
+            assigned_pubkeys: head.assigned_pubkeys.clone(),
+            approver_pubkeys: head.approver_pubkeys.clone(),
+            deliverables: head.deliverables.clone(),
+            requester_pubkey: head.requester_pubkey.clone(),
+            done_condition: head.done_condition.clone(),
+            goal_id: head.goal_id,
+            source_event_id: head.source_event_id.clone(),
+            thread_root_event_id: Some(destination_root_id),
+            evidence: head.evidence.clone(),
+        }),
+        status: None,
+        reason: None,
+        verification: None,
+    };
+    assert_rejected(&submit_work_action(&owner, &source_channel_id, &move_action).await);
+    let (_, current) = current_work_head(&admin, &source_channel_id, work_item_id).await;
+    assert_eq!(
+        current.thread_root_event_id.as_deref(),
+        Some(source_event_id.as_str())
+    );
+}
+
+#[tokio::test]
+#[ignore]
 async fn company_work_allows_channel_members_without_relay_membership() {
     let community_owner = Keys::generate();
     let channel_member = Keys::generate();

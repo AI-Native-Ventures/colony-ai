@@ -2835,20 +2835,48 @@ async fn handle_company_work_item_action(
         })?;
 
     let actor_pubkey_bytes = auth.pubkey().to_bytes();
-    let _channel_role = sqlx::query_scalar::<_, String>(
-        "SELECT cm.role::text FROM channel_members cm \
-         JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
-         WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
-           AND cm.removed_at IS NULL AND c.deleted_at IS NULL AND c.archived_at IS NULL \
-         FOR UPDATE OF cm, c",
-    )
-    .bind(community_id.as_uuid())
-    .bind(channel_id)
-    .bind(actor_pubkey_bytes.as_slice())
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(internal)?
-    .ok_or_else(|| forbidden("actor is not a member of the work channel"))?;
+    let move_destination_channel_id = if action.action == CompanyWorkItemActionKind::Update {
+        if let Some(root_id) = action
+            .head
+            .as_ref()
+            .and_then(|head| head.thread_root_event_id.as_deref())
+        {
+            let destination_channel_id =
+                load_company_work_message_any_channel(state, community_id, root_id)
+                    .await?
+                    .channel_id
+                    .ok_or_else(|| invalid("destination thread is not in a stream channel"))?;
+            lock_company_work_move_channels(
+                &mut tx,
+                state,
+                community_id,
+                channel_id,
+                destination_channel_id,
+                root_id,
+                actor_pubkey_bytes.as_slice(),
+            )
+            .await?;
+            Some(destination_channel_id)
+        } else {
+            require_company_work_channel_membership(
+                &mut tx,
+                community_id,
+                channel_id,
+                actor_pubkey_bytes.as_slice(),
+            )
+            .await?;
+            None
+        }
+    } else {
+        require_company_work_channel_membership(
+            &mut tx,
+            community_id,
+            channel_id,
+            actor_pubkey_bytes.as_slice(),
+        )
+        .await?;
+        None
+    };
     let community_role = sqlx::query_scalar::<_, String>(
         "SELECT role::text FROM relay_members WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
     )
@@ -2968,6 +2996,7 @@ async fn handle_company_work_item_action(
     }
 
     let actor_is_community_admin = is_community_admin(&community_role);
+    let mut next_channel_id = channel_id;
     let next_head = match action.action {
         CompanyWorkItemActionKind::Create => {
             let input = action
@@ -3045,21 +3074,46 @@ async fn handle_company_work_item_action(
                 tx.rollback().await.map_err(internal)?;
                 return Err(invalid("sourceEventId cannot change after creation"));
             }
+            if input.thread_root_event_id != previous.thread_root_event_id {
+                let Some(destination_channel_id) = move_destination_channel_id else {
+                    tx.rollback().await.map_err(internal)?;
+                    return Err(invalid("moving work requires a destination thread"));
+                };
+                validate_company_work_thread(
+                    state,
+                    community_id,
+                    destination_channel_id,
+                    None,
+                    input.thread_root_event_id.as_deref(),
+                    false,
+                )
+                .await?;
+                ensure_company_work_people_are_members(
+                    &mut tx,
+                    community_id,
+                    destination_channel_id,
+                    &input.requester_pubkey,
+                    &input.assigned_pubkeys,
+                )
+                .await?;
+                next_channel_id = destination_channel_id;
+            } else {
+                validate_company_work_thread(
+                    state,
+                    community_id,
+                    channel_id,
+                    None,
+                    input.thread_root_event_id.as_deref(),
+                    false,
+                )
+                .await?;
+            }
             ensure_company_work_people_are_members(
                 &mut tx,
                 community_id,
                 channel_id,
                 &input.requester_pubkey,
                 &input.assigned_pubkeys,
-            )
-            .await?;
-            validate_company_work_thread(
-                state,
-                community_id,
-                channel_id,
-                None,
-                input.thread_root_event_id.as_deref(),
-                false,
             )
             .await?;
             CompanyWorkItemHead {
@@ -3201,7 +3255,7 @@ async fn handle_company_work_item_action(
 
     let next_event = relay_head_event(
         KIND_WORK_ITEM_HEAD,
-        channel_id,
+        next_channel_id,
         &d_tag,
         &next_head,
         current_stored.as_ref(),
@@ -3235,7 +3289,7 @@ async fn handle_company_work_item_action(
             community_id,
             &next_event,
             &d_tag,
-            Some(channel_id),
+            Some(next_channel_id),
             precondition,
         )
         .await
@@ -3322,6 +3376,129 @@ async fn ensure_company_work_people_are_members(
     Ok(())
 }
 
+async fn require_company_work_channel_membership(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    actor_pubkey: &[u8],
+) -> Result<(), IngestError> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT cm.role::text FROM channel_members cm \
+         JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
+         WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
+           AND cm.removed_at IS NULL AND c.deleted_at IS NULL AND c.archived_at IS NULL \
+         FOR UPDATE OF cm, c",
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(actor_pubkey)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(internal)?
+    .ok_or_else(|| forbidden("actor is not a member of the work channel"))?;
+    Ok(())
+}
+
+async fn lock_company_work_move_channels(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    state: &AppState,
+    community_id: CommunityId,
+    source_channel_id: Uuid,
+    destination_channel_id: Uuid,
+    root_event_id: &str,
+    actor_pubkey: &[u8],
+) -> Result<(), IngestError> {
+    let root = load_company_work_message_any_channel(state, community_id, root_event_id).await?;
+    if root.channel_id != Some(destination_channel_id)
+        || buzz_core::nip10::parse_thread_markers(&root.event.tags)
+            .resolve()
+            .is_some()
+    {
+        return Err(invalid("destination must be an available thread root"));
+    }
+
+    let mut channel_ids = vec![source_channel_id, destination_channel_id];
+    channel_ids.sort_unstable();
+    channel_ids.dedup();
+    let mut source_visibility = None;
+    let mut destination_visibility = None;
+    for channel_id in channel_ids.iter().copied() {
+        let active_channel = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, visibility::text FROM channels WHERE community_id = $1 AND id = $2 \
+             AND channel_type::text = 'stream' AND deleted_at IS NULL \
+             AND archived_at IS NULL FOR UPDATE",
+        )
+        .bind(community_id.as_uuid())
+        .bind(channel_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(internal)?;
+        let Some((active_channel_id, visibility)) = active_channel else {
+            return Err(forbidden("source or destination channel is unavailable"));
+        };
+        if active_channel_id != channel_id {
+            return Err(forbidden("source or destination channel is unavailable"));
+        }
+        if channel_id == source_channel_id {
+            source_visibility = Some(visibility);
+        } else {
+            destination_visibility = Some(visibility);
+        }
+    }
+
+    let locked_root_channel_id = sqlx::query_as::<_, (Option<Uuid>,)>(
+        "SELECT channel_id FROM events WHERE community_id = $1 AND id = $2 \
+         AND kind IN ($3, $4) AND deleted_at IS NULL FOR SHARE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(hex::decode(root_event_id).map_err(|_| invalid("thread root event id is invalid"))?)
+    .bind(KIND_STREAM_MESSAGE as i32)
+    .bind(KIND_STREAM_MESSAGE_V2 as i32)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(internal)?
+    .and_then(|row| row.0);
+    if locked_root_channel_id != Some(destination_channel_id) {
+        return Err(invalid("destination thread is no longer available"));
+    }
+
+    let mut source_members = None;
+    let mut destination_members = None;
+    for channel_id in channel_ids {
+        let members = sqlx::query_as::<_, (Vec<u8>, String)>(
+            "SELECT pubkey, role::text FROM channel_members WHERE community_id = $1 \
+             AND channel_id = $2 AND removed_at IS NULL ORDER BY pubkey FOR UPDATE",
+        )
+        .bind(community_id.as_uuid())
+        .bind(channel_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(internal)?;
+        if channel_id == source_channel_id {
+            source_members = Some(members);
+        } else {
+            destination_members = Some(members);
+        }
+    }
+    let source_members = source_members.unwrap_or_default();
+    let destination_members = destination_members.unwrap_or_else(|| source_members.clone());
+    if source_channel_id == destination_channel_id {
+        destination_visibility = source_visibility.clone();
+    }
+    if source_visibility != destination_visibility || source_members != destination_members {
+        return Err(forbidden(
+            "work cannot move because the destination has a different audience",
+        ));
+    }
+    if !source_members
+        .iter()
+        .any(|(member, _)| member.as_slice() == actor_pubkey)
+    {
+        return Err(forbidden("actor is not a member of both work channels"));
+    }
+    Ok(())
+}
+
 async fn ensure_company_work_goal_is_live(
     state: &AppState,
     community_id: CommunityId,
@@ -3388,10 +3565,23 @@ async fn load_company_work_message(
     channel_id: Uuid,
     event_id: &str,
 ) -> Result<StoredEvent, IngestError> {
+    let message = load_company_work_message_any_channel(state, community_id, event_id).await?;
+    if message.channel_id != Some(channel_id) {
+        return Err(invalid(
+            "source or thread message is unavailable in the tagged channel",
+        ));
+    }
+    Ok(message)
+}
+
+async fn load_company_work_message_any_channel(
+    state: &AppState,
+    community_id: CommunityId,
+    event_id: &str,
+) -> Result<StoredEvent, IngestError> {
     let event_id_bytes =
         hex::decode(event_id).map_err(|_| invalid("message event id is invalid"))?;
     let mut query = EventQuery::for_community(community_id);
-    query.channel_id = Some(channel_id);
     query.kinds = Some(vec![
         KIND_STREAM_MESSAGE as i32,
         KIND_STREAM_MESSAGE_V2 as i32,
@@ -3409,7 +3599,7 @@ async fn load_company_work_message(
         ));
     }
     rows.pop()
-        .ok_or_else(|| invalid("source or thread message is unavailable in the tagged channel"))
+        .ok_or_else(|| invalid("source or destination thread is unavailable"))
 }
 
 fn validate_client_action(channel_id: Uuid, action: &ClientAction) -> Result<(), IngestError> {

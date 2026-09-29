@@ -503,6 +503,45 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goCompanyWorkMove = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "move", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkTracking = React.useCallback(
+    (
+      screen:
+        | "suggestion"
+        | "timeline"
+        | "panel"
+        | "person"
+        | "watchdog"
+        | "watchdog-saved"
+        | "failed"
+        | "unavailable"
+        | "empty",
+      resourceId: string,
+      search: { channel?: string; threadRoot?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/tracking/$screen/$resourceId",
+          params: { screen, resourceId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -864,6 +903,8 @@ export function useAppNavigation() {
     goCompanyWorkStatus,
     goCompanyWorkVerify,
     goCompanyWorkArchive,
+    goCompanyWorkMove,
+    goCompanyWorkTracking,
     openSearchHit,
   };
 }

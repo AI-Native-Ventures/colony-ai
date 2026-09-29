@@ -42,6 +42,13 @@ const CompanyWorkArchiveScreen = React.lazy(async () => {
   return { default: module.CompanyWorkArchiveScreen };
 });
 
+const CompanyWorkMoveScreen = React.lazy(async () => {
+  const module = await import(
+    "@/features/company-work/ui/CompanyWorkMoveScreen"
+  );
+  return { default: module.CompanyWorkMoveScreen };
+});
+
 const screens = new Set([
   "detail",
   "edit",
@@ -49,6 +56,7 @@ const screens = new Set([
   "verify",
   "archive",
   "from-chat",
+  "move",
 ]);
 
 export const Route = createFileRoute("/work/$screen/$resourceId")({
@@ -92,6 +100,9 @@ function CompanyWorkActionRouteComponent() {
       break;
     case "archive":
       content = <CompanyWorkArchiveScreen workItemId={resourceId} />;
+      break;
+    case "move":
+      content = <CompanyWorkMoveScreen workItemId={resourceId} />;
       break;
     case "from-chat":
       fallback = "Loading work form";
