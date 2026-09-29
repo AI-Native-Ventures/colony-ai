@@ -676,6 +676,8 @@ pub struct HireProposal {
     pub role_pack: HireRolePack,
     /// Employee display name; uniqueness is checked again on completion.
     pub display_name: String,
+    /// Configured employee title, separate from the immutable role-pack title.
+    pub title: String,
     /// Optional direct manager selected from the current company team.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manager_pubkey: Option<String>,
@@ -683,8 +685,9 @@ pub struct HireProposal {
     pub introduction_channel_id: Uuid,
     /// Runtime identifier selected from the live worker menu.
     pub runtime_id: String,
-    /// Provider identifier selected from the live runtime catalog.
-    pub provider_id: String,
+    /// Optional provider identifier selected from the live provider catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
     /// Optional model identifier from the dynamic provider catalog.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
@@ -861,8 +864,15 @@ pub fn validate_hire_proposal(proposal: &HireProposal) -> Result<(), CompanyReco
         MAX_TITLE_CHARS,
         "employee displayName is required",
     )?;
+    require_text(
+        &proposal.title,
+        MAX_TITLE_CHARS,
+        "employee title is required",
+    )?;
     require_text(&proposal.runtime_id, 120, "runtimeId is required")?;
-    require_text(&proposal.provider_id, 120, "providerId is required")?;
+    if let Some(provider_id) = proposal.provider_id.as_deref() {
+        require_text(provider_id, 120, "providerId must not be empty")?;
+    }
     if let Some(model_id) = proposal.model_id.as_deref() {
         require_text(model_id, 180, "modelId must not be empty")?;
     }
@@ -2316,10 +2326,11 @@ mod tests {
                 default_allowance: None,
             },
             display_name: "Social Media Manager".into(),
+            title: "Social Media Manager".into(),
             manager_pubkey: Some(PK_A.into()),
             introduction_channel_id: Uuid::from_u128(43),
             runtime_id: "runtime-available".into(),
-            provider_id: "provider-current".into(),
+            provider_id: Some("provider-current".into()),
             model_id: Some("model-current".into()),
             weekly_allowance: None,
         }
@@ -2479,6 +2490,19 @@ mod tests {
             reason: None,
         };
         assert!(validate_hire_action(&create).is_ok());
+
+        let mut no_provider = create.clone();
+        no_provider.proposal.as_mut().expect("proposal").provider_id = None;
+        assert!(validate_hire_action(&no_provider).is_ok());
+
+        let mut missing_title = create.clone();
+        missing_title
+            .proposal
+            .as_mut()
+            .expect("proposal")
+            .title
+            .clear();
+        assert!(validate_hire_action(&missing_title).is_err());
 
         let mut unavailable_runtime = create.clone();
         unavailable_runtime

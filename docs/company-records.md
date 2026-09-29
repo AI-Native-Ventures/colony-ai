@@ -476,7 +476,8 @@ entries without `companyRole` metadata are not presented as hire role packs.
 
 The hire head is community-wide at `company:hire:<hire-uuid>`. Its content
 contains `schemaVersion`, `hireId`, the immutable role-pack coordinate and
-metadata snapshot, the configured employee name and title, reporting manager,
+metadata snapshot, the configured employee name and title (separate from the
+role-pack title), reporting manager,
 home channel, selected runtime/provider/model, configured allowance and period,
 founder approver, optional ask coordinate, optional employee pubkey, optional
 introduction event id, status (`proposed`, `awaiting_founder`, `approved`,

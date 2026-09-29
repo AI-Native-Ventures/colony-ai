@@ -236,6 +236,7 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
       workerMenu: ["runtime-discovered"],
     },
     displayName: "Imani",
+    title: "Researcher",
     managerPubkey: "f".repeat(64),
     introductionChannelId: CHANNEL_ID,
     runtimeId: "runtime-discovered",
@@ -260,6 +261,13 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
     RELAY_PUBKEY,
   );
   assert.equal(decoded?.head.ask.hireProposal?.managerPubkey, "f".repeat(64));
+
+  delete proposal.providerId;
+  const providerless = decodeRelayAskHead(
+    signHead({ content: makeHireContent() }),
+    RELAY_PUBKEY,
+  );
+  assert.equal(providerless?.head.ask.hireProposal?.providerId, undefined);
 
   proposal.managerPubkey = "not-a-pubkey";
   assert.throws(

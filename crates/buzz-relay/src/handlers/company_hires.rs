@@ -275,7 +275,7 @@ pub(super) async fn handle(
                 .ok_or_else(|| invalid("complete needs employeePubkey"))?,
             action: MemberPositionActionKind::SetPosition,
             expected_head_event_id: None,
-            title: Some(next.proposal.role_pack.title.clone()),
+            title: Some(next.proposal.title.clone()),
             manager_pubkey: Some(next.proposal.manager_pubkey.clone()),
             reason: None,
         })

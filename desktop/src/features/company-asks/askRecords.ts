@@ -46,10 +46,11 @@ export type HireProposal = {
     defaultAllowance?: string;
   };
   displayName: string;
+  title: string;
   managerPubkey?: string;
   introductionChannelId: string;
   runtimeId: string;
-  providerId: string;
+  providerId?: string;
   modelId?: string;
   weeklyAllowance?: string;
 };
@@ -205,6 +206,7 @@ function parseHireProposal(value: unknown): HireProposal | null {
     "hireId",
     "rolePack",
     "displayName",
+    "title",
     "managerPubkey",
     "introductionChannelId",
     "runtimeId",
@@ -252,11 +254,15 @@ function parseHireProposal(value: unknown): HireProposal | null {
     !uniqueWorkerMenu ||
     typeof proposal.displayName !== "string" ||
     !proposal.displayName.trim() ||
+    typeof proposal.title !== "string" ||
+    !proposal.title.trim() ||
     !validManagerPubkey ||
     typeof proposal.introductionChannelId !== "string" ||
     typeof proposal.runtimeId !== "string" ||
     !rolePack.workerMenu.includes(proposal.runtimeId) ||
-    typeof proposal.providerId !== "string" ||
+    (proposal.providerId !== undefined &&
+      (typeof proposal.providerId !== "string" ||
+        !proposal.providerId.trim())) ||
     (proposal.modelId !== undefined && typeof proposal.modelId !== "string") ||
     !allowanceValid(rolePack.defaultAllowance) ||
     !allowanceValid(proposal.weeklyAllowance)
