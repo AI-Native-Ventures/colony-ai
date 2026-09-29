@@ -648,7 +648,7 @@ test.describe("signed-in canary company UI", () => {
       .first();
     await expect(askSourceRow).toBeVisible();
     await askSourceRow.hover();
-    await page.getByTestId(`more-actions-${account.rootId}`).click();
+    await askSourceRow.getByTestId(`more-actions-${account.rootId}`).click();
     await page.getByTestId(`raise-ask-message-${account.rootId}`).click();
     await expect(
       page.getByRole("heading", { name: "Raise an ask" }),
@@ -868,10 +868,15 @@ test.describe("signed-in canary company UI", () => {
       const sourceText = `Canary work source ${randomUUID().slice(0, 8)} buzz://goal/${goalId}`;
       await waitForCanaryWriteWindow(page);
       const sourceId = await createMessage(page, sourceText);
+      const sourceRow = page
+        .getByTestId("message-timeline")
+        .locator(`[data-message-id="${sourceId}"]`)
+        .first();
+      await expect(sourceRow).toBeVisible();
       await expect(
-        page.getByTestId(`create-company-work-from-message-${sourceId}`),
+        sourceRow.getByTestId(`create-company-work-from-message-${sourceId}`),
       ).toBeVisible();
-      await page
+      await sourceRow
         .getByTestId(`create-company-work-from-message-${sourceId}`)
         .click();
       await expect(page.getByTestId("company-work-form")).toBeVisible();
@@ -1161,7 +1166,7 @@ test.describe("signed-in canary company UI", () => {
           .toBeGreaterThan(0);
         await assertAskCardsSettle(page);
         await sourceRow.hover();
-        const createWorkButton = page.getByTestId(
+        const createWorkButton = sourceRow.getByTestId(
           `create-company-work-from-message-${account.rootId}`,
         );
         if ((await createWorkButton.count()) === 0) {
