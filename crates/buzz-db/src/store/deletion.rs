@@ -62,6 +62,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "channel_members",
     "channels",
     "community_bans",
+    "company_work_watchdog_deliveries",
     "delivery_log",
     "event_mentions",
     "events",
@@ -99,6 +100,7 @@ pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "subscriptions",
     "api_tokens",
     "business_proposal_conversion_claims",
+    "company_work_watchdog_deliveries",
     "channel_members",
     "thread_metadata",
     "moderation_actions",
@@ -3249,6 +3251,20 @@ mod tests {
             .position(|table| *table == "workflow_runs")
             .expect("workflow run table is purged");
         assert!(wait_index < run_index);
+    }
+
+    #[test]
+    fn company_work_watchdog_deliveries_are_inventoried_and_purged_before_channels() {
+        assert!(EXPECTED_SCOPED_TABLES.contains(&"company_work_watchdog_deliveries"));
+        let deliveries_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "company_work_watchdog_deliveries")
+            .expect("watchdog delivery table is purged");
+        let channels_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "channels")
+            .expect("channel table is purged");
+        assert!(deliveries_index < channels_index);
     }
 
     #[test]
