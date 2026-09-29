@@ -212,6 +212,8 @@ type MockBridgeOptions = {
   factoryProjects?: MockFactoryProjectSeed[];
   /** Native-like Factory runtime state for focused Factory E2E coverage. */
   factoryRuns?: MockFactoryRunSeed[];
+  /** Signed Factory run heads for Preview and Review pane coverage. */
+  factoryRunRecordEvents?: RelayEvent[];
   /** Run ids whose snapshot reads fail, exercising reconnect states. */
   factorySnapshotFailureRunIds?: string[];
   /** Local checkout paths returned by the E2E filesystem boundary. */

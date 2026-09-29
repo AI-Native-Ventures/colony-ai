@@ -2513,7 +2513,7 @@ mod tests {
             id: proposal.hire_id.to_string(),
         });
         resolved_ask.hire_proposal = Some(proposal);
-        let mut approved = response(AskOutcome::Approved);
+        let approved = response(AskOutcome::Approved);
         assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
         let mut rejected = response(AskOutcome::Rejected);
         assert!(validate_ask_response(&resolved_ask, &rejected).is_ok());

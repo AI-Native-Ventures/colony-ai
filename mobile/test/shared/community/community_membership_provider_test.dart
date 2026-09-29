@@ -9,6 +9,8 @@ void main() {
       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
   const member =
       'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+  const bot =
+      'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
 
   test('parses Buzz and legacy membership tags with roles', () {
     final snapshot = communityMembershipFromEvents([
@@ -18,6 +20,7 @@ void main() {
           ['member', owner, 'owner'],
           ['member', admin.toUpperCase(), 'admin'],
           ['p', member, 'wss://relay.example.com', 'member'],
+          ['member', bot, 'bot'],
           ['member', 'not-a-pubkey', 'owner'],
           ['member', owner, 'member'],
         ],
@@ -25,11 +28,15 @@ void main() {
     ]);
 
     expect(snapshot.snapshotFound, isTrue);
-    expect(snapshot.members, hasLength(3));
+    expect(snapshot.members, hasLength(4));
     expect(snapshot.roleFor(owner), CommunityMemberRole.owner);
     expect(snapshot.roleFor(admin), CommunityMemberRole.admin);
     expect(snapshot.roleFor(member), CommunityMemberRole.member);
-    expect(snapshot.pubkeys, {owner, admin, member});
+    expect(snapshot.pubkeys, {owner, admin, member, bot});
+    expect(
+      snapshot.members.singleWhere((entry) => entry.pubkey == bot).isBot,
+      isTrue,
+    );
   });
 
   test('uses the latest membership snapshot', () {
