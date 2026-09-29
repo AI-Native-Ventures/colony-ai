@@ -241,6 +241,12 @@ async fn factory_run_records_validate_state_and_enforce_owner_or_admin_authority
 
     let mut stale_update = report_failure.clone();
     stale_update.expected_head_event_id = Some(starting_id);
+    stale_update.preview = Some(FactoryPreviewState::Failed {
+        command: "pnpm dev".to_owned(),
+        local_url: "http://127.0.0.1:4100".to_owned(),
+        reason: "A stale failure report".to_owned(),
+        startup_output: Some("Superseded report".to_owned()),
+    });
     assert_rejected(&submit_action(&owner, &stale_update).await);
 
     let mut link = action(
