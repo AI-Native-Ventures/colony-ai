@@ -3797,6 +3797,8 @@ const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
 const mockCompanyMemberPositionEvents: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-events-v1";
 const mockCompanyToolPermissionHeads: RelayEvent[] = [];
 const mockAskActionIds = new Set<string>();
 const mockCompanySecretBindingHeads: RelayEvent[] = [];
@@ -6216,7 +6218,7 @@ function acceptMockMemberPositionAction(
   }
   mockCompanyMemberPositionEvents.push(nextEvent);
   window.localStorage.setItem(
-    "buzz-e2e-company-member-position-events-v1",
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
   );
   emitMockGlobalEvent(nextEvent);
@@ -15341,10 +15343,19 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyAskHeads.length,
     ...(config.mock?.companyAskHeads ?? []),
   );
+  const storedMemberPositionEvents = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+  );
+  const memberPositionEvents = storedMemberPositionEvents
+    ? (JSON.parse(storedMemberPositionEvents) as RelayEvent[])
+    : (config.mock?.companyMemberPositionEvents ?? []);
+  if (!Array.isArray(memberPositionEvents)) {
+    throw new Error("Stored mock member position events must be an array.");
+  }
   mockCompanyMemberPositionEvents.splice(
     0,
     mockCompanyMemberPositionEvents.length,
-    ...(config.mock?.companyMemberPositionEvents ?? []),
+    ...memberPositionEvents,
   );
   mockCompanyToolPermissionHeads.splice(
     0,

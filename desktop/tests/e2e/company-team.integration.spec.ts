@@ -59,11 +59,8 @@ test("Team keeps the relay-signed position after reload in the integration proje
   );
 
   await page.reload();
-  await expect(page.getByTestId("company-team-screen")).toBeVisible({
-    timeout: 20_000,
-  });
-  await page.getByTestId(`company-team-member-${alicePubkey}`).click();
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Customer Success Lead",
+    { timeout: 20_000 },
   );
 });
