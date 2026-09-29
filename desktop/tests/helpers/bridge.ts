@@ -258,6 +258,12 @@ type MockBridgeOptions = {
   companyMemberRelayPrivateKeyHex?: string;
   /** Reject successive member-position writes in order, then accept them. */
   companyMemberActionErrors?: string[];
+  /** Relay-signed employee configuration actions for history E2E coverage. */
+  companyEmployeeRevisionActions?: RelayEvent[];
+  /** Relay-signed current employee history heads for history E2E coverage. */
+  companyEmployeeRevisionHeads?: RelayEvent[];
+  /** Reject employee history action publishes in order, then accept them. */
+  companyEmployeeRevisionActionErrors?: string[];
   /** Relay-signed company work events for company work UI E2E coverage. */
   companyWorkEvents?: RelayEvent[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */

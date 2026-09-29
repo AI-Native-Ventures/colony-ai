@@ -26,6 +26,8 @@ import {
   useMemberPositionActionMutation,
 } from "../teamRelay";
 import type { MemberPositionActionKind, TeamMember } from "../teamModels";
+import type { CompanyTeamData } from "../teamRelay";
+import { EmployeeProfileScreen } from "./EmployeeProfileScreen";
 
 export type TeamMemberScreenMode = "detail" | "edit" | "pause" | "archive";
 
@@ -52,7 +54,7 @@ export function TeamMemberScreen({
 }) {
   const teamQuery = useCompanyTeamQuery();
   const identity = useIdentityQuery();
-  const { goAgentProfile, goTeam, goTeamEdit, goTeamMember } =
+  const { goTeam, goTeamArchive, goTeamEdit, goTeamMember, goTeamPause } =
     useAppNavigation();
   const mutation = useMemberPositionActionMutation();
   const member = teamQuery.data?.members.find(
@@ -128,16 +130,6 @@ export function TeamMemberScreen({
     setManagerInput(managerPubkey);
   }, [managerPubkey, member, mode, title]);
 
-  React.useEffect(() => {
-    if (
-      mode === "detail" &&
-      member?.kind === "employee" &&
-      member.managedAgent
-    ) {
-      void goAgentProfile(member.pubkey, { replace: true });
-    }
-  }, [goAgentProfile, member, mode]);
-
   const managedAgentsQuery = useManagedAgentsQuery({
     enabled: mode === "pause" || mode === "archive",
   });
@@ -167,20 +159,6 @@ export function TeamMemberScreen({
       <AppError>This member is not available in the active community.</AppError>
     );
   }
-  if (member.kind === "employee" && mode === "detail") {
-    return member.managedAgent ? (
-      <p
-        aria-live="polite"
-        className="py-12 text-center text-sm text-muted-foreground"
-      >
-        Opening employee profile
-      </p>
-    ) : (
-      <AppError>
-        The existing agent profile is unavailable on this device.
-      </AppError>
-    );
-  }
   if (!canManage && mode !== "detail") {
     return (
       <AppError>
@@ -195,6 +173,22 @@ export function TeamMemberScreen({
   const back = () =>
     void (mode === "detail" ? goTeam() : goTeamMember(member.pubkey));
   const currentMember = member;
+  if (member.kind === "employee" && mode === "detail") {
+    return (
+      <EmployeeProfileScreen
+        canManage={canManage}
+        fullName={fullName}
+        member={member}
+        onBack={() => void goTeam()}
+        onEditPosition={() => void goTeamEdit(member.pubkey)}
+        onOpenMember={(pubkey) => void goTeamMember(pubkey)}
+        onPause={() => void goTeamPause(member.pubkey)}
+        onTerminate={() => void goTeamArchive(member.pubkey)}
+        profiles={allProfiles}
+        teamData={teamQuery.data as CompanyTeamData}
+      />
+    );
+  }
   const pageTitle =
     mode === "edit"
       ? "Edit role and reporting"
@@ -290,16 +284,6 @@ export function TeamMemberScreen({
   }
 
   if (mode === "detail") {
-    if (member.kind === "employee") {
-      return (
-        <p
-          aria-live="polite"
-          className="py-12 text-center text-sm text-muted-foreground"
-        >
-          Opening employee profile
-        </p>
-      );
-    }
     const status = statusLabel(member);
     return (
       <main

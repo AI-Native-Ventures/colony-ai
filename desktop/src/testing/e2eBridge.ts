@@ -136,6 +136,8 @@ import {
   KIND_MEMBER_ADDED_NOTIFICATION,
   KIND_MEMBER_POSITION_ACTION,
   KIND_MEMBER_POSITION_HEAD,
+  KIND_EMPLOYEE_REVISION_ACTION,
+  KIND_EMPLOYEE_REVISION_HEAD,
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_PAYMENT,
   KIND_PERSONA,
@@ -727,6 +729,12 @@ type E2eConfig = {
     companyMemberRelayPrivateKeyHex?: string;
     /** Reject successive member-position writes in order, then accept them. */
     companyMemberActionErrors?: string[];
+    /** Relay-signed employee configuration actions for history E2E coverage. */
+    companyEmployeeRevisionActions?: RelayEvent[];
+    /** Relay-signed current employee history heads for history E2E coverage. */
+    companyEmployeeRevisionHeads?: RelayEvent[];
+    /** Reject employee history action publishes in order, then accept them. */
+    companyEmployeeRevisionActionErrors?: string[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -3875,6 +3883,12 @@ const mockCompanyHireHeads: RelayEvent[] = [];
 const mockCompanyMemberPositionEvents: RelayEvent[] = [];
 const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
   "buzz-e2e-company-member-position-events-v1";
+const mockCompanyEmployeeRevisionActions: RelayEvent[] = [];
+const MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY =
+  "buzz-e2e-company-employee-revision-actions-v1";
+const mockCompanyEmployeeRevisionHeads: RelayEvent[] = [];
+const MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY =
+  "buzz-e2e-company-employee-revision-heads-v1";
 const mockCompanyToolPermissionHeads: RelayEvent[] = [];
 const mockAskActionIds = new Set<string>();
 const mockCompanySecretBindingHeads: RelayEvent[] = [];
@@ -6069,6 +6083,245 @@ function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 500);
+}
+
+function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  const events = [
+    ...mockCompanyEmployeeRevisionActions,
+    ...mockCompanyEmployeeRevisionHeads,
+  ];
+  return events
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !event.tags.some((tag) => tag[0] === "p" && pTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+function acceptMockEmployeeRevisionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError =
+    config?.mock?.companyEmployeeRevisionActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+  if (event.kind !== KIND_EMPLOYEE_REVISION_ACTION || !verifyEvent(event)) {
+    reject("invalid: employee revision signature or kind is invalid.");
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  if (event.tags.length !== 2 || dTags.length !== 1 || pTags.length !== 1) {
+    reject("invalid: employee revision needs one d tag and one p tag.");
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    employeePubkey?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    previousRevisionEventId?: string;
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+    undoOfEventId?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: employee revision action is not JSON.");
+    return;
+  }
+  const employeePubkey = action.employeePubkey?.toLowerCase();
+  const dTag = dTags[0]?.[1];
+  if (
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTag !== `company:employee-history:${employeePubkey}` ||
+    pTags[0]?.[1]?.toLowerCase() !== employeePubkey ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey) ||
+    !action.before ||
+    !action.after ||
+    JSON.stringify(action.before) === JSON.stringify(action.after)
+  ) {
+    reject("invalid: employee revision action does not match its tags.");
+    return;
+  }
+  const employeePosition = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${employeePubkey}`,
+    ),
+  );
+  let employee: Record<string, unknown> | null = null;
+  try {
+    employee = employeePosition
+      ? (JSON.parse(employeePosition.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock employee position is invalid.");
+    return;
+  }
+  if (employee?.kind !== "employee") {
+    reject("invalid: target is not a company employee.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  const actorPositionEvent = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${event.pubkey}`,
+    ),
+  );
+  let actorPosition: Record<string, unknown> | null = null;
+  try {
+    actorPosition = actorPositionEvent
+      ? (JSON.parse(actorPositionEvent.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock manager position is invalid.");
+    return;
+  }
+  const isOwnerOrAdmin = actor?.role === "owner" || actor?.role === "admin";
+  const isDirectManager =
+    actorPosition?.kind === "human" &&
+    actorPosition.status === "active" &&
+    typeof employee.managerPubkey === "string" &&
+    employee.managerPubkey.toLowerCase() === event.pubkey.toLowerCase();
+  if (!isOwnerOrAdmin && !isDirectManager) {
+    reject("restricted: actor cannot change employee history.");
+    return;
+  }
+  const currentHead = mockCompanyEmployeeRevisionHeads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  let parsedHead: Record<string, unknown> | null = null;
+  try {
+    parsedHead = currentHead
+      ? (JSON.parse(currentHead.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock employee history head is invalid.");
+    return;
+  }
+  if (
+    currentHead?.id !== action.expectedHeadEventId ||
+    (parsedHead?.revisionEventId ?? undefined) !==
+      action.previousRevisionEventId ||
+    (currentHead !== undefined &&
+      JSON.stringify(parsedHead?.snapshot ?? {}) !==
+        JSON.stringify(action.before))
+  ) {
+    reject("conflict: employee history changed; refresh and retry.");
+    return;
+  }
+  if (action.action === "undo") {
+    const target = mockCompanyEmployeeRevisionActions.find(
+      (candidate) => candidate.id === action.undoOfEventId,
+    );
+    let targetAction: { before?: Record<string, unknown> } | null = null;
+    try {
+      targetAction = target
+        ? (JSON.parse(target.content) as { before?: Record<string, unknown> })
+        : null;
+    } catch {
+      reject("error: stored mock employee revision is invalid.");
+      return;
+    }
+    if (
+      !targetAction ||
+      JSON.stringify(targetAction.before ?? {}) !== JSON.stringify(action.after)
+    ) {
+      reject(
+        "invalid: undo must restore the selected revision's prior values.",
+      );
+      return;
+    }
+  } else if (action.action !== "record" || action.undoOfEventId !== undefined) {
+    reject("invalid: unsupported employee revision action.");
+    return;
+  }
+  const privateKeyHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("error: mock relay signer is not configured for employee history.");
+    return;
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("error: mock employee history signer does not match relay self.");
+    return;
+  }
+  const headContent = {
+    schemaVersion: 1,
+    employeePubkey,
+    revisionEventId: event.id,
+    ...(action.previousRevisionEventId
+      ? { previousRevisionEventId: action.previousRevisionEventId }
+      : {}),
+    snapshot: action.after,
+    actorPubkey: event.pubkey,
+    updatedAt: new Date().toISOString(),
+    sourceActionEventId: event.id,
+  };
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_EMPLOYEE_REVISION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentHead?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag ?? ""]],
+      content: JSON.stringify(headContent),
+    },
+    relaySecret,
+  );
+  mockCompanyEmployeeRevisionActions.push(event);
+  if (currentHead) {
+    const index = mockCompanyEmployeeRevisionHeads.findIndex(
+      (candidate) => candidate.id === currentHead.id,
+    );
+    if (index >= 0) mockCompanyEmployeeRevisionHeads.splice(index, 1);
+  }
+  mockCompanyEmployeeRevisionHeads.push(headEvent);
+  window.localStorage.setItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
+    JSON.stringify(mockCompanyEmployeeRevisionActions),
+  );
+  window.localStorage.setItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyEmployeeRevisionHeads),
+  );
+  emitMockGlobalEvent(headEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function acceptMockMemberPositionAction(
@@ -15342,6 +15595,17 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (
+      filter.kinds?.includes(KIND_EMPLOYEE_REVISION_ACTION) ||
+      filter.kinds?.includes(KIND_EMPLOYEE_REVISION_HEAD)
+    ) {
+      for (const event of filterMockEmployeeRevisionEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_SECRET_BINDING_HEAD)) {
       for (const event of filterMockCompanySecretBindingHeads(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -15475,6 +15739,10 @@ function sendToMockSocket(args: {
 
     if (event.kind === KIND_MEMBER_POSITION_ACTION) {
       acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_EMPLOYEE_REVISION_ACTION) {
+      acceptMockEmployeeRevisionAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_SECRET_BINDING_ACTION) {
@@ -15820,6 +16088,34 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyMemberPositionEvents.length,
     ...memberPositionEvents,
+  );
+  const storedEmployeeRevisionActions = window.localStorage.getItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
+  );
+  const employeeRevisionActions = storedEmployeeRevisionActions
+    ? (JSON.parse(storedEmployeeRevisionActions) as RelayEvent[])
+    : (config.mock?.companyEmployeeRevisionActions ?? []);
+  if (!Array.isArray(employeeRevisionActions)) {
+    throw new Error("Stored mock employee revision actions must be an array.");
+  }
+  mockCompanyEmployeeRevisionActions.splice(
+    0,
+    mockCompanyEmployeeRevisionActions.length,
+    ...employeeRevisionActions,
+  );
+  const storedEmployeeRevisionHeads = window.localStorage.getItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY,
+  );
+  const employeeRevisionHeads = storedEmployeeRevisionHeads
+    ? (JSON.parse(storedEmployeeRevisionHeads) as RelayEvent[])
+    : (config.mock?.companyEmployeeRevisionHeads ?? []);
+  if (!Array.isArray(employeeRevisionHeads)) {
+    throw new Error("Stored mock employee revision heads must be an array.");
+  }
+  mockCompanyEmployeeRevisionHeads.splice(
+    0,
+    mockCompanyEmployeeRevisionHeads.length,
+    ...employeeRevisionHeads,
   );
   mockCompanyToolPermissionHeads.splice(
     0,

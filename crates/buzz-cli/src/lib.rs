@@ -431,6 +431,21 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+    /// Read the append-only configuration history for a company employee.
+    History {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+    },
+    /// Append a new revision restoring an earlier employee configuration.
+    Undo {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+        /// Immutable revision event to undo to its before snapshot.
+        #[arg(long)]
+        revision_event_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1376,6 +1391,54 @@ pub enum WorkCmd {
     },
     /// Clear a company work due date
     ClearDueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Propose a persisted commitment suggestion from a source message
+    Suggest {
+        /// Source conversation channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Stable suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// CompanyWorkSuggestionInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Accept a persisted suggestion and create the named work item
+    AcceptSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// New work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Dismiss a persisted commitment suggestion
+    DismissSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Explicitly expire a persisted suggestion after its saved expiry
+    ExpireSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Enable or update watchdog settings from an explicit config JSON value
+    Watchdog {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// CompanyWorkWatchdogConfig JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Turn off saved watchdog settings for a work item
+    WatchdogOff {
         /// Work-item UUID
         #[arg(long)]
         work: String,
@@ -3140,7 +3203,9 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
-                "unarchive"
+                "history",
+                "unarchive",
+                "undo"
             ]
         );
         assert_eq!(
@@ -3213,16 +3278,22 @@ mod tests {
         assert_eq!(
             names(&cmd, "work"),
             vec![
+                "accept-suggestion",
                 "archive",
                 "clear-due-date",
                 "create",
+                "dismiss-suggestion",
                 "due-date",
+                "expire-suggestion",
                 "get",
                 "list",
                 "restore",
                 "status",
+                "suggest",
                 "update",
-                "verify"
+                "verify",
+                "watchdog",
+                "watchdog-off"
             ]
         );
         assert_eq!(
@@ -3315,12 +3386,13 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 7),
             ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),
             ("emoji", 5),
+            ("factory", 4),
             ("feed", 1),
             ("goals", 9),
             ("issues", 6),
@@ -3337,7 +3409,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("work", 10),
+            ("work", 16),
             ("workflows", 8),
         ];
 

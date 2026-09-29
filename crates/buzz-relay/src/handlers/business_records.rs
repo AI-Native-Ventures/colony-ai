@@ -120,6 +120,9 @@ pub async fn handle(
     event: Event,
     auth: IngestAuth,
 ) -> Result<IngestResult, IngestError> {
+    if event.kind.as_u16() as u32 == KIND_COMPANY_WORK_TRACKING_ACTION {
+        return super::company_work_tracking::handle(tenant, state, event, auth).await;
+    }
     let (channel_id, d_tag) = command_coordinates(&event)?;
     let kind = event.kind.as_u16() as u32;
     let command = parse_business_command(kind, &event.content)
@@ -1501,7 +1504,10 @@ fn initializes_business_channel(command: &BusinessCommand) -> bool {
     )
 }
 
-fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<(), IngestError> {
+pub(super) fn require_token_channel_scope(
+    auth: &IngestAuth,
+    channel_id: Uuid,
+) -> Result<(), IngestError> {
     if auth
         .channel_ids()
         .is_some_and(|channel_ids| !channel_ids.contains(&channel_id))
@@ -2383,7 +2389,7 @@ async fn get_private_stream_channel(
     Ok(channel)
 }
 
-async fn get_company_work_stream_channel(
+pub(super) async fn get_company_work_stream_channel(
     state: &AppState,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -2405,7 +2411,7 @@ async fn get_company_work_stream_channel(
     Ok(channel)
 }
 
-fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
+pub(super) fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     let h_tags = event
         .tags
         .iter()
@@ -2433,7 +2439,7 @@ fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     Ok((channel_id, d_parts[1].to_string()))
 }
 
-async fn current_head<T: DeserializeOwned>(
+pub(super) async fn current_head<T: DeserializeOwned>(
     state: &AppState,
     community_id: CommunityId,
     kind: u32,
@@ -2599,7 +2605,7 @@ fn relay_event<T: Serialize>(
     )
 }
 
-fn relay_head_event<T: Serialize>(
+pub(super) fn relay_head_event<T: Serialize>(
     kind: u32,
     channel_id: Uuid,
     d_tag: &str,
@@ -3390,6 +3396,23 @@ async fn handle_company_work_item_action(
             ));
         }
     }
+    let watchdog_head = if previous.as_ref().is_some_and(|previous| {
+        previous.status != next_head.status
+            || previous.thread_root_event_id != next_head.thread_root_event_id
+            || next_channel_id != channel_id
+    }) {
+        super::company_work_tracking::sync_watchdog_for_work_change(
+            &mut tx,
+            community_id,
+            channel_id,
+            next_channel_id,
+            &next_head,
+            state,
+        )
+        .await?
+    } else {
+        None
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -3401,6 +3424,17 @@ async fn handle_company_work_item_action(
         None,
     )
     .await;
+    if let Some(watchdog_head) = watchdog_head.as_ref() {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            watchdog_head,
+            KIND_COMPANY_WORK_TRACKING_HEAD,
+            &watchdog_head.event.pubkey.to_hex(),
+            None,
+        )
+        .await;
+    }
     super::event::dispatch_persistent_event(
         tenant,
         state,
@@ -3417,7 +3451,7 @@ async fn handle_company_work_item_action(
     })
 }
 
-async fn ensure_company_work_people_are_members(
+pub(super) async fn ensure_company_work_people_are_members(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -3474,7 +3508,7 @@ fn validate_work_due_after_acceptance(
     Ok(())
 }
 
-async fn require_company_work_channel_membership(
+pub(super) async fn require_company_work_channel_membership(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -4122,7 +4156,7 @@ fn is_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
-fn is_community_admin(role: &str) -> bool {
+pub(super) fn is_community_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
@@ -4152,19 +4186,19 @@ fn require_acceptor_channel_role(role: &str) -> Result<(), IngestError> {
     }
 }
 
-fn conflict(message: &str) -> IngestError {
+pub(super) fn conflict(message: &str) -> IngestError {
     IngestError::Rejected(format!("conflict: {message}"))
 }
 
-fn forbidden(message: &str) -> IngestError {
+pub(super) fn forbidden(message: &str) -> IngestError {
     IngestError::AuthFailed(format!("forbidden: {message}"))
 }
 
-fn invalid(message: impl Into<String>) -> IngestError {
+pub(super) fn invalid(message: impl Into<String>) -> IngestError {
     IngestError::Rejected(format!("invalid: {}", message.into()))
 }
 
-fn internal(error: impl std::fmt::Display) -> IngestError {
+pub(super) fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
 }
 

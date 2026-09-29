@@ -9,7 +9,7 @@ import {
 import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
-const OWNER_PUBKEY = "deadbeef".repeat(8);
+const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
 
@@ -51,9 +51,20 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   const workerPubkey = getPublicKey(generateSecretKey());
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
   const bobPubkey = TEST_IDENTITIES.bob.pubkey;
+  await page.addInitScript((identity) => {
+    window.localStorage.setItem(
+      "buzz:e2e-identity-override.v1",
+      JSON.stringify(identity),
+    );
+  }, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
     relaySelf,
     companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+    searchProfiles: [
+      { pubkey: OWNER_PUBKEY, displayName: "tyler" },
+      { pubkey: alicePubkey, displayName: "alice" },
+      { pubkey: bobPubkey, displayName: "bob" },
+    ],
     companyMemberPositionEvents: [
       positionHead({
         relaySecret,
@@ -100,6 +111,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
       {
         pubkey: employeePubkey,
         name: EMPLOYEE_NAME,
+        systemPrompt: "Existing employee instructions.",
         status: "running",
         channelNames: ["general"],
       },
@@ -164,10 +176,82 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
 
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
-  await expect(page.getByTestId("agent-profile")).toBeVisible();
+  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await expect(page.getByTestId("company-position-header")).toContainText(
+    `${EMPLOYEE_TITLE} · Employee · active`,
+  );
+  await expect(
+    page.getByTestId("company-position-header").getByRole("button", {
+      name: "Message",
+    }),
+  ).toBeVisible();
   await expect(
     page.getByTestId("company-employee-direct-reports"),
   ).toContainText("alice");
+
+  await page.getByRole("tab", { name: "Instructions" }).click();
+  await expect(page.getByTestId("employee-instructions")).toContainText(
+    "Existing employee instructions.",
+  );
+  await page.getByRole("button", { name: "Edit instructions" }).click();
+  await expect(
+    page.getByTestId("employee-instructions-editor").getByRole("heading", {
+      name: "Edit instructions",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("employee-instructions-editor").getByRole("button"),
+  ).toHaveText(["Save changes", "Cancel"]);
+  await page
+    .getByTestId("employee-system-instructions")
+    .fill("First revised employee instructions.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByTestId("employee-instructions")).toContainText(
+    "First revised employee instructions.",
+  );
+  await page.getByRole("button", { name: "Edit instructions" }).click();
+  await page
+    .getByTestId("employee-system-instructions")
+    .fill("Second revised employee instructions.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByTestId("employee-instructions")).toContainText(
+    "Second revised employee instructions.",
+  );
+
+  await page.getByRole("tab", { name: "Salary" }).click();
+  await expect(page.getByTestId("employee-unavailable-salary")).toContainText(
+    "Not available yet.",
+  );
+  await page.getByRole("tab", { name: "Workers" }).click();
+  await expect(page.getByTestId("employee-unavailable-workers")).toContainText(
+    "Not available yet.",
+  );
+  await page.getByRole("tab", { name: "Duties" }).click();
+  await expect(page.getByTestId("employee-unavailable-duties")).toContainText(
+    "Not available yet.",
+  );
+  await page.getByRole("tab", { name: "Lessons" }).click();
+  await expect(page.getByTestId("employee-lessons")).toContainText(
+    "Not available yet.",
+  );
+
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByTestId("employee-history")).toContainText(
+    "Configuration changed",
+  );
+  await page.reload();
+  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByTestId("employee-history")).toContainText(
+    "Second revised employee instructions.",
+  );
+  await page.getByRole("button", { name: "Review undo" }).click();
+  await page.getByRole("button", { name: "Restore these values" }).click();
+  await expect(page.getByTestId("employee-history")).toContainText(
+    "Configuration restored",
+  );
+
+  await page.getByRole("tab", { name: "Overview" }).click();
   await page.getByRole("button", { name: "Pause employee" }).click();
   await expect(page.getByTestId("company-team-pause-screen")).toBeVisible();
   await page.getByLabel("Reason").fill("Reviewing the October workload.");
@@ -183,7 +267,5 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("company-position-header")).toContainText(
     EMPLOYEE_TITLE,
   );
-  await expect(
-    page.getByTestId("agent-profile").getByText("Archived"),
-  ).toBeVisible();
+  await expect(page.getByTestId("company-terminated-banner")).toBeVisible();
 });

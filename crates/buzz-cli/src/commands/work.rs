@@ -3,7 +3,12 @@ use buzz_core::business_records::{
     CompanyWorkItemInput, CompanyWorkStatus, CompanyWorkVerdict, CompanyWorkVerificationInput,
     BUSINESS_RECORD_SCHEMA_VERSION,
 };
-use buzz_core::kind::KIND_WORK_ITEM_HEAD;
+use buzz_core::company_work_tracking::{
+    company_work_suggestion_d_tag, company_work_watchdog_d_tag, CompanyWorkSuggestionInput,
+    CompanyWorkTrackingAction, CompanyWorkTrackingActionKind, CompanyWorkTrackingHead,
+    CompanyWorkTrackingRecordType, CompanyWorkWatchdogConfig,
+};
+use buzz_core::kind::{KIND_COMPANY_WORK_TRACKING_HEAD, KIND_WORK_ITEM_HEAD};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use uuid::Uuid;
@@ -19,6 +24,11 @@ const COMPANY_WORK_QUERY_BOUND: u32 = 10_000;
 struct WorkHeadEvent {
     event: Value,
     head: CompanyWorkItemHead,
+    channel_id: Uuid,
+}
+
+struct TrackingHeadEvent {
+    event: Value,
     channel_id: Uuid,
 }
 
@@ -44,6 +54,23 @@ pub async fn dispatch(cmd: crate::WorkCmd, client: &BuzzClient) -> Result<(), Cl
         WorkCmd::Get { work } => cmd_get(client, &work).await,
         WorkCmd::DueDate { work, date } => cmd_due_date(client, &work, &date).await,
         WorkCmd::ClearDueDate { work } => cmd_clear_due_date(client, &work).await,
+        WorkCmd::Suggest {
+            channel,
+            suggestion,
+            record,
+        } => cmd_suggest(client, &channel, &suggestion, &record).await,
+        WorkCmd::AcceptSuggestion { suggestion, work } => {
+            cmd_accept_suggestion(client, &suggestion, &work).await
+        }
+        WorkCmd::DismissSuggestion { suggestion } => {
+            cmd_resolve_suggestion(client, &suggestion, CompanyWorkTrackingActionKind::Dismiss)
+                .await
+        }
+        WorkCmd::ExpireSuggestion { suggestion } => {
+            cmd_resolve_suggestion(client, &suggestion, CompanyWorkTrackingActionKind::Expire).await
+        }
+        WorkCmd::Watchdog { work, record } => cmd_watchdog(client, &work, &record).await,
+        WorkCmd::WatchdogOff { work } => cmd_watchdog_off(client, &work).await,
     }
 }
 
@@ -220,6 +247,269 @@ async fn cmd_clear_due_date(client: &BuzzClient, work_item_id: &str) -> Result<(
         due_at: None,
     };
     submit_action(client, current.channel_id, &action).await
+}
+
+async fn cmd_suggest(
+    client: &BuzzClient,
+    channel: &str,
+    suggestion_id: &str,
+    record_input: &str,
+) -> Result<(), CliError> {
+    let channel_id = parse_uuid(channel)?;
+    let suggestion_id = parse_uuid(suggestion_id)?;
+    let suggestion: CompanyWorkSuggestionInput = read_json(record_input, "work suggestion")?;
+    let action = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Propose,
+        record_id: suggestion_id,
+        expected_head_event_id: None,
+        suggestion: Some(suggestion),
+        accepted_work_item_id: None,
+        config: None,
+    };
+    submit_tracking_action(client, channel_id, &action).await
+}
+
+async fn cmd_accept_suggestion(
+    client: &BuzzClient,
+    suggestion_id: &str,
+    work_item_id: &str,
+) -> Result<(), CliError> {
+    let suggestion_id = parse_uuid(suggestion_id)?;
+    let work_item_id = parse_uuid(work_item_id)?;
+    let current = current_tracking_head(
+        client,
+        Uuid::nil(),
+        suggestion_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await?;
+    let action = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Accept,
+        record_id: suggestion_id,
+        expected_head_event_id: Some(event_id(&current.event)?),
+        suggestion: None,
+        accepted_work_item_id: Some(work_item_id),
+        config: None,
+    };
+    submit_tracking_action(client, current.channel_id, &action).await
+}
+
+async fn cmd_resolve_suggestion(
+    client: &BuzzClient,
+    suggestion_id: &str,
+    action_kind: CompanyWorkTrackingActionKind,
+) -> Result<(), CliError> {
+    let suggestion_id = parse_uuid(suggestion_id)?;
+    let current = current_tracking_head(
+        client,
+        Uuid::nil(),
+        suggestion_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await?;
+    let action = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: action_kind,
+        record_id: suggestion_id,
+        expected_head_event_id: Some(event_id(&current.event)?),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    submit_tracking_action(client, current.channel_id, &action).await
+}
+
+async fn cmd_watchdog(
+    client: &BuzzClient,
+    work_item_id: &str,
+    record_input: &str,
+) -> Result<(), CliError> {
+    let work_item_id = parse_uuid(work_item_id)?;
+    let config: CompanyWorkWatchdogConfig = read_json(record_input, "watchdog config")?;
+    let work = current_work_item(client, work_item_id).await?;
+    let current = query_tracking_head(
+        client,
+        work.channel_id,
+        work_item_id,
+        CompanyWorkTrackingRecordType::WatchdogConfiguration,
+    )
+    .await?;
+    let action = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Configure,
+        record_id: work_item_id,
+        expected_head_event_id: current
+            .as_ref()
+            .map(|head| event_id(&head.event))
+            .transpose()?,
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: Some(config),
+    };
+    submit_tracking_action(client, work.channel_id, &action).await
+}
+
+async fn cmd_watchdog_off(client: &BuzzClient, work_item_id: &str) -> Result<(), CliError> {
+    let work_item_id = parse_uuid(work_item_id)?;
+    let work = current_work_item(client, work_item_id).await?;
+    let current = current_tracking_head(
+        client,
+        work.channel_id,
+        work_item_id,
+        CompanyWorkTrackingRecordType::WatchdogConfiguration,
+    )
+    .await?;
+    let action = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Disable,
+        record_id: work_item_id,
+        expected_head_event_id: Some(event_id(&current.event)?),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    submit_tracking_action(client, work.channel_id, &action).await
+}
+
+async fn current_tracking_head(
+    client: &BuzzClient,
+    channel_id: Uuid,
+    record_id: Uuid,
+    record_type: CompanyWorkTrackingRecordType,
+) -> Result<TrackingHeadEvent, CliError> {
+    let current = query_tracking_head(client, channel_id, record_id, record_type).await?;
+    current.ok_or_else(|| {
+        CliError::NotFound(format!(
+            "company work tracking record {record_id} not found"
+        ))
+    })
+}
+
+async fn query_tracking_head(
+    client: &BuzzClient,
+    channel_id: Uuid,
+    record_id: Uuid,
+    record_type: CompanyWorkTrackingRecordType,
+) -> Result<Option<TrackingHeadEvent>, CliError> {
+    let nip11_raw = client.get_public("/").await.map_err(|error| {
+        CliError::Other(format!("failed to fetch relay info document: {error}"))
+    })?;
+    let nip11: Value = serde_json::from_str(&nip11_raw).map_err(|error| {
+        CliError::Other(format!("relay info document is not valid JSON: {error}"))
+    })?;
+    let relay_self = nip11
+        .get("self")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CliError::Other("relay info document missing 'self' field".into()))?;
+    let relay_self = normalize_relay_self_hex(relay_self)?;
+    let d_tag = match record_type {
+        CompanyWorkTrackingRecordType::CommitmentSuggestion => {
+            company_work_suggestion_d_tag(record_id)
+        }
+        CompanyWorkTrackingRecordType::WatchdogConfiguration => {
+            company_work_watchdog_d_tag(record_id)
+        }
+    };
+    let mut filter = serde_json::json!({
+        "kinds": [KIND_COMPANY_WORK_TRACKING_HEAD],
+        "authors": [relay_self],
+        "#d": [d_tag]
+    });
+    if !channel_id.is_nil() {
+        filter["#h"] = serde_json::json!([channel_id]);
+    }
+    let events = client.query_all_bounded(filter, 2).await?;
+    if events.len() > 1 {
+        return Err(CliError::Other(
+            "relay returned duplicate company work tracking heads".into(),
+        ));
+    }
+    events
+        .into_iter()
+        .next()
+        .map(|event| parse_tracking_head_event(event, &relay_self, &d_tag, record_id, record_type))
+        .transpose()
+}
+
+fn parse_tracking_head_event(
+    event: Value,
+    relay_self: &str,
+    expected_d_tag: &str,
+    record_id: Uuid,
+    record_type: CompanyWorkTrackingRecordType,
+) -> Result<TrackingHeadEvent, CliError> {
+    let signed_event: nostr::Event = serde_json::from_value(event.clone())
+        .map_err(|error| CliError::Other(format!("tracking head event is malformed: {error}")))?;
+    if signed_event.kind != nostr::Kind::Custom(KIND_COMPANY_WORK_TRACKING_HEAD as u16)
+        || signed_event.pubkey.to_hex() != relay_self
+    {
+        return Err(CliError::Other(
+            "tracking head kind or relay author is invalid".into(),
+        ));
+    }
+    signed_event
+        .verify()
+        .map_err(|error| CliError::Other(format!("tracking head signature is invalid: {error}")))?;
+    let d_tags = signed_event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "d")
+        .collect::<Vec<_>>();
+    let h_tags = signed_event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "h")
+        .collect::<Vec<_>>();
+    if d_tags.len() != 1
+        || h_tags.len() != 1
+        || signed_event
+            .tags
+            .iter()
+            .any(|tag| !matches!(tag.kind().to_string().as_str(), "d" | "h"))
+        || d_tags[0].content() != Some(expected_d_tag)
+    {
+        return Err(CliError::Other(
+            "tracking head coordinates are invalid".into(),
+        ));
+    }
+    let channel_id = h_tags[0]
+        .content()
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| CliError::Other("tracking head h tag is invalid".into()))?;
+    let head: CompanyWorkTrackingHead = serde_json::from_str(&signed_event.content)
+        .map_err(|error| CliError::Other(format!("tracking head content is invalid: {error}")))?;
+    match (&head, record_type) {
+        (
+            CompanyWorkTrackingHead::CommitmentSuggestion(suggestion),
+            CompanyWorkTrackingRecordType::CommitmentSuggestion,
+        ) if suggestion.suggestion_id == record_id => {}
+        (
+            CompanyWorkTrackingHead::WatchdogConfiguration(watchdog),
+            CompanyWorkTrackingRecordType::WatchdogConfiguration,
+        ) if watchdog.work_item_id == record_id => {}
+        _ => {
+            return Err(CliError::Other(
+                "tracking head content does not match its coordinate".into(),
+            ));
+        }
+    }
+    Ok(TrackingHeadEvent { event, channel_id })
+}
+
+async fn submit_tracking_action(
+    client: &BuzzClient,
+    channel_id: Uuid,
+    action: &CompanyWorkTrackingAction,
+) -> Result<(), CliError> {
+    let builder =
+        buzz_sdk::company_work_tracking::build_company_work_tracking_action(channel_id, action)
+            .map_err(sdk_err)?;
+    let event = client.sign_event(builder)?;
+    let response = client.submit_event(event).await?;
+    println!("{}", normalize_write_response(&response));
+    Ok(())
 }
 
 async fn cmd_list(
