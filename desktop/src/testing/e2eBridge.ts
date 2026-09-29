@@ -5130,6 +5130,9 @@ let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
   const config = getConfig();
+  const relayAgentsByPubkey = new Map(
+    mockRelayAgents.map((relayAgent) => [relayAgent.pubkey, relayAgent]),
+  );
   const baseAgents = mockRelayAgents.filter(
     (agent) =>
       !mockManagedAgents.some((managed) => managed.pubkey === agent.pubkey),
@@ -5137,11 +5140,13 @@ function syncMockRelayAgentsFromManagedAgents() {
   const managedAgentsAsRelay: RawRelayAgent[] = mockManagedAgents.map(
     (agent) => {
       const memberships = getManagedAgentRelayMembership(agent.pubkey, config);
+      const relayAgent = relayAgentsByPubkey.get(agent.pubkey);
 
       return {
         pubkey: agent.pubkey,
+        owner_pubkey: relayAgent?.owner_pubkey ?? null,
         name: agent.name,
-        agent_type: agent.agent_command,
+        agent_type: relayAgent?.agent_type ?? agent.agent_command,
         channels: memberships.channels,
         channel_ids: memberships.channelIds,
         capabilities: ["messages", "channels", "mcp"],
