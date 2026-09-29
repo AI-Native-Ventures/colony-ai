@@ -194,8 +194,11 @@ mod tests {
             "status": "pending"
         })
         .to_string();
+        let event_json = event
+            .try_as_json()
+            .expect("serialize signed test event for output inspection");
         let captured_outputs = [
-            event.as_json(),
+            event_json,
             event.content.clone(),
             error,
             cli_output,
