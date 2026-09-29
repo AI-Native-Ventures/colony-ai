@@ -30,7 +30,7 @@ use crate::state::AppState;
 
 const MAX_CURRENT_MEMBER_HEADS: i64 = 10_000;
 
-/// Handles a member-signed company position action (kind 47035).
+/// Handles a member-signed company position action (kind 47037).
 #[datastore_span(name = "company_member_position_action", system = "postgresql")]
 pub(super) async fn handle(
     tenant: &TenantContext,

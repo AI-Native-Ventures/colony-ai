@@ -349,7 +349,11 @@ export function TodayScreen({
 
   const openAsk = React.useCallback(
     (record: AskHeadRecord) => {
-      void goAskDetail(record.channelId, record.head.askId);
+      void goAskDetail(
+        record.channelId,
+        record.head.askId,
+        record.head.ask.type === "tool_consent",
+      );
     },
     [goAskDetail],
   );

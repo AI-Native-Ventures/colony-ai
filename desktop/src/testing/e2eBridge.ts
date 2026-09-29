@@ -103,6 +103,8 @@ import {
   KIND_ASK_ACTION,
   KIND_ASK_HEAD,
   KIND_ASK_RESPONSE,
+  KIND_TOOL_PERMISSION_ACTION,
+  KIND_TOOL_PERMISSION_HEAD,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
   KIND_CLIENT_ACTION,
@@ -700,6 +702,8 @@ type E2eConfig = {
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
     companyAskRelayPrivateKeyHex?: string;
+    /** Relay-signed standing permission heads used by company permission E2E. */
+    companyToolPermissionHeads?: RelayEvent[];
     /** Reject these ask response publishes in order, then accept them. */
     askResponseErrors?: string[];
     /** Reject these ask create publishes in order, then accept them. */
@@ -1324,6 +1328,7 @@ type MockFilter = {
   "#e"?: string[];
   "#h"?: string[];
   "#p"?: string[];
+  "#t"?: string[];
   authors?: string[];
   before_id?: string;
   ids?: string[];
@@ -1613,6 +1618,10 @@ declare global {
       content: string;
       kind: number;
       tags: string[][];
+    }>;
+    __BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__?: Array<{
+      action: string;
+      permissionId: string;
     }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
@@ -3778,6 +3787,7 @@ const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
 const mockCompanyMemberPositionEvents: RelayEvent[] = [];
+const mockCompanyToolPermissionHeads: RelayEvent[] = [];
 const mockAskActionIds = new Set<string>();
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
@@ -5861,6 +5871,7 @@ function prependMockHistory(input: {
 function filterMockCompanyAskHeads(filter: MockFilter) {
   const channelIds = filter["#h"];
   const dTags = filter["#d"];
+  const tTags = filter["#t"];
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const ids = filter.ids;
 
@@ -5875,6 +5886,14 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
       if (
         dTags &&
         !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        tTags &&
+        !tTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "t" && tag[1] === value),
+        )
       ) {
         return false;
       }
@@ -6192,6 +6211,62 @@ function acceptMockMemberPositionAction(
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
+function filterMockCompanyToolPermissionHeads(filter: MockFilter) {
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+  return mockCompanyToolPermissionHeads
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (
+        dTags &&
+        !dTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === value),
+        )
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !pTags.some((value) =>
+          event.tags.some(
+            (tag) =>
+              tag[0] === "p" && tag[1].toLowerCase() === value.toLowerCase(),
+          ),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
 function acceptMockAskAction(
   socket: MockSocket,
   event: RelayEvent,
@@ -6446,6 +6521,188 @@ function acceptMockAskResponse(
   }
   mockCompanyAskHeads.push(resolvedHead);
   emitMockLiveEvent(channelId, resolvedHead);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockToolPermissionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (
+    event.pubkey.toLowerCase() !== getMockMemberPubkey(config).toLowerCase()
+  ) {
+    reject(
+      "restricted: only the authenticated company member can manage permissions",
+    );
+    return;
+  }
+  const role = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  )?.role;
+  if (role !== "owner" && role !== "admin") {
+    reject("restricted: only a company owner or admin can manage permissions");
+    return;
+  }
+
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1) {
+    reject("invalid: tool permission action needs one coordinate");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: tool permission action is not valid JSON");
+    return;
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    typeof action.permissionId !== "string" ||
+    dTags[0][1] !== `company:permission:${action.permissionId.toLowerCase()}` ||
+    !["grant", "update", "revoke"].includes(String(action.action))
+  ) {
+    reject("invalid: tool permission action coordinates are invalid");
+    return;
+  }
+  const currentEvent = mockCompanyToolPermissionHeads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTags[0][1]),
+  );
+  if (action.action === "grant" ? Boolean(currentEvent) : !currentEvent) {
+    reject(
+      "conflict: permission already exists or its current head is missing",
+    );
+    return;
+  }
+
+  let currentHead: Record<string, unknown> | null = null;
+  if (currentEvent) {
+    try {
+      currentHead = JSON.parse(currentEvent.content);
+    } catch {
+      reject("invalid: current permission head is malformed");
+      return;
+    }
+    if (action.expectedHeadEventId !== currentEvent.id) {
+      reject(
+        `conflict: permission changed; current head is ${currentEvent.id}`,
+      );
+      return;
+    }
+    if (!currentHead) {
+      reject("invalid: current permission head is unavailable");
+      return;
+    }
+    if (currentHead.status !== "active") {
+      reject("conflict: permission is no longer active");
+      return;
+    }
+  }
+
+  let permission: Record<string, unknown>;
+  if (action.action === "revoke") {
+    const currentPermission = currentHead?.permission;
+    if (
+      typeof currentPermission !== "object" ||
+      currentPermission === null ||
+      Array.isArray(currentPermission)
+    ) {
+      reject("invalid: current permission fields are malformed");
+      return;
+    }
+    permission = currentPermission as Record<string, unknown>;
+  } else {
+    const supplied = action.permission;
+    if (
+      typeof supplied !== "object" ||
+      supplied === null ||
+      Array.isArray(supplied)
+    ) {
+      reject("invalid: grant or update needs permission fields");
+      return;
+    }
+    permission = supplied as Record<string, unknown>;
+    if (permission.permissionId !== action.permissionId) {
+      reject("invalid: permission id does not match its action");
+      return;
+    }
+    if (currentHead) {
+      const prior = currentHead.permission as Record<string, unknown>;
+      if (
+        permission.agentPubkey !== prior.agentPubkey ||
+        permission.action !== prior.action
+      ) {
+        reject(
+          "invalid: an update can change only permission scope and expiry",
+        );
+        return;
+      }
+    }
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for company permissions");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const status = action.action === "revoke" ? "revoked" : "active";
+  const head = {
+    schemaVersion: 1,
+    permissionId: action.permissionId,
+    status,
+    permission,
+    grantedByPubkey:
+      typeof currentHead?.grantedByPubkey === "string"
+        ? currentHead.grantedByPubkey
+        : event.pubkey,
+    changedByPubkey: event.pubkey,
+    updatedAt: new Date().toISOString(),
+    sourceActionEventId: event.id,
+  };
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_TOOL_PERMISSION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", dTags[0][1]],
+        ["p", String(permission.agentPubkey)],
+      ],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = mockCompanyToolPermissionHeads.indexOf(currentEvent);
+    if (index >= 0) mockCompanyToolPermissionHeads.splice(index, 1);
+  }
+  mockCompanyToolPermissionHeads.push(headEvent);
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__ ??= [];
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__.push({
+    action: String(action.action),
+    permissionId: String(action.permissionId),
+  });
+  emitMockGlobalEvent(event);
+  emitMockGlobalEvent(headEvent);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
@@ -14329,6 +14586,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_TOOL_PERMISSION_HEAD)) {
+      for (const event of filterMockCompanyToolPermissionHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     const channelIds = filter["#h"] ?? [];
     if (channelIds.length > 0 && subId.startsWith("history-")) {
       const closeReason = mockChannelHistoryCloses.shift();
@@ -14390,6 +14655,10 @@ function sendToMockSocket(args: {
       }
     }
 
+    if (event.kind === KIND_TOOL_PERMISSION_ACTION) {
+      acceptMockToolPermissionAction(socket, event, getConfig());
+      return;
+    }
     if (event.kind === KIND_ASK_ACTION) {
       let actionType: unknown;
       try {
@@ -14737,6 +15006,11 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyMemberPositionEvents.length,
     ...(config.mock?.companyMemberPositionEvents ?? []),
+  );
+  mockCompanyToolPermissionHeads.splice(
+    0,
+    mockCompanyToolPermissionHeads.length,
+    ...(config.mock?.companyToolPermissionHeads ?? []),
   );
   mockAskActionIds.clear();
   if (!isRelayMode(config) && config.mock?.visualFixture) {
@@ -15137,6 +15411,16 @@ export function maybeInstallE2eTauriMocks() {
       throw new Error("The mock relay signer does not match relaySelf.");
     }
     const coordinate = `channel:${channelId}:ask:${askId}`;
+    let isToolConsent = false;
+    try {
+      const head = JSON.parse(content) as {
+        ask?: { category?: string; type?: string };
+      };
+      isToolConsent =
+        head.ask?.type === "tool_consent" && head.ask.category === "tool";
+    } catch {
+      throw new Error("The mock ask head content is invalid JSON.");
+    }
     const event = finalizeEvent(
       {
         kind: KIND_ASK_HEAD,
@@ -15145,6 +15429,7 @@ export function maybeInstallE2eTauriMocks() {
           ["h", channelId],
           ["d", coordinate],
           ["e", threadRootEventId],
+          ...(isToolConsent ? [["t", "tool_consent"]] : []),
         ],
         content,
       },

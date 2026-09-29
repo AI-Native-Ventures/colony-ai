@@ -1,7 +1,8 @@
 # Colony company record contracts
 
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
-member positions). Schema version: `1`. Design baseline:
+member positions) and PERM-1 standing tool permissions. Schema version: `1`.
+Design baseline:
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
 (approved 27 September 2026) and owner decisions C1 to C6 and D1 to D3.
 
@@ -27,12 +28,14 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30642 | Goal head | Relay signed, replaceable |
 | 30643 | Ask head | Relay signed, replaceable |
 | 30634 | Shared work item head | Relay signed, replaceable |
-| 30646 | Member position head | Relay signed, replaceable |
+| 30648 | Member position head | Relay signed, replaceable |
+| 30646 | Tool permission head | Relay signed, replaceable |
 | 47006 | Shared work item action | Brokered |
 | 47031 | Goal action | Brokered |
 | 47032 | Ask action | Brokered |
 | 47033 | Ask response | Brokered, append only |
-| 47035 | Member position action | Brokered |
+| 47037 | Member position action | Brokered |
+| 47035 | Tool permission action | Brokered |
 
 ## Scope and storage
 
@@ -59,6 +62,9 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 - **Heads are relay-signed** with the relay keypair and replace by (community,
   kind, relay pubkey, d-tag), exactly like business heads. Clients reject heads
   not signed by the relay.
+- **Tool permissions are community-wide.** Permission commands and heads carry
+  no `h` tag and are scoped by the relay host. The head has one `p` tag naming
+  the managed agent. The d-tag is `company:permission:<permission-uuid>`.
 - **Agent detection** for authority uses the authorization-grade account
   record (`users.agent_owner_pubkey`), never a client-supplied tag.
 - **Search:** company kinds are excluded from full-text search (ask bodies and
@@ -92,10 +98,66 @@ Owner decision D2 (27 September 2026):
   an approval ask for their report; an agent manager cannot approve it. A
   proposal does not change the member head until the ask and member head update
   commit in one relay transaction.
+- **Standing permission authority:** only community owners and admins may grant,
+  edit or revoke tool permissions. Tool consent asks authorize one call after
+  approval and do not create a standing permission.
 
 A viewer without authority sees the ask or goal with a reason ("Only company
 owners and admins can decide spending"), never an enabled control that fails on
 submit.
+
+## Standing permissions
+
+A standing permission allows one managed agent to perform one always-ask action
+inside one exact scope until a UTC expiry time. The relay stores every grant,
+scope or expiry edit, and revoke as a member-authored command and advances a
+relay-signed replaceable head in the same transaction. Permissions are
+community-scoped and are never inferred from client state.
+
+The allowed actions are `spend_money`, `message_outsider`, `delete_data`, and
+`publish_publicly`. The scope is exactly one of:
+
+| Scope kind | `id` value | Match rule |
+| --- | --- | --- |
+| `thread` | 64 lowercase hex event id | Exact canonical NIP-10 thread root |
+| `channel` | Lowercase canonical channel UUID | Exact channel |
+| `customer` | Lowercase canonical customer UUID | Exact customer record id supplied by the tool request |
+
+Customer display names never match by substring or fuzzy search. A tool request
+without enough context to produce an exact scope does not match a standing
+permission. An expired or revoked head never authorizes a call. Reads are
+community-scoped; only owners and admins can grant, edit or revoke.
+
+### Permission action, kind 47035
+
+`ToolPermissionAction` fields: `schemaVersion`, `permissionId`, `action`,
+`expectedHeadEventId`, and `permission` (grant or update) or `reason` (revoke).
+
+- `grant` omits `expectedHeadEventId` and creates a new permission id.
+- `update` names the exact current head and changes only `scope` and
+  `expiresAt`; the managed agent and action are immutable.
+- `revoke` names the exact current head and requires a reason. It retains the
+  head with status `revoked` for audit.
+- The `permission` payload contains `schemaVersion`, `permissionId`,
+  `agentPubkey`, `action`, `scope: { kind, id }`, and `expiresAt`.
+- `action` is an exact label or stable key, 1 to 180 characters. Sensitive
+  actions use the stable keys `spend_money`, `message_outsider`,
+  `delete_data`, and `publish_publicly`. Other exact action labels can be
+  listed and edited, but they do not widen the harness's always-ask classifier.
+- `expiresAt` is an RFC 3339 UTC timestamp later than command acceptance.
+  Expiry is derived from the timestamp and does not require a scheduled write.
+- The caller must be a community owner or admin and must not use a
+  channel-scoped token. Every mutation locks the exact community, relay signer,
+  kind and d-tag head coordinate, checks the expected event id, and stores the
+  command plus relay-signed head atomically.
+
+The relay emits kind 30646 `ToolPermissionHead` with the permission fields,
+`status` (`active` or `revoked`), `grantedByPubkey`, `changedByPubkey`,
+`updatedAt`, and `sourceActionEventId`. A permission is effective only when its
+status is `active`, its expiry is in the future, its agent and action match,
+and its scope matches exactly. Clients and the ACP harness query the current
+relay head for each tool call, so a revoke applies to the next call without a
+local cache invalidation window.
 
 ## Asks
 
@@ -112,7 +174,8 @@ came up.
   names the exact current head.
 - `ask` contains:
   - `schemaVersion`, `askId`
-  - `type`: `approval`, `question`, `choice`, `checklist`, or `verdict`
+  - `type`: `approval`, `tool_consent`, `question`, `choice`, `checklist`, or
+    `verdict`
   - `category`: `general`, `money`, `hire`, `tool`, or `secret`
   - `title` (1 to 180 characters) and optional `body` (markdown, up to 4000)
   - `threadRootEventId`: the root of the thread the card belongs to
@@ -123,9 +186,19 @@ came up.
   - optional `subject`: `{ kind: "goal" | "workflowRun" | "workItem" | "companyMember", id }`
   - optional `memberProposal`: an exact-head `MemberPositionAction`, only for
     an approval ask whose subject is the same company member
+  - `toolConsent` for `tool_consent`: `{ action, actionPreview }`, where
+    `action` is one of the four standing-permission action values and
+    `actionPreview` is the exact preview shown to the resolver, 1 to 4000
+    characters
 - The asker is the signer. Any human member or managed agent of the channel may
   create a `general` ask. `money`, `hire`, `tool` and `secret` asks may be
   created by members and agents but only resolved per [Authority](#authority).
+- A `tool_consent` ask must have category `tool`, an exact `toolConsent`
+  preview, a deadline, no addressee, and a valid thread root. Only a managed
+  agent may create it. Owners and admins resolve it with `approved` or
+  `rejected`; approval authorizes this tool call once and never creates a
+  standing permission. Agents cannot resolve it. The harness refuses the call
+  on rejection, expiry, relay failure, or its bounded timeout.
 - Cancel is allowed to the asker and to owners and admins while the ask is open,
   and requires a `reason`.
 
@@ -146,6 +219,7 @@ overdue; it stays open and keeps its deadline.
 | Ask type | `outcome` | Required payload |
 | --- | --- | --- |
 | approval | `approved`, `rejected`, `revision_requested` | `reason` (1 to 1000 characters) |
+| tool_consent | `approved`, `rejected` | `reason` (1 to 1000 characters) |
 | question | `answered` | `answer` (1 to 4000 characters) |
 | choice | `chosen` | `optionId` from the ask's options |
 | checklist | `confirmed` | `checkedItemIds` equal to every item id |
@@ -176,6 +250,8 @@ addressee or, for asks without an addressee, where the user has authority to
 resolve them, plus open workflow approvals addressed to them. It is sorted by
 `decideBy` (earliest first, asks without a deadline last), marks overdue asks,
 groups by channel when there are many, and links each row to its thread.
+Open `tool_consent` asks appear for community owners and admins and link to the
+thread containing the exact action preview.
 
 ## Goals
 
@@ -243,9 +319,9 @@ the viewer may not read renders "Goal unavailable".
 
 ## Member positions
 
-Every community member may have one relay-signed kind 30646 head, addressed by
+Every community member may have one relay-signed kind 30648 head, addressed by
 `company:member:<lowercase-pubkey>`. The relay determines the community from the
-request host. Kind 47035 commands and kind 30646 heads carry no `h` tag and are
+request host. Kind 47037 commands and kind 30648 heads carry no `h` tag and are
 community-wide. The kind integers are mirrored in the Rust, desktop, and mobile
 registries. This batch does not add mobile Team screens.
 

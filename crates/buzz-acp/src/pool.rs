@@ -2273,6 +2273,30 @@ pub async fn run_prompt_task(
         Some(b) => PromptSource::Channel(b.scope.clone()),
         None => PromptSource::Heartbeat,
     };
+    let permission_context = batch.as_ref().map(|batch| {
+        let thread_root_event_id = batch.scope.root_event_id().map(str::to_owned).or_else(|| {
+            let roots: HashSet<String> = batch
+                .events
+                .iter()
+                .map(|event| {
+                    crate::queue::parse_thread_tags(&event.event)
+                        .root_event_id
+                        .unwrap_or_else(|| event.event.id.to_hex())
+                })
+                .collect();
+            if roots.len() == 1 {
+                roots.into_iter().next()
+            } else {
+                None
+            }
+        });
+        crate::tool_permissions::ToolPermissionContext {
+            rest_client: ctx.rest_client.clone(),
+            channel_id: batch.channel_id,
+            thread_root_event_id,
+        }
+    });
+    agent.acp.set_tool_permission_context(permission_context);
     let observer_channel_id = source.channel_id();
     let turn_started_at = chrono::Utc::now().to_rfc3339();
     agent.acp.set_observer_context(observer::context_for_turn(

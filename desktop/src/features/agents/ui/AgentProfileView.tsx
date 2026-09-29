@@ -62,6 +62,7 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
 import { Badge } from "@/shared/ui/badge";
+import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
 import { providerDisplayLabel } from "./agentConfigOptions";
 import { accessLabel, OverviewTab } from "./AgentProfileOverviewTab";
 
@@ -910,6 +911,7 @@ function ToolsAccessTab({ agent }: { agent: ManagedAgent }) {
           </p>
         </PanelSectionGroup>
       </div>
+      <ToolPermissionList agentPubkey={agent.pubkey} />
     </div>
   );
 }

@@ -16,6 +16,8 @@ pub mod community_provisioning;
 pub mod company_asks;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
+/// Nostr-first broker for community-wide standing tool permissions.
+pub mod company_permissions;
 /// Nostr-first broker for company records (goals and asks).
 pub mod company_records;
 /// NIP-45 COUNT handler.

@@ -8,6 +8,7 @@ import {
   mergeTeamMembers,
   parseMemberPositionHeadEvent,
 } from "./teamModels.ts";
+import { KIND_MEMBER_POSITION_HEAD } from "@/shared/constants/kinds";
 
 const RELAY_SECRET = new Uint8Array(32).fill(12);
 const RELAY_PUBKEY = getPublicKey(RELAY_SECRET);
@@ -34,7 +35,7 @@ function position(pubkey, managerPubkey, status = "active") {
 function signedPosition(head, tags = [["d", memberPositionDTag(head.pubkey)]]) {
   return finalizeEvent(
     {
-      kind: 30646,
+      kind: KIND_MEMBER_POSITION_HEAD,
       created_at: 1_790_000_000,
       content: JSON.stringify(head),
       tags,

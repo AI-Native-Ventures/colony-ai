@@ -186,11 +186,13 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
 // joins the thread timeline kinds together with its card renderer.
 export const KIND_GOAL_HEAD = 30642;
 export const KIND_ASK_HEAD = 30643;
-export const KIND_MEMBER_POSITION_HEAD = 30646;
+export const KIND_MEMBER_POSITION_HEAD = 30648;
+export const KIND_TOOL_PERMISSION_HEAD = 30646;
 export const KIND_GOAL_ACTION = 47031;
 export const KIND_ASK_ACTION = 47032;
 export const KIND_ASK_RESPONSE = 47033;
-export const KIND_MEMBER_POSITION_ACTION = 47035;
+export const KIND_MEMBER_POSITION_ACTION = 47037;
+export const KIND_TOOL_PERMISSION_ACTION = 47035;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,
@@ -200,6 +202,8 @@ export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_ASK_ACTION,
   KIND_ASK_RESPONSE,
   KIND_MEMBER_POSITION_ACTION,
+  KIND_TOOL_PERMISSION_HEAD,
+  KIND_TOOL_PERMISSION_ACTION,
 ] as const;
 
 // Human-visible "new content" message kinds. Used as the unread trigger set

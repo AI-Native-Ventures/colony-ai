@@ -33,6 +33,7 @@ import { Route as teamDotorgRouteImport } from "./routes/team.org";
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as permissionDotsplatRouteImport } from "./routes/permission.$";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
@@ -215,6 +216,11 @@ const salesDotproposalsRoute = salesDotproposalsRouteImport.update({
 const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   id: "/projects/$projectId",
   path: "/projects/$projectId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const permissionDotsplatRoute = permissionDotsplatRouteImport.update({
+  id: "/permission/$",
+  path: "/permission/$",
   getParentRoute: () => rootRouteImport,
 } as any);
 const navigationDotstartRoute = navigationDotstartRouteImport.update({
@@ -490,6 +496,7 @@ export interface FileRoutesByFullPath {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -563,6 +570,7 @@ export interface FileRoutesByTo {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -637,6 +645,7 @@ export interface FileRoutesById {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -712,6 +721,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -785,6 +795,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -858,6 +869,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -932,6 +944,7 @@ export interface RootRouteChildren {
   moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
+  permissionDotsplatRoute: typeof permissionDotsplatRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
@@ -1165,6 +1178,13 @@ declare module "@tanstack/react-router" {
       path: "/projects/$projectId";
       fullPath: "/projects/$projectId";
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/permission/$": {
+      id: "/permission/$";
+      path: "/permission/$";
+      fullPath: "/permission/$";
+      preLoaderRoute: typeof permissionDotsplatRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/navigation/start": {
@@ -1508,6 +1528,7 @@ const rootRouteChildren: RootRouteChildren = {
   moneyDotrevenueRoute: moneyDotrevenueRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
+  permissionDotsplatRoute: permissionDotsplatRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,
