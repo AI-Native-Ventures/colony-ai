@@ -156,9 +156,10 @@ mod tests {
             .expect("signed event");
         assert_eq!(event.kind, Kind::Custom(KIND_SECRET_BINDING_ACTION as u16));
         assert_eq!(event.tags.len(), 1);
-        assert_eq!(event.tags[0].kind().to_string(), "d");
+        let d_tag = event.tags.iter().next().expect("single d tag");
+        assert_eq!(d_tag.kind().to_string(), "d");
         assert_eq!(
-            event.tags[0].content(),
+            d_tag.content(),
             Some(secret_binding_d_tag(binding_id).as_str())
         );
         assert!(!event.content.contains("value"));
