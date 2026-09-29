@@ -27,6 +27,21 @@ export function CompanyWorkThreadContextPanel({
 }) {
   const headsQuery = useCompanyWorkHeadsQuery(enabled);
   const { activeCommunity } = useCommunities();
+  const readScope = `${activeCommunity?.id ?? "no-community"}|${activeCommunity?.relayUrl ?? "no-relay"}|${channelId ?? "no-channel"}`;
+  const readStateRef = React.useRef({
+    scope: readScope,
+    heads: "pending" as "pending" | "success" | "error",
+    moves: "pending" as "pending" | "success" | "error",
+  });
+  if (readStateRef.current.scope !== readScope) {
+    readStateRef.current = {
+      scope: readScope,
+      heads: "pending",
+      moves: "pending",
+    };
+  }
+  if (headsQuery.isSuccess) readStateRef.current.heads = "success";
+  else if (headsQuery.isError) readStateRef.current.heads = "error";
   const channels = headsQuery.channelsQuery.data ?? [];
   const hasReadableChannels = channels.some(
     (channel) =>
@@ -35,16 +50,25 @@ export function CompanyWorkThreadContextPanel({
       channel.archivedAt === null,
   );
   const noReadableChannels =
-    headsQuery.channelsQuery.isSuccess && !hasReadableChannels;
+    headsQuery.channelsQuery.isSuccess &&
+    headsQuery.channelsQuery.dataUpdatedAt > 0 &&
+    !hasReadableChannels;
   const headsUnavailable = Boolean(
-    !activeCommunity?.relayUrl ||
+    (activeCommunity && !activeCommunity.relayUrl) ||
       headsQuery.channelsQuery.isError ||
       noReadableChannels ||
-      headsQuery.isError,
+      headsQuery.isError ||
+      readStateRef.current.heads === "error",
+  );
+  const initialChannelReadPending = Boolean(
+    headsQuery.channelsQuery.isFetching &&
+      headsQuery.channelsQuery.dataUpdatedAt === 0,
   );
   const movesQuery = useCompanyWorkMoveReferencesQuery(
-    enabled && !headsQuery.isFetching && !headsUnavailable,
+    enabled && !headsQuery.isPending && !headsUnavailable,
   );
+  if (movesQuery.isSuccess) readStateRef.current.moves = "success";
+  else if (movesQuery.isError) readStateRef.current.moves = "error";
   const identityQuery = useIdentityQuery();
   const { goChannel, goCompanyWorkDetail, goCompanyWorkTracking } =
     useAppNavigation();
@@ -89,12 +113,22 @@ export function CompanyWorkThreadContextPanel({
   });
   const currentPubkey = identityQuery.data?.pubkey;
   const profiles = profilesQuery.data?.profiles;
-  const movesUnavailable = Boolean(headsUnavailable || movesQuery.isError);
+  const movesUnavailable = Boolean(
+    headsUnavailable ||
+      movesQuery.isError ||
+      readStateRef.current.moves === "error",
+  );
   const isCheckingLinkedWork = Boolean(
-    !movesUnavailable && (headsQuery.isPending || movesQuery.isPending),
+    !movesUnavailable &&
+      (readStateRef.current.heads === "pending" ||
+        (readStateRef.current.heads === "success" &&
+          readStateRef.current.moves === "pending" &&
+          movesQuery.isPending) ||
+        initialChannelReadPending),
   );
   if (
     !enabled ||
+    !activeCommunity ||
     (!isCheckingLinkedWork &&
       !movesUnavailable &&
       currentRecords.length === 0 &&

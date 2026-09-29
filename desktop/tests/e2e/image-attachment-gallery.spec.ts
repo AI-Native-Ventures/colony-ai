@@ -1,7 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { installMockBridge } from "../helpers/bridge";
+import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
 
 const IMAGE_SHAS = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
@@ -589,6 +590,7 @@ test("preview-first galleries retain Markdown image actions", async ({
       `[data-testid="message-thread-summary"][data-thread-head-id="${rootId}"]`,
     )
     .click();
+  await waitForCompanyWorkThreadContextRead(page);
   const trackedWorkPanel = page.getByTestId("company-work-thread-context");
   await expect(trackedWorkPanel).toBeVisible();
   await expect(trackedWorkPanel.getByText("Checking linked work")).toHaveCount(

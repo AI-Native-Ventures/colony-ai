@@ -4,6 +4,7 @@ import { expect, test, type Locator } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
 import { openSettings } from "../helpers/settings";
 
@@ -4526,6 +4527,7 @@ for (const targetKind of ["reply", "root"] as const) {
     await source.getByRole("button", { name: "Reply" }).click();
 
     const threadPanel = page.getByTestId("message-thread-panel");
+    await waitForCompanyWorkThreadContextRead(page);
     const threadInput = threadPanel.getByTestId("message-input");
     const reply = threadPanel.locator(`[data-message-id="${sourceReplyId}"]`);
     await reply.hover();
