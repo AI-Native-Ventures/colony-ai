@@ -42,6 +42,12 @@ export const TEST_IDENTITIES = {
   },
 } as const;
 
+export type RelayBridgeIdentity = {
+  privateKey: string;
+  pubkey: string;
+  username: string;
+};
+
 type BridgeMode = "mock" | "relay";
 
 type MockCommandAvailability = {
@@ -777,6 +783,8 @@ type BridgeOptions = {
    */
   seedPreviewFeatures?: boolean;
   user?: keyof typeof TEST_IDENTITIES;
+  identity?: RelayBridgeIdentity;
+  relayAuthMode?: "http-header" | "nip42";
 };
 
 const WELCOME_CHANNEL_ENSURED_STORAGE_KEY_PREFIX =
@@ -902,10 +910,12 @@ A retired launch checklist used to live at [[mem/archive/deleted-launch-checklis
 async function seedOnboardingCompletionForKnownIdentities(
   page: Page,
   relayWsUrl?: string,
+  additionalPubkey?: string,
 ) {
   const pubkeys = [
     DEFAULT_MOCK_PUBKEY,
     ...Object.values(TEST_IDENTITIES).map(({ pubkey }) => pubkey),
+    ...(additionalPubkey ? [additionalPubkey] : []),
   ];
   await page.addInitScript(
     ({ onboardingPrefix, pubkeys: pubkeysToSeed, relayUrl, welcomePrefix }) => {
@@ -997,7 +1007,7 @@ async function seedPreviewFeaturesEnabled(page: Page) {
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
     options.mode === "relay"
-      ? TEST_IDENTITIES[options.user ?? "tyler"]
+      ? (options.identity ?? TEST_IDENTITIES[options.user ?? "tyler"])
       : undefined;
 
   // Most specs seed a community so useCommunityInit doesn't show WelcomeSetup.
@@ -1016,7 +1026,11 @@ export async function installBridge(page: Page, options: BridgeOptions) {
     );
   }
   if (!options.skipOnboardingSeed) {
-    await seedOnboardingCompletionForKnownIdentities(page, options.relayWsUrl);
+    await seedOnboardingCompletionForKnownIdentities(
+      page,
+      options.relayWsUrl,
+      identity?.pubkey,
+    );
   }
   // Default to opting every preview feature in. Specs that exercise the
   // Experiments toggle UI itself pass `seedPreviewFeatures: false`.
@@ -1031,6 +1045,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       mode,
       relayHttpUrl,
       relayWsUrl,
+      relayAuthMode,
       autoConnectDefaultRelay,
     }) => {
       const notificationLog: Array<{
@@ -1089,6 +1104,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
         mode,
         relayHttpUrl: relayHttpUrl ?? currentConfig.relayHttpUrl,
         relayWsUrl: relayWsUrl ?? currentConfig.relayWsUrl,
+        relayAuthMode: relayAuthMode ?? currentConfig.relayAuthMode,
         autoConnectDefaultRelay:
           autoConnectDefaultRelay ?? currentConfig.autoConnectDefaultRelay,
       };
@@ -1113,6 +1129,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       mode: options.mode,
       relayHttpUrl: options.relayHttpUrl,
       relayWsUrl: options.relayWsUrl,
+      relayAuthMode: options.relayAuthMode,
       autoConnectDefaultRelay: options.autoConnectDefaultRelay,
     },
   );
@@ -1149,6 +1166,8 @@ export async function installRelayBridge(
     relayRequiresMembership?: boolean;
     seedPreviewFeatures?: boolean;
     skipCommunitySeed?: boolean;
+    identity?: RelayBridgeIdentity;
+    relayAuthMode?: "http-header" | "nip42";
   },
 ) {
   const relayHttpUrl = options?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
@@ -1156,6 +1175,8 @@ export async function installRelayBridge(
   await installBridge(page, {
     mode: "relay",
     user,
+    identity: options?.identity,
+    relayAuthMode: options?.relayAuthMode,
     mock:
       options?.relaySelf === undefined &&
       options?.relayRequiresMembership === undefined
