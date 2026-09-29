@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -224,6 +224,7 @@ export function EmployeeProfileScreen({
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const workQuery = useCompanyWorkHeadsQuery(true);
   const employeePubkey = member.pubkey.toLowerCase();
+  const queryClient = useQueryClient();
   const historyQuery = useEmployeeHistoryQuery(employeePubkey);
   const recordMutation = useRecordEmployeeRevisionMutation(employeePubkey);
   const updateAgentMutation = useUpdateManagedAgentMutation();
@@ -426,6 +427,7 @@ export function EmployeeProfileScreen({
         });
       }
       await recordOrQueue(action);
+      await queryClient.invalidateQueries({ queryKey: ["company-team"] });
       setEditInstructions(false);
     } catch (error) {
       setInstructionError(

@@ -6070,13 +6070,7 @@ function acceptMockEmployeeRevisionAction(
     reject(configuredError);
     return;
   }
-  const hasSyntheticDefaultIdentitySignature =
-    event.pubkey.toLowerCase() === MOCK_IDENTITY_PUBKEY &&
-    event.sig === "mocksig".repeat(20).slice(0, 128);
-  if (
-    event.kind !== KIND_EMPLOYEE_REVISION_ACTION ||
-    (!verifyEvent(event) && !hasSyntheticDefaultIdentitySignature)
-  ) {
+  if (event.kind !== KIND_EMPLOYEE_REVISION_ACTION || !verifyEvent(event)) {
     reject("invalid: employee revision signature or kind is invalid.");
     return;
   }
@@ -6178,7 +6172,9 @@ function acceptMockEmployeeRevisionAction(
     currentHead?.id !== action.expectedHeadEventId ||
     (parsedHead?.revisionEventId ?? undefined) !==
       action.previousRevisionEventId ||
-    JSON.stringify(parsedHead?.snapshot ?? {}) !== JSON.stringify(action.before)
+    (currentHead !== undefined &&
+      JSON.stringify(parsedHead?.snapshot ?? {}) !==
+        JSON.stringify(action.before))
   ) {
     reject("conflict: employee history changed; refresh and retry.");
     return;

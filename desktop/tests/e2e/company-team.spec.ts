@@ -9,7 +9,7 @@ import {
 import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
-const OWNER_PUBKEY = "deadbeef".repeat(8);
+const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
 
@@ -51,9 +51,20 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   const workerPubkey = getPublicKey(generateSecretKey());
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
   const bobPubkey = TEST_IDENTITIES.bob.pubkey;
+  await page.addInitScript((identity) => {
+    window.localStorage.setItem(
+      "buzz:e2e-identity-override.v1",
+      JSON.stringify(identity),
+    );
+  }, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
     relaySelf,
     companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+    searchProfiles: [
+      { pubkey: OWNER_PUBKEY, displayName: "tyler" },
+      { pubkey: alicePubkey, displayName: "alice" },
+      { pubkey: bobPubkey, displayName: "bob" },
+    ],
     companyMemberPositionEvents: [
       positionHead({
         relaySecret,
