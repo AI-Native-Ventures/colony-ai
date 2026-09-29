@@ -11038,11 +11038,13 @@ async function nip98RelayQuery(
       "Content-Type": "application/json",
     },
     body,
+    signal: AbortSignal.timeout(NIP98_QUERY_TIMEOUT_MS),
   });
   await assertOk(response);
   return response.json() as Promise<RelayEvent[]>;
 }
 
+const NIP98_QUERY_TIMEOUT_MS = 30_000;
 const NIP42_REQUEST_TIMEOUT_MS = 25_000;
 const NIP42_MAX_RESPONSE_BYTES = 8_000_000;
 const NIP42_MAX_QUERY_EVENTS = 2_000;

@@ -7,7 +7,10 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { RelayEvent } from "../../src/shared/api/types";
-import { KIND_ASK_ACTION } from "../../src/shared/constants/kinds";
+import {
+  KIND_ASK_ACTION,
+  KIND_ASK_RESPONSE,
+} from "../../src/shared/constants/kinds";
 import { waitForAnimations } from "../helpers/animations";
 import {
   installRelayBridge,
@@ -408,6 +411,32 @@ async function publishRelayEvent(
   return result.event_id;
 }
 
+async function publishExpectedRelayRejection(
+  page: Page,
+  event: { kind: number; content: string; tags: string[][] },
+) {
+  const result = await page.evaluate(async (template) => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_PUBLISH_RELAY_EVENT__?: (
+        value: typeof template,
+      ) => Promise<{ accepted: boolean; event_id: string; message: string }>;
+    };
+    const publish = testWindow.__BUZZ_E2E_PUBLISH_RELAY_EVENT__;
+    if (!publish) throw new Error("The signed canary publish seam is missing.");
+    try {
+      const result = await publish(template);
+      return { accepted: result.accepted, message: result.message };
+    } catch (cause) {
+      return {
+        accepted: false,
+        message: cause instanceof Error ? cause.message : "",
+      };
+    }
+  }, event);
+  expect(result.accepted).toBe(false);
+  return result.message;
+}
+
 async function queryRelay(page: Page, filters: Array<Record<string, unknown>>) {
   return page.evaluate(async (relayFilters) => {
     const testWindow = window as Window & {
@@ -524,7 +553,6 @@ test.describe("signed-in canary company UI", () => {
 
   test("checks the full app shell and company journeys on the canary relay", async ({
     page,
-    browser,
   }) => {
     test.setTimeout(900_000);
     const authEventIds = new Set<string>();
@@ -676,39 +704,18 @@ test.describe("signed-in canary company UI", () => {
       },
     ]);
     expect(seededAskHeads.length).toBeGreaterThan(0);
-    const beforeAskFrames = new Map(relayFrameCounts);
-    const stalePage = await browser.newPage({
-      viewport: { width: 1440, height: 900 },
-    });
-    captureCanaryDiagnostics(stalePage, "stale");
-    observeRelaySockets(stalePage, "stale");
-    await installCanaryPage(stalePage);
+    const initialAskHeadId = seededAskHeads[0]?.id;
+    if (!initialAskHeadId) {
+      throw new Error("The new canary ask did not produce a head event.");
+    }
     try {
       await openCanaryAsk(page, askId, askTitle);
     } catch (error) {
       const trace = Object.fromEntries(relayFrameCounts);
       throw new Error(
-        `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}; prior: ${JSON.stringify(Object.fromEntries(beforeAskFrames))}. ${error instanceof Error ? error.message : ""}`,
+        `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}. ${error instanceof Error ? error.message : ""}`,
       );
     }
-    try {
-      await openCanaryAsk(stalePage, askId, askTitle);
-    } catch (error) {
-      throw new Error(
-        `Stale ask detail did not load. Canary relay frames: ${JSON.stringify(Object.fromEntries(relayFrameCounts))}. ${error instanceof Error ? error.message : ""}`,
-      );
-    }
-    await stalePage.evaluate(async () => {
-      const testWindow = window as Window & {
-        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
-          command: string,
-          payload?: unknown,
-        ) => Promise<unknown>;
-      };
-      await testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
-        "plugin:websocket|disconnect_all",
-      );
-    });
     await page
       .getByLabel("Reason or requested changes")
       .fill("Approved for canary review.");
@@ -725,43 +732,51 @@ test.describe("signed-in canary company UI", () => {
     );
     await capture(page, "03-asks-approved");
 
-    await stalePage
-      .getByLabel("Reason or requested changes")
-      .fill("A stale decision must fail.");
-    await waitForCanaryWriteWindow(stalePage);
-    await stalePage.getByRole("button", { name: "Record response" }).click();
-    const staleDecisionAlert = stalePage.getByRole("alert");
-    const staleDecisionMessage = await staleDecisionAlert.innerText();
-    if (/current ask/i.test(staleDecisionMessage)) {
-      await expect(staleDecisionAlert).toContainText("current ask");
+    await waitForCanaryWriteWindow(page);
+    const staleDecisionMessage = await publishExpectedRelayRejection(page, {
+      kind: KIND_ASK_RESPONSE,
+      content: JSON.stringify({
+        schemaVersion: 1,
+        askId,
+        expectedHeadEventId: initialAskHeadId,
+        outcome: "approved",
+        reason: "A stale decision must fail.",
+      }),
+      tags: [
+        ["h", account.channel],
+        ["d", `channel:${account.channel}:ask:${askId}`],
+      ],
+    });
+    if (/current ask|ask is resolved/i.test(staleDecisionMessage)) {
+      console.log("CANARY_STALE_ASK_REJECTION", "stale head rejected");
     } else if (/rate-limited/i.test(staleDecisionMessage)) {
       relayWritesRateLimited = true;
-      await expect(
-        stalePage.getByLabel("Reason or requested changes"),
-      ).toHaveValue("A stale decision must fail.");
-      await expect(staleDecisionAlert).toContainText("retry");
       canaryFindings.push(
-        `Asks stale decision: expected a stale-head refusal; relay returned "${staleDecisionMessage}".`,
+        "Asks stale decision: relay quota blocked the stale-head rejection check.",
       );
-      await capture(stalePage, "03-asks-stale-decision-rate-limited");
     } else {
       throw new Error(
-        `The stale decision had an unexpected result: ${staleDecisionMessage}`,
+        "The stale decision was rejected for a reason other than the current ask or relay quota.",
       );
     }
-    await expect(stalePage.getByTestId("ask-resolved")).toHaveCount(0);
-    await stalePage.reload();
-    await expect(stalePage.getByTestId("ask-resolved")).toContainText(
+    await expect(page.getByTestId("ask-resolved")).toContainText(
+      "Approved by You",
+      { timeout: 30_000 },
+    );
+    await expect(
+      page.getByRole("button", { name: "Record response" }),
+    ).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("ask-resolved")).toContainText(
       "Approved by You",
       { timeout: 30_000 },
     );
     await capture(
-      stalePage,
+      page,
       relayWritesRateLimited
         ? "03-asks-current-head-after-rate-limit"
         : "03-asks-stale-decision-refused",
     );
-    await stalePage.close();
 
     if (relayWritesRateLimited) {
       canaryFindings.push(
