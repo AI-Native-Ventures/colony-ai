@@ -209,7 +209,8 @@ jobs:
   desktop-e2e-integration-shard:
     name: Desktop E2E Integration (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Container setup can take 15 minutes on a cold runner; 20 cancelled a shard mid-run.
+    timeout-minutes: 30
     if: inputs.lane == 'required' && (github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust)
     strategy:
       fail-fast: false
