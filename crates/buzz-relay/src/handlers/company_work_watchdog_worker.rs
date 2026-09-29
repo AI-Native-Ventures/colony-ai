@@ -352,7 +352,7 @@ async fn trigger_is_due(
     let due_at = work
         .due_at
         .as_deref()
-        .map(|due_at| chrono::DateTime::parse_from_rfc3339(due_at))
+        .map(chrono::DateTime::parse_from_rfc3339)
         .transpose()
         .map_err(|_| "stored work dueAt is invalid".to_string())?
         .map(|timestamp| timestamp.with_timezone(&Utc));

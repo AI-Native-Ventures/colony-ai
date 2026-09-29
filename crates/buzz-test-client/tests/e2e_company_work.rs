@@ -4,7 +4,7 @@
 //! a running relay, Postgres, and Redis. They are ignored with the rest of the
 //! relay-backed E2E suite by default.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use buzz_core::business_records::{
     company_work_d_tag, CompanyWorkItemAction, CompanyWorkItemActionKind, CompanyWorkItemHead,
@@ -14,10 +14,23 @@ use buzz_core::business_records::{
 use buzz_core::company_records::{
     goal_d_tag, GoalAction, GoalActionKind, GoalHead, GoalRecord, COMPANY_RECORD_SCHEMA_VERSION,
 };
-use buzz_core::kind::{KIND_GOAL_HEAD, KIND_WORK_ITEM_ACTION, KIND_WORK_ITEM_HEAD};
+use buzz_core::company_work_tracking::{
+    company_work_suggestion_d_tag, company_work_watchdog_d_tag, CompanyWorkCheckWhen,
+    CompanyWorkSuggestionInput, CompanyWorkSuggestionStatus, CompanyWorkTrackingAction,
+    CompanyWorkTrackingActionKind, CompanyWorkTrackingHead, CompanyWorkTrackingRecordType,
+    CompanyWorkWatchdogConfig,
+};
+use buzz_core::kind::{
+    KIND_COMPANY_WORK_TRACKING_HEAD, KIND_GOAL_HEAD, KIND_WORK_ITEM_ACTION, KIND_WORK_ITEM_HEAD,
+};
+use buzz_db::company_work_watchdog::{
+    claim_due_batch, fail_delivery, retry_at, MAX_DELIVERY_ATTEMPTS,
+};
 use buzz_test_client::BuzzTestClient;
+use chrono::{DateTime, SecondsFormat, Utc};
 use nostr::{Alphabet, Event, EventBuilder, Filter, Keys, Kind, SingleLetterTag, Tag};
 use serde_json::Value;
+use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use uuid::Uuid;
 
 fn relay_url() -> String {
@@ -97,6 +110,37 @@ async fn seed_relay_member(keys: &Keys, role: &str) {
     .execute(&pool)
     .await
     .expect("seed E2E relay member");
+}
+
+async fn mark_managed_agent(agent: &Keys, owner: &Keys) {
+    let host = relay_authority();
+    let community_id = ensure_test_community(&host).await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&test_database_url())
+        .await
+        .expect("connect to E2E Postgres");
+    sqlx::query(
+        "INSERT INTO users (community_id, pubkey) VALUES ($1, $2) \
+         ON CONFLICT (community_id, pubkey) DO NOTHING",
+    )
+    .bind(community_id)
+    .bind(owner.public_key().to_bytes().as_slice())
+    .execute(&pool)
+    .await
+    .expect("seed managed agent owner user");
+    sqlx::query(
+        "INSERT INTO users (community_id, pubkey, agent_owner_pubkey) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (community_id, pubkey) DO UPDATE \
+         SET agent_owner_pubkey = EXCLUDED.agent_owner_pubkey",
+    )
+    .bind(community_id)
+    .bind(agent.public_key().to_bytes().as_slice())
+    .bind(owner.public_key().to_bytes().as_slice())
+    .execute(&pool)
+    .await
+    .expect("seed managed agent identity");
 }
 
 async fn create_test_channel(keys: &Keys) -> String {
@@ -199,6 +243,587 @@ fn work_input(
     }
 }
 
+#[tokio::test]
+#[ignore]
+async fn company_work_suggestions_validate_source_authority_and_explicit_lifecycle() {
+    let admin = Keys::generate();
+    let proposer = Keys::generate();
+    let requester = Keys::generate();
+    let owner = Keys::generate();
+    let managed_agent = Keys::generate();
+    let outsider = Keys::generate();
+    for (keys, role) in [
+        (&admin, "owner"),
+        (&proposer, "member"),
+        (&requester, "member"),
+        (&owner, "member"),
+        (&managed_agent, "member"),
+        (&outsider, "member"),
+    ] {
+        seed_relay_member(keys, role).await;
+    }
+    mark_managed_agent(&managed_agent, &owner).await;
+
+    let channel_id = create_test_channel(&admin).await;
+    let other_channel_id = create_test_channel(&admin).await;
+    for member in [&proposer, &requester, &owner, &managed_agent] {
+        add_channel_member(&admin, member, &channel_id).await;
+    }
+    add_channel_member(&admin, &managed_agent, &other_channel_id).await;
+    let source_event_id = send_message(&owner, &channel_id, "Please own the checklist").await;
+    let foreign_source_id =
+        send_message(&owner, &other_channel_id, "A separate channel discussion").await;
+
+    let accepted_suggestion_id = Uuid::new_v4();
+    let invalid_proposal = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Propose,
+        record_id: accepted_suggestion_id,
+        expected_head_event_id: None,
+        suggestion: Some(CompanyWorkSuggestionInput {
+            source_event_id: foreign_source_id,
+            expires_at: None,
+            work_item: work_input(Uuid::new_v4(), &requester, &owner, None, None, None),
+        }),
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_rejected(&submit_tracking_action(&managed_agent, &channel_id, &invalid_proposal).await);
+
+    let proposal = CompanyWorkTrackingAction {
+        suggestion: Some(CompanyWorkSuggestionInput {
+            source_event_id: source_event_id.clone(),
+            expires_at: None,
+            work_item: work_input(Uuid::new_v4(), &requester, &owner, None, None, None),
+        }),
+        ..invalid_proposal
+    };
+    assert_accepted(&submit_tracking_action(&managed_agent, &channel_id, &proposal).await);
+    let suggested_work_id = proposal
+        .suggestion
+        .as_ref()
+        .expect("proposal payload")
+        .work_item
+        .work_item_id;
+    let (suggestion_head_id, suggestion_head) = current_tracking_head(
+        &admin,
+        &channel_id,
+        accepted_suggestion_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    let CompanyWorkTrackingHead::CommitmentSuggestion(suggestion) = suggestion_head else {
+        panic!("proposal must create a commitment suggestion head");
+    };
+    assert_eq!(suggestion.status, CompanyWorkSuggestionStatus::Pending);
+    assert_eq!(
+        suggestion.proposed_by_pubkey,
+        managed_agent.public_key().to_hex()
+    );
+    assert_eq!(suggestion.source_event_id, source_event_id);
+    assert_eq!(suggestion.source_channel_id.to_string(), channel_id);
+    assert_eq!(
+        suggestion.work_item.source_event_id.as_deref(),
+        Some(suggestion.source_event_id.as_str())
+    );
+    assert_eq!(
+        suggestion.work_item.thread_root_event_id.as_deref(),
+        Some(suggestion.source_event_id.as_str())
+    );
+    assert_eq!(suggestion.work_item.work_item_id, suggested_work_id);
+    assert!(
+        !work_head_exists(&admin, &channel_id, suggested_work_id).await,
+        "proposal alone must not create work"
+    );
+
+    let denied_accept = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Accept,
+        record_id: accepted_suggestion_id,
+        expected_head_event_id: Some(suggestion_head_id.clone()),
+        suggestion: None,
+        accepted_work_item_id: Some(suggested_work_id),
+        config: None,
+    };
+    assert_rejected(&submit_tracking_action(&managed_agent, &channel_id, &denied_accept).await);
+    assert_rejected(&submit_tracking_action(&outsider, &channel_id, &denied_accept).await);
+    assert!(!work_head_exists(&admin, &channel_id, suggested_work_id).await);
+
+    let accept = CompanyWorkTrackingAction {
+        expected_head_event_id: Some(suggestion_head_id),
+        ..denied_accept
+    };
+    assert_accepted(&submit_tracking_action(&requester, &channel_id, &accept).await);
+    let (_, accepted_head) = current_tracking_head(
+        &admin,
+        &channel_id,
+        accepted_suggestion_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    let CompanyWorkTrackingHead::CommitmentSuggestion(accepted) = accepted_head else {
+        panic!("accepted record must remain a commitment suggestion head");
+    };
+    assert_eq!(accepted.status, CompanyWorkSuggestionStatus::Accepted);
+    assert_eq!(accepted.accepted_work_item_id, Some(suggested_work_id));
+    let (_, work_head) = current_work_head(&admin, &channel_id, suggested_work_id).await;
+    assert_eq!(
+        work_head.source_event_id.as_deref(),
+        Some(source_event_id.as_str())
+    );
+    assert_eq!(
+        work_head.thread_root_event_id.as_deref(),
+        Some(source_event_id.as_str())
+    );
+
+    let dismissed_id = Uuid::new_v4();
+    let human_proposal = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Propose,
+        record_id: dismissed_id,
+        expected_head_event_id: None,
+        suggestion: Some(CompanyWorkSuggestionInput {
+            source_event_id: source_event_id.clone(),
+            expires_at: None,
+            work_item: work_input(Uuid::new_v4(), &proposer, &owner, None, None, None),
+        }),
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&proposer, &channel_id, &human_proposal).await);
+    let (dismiss_head_id, _) = current_tracking_head(
+        &admin,
+        &channel_id,
+        dismissed_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    let dismiss = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Dismiss,
+        record_id: dismissed_id,
+        expected_head_event_id: Some(dismiss_head_id),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&requester, &channel_id, &dismiss).await);
+    let (_, dismissed_head) = current_tracking_head(
+        &admin,
+        &channel_id,
+        dismissed_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    assert!(matches!(
+        dismissed_head,
+        CompanyWorkTrackingHead::CommitmentSuggestion(ref item)
+            if item.status == CompanyWorkSuggestionStatus::Dismissed
+    ));
+
+    let expired_id = Uuid::new_v4();
+    let expires_at =
+        (Utc::now() + chrono::Duration::seconds(5)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let expiring_proposal = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Propose,
+        record_id: expired_id,
+        expected_head_event_id: None,
+        suggestion: Some(CompanyWorkSuggestionInput {
+            source_event_id,
+            expires_at: Some(expires_at.clone()),
+            work_item: work_input(Uuid::new_v4(), &proposer, &owner, None, None, None),
+        }),
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&proposer, &channel_id, &expiring_proposal).await);
+    let (expire_head_id, _) = current_tracking_head(
+        &admin,
+        &channel_id,
+        expired_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    let expires = DateTime::parse_from_rfc3339(&expires_at)
+        .expect("valid expiry timestamp")
+        .with_timezone(&Utc);
+    let remaining = (expires - Utc::now()).to_std().unwrap_or_default();
+    tokio::time::sleep(remaining + Duration::from_millis(300)).await;
+    let expire = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Expire,
+        record_id: expired_id,
+        expected_head_event_id: Some(expire_head_id),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&requester, &channel_id, &expire).await);
+    let (_, expired_head) = current_tracking_head(
+        &admin,
+        &channel_id,
+        expired_id,
+        CompanyWorkTrackingRecordType::CommitmentSuggestion,
+    )
+    .await;
+    assert!(matches!(
+        expired_head,
+        CompanyWorkTrackingHead::CommitmentSuggestion(ref item)
+            if item.status == CompanyWorkSuggestionStatus::Expired
+    ));
+}
+
+async fn configure_watchdog(
+    keys: &Keys,
+    channel_id: &str,
+    work_item_id: Uuid,
+    interval_seconds: u32,
+) -> (String, CompanyWorkTrackingHead) {
+    let configure = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Configure,
+        record_id: work_item_id,
+        expected_head_event_id: None,
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: Some(CompanyWorkWatchdogConfig {
+            check_when: CompanyWorkCheckWhen::NoUpdate,
+            check_interval_seconds: interval_seconds,
+            ask_first_pubkey: None,
+            escalate_to_pubkey: None,
+            escalation_interval_seconds: None,
+        }),
+    };
+    assert_accepted(&submit_tracking_action(keys, channel_id, &configure).await);
+    current_tracking_head(
+        keys,
+        channel_id,
+        work_item_id,
+        CompanyWorkTrackingRecordType::WatchdogConfiguration,
+    )
+    .await
+}
+
+async fn watchdog_schedule(
+    pool: &PgPool,
+    community_id: Uuid,
+    work_item_id: Uuid,
+    config_event_id: &[u8],
+) -> (Uuid, DateTime<Utc>) {
+    let row = sqlx::query(
+        "SELECT id, scheduled_for FROM company_work_watchdog_deliveries \
+         WHERE community_id = $1 AND work_item_id = $2 AND config_event_id = $3 \
+         ORDER BY scheduled_for ASC LIMIT 1",
+    )
+    .bind(community_id)
+    .bind(work_item_id)
+    .bind(config_event_id)
+    .fetch_one(pool)
+    .await
+    .expect("watchdog config durably schedules a check-in");
+    (
+        row.try_get("id").expect("delivery id"),
+        row.try_get("scheduled_for").expect("schedule time"),
+    )
+}
+
+async fn watchdog_delivery_state(
+    pool: &PgPool,
+    community_id: Uuid,
+    delivery_id: Uuid,
+) -> (String, i32, DateTime<Utc>, Option<String>) {
+    let row = sqlx::query(
+        "SELECT state, attempt_count, next_attempt_at, last_error \
+         FROM company_work_watchdog_deliveries WHERE community_id = $1 AND id = $2",
+    )
+    .bind(community_id)
+    .bind(delivery_id)
+    .fetch_one(pool)
+    .await
+    .expect("read watchdog delivery journal");
+    (
+        row.try_get("state").expect("delivery state"),
+        row.try_get("attempt_count").expect("attempt count"),
+        row.try_get("next_attempt_at").expect("next attempt time"),
+        row.try_get("last_error").expect("last error"),
+    )
+}
+
+#[tokio::test]
+#[ignore]
+async fn company_work_watchdogs_require_explicit_config_retry_durably_deliver_and_cancel() {
+    let admin = Keys::generate();
+    let owner = Keys::generate();
+    seed_relay_member(&admin, "owner").await;
+    seed_relay_member(&owner, "member").await;
+    let channel_id = create_test_channel(&admin).await;
+    add_channel_member(&admin, &owner, &channel_id).await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&test_database_url())
+        .await
+        .expect("connect watchdog test database");
+    let community_id = ensure_test_community(&relay_authority()).await;
+    let work_item_id = Uuid::new_v4();
+    let root_event_id = send_message(&admin, &channel_id, "Launch checklist thread").await;
+    let create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            work_item_id,
+            &owner,
+            &owner,
+            None,
+            Some(root_event_id.clone()),
+            Some(root_event_id.clone()),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &channel_id, &create).await);
+    let unsaved_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM company_work_watchdog_deliveries \
+         WHERE community_id = $1 AND work_item_id = $2",
+    )
+    .bind(community_id)
+    .bind(work_item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("check default watchdog state");
+    assert_eq!(
+        unsaved_count, 0,
+        "watchdog starts OFF without a saved config"
+    );
+
+    let (config_event_id, config_head) =
+        configure_watchdog(&owner, &channel_id, work_item_id, 60).await;
+    let CompanyWorkTrackingHead::WatchdogConfiguration(config) = config_head else {
+        panic!("configure must create a watchdog head");
+    };
+    assert!(config.enabled);
+    assert_eq!(
+        config
+            .config
+            .as_ref()
+            .map(|item| item.check_interval_seconds),
+        Some(1),
+        "the test explicitly chooses its interval"
+    );
+    let config_event_bytes = hex::decode(config_event_id).expect("config event id");
+    let (delivery_id, scheduled_for) =
+        watchdog_schedule(&pool, community_id, work_item_id, &config_event_bytes).await;
+
+    let mut injected_time = scheduled_for;
+    for expected_attempt in 1..=MAX_DELIVERY_ATTEMPTS {
+        let claimed = claim_due_batch(
+            &pool,
+            "company-work-tracking-e2e",
+            injected_time,
+            injected_time + chrono::Duration::minutes(5),
+            1,
+        )
+        .await
+        .expect("claim due watchdog delivery");
+        assert_eq!(claimed.len(), 1, "one due check-in should be leased");
+        let delivery = claimed.into_iter().next().expect("claimed delivery");
+        assert_eq!(delivery.id, delivery_id);
+        assert_eq!(delivery.work_item_id, work_item_id);
+        assert_eq!(delivery.attempt_count, expected_attempt);
+        assert!(fail_delivery(
+            &pool,
+            &delivery,
+            injected_time,
+            "injected transport failure"
+        )
+        .await
+        .expect("persist failure and retry"));
+
+        let (state, attempt_count, next_attempt_at, last_error) =
+            watchdog_delivery_state(&pool, community_id, delivery_id).await;
+        assert_eq!(attempt_count, expected_attempt);
+        assert_eq!(last_error.as_deref(), Some("injected transport failure"));
+        if expected_attempt == MAX_DELIVERY_ATTEMPTS {
+            assert_eq!(state, "failed", "retry limit is terminal");
+        } else {
+            assert_eq!(state, "pending", "failure remains durable and retryable");
+            assert_eq!(next_attempt_at, retry_at(injected_time, expected_attempt));
+            let before_retry = next_attempt_at - chrono::Duration::seconds(1);
+            let early_claim = claim_due_batch(
+                &pool,
+                "company-work-tracking-e2e",
+                before_retry,
+                before_retry + chrono::Duration::minutes(5),
+                1,
+            )
+            .await
+            .expect("early retry query");
+            assert!(
+                early_claim.is_empty(),
+                "retry must honor its persisted backoff"
+            );
+            injected_time = next_attempt_at;
+        }
+    }
+
+    let delivered_work_id = Uuid::new_v4();
+    let delivered_root_id = send_message(&admin, &channel_id, "Quiet thread for check-in").await;
+    let delivered_create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id: delivered_work_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            delivered_work_id,
+            &owner,
+            &owner,
+            None,
+            Some(delivered_root_id.clone()),
+            Some(delivered_root_id.clone()),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &channel_id, &delivered_create).await);
+    let (delivered_config_id, _) =
+        configure_watchdog(&owner, &channel_id, delivered_work_id, 1).await;
+    let delivered_config_bytes = hex::decode(delivered_config_id).expect("config event id");
+    let (delivered_id, _) = watchdog_schedule(
+        &pool,
+        community_id,
+        delivered_work_id,
+        &delivered_config_bytes,
+    )
+    .await;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let (state, _, _, last_error) =
+            watchdog_delivery_state(&pool, community_id, delivered_id).await;
+        if state == "delivered" {
+            break;
+        }
+        assert!(
+            state != "failed" && state != "cancelled",
+            "scheduler did not deliver check-in: state={state}, last_error={last_error:?}"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "scheduler did not deliver the due check-in before timeout"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let replies = thread_replies(&admin, &channel_id, &delivered_root_id).await;
+    let check_in = replies
+        .iter()
+        .find(|event| event.content == "Check-in: Prepare the launch checklist")
+        .expect("successful watchdog delivery is a message in the work thread");
+    assert!(check_in.tags.iter().any(|tag| {
+        let values = tag.as_slice();
+        tag.kind().to_string() == "e"
+            && values
+                .get(1)
+                .is_some_and(|value| value == &delivered_root_id)
+            && values.get(3).is_some_and(|marker| marker == "reply")
+    }));
+    let (delivered_head_id, delivered_head) = current_tracking_head(
+        &admin,
+        &channel_id,
+        delivered_work_id,
+        CompanyWorkTrackingRecordType::WatchdogConfiguration,
+    )
+    .await;
+    assert!(
+        matches!(
+            current_work_head(&admin, &channel_id, delivered_work_id)
+                .await
+                .1
+                .status,
+            CompanyWorkStatus::Active
+        ),
+        "watchdog messages never change work status"
+    );
+    assert!(matches!(
+        delivered_head,
+        CompanyWorkTrackingHead::WatchdogConfiguration(ref item) if item.enabled
+    ));
+    let disable_delivered = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Disable,
+        record_id: delivered_work_id,
+        expected_head_event_id: Some(delivered_head_id),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&owner, &channel_id, &disable_delivered).await);
+
+    let cancel_work_id = Uuid::new_v4();
+    let cancel_root_id = send_message(&admin, &channel_id, "Second watchdog thread").await;
+    let cancel_create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id: cancel_work_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(
+            cancel_work_id,
+            &owner,
+            &owner,
+            None,
+            Some(cancel_root_id.clone()),
+            Some(cancel_root_id),
+        )),
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &channel_id, &cancel_create).await);
+    let (cancel_config_event_id, _) =
+        configure_watchdog(&owner, &channel_id, cancel_work_id, 60).await;
+    let cancel_config_bytes = hex::decode(cancel_config_event_id.clone()).expect("config event id");
+    let (cancel_delivery_id, cancel_scheduled_for) =
+        watchdog_schedule(&pool, community_id, cancel_work_id, &cancel_config_bytes).await;
+    let claimed = claim_due_batch(
+        &pool,
+        "company-work-tracking-e2e",
+        cancel_scheduled_for,
+        cancel_scheduled_for + chrono::Duration::minutes(5),
+        1,
+    )
+    .await
+    .expect("claim delivery before watchdog disable");
+    assert_eq!(claimed.len(), 1);
+    let in_flight = claimed.into_iter().next().expect("in-flight delivery");
+    assert_eq!(in_flight.id, cancel_delivery_id);
+    let disable = CompanyWorkTrackingAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        action: CompanyWorkTrackingActionKind::Disable,
+        record_id: cancel_work_id,
+        expected_head_event_id: Some(cancel_config_event_id),
+        suggestion: None,
+        accepted_work_item_id: None,
+        config: None,
+    };
+    assert_accepted(&submit_tracking_action(&owner, &channel_id, &disable).await);
+    let (state, _, _, _) = watchdog_delivery_state(&pool, community_id, cancel_delivery_id).await;
+    assert_eq!(state, "cancelled", "disable cancels an in-flight lease");
+    assert!(!fail_delivery(
+        &pool,
+        &in_flight,
+        cancel_scheduled_for,
+        "stale worker completion",
+    )
+    .await
+    .expect("cancelled lease rejects a stale failure"));
+}
+
 async fn submit_work_action(
     keys: &Keys,
     channel_id: &str,
@@ -212,6 +837,22 @@ async fn submit_work_action(
     let event = builder
         .sign_with_keys(keys)
         .expect("sign company work action");
+    post_event(keys, &event).await
+}
+
+async fn submit_tracking_action(
+    keys: &Keys,
+    channel_id: &str,
+    action: &CompanyWorkTrackingAction,
+) -> Value {
+    let builder = buzz_sdk::company_work_tracking::build_company_work_tracking_action(
+        Uuid::parse_str(channel_id).expect("channel UUID"),
+        action,
+    )
+    .expect("build company work tracking action");
+    let event = builder
+        .sign_with_keys(keys)
+        .expect("sign company work tracking action");
     post_event(keys, &event).await
 }
 
@@ -266,6 +907,100 @@ async fn current_work_head(
         serde_json::from_str(&event.content).expect("parse company work head");
     assert_eq!(head.work_item_id, work_item_id);
     (event.id.to_hex(), head)
+}
+
+async fn current_tracking_head(
+    keys: &Keys,
+    channel_id: &str,
+    record_id: Uuid,
+    record_type: CompanyWorkTrackingRecordType,
+) -> (String, CompanyWorkTrackingHead) {
+    let d_tag = match record_type {
+        CompanyWorkTrackingRecordType::CommitmentSuggestion => {
+            company_work_suggestion_d_tag(record_id)
+        }
+        CompanyWorkTrackingRecordType::WatchdogConfiguration => {
+            company_work_watchdog_d_tag(record_id)
+        }
+    };
+    let mut client = BuzzTestClient::connect(&relay_url(), keys)
+        .await
+        .expect("connect to query work tracking head");
+    let id = sub_id("work-tracking-head");
+    let filter = Filter::new()
+        .kind(Kind::Custom(KIND_COMPANY_WORK_TRACKING_HEAD as u16))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel_id])
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::D), [d_tag]);
+    client
+        .subscribe(&id, vec![filter])
+        .await
+        .expect("subscribe work tracking head");
+    let events = client
+        .collect_until_eose(&id, Duration::from_secs(10))
+        .await
+        .expect("read work tracking head");
+    client
+        .disconnect()
+        .await
+        .expect("disconnect tracking query client");
+    let event = events
+        .into_iter()
+        .next()
+        .expect("relay returned current work tracking head");
+    let head: CompanyWorkTrackingHead =
+        serde_json::from_str(&event.content).expect("parse work tracking head");
+    (event.id.to_hex(), head)
+}
+
+async fn work_head_exists(keys: &Keys, channel_id: &str, work_item_id: Uuid) -> bool {
+    let mut client = BuzzTestClient::connect(&relay_url(), keys)
+        .await
+        .expect("connect to query optional work head");
+    let id = sub_id("optional-work-head");
+    let filter = Filter::new()
+        .kind(Kind::Custom(KIND_WORK_ITEM_HEAD as u16))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel_id])
+        .custom_tags(
+            SingleLetterTag::lowercase(Alphabet::D),
+            [company_work_d_tag(work_item_id)],
+        );
+    client
+        .subscribe(&id, vec![filter])
+        .await
+        .expect("subscribe optional work head");
+    let events = client
+        .collect_until_eose(&id, Duration::from_secs(10))
+        .await
+        .expect("read optional work head");
+    client
+        .disconnect()
+        .await
+        .expect("disconnect optional work query");
+    !events.is_empty()
+}
+
+async fn thread_replies(keys: &Keys, channel_id: &str, root_event_id: &str) -> Vec<Event> {
+    let mut client = BuzzTestClient::connect(&relay_url(), keys)
+        .await
+        .expect("connect to query work thread");
+    let id = sub_id("work-thread-replies");
+    let filter = Filter::new()
+        .kind(Kind::Custom(9))
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::H), [channel_id])
+        .custom_tags(SingleLetterTag::lowercase(Alphabet::E), [root_event_id]);
+    client
+        .subscribe(&id, vec![filter])
+        .await
+        .expect("subscribe to work thread replies");
+    let events = client
+        .collect_until_eose(&id, Duration::from_secs(10))
+        .await
+        .expect("read work thread replies");
+    client
+        .disconnect()
+        .await
+        .expect("disconnect work thread query");
+    events
 }
 
 async fn send_goal_action(keys: &Keys, action: &GoalAction) -> Value {
