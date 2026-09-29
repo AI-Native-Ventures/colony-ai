@@ -318,6 +318,7 @@ async fn create_tool_consent_ask(
             action_preview: preview.to_string(),
         }),
         subject: None,
+        secret_request: None,
     };
     let action_command = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
