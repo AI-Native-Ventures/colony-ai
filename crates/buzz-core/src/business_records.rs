@@ -545,6 +545,10 @@ pub enum CompanyWorkItemActionKind {
     Archive,
     /// Restore an archived company work item.
     Restore,
+    /// Set the company work item's due date.
+    SetDueDate,
+    /// Clear the company work item's due date.
+    ClearDueDate,
 }
 
 /// Result recorded when an authorized reviewer checks completed work.
@@ -615,6 +619,12 @@ pub struct CompanyWorkItemHead {
     /// Latest reviewer decision, if one has been recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification: Option<CompanyWorkVerification>,
+    /// Time when the relay accepted this work item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_at: Option<String>,
+    /// Current due date in UTC RFC 3339 form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_at: Option<String>,
     /// Member action that produced this current head.
     pub source_action_event_id: String,
 }
@@ -653,6 +663,9 @@ pub struct CompanyWorkItemInput {
     /// Current deliverable or evidence note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+    /// Optional due date on creation. Later changes use explicit due-date actions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_at: Option<String>,
 }
 
 /// Verification payload on a company work-item action.
@@ -692,6 +705,9 @@ pub struct CompanyWorkItemAction {
     /// Required verdict and evidence for verify.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification: Option<CompanyWorkVerificationInput>,
+    /// Target timestamp for set_due_date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_at: Option<String>,
 }
 
 /// Immutable client deliverable version content.
@@ -1454,13 +1470,15 @@ pub fn validate_company_work_item_action(
     let no_payloads = action.head.is_none()
         && action.status.is_none()
         && action.reason.is_none()
-        && action.verification.is_none();
+        && action.verification.is_none()
+        && action.due_at.is_none();
     match action.action {
         CompanyWorkItemActionKind::Create => {
             if action.expected_head_event_id.is_some()
                 || action.status.is_some()
                 || action.reason.is_some()
                 || action.verification.is_some()
+                || action.due_at.is_some()
             {
                 return Err(BusinessRecordError::Invalid(
                     "create must contain only a head and must omit expectedHeadEventId",
@@ -1484,7 +1502,11 @@ pub fn validate_company_work_item_action(
         }
         CompanyWorkItemActionKind::Update => {
             require_company_work_expected_head(action)?;
-            if action.status.is_some() || action.reason.is_some() || action.verification.is_some() {
+            if action.status.is_some()
+                || action.reason.is_some()
+                || action.verification.is_some()
+                || action.due_at.is_some()
+            {
                 return Err(BusinessRecordError::Invalid(
                     "update must contain only a head and expectedHeadEventId",
                 ));
@@ -1502,7 +1524,7 @@ pub fn validate_company_work_item_action(
         }
         CompanyWorkItemActionKind::SetStatus => {
             require_company_work_expected_head(action)?;
-            if action.head.is_some() || action.verification.is_some() {
+            if action.head.is_some() || action.verification.is_some() || action.due_at.is_some() {
                 return Err(BusinessRecordError::Invalid(
                     "set_status cannot contain head or verification payloads",
                 ));
@@ -1524,7 +1546,11 @@ pub fn validate_company_work_item_action(
         }
         CompanyWorkItemActionKind::Verify => {
             require_company_work_expected_head(action)?;
-            if action.head.is_some() || action.status.is_some() || action.reason.is_some() {
+            if action.head.is_some()
+                || action.status.is_some()
+                || action.reason.is_some()
+                || action.due_at.is_some()
+            {
                 return Err(BusinessRecordError::Invalid(
                     "verify must contain only a verification and expectedHeadEventId",
                 ));
@@ -1541,6 +1567,31 @@ pub fn validate_company_work_item_action(
             if !no_payloads {
                 return Err(BusinessRecordError::Invalid(
                     "archive and restore cannot contain a work-item payload",
+                ));
+            }
+        }
+        CompanyWorkItemActionKind::SetDueDate => {
+            require_company_work_expected_head(action)?;
+            if action.head.is_some()
+                || action.status.is_some()
+                || action.reason.is_some()
+                || action.verification.is_some()
+            {
+                return Err(BusinessRecordError::Invalid(
+                    "set_due_date must contain only dueAt and expectedHeadEventId",
+                ));
+            }
+            let due_at = action
+                .due_at
+                .as_deref()
+                .ok_or(BusinessRecordError::Invalid("dueAt is required"))?;
+            validate_utc_rfc3339(due_at)?;
+        }
+        CompanyWorkItemActionKind::ClearDueDate => {
+            require_company_work_expected_head(action)?;
+            if !no_payloads {
+                return Err(BusinessRecordError::Invalid(
+                    "clear_due_date cannot contain a work-item payload",
                 ));
             }
         }
@@ -1607,6 +1658,19 @@ fn validate_company_work_item_input(
         validate_hex_reference(event_id)?;
     }
     validate_work_item_evidence(head.evidence.as_deref())?;
+    if let Some(due_at) = head.due_at.as_deref() {
+        validate_utc_rfc3339(due_at)?;
+    }
+    Ok(())
+}
+
+/// Validate a timestamp is RFC 3339 and explicitly uses the UTC `Z` suffix.
+pub fn validate_utc_rfc3339(value: &str) -> Result<(), BusinessRecordError> {
+    if !value.ends_with('Z') || chrono::DateTime::parse_from_rfc3339(value).is_err() {
+        return Err(BusinessRecordError::Invalid(
+            "timestamp must be valid RFC 3339 UTC ending in Z",
+        ));
+    }
     Ok(())
 }
 
@@ -1812,6 +1876,7 @@ mod tests {
             source_event_id: None,
             thread_root_event_id: None,
             evidence: None,
+            due_at: None,
         }
     }
 
@@ -1830,6 +1895,7 @@ mod tests {
             status: None,
             reason: None,
             verification: None,
+            due_at: None,
         }
     }
 
@@ -2307,6 +2373,44 @@ mod tests {
             .expect("create head")
             .thread_root_event_id = Some("e".repeat(64));
         assert_eq!(validate_company_work_item_action(&action), Ok(()));
+    }
+
+    #[test]
+    fn company_work_due_date_actions_require_utc_rfc3339() {
+        let work_item_id = Uuid::from_u128(44);
+        let mut create = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::Create,
+            None,
+            Some(company_work_input(work_item_id)),
+        );
+        create.head.as_mut().expect("create head").due_at = Some("2026-10-02T12:00:00Z".into());
+        assert_eq!(validate_company_work_item_action(&create), Ok(()));
+
+        create.head.as_mut().expect("create head").due_at =
+            Some("2026-10-02T12:00:00+00:00".into());
+        assert!(validate_company_work_item_action(&create).is_err());
+        create.head.as_mut().expect("create head").due_at = Some("tomorrow".into());
+        assert!(validate_company_work_item_action(&create).is_err());
+
+        let mut set = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::SetDueDate,
+            Some("ab".repeat(32)),
+            None,
+        );
+        set.due_at = Some("2026-10-02T12:00:00Z".into());
+        assert_eq!(validate_company_work_item_action(&set), Ok(()));
+        set.due_at = Some("2026-10-02T12:00:00-01:00".into());
+        assert!(validate_company_work_item_action(&set).is_err());
+
+        let clear = company_work_action(
+            work_item_id,
+            CompanyWorkItemActionKind::ClearDueDate,
+            Some("cd".repeat(32)),
+            None,
+        );
+        assert_eq!(validate_company_work_item_action(&clear), Ok(()));
     }
 
     #[test]

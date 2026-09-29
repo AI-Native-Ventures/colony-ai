@@ -14,6 +14,7 @@ export function projectCompanyWorkTimeline(
   history: readonly CompanyWorkHistoryEntry[],
 ): CompanyWorkTimelineEntry[] {
   let previousThreadRoot: string | undefined;
+  let previousDueAt: string | undefined;
   const chronological = [...history].sort(
     (left, right) =>
       left.event.created_at - right.event.created_at ||
@@ -26,6 +27,7 @@ export function projectCompanyWorkTimeline(
       case "create":
         label = "created this commitment.";
         previousThreadRoot = action.head?.threadRootEventId;
+        previousDueAt = action.head?.dueAt;
         break;
       case "update": {
         const nextThreadRoot = action.head?.threadRootEventId;
@@ -50,6 +52,14 @@ export function projectCompanyWorkTimeline(
         break;
       case "restore":
         label = "restored this work item.";
+        break;
+      case "set_due_date":
+        label = previousDueAt ? "changed the due date." : "set a due date.";
+        previousDueAt = action.dueAt;
+        break;
+      case "clear_due_date":
+        label = "cleared the due date.";
+        previousDueAt = undefined;
         break;
     }
     return {

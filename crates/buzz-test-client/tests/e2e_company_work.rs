@@ -195,6 +195,7 @@ fn work_input(
         source_event_id,
         thread_root_event_id,
         evidence: None,
+        due_at: None,
     }
 }
 
@@ -382,6 +383,7 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&creator, &channel_id, &create).await);
 
@@ -410,10 +412,12 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
             source_event_id: head.source_event_id.clone(),
             thread_root_event_id: head.thread_root_event_id.clone(),
             evidence: head.evidence.clone(),
+            due_at: None,
         }),
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&creator, &channel_id, &moved).await);
     let (head_id, head) = current_work_head(&creator, &channel_id, work_item_id).await;
@@ -435,6 +439,7 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
         status: Some(CompanyWorkStatus::DoneUnverified),
         reason: Some("The requester cannot submit another person's work".into()),
         verification: None,
+        due_at: None,
     };
     assert_rejected(&submit_work_action(&requester, &channel_id, &requester_submit).await);
 
@@ -459,6 +464,7 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
             reason: "The checklist is missing rollback steps".into(),
             evidence: "Reviewed the current runbook".into(),
         }),
+        due_at: None,
     };
     assert_rejected(&submit_work_action(&intruder, &channel_id, &revision).await);
     let missing_evidence = CompanyWorkItemAction {
@@ -518,6 +524,169 @@ async fn company_work_enforces_owner_submission_verifier_authority_and_revision_
 
 #[tokio::test]
 #[ignore]
+async fn company_work_due_dates_validate_authority_preserve_legacy_updates_and_record_history() {
+    let admin = Keys::generate();
+    let owner = Keys::generate();
+    let intruder = Keys::generate();
+    seed_relay_member(&admin, "owner").await;
+    seed_relay_member(&owner, "member").await;
+    seed_relay_member(&intruder, "member").await;
+    let channel_id = create_test_channel(&admin).await;
+    add_channel_member(&admin, &owner, &channel_id).await;
+    add_channel_member(&admin, &intruder, &channel_id).await;
+
+    let work_item_id = Uuid::new_v4();
+    let create = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Create,
+        expected_head_event_id: None,
+        head: Some(work_input(work_item_id, &owner, &owner, None, None, None)),
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&admin, &channel_id, &create).await);
+
+    let future_due = (chrono::Utc::now() + chrono::Duration::days(30))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let (head_id, created_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+    let set_due = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::SetDueDate,
+        expected_head_event_id: Some(head_id),
+        head: None,
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: Some(future_due.clone()),
+    };
+    assert_accepted(&submit_work_action(&owner, &channel_id, &set_due).await);
+    let (head_id, due_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+    assert_eq!(due_head.due_at.as_deref(), Some(future_due.as_str()));
+    assert!(due_head.accepted_at.is_some());
+    assert_eq!(due_head.accepted_at, created_head.accepted_at);
+    assert_eq!(due_head.status, CompanyWorkStatus::Active);
+
+    let malformed_timestamp = CompanyWorkItemAction {
+        due_at: Some("2026-10-30T09:00:00+00:00".into()),
+        ..set_due.clone()
+    };
+    assert_rejected(&submit_raw_work_action(&owner, &channel_id, &malformed_timestamp).await);
+    let before_acceptance = CompanyWorkItemAction {
+        due_at: Some("2000-01-01T00:00:00Z".into()),
+        ..set_due.clone()
+    };
+    assert_rejected(&submit_raw_work_action(&owner, &channel_id, &before_acceptance).await);
+    let unauthorized = CompanyWorkItemAction {
+        expected_head_event_id: Some(head_id.clone()),
+        ..set_due.clone()
+    };
+    assert_rejected(&submit_work_action(&intruder, &channel_id, &unauthorized).await);
+
+    let generic_update = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::Update,
+        expected_head_event_id: Some(head_id),
+        head: Some(CompanyWorkItemInput {
+            schema_version: due_head.schema_version,
+            work_item_id,
+            title: due_head.title.clone(),
+            status: due_head.status,
+            assigned_pubkeys: due_head.assigned_pubkeys.clone(),
+            approver_pubkeys: due_head.approver_pubkeys.clone(),
+            deliverables: due_head.deliverables.clone(),
+            requester_pubkey: due_head.requester_pubkey.clone(),
+            done_condition: due_head.done_condition.clone(),
+            goal_id: due_head.goal_id,
+            source_event_id: due_head.source_event_id.clone(),
+            thread_root_event_id: due_head.thread_root_event_id.clone(),
+            evidence: due_head.evidence.clone(),
+            due_at: None,
+        }),
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&owner, &channel_id, &generic_update).await);
+    let (head_id, updated_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+    assert_eq!(updated_head.due_at, Some(future_due));
+
+    let changed_due = (chrono::Utc::now() + chrono::Duration::days(60))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let change_due = CompanyWorkItemAction {
+        expected_head_event_id: Some(head_id),
+        due_at: Some(changed_due),
+        ..set_due.clone()
+    };
+    assert_accepted(&submit_work_action(&owner, &channel_id, &change_due).await);
+    let (head_id, changed_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+    assert!(changed_head.due_at.is_some());
+    let clear_due = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::ClearDueDate,
+        expected_head_event_id: Some(head_id),
+        head: None,
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
+    };
+    assert_accepted(&submit_work_action(&owner, &channel_id, &clear_due).await);
+    let (_, cleared_head) = current_work_head(&admin, &channel_id, work_item_id).await;
+    assert_eq!(cleared_head.due_at, None);
+    assert_eq!(cleared_head.status, CompanyWorkStatus::Active);
+    assert_eq!(cleared_head.accepted_at, created_head.accepted_at);
+
+    let mut client = BuzzTestClient::connect(&relay_url(), &admin)
+        .await
+        .expect("connect to query due-date history");
+    let id = sub_id("work-due-history");
+    let filter = Filter::new()
+        .kind(Kind::Custom(KIND_WORK_ITEM_ACTION as u16))
+        .custom_tags(
+            SingleLetterTag::lowercase(Alphabet::H),
+            [channel_id.as_str()],
+        )
+        .custom_tags(
+            SingleLetterTag::lowercase(Alphabet::D),
+            [company_work_d_tag(work_item_id)],
+        );
+    client
+        .subscribe(&id, vec![filter])
+        .await
+        .expect("subscribe due-date history");
+    let due_actions: Vec<Event> = client
+        .collect_until_eose(&id, Duration::from_secs(10))
+        .await
+        .expect("read due-date history")
+        .into_iter()
+        .filter(|event| {
+            serde_json::from_str::<CompanyWorkItemAction>(&event.content).is_ok_and(|action| {
+                matches!(
+                    action.action,
+                    CompanyWorkItemActionKind::SetDueDate | CompanyWorkItemActionKind::ClearDueDate
+                )
+            })
+        })
+        .collect();
+    client
+        .disconnect()
+        .await
+        .expect("disconnect due-date history client");
+    assert_eq!(due_actions.len(), 3);
+    assert!(due_actions
+        .iter()
+        .all(|event| event.pubkey == owner.public_key() && event.created_at.as_secs() > 0));
+}
+
+#[tokio::test]
+#[ignore]
 async fn company_work_moves_between_channels_only_for_authorized_same_audience_members() {
     let admin = Keys::generate();
     let requester = Keys::generate();
@@ -563,6 +732,7 @@ async fn company_work_moves_between_channels_only_for_authorized_same_audience_m
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&admin, &source_channel_id, &create).await);
     let (head_id, head) = current_work_head(&admin, &source_channel_id, work_item_id).await;
@@ -581,6 +751,7 @@ async fn company_work_moves_between_channels_only_for_authorized_same_audience_m
         source_event_id: head.source_event_id.clone(),
         thread_root_event_id: Some(root.to_owned()),
         evidence: head.evidence.clone(),
+        due_at: None,
     };
     let denied_move = CompanyWorkItemAction {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -591,6 +762,7 @@ async fn company_work_moves_between_channels_only_for_authorized_same_audience_m
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_rejected(&submit_work_action(&intruder, &source_channel_id, &denied_move).await);
     assert_eq!(
@@ -664,6 +836,7 @@ async fn company_work_move_rejects_a_changed_destination_audience() {
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&admin, &source_channel_id, &create).await);
     let (head_id, head) = current_work_head(&admin, &source_channel_id, work_item_id).await;
@@ -686,10 +859,12 @@ async fn company_work_move_rejects_a_changed_destination_audience() {
             source_event_id: head.source_event_id.clone(),
             thread_root_event_id: Some(destination_root_id),
             evidence: head.evidence.clone(),
+            due_at: None,
         }),
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_rejected(&submit_work_action(&owner, &source_channel_id, &move_action).await);
     let (_, current) = current_work_head(&admin, &source_channel_id, work_item_id).await;
@@ -725,6 +900,7 @@ async fn company_work_allows_channel_members_without_relay_membership() {
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
 
     assert_accepted(&submit_work_action(&channel_member, &channel_id, &create).await);
@@ -753,6 +929,7 @@ async fn company_work_denies_cross_channel_actions_and_serializes_exact_head_rac
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&admin, &channel_id, &create).await);
     let (head_id, head) = current_work_head(&admin, &channel_id, work_item_id).await;
@@ -775,10 +952,12 @@ async fn company_work_denies_cross_channel_actions_and_serializes_exact_head_rac
             source_event_id: head.source_event_id.clone(),
             thread_root_event_id: head.thread_root_event_id.clone(),
             evidence: head.evidence.clone(),
+            due_at: None,
         }),
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_rejected(&submit_work_action(&admin, &other_channel_id, &foreign_channel_update).await);
 
@@ -791,6 +970,7 @@ async fn company_work_denies_cross_channel_actions_and_serializes_exact_head_rac
         status: Some(CompanyWorkStatus::Paused),
         reason: Some("Waiting for launch timing".into()),
         verification: None,
+        due_at: None,
     };
     let blocked = CompanyWorkItemAction {
         status: Some(CompanyWorkStatus::Blocked),
@@ -845,6 +1025,7 @@ async fn company_work_requires_live_goal_links_and_linked_work_blocks_goal_delet
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     assert_accepted(&submit_work_action(&admin, &channel_id, &create_linked).await);
     let (head_id, _) = current_goal_head(&admin, linked_goal_id).await;
@@ -896,6 +1077,7 @@ async fn company_work_requires_live_goal_links_and_linked_work_blocks_goal_delet
             status: None,
             reason: None,
             verification: None,
+            due_at: None,
         };
         assert_accepted(&submit_work_action(&admin, &channel_id, &create_unlinked).await);
         let (head_id, unlinked_head) = current_work_head(&admin, &channel_id, work_item_id).await;
@@ -917,6 +1099,7 @@ async fn company_work_requires_live_goal_links_and_linked_work_blocks_goal_delet
             status: None,
             reason: None,
             verification: None,
+            due_at: None,
         };
         assert_rejected(&submit_work_action(&admin, &channel_id, &link_to_unavailable_goal).await);
         let (_, unchanged_head) = current_work_head(&admin, &channel_id, work_item_id).await;

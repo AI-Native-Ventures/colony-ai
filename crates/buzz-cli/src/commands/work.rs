@@ -42,6 +42,8 @@ pub async fn dispatch(cmd: crate::WorkCmd, client: &BuzzClient) -> Result<(), Cl
         WorkCmd::Restore { work } => cmd_restore(client, &work).await,
         WorkCmd::List { channel, limit } => cmd_list(client, channel.as_deref(), limit).await,
         WorkCmd::Get { work } => cmd_get(client, &work).await,
+        WorkCmd::DueDate { work, date } => cmd_due_date(client, &work, &date).await,
+        WorkCmd::ClearDueDate { work } => cmd_clear_due_date(client, &work).await,
     }
 }
 
@@ -62,6 +64,7 @@ async fn cmd_create(
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     let event = client.sign_event(build_action(channel_id, &action)?)?;
     let response = client.submit_event(event).await?;
@@ -96,6 +99,7 @@ async fn cmd_update(
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
     };
     submit_action(client, current.channel_id, &action).await
 }
@@ -118,6 +122,7 @@ async fn cmd_status(
         status: Some(status),
         reason: Some(reason.to_owned()),
         verification: None,
+        due_at: None,
     };
     submit_action(client, current.channel_id, &action).await
 }
@@ -145,6 +150,7 @@ async fn cmd_verify(
             reason: reason.to_owned(),
             evidence: evidence.to_owned(),
         }),
+        due_at: None,
     };
     submit_action(client, current.channel_id, &action).await
 }
@@ -173,6 +179,45 @@ async fn cmd_simple_action(
         status: None,
         reason: None,
         verification: None,
+        due_at: None,
+    };
+    submit_action(client, current.channel_id, &action).await
+}
+
+async fn cmd_due_date(
+    client: &BuzzClient,
+    work_item_id: &str,
+    due_at: &str,
+) -> Result<(), CliError> {
+    let work_item_id = parse_uuid(work_item_id)?;
+    let current = current_work_item(client, work_item_id).await?;
+    let action = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::SetDueDate,
+        expected_head_event_id: Some(event_id(&current.event)?),
+        head: None,
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: Some(due_at.to_owned()),
+    };
+    submit_action(client, current.channel_id, &action).await
+}
+
+async fn cmd_clear_due_date(client: &BuzzClient, work_item_id: &str) -> Result<(), CliError> {
+    let work_item_id = parse_uuid(work_item_id)?;
+    let current = current_work_item(client, work_item_id).await?;
+    let action = CompanyWorkItemAction {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        work_item_id,
+        action: CompanyWorkItemActionKind::ClearDueDate,
+        expected_head_event_id: Some(event_id(&current.event)?),
+        head: None,
+        status: None,
+        reason: None,
+        verification: None,
+        due_at: None,
     };
     submit_action(client, current.channel_id, &action).await
 }

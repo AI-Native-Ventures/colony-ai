@@ -668,6 +668,8 @@ pub const KIND_INVOICE_HEAD: u32 = 30641;
 pub const KIND_PROSPECT_HEAD: u32 = 30644;
 /// Current relay-signed head for an overdue client money follow-up.
 pub const KIND_MONEY_FOLLOW_UP_HEAD: u32 = 30645;
+/// Current company-scoped commitment suggestion or work watchdog configuration.
+pub const KIND_COMPANY_WORK_TRACKING_HEAD: u32 = 30652;
 
 // Member-authored business actions and immutable versions use the 47000 band.
 // The company-record kinds reserve 47031 through 47033; business prospect
@@ -737,6 +739,8 @@ pub const KIND_RECONCILIATION: u32 = 47029;
 pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
 /// Requested change to a prospect qualification or pipeline record.
 pub const KIND_PROSPECT_ACTION: u32 = 47034;
+/// Requested change to a company work suggestion or watchdog configuration.
+pub const KIND_COMPANY_WORK_TRACKING_ACTION: u32 = 47041;
 
 // Company records (docs/company-records.md). Goals are community-wide; asks
 // live in channel threads. Heads are relay-signed like business heads.
@@ -840,6 +844,7 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_INVOICE_HEAD,
     KIND_PROSPECT_HEAD,
     KIND_MONEY_FOLLOW_UP_HEAD,
+    KIND_COMPANY_WORK_TRACKING_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
@@ -872,6 +877,7 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_MONEY_ADJUSTMENT,
     KIND_RECONCILIATION,
     KIND_MONEY_FOLLOW_UP,
+    KIND_COMPANY_WORK_TRACKING_ACTION,
 ];
 
 /// Returns `true` for a kind allocated to the Phase 2 business-record contract.
@@ -897,6 +903,7 @@ pub const fn is_business_relay_only_kind(kind: u32) -> bool {
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
+            | KIND_COMPANY_WORK_TRACKING_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
     )
 }
@@ -918,6 +925,7 @@ pub const fn is_business_command_kind(kind: u32) -> bool {
             | KIND_PAYMENT
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
+            | KIND_COMPANY_WORK_TRACKING_ACTION
     )
 }
 
@@ -1070,6 +1078,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_INVOICE_HEAD,
     KIND_PROSPECT_HEAD,
     KIND_MONEY_FOLLOW_UP_HEAD,
+    KIND_COMPANY_WORK_TRACKING_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
@@ -1102,6 +1111,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MONEY_ADJUSTMENT,
     KIND_RECONCILIATION,
     KIND_MONEY_FOLLOW_UP,
+    KIND_COMPANY_WORK_TRACKING_ACTION,
     KIND_GOAL_HEAD,
     KIND_ASK_HEAD,
     KIND_MEMBER_POSITION_HEAD,
@@ -1189,6 +1199,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_PAYMENT
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
+            | KIND_COMPANY_WORK_TRACKING_ACTION
             | KIND_GOAL_ACTION
             | KIND_ASK_ACTION
             | KIND_ASK_RESPONSE
@@ -1225,6 +1236,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
+            | KIND_COMPANY_WORK_TRACKING_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
             | KIND_GOAL_HEAD
             | KIND_ASK_HEAD
@@ -1267,6 +1279,9 @@ const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈
 const _: () = assert!(is_parameterized_replaceable(KIND_MEMBER_POSITION_HEAD)); // 30648 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_HIRE_HEAD)); // 30650 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_FACTORY_RUN_HEAD)); // 30649 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(
+    KIND_COMPANY_WORK_TRACKING_HEAD
+)); // 30652 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
@@ -1334,6 +1349,17 @@ mod tests {
         assert!(is_business_record_kind(KIND_MONEY_FOLLOW_UP_HEAD));
         assert!(is_business_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
         assert!(is_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+    }
+
+    #[test]
+    fn company_work_tracking_kinds_have_expected_write_authority() {
+        assert!(is_business_record_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_business_relay_only_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_business_record_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(is_business_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(is_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(!is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
     }
 
     #[test]

@@ -350,6 +350,22 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
             <h2 className="text-base font-semibold">Work context</h2>
             <dl className="mt-4 divide-y divide-border text-sm">
               <ContextRow label="Owner" value={ownerLabel} />
+              {record.head.approverPubkeys[0] ? (
+                <ContextRow
+                  label="Reviewer"
+                  value={resolveUserLabel({
+                    currentPubkey,
+                    profiles,
+                    pubkey: record.head.approverPubkeys[0],
+                  })}
+                />
+              ) : null}
+              {record.head.dueAt ? (
+                <ContextRow
+                  label="Due"
+                  value={formatDueAt(record.head.dueAt)}
+                />
+              ) : null}
               <ContextRow
                 label="Goal"
                 value={linkedGoal?.head.title ?? "No linked goal"}
@@ -587,6 +603,19 @@ function ContextRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right">{value}</dd>
     </div>
   );
+}
+
+function formatDueAt(value: string) {
+  const date = new Date(value);
+  const weekday = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+  }).format(date);
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+  }).format(date);
+  return `${weekday}, ${time}`;
 }
 
 function errorMessage(error: unknown) {

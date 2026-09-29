@@ -16,14 +16,15 @@ use buzz_core::business_records::{
     invoice_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
     money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
     prospect_d_tag, validate_business_command_scope, validate_company_work_d_tag,
-    validate_company_work_item_action, validate_hex_reference, BusinessCommand, ClientAction,
-    ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind, CompanyWorkItemHead,
-    CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer, DeliverableVersion,
-    InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction, MoneyAdjustment,
-    MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead,
-    MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead,
-    ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
-    ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
+    validate_company_work_item_action, validate_hex_reference, validate_utc_rfc3339,
+    BusinessCommand, ClientAction, ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind,
+    CompanyWorkItemHead, CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer,
+    DeliverableVersion, InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction,
+    MoneyAdjustment, MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind,
+    MoneyFollowUpHead, MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence,
+    ProposalAcceptance, ProposalHead, ProposalVersion, ProspectAction, ProspectActivity,
+    ProspectHead, ProspectStage, RecordAction, ServiceAction, ServiceHead, WorkItemAction,
+    WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::company_records::{goal_d_tag, GoalHead, GoalStatus};
 use buzz_core::kind::*;
@@ -3019,6 +3020,10 @@ async fn handle_company_work_item_action(
                 true,
             )
             .await?;
+            let accepted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            if let Some(due_at) = input.due_at.as_deref() {
+                validate_work_due_after_acceptance(due_at, Some(&accepted_at))?;
+            }
             CompanyWorkItemHead {
                 schema_version: input.schema_version,
                 work_item_id: input.work_item_id,
@@ -3036,6 +3041,8 @@ async fn handle_company_work_item_action(
                 status_reason: None,
                 verification: None,
                 source_action_event_id: event.id.to_hex(),
+                accepted_at: Some(accepted_at),
+                due_at: input.due_at,
             }
         }
         CompanyWorkItemActionKind::Update => {
@@ -3068,6 +3075,12 @@ async fn handle_company_work_item_action(
                 tx.rollback().await.map_err(internal)?;
                 return Err(invalid(
                     "company work actions cannot change deliverable version pointers",
+                ));
+            }
+            if input.due_at.is_some() && input.due_at != previous.due_at {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid(
+                    "due dates must use the explicit set_due_date or clear_due_date action",
                 ));
             }
             if input.source_event_id != previous.source_event_id {
@@ -3133,6 +3146,8 @@ async fn handle_company_work_item_action(
                 status_reason: previous.status_reason.clone(),
                 verification: previous.verification.clone(),
                 source_action_event_id: event.id.to_hex(),
+                accepted_at: previous.accepted_at.clone(),
+                due_at: previous.due_at.clone(),
             }
         }
         CompanyWorkItemActionKind::SetStatus => {
@@ -3248,6 +3263,67 @@ async fn handle_company_work_item_action(
             }
             let mut next = previous.clone();
             next.status = CompanyWorkStatus::Active;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::SetDueDate => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            let due_at = action
+                .due_at
+                .as_deref()
+                .ok_or_else(|| invalid("dueAt is required"))?;
+            validate_work_due_after_acceptance(due_at, previous.accepted_at.as_deref())?;
+            if previous.due_at.as_deref() == Some(due_at) {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item already has this due date"));
+            }
+            let mut next = previous.clone();
+            next.due_at = Some(due_at.to_owned());
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::ClearDueDate => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            if previous.due_at.is_none() {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item has no due date to clear"));
+            }
+            let mut next = previous.clone();
+            next.due_at = None;
             next.source_action_event_id = event.id.to_hex();
             next
         }
@@ -3370,6 +3446,28 @@ async fn ensure_company_work_people_are_members(
         if !is_member {
             return Err(forbidden(
                 "work owner and requester must be members of the tagged channel",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_work_due_after_acceptance(
+    due_at: &str,
+    accepted_at: Option<&str>,
+) -> Result<(), IngestError> {
+    validate_utc_rfc3339(due_at)
+        .map_err(|error| invalid(format!("company work due date: {error}")))?;
+    let due_at = chrono::DateTime::parse_from_rfc3339(due_at)
+        .map_err(|_| invalid("company work due date is invalid"))?;
+    if let Some(accepted_at) = accepted_at {
+        validate_utc_rfc3339(accepted_at)
+            .map_err(|_| IngestError::Internal("company work acceptedAt is invalid".into()))?;
+        let accepted_at = chrono::DateTime::parse_from_rfc3339(accepted_at)
+            .map_err(|_| IngestError::Internal("company work acceptedAt is invalid".into()))?;
+        if due_at <= accepted_at {
+            return Err(invalid(
+                "company work due date must be later than its acceptance time",
             ));
         }
     }

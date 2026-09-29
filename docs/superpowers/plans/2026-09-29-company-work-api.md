@@ -41,18 +41,18 @@ Suggestions and watchdog settings share kind 30652 but have separate `recordType
 
 - [x] Register kinds 30652 and 47041 once and specify due date, suggestion, watchdog, authority, and retry semantics.
 - [x] Record the migration slot and frozen screen mapping.
-- [ ] Re-run `python3 verify.py` from `20260926-r19` and preserve the package as read only.
-- [ ] Activate Hermit, sign off the documentation commit, push `codex/work-api`, and open a draft PR against `codex/phase2-integration`.
+- [x] Re-run `python3 verify.py` from `20260926-r19` and preserve the package as read only.
+- [x] Activate Hermit, sign off the documentation commit, push `codex/work-api`, and open a draft PR against `codex/phase2-integration`.
 
 ### Task 2: Extend company work with due dates
 
 **Files:** `crates/buzz-core/src/business_records.rs`, `crates/buzz-relay/src/handlers/business_records.rs`, `crates/buzz-sdk/src/business_records.rs`, `crates/buzz-cli/src/commands/work.rs`, `desktop/src/features/company-work/companyWorkModels.ts`, `hooks.ts`, `CompanyWorkDetailScreen.tsx`, and timeline tests.
 
-- [ ] Add relay-owned `acceptedAt`, optional `dueAt`, and `set_due_date` and `clear_due_date` actions to company work. Keep client work payloads unchanged.
-- [ ] Validate UTC RFC 3339 values, acceptance-time ordering, exact-head edits, current authority, and history event signer/time. Preserve due dates when older generic update clients omit them.
-- [ ] Add CLI due-date set and clear operations. Display saved dates and action history in the existing work context and timeline. Do not add an editor because the frozen Work forms do not define a due-date input.
-- [ ] Add falsifiable tests for malformed timestamps, before-acceptance dates, set/change/clear attribution, unauthorized changes, and legacy update preservation.
-- [ ] Run `cargo fmt --all -- --check`; leave Rust build and tests to hosted CI.
+- [x] Add relay-owned `acceptedAt`, optional `dueAt`, and `set_due_date` and `clear_due_date` actions to company work. Keep client work payloads unchanged.
+- [x] Validate UTC RFC 3339 values, acceptance-time ordering, exact-head edits, current authority, and history event signer/time. Preserve due dates when older generic update clients omit them.
+- [x] Add CLI due-date set and clear operations. Display saved dates and action history in the existing work context and timeline. Do not add an editor because the frozen Work forms do not define a due-date input.
+- [x] Add falsifiable tests for malformed timestamps, before-acceptance dates, set/change/clear attribution, unauthorized changes, and legacy update preservation.
+- [x] Run `cargo fmt --all -- --check`; leave Rust build and tests to hosted CI.
 
 ### Task 3: Add persisted commitment suggestions
 

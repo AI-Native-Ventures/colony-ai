@@ -1365,6 +1365,21 @@ pub enum WorkCmd {
         #[arg(long)]
         work: String,
     },
+    /// Set a company work due date using an RFC 3339 UTC timestamp
+    DueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// Due date ending in Z
+        #[arg(long)]
+        date: String,
+    },
+    /// Clear a company work due date
+    ClearDueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
 }
 
 /// Commands for relay-backed Software Factory run records.
@@ -3197,7 +3212,18 @@ mod tests {
         );
         assert_eq!(
             names(&cmd, "work"),
-            vec!["archive", "create", "get", "list", "restore", "status", "update", "verify"]
+            vec![
+                "archive",
+                "clear-due-date",
+                "create",
+                "due-date",
+                "get",
+                "list",
+                "restore",
+                "status",
+                "update",
+                "verify"
+            ]
         );
         assert_eq!(
             names(&cmd, "goals"),
@@ -3311,7 +3337,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("work", 8),
+            ("work", 10),
             ("workflows", 8),
         ];
 

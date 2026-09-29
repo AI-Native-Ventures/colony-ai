@@ -25,6 +25,8 @@ type SeedWorkItem = {
   title: string;
   goalId?: string;
   ownerPubkey?: string;
+  reviewerPubkey?: string;
+  dueAt?: string;
   status?:
     | "active"
     | "paused"
@@ -85,11 +87,19 @@ function companyWorkHeadEvent(
         title: workItem.title,
         status: workItem.status ?? "active",
         assignedPubkeys: [workItem.ownerPubkey ?? ownerPubkey],
-        approverPubkeys: [],
+        approverPubkeys: workItem.reviewerPubkey
+          ? [workItem.reviewerPubkey]
+          : [],
         deliverables: [],
         requesterPubkey: workItem.ownerPubkey ?? ownerPubkey,
         doneCondition: `The work for ${workItem.title} is complete.`,
         ...(workItem.goalId ? { goalId: workItem.goalId } : {}),
+        ...(workItem.dueAt
+          ? {
+              acceptedAt: new Date(Date.now() - 60_000).toISOString(),
+              dueAt: workItem.dueAt,
+            }
+          : {}),
         sourceActionEventId: "c".repeat(64),
       }),
     },
@@ -675,6 +685,8 @@ test("company work tracking reads current owner records and keeps unavailable au
   if (CAPTURE_COMPANY_WORK_MATRIX) test.setTimeout(120_000);
   const aliceWorkId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const tylerWorkId = "5a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const dueWorkId = "6a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const dueAt = new Date(Date.now() + 86_400_000).toISOString();
   await installCompanyWorkMock(
     page,
     [],
@@ -685,6 +697,12 @@ test("company work tracking reads current owner records and keeps unavailable au
         ownerPubkey: TEST_IDENTITIES.alice.pubkey,
       },
       { workItemId: tylerWorkId, title: "Review the launch brief" },
+      {
+        workItemId: dueWorkId,
+        title: "Prepare the October campaign",
+        reviewerPubkey: TEST_IDENTITIES.alice.pubkey,
+        dueAt,
+      },
     ],
   );
 
@@ -702,6 +720,23 @@ test("company work tracking reads current owner records and keeps unavailable au
     page.getByTestId(`company-work-person-row-${tylerWorkId}`),
   ).toHaveCount(0);
   await captureCompanyWorkMatrix(page, "work-person-commitments");
+
+  await page.goto(`/#/work/tracking/timeline/${dueWorkId}`);
+  await expect(
+    page.getByRole("heading", { name: "Work context" }),
+  ).toBeVisible();
+  const dueDate = new Date(dueAt);
+  const expectedDue = `${new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+  }).format(dueDate)}, ${new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+  }).format(dueDate)}`;
+  await expect(page.getByText("Reviewer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Due", { exact: true })).toBeVisible();
+  await expect(page.getByText(expectedDue, { exact: true })).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-timeline-due");
 
   await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
   await expect(page.getByText("Watchdog is off")).toBeVisible();

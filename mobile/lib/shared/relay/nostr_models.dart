@@ -45,6 +45,7 @@ abstract final class EventKind {
   static const siteHead = 30640;
   static const invoiceHead = 30641;
   static const moneyFollowUpHead = 30645;
+  static const companyWorkTrackingHead = 30652;
   static const partyAction = 47000;
   static const clientAction = 47001;
   static const serviceAction = 47002;
@@ -78,6 +79,7 @@ abstract final class EventKind {
   static const moneyFollowUp = 47030;
   static const prospectHead = 30644;
   static const prospectAction = 47034;
+  static const companyWorkTrackingAction = 47041;
 
   /// Company records (docs/company-records.md): relay-signed goal and ask
   /// heads plus the member commands that produce them.
@@ -132,6 +134,7 @@ abstract final class EventKind {
     siteHead,
     invoiceHead,
     moneyFollowUpHead,
+    companyWorkTrackingHead,
     partyAction,
     clientAction,
     serviceAction,
@@ -165,6 +168,7 @@ abstract final class EventKind {
     moneyFollowUp,
     prospectHead,
     prospectAction,
+    companyWorkTrackingAction,
   ];
   static const streamMessageV2 = 40002;
   static const channelThreadSummary = 39005;
