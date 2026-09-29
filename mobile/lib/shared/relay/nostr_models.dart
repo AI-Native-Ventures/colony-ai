@@ -29,6 +29,9 @@ abstract final class EventKind {
   static const eventReminder = 30300;
   static const userStatus = 30315;
   static const dmVisibility = 30622;
+  static const workflowDefinition = 30620;
+  static const workflowDraft = 30623;
+  static const workflowStatus = 46021;
   static const partyHead = 30630;
   static const clientHead = 30631;
   static const serviceHead = 30632;
@@ -84,6 +87,8 @@ abstract final class EventKind {
   static const goalAction = 47031;
   static const askAction = 47032;
   static const askResponse = 47033;
+  static const secretBindingHead = 30647;
+  static const secretBindingAction = 47036;
   static const toolPermissionAction = 47035;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
@@ -94,6 +99,8 @@ abstract final class EventKind {
     goalAction,
     askAction,
     askResponse,
+    secretBindingHead,
+    secretBindingAction,
     toolPermissionHead,
     toolPermissionAction,
   ];

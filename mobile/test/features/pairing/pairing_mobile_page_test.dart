@@ -31,8 +31,8 @@ void main() {
           final previousComparator = goldenFileComparator;
           tester.view.devicePixelRatio = 1;
           tester.view.physicalSize = size;
-          tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
-          tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+          tester.view.viewPadding = const FakeViewPadding(top: 72, bottom: 20);
+          tester.view.padding = const FakeViewPadding(top: 72, bottom: 20);
           if (captureScreenshots) {
             goldenFileComparator = LocalFileComparator(
               Uri.file('${output.path}/pairing_test.dart'),
@@ -505,7 +505,7 @@ class _ProofStatusBar extends StatelessWidget {
       brightness == Brightness.dark ? 0xffeee8f0 : 0xff292632,
     );
     return Positioned(
-      top: 0,
+      top: 26,
       left: 0,
       right: 0,
       child: IgnorePointer(

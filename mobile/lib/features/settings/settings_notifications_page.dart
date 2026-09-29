@@ -23,7 +23,7 @@ class SettingsNotificationsPage extends ConsumerWidget {
     final canManagePush = Env.pushGatewayConfigured;
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Notifications'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

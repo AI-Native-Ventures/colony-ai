@@ -13,7 +13,7 @@ class SettingsExportFailedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Export unavailable'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

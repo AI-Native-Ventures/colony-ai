@@ -32,9 +32,12 @@ class AuthEntryPage extends HookConsumerWidget {
 
     return AccountPageScaffold(
       showBackButton: false,
+      centerBrandTitle: true,
       title: null,
       description: null,
       showHeroBackground: true,
+      footerTopPadding: 18,
+      footerBottomPadding: 13,
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -174,7 +177,7 @@ class _WelcomeMemberCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AccountFlowPalette.paper(brightness),
+        color: AccountFlowPalette.field(brightness),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AccountFlowPalette.line(brightness)),
       ),

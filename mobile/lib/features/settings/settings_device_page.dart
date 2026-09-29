@@ -17,7 +17,7 @@ class SettingsDevicePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: MobileFlowAppBar(title: deviceName),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

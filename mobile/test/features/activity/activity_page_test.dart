@@ -189,9 +189,7 @@ void main() {
     expect(find.text('No activity yet'), findsOneWidget);
   });
 
-  testWidgets('Activity home uses the v5 Updates header and keeps both tabs', (
-    tester,
-  ) async {
+  testWidgets('Activity home matches the v6 empty state', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -209,27 +207,44 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: Scaffold(
-            body: ActivityHomePage(
-              onOpenItem: (_) {},
-              updatesPageBuilder: (_, _) => const SizedBox.shrink(),
-            ),
-          ),
+          home: Scaffold(body: ActivityHomePage(onOpenItem: (_) {})),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Updates'), findsOneWidget);
-    expect(find.text('The company, moving together'), findsOneWidget);
-    expect(find.text('For you'), findsOneWidget);
-    expect(find.text('Team updates'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('A quieter\nmoment.'), findsOneWidget);
+    expect(find.text('No recent activity'), findsOneWidget);
+    expect(find.text('Open conversations'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('activity-back-to-today')),
       findsOneWidget,
     );
     expect(find.byType(FrostedAppBar), findsNothing);
-    expect(find.text('No activity yet'), findsOneWidget);
+    expect(find.text('No recent activity'), findsOneWidget);
+  });
+
+  testWidgets('Activity home reports unavailable data and offers retry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
+          activityProvider.overrideWith(_ErrorActivityNotifier.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(body: ActivityHomePage(onOpenItem: (_) {})),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load activity'), findsOneWidget);
+    expect(find.text('Retry connection'), findsOneWidget);
+    expect(find.text('No recent activity'), findsNothing);
   });
 
   testWidgets('sizes the Activity app bar for its custom title style', (

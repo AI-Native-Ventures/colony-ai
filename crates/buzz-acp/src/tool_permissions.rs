@@ -318,6 +318,7 @@ async fn create_tool_consent_ask(
             action_preview: preview.to_string(),
         }),
         subject: None,
+        secret_request: None,
     };
     let action_command = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -1176,6 +1177,7 @@ mod tests {
             answer: None,
             option_id: None,
             checked_item_ids: None,
+            secret_binding_id: None,
         };
         let event = buzz_sdk::asks::build_ask_response(channel_id, &response)
             .expect("build ask resolution")

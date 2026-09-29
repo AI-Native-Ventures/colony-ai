@@ -151,7 +151,7 @@ class AccountCodeInput extends HookWidget {
                       borderSide: BorderSide(
                         color: isInvalid
                             ? AccountFlowPalette.error(brightness)
-                            : AccountFlowPalette.blue(brightness),
+                            : AccountFlowPalette.accent(brightness),
                       ),
                     ),
                     enabledBorder: isInvalid

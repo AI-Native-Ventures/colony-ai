@@ -246,6 +246,9 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// List, bind and revoke company secret metadata
+    #[command(subcommand)]
+    Secrets(SecretsCmd),
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
@@ -1193,6 +1196,28 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretsCmd {
+    /// List secret binding names and statuses
+    List {
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Create a pending binding from metadata JSON or stdin; no value is accepted
+    Bind {
+        /// SecretBindingSpec JSON or '-' to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke a binding by its UUID
+    Revoke {
+        /// Secret binding UUID
+        #[arg(long)]
+        binding_id: String,
     },
 }
 
@@ -2653,6 +2678,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
@@ -2843,6 +2869,7 @@ mod tests {
             "projects",
             "reactions",
             "repos",
+            "secrets",
             "social",
             "upload",
             "users",
@@ -2870,6 +2897,25 @@ mod tests {
             actual, expected_groups,
             "Command group inventory drift detected"
         );
+    }
+
+    #[test]
+    fn secret_binding_cli_does_not_accept_a_value_argument_or_echo_it() {
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let result = Cli::try_parse_from([
+            "buzz",
+            "secrets",
+            "bind",
+            "--record",
+            "{}",
+            "--value",
+            sentinel.as_str(),
+        ]);
+        let error = match result {
+            Ok(_) => panic!("the secret binding CLI has no credential value argument"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().contains(&sentinel));
     }
 
     #[test]
@@ -2943,6 +2989,7 @@ mod tests {
             vec!["balance", "history", "packs", "pay", "usage", "verify"]
         );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
+        assert_eq!(names(&cmd, "secrets"), vec!["bind", "list", "revoke"]);
         assert_eq!(
             names(&cmd, "emoji"),
             vec!["export", "import", "list", "rm", "set"]

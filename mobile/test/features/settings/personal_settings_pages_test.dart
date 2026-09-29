@@ -1,3 +1,5 @@
+import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/features/settings/personal_settings_home_page.dart';
 import 'package:buzz/features/settings/appearance_settings_pages.dart'
     show PersonalPreferencesPage;
@@ -21,10 +23,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('opens the designed account route from personal settings', (
+  testWidgets('shows business entry and opens account from personal settings', (
     tester,
   ) async {
     final prefs = await _prefs();
+    var businessOpened = false;
     await tester.pumpWidget(
       _testApp(
         prefs: prefs,
@@ -32,17 +35,34 @@ void main() {
           MobileRoutes.settingsProfile,
           (context, _) => const Scaffold(body: Text('Profile route opened')),
         ),
-        child: const PersonalSettingsHomePage(
+        child: PersonalSettingsHomePage(
           displayName: 'Lerato Molefe',
           email: 'lerato@example.com',
           avatarUrl: null,
+          communityName: 'Lerato Social',
+          onOpenBusiness: () => businessOpened = true,
+          onOpenAgents: _noop,
         ),
       ),
     );
 
     expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('A little more you.'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Preferences'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Business'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Business'), findsOneWidget);
+    await tester.tap(find.text('Business'));
+    expect(businessOpened, isTrue);
+    await tester.scrollUntilVisible(
+      find.text('Account'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     final editButton = tester.widget<TextButton>(
       find.widgetWithText(TextButton, 'Edit'),
     );
@@ -250,10 +270,13 @@ void main() {
     await tester.tap(find.text('Preview privacy'));
     await tester.pumpAndSettle();
     expect(find.text('Lock-screen preview'), findsOneWidget);
+    expect(find.text('Colony · You have a new notification.'), findsOneWidget);
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show message previews').last);
     await tester.pumpAndSettle();
+    expect(find.textContaining('A real workspace update.'), findsOneWidget);
+    expect(find.textContaining('Maya'), findsNothing);
     await tester.tap(find.text('Save preview privacy'));
     await tester.pumpAndSettle();
 
@@ -303,9 +326,33 @@ Widget _testApp({
   required MobileRouteRegistry registry,
   required Widget child,
 }) => ProviderScope(
-  overrides: [savedPrefsProvider.overrideWithValue(prefs)],
+  overrides: [
+    savedPrefsProvider.overrideWithValue(prefs),
+    channelsProvider.overrideWith(_TestChannelsNotifier.new),
+  ],
   child: MaterialApp(
     theme: AppTheme.light(),
     home: MobileRouteScope(registry: registry, child: child),
   ),
 );
+
+class _TestChannelsNotifier extends ChannelsNotifier {
+  @override
+  Future<List<Channel>> build() async => [
+    Channel(
+      id: 'test-channel',
+      name: 'Launch notes',
+      channelType: 'stream',
+      visibility: 'open',
+      description: '',
+      createdBy: 'a' * 64,
+      createdAt: DateTime.utc(2026, 9, 29),
+      memberCount: 1,
+      lastMessageContent: 'A real workspace update.',
+      lastMessagePubkey: 'a' * 64,
+      lastMessageCreatedAt: 1790700000,
+    ),
+  ];
+}
+
+void _noop() {}

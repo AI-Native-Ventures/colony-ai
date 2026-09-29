@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../channels/channels_provider.dart';
+import '../channels/date_formatters.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/mobile_flow_app_bar.dart';
 
@@ -24,6 +26,24 @@ class SettingsPrivacyPage extends HookConsumerWidget {
       _privacyChoices.contains(initial) ? initial! : _privacyChoices.first,
     );
     final saving = useState(false);
+    final channels = ref.watch(channelsProvider).asData?.value;
+    final activeChannels =
+        (channels ?? const [])
+            .where(
+              (channel) =>
+                  !channel.isDm &&
+                  !channel.isArchived &&
+                  channel.lastMessageContent?.trim().isNotEmpty == true &&
+                  channel.lastMessagePubkey != null &&
+                  channel.lastMessageCreatedAt != null,
+            )
+            .toList()
+          ..sort(
+            (left, right) => right.lastMessageCreatedAt!.compareTo(
+              left.lastMessageCreatedAt!,
+            ),
+          );
+    final previewChannel = activeChannels.isEmpty ? null : activeChannels.first;
 
     Future<void> save() async {
       if (saving.value) return;
@@ -47,11 +67,15 @@ class SettingsPrivacyPage extends HookConsumerWidget {
     }
 
     final preview = selection.value == 'Show message previews'
-        ? 'Maya · Campaign studio: The designs are ready.'
+        ? previewChannel == null
+              ? null
+              : '${shortPubkey(previewChannel.lastMessagePubkey!)} · '
+                    '${previewChannel.name}: '
+                    '${previewChannel.lastMessageContent!.trim()}'
         : 'Colony · You have a new notification.';
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Preview privacy'),
       body: Column(
         children: [
@@ -97,29 +121,52 @@ class SettingsPrivacyPage extends HookConsumerWidget {
                 ),
                 const SizedBox(height: Grid.xs),
                 Container(
-                  padding: const EdgeInsets.all(Grid.xs),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: _privacyPreviewColor(context),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Stack(
                     children: [
-                      Text(
-                        'Lock-screen preview',
-                        style: context.mobileTypography.conversation.copyWith(
-                          fontSize: 12,
-                          color: _privacyPreviewTextColor(context),
-                          fontWeight: FontWeight.w600,
+                      Padding(
+                        padding: const EdgeInsets.all(Grid.xs),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Lock-screen preview',
+                              style: context.mobileTypography.conversation
+                                  .copyWith(
+                                    fontSize: 12,
+                                    color: _privacyPreviewTextColor(context),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            const SizedBox(height: Grid.xxs),
+                            if (preview != null)
+                              Text(
+                                preview,
+                                style: context.mobileTypography.conversation
+                                    .copyWith(
+                                      fontSize: 13,
+                                      height: 1.6,
+                                      color: _privacyPreviewTextColor(context),
+                                    ),
+                              ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: Grid.xxs),
-                      Text(
-                        preview,
-                        style: context.mobileTypography.conversation.copyWith(
-                          fontSize: 13,
-                          height: 1.6,
-                          color: _privacyPreviewTextColor(context),
+                      Positioned(
+                        top: 0,
+                        bottom: 0,
+                        left: 0,
+                        child: SizedBox(
+                          width: Grid.half / 2,
+                          child: ColoredBox(
+                            color: context.mobileTokens.action.withValues(
+                              alpha: 0.55,
+                            ),
+                          ),
                         ),
                       ),
                     ],
