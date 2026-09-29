@@ -3180,7 +3180,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 7),
             ("asks", 4),
             ("canvas", 2),
             ("channels", 16),
