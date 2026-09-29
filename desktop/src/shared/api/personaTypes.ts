@@ -3,6 +3,24 @@
 // `@/shared/api/types`, which re-exports everything here.
 import type { AcpSessionPolicy, RespondToMode } from "./types";
 
+export type CompanyToolRisk = "low" | "medium" | "high";
+
+export type CompanyRoleTool = {
+  name: string;
+  risk: CompanyToolRisk;
+};
+
+/** Public catalog metadata for a role represented by a real persona. */
+export type CompanyRoleMetadata = {
+  job: string;
+  skills: string[];
+  tools: CompanyRoleTool[];
+  /** Runtime identifiers from the live ACP runtime catalog. */
+  workerMenu: string[];
+  /** Null means the founder sets the allowance during each hire. */
+  defaultAllowance?: string | null;
+};
+
 export type AgentPersona = {
   id: string;
   displayName: string;
@@ -13,6 +31,8 @@ export type AgentPersona = {
    * badge). Null means no owner-authored description.
    */
   description: string | null;
+  /** Optional non-authoritative role metadata from the persona catalog. */
+  companyRole?: CompanyRoleMetadata | null;
   systemPrompt: string;
   /** Preferred ACP runtime ID (e.g. "goose", "claude"). */
   runtime: string | null;
@@ -71,6 +91,7 @@ export type CreatePersonaInput = {
   avatarUrl?: string;
   /** Optional short, PUBLIC description (max 280 chars). Empty string clears. */
   description?: string | null;
+  companyRole?: CompanyRoleMetadata | null;
   systemPrompt: string;
   runtime?: string;
   model?: string;
@@ -91,6 +112,7 @@ export type UpdatePersonaInput = {
   avatarUrl?: string;
   /** Optional short, PUBLIC description (max 280 chars). Empty string clears. */
   description?: string | null;
+  companyRole?: CompanyRoleMetadata | null;
   systemPrompt: string;
   runtime?: string;
   model?: string;

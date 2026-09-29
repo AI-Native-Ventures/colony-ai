@@ -329,6 +329,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             runtime: Some("acp".into()),
             model: None,
             provider: Some("p1".into()),
+            company_role: None,
         }],
     };
     let actual = serde_json::to_value(vec![publication]).unwrap();
@@ -346,6 +347,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             "runtime": "acp",
             "model": null,
             "provider": "p1",
+            "companyRole": null,
         }],
     }]);
     assert_eq!(actual, expected);

@@ -96,6 +96,7 @@ export default defineConfig({
         "**/relay-reconnect-affordance.spec.ts",
         "**/workflows.spec.ts",
         "**/company-asks.spec.ts",
+        "**/company-hiring.spec.ts",
         "**/company-team.spec.ts",
         "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",

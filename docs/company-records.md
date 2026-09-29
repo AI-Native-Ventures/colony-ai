@@ -1,8 +1,9 @@
 # Colony company record contracts
 
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
-and member positions), PERM-1 standing tool permissions, secret bindings, and
-FACTORY-1 Factory run preview and pull request records.
+and member positions), PERM-1 standing tool permissions, secret bindings,
+FACTORY-1 Factory run preview and pull request records, and HIRE-1 employee
+hiring.
 Schema version: `1`. Goals, asks, work, permissions, and member positions
 follow design baseline
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
@@ -37,6 +38,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30647 | Secret binding head | Relay signed, replaceable | Secrets |
 | 30648 | Member position head | Relay signed, replaceable | Company team |
 | 30649 | Factory run preview and pull request head | Relay signed, replaceable | Software Factory |
+| 30650 | Hire head | Relay signed, replaceable | Company hiring |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -45,6 +47,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47036 | Secret binding action | Brokered | Secrets |
 | 47037 | Member position action | Brokered | Company team |
 | 47038 | Factory run preview and pull request action | Brokered | Software Factory |
+| 47039 | Hire action | Brokered | Company hiring |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -452,14 +455,136 @@ state.
 NEEDS_API: the frozen `hire/review` route used for reviewed rehire requires the
 retained employee package, including allowance, worker and tool scope, lessons,
 and history. The current member-position and managed-agent reads do not expose
-that complete review record. The relay rehire action is available, but its UI
-stays with the HIRE-1 record and route work.
+that complete review record. HIRE-1 implements new hires. Reviewed rehire stays
+out of this slice until the retained employee package is available.
 
 NEEDS_DESIGN: the frozen Team routes do not show where a non-owner starts a
 member-change approval ask, or how a paused employee's status and reason appear
 on message rows. Those surfaces remain unimplemented until their placement and
-behavior are approved. The reference Team list also includes a Hire employee
-action while HIRE-1 is out of scope; this batch does not implement that action.
+behavior are approved. The Hire employee action starts the new hire flow; the
+existing ask surface handles typed employee proposals.
+
+## Hiring
+
+Hiring uses the actual persona and team catalogs. A role pack is a catalogued
+agent definition with `companyRole` metadata for its job, skills, tools, and
+`defaultAllowance`. Each listed tool carries a descriptive risk label. The role
+picker never creates role data from prototype fixtures. The worker menu comes
+from the currently available ACP runtime and provider catalog; saved model
+identifiers are resolved through that catalog and are never hard-coded in the
+role pack. `defaultAllowance` is null for HIRE-1. The founder enters an amount
+during configuration, and the chosen value is kept with the hire record.
+
+`companyRole` is optional metadata on the real persona and team catalog
+projections, not a new event kind. It contains a job title, skill labels, tool
+names with a risk label of `low`, `medium`, or `high`, and an optional
+allowance field. These labels describe the role and do not grant permission.
+The existing catalog records do not yet expose these fields, so HIRE-1 adds the
+metadata to those real records and their existing catalog projections. Catalog
+entries without `companyRole` metadata are not presented as hire role packs.
+
+The hire head is community-wide at `company:hire:<hire-uuid>`. Its content
+contains `schemaVersion`, `hireId`, the immutable role-pack coordinate and
+metadata snapshot, the configured employee name and title (separate from the
+role-pack title), reporting manager,
+home channel, selected runtime/provider/model, configured allowance and period,
+founder approver, optional ask coordinate, optional employee pubkey recorded
+after founder approval, optional introduction event id, status (`proposed`, `awaiting_founder`, `approved`,
+`hired`, or `denied`), timestamps, and `sourceActionEventId`. Catalog metadata
+is copied into the hire head so later catalog edits do not rewrite the scope
+that was approved. Runtime and provider values are validated against the live
+catalog when the client prepares the employee; the relay stores the selected
+identifiers as part of the approved snapshot.
+
+Hire heads and hire actions carry no `h` tag. The d-tag is
+`company:hire:<hire-uuid>`. The `create` action has no
+`expectedHeadEventId`; `approve`, `attach_employee`, `complete`, and `deny`
+name the exact current head.
+The ask action remains kind 47032 and remains a channel thread item. A hire
+proposal ask carries a typed `hireProposal` snapshot and subject kind `hire`.
+The relay writes its kind 30643 ask head and kind 30650 proposed hire head in
+one transaction. The ask response remains kind 47033 and advances both heads
+in one transaction. If an administrator approves, the hire head waits for the
+owner's `approve` action. If the owner approves, the ask and hire heads record
+the decision and founder signature together.
+
+The member-signed hire action supports `create`, `update`, `approve`,
+`attach_employee`, `complete`, and `deny`. `create` stores a proposed hire
+record. `update` replaces the proposal while it is still proposed and names
+the exact current hire head. A community
+owner or admin may prepare a direct hire proposal, but only the owner may sign
+its final founder approval. Managers and employees cannot create a hire head directly. They
+propose a hire through an approval ask in the existing
+channel thread. The existing ask action uses category `hire`, links the hire
+UUID, and carries the proposed configuration. The ask head and proposed hire
+head commit together. Only community owners and admins may resolve a hire ask
+under D2. An admin approval moves the hire to `awaiting_founder`; it does not
+activate an employee until the community owner signs the final hire approval.
+An owner approval can record the ask resolution and founder approval in the
+same transaction. `approve` and `complete` name the exact current
+`expectedHeadEventId`. Rejection marks the hire denied and never creates a
+persona, managed agent, member position, channel membership, tool grant, or
+introduction. After founder approval, the owner records the managed employee
+pubkey with `attach_employee` before adding it to the selected channel or
+posting its introduction. This keeps the employee coordinate on the approved
+hire head so reloads can resume without creating a second identity. The
+introduction uses the message marker
+`company-hire:<hire-uuid>:introduction`; a retry reads the existing marked event
+before sending again. `complete` records the introduction event and employee
+position together after the relay verifies the employee is owned by the
+founder and the introduction is a post by that employee in the selected
+channel.
+
+The relay checks the trimmed, case-insensitive employee name against current
+company member profiles and other pending or active hire records before
+accepting a hire. Name checks are serialized under a company-scoped lock. A
+second check before completion catches a profile that was created after the
+hire began.
+The employee identity is created through the existing `CommunityCatalogDialog`
+and `AgentDialog` path, using the selected real persona and the available ACP
+runtime and model catalog. The hire remains recoverable until the managed agent
+has been created, joined to the selected channel, and posted its introduction.
+The app sends the introduction as the managed employee and uses an idempotent
+marker so a retry cannot publish a duplicate. `complete` verifies the real
+agent and introduction event, then atomically advances the hire head and creates
+the employee member-position head. The profile opens with the configured title,
+manager, channel, and runtime values after that transaction succeeds.
+
+The owner signature is the founder approval. Admins may prepare a hire and
+resolve hire asks, but an admin-only approval cannot transition the hire to an
+active employee. The screen confirmation is an explicit action, and relay role
+checks remain authoritative. The hire ask links to the existing ask card, whose
+open, resolved, denied, and failed states remain driven by the signed ask head
+and the current command result. A failed response does not update either head;
+the open ask and its review remain retryable.
+
+NEEDS_API: the hire head stores the configured allowance, but the current
+runtime and tool-permission APIs do not enforce a per-employee weekly budget.
+The UI and record must not describe the value as an enforced spend cap until a
+company budget API and runtime enforcement path exist.
+
+NEEDS_DESIGN: the frozen company v8 package defines the employee-proposed hire
+decision card, but not an employee-facing composer for creating its typed
+`hireProposal`. The existing ask composer cannot create that record. Do not add
+a hire proposal composer until its route and content are designed.
+
+NEEDS_DESIGN: the hire decision card permits owners and administrators to
+review an ask, while the frozen `hire/review` route requires founder sign-off.
+The relay supports an administrator decision that waits for the founder, but
+the handoff from that decision to a founder review is not designed. The desktop
+approval action is restricted to the owner until that handoff is specified.
+
+NEEDS_DESIGN: the frozen role-picker and configure screens do not specify the
+empty role-catalog state or what to show when no supported runtime, provider,
+or model is available. The flow uses live catalog records and does not invent
+fallback roles or models; these states need design before they can be handled
+in the UI.
+
+NEEDS_DESIGN: the existing `CommunityCatalogDialog` and `AgentDialog` do not
+expose a role-pack editor for `companyRole`, and this repository has no shipped
+role-pack values. The hire picker can show only real catalog entries that
+already contain valid metadata. Designing how owners curate those fields is
+required before the catalog can be populated through the app.
 
 ## Company work items
 

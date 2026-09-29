@@ -109,6 +109,13 @@ type MockPersonaSeed = {
   model?: string | null;
   /** Provider pinned on the persona. Leave empty for Codex/Claude runtimes. */
   provider?: string | null;
+  companyRole?: {
+    job: string;
+    skills: string[];
+    tools: Array<{ name: string; risk: "low" | "medium" | "high" }>;
+    workerMenu: string[];
+    defaultAllowance?: string | null;
+  } | null;
   namePool?: string[];
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
@@ -257,6 +264,12 @@ type MockBridgeOptions = {
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
   companyWorkActionErrors?: string[];
+  /** Relay-signed company hire heads used by Company Hire E2E coverage. */
+  companyHireHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker hire actions in focused E2E tests. */
+  companyHireRelayPrivateKeyHex?: string;
+  /** Reject successive hire action publishes in order, then accept them. */
+  companyHireActionErrors?: string[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

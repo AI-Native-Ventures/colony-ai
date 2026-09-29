@@ -260,6 +260,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             respond_to: Some("mentions".into()),
             parallelism: Some(2),
             session_policy: AcpSessionPolicy::Thread,
+            company_role: None,
         },
     };
     let actual = serde_json::to_value(vec![publication]).unwrap();
@@ -280,6 +281,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             "respondTo": "mentions",
             "parallelism": 2,
             "sessionPolicy": "thread",
+            "companyRole": null,
         },
     }]);
     assert_eq!(actual, expected);

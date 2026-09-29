@@ -18,7 +18,7 @@ use crate::{
             build_snapshot, encode_snapshot_json, encode_snapshot_png, AgentSnapshotMemoryEntry,
             MemoryLevel,
         },
-        load_agent_definitions, load_managed_agents, ManagedAgentRecord,
+        load_agent_definitions, load_managed_agents, load_personas, ManagedAgentRecord,
     },
 };
 
@@ -258,7 +258,7 @@ pub(crate) async fn materialize_snapshot_bytes(
     state: State<'_, AppState>,
 ) -> Result<SnapshotPayload, String> {
     // ── Load definition record and memory-source instance under lock ─────────
-    let (record, memory_pubkey) = {
+    let (record, memory_pubkey, company_role) = {
         let _store_guard = state
             .managed_agents_store_lock
             .lock()
@@ -266,6 +266,7 @@ pub(crate) async fn materialize_snapshot_bytes(
 
         let instances = load_managed_agents(&app)?;
         let definitions = load_agent_definitions(&app)?;
+        let personas = load_personas(&app)?;
         let (def_record, is_definition) = resolve_from_lists(&id, &instances, &definitions)
             .map(|(r, is_def)| (r.clone(), is_def))?;
         let mut def_record = def_record;
@@ -276,6 +277,18 @@ pub(crate) async fn materialize_snapshot_bytes(
         // for a different recipient setup.
         let global = crate::managed_agents::load_global_agent_config(&app).unwrap_or_default();
         materialize_portable_runtime_defaults(&mut def_record, &global);
+
+        let persona_id = if is_definition {
+            def_record.slug.as_deref()
+        } else {
+            def_record.persona_id.as_deref()
+        };
+        let company_role = persona_id.and_then(|persona_id| {
+            personas
+                .iter()
+                .find(|persona| persona.id == persona_id)
+                .and_then(|persona| persona.company_role.clone())
+        });
 
         let memory_pubkey = if memory_level != MemoryLevel::None {
             let mpk = memory_source_pubkey.as_deref().unwrap_or("");
@@ -294,7 +307,7 @@ pub(crate) async fn materialize_snapshot_bytes(
             None
         };
 
-        (def_record, memory_pubkey)
+        (def_record, memory_pubkey, company_role)
     };
 
     let display_name = record
@@ -319,12 +332,13 @@ pub(crate) async fn materialize_snapshot_bytes(
     };
 
     // ── Build manifest ───────────────────────────────────────────────────────
-    let snapshot = build_snapshot(
+    let mut snapshot = build_snapshot(
         &record,
         memory_level,
         memory_entries,
         avatar_bytes.as_deref(),
     );
+    snapshot.definition.company_role = company_role;
 
     // ── Encode ───────────────────────────────────────────────────────────────
     let slug = crate::util::slugify(&display_name, "agent", 50);
@@ -511,6 +525,7 @@ mod png_body_tests {
                 name_pool: vec![],
                 idle_timeout_seconds: None,
                 max_turn_duration_seconds: None,
+                company_role: None,
             },
             profile: crate::managed_agents::agent_snapshot::AgentSnapshotProfile {
                 display_name: "Agent".to_string(),

@@ -43,6 +43,8 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use png::{BitDepth, ColorType, Decoder, Encoder};
 use serde::{Deserialize, Serialize};
+
+use super::CompanyRoleMetadata;
 use std::io::Cursor;
 
 use crate::managed_agents::{types::ManagedAgentRecord, AcpSessionPolicy};
@@ -127,6 +129,9 @@ pub struct AgentSnapshotDefinition {
     pub idle_timeout_seconds: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turn_duration_seconds: Option<u64>,
+    /// Non-authoritative company role metadata copied with the safe definition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub company_role: Option<CompanyRoleMetadata>,
 }
 
 /// kind:0 presentation fields.
@@ -221,6 +226,7 @@ pub fn build_snapshot(
         name_pool: record.name_pool.clone(),
         idle_timeout_seconds: record.idle_timeout_seconds,
         max_turn_duration_seconds: record.max_turn_duration_seconds,
+        company_role: None,
     };
 
     // ── Profile ─────────────────────────────────────────────────────────

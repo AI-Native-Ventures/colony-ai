@@ -12,6 +12,7 @@ export type RawPersona = {
   avatar_url: string | null;
   /** Optional short, PUBLIC description (max 280 chars). */
   description?: string | null;
+  company_role?: AgentPersona["companyRole"];
   system_prompt: string;
   runtime?: string | null;
   model?: string | null;
@@ -44,6 +45,7 @@ export function fromRawPersona(persona: RawPersona): AgentPersona {
     displayName: persona.display_name,
     avatarUrl: persona.avatar_url,
     description: persona.description ?? null,
+    companyRole: persona.company_role ?? null,
     systemPrompt: persona.system_prompt,
     runtime: persona.runtime ?? null,
     model: persona.model ?? null,
@@ -98,6 +100,7 @@ export async function createPersona(
         displayName: input.displayName,
         avatarUrl: input.avatarUrl,
         description: normalizeDescription(input.description),
+        companyRole: input.companyRole,
         systemPrompt: input.systemPrompt,
         runtime: input.runtime,
         model: input.model,
@@ -118,6 +121,7 @@ function updatePersonaPayload(input: UpdatePersonaInput) {
     displayName: input.displayName,
     avatarUrl: input.avatarUrl,
     description: normalizeDescription(input.description),
+    companyRole: input.companyRole,
     systemPrompt: input.systemPrompt,
     runtime: input.runtime,
     model: input.model,

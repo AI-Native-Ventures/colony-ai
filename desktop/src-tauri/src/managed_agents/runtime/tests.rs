@@ -272,6 +272,7 @@ fn persona_with_provider(
     provider: Option<&str>,
 ) -> crate::managed_agents::AgentDefinition {
     crate::managed_agents::AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: id.to_string(),

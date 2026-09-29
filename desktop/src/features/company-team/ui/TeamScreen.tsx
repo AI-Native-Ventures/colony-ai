@@ -1,11 +1,13 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { Badge } from "@/shared/ui/badge";
 import { PageHeader } from "@/shared/ui/PageHeader";
+import { Button } from "@/shared/ui/button";
 import { useCompanyTeamQuery } from "../teamRelay";
 import { buildTeamTreeRows, type TeamMember } from "../teamModels";
 
@@ -178,6 +180,8 @@ function TeamMemberRow({
 
 export function TeamScreen({ view }: TeamScreenProps) {
   const teamQuery = useCompanyTeamQuery();
+  const membershipQuery = useMyRelayMembershipQuery();
+  const { goHireRoles } = useAppNavigation();
   const treeRef = React.useRef<HTMLDivElement>(null);
   const [focusedTreeMember, setFocusedTreeMember] = React.useState<
     string | null
@@ -191,6 +195,9 @@ export function TeamScreen({ view }: TeamScreenProps) {
     enabled: memberPubkeys.length > 0,
   });
   const profiles = profilesQuery.data?.profiles ?? {};
+  const canHire =
+    membershipQuery.data?.role === "owner" ||
+    membershipQuery.data?.role === "admin";
   let treeRows: ReturnType<typeof buildTeamTreeRows> = [];
   let treeError: string | null = null;
   if (view === "org" && members.length > 0) {
@@ -294,7 +301,16 @@ export function TeamScreen({ view }: TeamScreenProps) {
       className="mx-auto flex w-full max-w-[72rem] flex-col gap-7 px-6 py-10"
       data-testid="company-team-screen"
     >
-      <PageHeader title="Team" />
+      <PageHeader
+        action={
+          canHire ? (
+            <Button onClick={() => void goHireRoles()} type="button">
+              Hire employee
+            </Button>
+          ) : undefined
+        }
+        title="Team"
+      />
       <TeamTabs view={view} />
       {treeError ? (
         <p className="py-8 text-center text-sm text-destructive" role="alert">
