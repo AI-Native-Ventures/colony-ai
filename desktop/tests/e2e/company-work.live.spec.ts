@@ -125,6 +125,10 @@ test.describe("company work local relay journey", () => {
       .locator("[data-message-id]")
       .filter({ hasText: destinationMessageText });
     await expect(destinationMessage).toHaveCount(1);
+    await expect(destinationMessage).toHaveAttribute(
+      "data-message-id",
+      /^[0-9a-f]{64}$/,
+    );
     const destinationRootId =
       await destinationMessage.getAttribute("data-message-id");
     if (!destinationRootId) {
