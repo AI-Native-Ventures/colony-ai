@@ -31,14 +31,14 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const CreditsBalancePage(communityName: 'Workspace'),
+          home: const CreditsBalancePage(communityName: 'Lerato Studio'),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Credits'), findsOneWidget);
-    expect(find.text('Workspace'), findsOneWidget);
+    expect(find.text('Lerato Studio'), findsOneWidget);
     expect(find.text('Credits could not load'), findsOneWidget);
     expect(
       find.text(
@@ -92,7 +92,7 @@ void main() {
               destination: MobileShellDestination.company,
               onDestinationSelected: (_) {},
               showBrandBar: false,
-              child: const CreditsBalancePage(communityName: 'Workspace'),
+              child: const CreditsBalancePage(communityName: 'Lerato Studio'),
             ),
           );
           await tester.pumpWidget(
@@ -187,7 +187,7 @@ class _CreditsProofBars extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            top: 35,
+            top: 10,
             left: 25,
             child: Text(
               '9:41',
@@ -200,7 +200,7 @@ class _CreditsProofBars extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: 35,
+            top: 10,
             right: 25,
             child: Row(
               children: [
