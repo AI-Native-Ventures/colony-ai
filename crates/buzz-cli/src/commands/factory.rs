@@ -2,7 +2,7 @@
 
 use buzz_core::factory_run_records::{
     factory_run_d_tag, validate_factory_run_head, FactoryPreviewState, FactoryPullRequest,
-    FactoryRunAction, FactoryRunActionKind, FACTORY_RUN_RECORD_SCHEMA_VERSION,
+    FactoryRunAction, FactoryRunActionKind, FactoryRunHead, FACTORY_RUN_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::KIND_FACTORY_RUN_HEAD;
 use nostr::Event;
