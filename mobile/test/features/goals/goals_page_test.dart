@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:buzz/features/goals/goal_detail_page.dart';
 import 'package:buzz/features/goals/goals_page.dart';
 import 'package:buzz/shared/business/mobile_business_entry_points.dart';
+import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/community/community_membership_provider.dart';
+import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/company/goals/goal_records.dart';
 import 'package:buzz/shared/company/goals/goal_repository.dart';
 import 'package:buzz/shared/navigation/mobile_navigation.dart';
@@ -28,6 +30,7 @@ const _childGoalId = '223e4567-e89b-12d3-a456-426614174000';
 const _secondChildGoalId = '423e4567-e89b-12d3-a456-426614174000';
 const _archivedGoalId = '323e4567-e89b-12d3-a456-426614174000';
 const _linkedChannelId = '523e4567-e89b-12d3-a456-426614174000';
+const _deletedGoalId = '623e4567-e89b-12d3-a456-426614174000';
 const _relaySecret =
     '1111111111111111111111111111111111111111111111111111111111111111';
 const _ownerPubkey =
@@ -36,6 +39,12 @@ const _childOwnerPubkey =
     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const _secondChildOwnerPubkey =
     'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+final _testCommunity = Community(
+  id: 'community-id',
+  name: 'Lerato Studio',
+  relayUrl: 'wss://relay.example',
+  addedAt: DateTime.utc(2026, 9, 28),
+);
 
 void main() {
   testWidgets('goal cards keep the reference gutter and chip typography', (
@@ -168,10 +177,120 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Improve client handoff'), findsOneWidget);
-    expect(find.text('Deleted goal'), findsOneWidget);
+    expect(find.text('Draft goal removed'), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-deleted-state')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-deleted-icon')), findsOneWidget);
+    expect(find.text('Draft goal deleted'), findsOneWidget);
+    expect(
+      find.text(
+        'The unlinked draft research goal was removed. Existing company goals and discussions remain.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Back to goals'), findsOneWidget);
     expect(find.byKey(const ValueKey('goal-update-progress')), findsNothing);
     expect(find.byKey(const ValueKey('goal-share-in-chat')), findsNothing);
+  });
+
+  testWidgets('restores an archived goal against its current signed head', (
+    tester,
+  ) async {
+    final archived = _headRecord(
+      goalId: _goalId,
+      title: 'Improve client handoff',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'Each handoff has a clear owner and decision.',
+      status: 'archived',
+    );
+    final records = [archived];
+    final gateway = _FakeGoalGateway(
+      onPublish: () {
+        records[0] = _headRecord(
+          goalId: _goalId,
+          title: 'Improve client handoff',
+          ownerPubkey: _ownerPubkey,
+          doneCondition: 'Each handoff has a clear owner and decision.',
+        );
+      },
+    );
+    await tester.pumpWidget(
+      _goalsApp(
+        records: records,
+        role: CommunityMemberRole.owner,
+        gateway: gateway,
+        detailGoalId: _goalId,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
+    expect(find.text('Improve client handoff'), findsNWidgets(2));
+    await tester.tap(find.byKey(const ValueKey('goal-restore')));
+    await tester.pumpAndSettle();
+
+    final action =
+        jsonDecode(gateway.publishedContent!) as Map<String, dynamic>;
+    expect(action['action'], 'restore');
+    expect(action['goalId'], _goalId);
+    expect(action['expectedHeadEventId'], archived.event.id);
+    expect(find.text('On track'), findsOneWidget);
+  });
+
+  testWidgets('propagates restore failure and leaves retry available', (
+    tester,
+  ) async {
+    final archived = _headRecord(
+      goalId: _goalId,
+      title: 'Improve client handoff',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'Each handoff has a clear owner and decision.',
+      status: 'archived',
+    );
+    await tester.pumpWidget(
+      _goalsApp(
+        records: [archived],
+        role: CommunityMemberRole.owner,
+        gateway: _FakeGoalGateway(throwOnPublish: true),
+        detailGoalId: _goalId,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final reportedErrors = <FlutterErrorDetails>[];
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) => reportedErrors.add(details);
+    try {
+      await tester.tap(find.byKey(const ValueKey('goal-restore')));
+      await tester.pumpAndSettle();
+    } finally {
+      FlutterError.onError = previousErrorHandler;
+    }
+
+    expect(reportedErrors, hasLength(1));
+    expect(reportedErrors.single.exception, isA<StateError>());
+    expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-restore')), findsOneWidget);
+  });
+
+  testWidgets('does not expose restore to a regular member', (tester) async {
+    final archived = _headRecord(
+      goalId: _goalId,
+      title: 'Improve client handoff',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'Each handoff has a clear owner and decision.',
+      status: 'archived',
+    );
+    await tester.pumpWidget(
+      _goalsApp(
+        records: [archived],
+        role: CommunityMemberRole.member,
+        detailGoalId: _goalId,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-restore')), findsNothing);
   });
 
   testWidgets('shows unavailable detail when the exact goal is absent', (
@@ -249,8 +368,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('See the shared goal'));
     await tester.pumpAndSettle();
-    expect(find.text('Sub-goal'), findsOneWidget);
-    expect(find.text('Confirm the next handoff'), findsOneWidget);
+    expect(find.text('Confirm the next handoff'), findsNWidgets(2));
     expect(find.text('Keep the context close.'), findsNothing);
   });
 
@@ -644,7 +762,11 @@ void main() {
             expect(find.text('Contributing goals'), findsOneWidget);
           } else {
             expect(
-              find.text(route.goalId == _goalId ? 'Company goal' : 'Sub-goal'),
+              find.text(
+                route.goalId == _goalId
+                    ? 'Every client plan, ready on time'
+                    : 'Olive Studio October campaign',
+              ),
               findsOneWidget,
             );
             expect(find.text('What done looks like'), findsOneWidget);
@@ -652,7 +774,9 @@ void main() {
           final title = route.goalId == null
               ? find.text('Goals')
               : find.text(
-                  route.goalId == _goalId ? 'Company goal' : 'Sub-goal',
+                  route.goalId == _goalId
+                      ? 'Every client plan, ready on time'
+                      : 'Olive Studio October campaign',
                 );
           final backButton = tester.widget<IconButton>(
             find.byKey(const ValueKey('goal-page-back')),
@@ -784,6 +908,108 @@ void main() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
+
+  testWidgets('captures archived and deleted goals at both sizes and themes', (
+    tester,
+  ) async {
+    final fontLoader = FontLoader('Manrope')
+      ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+    await fontLoader.load();
+    final materialIconFontLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await materialIconFontLoader.load();
+    final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+      ..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      );
+    await iconFontLoader.load();
+
+    final archived = _headRecord(
+      goalId: _archivedGoalId,
+      title: 'October client plans',
+      ownerPubkey: _ownerPubkey,
+      doneCondition:
+          'Both clients have approved October plans and clear delivery dates.',
+      status: 'archived',
+    );
+    final deleted = _headRecord(
+      goalId: _deletedGoalId,
+      title: 'Draft research goal',
+      ownerPubkey: _ownerPubkey,
+      doneCondition: 'The research plan has been reviewed.',
+      status: 'deleted',
+    );
+    const captureSizes = {'390x844': Size(390, 844), '412x915': Size(412, 915)};
+    const captureKey = ValueKey('m-v6-goal-lifecycle-capture');
+    final routes = [
+      (name: 'goal-detail-archived', goalId: _archivedGoalId),
+      (name: 'goal-detail-deleted', goalId: _deletedGoalId),
+    ];
+
+    for (final size in captureSizes.entries) {
+      tester.view.physicalSize = size.value;
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 28);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 28);
+      for (final brightness in [Brightness.light, Brightness.dark]) {
+        final mode = brightness == Brightness.light ? 'light' : 'dark';
+        final output = Directory(
+          '/tmp/colony-mv6-goal-detail/${size.key}/$mode',
+        )..createSync(recursive: true);
+        final previousComparator = goldenFileComparator;
+        goldenFileComparator = _GoalCaptureFileComparator(
+          Uri.file('${output.path}/capture_test.dart'),
+          output.path,
+        );
+        for (final route in routes) {
+          await tester.pumpWidget(
+            _goalsCaptureApp(
+              records: [archived, deleted],
+              brightness: brightness,
+              captureKey: captureKey,
+            ),
+          );
+          await tester.pumpAndSettle();
+          if (route.name == 'goal-detail-archived') {
+            await tester.tap(
+              find.byKey(const ValueKey('goal-card-$_archivedGoalId')),
+            );
+          } else {
+            unawaited(
+              MobileNavigation.push<String, void>(
+                tester.element(find.byType(GoalsPage)),
+                MobileBusinessRoutes.goalDetail,
+                route.goalId,
+              ),
+            );
+          }
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(
+              ValueKey(
+                route.name == 'goal-detail-archived'
+                    ? 'goal-archived-state'
+                    : 'goal-deleted-state',
+              ),
+            ),
+            findsOneWidget,
+          );
+          await tester.pump();
+          await expectLater(
+            find.byKey(captureKey),
+            matchesGoldenFile('${route.name}.png'),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+        goldenFileComparator = previousComparator;
+      }
+    }
+    tester.view.resetPadding();
+    tester.view.resetViewPadding();
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
 }
 
 Widget _goalsApp({
@@ -795,10 +1021,12 @@ Widget _goalsApp({
   VoidCallback? onOpenDiscussion,
   VoidCallback? onShareInChat,
 }) {
-  final routes = MobileRouteRegistry.empty().register(
-    MobileBusinessRoutes.goalDetail,
-    (_, goalId) => GoalDetailPage(goalId: goalId),
-  );
+  final routes = MobileRouteRegistry.empty()
+      .register(MobileBusinessRoutes.goals, (_, _) => const GoalsPage())
+      .register(
+        MobileBusinessRoutes.goalDetail,
+        (_, goalId) => GoalDetailPage(goalId: goalId),
+      );
   return ProviderScope(
     retry: (_, _) => null,
     overrides: [
@@ -807,6 +1035,7 @@ Widget _goalsApp({
         return records;
       }),
       currentCommunityRoleProvider.overrideWithValue(AsyncData(role)),
+      activeCommunityProvider.overrideWith((_) async => _testCommunity),
       myPubkeyProvider.overrideWithValue(_ownerPubkey),
       userCacheProvider.overrideWith(_EmptyUserCache.new),
       if (gateway != null)
@@ -835,17 +1064,20 @@ Widget _goalsCaptureApp({
   required Brightness brightness,
   required Key captureKey,
 }) {
-  final routes = MobileRouteRegistry.empty().register(
-    MobileBusinessRoutes.goalDetail,
-    (_, goalId) => GoalDetailPage(
-      goalId: goalId,
-      onShareInChat: () {},
-      onOpenDiscussion: () {},
-    ),
-  );
+  final routes = MobileRouteRegistry.empty()
+      .register(MobileBusinessRoutes.goals, (_, _) => const GoalsPage())
+      .register(
+        MobileBusinessRoutes.goalDetail,
+        (_, goalId) => GoalDetailPage(
+          goalId: goalId,
+          onShareInChat: () {},
+          onOpenDiscussion: () {},
+        ),
+      );
   return ProviderScope(
     overrides: [
       goalHeadsProvider.overrideWith((ref) async => records),
+      activeCommunityProvider.overrideWith((_) async => _testCommunity),
       currentCommunityRoleProvider.overrideWithValue(
         const AsyncData(CommunityMemberRole.owner),
       ),
@@ -862,7 +1094,10 @@ Widget _goalsCaptureApp({
           destination: MobileShellDestination.company,
           showBrandBar: false,
           onDestinationSelected: (_) {},
-          child: const GoalsPage(),
+          child: Navigator(
+            onGenerateRoute: (_) =>
+                MaterialPageRoute<void>(builder: (_) => const GoalsPage()),
+          ),
         ),
       ),
       builder: (context, child) => RepaintBoundary(
@@ -1036,9 +1271,10 @@ class _GoalCaptureUserCache extends UserCacheNotifier {
 }
 
 class _FakeGoalGateway implements GoalRecordGateway {
-  _FakeGoalGateway({this.throwOnPublish = false});
+  _FakeGoalGateway({this.throwOnPublish = false, this.onPublish});
 
   final bool throwOnPublish;
+  final VoidCallback? onPublish;
   int? publishedKind;
   String? publishedContent;
 
@@ -1053,6 +1289,7 @@ class _FakeGoalGateway implements GoalRecordGateway {
   }) async {
     publishedKind = kind;
     publishedContent = content;
+    onPublish?.call();
     if (throwOnPublish) throw StateError('relay unavailable');
     return const NostrEvent(
       id: 'a',

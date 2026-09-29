@@ -7,9 +7,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/business/mobile_business_entry_points.dart';
 import '../../shared/community/community_membership_provider.dart';
+import '../../shared/community/community_provider.dart';
 import '../../shared/company/goals/goal_records.dart';
 import '../../shared/company/goals/goal_repository.dart';
 import '../../shared/navigation/mobile_navigation.dart';
+import '../../shared/navigation/mobile_route.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
@@ -18,6 +20,47 @@ import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import 'goal_sheets.dart';
 import 'goal_widgets.dart';
+
+const _goalLifecycleTopInset = 13.0;
+const _goalLifecycleBannerKickerStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 10,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+  letterSpacing: 0.7,
+);
+const _goalLifecycleBannerTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 28.8,
+  fontWeight: FontWeight.w600,
+  height: 1.1,
+  letterSpacing: -1.584,
+);
+const _goalLifecycleNoticeTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
+  height: 1.4,
+);
+const _goalLifecycleNoticeMessageStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 12,
+  fontWeight: FontWeight.w400,
+  height: 1.75,
+);
+const _goalDeletedTitleStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 23.2,
+  fontWeight: FontWeight.w600,
+  height: 1.25,
+  letterSpacing: -1.044,
+);
+const _goalDeletedMessageStyle = TextStyle(
+  fontFamily: 'Manrope',
+  fontSize: 13,
+  fontWeight: FontWeight.w400,
+  height: 1.8,
+);
 
 class GoalDetailPage extends HookConsumerWidget {
   const GoalDetailPage({
@@ -36,7 +79,9 @@ class GoalDetailPage extends HookConsumerWidget {
     final recordAsync = ref.watch(goalHeadProvider(goalId));
     final recordsAsync = ref.watch(goalHeadsProvider);
     final role = ref.watch(currentCommunityRoleProvider).asData?.value;
+    final community = ref.watch(activeCommunityProvider).asData?.value;
     final actor = ref.watch(myPubkeyProvider);
+    final isSubmittingLifecycleAction = useState(false);
     final record = recordAsync.asData?.value;
     final goal = record?.head.goal;
     final parentId = goal?.parentGoalId;
@@ -80,7 +125,10 @@ class GoalDetailPage extends HookConsumerWidget {
       child: Column(
         children: [
           GoalPageHeader(
-            title: goal?.parentGoalId == null ? 'Company goal' : 'Sub-goal',
+            title: record?.head.status == GoalStatus.deleted
+                ? 'Draft goal removed'
+                : record?.head.title ?? 'Company goal',
+            subtitle: community?.name,
             onBack: () => unawaited(Navigator.of(context).maybePop()),
             backLabel: 'Back',
             action: onOpenDiscussion == null && sharedGoal == null
@@ -91,16 +139,76 @@ class GoalDetailPage extends HookConsumerWidget {
                     sharedGoalId: sharedGoal?.head.goalId,
                   ),
             actionLabel: 'Goal actions',
-            actionIcon: LucideIcons.ellipsis,
+            actionIcon: LucideIcons.plus,
           ),
           Expanded(
             child: recordAsync.when(
               loading: () => const Center(child: BuzzLoadingIndicator()),
               error: (_, _) => GoalLoadError(
-                onRetry: () => ref.invalidate(goalHeadsProvider),
+                onRetry: () {
+                  ref.invalidate(goalRelaySelfProvider);
+                  ref.invalidate(goalHeadsProvider);
+                },
               ),
               data: (value) {
-                if (value == null) return const _GoalUnavailable();
+                if (value == null) {
+                  return _GoalUnavailable(
+                    onRetry: () {
+                      ref.invalidate(goalRelaySelfProvider);
+                      ref.invalidate(goalHeadsProvider);
+                    },
+                  );
+                }
+                if (value.head.status == GoalStatus.archived) {
+                  return _ArchivedGoalState(
+                    record: value,
+                    canRestore: canRestoreOrDeleteGoal(role?.name),
+                    isSubmitting: isSubmittingLifecycleAction.value,
+                    onRestore: canRestoreOrDeleteGoal(role?.name)
+                        ? () async {
+                            if (isSubmittingLifecycleAction.value) return;
+                            isSubmittingLifecycleAction.value = true;
+                            try {
+                              await ref
+                                  .read(goalRepositoryProvider)
+                                  .submit(
+                                    GoalAction(
+                                      goalId: value.head.goalId,
+                                      action: GoalActionType.restore,
+                                      expectedHeadEventId: value.event.id,
+                                    ),
+                                  );
+                              if (!context.mounted) return;
+                              ref.invalidate(goalHeadsProvider);
+                              ref.invalidate(
+                                goalHistoryProvider(value.head.goalId),
+                              );
+                            } catch (error, stackTrace) {
+                              FlutterError.reportError(
+                                FlutterErrorDetails(
+                                  exception: error,
+                                  stack: stackTrace,
+                                  library: 'Colony mobile goals',
+                                  context: ErrorDescription(
+                                    'while restoring an archived goal',
+                                  ),
+                                ),
+                              );
+                            } finally {
+                              if (context.mounted) {
+                                isSubmittingLifecycleAction.value = false;
+                              }
+                            }
+                          }
+                        : null,
+                    onBackToGoals: () => _backToGoals(context),
+                  );
+                }
+                if (value.head.status == GoalStatus.deleted) {
+                  return _DeletedGoalState(
+                    onBackToGoals: () => _backToGoals(context),
+                  );
+                }
                 return _GoalDetailBody(
                   record: value,
                   parent: parent,
@@ -473,7 +581,9 @@ String _subgoalStatusLabel(GoalStatus status) => switch (status) {
 };
 
 class _GoalUnavailable extends StatelessWidget {
-  const _GoalUnavailable();
+  const _GoalUnavailable({required this.onRetry});
+
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -481,14 +591,296 @@ class _GoalUnavailable extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(Grid.gutter),
-        child: Text(
-          'Goal unavailable',
-          key: const ValueKey('goal-unavailable'),
-          style: context.mobileTypography.body.copyWith(color: tokens.muted),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Goal unavailable',
+              key: const ValueKey('goal-unavailable'),
+              style: context.mobileTypography.body.copyWith(
+                color: tokens.muted,
+              ),
+            ),
+            const SizedBox(height: Grid.xxs),
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
         ),
       ),
     );
   }
+}
+
+class _ArchivedGoalState extends StatelessWidget {
+  const _ArchivedGoalState({
+    required this.record,
+    required this.canRestore,
+    required this.isSubmitting,
+    required this.onRestore,
+    required this.onBackToGoals,
+  });
+
+  final GoalHeadRecord record;
+  final bool canRestore;
+  final bool isSubmitting;
+  final VoidCallback? onRestore;
+  final VoidCallback onBackToGoals;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      key: const ValueKey('goal-archived-state'),
+      padding: const EdgeInsets.fromLTRB(
+        Grid.gutter,
+        _goalLifecycleTopInset,
+        Grid.gutter,
+        Grid.xl,
+      ),
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: _goalLifecycleBannerGradient(context),
+            borderRadius: BorderRadius.circular(23),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(23, 29, 23, 23),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'STATUS UPDATED',
+                  style: _goalLifecycleBannerKickerStyle.copyWith(
+                    color: _goalLifecycleBannerForeground(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  record.head.title,
+                  style: _goalLifecycleBannerTitleStyle.copyWith(
+                    color: _goalLifecycleBannerForeground(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        _GoalLifecycleNotice(
+          title: 'Archived',
+          message: 'The active list now reflects this change.',
+        ),
+        if (canRestore) ...[
+          const SizedBox(height: 30),
+          FilledButton(
+            key: const ValueKey('goal-restore'),
+            onPressed: isSubmitting ? null : onRestore,
+            style: _goalLifecyclePrimaryButtonStyle(context),
+            child: isSubmitting
+                ? const SizedBox.square(
+                    dimension: Grid.sm,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Restore'),
+          ),
+        ],
+        const SizedBox(height: Grid.xxs),
+        FilledButton(
+          key: const ValueKey('goal-back-to-goals'),
+          onPressed: onBackToGoals,
+          style: _goalLifecycleSecondaryButtonStyle(context),
+          child: const Text('Back to goals'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DeletedGoalState extends StatelessWidget {
+  const _DeletedGoalState({required this.onBackToGoals});
+
+  final VoidCallback onBackToGoals;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return ListView(
+      key: const ValueKey('goal-deleted-state'),
+      padding: const EdgeInsets.fromLTRB(
+        Grid.gutter,
+        _goalLifecycleTopInset,
+        Grid.gutter,
+        Grid.xs,
+      ),
+      children: [
+        const SizedBox(height: 28),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  key: const ValueKey('goal-deleted-icon'),
+                  width: 66,
+                  height: 66,
+                  decoration: BoxDecoration(
+                    color: tokens.soft,
+                    borderRadius: BorderRadius.circular(21),
+                  ),
+                  child: ExcludeSemantics(
+                    child: Icon(
+                      LucideIcons.briefcaseBusiness,
+                      size: 18,
+                      color: tokens.action,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'Draft goal deleted',
+                key: const ValueKey('goal-deleted-heading'),
+                textAlign: TextAlign.center,
+                style: _goalDeletedTitleStyle.copyWith(color: tokens.ink),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'The unlinked draft research goal was removed. Existing company goals and discussions remain.',
+                textAlign: TextAlign.center,
+                style: _goalDeletedMessageStyle.copyWith(color: tokens.muted),
+              ),
+              const SizedBox(height: 26),
+              FilledButton(
+                key: const ValueKey('goal-back-to-goals'),
+                onPressed: onBackToGoals,
+                style: _goalLifecyclePrimaryButtonStyle(context),
+                child: const Text('Back to goals'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+}
+
+class _GoalLifecycleNotice extends StatelessWidget {
+  const _GoalLifecycleNotice({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.paper,
+        border: Border.all(color: tokens.line),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: _goalLifecycleNoticeTitleStyle.copyWith(
+                    color: tokens.ink,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  message,
+                  style: _goalLifecycleNoticeMessageStyle.copyWith(
+                    color: tokens.muted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: 0,
+            child: ColoredBox(
+              color: const Color(0xFFA781B3),
+              child: const SizedBox(width: 3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+void _backToGoals(BuildContext context) {
+  final navigator = Navigator.of(context);
+  if (navigator.canPop()) {
+    navigator.pop();
+    return;
+  }
+  unawaited(
+    MobileNavigation.replace<NoMobileRouteArguments>(
+      context,
+      MobileBusinessRoutes.goals,
+      const NoMobileRouteArguments(),
+    ),
+  );
+}
+
+LinearGradient _goalLifecycleBannerGradient(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: isDark
+        ? const [Color(0xFF513561), Color(0xFF5E3F41)]
+        : const [Color(0xFFE6D2EE), Color(0xFFF5DFCE)],
+  );
+}
+
+Color _goalLifecycleBannerForeground(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFFF3E2FC)
+    : const Color(0xFF513360);
+
+ButtonStyle _goalLifecyclePrimaryButtonStyle(BuildContext context) {
+  final tokens = context.mobileTokens;
+  final foreground = tokens.canvas;
+  return FilledButton.styleFrom(
+    backgroundColor: context.appColors.plum,
+    foregroundColor: foreground,
+    textStyle: context.mobileTypography.companyEntryTitle.copyWith(
+      color: foreground,
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+    minimumSize: const Size.fromHeight(MobileLayoutTokens.minimumTapTarget),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  );
+}
+
+ButtonStyle _goalLifecycleSecondaryButtonStyle(BuildContext context) {
+  final tokens = context.mobileTokens;
+  return FilledButton.styleFrom(
+    backgroundColor: tokens.soft,
+    foregroundColor: tokens.action,
+    textStyle: context.mobileTypography.companyEntryTitle.copyWith(
+      color: tokens.action,
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+    minimumSize: const Size.fromHeight(MobileLayoutTokens.minimumTapTarget),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: tokens.line),
+    ),
+  );
 }
 
 class _SectionHeading extends StatelessWidget {

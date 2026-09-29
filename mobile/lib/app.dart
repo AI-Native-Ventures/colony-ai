@@ -57,6 +57,7 @@ import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
 import 'features/business/discovery_workspace_page.dart';
 import 'features/business/money_workspace_page.dart';
+import 'features/workflows/workflow_detail_route.dart';
 import 'features/profile/user_profile_sheet.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';

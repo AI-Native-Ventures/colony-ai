@@ -264,6 +264,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         },
       );
     })
+    .register(MobileBusinessRoutes.workflowDetail, workflowDetailRoute)
     .register(MobileRoutes.business, (context, routeContext) {
       return Consumer(
         builder: (context, ref, _) {
