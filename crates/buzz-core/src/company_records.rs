@@ -83,6 +83,8 @@ pub enum CompanyCommand {
     ToolPermissionAction(ToolPermissionAction),
     /// Member-position mutation (kind 47037).
     MemberPositionAction(crate::company_members::MemberPositionAction),
+    /// Hire proposal, founder approval or completion (kind 47039).
+    HireAction(HireAction),
 }
 
 /// Storage location for a secret value. The value is never part of a company record.
@@ -558,6 +560,8 @@ pub enum AskSubjectKind {
     WorkItem,
     /// A community member position.
     CompanyMember,
+    /// A proposed employee hire.
+    Hire,
 }
 
 /// Optional link from an ask to the record it is about.
@@ -614,6 +618,330 @@ pub struct AskRecord {
     /// Non-secret tool and scope details for a secret request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_request: Option<SecretAskRequest>,
+    /// Typed employee hire proposal attached to a hire approval ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hire_proposal: Option<HireProposal>,
+}
+
+/// Risk level shown for one tool included in a role pack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HireToolRisk {
+    /// Read-only or otherwise low-impact tool access.
+    Low,
+    /// Tool access that can change company records or internal state.
+    Medium,
+    /// Tool access that can affect external people, systems or money.
+    High,
+}
+
+/// A named tool and its human-reviewed risk label.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HireTool {
+    /// Tool identifier from the real role catalog.
+    pub name: String,
+    /// Risk label shown before founder sign-off.
+    pub risk: HireToolRisk,
+}
+
+/// Role metadata projected from a real persona or team catalog record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HireRolePack {
+    /// Stable persona or role catalog identifier.
+    pub persona_id: String,
+    /// Role title shown in the hiring flow.
+    pub title: String,
+    /// Job description for the role.
+    pub job: String,
+    /// Required or expected skills.
+    pub skills: Vec<String>,
+    /// Tools and their risk labels.
+    pub tools: Vec<HireTool>,
+    /// Available worker runtime identifiers from the live runtime catalog.
+    pub worker_menu: Vec<String>,
+    /// Optional allowance metadata supplied by this real catalog record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_allowance: Option<String>,
+}
+
+/// The requested role and configured employee values for one hire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HireProposal {
+    /// Stable UUID for the hire head.
+    pub hire_id: Uuid,
+    /// Snapshot of the selected real role pack.
+    pub role_pack: HireRolePack,
+    /// Employee display name; uniqueness is checked again on completion.
+    pub display_name: String,
+    /// Channel where the employee introduction will be posted.
+    pub introduction_channel_id: Uuid,
+    /// Runtime identifier selected from the live worker menu.
+    pub runtime_id: String,
+    /// Provider identifier selected from the live runtime catalog.
+    pub provider_id: String,
+    /// Optional model identifier from the dynamic provider catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Optional configured allowance. Runtime enforcement is a separate API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weekly_allowance: Option<String>,
+}
+
+/// Lifecycle of a relay-signed hire head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HireStatus {
+    /// Waiting for an owner or admin to resolve the proposal ask.
+    Proposed,
+    /// An admin approved the ask and the community owner must sign off.
+    AwaitingFounder,
+    /// The community owner signed off; employee creation may proceed.
+    Approved,
+    /// The employee identity and introduction post are recorded.
+    Hired,
+    /// The proposal was denied.
+    Denied,
+}
+
+/// Relay-signed current employee hire head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HireHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Proposal and selected configuration.
+    pub proposal: HireProposal,
+    /// Relay-controlled lifecycle state.
+    pub status: HireStatus,
+    /// Member who first proposed this hire.
+    pub proposed_by_pubkey: String,
+    /// Source ask UUID for an employee-proposed hire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask_id: Option<Uuid>,
+    /// Channel containing the source ask, completing its exact coordinate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask_channel_id: Option<Uuid>,
+    /// Community owner who signed founder approval.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub founder_pubkey: Option<String>,
+    /// Created managed-employee identity after completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub employee_pubkey: Option<String>,
+    /// Introduction event id after completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub introduction_event_id: Option<String>,
+    /// Explanation when a proposal was denied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial_reason: Option<String>,
+    /// Member command that last advanced this head.
+    pub source_action_event_id: String,
+}
+
+/// Hire lifecycle commands supported by the relay broker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HireActionKind {
+    /// Create a direct owner/admin proposal before founder sign-off.
+    Create,
+    /// Record the community owner's founder approval.
+    Approve,
+    /// Record the created managed employee and introduction event.
+    Complete,
+    /// Deny an existing proposal.
+    Deny,
+}
+
+/// Member-signed hire command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HireAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable hire UUID.
+    pub hire_id: Uuid,
+    /// Requested lifecycle transition.
+    pub action: HireActionKind,
+    /// Exact current head for every action except create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Proposal payload, required only for create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<HireProposal>,
+    /// Created employee identity, required only for complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub employee_pubkey: Option<String>,
+    /// Introduction event id, required only for complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub introduction_event_id: Option<String>,
+    /// Denial reason, required only for deny.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Stable d-tag for one hire head.
+pub fn hire_d_tag(hire_id: Uuid) -> String {
+    format!("company:hire:{hire_id}")
+}
+
+/// Validates role-pack metadata and the employee's selected configuration.
+pub fn validate_hire_proposal(proposal: &HireProposal) -> Result<(), CompanyRecordError> {
+    require_text(&proposal.role_pack.persona_id, 120, "personaId is required")?;
+    require_text(
+        &proposal.role_pack.title,
+        MAX_TITLE_CHARS,
+        "role title is required",
+    )?;
+    require_text(
+        &proposal.role_pack.job,
+        MAX_ASK_BODY_CHARS,
+        "role job is required",
+    )?;
+    if proposal.role_pack.skills.len() > 32
+        || proposal
+            .role_pack
+            .skills
+            .iter()
+            .any(|skill| skill.trim().is_empty() || char_len(skill) > MAX_TITLE_CHARS)
+    {
+        return Err(CompanyRecordError::Invalid(
+            "role skills must be non-empty and limited to 32 entries",
+        ));
+    }
+    if proposal.role_pack.tools.len() > 64 {
+        return Err(CompanyRecordError::Invalid("role has too many tools"));
+    }
+    let mut tool_names = BTreeSet::new();
+    for tool in &proposal.role_pack.tools {
+        require_text(&tool.name, MAX_SECRET_TOOL_CHARS, "tool name is required")?;
+        if !tool_names.insert(tool.name.to_lowercase()) {
+            return Err(CompanyRecordError::Invalid("role tools must be unique"));
+        }
+    }
+    if proposal.role_pack.worker_menu.is_empty() || proposal.role_pack.worker_menu.len() > 32 {
+        return Err(CompanyRecordError::Invalid(
+            "workerMenu needs 1 to 32 live runtime identifiers",
+        ));
+    }
+    let mut workers = BTreeSet::new();
+    for worker in &proposal.role_pack.worker_menu {
+        require_text(worker, 120, "worker runtime identifier is required")?;
+        if !workers.insert(worker.clone()) {
+            return Err(CompanyRecordError::Invalid(
+                "workerMenu entries must be unique",
+            ));
+        }
+    }
+    if !workers.contains(&proposal.runtime_id) {
+        return Err(CompanyRecordError::Invalid(
+            "runtimeId must be available in the role workerMenu",
+        ));
+    }
+    if let Some(allowance) = proposal.role_pack.default_allowance.as_deref() {
+        if !is_decimal(allowance) {
+            return Err(CompanyRecordError::Invalid(
+                "defaultAllowance must be a non-negative decimal",
+            ));
+        }
+    }
+    if let Some(allowance) = proposal.weekly_allowance.as_deref() {
+        if !is_decimal(allowance) {
+            return Err(CompanyRecordError::Invalid(
+                "weeklyAllowance must be a non-negative decimal",
+            ));
+        }
+    }
+    require_text(
+        &proposal.display_name,
+        MAX_TITLE_CHARS,
+        "employee displayName is required",
+    )?;
+    require_text(&proposal.runtime_id, 120, "runtimeId is required")?;
+    require_text(&proposal.provider_id, 120, "providerId is required")?;
+    if let Some(model_id) = proposal.model_id.as_deref() {
+        require_text(model_id, 180, "modelId must not be empty")?;
+    }
+    Ok(())
+}
+
+/// Validates which payload belongs to each hire lifecycle action.
+pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordError> {
+    if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    validate_expected_head(
+        action.expected_head_event_id.as_deref(),
+        action.action == HireActionKind::Create,
+    )?;
+    match action.action {
+        HireActionKind::Create => {
+            let proposal = action.proposal.as_ref().ok_or(CompanyRecordError::Invalid(
+                "create needs the hire proposal",
+            ))?;
+            if proposal.hire_id != action.hire_id
+                || action.employee_pubkey.is_some()
+                || action.introduction_event_id.is_some()
+                || action.reason.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "create carries only a matching hire proposal",
+                ));
+            }
+            validate_hire_proposal(proposal)
+        }
+        HireActionKind::Approve => {
+            if action.proposal.is_some()
+                || action.employee_pubkey.is_some()
+                || action.introduction_event_id.is_some()
+                || action.reason.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "approve does not carry a proposal, employee or reason",
+                ));
+            }
+            Ok(())
+        }
+        HireActionKind::Complete => {
+            let employee = action
+                .employee_pubkey
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("complete needs employeePubkey"))?;
+            let introduction =
+                action
+                    .introduction_event_id
+                    .as_deref()
+                    .ok_or(CompanyRecordError::Invalid(
+                        "complete needs introductionEventId",
+                    ))?;
+            if action.proposal.is_some() || action.reason.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "complete carries only employeePubkey and introductionEventId",
+                ));
+            }
+            if !is_hex_id(employee) || !is_hex_id(introduction) {
+                return Err(CompanyRecordError::Invalid(
+                    "complete identity coordinates must be lowercase hex ids",
+                ));
+            }
+            Ok(())
+        }
+        HireActionKind::Deny => {
+            let reason = action
+                .reason
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("deny needs a reason"))?;
+            require_text(reason, MAX_REASON_CHARS, "denial reason is required")?;
+            if action.proposal.is_some()
+                || action.employee_pubkey.is_some()
+                || action.introduction_event_id.is_some()
+            {
+                return Err(CompanyRecordError::Invalid("deny carries only a reason"));
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Ask create or cancel.
@@ -886,6 +1214,9 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_members::MemberPositionAction>(content)
                 .map(CompanyCommand::MemberPositionAction)
         }
+        crate::kind::KIND_HIRE_ACTION => {
+            serde_json::from_str::<HireAction>(content).map(CompanyCommand::HireAction)
+        }
         _ => return Err(CompanyRecordError::UnsupportedKind),
     }
     .map_err(|_| CompanyRecordError::InvalidContent)?;
@@ -897,6 +1228,7 @@ pub fn parse_company_command(
         CompanyCommand::SecretBindingAction(value) => value.schema_version,
         CompanyCommand::ToolPermissionAction(value) => value.schema_version,
         CompanyCommand::MemberPositionAction(value) => value.schema_version,
+        CompanyCommand::HireAction(value) => value.schema_version,
     };
     if schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
@@ -1442,6 +1774,7 @@ pub fn validate_ask_record(
         let ok = match subject.kind {
             AskSubjectKind::Goal | AskSubjectKind::WorkItem => Uuid::parse_str(&subject.id).is_ok(),
             AskSubjectKind::WorkflowRun => !subject.id.is_empty() && subject.id.len() <= 64,
+            AskSubjectKind::Hire => is_canonical_uuid(&subject.id),
             AskSubjectKind::CompanyMember => {
                 subject.id.len() == 64
                     && subject
@@ -1455,6 +1788,34 @@ pub fn validate_ask_record(
                 "subject id does not match its kind",
             ));
         }
+    }
+    if let Some(proposal) = ask.hire_proposal.as_ref() {
+        validate_hire_proposal(proposal)?;
+        if !matches!(
+            ask.subject.as_ref(),
+            Some(AskSubject {
+                kind: AskSubjectKind::Hire,
+                id,
+            }) if id == &proposal.hire_id.to_string()
+        ) || ask.ask_type != AskType::Approval
+            || ask.category != AskCategory::Hire
+            || ask.member_proposal.is_some()
+            || ask.secret_request.is_some()
+            || ask.options.is_some()
+            || ask.items.is_some()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "hire proposals need a hire subject and a hire approval ask",
+            ));
+        }
+    } else if ask
+        .subject
+        .as_ref()
+        .is_some_and(|subject| subject.kind == AskSubjectKind::Hire)
+    {
+        return Err(CompanyRecordError::Invalid(
+            "hire subjects need a hireProposal",
+        ));
     }
     match (&ask.subject, &ask.member_proposal) {
         (Some(subject), Some(proposal)) => {
@@ -1562,6 +1923,11 @@ pub fn validate_ask_response(
     if response.outcome == AskOutcome::SecretBound || response.secret_binding_id.is_some() {
         return Err(CompanyRecordError::Invalid(
             "secret binding references are only valid for secret asks",
+        ));
+    }
+    if ask.hire_proposal.is_some() && !matches!(response.outcome, O::Approved | O::Rejected) {
+        return Err(CompanyRecordError::Invalid(
+            "a hire proposal is approved or rejected with a reason",
         ));
     }
     let (reason, answer, option, checked) = (
@@ -1885,6 +2251,7 @@ mod tests {
             subject: None,
             member_proposal: None,
             secret_request: None,
+            hire_proposal: None,
         }
     }
 
@@ -1920,6 +2287,30 @@ mod tests {
             allowed_use: "Prepare Olive Studio drafts".into(),
         });
         ask
+    }
+
+    fn hire_proposal() -> HireProposal {
+        HireProposal {
+            hire_id: Uuid::from_u128(42),
+            role_pack: HireRolePack {
+                persona_id: "persona-social-lead".into(),
+                title: "Social Media Manager".into(),
+                job: "Prepare and review company social content".into(),
+                skills: vec!["Editorial planning".into(), "Reporting".into()],
+                tools: vec![HireTool {
+                    name: "social_draft".into(),
+                    risk: HireToolRisk::Medium,
+                }],
+                worker_menu: vec!["runtime-available".into()],
+                default_allowance: None,
+            },
+            display_name: "Social Media Manager".into(),
+            introduction_channel_id: Uuid::from_u128(43),
+            runtime_id: "runtime-available".into(),
+            provider_id: "provider-current".into(),
+            model_id: Some("model-current".into()),
+            weekly_allowance: None,
+        }
     }
 
     fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
@@ -2023,6 +2414,87 @@ mod tests {
         request.category = AskCategory::General;
         request.subject.as_mut().expect("subject").id = PK_B.into();
         assert!(validate_ask_record(&request, false).is_err());
+    }
+
+    #[test]
+    fn hire_proposals_require_a_typed_hire_approval_ask() {
+        let proposal = hire_proposal();
+        let mut request = ask(AskType::Approval);
+        request.category = AskCategory::Hire;
+        request.subject = Some(AskSubject {
+            kind: AskSubjectKind::Hire,
+            id: proposal.hire_id.to_string(),
+        });
+        request.hire_proposal = Some(proposal.clone());
+        assert!(validate_ask_record(&request, false).is_ok());
+
+        request.ask_type = AskType::Question;
+        assert!(validate_ask_record(&request, false).is_err());
+        request.ask_type = AskType::Approval;
+        request.subject.as_mut().expect("subject").id = Uuid::from_u128(44).to_string();
+        assert!(validate_ask_record(&request, false).is_err());
+
+        request.subject.as_mut().expect("subject").id = proposal.hire_id.to_string();
+        request.hire_proposal = None;
+        assert!(validate_ask_record(&request, false).is_err());
+
+        let mut resolved_ask = ask(AskType::Approval);
+        resolved_ask.category = AskCategory::Hire;
+        resolved_ask.subject = Some(AskSubject {
+            kind: AskSubjectKind::Hire,
+            id: proposal.hire_id.to_string(),
+        });
+        resolved_ask.hire_proposal = Some(proposal);
+        let mut approved = response(AskOutcome::Approved);
+        approved.reason = Some("Approved for founder review".into());
+        assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
+        let mut revision = approved;
+        revision.outcome = AskOutcome::RevisionRequested;
+        assert!(validate_ask_response(&resolved_ask, &revision).is_err());
+    }
+
+    #[test]
+    fn hire_action_payloads_are_exact_and_use_the_dynamic_worker_menu() {
+        let proposal = hire_proposal();
+        let create = HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: proposal.hire_id,
+            action: HireActionKind::Create,
+            expected_head_event_id: None,
+            proposal: Some(proposal.clone()),
+            employee_pubkey: None,
+            introduction_event_id: None,
+            reason: None,
+        };
+        assert!(validate_hire_action(&create).is_ok());
+
+        let mut unavailable_runtime = create.clone();
+        unavailable_runtime
+            .proposal
+            .as_mut()
+            .expect("proposal")
+            .runtime_id = "hard-coded-runtime".into();
+        assert!(validate_hire_action(&unavailable_runtime).is_err());
+
+        let mut with_preset_amount = create;
+        with_preset_amount
+            .proposal
+            .as_mut()
+            .expect("proposal")
+            .weekly_allowance = Some("not-a-number".into());
+        assert!(validate_hire_action(&with_preset_amount).is_err());
+
+        let deny = HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: proposal.hire_id,
+            action: HireActionKind::Deny,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: None,
+            introduction_event_id: None,
+            reason: Some("Role is not approved".into()),
+        };
+        assert!(validate_hire_action(&deny).is_ok());
     }
 
     #[test]

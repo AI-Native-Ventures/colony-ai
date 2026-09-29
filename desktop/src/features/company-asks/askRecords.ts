@@ -32,6 +32,27 @@ export type SecretAskRequest = {
   allowedUse: string;
 };
 
+export type HireToolRisk = "low" | "medium" | "high";
+
+export type HireProposal = {
+  hireId: string;
+  rolePack: {
+    personaId: string;
+    title: string;
+    job: string;
+    skills: string[];
+    tools: { name: string; risk: HireToolRisk }[];
+    workerMenu: string[];
+    defaultAllowance?: string;
+  };
+  displayName: string;
+  introductionChannelId: string;
+  runtimeId: string;
+  providerId: string;
+  modelId?: string;
+  weeklyAllowance?: string;
+};
+
 export type AskOption = { id: string; label: string };
 
 export type ToolConsentPreview = {
@@ -56,12 +77,13 @@ export type AskRecord = {
   options?: AskOption[] | null;
   items?: AskOption[] | null;
   subject?: {
-    kind: "goal" | "workflowRun" | "workItem" | "companyMember";
+    kind: "goal" | "workflowRun" | "workItem" | "companyMember" | "hire";
     id: string;
   } | null;
   memberProposal?:
     | import("@/features/company-team/teamModels").MemberPositionAction
     | null;
+  hireProposal?: HireProposal | null;
   toolConsent?: ToolConsentPreview | null;
   secretRequest?: SecretAskRequest | null;
 };
@@ -154,6 +176,83 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function parseHireProposal(value: unknown): HireProposal | null {
+  if (!isRecord(value)) return null;
+  const rolePack = value.rolePack;
+  if (!isRecord(rolePack)) return null;
+  const tools = rolePack.tools;
+  const validTools =
+    Array.isArray(tools) &&
+    tools.every(
+      (tool) =>
+        isRecord(tool) &&
+        typeof tool.name === "string" &&
+        tool.name.trim().length > 0 &&
+        ["low", "medium", "high"].includes(String(tool.risk)),
+    );
+  const validStringArray = (
+    candidate: unknown,
+    max: number,
+  ): candidate is string[] =>
+    Array.isArray(candidate) &&
+    candidate.length <= max &&
+    candidate.every(
+      (item) => typeof item === "string" && item.trim().length > 0,
+    );
+  const proposal = value as unknown as HireProposal;
+  const knownKeys = new Set([
+    "hireId",
+    "rolePack",
+    "displayName",
+    "introductionChannelId",
+    "runtimeId",
+    "providerId",
+    "modelId",
+    "weeklyAllowance",
+  ]);
+  const knownRoleKeys = new Set([
+    "personaId",
+    "title",
+    "job",
+    "skills",
+    "tools",
+    "workerMenu",
+    "defaultAllowance",
+  ]);
+  const allowanceValid = (allowance: unknown) =>
+    allowance === undefined ||
+    (typeof allowance === "string" && /^\d+(\.\d+)?$/.test(allowance));
+  if (
+    Object.keys(value).some((key) => !knownKeys.has(key)) ||
+    Object.keys(rolePack).some((key) => !knownRoleKeys.has(key)) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      proposal.hireId,
+    ) ||
+    typeof rolePack.personaId !== "string" ||
+    !rolePack.personaId.trim() ||
+    typeof rolePack.title !== "string" ||
+    !rolePack.title.trim() ||
+    typeof rolePack.job !== "string" ||
+    !rolePack.job.trim() ||
+    !validStringArray(rolePack.skills, 32) ||
+    !validTools ||
+    !validStringArray(rolePack.workerMenu, 32) ||
+    rolePack.workerMenu.length === 0 ||
+    typeof proposal.displayName !== "string" ||
+    !proposal.displayName.trim() ||
+    typeof proposal.introductionChannelId !== "string" ||
+    typeof proposal.runtimeId !== "string" ||
+    !rolePack.workerMenu.includes(proposal.runtimeId) ||
+    typeof proposal.providerId !== "string" ||
+    (proposal.modelId !== undefined && typeof proposal.modelId !== "string") ||
+    !allowanceValid(rolePack.defaultAllowance) ||
+    !allowanceValid(proposal.weeklyAllowance)
+  ) {
+    return null;
+  }
+  return proposal;
+}
+
 function parseAskHead(content: string): AskHead {
   let value: unknown;
   try {
@@ -179,6 +278,10 @@ function parseAskHead(content: string): AskHead {
     ask.memberProposal === undefined || ask.memberProposal === null
       ? null
       : parseMemberPositionAction(ask.memberProposal);
+  const hireProposal =
+    ask.hireProposal === undefined || ask.hireProposal === null
+      ? null
+      : parseHireProposal(ask.hireProposal);
   const secretRequest = ask.secretRequest;
   const invalidSecretRequest =
     ask.category === "secret"
@@ -250,11 +353,19 @@ function parseAskHead(content: string): AskHead {
         memberProposal.action === "rehire"
           ? ask.category !== "hire"
           : ask.category !== "general"))) ||
-    (subject?.kind === "companyMember" && memberProposal === null)
+    (subject?.kind === "companyMember" && memberProposal === null) ||
+    (ask.hireProposal !== undefined &&
+      ask.hireProposal !== null &&
+      !hireProposal) ||
+    (hireProposal !== null &&
+      (ask.type !== "approval" ||
+        ask.category !== "hire" ||
+        subject?.kind !== "hire" ||
+        subject.id !== hireProposal.hireId ||
+        memberProposal !== null)) ||
+    (subject?.kind === "hire" && hireProposal === null)
   ) {
-    throw new Error(
-      "The relay returned a malformed member-position proposal ask.",
-    );
+    throw new Error("The relay returned a malformed company proposal ask.");
   }
   return head;
 }

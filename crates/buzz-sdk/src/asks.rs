@@ -108,6 +108,7 @@ mod tests {
             subject: None,
             member_proposal: None,
             secret_request: None,
+            hire_proposal: None,
         }
     }
 

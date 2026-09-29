@@ -746,6 +746,8 @@ pub const KIND_GOAL_HEAD: u32 = 30642;
 pub const KIND_ASK_HEAD: u32 = 30643;
 /// Relay-authored canonical member-position head (community-wide).
 pub const KIND_MEMBER_POSITION_HEAD: u32 = 30648;
+/// Relay-authored canonical employee hire head (community-wide).
+pub const KIND_HIRE_HEAD: u32 = 30650;
 /// Relay-authored canonical standing tool permission head (community-wide).
 pub const KIND_TOOL_PERMISSION_HEAD: u32 = 30646;
 /// Member goal mutation, brokered.
@@ -760,6 +762,8 @@ pub const KIND_SECRET_BINDING_HEAD: u32 = 30647;
 pub const KIND_SECRET_BINDING_ACTION: u32 = 47036;
 /// Member position mutation, brokered and community-wide.
 pub const KIND_MEMBER_POSITION_ACTION: u32 = 47037;
+/// Member hire proposal, approval or completion, brokered.
+pub const KIND_HIRE_ACTION: u32 = 47039;
 /// Member standing tool permission grant, update or revoke, brokered.
 pub const KIND_TOOL_PERMISSION_ACTION: u32 = 47035;
 
@@ -768,6 +772,7 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_GOAL_HEAD,
     KIND_ASK_HEAD,
     KIND_MEMBER_POSITION_HEAD,
+    KIND_HIRE_HEAD,
     KIND_GOAL_ACTION,
     KIND_ASK_ACTION,
     KIND_ASK_RESPONSE,
@@ -776,6 +781,7 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_TOOL_PERMISSION_HEAD,
     KIND_TOOL_PERMISSION_ACTION,
     KIND_MEMBER_POSITION_ACTION,
+    KIND_HIRE_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -787,6 +793,7 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_ASK_RESPONSE
             | KIND_SECRET_BINDING_ACTION
             | KIND_MEMBER_POSITION_ACTION
+            | KIND_HIRE_ACTION
             | KIND_TOOL_PERMISSION_ACTION
     )
 }
@@ -801,6 +808,8 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_SECRET_BINDING_ACTION
             | KIND_MEMBER_POSITION_HEAD
             | KIND_MEMBER_POSITION_ACTION
+            | KIND_HIRE_HEAD
+            | KIND_HIRE_ACTION
             | KIND_TOOL_PERMISSION_HEAD
             | KIND_TOOL_PERMISSION_ACTION
     )
@@ -1087,12 +1096,14 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GOAL_HEAD,
     KIND_ASK_HEAD,
     KIND_MEMBER_POSITION_HEAD,
+    KIND_HIRE_HEAD,
     KIND_GOAL_ACTION,
     KIND_ASK_ACTION,
     KIND_ASK_RESPONSE,
     KIND_TOOL_PERMISSION_HEAD,
     KIND_TOOL_PERMISSION_ACTION,
     KIND_MEMBER_POSITION_ACTION,
+    KIND_HIRE_ACTION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1173,6 +1184,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_SECRET_BINDING_ACTION
             | KIND_TOOL_PERMISSION_ACTION
             | KIND_MEMBER_POSITION_ACTION
+            | KIND_HIRE_ACTION
     )
 }
 
@@ -1207,6 +1219,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_SECRET_BINDING_HEAD
             | KIND_TOOL_PERMISSION_HEAD
             | KIND_MEMBER_POSITION_HEAD
+            | KIND_HIRE_HEAD
     )
 }
 
@@ -1239,6 +1252,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_WINDOW_BOUNDS)); // 3900
 const _: () = assert!(is_parameterized_replaceable(KIND_GOAL_HEAD)); // 30642 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MEMBER_POSITION_HEAD)); // 30648 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_HIRE_HEAD)); // 30650 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
