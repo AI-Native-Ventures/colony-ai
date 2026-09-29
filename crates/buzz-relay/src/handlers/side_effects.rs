@@ -2251,6 +2251,13 @@ async fn handle_standard_deletion_event(
             Some(target) => target,
             None => continue,
         };
+        if u32::from(target_event.event.kind.as_u16())
+            == buzz_core::kind::KIND_EMPLOYEE_REVISION_ACTION
+        {
+            return Err(anyhow::anyhow!(
+                "employee configuration revision events are immutable"
+            ));
+        }
         if u32::from(target_event.event.kind.as_u16()) == super::push_lease::KIND_PUSH_LEASE {
             tracing::debug!(
                 target_id = %hex::encode(&target_id),

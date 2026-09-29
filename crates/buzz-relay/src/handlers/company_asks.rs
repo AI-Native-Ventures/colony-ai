@@ -62,6 +62,10 @@ pub(super) async fn handle(
             "restricted: tool permission commands are handled by the company permission broker"
                 .into(),
         )),
+        CompanyCommand::EmployeeRevisionAction(_) => Err(IngestError::Rejected(
+            "restricted: employee history commands are handled by the employee history broker"
+                .into(),
+        )),
         CompanyCommand::HireAction(_) => Err(IngestError::Rejected(
             "restricted: hire commands are handled by the company hire broker".into(),
         )),

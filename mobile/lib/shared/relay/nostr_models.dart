@@ -84,6 +84,7 @@ abstract final class EventKind {
   static const goalHead = 30642;
   static const askHead = 30643;
   static const memberPositionHead = 30648;
+  static const employeeRevisionHead = 30651;
   static const hireHead = 30650;
   static const toolPermissionHead = 30646;
   static const goalAction = 47031;
@@ -92,6 +93,7 @@ abstract final class EventKind {
   static const secretBindingHead = 30647;
   static const secretBindingAction = 47036;
   static const memberPositionAction = 47037;
+  static const employeeRevisionAction = 47040;
   static const hireAction = 47039;
   static const toolPermissionAction = 47035;
   static const factoryRunHead = 30649;
@@ -103,6 +105,7 @@ abstract final class EventKind {
     goalHead,
     askHead,
     memberPositionHead,
+    employeeRevisionHead,
     hireHead,
     goalAction,
     askAction,
@@ -110,6 +113,7 @@ abstract final class EventKind {
     secretBindingHead,
     secretBindingAction,
     memberPositionAction,
+    employeeRevisionAction,
     hireAction,
     toolPermissionHead,
     toolPermissionAction,

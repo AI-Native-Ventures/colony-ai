@@ -83,6 +83,8 @@ pub enum CompanyCommand {
     ToolPermissionAction(ToolPermissionAction),
     /// Member-position mutation (kind 47037).
     MemberPositionAction(crate::company_members::MemberPositionAction),
+    /// Employee configuration revision (kind 47040).
+    EmployeeRevisionAction(crate::company_employee_history::EmployeeRevisionAction),
     /// Hire proposal, founder approval or completion (kind 47039).
     HireAction(HireAction),
 }
@@ -1276,6 +1278,10 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_members::MemberPositionAction>(content)
                 .map(CompanyCommand::MemberPositionAction)
         }
+        crate::kind::KIND_EMPLOYEE_REVISION_ACTION => {
+            serde_json::from_str::<crate::company_employee_history::EmployeeRevisionAction>(content)
+                .map(CompanyCommand::EmployeeRevisionAction)
+        }
         crate::kind::KIND_HIRE_ACTION => {
             serde_json::from_str::<HireAction>(content).map(CompanyCommand::HireAction)
         }
@@ -1290,6 +1296,7 @@ pub fn parse_company_command(
         CompanyCommand::SecretBindingAction(value) => value.schema_version,
         CompanyCommand::ToolPermissionAction(value) => value.schema_version,
         CompanyCommand::MemberPositionAction(value) => value.schema_version,
+        CompanyCommand::EmployeeRevisionAction(value) => value.schema_version,
         CompanyCommand::HireAction(value) => value.schema_version,
     };
     if schema_version != COMPANY_RECORD_SCHEMA_VERSION {

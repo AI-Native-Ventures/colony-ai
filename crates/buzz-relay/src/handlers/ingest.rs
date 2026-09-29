@@ -676,6 +676,8 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | buzz_core::kind::KIND_TOOL_PERMISSION_ACTION
             | KIND_MEMBER_POSITION_HEAD
             | KIND_MEMBER_POSITION_ACTION
+            | buzz_core::kind::KIND_EMPLOYEE_REVISION_HEAD
+            | buzz_core::kind::KIND_EMPLOYEE_REVISION_ACTION
             | buzz_core::kind::KIND_HIRE_HEAD
             | buzz_core::kind::KIND_HIRE_ACTION
             // Factory run heads and actions are community-wide records.

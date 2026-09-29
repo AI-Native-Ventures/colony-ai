@@ -431,6 +431,21 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+    /// Read the append-only configuration history for a company employee.
+    History {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+    },
+    /// Append a new revision restoring an earlier employee configuration.
+    Undo {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+        /// Immutable revision event to undo to its before snapshot.
+        #[arg(long)]
+        revision_event_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3125,7 +3140,9 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
-                "unarchive"
+                "history",
+                "unarchive",
+                "undo"
             ]
         );
         assert_eq!(
@@ -3289,12 +3306,13 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 7),
             ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),
             ("emoji", 5),
+            ("factory", 4),
             ("feed", 1),
             ("goals", 9),
             ("issues", 6),
