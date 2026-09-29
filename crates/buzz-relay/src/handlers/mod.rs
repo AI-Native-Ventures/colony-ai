@@ -14,6 +14,8 @@ pub mod command_executor;
 pub mod community_provisioning;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
+/// Nostr-first broker for community-wide standing tool permissions.
+pub mod company_permissions;
 /// Nostr-first broker for company records (goals and asks).
 pub mod company_records;
 /// Nostr-first broker for device-backed secret binding records.

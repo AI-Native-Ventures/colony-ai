@@ -255,6 +255,9 @@ enum Cmd {
     /// Review client invoices and record money evidence
     #[command(subcommand)]
     Money(MoneyCmd),
+    /// List, grant, and revoke standing tool permissions
+    #[command(subcommand)]
+    Permissions(PermissionsCmd),
     /// Read the activity feed
     #[command(subcommand)]
     Feed(FeedCmd),
@@ -1475,6 +1478,34 @@ pub enum MoneyFollowUpsCmd {
 }
 
 #[derive(Subcommand)]
+pub enum PermissionsCmd {
+    /// List current relay-signed standing permission heads
+    List {
+        /// Filter to one managed agent public key
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Grant a standing permission from a ToolPermissionRecord JSON object
+    Grant {
+        /// ToolPermissionRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke an open permission at its exact current head
+    Revoke {
+        /// Permission UUID
+        #[arg(long)]
+        permission: String,
+        /// Current kind 30645 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for revoking, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum FeedCmd {
     /// Get recent activity feed entries
     Get {
@@ -2650,6 +2681,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
+        Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
@@ -2832,6 +2864,7 @@ mod tests {
             "notes",
             "pack",
             "patches",
+            "permissions",
             "pr",
             "projects",
             "reactions",
@@ -3083,6 +3116,7 @@ mod tests {
             ("money", 4),
             ("pack", 2),
             ("patches", 4),
+            ("permissions", 3),
             ("pr", 5),
             ("projects", 8),
             ("reactions", 3),
