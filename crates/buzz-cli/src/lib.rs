@@ -255,6 +255,9 @@ enum Cmd {
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
+    /// Read and update Software Factory run records
+    #[command(subcommand)]
+    Factory(FactoryCmd),
     /// Review client invoices and record money evidence
     #[command(subcommand)]
     Money(MoneyCmd),
@@ -1349,6 +1352,86 @@ pub enum WorkCmd {
         /// Work-item UUID
         #[arg(long)]
         work: String,
+    },
+}
+
+/// Commands for relay-backed Software Factory run records.
+#[derive(Subcommand)]
+pub enum FactoryCmd {
+    /// List current Factory run records
+    List,
+    /// Read one Factory run record
+    Get {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+    },
+    /// Read and update preview metadata
+    #[command(subcommand)]
+    Preview(FactoryPreviewCmd),
+    /// Link and update metadata for an existing pull request
+    #[command(subcommand)]
+    PullRequest(FactoryPullRequestCmd),
+}
+
+/// Preview metadata operations. These commands do not start a process.
+#[derive(Subcommand)]
+pub enum FactoryPreviewCmd {
+    /// Save the command and local address for a future preview runtime
+    Configure {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// Development command to save, such as a project-specific script
+        #[arg(long)]
+        command: String,
+        /// Actual local address the future preview runtime will bind
+        #[arg(long)]
+        url: String,
+        /// Run owner pubkey when an administrator creates the first record
+        #[arg(long)]
+        owner_pubkey: Option<String>,
+    },
+    /// Record a preview state emitted by an external preview runtime
+    Report {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPreviewState JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+    },
+}
+
+/// Pull request metadata operations.
+#[derive(Subcommand)]
+pub enum FactoryPullRequestCmd {
+    /// Link an existing pull request by supplying its metadata record
+    Link {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPullRequest JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+        /// Run owner pubkey when an administrator creates the first record
+        #[arg(long)]
+        owner_pubkey: Option<String>,
+    },
+    /// Refresh metadata for an already linked pull request
+    Update {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPullRequest JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Remove the pull request link from a Factory run record
+    Unlink {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
     },
 }
 
@@ -2736,6 +2819,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
+        Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
@@ -2909,6 +2993,7 @@ mod tests {
             "dms",
             "emoji",
             "feed",
+            "factory",
             "gifs",
             "goals",
             "issues",
@@ -2954,6 +3039,35 @@ mod tests {
             actual, expected_groups,
             "Command group inventory drift detected"
         );
+    }
+
+    #[test]
+    fn factory_configuration_command_requires_explicit_values() {
+        let run = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "factory",
+            "preview",
+            "configure",
+            "--run",
+            run,
+            "--command",
+            "pnpm dev",
+            "--url",
+            "http://127.0.0.1:4000",
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "factory",
+            "preview",
+            "configure",
+            "--run",
+            run,
+            "--command",
+            "pnpm dev",
+        ])
+        .is_err());
     }
 
     #[test]

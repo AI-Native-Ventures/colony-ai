@@ -27,10 +27,9 @@ with the community relay identity.
 ## Head shape
 
 Every head has `schemaVersion`, `runId`, `runOwnerPubkey`, `preview`,
-`pullRequest`, and relay-authored `updatedAt`. `projectId` and `repositoryId`
-are optional Nostr coordinates copied from the local run at the time a command
-first creates the head. UUIDs are canonical lowercase strings. Pubkeys and
-event ids are 64 lowercase hex characters. Unknown fields are rejected.
+`pullRequest`, and relay-authored `updatedAt`. UUIDs are canonical lowercase
+strings. Pubkeys and event ids are 64 lowercase hex characters. Unknown fields
+are rejected.
 
 `preview` is a tagged value with exactly these states:
 

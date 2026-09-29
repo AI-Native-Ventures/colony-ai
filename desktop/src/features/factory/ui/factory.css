@@ -1031,6 +1031,215 @@
   @apply text-2xs;
 }
 
+.fx-agent-tool-tabs {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fx-agent-tool-tab {
+  flex: none;
+  padding: 2px 0;
+  border: 0;
+  color: var(--fx-muted);
+  background: transparent;
+  @apply text-2xs;
+  white-space: nowrap;
+}
+
+.fx-agent-tool-tab[aria-pressed="true"] {
+  color: var(--fx-ink);
+  font-weight: 600;
+}
+
+.fx-run-tool-surface {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+  color: var(--fx-ink);
+  background: var(--fx-panel);
+}
+
+.fx-run-tool-empty {
+  display: flex;
+  width: 100%;
+  max-width: 560px;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: auto;
+  padding: 22px;
+  text-align: center;
+}
+
+.fx-run-tool-mark {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  flex: none;
+  place-items: center;
+  margin-bottom: 4px;
+  border-radius: 18px;
+  color: var(--fx-accent);
+  background: var(--fx-hover);
+  @apply text-xl;
+}
+
+.fx-run-tool-empty h2 {
+  margin: 0;
+  color: var(--fx-ink);
+  @apply text-base;
+  font-weight: 600;
+}
+
+.fx-run-tool-empty p {
+  margin: 0 0 5px;
+  color: var(--fx-muted);
+  @apply text-sm;
+  line-height: 1.5;
+}
+
+.fx-run-tool-empty .fx-button-primary {
+  min-height: 42px;
+  padding-inline: 16px;
+  @apply text-sm;
+}
+
+.fx-preview-config {
+  padding: 15px 18px 18px;
+}
+
+.fx-preview-config .fx-run-tool-empty {
+  flex: none;
+  padding-top: 10px;
+}
+
+.fx-preview-fields {
+  display: grid;
+  width: 100%;
+  max-width: 650px;
+  gap: 7px;
+  margin: 4px auto 0;
+}
+
+.fx-preview-fields label,
+.fx-review-url-field > span {
+  color: var(--fx-ink);
+  @apply text-label;
+  font-weight: 600;
+}
+
+.fx-preview-fields input,
+.fx-review-url-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--fx-line);
+  border-radius: 6px;
+  color: var(--fx-ink);
+  background: var(--fx-paper);
+  @apply text-field;
+}
+
+.fx-preview-fields input:focus-visible {
+  outline: 2px solid var(--fx-accent);
+  outline-offset: 1px;
+}
+
+.fx-run-tool-error {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--fx-red);
+  @apply text-xs;
+}
+
+.fx-run-tool-error-message {
+  margin: 3px 0 0;
+  color: var(--fx-red);
+  @apply text-badge;
+}
+
+.fx-preview-state {
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.fx-preview-state .fx-run-tool-empty {
+  flex: none;
+  padding: 0 22px 14px;
+}
+
+.fx-preview-output {
+  width: 100%;
+  max-width: 650px;
+  margin: 0 auto;
+  color: var(--fx-ink);
+  @apply text-2xs;
+}
+
+.fx-preview-output summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.fx-preview-output pre {
+  margin: 11px 0 0;
+  overflow: auto;
+  color: var(--fx-ink);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  @apply text-2xs;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fx-review-empty {
+  padding: 15px 18px 20px;
+}
+
+.fx-review-empty .fx-run-tool-empty {
+  flex: none;
+  padding-top: 10px;
+}
+
+.fx-review-url-field {
+  display: grid;
+  width: 100%;
+  max-width: 650px;
+  gap: 7px;
+  margin: auto auto 0;
+}
+
+.fx-run-tool-loading {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  border-radius: 12px;
+  background: repeating-linear-gradient(
+    0deg,
+    var(--fx-panel),
+    var(--fx-panel) 48px,
+    var(--fx-paper) 48px,
+    var(--fx-paper) 64px
+  );
+}
+
 .fx-workspace-footer {
   display: flex;
   min-height: 29px;

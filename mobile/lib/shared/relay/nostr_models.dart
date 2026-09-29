@@ -92,6 +92,8 @@ abstract final class EventKind {
   static const secretBindingAction = 47036;
   static const memberPositionAction = 47037;
   static const toolPermissionAction = 47035;
+  static const factoryRunHead = 30649;
+  static const factoryRunAction = 47038;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -107,6 +109,8 @@ abstract final class EventKind {
     memberPositionAction,
     toolPermissionHead,
     toolPermissionAction,
+    factoryRunHead,
+    factoryRunAction,
   ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.
