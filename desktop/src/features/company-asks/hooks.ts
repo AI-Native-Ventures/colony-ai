@@ -9,8 +9,10 @@ import {
   askHeadQueryKey,
   askHeadsQueryKey,
   decodeRelayAskHead,
+  fetchCompanyToolConsentAskHead,
   fetchAskHead,
   fetchAskHeads,
+  fetchCompanyToolConsentAskHeads,
   splitChannelIds,
 } from "./askRecords";
 
@@ -20,6 +22,7 @@ export function useAskHeadQuery(
   channelId: string | null,
   askId: string | null,
   enabled = true,
+  companyToolConsentInbox = false,
 ) {
   const relaySelfQuery = useRelaySelfQuery(
     enabled && channelId !== null && askId !== null,
@@ -27,8 +30,14 @@ export function useAskHeadQuery(
   const relaySelfPubkey = relaySelfQuery.data ?? null;
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(
-    () => askHeadQueryKey(channelId ?? "", askId ?? "", relaySelfPubkey),
-    [askId, channelId, relaySelfPubkey],
+    () =>
+      askHeadQueryKey(
+        channelId ?? "",
+        askId ?? "",
+        relaySelfPubkey,
+        companyToolConsentInbox,
+      ),
+    [askId, channelId, companyToolConsentInbox, relaySelfPubkey],
   );
   const refetchInterval = useFocusedRefetchInterval(
     ASK_HEAD_REFETCH_INTERVAL_MS,
@@ -39,7 +48,9 @@ export function useAskHeadQuery(
       if (!channelId || !askId || !relaySelfPubkey) {
         throw new Error("The ask coordinates are unavailable.");
       }
-      return fetchAskHead(channelId, askId, relaySelfPubkey);
+      return companyToolConsentInbox
+        ? fetchCompanyToolConsentAskHead(channelId, askId, relaySelfPubkey)
+        : fetchAskHead(channelId, askId, relaySelfPubkey);
     },
     enabled:
       enabled &&
@@ -53,7 +64,13 @@ export function useAskHeadQuery(
   >("connecting");
 
   React.useEffect(() => {
-    if (!enabled || !channelId || !askId || !relaySelfPubkey) {
+    if (
+      !enabled ||
+      !channelId ||
+      !askId ||
+      !relaySelfPubkey ||
+      companyToolConsentInbox
+    ) {
       setLiveState("unavailable");
       return;
     }
@@ -90,15 +107,28 @@ export function useAskHeadQuery(
       active = false;
       if (dispose) void dispose();
     };
-  }, [askId, channelId, enabled, queryClient, queryKey, relaySelfPubkey]);
+  }, [
+    askId,
+    channelId,
+    companyToolConsentInbox,
+    enabled,
+    queryClient,
+    queryKey,
+    relaySelfPubkey,
+  ]);
 
   return { query, relaySelfQuery, liveState };
 }
 
 export type AskHeadQueryState = ReturnType<typeof useAskHeadQuery>;
 
-export function useAskHeadsQuery(channelIds: readonly string[]) {
-  const relaySelfQuery = useRelaySelfQuery(channelIds.length > 0);
+export function useAskHeadsQuery(
+  channelIds: readonly string[],
+  includeCompanyToolConsent = false,
+) {
+  const relaySelfQuery = useRelaySelfQuery(
+    channelIds.length > 0 || includeCompanyToolConsent,
+  );
   const relaySelfPubkey = relaySelfQuery.data ?? null;
   const queryClient = useQueryClient();
   const channelIdsKey = [...new Set(channelIds)].sort().join(",");
@@ -107,23 +137,55 @@ export function useAskHeadsQuery(channelIds: readonly string[]) {
     [channelIdsKey],
   );
   const queryKey = React.useMemo(
-    () => askHeadsQueryKey(normalizedChannelIds, relaySelfPubkey),
-    [normalizedChannelIds, relaySelfPubkey],
+    () =>
+      askHeadsQueryKey(
+        normalizedChannelIds,
+        relaySelfPubkey,
+        includeCompanyToolConsent,
+      ),
+    [includeCompanyToolConsent, normalizedChannelIds, relaySelfPubkey],
   );
   const refetchInterval = useFocusedRefetchInterval(
     ASK_HEAD_REFETCH_INTERVAL_MS,
   );
   const query = useQuery({
     queryKey,
-    queryFn: () => {
-      if (normalizedChannelIds.length === 0) return Promise.resolve([]);
+    queryFn: async () => {
+      if (normalizedChannelIds.length === 0 && !includeCompanyToolConsent) {
+        return [];
+      }
       if (!relaySelfPubkey) {
         throw new Error("The relay identity is unavailable.");
       }
-      return fetchAskHeads(normalizedChannelIds, relaySelfPubkey);
+      const [channelRecords, companyToolConsentRecords] = await Promise.all([
+        fetchAskHeads(normalizedChannelIds, relaySelfPubkey),
+        includeCompanyToolConsent
+          ? fetchCompanyToolConsentAskHeads(relaySelfPubkey)
+          : Promise.resolve([]),
+      ]);
+      const byCoordinate = new Map<string, (typeof channelRecords)[number]>();
+      for (const record of [...channelRecords, ...companyToolConsentRecords]) {
+        const key = `${record.channelId}:${record.head.askId}`;
+        const current = byCoordinate.get(key);
+        if (
+          !current ||
+          current.event.created_at < record.event.created_at ||
+          (current.event.created_at === record.event.created_at &&
+            current.event.id.localeCompare(record.event.id) > 0)
+        ) {
+          byCoordinate.set(key, record);
+        }
+      }
+      return [...byCoordinate.values()];
     },
-    enabled: normalizedChannelIds.length === 0 || relaySelfPubkey !== null,
-    initialData: normalizedChannelIds.length === 0 ? [] : undefined,
+    enabled:
+      normalizedChannelIds.length === 0 && !includeCompanyToolConsent
+        ? true
+        : relaySelfPubkey !== null,
+    initialData:
+      normalizedChannelIds.length === 0 && !includeCompanyToolConsent
+        ? []
+        : undefined,
     refetchInterval,
   });
 
