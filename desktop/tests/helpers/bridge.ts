@@ -981,7 +981,7 @@ async function seedPreviewFeaturesEnabled(page: Page) {
 
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
-    options.mode === "relay" || options.user !== undefined
+    options.mode === "relay"
       ? TEST_IDENTITIES[options.user ?? "tyler"]
       : undefined;
 
@@ -1112,13 +1112,11 @@ export async function installMockBridge(
     skipOnboardingSeed?: boolean;
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
-    user?: keyof typeof TEST_IDENTITIES;
   },
 ) {
   await installBridge(page, {
     mode: "mock",
     mock,
-    user: options?.user,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,
     skipOnboardingSeed: options?.skipOnboardingSeed,

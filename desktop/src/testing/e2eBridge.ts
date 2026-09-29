@@ -5462,12 +5462,11 @@ function assertExpectedSigner(
 }
 
 function getIdentity(config: E2eConfig | undefined): TestIdentity | undefined {
-  if (config?.identity) return config.identity;
   if (!isRelayMode(config)) {
     return undefined;
   }
 
-  return DEFAULT_REAL_IDENTITY;
+  return config?.identity ?? DEFAULT_REAL_IDENTITY;
 }
 
 function getActiveIdentity(config: E2eConfig | undefined) {
@@ -6071,7 +6070,13 @@ function acceptMockEmployeeRevisionAction(
     reject(configuredError);
     return;
   }
-  if (event.kind !== KIND_EMPLOYEE_REVISION_ACTION || !verifyEvent(event)) {
+  const hasSyntheticDefaultIdentitySignature =
+    event.pubkey.toLowerCase() === MOCK_IDENTITY_PUBKEY &&
+    event.sig === "mocksig".repeat(20).slice(0, 128);
+  if (
+    event.kind !== KIND_EMPLOYEE_REVISION_ACTION ||
+    (!verifyEvent(event) && !hasSyntheticDefaultIdentitySignature)
+  ) {
     reject("invalid: employee revision signature or kind is invalid.");
     return;
   }

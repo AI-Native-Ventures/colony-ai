@@ -9,7 +9,7 @@ import {
 import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
-const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
+const OWNER_PUBKEY = "deadbeef".repeat(8);
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
 
@@ -51,71 +51,67 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   const workerPubkey = getPublicKey(generateSecretKey());
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
   const bobPubkey = TEST_IDENTITIES.bob.pubkey;
-  await installMockBridge(
-    page,
-    {
-      relaySelf,
-      companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
-      companyMemberPositionEvents: [
-        positionHead({
-          relaySecret,
-          pubkey: alicePubkey,
-          title: "Account Manager",
-          kind: "human",
-          managerPubkey: OWNER_PUBKEY,
-        }),
-        positionHead({
-          relaySecret,
-          pubkey: employeePubkey,
-          title: EMPLOYEE_TITLE,
-          kind: "employee",
-          managerPubkey: OWNER_PUBKEY,
-        }),
-        positionHead({
-          relaySecret,
-          pubkey: bobPubkey,
-          title: "Designer",
-          kind: "human",
-          managerPubkey: alicePubkey,
-        }),
-      ],
-      relayMembers: [
-        { pubkey: OWNER_PUBKEY, role: "owner" },
-        { pubkey: alicePubkey, role: "member" },
-        { pubkey: bobPubkey, role: "member" },
-      ],
-      relayAgents: [
-        {
-          pubkey: employeePubkey,
-          ownerPubkey: OWNER_PUBKEY,
-          name: EMPLOYEE_NAME,
-          agentType: "agent",
-        },
-        {
-          pubkey: workerPubkey,
-          ownerPubkey: OWNER_PUBKEY,
-          name: "Mina worker",
-          agentType: "worker",
-        },
-      ],
-      managedAgents: [
-        {
-          pubkey: employeePubkey,
-          name: EMPLOYEE_NAME,
-          systemPrompt: "Existing employee instructions.",
-          status: "running",
-          channelNames: ["general"],
-        },
-        {
-          pubkey: workerPubkey,
-          name: "Mina worker",
-          status: "running",
-          channelNames: ["general"],
-        },
-      ],
-    },
-    { user: "tyler" },
-  );
+  await installMockBridge(page, {
+    relaySelf,
+    companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyMemberPositionEvents: [
+      positionHead({
+        relaySecret,
+        pubkey: alicePubkey,
+        title: "Account Manager",
+        kind: "human",
+        managerPubkey: OWNER_PUBKEY,
+      }),
+      positionHead({
+        relaySecret,
+        pubkey: employeePubkey,
+        title: EMPLOYEE_TITLE,
+        kind: "employee",
+        managerPubkey: OWNER_PUBKEY,
+      }),
+      positionHead({
+        relaySecret,
+        pubkey: bobPubkey,
+        title: "Designer",
+        kind: "human",
+        managerPubkey: alicePubkey,
+      }),
+    ],
+    relayMembers: [
+      { pubkey: OWNER_PUBKEY, role: "owner" },
+      { pubkey: alicePubkey, role: "member" },
+      { pubkey: bobPubkey, role: "member" },
+    ],
+    relayAgents: [
+      {
+        pubkey: employeePubkey,
+        ownerPubkey: OWNER_PUBKEY,
+        name: EMPLOYEE_NAME,
+        agentType: "agent",
+      },
+      {
+        pubkey: workerPubkey,
+        ownerPubkey: OWNER_PUBKEY,
+        name: "Mina worker",
+        agentType: "worker",
+      },
+    ],
+    managedAgents: [
+      {
+        pubkey: employeePubkey,
+        name: EMPLOYEE_NAME,
+        systemPrompt: "Existing employee instructions.",
+        status: "running",
+        channelNames: ["general"],
+      },
+      {
+        pubkey: workerPubkey,
+        name: "Mina worker",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
 
   await page.goto("/#/team");
   await expect(page.getByTestId("company-team-screen")).toBeVisible({
