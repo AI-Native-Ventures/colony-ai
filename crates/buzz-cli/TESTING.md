@@ -172,6 +172,10 @@ jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
 buzz work list --channel "$CHANNEL_ID" | jq .
 buzz work get --work "$WORK_ID" | jq .
 
+# Set or clear the due date without rewriting other work fields.
+buzz work due-date --work "$WORK_ID" --date "2099-10-15T17:00:00Z" | jq .
+buzz work clear-due-date --work "$WORK_ID" | jq .
+
 # Supply a full replacement CompanyWorkItemInput with the same workItemId.
 jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
   --arg requester "$REQUESTER_PUBKEY" '{

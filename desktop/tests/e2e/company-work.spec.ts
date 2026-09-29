@@ -25,6 +25,8 @@ type SeedWorkItem = {
   title: string;
   goalId?: string;
   ownerPubkey?: string;
+  reviewerPubkey?: string;
+  dueAt?: string;
   status?:
     | "active"
     | "paused"
@@ -85,11 +87,19 @@ function companyWorkHeadEvent(
         title: workItem.title,
         status: workItem.status ?? "active",
         assignedPubkeys: [workItem.ownerPubkey ?? ownerPubkey],
-        approverPubkeys: [],
+        approverPubkeys: workItem.reviewerPubkey
+          ? [workItem.reviewerPubkey]
+          : [],
         deliverables: [],
         requesterPubkey: workItem.ownerPubkey ?? ownerPubkey,
         doneCondition: `The work for ${workItem.title} is complete.`,
         ...(workItem.goalId ? { goalId: workItem.goalId } : {}),
+        ...(workItem.dueAt
+          ? {
+              acceptedAt: new Date(Date.now() - 60_000).toISOString(),
+              dueAt: workItem.dueAt,
+            }
+          : {}),
         sourceActionEventId: "c".repeat(64),
       }),
     },
@@ -161,6 +171,49 @@ async function installCompanyWorkMock(
       },
     ],
   });
+  return { relaySecret, relaySelf };
+}
+
+function companyWorkTrackingSuggestionHeadEvent(
+  relaySecret: Uint8Array,
+  suggestionId: string,
+  sourceEventId: string,
+) {
+  const draftWorkItemId = "6a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  return finalizeEvent(
+    {
+      kind: 30652,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", GENERAL_CHANNEL_ID],
+        ["d", `company:work-suggestion:${suggestionId}`],
+      ],
+      content: JSON.stringify({
+        recordType: "commitment_suggestion",
+        schemaVersion: 1,
+        suggestionId,
+        sourceEventId,
+        sourceChannelId: GENERAL_CHANNEL_ID,
+        proposedByPubkey: TEST_IDENTITIES.bob.pubkey,
+        workItem: {
+          schemaVersion: 1,
+          workItemId: draftWorkItemId,
+          title: "Prepare the client pack",
+          status: "active",
+          assignedPubkeys: [TEST_IDENTITIES.tyler.pubkey],
+          approverPubkeys: [],
+          deliverables: [],
+          requesterPubkey: TEST_IDENTITIES.tyler.pubkey,
+          doneCondition: "The client pack is ready for review.",
+          sourceEventId,
+          threadRootEventId: sourceEventId,
+        },
+        status: "pending",
+        sourceActionEventId: "c".repeat(64),
+      }),
+    },
+    relaySecret,
+  );
 }
 
 async function activateByKeyboard(
@@ -228,6 +281,9 @@ test("company work keeps its chat source, review history, and goal link", async 
     if (!event) throw new Error("The mock message seam is unavailable.");
     return event.id;
   }, GOAL_ID);
+  await expect(
+    page.locator('[data-testid^="company-work-suggestion-"]'),
+  ).toHaveCount(0);
   await expect(
     page.getByTestId(`goal-reference-card-${GOAL_ID}`),
   ).toBeVisible();
@@ -471,6 +527,81 @@ test("company work keeps its chat source, review history, and goal link", async 
   ).toBeChecked();
 });
 
+test("a persisted commitment suggestion creates work and survives reload", async ({
+  page,
+}) => {
+  const { relaySecret } = await installCompanyWorkMock(page);
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  const joinButton = page.getByRole("button", {
+    name: "Join to participate",
+  });
+  await expect(joinButton).toBeVisible({ timeout: 30_000 });
+  await joinButton.click();
+
+  await page.goto("/#/company-work");
+  await expect(page.getByTestId("company-work-list")).toBeVisible();
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await waitForMockLiveSubscription(page, "general");
+  const sourceEventId = await page.evaluate(() => {
+    const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content:
+        "I will have the October campaign pack ready for Noluthando by Thursday.",
+    });
+    if (!event) throw new Error("The mock message seam is unavailable.");
+    return event.id;
+  });
+  const suggestionId = "6b1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const trackingHead = companyWorkTrackingSuggestionHeadEvent(
+    relaySecret,
+    suggestionId,
+    sourceEventId,
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (input) =>
+          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.(input) ?? false,
+        { channelName: "general", kind: 30652 },
+      ),
+    )
+    .toBe(true);
+  await page.evaluate((event) => {
+    const seed = window.__BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__;
+    if (!seed) throw new Error("The mock tracking seed seam is unavailable.");
+    seed(event);
+  }, trackingHead);
+
+  await page.goto(`/#/work/tracking/suggestion/${suggestionId}`);
+  await expect(
+    page.getByTestId("company-work-suggestion-source"),
+  ).toContainText("October campaign pack ready for Noluthando");
+  await expect(page.getByText("Looks like a commitment.")).toBeVisible();
+
+  await page.goto(
+    `/#/channels/${GENERAL_CHANNEL_ID}?messageId=${sourceEventId}&threadRootId=${sourceEventId}`,
+  );
+  const suggestion = page.getByTestId(
+    `company-work-suggestion-${suggestionId}`,
+  );
+  await expect(suggestion).toBeVisible();
+  await suggestion.getByRole("button", { name: "Track this" }).click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Prepare the client pack",
+  );
+  const workItemId = page.url().match(/#\/work\/detail\/([0-9a-f-]{36})$/)?.[1];
+  if (!workItemId) throw new Error("Accepted work item route has no id.");
+
+  await page.reload();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Prepare the client pack",
+  );
+  await page.goto(`/#/work/tracking/timeline/${workItemId}`);
+  await expect(page.getByTestId("company-work-full-timeline")).toContainText(
+    "accepted a commitment suggestion.",
+  );
+});
+
 test("goal work links retain and retry only the failed exact-head action", async ({
   page,
 }) => {
@@ -675,6 +806,8 @@ test("company work tracking reads current owner records and keeps unavailable au
   if (CAPTURE_COMPANY_WORK_MATRIX) test.setTimeout(120_000);
   const aliceWorkId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const tylerWorkId = "5a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const dueWorkId = "6a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const dueAt = new Date(Date.now() + 86_400_000).toISOString();
   await installCompanyWorkMock(
     page,
     [],
@@ -685,6 +818,12 @@ test("company work tracking reads current owner records and keeps unavailable au
         ownerPubkey: TEST_IDENTITIES.alice.pubkey,
       },
       { workItemId: tylerWorkId, title: "Review the launch brief" },
+      {
+        workItemId: dueWorkId,
+        title: "Prepare the October campaign",
+        reviewerPubkey: TEST_IDENTITIES.alice.pubkey,
+        dueAt,
+      },
     ],
   );
 
@@ -702,6 +841,23 @@ test("company work tracking reads current owner records and keeps unavailable au
     page.getByTestId(`company-work-person-row-${tylerWorkId}`),
   ).toHaveCount(0);
   await captureCompanyWorkMatrix(page, "work-person-commitments");
+
+  await page.goto(`/#/work/tracking/timeline/${dueWorkId}`);
+  await expect(
+    page.getByRole("heading", { name: "Work context" }),
+  ).toBeVisible();
+  const dueDate = new Date(dueAt);
+  const expectedDue = `${new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+  }).format(dueDate)}, ${new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+  }).format(dueDate)}`;
+  await expect(page.getByText("Reviewer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Due", { exact: true })).toBeVisible();
+  await expect(page.getByText(expectedDue, { exact: true })).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-timeline-due");
 
   await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
   await expect(page.getByText("Watchdog is off")).toBeVisible();
@@ -722,14 +878,16 @@ test("company work tracking reads current owner records and keeps unavailable au
   await captureCompanyWorkMatrix(page, "work-watchdog-saved");
 
   await page.goto(`/#/work/tracking/suggestion/${aliceWorkId}`);
-  await expect(page.getByText("Suggestions unavailable")).toBeVisible();
   await expect(
-    page.getByText("Messages never create work automatically."),
+    page.getByText("Commitment suggestion unavailable"),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Track this?" })).toHaveCount(
-    0,
-  );
-  await captureCompanyWorkMatrix(page, "work-suggestion-unavailable");
+  await expect(
+    page.getByText(
+      "This commitment suggestion is not available in the current community.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Track this" })).toHaveCount(0);
+  await captureCompanyWorkMatrix(page, "work-suggestion-missing");
 });
 
 test("company work move keeps its destination on failure and preserves standalone roots on edit", async ({

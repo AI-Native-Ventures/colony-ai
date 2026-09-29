@@ -18,6 +18,8 @@ pub mod channel;
 pub mod channel_members;
 /// Community lifecycle and host-map persistence.
 pub mod community;
+/// Durable company work watchdog schedule and delivery journal.
+pub mod company_work_watchdog;
 /// Durable whole-community deletion lifecycle and PostgreSQL adapter.
 pub mod deletion;
 /// Direct message channel persistence.

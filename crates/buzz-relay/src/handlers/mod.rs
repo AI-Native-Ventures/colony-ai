@@ -27,6 +27,10 @@ pub mod company_permissions;
 pub mod company_records;
 /// Nostr-first broker for device-backed secret binding records.
 pub mod company_secrets;
+/// Nostr-first broker for company work suggestions and watchdog settings.
+pub mod company_work_tracking;
+/// Durable company work watchdog check-in scheduler and delivery worker.
+pub mod company_work_watchdog_worker;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.

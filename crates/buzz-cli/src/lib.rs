@@ -1380,6 +1380,69 @@ pub enum WorkCmd {
         #[arg(long)]
         work: String,
     },
+    /// Set a company work due date using an RFC 3339 UTC timestamp
+    DueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// Due date ending in Z
+        #[arg(long)]
+        date: String,
+    },
+    /// Clear a company work due date
+    ClearDueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Propose a persisted commitment suggestion from a source message
+    Suggest {
+        /// Source conversation channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Stable suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// CompanyWorkSuggestionInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Accept a persisted suggestion and create the named work item
+    AcceptSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// New work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Dismiss a persisted commitment suggestion
+    DismissSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Explicitly expire a persisted suggestion after its saved expiry
+    ExpireSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Enable or update watchdog settings from an explicit config JSON value
+    Watchdog {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// CompanyWorkWatchdogConfig JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Turn off saved watchdog settings for a work item
+    WatchdogOff {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
 }
 
 /// Commands for relay-backed Software Factory run records.
@@ -3214,7 +3277,24 @@ mod tests {
         );
         assert_eq!(
             names(&cmd, "work"),
-            vec!["archive", "create", "get", "list", "restore", "status", "update", "verify"]
+            vec![
+                "accept-suggestion",
+                "archive",
+                "clear-due-date",
+                "create",
+                "dismiss-suggestion",
+                "due-date",
+                "expire-suggestion",
+                "get",
+                "list",
+                "restore",
+                "status",
+                "suggest",
+                "update",
+                "verify",
+                "watchdog",
+                "watchdog-off"
+            ]
         );
         assert_eq!(
             names(&cmd, "goals"),
@@ -3329,7 +3409,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("work", 8),
+            ("work", 16),
             ("workflows", 8),
         ];
 

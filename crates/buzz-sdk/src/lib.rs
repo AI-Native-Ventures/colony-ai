@@ -24,6 +24,8 @@ pub mod company_employee_history;
 pub mod company_members;
 /// Typed event builders for Colony company records.
 pub mod company_records;
+/// Typed event builders for persisted company work suggestions and watchdog settings.
+pub mod company_work_tracking;
 pub mod mentions;
 pub mod nip_oa;
 

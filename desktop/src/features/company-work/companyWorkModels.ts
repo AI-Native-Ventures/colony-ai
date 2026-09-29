@@ -46,6 +46,8 @@ export type CompanyWorkHead = {
   evidence?: string;
   statusReason?: string;
   verification?: CompanyWorkVerification;
+  acceptedAt?: string;
+  dueAt?: string;
   sourceActionEventId: string;
 };
 
@@ -58,7 +60,7 @@ export type CompanyWorkHeadRecord = {
 
 export type CompanyWorkInput = Omit<
   CompanyWorkHead,
-  "statusReason" | "verification" | "sourceActionEventId"
+  "acceptedAt" | "statusReason" | "verification" | "sourceActionEventId"
 >;
 
 export type CompanyWorkActionKind =
@@ -67,7 +69,9 @@ export type CompanyWorkActionKind =
   | "set_status"
   | "verify"
   | "archive"
-  | "restore";
+  | "restore"
+  | "set_due_date"
+  | "clear_due_date";
 
 export type CompanyWorkAction = {
   schemaVersion: number;
@@ -82,6 +86,7 @@ export type CompanyWorkAction = {
     reason: string;
     evidence: string;
   };
+  dueAt?: string;
 };
 
 export type CompanyWorkHistoryEntry = {
@@ -93,6 +98,7 @@ export type CompanyWorkHistoryEntry = {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX64_RE = /^[0-9a-f]{64}$/i;
+const UTC_RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const STATUSES = new Set<CompanyWorkStatus>([
   "active",
   "paused",
@@ -112,6 +118,14 @@ function hasOnlyKeys(
   allowed: string[],
 ): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function isUtcRfc3339(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    UTC_RFC3339_RE.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
 }
 
 export function companyWorkDTag(workItemId: string): string {
@@ -181,6 +195,8 @@ function parseHeadContent(content: string): CompanyWorkHead | null {
       "evidence",
       "statusReason",
       "verification",
+      "acceptedAt",
+      "dueAt",
       "sourceActionEventId",
     ]) ||
     value.schemaVersion !== COMPANY_WORK_SCHEMA_VERSION ||
@@ -219,6 +235,12 @@ function parseHeadContent(content: string): CompanyWorkHead | null {
       typeof value.statusReason !== "string") ||
     (value.verification !== undefined &&
       !parseVerification(value.verification)) ||
+    (value.acceptedAt !== undefined && !isUtcRfc3339(value.acceptedAt)) ||
+    (value.dueAt !== undefined && !isUtcRfc3339(value.dueAt)) ||
+    (value.dueAt !== undefined &&
+      value.acceptedAt !== undefined &&
+      Date.parse(value.dueAt as string) <=
+        Date.parse(value.acceptedAt as string)) ||
     typeof value.sourceActionEventId !== "string" ||
     !HEX64_RE.test(value.sourceActionEventId)
   ) {
@@ -287,6 +309,10 @@ function parseHeadContent(content: string): CompanyWorkHead | null {
       ? { statusReason: value.statusReason }
       : {}),
     ...(verification ? { verification } : {}),
+    ...(typeof value.acceptedAt === "string"
+      ? { acceptedAt: value.acceptedAt }
+      : {}),
+    ...(typeof value.dueAt === "string" ? { dueAt: value.dueAt } : {}),
     sourceActionEventId: value.sourceActionEventId.toLowerCase(),
   };
 }
@@ -370,6 +396,7 @@ export function parseCompanyWorkActionEvent(
       "status",
       "reason",
       "verification",
+      "dueAt",
     ]) ||
     value.schemaVersion !== COMPANY_WORK_SCHEMA_VERSION ||
     value.workItemId !== workItemId ||
@@ -381,7 +408,19 @@ export function parseCompanyWorkActionEvent(
       "verify",
       "archive",
       "restore",
+      "set_due_date",
+      "clear_due_date",
     ].includes(value.action)
+  ) {
+    return null;
+  }
+  if (
+    (value.action === "set_due_date" &&
+      (!isUtcRfc3339(value.dueAt) ||
+        typeof value.expectedHeadEventId !== "string" ||
+        !HEX64_RE.test(value.expectedHeadEventId))) ||
+    (value.action === "clear_due_date" && value.dueAt !== undefined) ||
+    (value.dueAt !== undefined && !isUtcRfc3339(value.dueAt))
   ) {
     return null;
   }
