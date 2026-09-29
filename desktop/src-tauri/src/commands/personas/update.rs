@@ -197,7 +197,7 @@ pub(super) async fn update_persona_with<R: Send + 'static>(
                 persona.company_role = company_role
                     .map(|role| {
                         validate_company_role_metadata(&role)?;
-                        Ok(role)
+                        Ok::<_, String>(role)
                     })
                     .transpose()?;
             }

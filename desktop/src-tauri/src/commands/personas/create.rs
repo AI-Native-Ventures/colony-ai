@@ -35,7 +35,7 @@ pub async fn create_persona(
             .company_role
             .map(|role| {
                 validate_company_role_metadata(&role)?;
-                Ok(role)
+                Ok::<_, String>(role)
             })
             .transpose()?;
         let avatar_url = trim_optional(input.avatar_url);

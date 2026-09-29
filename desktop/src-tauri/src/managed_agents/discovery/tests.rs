@@ -105,7 +105,6 @@ fn explicit_path_resolution_ignores_non_executable_files() {
     std::fs::write(&bin, "").expect("write placeholder");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o644))
         .expect("chmod placeholder");
-
     assert!(
         super::resolve_workspace_command(bin.to_str().expect("utf8 path")).is_none(),
         "non-executable placeholder must not resolve"
