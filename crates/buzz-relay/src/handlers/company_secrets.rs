@@ -142,9 +142,9 @@ pub async fn handle(
         }
     };
 
-    let source_ask = if status == SecretBindingStatus::Active {
-        binding.source_ask.as_ref()
-    } else if action.action == SecretBindingActionKind::Create {
+    let source_ask = if status == SecretBindingStatus::Active
+        || action.action == SecretBindingActionKind::Create
+    {
         binding.source_ask.as_ref()
     } else {
         None
