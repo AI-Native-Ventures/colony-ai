@@ -5,19 +5,27 @@
 
 use std::sync::Arc;
 
+use chrono::{SecondsFormat, Utc};
 use nostr::{Event, EventBuilder, Kind, Tag};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use buzz_core::business_records::{
-    approval_matches_current_version, business_d_tag, client_d_tag, parse_business_command,
-    proposal_version_d_tag, prospect_d_tag, validate_business_command_scope,
-    validate_hex_reference, BusinessCommand, ClientAction, ClientHead, DeliverablePointer,
-    DeliverableVersion, DraftInvoiceHead, PartyAction, PartyHead, ProposalAcceptance, ProposalHead,
+    approval_matches_current_version, business_d_tag, client_d_tag, invoice_head_d_tag,
+    invoice_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
+    money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
+    prospect_d_tag, validate_business_command_scope, validate_company_work_d_tag,
+    validate_company_work_item_action, validate_hex_reference, BusinessCommand, ClientAction,
+    ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind, CompanyWorkItemHead,
+    CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer, DeliverableVersion,
+    InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction, MoneyAdjustment,
+    MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead,
+    MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead,
     ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
     ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
+use buzz_core::company_records::{goal_d_tag, GoalHead, GoalStatus};
 use buzz_core::kind::*;
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
@@ -120,7 +128,11 @@ pub async fn handle(
 
     require_token_channel_scope(&auth, channel_id)?;
 
-    let _channel = get_private_stream_channel(state, tenant.community(), channel_id).await?;
+    let _channel = if matches!(&command, BusinessCommand::CompanyWorkItemAction(_)) {
+        get_company_work_stream_channel(state, tenant.community(), channel_id).await?
+    } else {
+        get_private_stream_channel(state, tenant.community(), channel_id).await?
+    };
     let actor = auth.pubkey().to_bytes().to_vec();
     let role = state
         .db
@@ -128,6 +140,16 @@ pub async fn handle(
         .await
         .map_err(internal)?
         .ok_or_else(|| forbidden("actor is not a member of the private business channel"))?;
+
+    let command = match command {
+        BusinessCommand::CompanyWorkItemAction(action) => {
+            return handle_company_work_item_action(
+                tenant, state, event, auth, channel_id, d_tag, action,
+            )
+            .await;
+        }
+        other => other,
+    };
 
     let community_business_channel =
         buzz_db::business_records::get_business_channel_id(&state.db, tenant.community())
@@ -183,6 +205,10 @@ pub async fn handle(
             | BusinessCommand::WorkItemAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::DeliverableVersion(_)
+            | BusinessCommand::InvoiceVersion(_)
+            | BusinessCommand::PaymentEvidence(_)
+            | BusinessCommand::MoneyAdjustment(_)
+            | BusinessCommand::MoneyFollowUp(_)
     ) {
         match &command {
             BusinessCommand::PartyAction(_)
@@ -199,6 +225,26 @@ pub async fn handle(
         }
         if let Some(replay) = replay_existing_command(state, tenant, &event, channel_id).await? {
             return Ok(replay);
+        }
+    }
+
+    if matches!(
+        &command,
+        BusinessCommand::InvoiceVersion(_)
+            | BusinessCommand::PaymentEvidence(_)
+            | BusinessCommand::MoneyAdjustment(_)
+            | BusinessCommand::MoneyFollowUp(_)
+    ) {
+        let community_role = state
+            .db
+            .get_relay_member(tenant.community(), &auth.pubkey().to_hex())
+            .await
+            .map_err(internal)?
+            .map(|member| member.role);
+        if !community_role.as_deref().is_some_and(is_admin) {
+            return Err(forbidden(
+                "community owner or admin role is required for money records",
+            ));
         }
     }
 
@@ -721,6 +767,11 @@ pub async fn handle(
                 expected_event_id: current.map(|stored| stored.event.id.to_bytes().to_vec()),
             });
         }
+        BusinessCommand::CompanyWorkItemAction(_) => {
+            return Err(IngestError::Internal(
+                "error: company work action bypassed its transactional broker".into(),
+            ));
+        }
         BusinessCommand::ProposalVersion(version) => {
             require_member_or_admin(&role)?;
             validate_proposal_version(&version)?;
@@ -960,6 +1011,418 @@ pub async fn handle(
                 kind: KIND_WORK_ITEM_HEAD,
                 d_tag: client_d_tag(approval.client_id, "work", approval.work_item_id),
                 event_id: head_event.event.id.to_bytes().to_vec(),
+            });
+        }
+        BusinessCommand::InvoiceVersion(version) => {
+            validate_invoice_version(&version)?;
+            let (head_event, current) = current_invoice_head(
+                state,
+                tenant.community(),
+                channel_id,
+                version.client_id,
+                version.invoice_id,
+            )
+            .await?;
+            if version.expected_head_event_id.as_deref()
+                != Some(head_event.event.id.to_hex().as_str())
+                || version.previous_version_event_id.as_deref()
+                    != Some(current.current_version_event_id.as_str())
+                || current.version.checked_add(1) != Some(version.version)
+                || version.proposal_version_event_id.as_deref()
+                    != Some(current.proposal_version_event_id.as_str())
+            {
+                return Err(conflict("invoice changed since this version was prepared"));
+            }
+            let status = match version.action {
+                InvoiceVersionAction::ProposalAcceptance => {
+                    return Err(forbidden(
+                        "only proposal acceptance can create an invoice draft",
+                    ));
+                }
+                InvoiceVersionAction::DraftEdit if current.status == InvoiceStatus::Draft => {
+                    InvoiceStatus::Draft
+                }
+                InvoiceVersionAction::Issue if current.status == InvoiceStatus::Draft => {
+                    InvoiceStatus::Issued
+                }
+                InvoiceVersionAction::Void
+                    if matches!(current.status, InvoiceStatus::Draft | InvoiceStatus::Issued) =>
+                {
+                    if current.payment_evidence_count > 0 {
+                        return Err(conflict(
+                            "an invoice with payment evidence cannot be voided",
+                        ));
+                    }
+                    InvoiceStatus::Void
+                }
+                _ => {
+                    return Err(conflict(
+                        "invoice lifecycle action is not valid in this state",
+                    ));
+                }
+            };
+            if version.status != status {
+                return Err(invalid("invoice version status does not match its action"));
+            }
+            if matches!(
+                version.action,
+                InvoiceVersionAction::Issue | InvoiceVersionAction::Void
+            ) && (version.currency != current.currency
+                || version.lines != current.lines
+                || version.tax_lines != current.tax_lines
+                || version.seller_tax_number != current.seller_tax_number
+                || version.customer_tax_number != current.customer_tax_number
+                || version.total_minor != current.total_minor
+                || version.due_at != current.due_at)
+            {
+                return Err(invalid(
+                    "issuing or voiding an invoice cannot change its draft terms",
+                ));
+            }
+            let mut head = current;
+            head.currency = version.currency.clone();
+            head.lines = version.lines.clone();
+            head.tax_lines = version.tax_lines.clone();
+            head.seller_tax_number = version.seller_tax_number.clone();
+            head.customer_tax_number = version.customer_tax_number.clone();
+            head.total_minor = version.total_minor;
+            head.version = version.version;
+            head.current_version_event_id = event.id.to_hex();
+            head.status = status;
+            head.due_at = version.due_at;
+            if version.action == InvoiceVersionAction::Issue {
+                head.issued_at = Some(event.created_at.as_secs() as i64);
+            }
+            head.outstanding_minor = if status == InvoiceStatus::Issued {
+                invoice_outstanding_minor(&head)?
+            } else {
+                0
+            };
+            head.source_event_id = event.id.to_hex();
+            let d_tag = invoice_head_d_tag(version.client_id, version.invoice_id);
+            let expected_id = head_event.event.id.to_bytes().to_vec();
+            heads.push(HeadWrite {
+                event: relay_head_event(
+                    KIND_INVOICE_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    Some(&head_event),
+                    state,
+                )?,
+                channel_id,
+                d_tag: d_tag.clone(),
+                expected_event_id: Some(expected_id.clone()),
+            });
+            expected_heads.push(ExpectedHead {
+                kind: KIND_INVOICE_HEAD,
+                d_tag,
+                event_id: expected_id,
+            });
+        }
+        BusinessCommand::PaymentEvidence(payment) => {
+            validate_payment_evidence(&payment)?;
+            let (head_event, mut head) = current_invoice_head(
+                state,
+                tenant.community(),
+                channel_id,
+                payment.client_id,
+                payment.invoice_id,
+            )
+            .await?;
+            if payment.expected_invoice_head_event_id != head_event.event.id.to_hex() {
+                return Err(conflict(
+                    "invoice changed before payment evidence was recorded",
+                ));
+            }
+            if head.status != InvoiceStatus::Issued {
+                return Err(conflict("payment evidence requires an issued invoice"));
+            }
+            if payment.currency != head.currency {
+                return Err(invalid("payment currency must match the invoice currency"));
+            }
+            if payment.amount_minor > head.outstanding_minor {
+                return Err(invalid("payment amount exceeds the outstanding balance"));
+            }
+            let payment_d = payment_d_tag(payment.client_id, payment.payment_id);
+            ensure_new_record_coordinate(
+                state,
+                tenant.community(),
+                channel_id,
+                KIND_PAYMENT,
+                &payment_d,
+            )
+            .await?;
+            head.collected_minor = head
+                .collected_minor
+                .checked_add(payment.amount_minor)
+                .ok_or_else(|| invalid("collected total overflows minor units"))?;
+            head.payment_evidence_count = head
+                .payment_evidence_count
+                .checked_add(1)
+                .ok_or_else(|| invalid("payment evidence count overflows"))?;
+            head.outstanding_minor = invoice_outstanding_minor(&head)?;
+            head.source_event_id = event.id.to_hex();
+            let d_tag = invoice_head_d_tag(payment.client_id, payment.invoice_id);
+            let expected_id = head_event.event.id.to_bytes().to_vec();
+            heads.push(HeadWrite {
+                event: relay_head_event(
+                    KIND_INVOICE_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    Some(&head_event),
+                    state,
+                )?,
+                channel_id,
+                d_tag: d_tag.clone(),
+                expected_event_id: Some(expected_id.clone()),
+            });
+            expected_heads.push(ExpectedHead {
+                kind: KIND_INVOICE_HEAD,
+                d_tag,
+                event_id: expected_id,
+            });
+        }
+        BusinessCommand::MoneyAdjustment(adjustment) => {
+            validate_money_adjustment(&adjustment)?;
+            let (head_event, mut head) = current_invoice_head(
+                state,
+                tenant.community(),
+                channel_id,
+                adjustment.client_id,
+                adjustment.invoice_id,
+            )
+            .await?;
+            if adjustment.expected_invoice_head_event_id != head_event.event.id.to_hex() {
+                return Err(conflict(
+                    "invoice changed before the adjustment was recorded",
+                ));
+            }
+            if head.status != InvoiceStatus::Issued {
+                return Err(conflict("adjustments require an issued invoice"));
+            }
+            if adjustment.currency != head.currency {
+                return Err(invalid(
+                    "adjustment currency must match the invoice currency",
+                ));
+            }
+            let adjustment_d =
+                money_adjustment_d_tag(adjustment.client_id, adjustment.adjustment_id);
+            ensure_new_record_coordinate(
+                state,
+                tenant.community(),
+                channel_id,
+                KIND_MONEY_ADJUSTMENT,
+                &adjustment_d,
+            )
+            .await?;
+            match adjustment.adjustment_type {
+                MoneyAdjustmentType::CreditNote => {
+                    let available = head.total_minor.saturating_sub(head.credited_minor);
+                    if adjustment.amount_minor > available {
+                        return Err(invalid("credit note exceeds the remaining invoice amount"));
+                    }
+                    head.credited_minor = head
+                        .credited_minor
+                        .checked_add(adjustment.amount_minor)
+                        .ok_or_else(|| invalid("credited total overflows minor units"))?;
+                }
+                MoneyAdjustmentType::Refund => {
+                    let credit_available = invoice_credit_available_minor(&head)?;
+                    if adjustment.amount_minor > credit_available {
+                        return Err(invalid("refund exceeds the available client credit"));
+                    }
+                    head.collected_minor = head
+                        .collected_minor
+                        .checked_sub(adjustment.amount_minor)
+                        .ok_or_else(|| invalid("refund exceeds recorded collections"))?;
+                }
+                MoneyAdjustmentType::WriteOff => {
+                    if adjustment.amount_minor > head.outstanding_minor {
+                        return Err(invalid("write-off exceeds the outstanding balance"));
+                    }
+                    head.written_off_minor = head
+                        .written_off_minor
+                        .checked_add(adjustment.amount_minor)
+                        .ok_or_else(|| invalid("write-off total overflows minor units"))?;
+                }
+            }
+            head.outstanding_minor = invoice_outstanding_minor(&head)?;
+            head.source_event_id = event.id.to_hex();
+            let d_tag = invoice_head_d_tag(adjustment.client_id, adjustment.invoice_id);
+            let expected_id = head_event.event.id.to_bytes().to_vec();
+            heads.push(HeadWrite {
+                event: relay_head_event(
+                    KIND_INVOICE_HEAD,
+                    channel_id,
+                    &d_tag,
+                    &head,
+                    Some(&head_event),
+                    state,
+                )?,
+                channel_id,
+                d_tag: d_tag.clone(),
+                expected_event_id: Some(expected_id.clone()),
+            });
+            expected_heads.push(ExpectedHead {
+                kind: KIND_INVOICE_HEAD,
+                d_tag,
+                event_id: expected_id,
+            });
+        }
+        BusinessCommand::MoneyFollowUp(action) => {
+            validate_money_follow_up(&action)?;
+            let (invoice_event, invoice) = current_invoice_head(
+                state,
+                tenant.community(),
+                channel_id,
+                action.client_id,
+                action.invoice_id,
+            )
+            .await?;
+            if action.expected_invoice_head_event_id != invoice_event.event.id.to_hex() {
+                return Err(conflict(
+                    "invoice changed before the follow-up was reviewed",
+                ));
+            }
+            let now = chrono::Utc::now().timestamp();
+            if invoice.status != InvoiceStatus::Issued
+                || invoice.outstanding_minor <= 0
+                || invoice.due_at.is_none_or(|due_at| due_at >= now)
+            {
+                return Err(conflict(
+                    "follow-ups require an issued overdue invoice balance",
+                ));
+            }
+            let d_tag = money_follow_up_d_tag(action.client_id, action.follow_up_id);
+            let current = current_head::<MoneyFollowUpHead>(
+                state,
+                tenant.community(),
+                KIND_MONEY_FOLLOW_UP_HEAD,
+                &d_tag,
+            )
+            .await?;
+            if let Some(stored) = current.as_ref() {
+                if stored.channel_id != Some(channel_id) {
+                    return Err(forbidden(
+                        "follow-up is outside the authorized client channel",
+                    ));
+                }
+                let stored_head: MoneyFollowUpHead = parse_content(&stored.event)?;
+                if stored_head.client_id != action.client_id
+                    || stored_head.invoice_id != action.invoice_id
+                    || stored_head.follow_up_id != action.follow_up_id
+                {
+                    return Err(conflict(
+                        "follow-up head coordinate does not match its content",
+                    ));
+                }
+            }
+            let (head, previous) = match (action.action, current) {
+                (MoneyFollowUpActionKind::Draft, None)
+                    if action.expected_head_event_id.is_none() =>
+                {
+                    (
+                        MoneyFollowUpHead {
+                            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                            client_id: action.client_id,
+                            invoice_id: action.invoice_id,
+                            follow_up_id: action.follow_up_id,
+                            status: MoneyFollowUpStatus::Draft,
+                            version: 1,
+                            current_version_event_id: event.id.to_hex(),
+                            due_at: action.due_at,
+                            draft_content: action.draft_content.clone(),
+                            approval_intent_only: false,
+                            approved_by_pubkey: None,
+                            approved_at: None,
+                            source_event_id: event.id.to_hex(),
+                        },
+                        None,
+                    )
+                }
+                (MoneyFollowUpActionKind::Review, Some(stored))
+                    if action.expected_head_event_id.as_deref()
+                        == Some(stored.event.id.to_hex().as_str()) =>
+                {
+                    let mut head: MoneyFollowUpHead = parse_content(&stored.event)?;
+                    if head.client_id != action.client_id
+                        || head.invoice_id != action.invoice_id
+                        || head.status != MoneyFollowUpStatus::Draft
+                        || head.draft_content != action.draft_content
+                        || head.due_at != action.due_at
+                    {
+                        return Err(conflict("follow-up draft changed before review"));
+                    }
+                    head.status = MoneyFollowUpStatus::InReview;
+                    head.version = head
+                        .version
+                        .checked_add(1)
+                        .ok_or_else(|| invalid("follow-up version overflows"))?;
+                    head.current_version_event_id = event.id.to_hex();
+                    head.source_event_id = event.id.to_hex();
+                    (head, Some(stored))
+                }
+                (MoneyFollowUpActionKind::Approve, Some(stored))
+                    if action.expected_head_event_id.as_deref()
+                        == Some(stored.event.id.to_hex().as_str()) =>
+                {
+                    let mut head: MoneyFollowUpHead = parse_content(&stored.event)?;
+                    if head.client_id != action.client_id
+                        || head.invoice_id != action.invoice_id
+                        || head.status != MoneyFollowUpStatus::InReview
+                        || head.draft_content != action.draft_content
+                        || head.due_at != action.due_at
+                    {
+                        return Err(conflict("follow-up draft changed before approval"));
+                    }
+                    head.status = MoneyFollowUpStatus::Approved;
+                    head.version = head
+                        .version
+                        .checked_add(1)
+                        .ok_or_else(|| invalid("follow-up version overflows"))?;
+                    head.current_version_event_id = event.id.to_hex();
+                    head.approval_intent_only = true;
+                    head.approved_by_pubkey = Some(auth.pubkey().to_hex());
+                    head.approved_at = Some(event.created_at.as_secs() as i64);
+                    head.source_event_id = event.id.to_hex();
+                    (head, Some(stored))
+                }
+                (MoneyFollowUpActionKind::Draft, Some(_)) => {
+                    return Err(conflict("follow-up already exists"));
+                }
+                (_, None) => return Err(conflict("follow-up does not exist")),
+                _ => return Err(conflict("follow-up action is not valid in this state")),
+            };
+            if let Some(previous) = previous.as_ref() {
+                expected_heads.push(ExpectedHead {
+                    kind: KIND_MONEY_FOLLOW_UP_HEAD,
+                    d_tag: d_tag.clone(),
+                    event_id: previous.event.id.to_bytes().to_vec(),
+                });
+            }
+            let expected_id = previous
+                .as_ref()
+                .map(|stored| stored.event.id.to_bytes().to_vec());
+            let head_event = relay_head_event(
+                KIND_MONEY_FOLLOW_UP_HEAD,
+                channel_id,
+                &d_tag,
+                &head,
+                previous.as_ref(),
+                state,
+            )?;
+            heads.push(HeadWrite {
+                event: head_event,
+                channel_id,
+                d_tag,
+                expected_event_id: expected_id,
+            });
+            expected_heads.push(ExpectedHead {
+                kind: KIND_INVOICE_HEAD,
+                d_tag: invoice_head_d_tag(action.client_id, action.invoice_id),
+                event_id: invoice_event.event.id.to_bytes().to_vec(),
             });
         }
     }
@@ -1442,7 +1905,7 @@ async fn prepare_proposal_acceptance(
 
     let client_d = client_d_tag(acceptance.client_id, "client", acceptance.client_id);
     let work_d = client_d_tag(acceptance.client_id, "work", acceptance.work_item_id);
-    let invoice_d = client_d_tag(acceptance.client_id, "invoice", acceptance.draft_invoice_id);
+    let invoice_d = invoice_head_d_tag(acceptance.client_id, acceptance.draft_invoice_id);
 
     let named_acceptor = auth.pubkey().to_hex();
     let client_head = ClientHead {
@@ -1465,14 +1928,40 @@ async fn prepare_proposal_acceptance(
         deliverables: Vec::new(),
         source_event_id: acceptance_event.id.to_hex(),
     };
-    let total_minor = version.lines.iter().try_fold(0_i64, |total, line| {
-        let line_total = i64::from(line.quantity_hundredths)
-            .checked_mul(line.unit_amount_minor)?
-            .checked_div(100)?;
-        total.checked_add(line_total)
-    });
-    let total_minor = total_minor.ok_or_else(|| invalid("proposal total overflows minor units"))?;
-    let invoice = DraftInvoiceHead {
+    let total_minor = invoice_total_minor(&version.lines, &[])
+        .ok_or_else(|| invalid("proposal total overflows minor units"))?;
+    let invoice_version = InvoiceVersion {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        client_id: acceptance.client_id,
+        invoice_id: acceptance.draft_invoice_id,
+        version: 1,
+        previous_version_event_id: None,
+        proposal_version_event_id: Some(acceptance.proposal_version_event_id.clone()),
+        expected_head_event_id: None,
+        action: InvoiceVersionAction::ProposalAcceptance,
+        currency: version.currency.clone(),
+        lines: version.lines.clone(),
+        tax_lines: Vec::new(),
+        seller_tax_number: None,
+        customer_tax_number: None,
+        total_minor,
+        status: InvoiceStatus::Draft,
+        due_at: None,
+        void_reason: None,
+    };
+    let invoice_version_d = invoice_version_d_tag(
+        acceptance.client_id,
+        acceptance.draft_invoice_id,
+        invoice_version.version,
+    );
+    let invoice_version_event = relay_event(
+        KIND_INVOICE_VERSION,
+        acceptance.client_id,
+        &invoice_version_d,
+        &invoice_version,
+        state,
+    )?;
+    let invoice = InvoiceHead {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
         client_id: acceptance.client_id,
         invoice_id: acceptance.draft_invoice_id,
@@ -1480,8 +1969,20 @@ async fn prepare_proposal_acceptance(
         proposal_version_event_id: acceptance.proposal_version_event_id.clone(),
         currency: version.currency.clone(),
         lines: version.lines.clone(),
+        tax_lines: Vec::new(),
+        seller_tax_number: None,
+        customer_tax_number: None,
         total_minor,
-        status: "draft".into(),
+        credited_minor: 0,
+        written_off_minor: 0,
+        collected_minor: 0,
+        outstanding_minor: 0,
+        payment_evidence_count: 0,
+        version: invoice_version.version,
+        current_version_event_id: invoice_version_event.id.to_hex(),
+        status: InvoiceStatus::Draft,
+        due_at: None,
+        issued_at: None,
         source_event_id: acceptance_event.id.to_hex(),
     };
     let receipt_content = buzz_core::business_records::ProposalConversionReceipt {
@@ -1567,7 +2068,10 @@ async fn prepare_proposal_acceptance(
     }
     Ok(AcceptancePlan {
         heads,
-        appended: vec![(receipt, business_channel_id)],
+        appended: vec![
+            (receipt, business_channel_id),
+            (invoice_version_event, acceptance.client_id),
+        ],
         current_proposal_head: expected_proposal_head,
         current_party_head,
         expected_prospect_head,
@@ -1878,6 +2382,28 @@ async fn get_private_stream_channel(
     Ok(channel)
 }
 
+async fn get_company_work_stream_channel(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+) -> Result<buzz_db::channel::ChannelRecord, IngestError> {
+    let channel = match state
+        .db
+        .get_channel_for_event_write(community_id, channel_id)
+        .await
+    {
+        Ok(channel) => channel,
+        Err(DbError::ChannelNotFound(_)) => {
+            return Err(invalid("company work channel does not exist"))
+        }
+        Err(error) => return Err(internal(error)),
+    };
+    if channel.channel_type != "stream" || channel.archived_at.is_some() {
+        return Err(forbidden("company work requires an active stream channel"));
+    }
+    Ok(channel)
+}
+
 fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     let h_tags = event
         .tags
@@ -1962,6 +2488,54 @@ async fn current_head_in_channel<T: DeserializeOwned>(
         let _: T = parse_content(&event.event)?;
     }
     Ok(event)
+}
+
+async fn current_invoice_head(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    client_id: Uuid,
+    invoice_id: Uuid,
+) -> Result<(StoredEvent, InvoiceHead), IngestError> {
+    let d_tag = invoice_head_d_tag(client_id, invoice_id);
+    let event = current_head::<InvoiceHead>(state, community_id, KIND_INVOICE_HEAD, &d_tag)
+        .await?
+        .ok_or_else(|| conflict("invoice does not exist"))?;
+    if event.channel_id != Some(channel_id) {
+        return Err(forbidden(
+            "invoice is outside the authorized client channel",
+        ));
+    }
+    let head: InvoiceHead = parse_content(&event.event)?;
+    if head.client_id != client_id || head.invoice_id != invoice_id {
+        return Err(conflict(
+            "invoice head coordinate does not match its content",
+        ));
+    }
+    Ok((event, head))
+}
+
+async fn ensure_new_record_coordinate(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    kind: u32,
+    d_tag: &str,
+) -> Result<(), IngestError> {
+    let mut query = EventQuery::for_community(community_id);
+    query.channel_id = Some(channel_id);
+    query.kinds = Some(vec![kind as i32]);
+    query.d_tag = Some(d_tag.to_owned());
+    query.limit = Some(1);
+    let rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(internal)?;
+    if !rows.is_empty() {
+        return Err(conflict("record identifier has already been used"));
+    }
+    Ok(())
 }
 
 async fn current_work_item(
@@ -2232,6 +2806,612 @@ fn validate_https_url(value: &str, field: &str) -> Result<(), IngestError> {
     Ok(())
 }
 
+async fn handle_company_work_item_action(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: Event,
+    auth: IngestAuth,
+    channel_id: Uuid,
+    d_tag: String,
+    action: CompanyWorkItemAction,
+) -> Result<IngestResult, IngestError> {
+    validate_company_work_item_action(&action)
+        .map_err(|error| invalid(format!("company work action: {error}")))?;
+    validate_company_work_d_tag(&d_tag, action.work_item_id)
+        .map_err(|error| invalid(format!("company work d tag: {error}")))?;
+
+    let community_id = tenant.community();
+    let actor_pubkey = auth.pubkey().to_hex();
+    let mut tx = state
+        .db
+        .begin_event_write_transaction()
+        .await
+        .map_err(internal)?;
+    buzz_deletion::store(&state.db)
+        .guard_transaction(&mut tx, community_id)
+        .await
+        .map_err(|error| {
+            IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
+        })?;
+
+    let actor_pubkey_bytes = auth.pubkey().to_bytes();
+    let _channel_role = sqlx::query_scalar::<_, String>(
+        "SELECT cm.role::text FROM channel_members cm \
+         JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
+         WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
+           AND cm.removed_at IS NULL AND c.deleted_at IS NULL AND c.archived_at IS NULL \
+         FOR UPDATE OF cm, c",
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(actor_pubkey_bytes.as_slice())
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?
+    .ok_or_else(|| forbidden("actor is not a member of the work channel"))?;
+    let community_role = sqlx::query_scalar::<_, String>(
+        "SELECT role::text FROM relay_members WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(&actor_pubkey)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?;
+    // Company work is scoped to the active channel. A relay-members row adds
+    // community-wide owner or admin authority, but its absence does not revoke
+    // the channel member's ability to manage work in that channel.
+    let community_role = match community_role {
+        Some(role) => role,
+        None => "member".to_owned(),
+    };
+
+    let already_stored = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM events WHERE community_id = $1 AND id = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(event.id.to_bytes().as_slice())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(internal)?;
+    if already_stored {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(IngestResult {
+            event_id: event.id.to_hex(),
+            accepted: true,
+            message: "duplicate: already processed".into(),
+        });
+    }
+
+    let relay_pubkey = state.relay_keypair.public_key().to_bytes();
+    let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        &mut tx,
+        community_id,
+        KIND_WORK_ITEM_HEAD,
+        &relay_pubkey,
+        &d_tag,
+    )
+    .await
+    .map_err(internal)?;
+    let expected = action.expected_head_event_id.as_deref();
+    match (action.action, expected, current_head_id.as_deref()) {
+        (CompanyWorkItemActionKind::Create, None, None) => {}
+        (CompanyWorkItemActionKind::Create, _, Some(_)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("company work item already exists"));
+        }
+        (_, Some(expected), Some(actual)) if expected == hex::encode(actual) => {}
+        (_, Some(_), Some(_)) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "company work item changed; retry from its latest head",
+            ));
+        }
+        (_, _, None) => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("company work item does not exist"));
+        }
+        _ => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(invalid(
+                "expectedHeadEventId does not match the company work action",
+            ));
+        }
+    }
+
+    let current_stored =
+        current_head::<CompanyWorkItemHead>(state, community_id, KIND_WORK_ITEM_HEAD, &d_tag)
+            .await?;
+    if current_stored
+        .as_ref()
+        .map(|stored| stored.event.id.to_bytes().to_vec())
+        != current_head_id
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: company work head changed while its transaction lock was held".into(),
+        ));
+    }
+    if current_stored
+        .as_ref()
+        .is_some_and(|stored| stored.channel_id != Some(channel_id))
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(conflict("company work item belongs to another channel"));
+    }
+    let previous = current_stored
+        .as_ref()
+        .map(|stored| parse_content::<CompanyWorkItemHead>(&stored.event))
+        .transpose()?;
+    if previous
+        .as_ref()
+        .is_some_and(|head| head.work_item_id != action.work_item_id)
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(IngestError::Internal(
+            "error: company work head does not match its d tag".into(),
+        ));
+    }
+
+    let next_goal_id = action.head.as_ref().and_then(|head| head.goal_id);
+    let goal_changes = previous.as_ref().and_then(|head| head.goal_id) != next_goal_id;
+    if action.action == CompanyWorkItemActionKind::Create
+        || (action.action == CompanyWorkItemActionKind::Update && goal_changes)
+    {
+        if let Some(goal_id) = next_goal_id {
+            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+                .bind(format!("company-goal-tree:{}", community_id.as_uuid()))
+                .execute(&mut *tx)
+                .await
+                .map_err(internal)?;
+            ensure_company_work_goal_is_live(state, community_id, goal_id).await?;
+        }
+    }
+
+    let actor_is_community_admin = is_community_admin(&community_role);
+    let next_head = match action.action {
+        CompanyWorkItemActionKind::Create => {
+            let input = action
+                .head
+                .ok_or_else(|| invalid("company work create head is required"))?;
+            ensure_company_work_people_are_members(
+                &mut tx,
+                community_id,
+                channel_id,
+                &input.requester_pubkey,
+                &input.assigned_pubkeys,
+            )
+            .await?;
+            validate_company_work_thread(
+                state,
+                community_id,
+                channel_id,
+                input.source_event_id.as_deref(),
+                input.thread_root_event_id.as_deref(),
+                true,
+            )
+            .await?;
+            CompanyWorkItemHead {
+                schema_version: input.schema_version,
+                work_item_id: input.work_item_id,
+                title: input.title,
+                status: CompanyWorkStatus::Active,
+                assigned_pubkeys: input.assigned_pubkeys,
+                approver_pubkeys: input.approver_pubkeys,
+                deliverables: input.deliverables,
+                requester_pubkey: input.requester_pubkey,
+                done_condition: input.done_condition,
+                goal_id: input.goal_id,
+                source_event_id: input.source_event_id,
+                thread_root_event_id: input.thread_root_event_id,
+                evidence: input.evidence,
+                status_reason: None,
+                verification: None,
+                source_action_event_id: event.id.to_hex(),
+            }
+        }
+        CompanyWorkItemActionKind::Update => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            let input = action
+                .head
+                .ok_or_else(|| invalid("company work update head is required"))?;
+            if input.status != previous.status {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid("status changes require a status action"));
+            }
+            if input.deliverables != previous.deliverables {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid(
+                    "company work actions cannot change deliverable version pointers",
+                ));
+            }
+            if input.source_event_id != previous.source_event_id {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid("sourceEventId cannot change after creation"));
+            }
+            ensure_company_work_people_are_members(
+                &mut tx,
+                community_id,
+                channel_id,
+                &input.requester_pubkey,
+                &input.assigned_pubkeys,
+            )
+            .await?;
+            validate_company_work_thread(
+                state,
+                community_id,
+                channel_id,
+                None,
+                input.thread_root_event_id.as_deref(),
+                false,
+            )
+            .await?;
+            CompanyWorkItemHead {
+                schema_version: input.schema_version,
+                work_item_id: input.work_item_id,
+                title: input.title,
+                status: previous.status,
+                assigned_pubkeys: input.assigned_pubkeys,
+                approver_pubkeys: input.approver_pubkeys,
+                deliverables: previous.deliverables.clone(),
+                requester_pubkey: input.requester_pubkey,
+                done_condition: input.done_condition,
+                goal_id: input.goal_id,
+                source_event_id: previous.source_event_id.clone(),
+                thread_root_event_id: input.thread_root_event_id,
+                evidence: input.evidence,
+                status_reason: previous.status_reason.clone(),
+                verification: previous.verification.clone(),
+                source_action_event_id: event.id.to_hex(),
+            }
+        }
+        CompanyWorkItemActionKind::SetStatus => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if matches!(
+                previous.status,
+                CompanyWorkStatus::Archived | CompanyWorkStatus::DoneVerified
+            ) {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("this company work item status cannot be changed"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            if !is_owner && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner or a community owner or admin can change status",
+                ));
+            }
+            let status = action
+                .status
+                .ok_or_else(|| invalid("company work status is required"))?;
+            if status == CompanyWorkStatus::DoneUnverified && !is_owner {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the assigned owner can submit work for verification",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = status;
+            next.status_reason = action.reason;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Verify => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status != CompanyWorkStatus::DoneUnverified {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item is not awaiting verification"));
+            }
+            if !actor_is_community_admin && previous.requester_pubkey != actor_pubkey {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only a community owner, admin, or the work requester can verify this item",
+                ));
+            }
+            let input = action
+                .verification
+                .ok_or_else(|| invalid("company work verification is required"))?;
+            let mut next = previous.clone();
+            next.status = match input.verdict {
+                buzz_core::business_records::CompanyWorkVerdict::Pass => {
+                    CompanyWorkStatus::DoneVerified
+                }
+                buzz_core::business_records::CompanyWorkVerdict::RevisionRequested => {
+                    CompanyWorkStatus::Active
+                }
+            };
+            next.status_reason = Some(input.reason.clone());
+            next.verification = Some(CompanyWorkVerification {
+                verdict: input.verdict,
+                reason: input.reason,
+                evidence: input.evidence,
+                reviewer_pubkey: actor_pubkey.clone(),
+                reviewed_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                source_action_event_id: event.id.to_hex(),
+            });
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Archive => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can archive this item",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = CompanyWorkStatus::Archived;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::Restore => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if previous.status != CompanyWorkStatus::Archived
+                || (!is_owner && !is_requester && !actor_is_community_admin)
+            {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can restore archived work",
+                ));
+            }
+            let mut next = previous.clone();
+            next.status = CompanyWorkStatus::Active;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+    };
+
+    let next_event = relay_head_event(
+        KIND_WORK_ITEM_HEAD,
+        channel_id,
+        &d_tag,
+        &next_head,
+        current_stored.as_ref(),
+        state,
+    )?;
+    let (stored_action, inserted) = buzz_db::event::insert_event_in_transaction(
+        &mut tx,
+        community_id,
+        &event,
+        Some(channel_id),
+    )
+    .await
+    .map_err(internal)?;
+    if !inserted {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(IngestResult {
+            event_id: event.id.to_hex(),
+            accepted: true,
+            message: "duplicate: already processed".into(),
+        });
+    }
+
+    let precondition = current_head_id.as_deref().map_or(
+        ParameterizedReplacePrecondition::CreateOnly,
+        ParameterizedReplacePrecondition::ExpectedRevision,
+    );
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            &mut tx,
+            community_id,
+            &next_event,
+            &d_tag,
+            Some(channel_id),
+            precondition,
+        )
+        .await
+        .map_err(internal)?;
+    match replaced.status {
+        ParameterizedReplaceStatus::Inserted => {}
+        ParameterizedReplaceStatus::Duplicate => {
+            tx.rollback().await.map_err(internal)?;
+            return Ok(IngestResult {
+                event_id: event.id.to_hex(),
+                accepted: true,
+                message: "duplicate: already processed".into(),
+            });
+        }
+        ParameterizedReplaceStatus::RevisionMismatch
+        | ParameterizedReplaceStatus::RevisionMissing
+        | ParameterizedReplaceStatus::Superseded
+        | ParameterizedReplaceStatus::ReplayOnlyMiss => {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "company work item changed before the action committed",
+            ));
+        }
+    }
+    tx.commit().await.map_err(internal)?;
+
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &stored_action,
+        KIND_WORK_ITEM_ACTION,
+        &actor_pubkey,
+        None,
+    )
+    .await;
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &replaced.event,
+        KIND_WORK_ITEM_HEAD,
+        &next_event.pubkey.to_hex(),
+        None,
+    )
+    .await;
+    Ok(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: String::new(),
+    })
+}
+
+async fn ensure_company_work_people_are_members(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    requester_pubkey: &str,
+    assigned_pubkeys: &[String],
+) -> Result<(), IngestError> {
+    let mut people = assigned_pubkeys.to_vec();
+    people.push(requester_pubkey.to_owned());
+    people.sort();
+    people.dedup();
+    for pubkey in people {
+        let pubkey_bytes = hex::decode(&pubkey).map_err(|_| invalid("work pubkey is invalid"))?;
+        let is_member = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM channel_members cm \
+             JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id \
+             WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.pubkey = $3 \
+               AND cm.removed_at IS NULL AND c.deleted_at IS NULL \
+               AND c.archived_at IS NULL)",
+        )
+        .bind(community_id.as_uuid())
+        .bind(channel_id)
+        .bind(&pubkey_bytes)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(internal)?;
+        if !is_member {
+            return Err(forbidden(
+                "work owner and requester must be members of the tagged channel",
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_company_work_goal_is_live(
+    state: &AppState,
+    community_id: CommunityId,
+    goal_id: Uuid,
+) -> Result<(), IngestError> {
+    let head = current_head::<GoalHead>(state, community_id, KIND_GOAL_HEAD, &goal_d_tag(goal_id))
+        .await?
+        .ok_or_else(|| conflict("linked company goal does not exist"))?;
+    let head: GoalHead = parse_content(&head.event)?;
+    if head.goal_id != goal_id
+        || head.goal.is_none()
+        || matches!(head.status, GoalStatus::Archived | GoalStatus::Deleted)
+    {
+        return Err(conflict("company work must reference a live company goal"));
+    }
+    Ok(())
+}
+
+async fn validate_company_work_thread(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    source_event_id: Option<&str>,
+    thread_root_event_id: Option<&str>,
+    require_source_relation: bool,
+) -> Result<(), IngestError> {
+    let root = match thread_root_event_id {
+        Some(root) => Some(load_company_work_message(state, community_id, channel_id, root).await?),
+        None => None,
+    };
+    let Some(source_event_id) = source_event_id else {
+        if require_source_relation && root.is_some() {
+            return Err(invalid(
+                "threadRootEventId requires a sourceEventId on create",
+            ));
+        }
+        return Ok(());
+    };
+    let source =
+        load_company_work_message(state, community_id, channel_id, source_event_id).await?;
+    if require_source_relation {
+        let root_id = thread_root_event_id
+            .ok_or_else(|| invalid("sourceEventId requires a threadRootEventId on create"))?;
+        if source_event_id != root_id
+            && !source.event.tags.iter().any(|tag| {
+                let values = tag.as_slice();
+                tag.kind().to_string() == "e" && values.get(1).is_some_and(|value| value == root_id)
+            })
+        {
+            return Err(invalid(
+                "threadRootEventId must be the source message or its thread root",
+            ));
+        }
+    }
+    if root.is_none() {
+        return Err(invalid("source message must have a thread root"));
+    }
+    Ok(())
+}
+
+async fn load_company_work_message(
+    state: &AppState,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    event_id: &str,
+) -> Result<StoredEvent, IngestError> {
+    let event_id_bytes =
+        hex::decode(event_id).map_err(|_| invalid("message event id is invalid"))?;
+    let mut query = EventQuery::for_community(community_id);
+    query.channel_id = Some(channel_id);
+    query.kinds = Some(vec![
+        KIND_STREAM_MESSAGE as i32,
+        KIND_STREAM_MESSAGE_V2 as i32,
+    ]);
+    query.ids = Some(vec![event_id_bytes]);
+    query.limit = Some(2);
+    let mut rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(internal)?;
+    if rows.len() > 1 {
+        return Err(IngestError::Internal(
+            "error: duplicate company work source message".into(),
+        ));
+    }
+    rows.pop()
+        .ok_or_else(|| invalid("source or thread message is unavailable in the tagged channel"))
+}
+
 fn validate_client_action(channel_id: Uuid, action: &ClientAction) -> Result<(), IngestError> {
     if action.head.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
         || action.client_id.is_nil()
@@ -2373,6 +3553,197 @@ fn validate_deliverable_version(
     })
 }
 
+fn validate_invoice_version(version: &InvoiceVersion) -> Result<(), IngestError> {
+    if version.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
+        || version.client_id.is_nil()
+        || version.invoice_id.is_nil()
+        || version.version == 0
+        || version.lines.is_empty()
+        || version.lines.len() > 100
+        || !is_iso_currency_code(&version.currency)
+        || version.due_at.is_some_and(|due_at| due_at <= 0)
+    {
+        return Err(invalid(
+            "invoice version has invalid identifiers, currency, or terms",
+        ));
+    }
+    validate_optional_event_id(version.previous_version_event_id.as_deref())?;
+    validate_optional_event_id(version.proposal_version_event_id.as_deref())?;
+    validate_optional_event_id(version.expected_head_event_id.as_deref())?;
+    for line in &version.lines {
+        if line.description.trim().is_empty()
+            || line.description.len() > 2_000
+            || line.quantity_hundredths == 0
+            || line.unit_amount_minor < 0
+        {
+            return Err(invalid(
+                "invoice lines require a description, positive quantity, and non-negative amount",
+            ));
+        }
+    }
+    if version.tax_lines.len() > 100
+        || version.tax_lines.iter().any(|tax_line| {
+            tax_line
+                .label
+                .as_deref()
+                .is_some_and(|label| label.trim().is_empty() || label.len() > 200)
+        })
+        || [
+            version.seller_tax_number.as_deref(),
+            version.customer_tax_number.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|number| number.trim().is_empty() || number.len() > 128)
+    {
+        return Err(invalid("invoice tax details are invalid"));
+    }
+    let calculated_total = invoice_total_minor(&version.lines, &version.tax_lines)
+        .ok_or_else(|| invalid("invoice total overflows minor units"))?;
+    if version.total_minor != calculated_total {
+        return Err(invalid(
+            "invoice total does not match its line items and tax",
+        ));
+    }
+    let valid_transition_shape = match version.action {
+        InvoiceVersionAction::ProposalAcceptance => {
+            version.previous_version_event_id.is_none()
+                && version.expected_head_event_id.is_none()
+                && version.proposal_version_event_id.is_some()
+                && version.status == InvoiceStatus::Draft
+                && version.void_reason.is_none()
+        }
+        InvoiceVersionAction::DraftEdit => {
+            version.previous_version_event_id.is_some()
+                && version.expected_head_event_id.is_some()
+                && version.status == InvoiceStatus::Draft
+                && version.void_reason.is_none()
+        }
+        InvoiceVersionAction::Issue => {
+            version.previous_version_event_id.is_some()
+                && version.expected_head_event_id.is_some()
+                && version.status == InvoiceStatus::Issued
+                && version.void_reason.is_none()
+        }
+        InvoiceVersionAction::Void => {
+            version.previous_version_event_id.is_some()
+                && version.expected_head_event_id.is_some()
+                && version.status == InvoiceStatus::Void
+                && version
+                    .void_reason
+                    .as_deref()
+                    .is_some_and(|reason| !reason.trim().is_empty() && reason.len() <= 1_000)
+        }
+    };
+    if !valid_transition_shape {
+        return Err(invalid(
+            "invoice version action, status, and evidence do not match",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_payment_evidence(payment: &PaymentEvidence) -> Result<(), IngestError> {
+    if payment.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
+        || payment.client_id.is_nil()
+        || payment.invoice_id.is_nil()
+        || payment.payment_id.is_nil()
+        || payment.amount_minor <= 0
+        || !is_iso_currency_code(&payment.currency)
+        || payment.occurred_at <= 0
+        || payment.provider.trim().is_empty()
+        || payment.provider.trim() != payment.provider
+        || payment.provider.len() > 120
+        || payment.evidence_ref.trim().is_empty()
+        || payment.evidence_ref.len() > 2_000
+    {
+        return Err(invalid(
+            "payment evidence has invalid identifiers, amount, currency, or evidence",
+        ));
+    }
+    if payment
+        .provider_reference
+        .as_deref()
+        .is_some_and(|reference| reference.trim().is_empty() || reference.len() > 240)
+        || (payment.provider != "manual" && payment.provider_reference.is_none())
+    {
+        return Err(invalid(
+            "named payment providers require a provider reference",
+        ));
+    }
+    validate_hex_reference(&payment.expected_invoice_head_event_id)
+        .map_err(|error| invalid(error.to_string()))
+}
+
+fn validate_money_adjustment(adjustment: &MoneyAdjustment) -> Result<(), IngestError> {
+    if adjustment.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
+        || adjustment.client_id.is_nil()
+        || adjustment.invoice_id.is_nil()
+        || adjustment.adjustment_id.is_nil()
+        || adjustment.amount_minor <= 0
+        || !is_iso_currency_code(&adjustment.currency)
+        || adjustment.occurred_at <= 0
+        || adjustment.reason.trim().is_empty()
+        || adjustment.reason.len() > 1_000
+        || adjustment.evidence_ref.trim().is_empty()
+        || adjustment.evidence_ref.len() > 2_000
+    {
+        return Err(invalid(
+            "money adjustment requires a positive amount, reason, currency, and evidence",
+        ));
+    }
+    validate_hex_reference(&adjustment.expected_invoice_head_event_id)
+        .map_err(|error| invalid(error.to_string()))
+}
+
+fn validate_money_follow_up(action: &MoneyFollowUpAction) -> Result<(), IngestError> {
+    if action.schema_version != BUSINESS_RECORD_SCHEMA_VERSION
+        || action.client_id.is_nil()
+        || action.invoice_id.is_nil()
+        || action.follow_up_id.is_nil()
+        || action.draft_content.trim().is_empty()
+        || action.draft_content.len() > 5_000
+        || action.due_at.is_some_and(|due_at| due_at <= 0)
+    {
+        return Err(invalid(
+            "money follow-up draft has invalid identifiers, time, or content",
+        ));
+    }
+    validate_optional_event_id(action.expected_head_event_id.as_deref())?;
+    validate_hex_reference(&action.expected_invoice_head_event_id)
+        .map_err(|error| invalid(error.to_string()))?;
+    if (action.action == MoneyFollowUpActionKind::Draft) != action.expected_head_event_id.is_none()
+    {
+        return Err(invalid(
+            "follow-up draft and transition head fields do not match",
+        ));
+    }
+    Ok(())
+}
+
+fn invoice_outstanding_minor(head: &InvoiceHead) -> Result<i64, IngestError> {
+    if head.status != InvoiceStatus::Issued {
+        return Ok(0);
+    }
+    let outstanding = i128::from(head.total_minor)
+        - i128::from(head.credited_minor)
+        - i128::from(head.written_off_minor)
+        - i128::from(head.collected_minor);
+    i64::try_from(outstanding.max(0)).map_err(|_| {
+        IngestError::Internal("error: outstanding total is outside minor-unit range".into())
+    })
+}
+
+fn invoice_credit_available_minor(head: &InvoiceHead) -> Result<i64, IngestError> {
+    let remaining_obligation = i128::from(head.total_minor)
+        - i128::from(head.credited_minor)
+        - i128::from(head.written_off_minor);
+    let credit = (i128::from(head.collected_minor) - remaining_obligation).max(0);
+    i64::try_from(credit).map_err(|_| {
+        IngestError::Internal("error: client credit is outside minor-unit range".into())
+    })
+}
+
 fn authorize_work_assignee_or_admin(
     role: &str,
     auth: &IngestAuth,
@@ -2460,6 +3831,10 @@ fn digest_hex(value: &[u8]) -> String {
 }
 
 fn is_admin(role: &str) -> bool {
+    role == "owner" || role == "admin"
+}
+
+fn is_community_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
@@ -2739,8 +4114,8 @@ mod tests {
 mod postgres_tests {
     use super::*;
     use buzz_core::business_records::{
-        deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval, ProposalLine,
-        WorkItemHeadInput,
+        deliverable_approval_d_tag, deliverable_version_d_tag, DeliverableApproval,
+        DraftInvoiceHead, InvoiceTaxLine, ProposalLine, WorkItemHeadInput,
     };
     use buzz_db::channel::{ChannelType, ChannelVisibility};
     use nostr::{Keys, Tag};
@@ -2864,6 +4239,219 @@ mod postgres_tests {
             .tags([h_tag, d_tag])
             .sign_with_keys(keys)
             .expect("sign command")
+    }
+
+    async fn add_community_role(fixture: &Fixture, keys: &Keys, role: &str) {
+        fixture
+            .state
+            .db
+            .add_relay_member(
+                fixture.tenant.community(),
+                &keys.public_key().to_hex(),
+                role,
+                None,
+            )
+            .await
+            .expect("add test community role");
+    }
+
+    async fn seed_draft_invoice(
+        fixture: &Fixture,
+        keys: &Keys,
+        client_id: Uuid,
+        invoice_id: Uuid,
+        total_minor: i64,
+        due_at: Option<i64>,
+    ) -> InvoiceHead {
+        let proposal_id = Uuid::new_v4();
+        let proposal_version_event_id = "a".repeat(64);
+        let lines = vec![ProposalLine {
+            service_id: None,
+            description: "Test project work".into(),
+            quantity_hundredths: 100,
+            unit_amount_minor: total_minor,
+        }];
+        let version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: 1,
+            previous_version_event_id: None,
+            proposal_version_event_id: Some(proposal_version_event_id.clone()),
+            expected_head_event_id: None,
+            action: InvoiceVersionAction::ProposalAcceptance,
+            currency: "ZAR".into(),
+            lines: lines.clone(),
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor,
+            status: InvoiceStatus::Draft,
+            due_at,
+            void_reason: None,
+        };
+        let version_d = invoice_version_d_tag(client_id, invoice_id, 1);
+        let version_event =
+            signed_command(keys, KIND_INVOICE_VERSION, client_id, &version_d, &version);
+        let (_, inserted) = fixture
+            .state
+            .db
+            .insert_event(fixture.tenant.community(), &version_event, Some(client_id))
+            .await
+            .expect("insert seeded invoice version");
+        assert!(inserted, "seeded invoice version is unique");
+
+        let head = InvoiceHead {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            proposal_id,
+            proposal_version_event_id,
+            currency: "ZAR".into(),
+            lines,
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor,
+            credited_minor: 0,
+            written_off_minor: 0,
+            collected_minor: 0,
+            outstanding_minor: 0,
+            payment_evidence_count: 0,
+            version: 1,
+            current_version_event_id: version_event.id.to_hex(),
+            status: InvoiceStatus::Draft,
+            due_at,
+            issued_at: None,
+            source_event_id: version_event.id.to_hex(),
+        };
+        let head_d = invoice_head_d_tag(client_id, invoice_id);
+        let head_event = relay_event(KIND_INVOICE_HEAD, client_id, &head_d, &head, &fixture.state)
+            .expect("sign seeded invoice head");
+        let replaced = fixture
+            .state
+            .db
+            .replace_parameterized_event(
+                fixture.tenant.community(),
+                &head_event,
+                &head_d,
+                Some(client_id),
+            )
+            .await
+            .expect("insert seeded invoice head");
+        assert!(replaced.1, "seeded invoice head should be inserted");
+        head
+    }
+
+    async fn issue_test_invoice(
+        fixture: &Fixture,
+        keys: &Keys,
+        client_id: Uuid,
+        invoice_id: Uuid,
+    ) -> (StoredEvent, InvoiceHead) {
+        let (head_event, head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load draft invoice");
+        let version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: head.version + 1,
+            previous_version_event_id: Some(head.current_version_event_id.clone()),
+            proposal_version_event_id: Some(head.proposal_version_event_id.clone()),
+            expected_head_event_id: Some(head_event.event.id.to_hex()),
+            action: InvoiceVersionAction::Issue,
+            currency: head.currency.clone(),
+            lines: head.lines.clone(),
+            tax_lines: head.tax_lines.clone(),
+            seller_tax_number: head.seller_tax_number.clone(),
+            customer_tax_number: head.customer_tax_number.clone(),
+            total_minor: head.total_minor,
+            status: InvoiceStatus::Issued,
+            due_at: head.due_at,
+            void_reason: None,
+        };
+        let version_d = invoice_version_d_tag(client_id, invoice_id, version.version);
+        let event = signed_command(keys, KIND_INVOICE_VERSION, client_id, &version_d, &version);
+        let result = handle(&fixture.tenant, &fixture.state, event, auth(keys))
+            .await
+            .expect("issue test invoice through the production broker");
+        assert!(result.accepted);
+        current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load issued invoice")
+    }
+
+    fn payment_evidence(
+        client_id: Uuid,
+        invoice_id: Uuid,
+        invoice_head_event_id: &str,
+        amount_minor: i64,
+        currency: &str,
+    ) -> PaymentEvidence {
+        PaymentEvidence {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            payment_id: Uuid::new_v4(),
+            provider: "manual".into(),
+            provider_reference: None,
+            amount_minor,
+            currency: currency.into(),
+            occurred_at: chrono::Utc::now().timestamp(),
+            evidence_ref: "test receipt".into(),
+            expected_invoice_head_event_id: invoice_head_event_id.into(),
+        }
+    }
+
+    fn money_adjustment(
+        client_id: Uuid,
+        invoice_id: Uuid,
+        invoice_head_event_id: &str,
+        adjustment_type: MoneyAdjustmentType,
+        amount_minor: i64,
+    ) -> MoneyAdjustment {
+        MoneyAdjustment {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            adjustment_id: Uuid::new_v4(),
+            adjustment_type,
+            amount_minor,
+            currency: "ZAR".into(),
+            occurred_at: chrono::Utc::now().timestamp(),
+            reason: "Documented test adjustment".into(),
+            evidence_ref: "test supporting evidence".into(),
+            expected_invoice_head_event_id: invoice_head_event_id.into(),
+        }
+    }
+
+    #[test]
+    fn money_adjustments_require_a_positive_effective_date() {
+        let invoice_head_event_id = "a".repeat(64);
+        let mut adjustment = money_adjustment(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &invoice_head_event_id,
+            MoneyAdjustmentType::CreditNote,
+            100,
+        );
+        assert!(validate_money_adjustment(&adjustment).is_ok());
+
+        adjustment.occurred_at = 0;
+        assert!(validate_money_adjustment(&adjustment).is_err());
     }
 
     fn party_action(
@@ -4394,5 +5982,769 @@ mod postgres_tests {
         .await
         .expect("count raced conversion claim");
         assert_eq!(claim_count, 0);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn money_writes_require_community_owner_or_admin_and_matching_client_scope() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let owner_client = private_stream(&fixture, "money-owner-client", &owner).await;
+        let owner_invoice = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, owner_client, owner_invoice, 10_000, None).await;
+        let (owner_head_event, owner_head) =
+            issue_test_invoice(&fixture, &owner, owner_client, owner_invoice).await;
+        assert_eq!(owner_head.status, InvoiceStatus::Issued);
+        assert_eq!(owner_head.outstanding_minor, 10_000);
+
+        let admin = Keys::generate();
+        let admin_client = private_stream(&fixture, "money-admin-client", &admin).await;
+        add_community_role(&fixture, &admin, "admin").await;
+        let admin_invoice = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &admin, admin_client, admin_invoice, 2_500, None).await;
+        let (_, admin_head) =
+            issue_test_invoice(&fixture, &admin, admin_client, admin_invoice).await;
+        assert_eq!(admin_head.status, InvoiceStatus::Issued);
+
+        let member = Keys::generate();
+        let member_client = private_stream(&fixture, "money-member-client", &member).await;
+        add_community_role(&fixture, &member, "member").await;
+        let member_invoice = Uuid::new_v4();
+        seed_draft_invoice(
+            &fixture,
+            &member,
+            member_client,
+            member_invoice,
+            1_200,
+            None,
+        )
+        .await;
+        let (member_head_event, member_head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            member_client,
+            member_client,
+            member_invoice,
+        )
+        .await
+        .expect("load member invoice");
+        let member_issue = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id: member_client,
+            invoice_id: member_invoice,
+            version: member_head.version + 1,
+            previous_version_event_id: Some(member_head.current_version_event_id.clone()),
+            proposal_version_event_id: Some(member_head.proposal_version_event_id.clone()),
+            expected_head_event_id: Some(member_head_event.event.id.to_hex()),
+            action: InvoiceVersionAction::Issue,
+            currency: member_head.currency.clone(),
+            lines: member_head.lines.clone(),
+            tax_lines: member_head.tax_lines.clone(),
+            seller_tax_number: member_head.seller_tax_number.clone(),
+            customer_tax_number: member_head.customer_tax_number.clone(),
+            total_minor: member_head.total_minor,
+            status: InvoiceStatus::Issued,
+            due_at: member_head.due_at,
+            void_reason: None,
+        };
+        let member_issue_d =
+            invoice_version_d_tag(member_client, member_invoice, member_issue.version);
+        let member_issue_event = signed_command(
+            &member,
+            KIND_INVOICE_VERSION,
+            member_client,
+            &member_issue_d,
+            &member_issue,
+        );
+        let member_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            member_issue_event.clone(),
+            auth(&member),
+        )
+        .await;
+        assert!(
+            matches!(member_result, Err(IngestError::AuthFailed(message)) if message.contains("community owner or admin role"))
+        );
+        expect_event_missing(&fixture, &member_issue_event).await;
+
+        let other_client = private_stream(&fixture, "money-other-client", &owner).await;
+        let forged_payment = payment_evidence(
+            owner_client,
+            owner_invoice,
+            &owner_head_event.event.id.to_hex(),
+            1_000,
+            "ZAR",
+        );
+        let forged_payment_d = payment_d_tag(owner_client, forged_payment.payment_id);
+        let forged_payment_event = signed_command(
+            &owner,
+            KIND_PAYMENT,
+            other_client,
+            &forged_payment_d,
+            &forged_payment,
+        );
+        let cross_client_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            forged_payment_event.clone(),
+            auth(&owner),
+        )
+        .await;
+        assert!(
+            matches!(cross_client_result, Err(IngestError::Rejected(message)) if message.contains("client id does not match channel scope"))
+        );
+        expect_event_missing(&fixture, &forged_payment_event).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn invoice_tax_is_per_line_validated_and_preserved_when_issued() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-tax-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        let (head_event, draft) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load draft invoice");
+        let lines = vec![
+            ProposalLine {
+                service_id: None,
+                description: "First minor-unit line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+            ProposalLine {
+                service_id: None,
+                description: "Second minor-unit line".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 1,
+            },
+        ];
+        let tax_lines = vec![InvoiceTaxLine {
+            label: Some("Illustrative tax".into()),
+            rate_basis_points: 5_000,
+        }];
+        let mut edit = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: draft.version + 1,
+            previous_version_event_id: Some(draft.current_version_event_id.clone()),
+            proposal_version_event_id: Some(draft.proposal_version_event_id.clone()),
+            expected_head_event_id: Some(head_event.event.id.to_hex()),
+            action: InvoiceVersionAction::DraftEdit,
+            currency: draft.currency.clone(),
+            lines,
+            tax_lines,
+            seller_tax_number: Some("SELLER-TEST-REG".into()),
+            customer_tax_number: Some("CUSTOMER-TEST-REG".into()),
+            total_minor: 3,
+            status: InvoiceStatus::Draft,
+            due_at: draft.due_at,
+            void_reason: None,
+        };
+        let edit_d = invoice_version_d_tag(client_id, invoice_id, edit.version);
+        let invalid_event = signed_command(&owner, KIND_INVOICE_VERSION, client_id, &edit_d, &edit);
+        let invalid_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            invalid_event.clone(),
+            auth(&owner),
+        )
+        .await;
+        assert!(
+            matches!(invalid_result, Err(IngestError::Rejected(message)) if message.contains("line items and tax"))
+        );
+        expect_event_missing(&fixture, &invalid_event).await;
+
+        edit.total_minor = 4;
+        let edit_event = signed_command(&owner, KIND_INVOICE_VERSION, client_id, &edit_d, &edit);
+        let edit_result = handle(&fixture.tenant, &fixture.state, edit_event, auth(&owner))
+            .await
+            .expect("save optional tax on the draft invoice");
+        assert!(edit_result.accepted);
+        let (_, taxed_draft) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load tax draft");
+        assert_eq!(taxed_draft.total_minor, 4);
+        assert_eq!(taxed_draft.tax_lines, edit.tax_lines);
+        assert_eq!(
+            taxed_draft.seller_tax_number.as_deref(),
+            Some("SELLER-TEST-REG")
+        );
+        assert_eq!(
+            taxed_draft.customer_tax_number.as_deref(),
+            Some("CUSTOMER-TEST-REG")
+        );
+
+        let (_, issued) = issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+        assert_eq!(issued.status, InvoiceStatus::Issued);
+        assert_eq!(issued.total_minor, 4);
+        assert_eq!(issued.outstanding_minor, 4);
+        assert_eq!(issued.tax_lines, edit.tax_lines);
+        assert_eq!(issued.seller_tax_number.as_deref(), Some("SELLER-TEST-REG"));
+        assert_eq!(
+            issued.customer_tax_number.as_deref(),
+            Some("CUSTOMER-TEST-REG")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn payment_evidence_rejects_currency_and_overpayment_and_updates_partial_and_full_totals()
+    {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-payment-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        let (head_event, issued) =
+            issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+        assert_eq!(issued.outstanding_minor, 10_000);
+
+        for (amount, currency, expected_message) in [
+            (10_001, "ZAR", "payment amount exceeds"),
+            (100, "USD", "payment currency must match"),
+        ] {
+            let payment = payment_evidence(
+                client_id,
+                invoice_id,
+                &head_event.event.id.to_hex(),
+                amount,
+                currency,
+            );
+            let payment_d = payment_d_tag(client_id, payment.payment_id);
+            let payment_event =
+                signed_command(&owner, KIND_PAYMENT, client_id, &payment_d, &payment);
+            let result = handle(
+                &fixture.tenant,
+                &fixture.state,
+                payment_event.clone(),
+                auth(&owner),
+            )
+            .await;
+            match result {
+                Err(IngestError::Rejected(message)) => assert!(
+                    message.contains(expected_message),
+                    "unexpected payment rejection: {message}"
+                ),
+                Err(_) => panic!("invalid payment evidence returned a non-rejection error"),
+                Ok(_) => panic!("invalid payment evidence was accepted"),
+            }
+            expect_event_missing(&fixture, &payment_event).await;
+        }
+
+        let partial = payment_evidence(
+            client_id,
+            invoice_id,
+            &head_event.event.id.to_hex(),
+            4_000,
+            "ZAR",
+        );
+        let partial_d = payment_d_tag(client_id, partial.payment_id);
+        let partial_event = signed_command(&owner, KIND_PAYMENT, client_id, &partial_d, &partial);
+        handle(&fixture.tenant, &fixture.state, partial_event, auth(&owner))
+            .await
+            .expect("record partial payment evidence");
+        let (partial_head_event, partial_head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load partial payment totals");
+        assert_eq!(partial_head.collected_minor, 4_000);
+        assert_eq!(partial_head.outstanding_minor, 6_000);
+        assert_eq!(partial_head.payment_evidence_count, 1);
+
+        let full = payment_evidence(
+            client_id,
+            invoice_id,
+            &partial_head_event.event.id.to_hex(),
+            6_000,
+            "ZAR",
+        );
+        let full_d = payment_d_tag(client_id, full.payment_id);
+        let full_event = signed_command(&owner, KIND_PAYMENT, client_id, &full_d, &full);
+        handle(&fixture.tenant, &fixture.state, full_event, auth(&owner))
+            .await
+            .expect("record final payment evidence");
+        let (_, fully_paid) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load fully paid invoice totals");
+        assert_eq!(fully_paid.collected_minor, 10_000);
+        assert_eq!(fully_paid.outstanding_minor, 0);
+        assert_eq!(fully_paid.payment_evidence_count, 2);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn adjustments_update_balances_and_void_after_any_payment_is_rejected() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-adjustment-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+
+        let (head_event, _head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load issued invoice");
+        let payment = payment_evidence(
+            client_id,
+            invoice_id,
+            &head_event.event.id.to_hex(),
+            4_000,
+            "ZAR",
+        );
+        let payment_d = payment_d_tag(client_id, payment.payment_id);
+        let payment_event = signed_command(&owner, KIND_PAYMENT, client_id, &payment_d, &payment);
+        handle(&fixture.tenant, &fixture.state, payment_event, auth(&owner))
+            .await
+            .expect("record partial payment before credit note");
+
+        let (head_event, head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load invoice before credit note");
+        let credit = money_adjustment(
+            client_id,
+            invoice_id,
+            &head_event.event.id.to_hex(),
+            MoneyAdjustmentType::CreditNote,
+            7_000,
+        );
+        let credit_d = money_adjustment_d_tag(client_id, credit.adjustment_id);
+        let credit_event =
+            signed_command(&owner, KIND_MONEY_ADJUSTMENT, client_id, &credit_d, &credit);
+        handle(&fixture.tenant, &fixture.state, credit_event, auth(&owner))
+            .await
+            .expect("record credit note");
+        let (head_event, credited) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load credited invoice");
+        assert_eq!(credited.credited_minor, 7_000);
+        assert_eq!(credited.collected_minor, 4_000);
+        assert_eq!(credited.outstanding_minor, 0);
+
+        let refund = money_adjustment(
+            client_id,
+            invoice_id,
+            &head_event.event.id.to_hex(),
+            MoneyAdjustmentType::Refund,
+            1_000,
+        );
+        let refund_d = money_adjustment_d_tag(client_id, refund.adjustment_id);
+        let refund_event =
+            signed_command(&owner, KIND_MONEY_ADJUSTMENT, client_id, &refund_d, &refund);
+        handle(&fixture.tenant, &fixture.state, refund_event, auth(&owner))
+            .await
+            .expect("record external refund evidence");
+        let (head_event, refunded) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load refunded invoice");
+        assert_eq!(refunded.collected_minor, 3_000);
+        assert_eq!(refunded.outstanding_minor, 0);
+        assert_eq!(refunded.payment_evidence_count, 1);
+
+        let void = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: refunded.version + 1,
+            previous_version_event_id: Some(refunded.current_version_event_id.clone()),
+            proposal_version_event_id: Some(refunded.proposal_version_event_id.clone()),
+            expected_head_event_id: Some(head_event.event.id.to_hex()),
+            action: InvoiceVersionAction::Void,
+            currency: refunded.currency.clone(),
+            lines: refunded.lines.clone(),
+            tax_lines: refunded.tax_lines.clone(),
+            seller_tax_number: refunded.seller_tax_number.clone(),
+            customer_tax_number: refunded.customer_tax_number.clone(),
+            total_minor: refunded.total_minor,
+            status: InvoiceStatus::Void,
+            due_at: refunded.due_at,
+            void_reason: Some("Client paid portion already recorded".into()),
+        };
+        let void_d = invoice_version_d_tag(client_id, invoice_id, void.version);
+        let void_event = signed_command(&owner, KIND_INVOICE_VERSION, client_id, &void_d, &void);
+        let void_result = handle(
+            &fixture.tenant,
+            &fixture.state,
+            void_event.clone(),
+            auth(&owner),
+        )
+        .await;
+        assert!(
+            matches!(void_result, Err(IngestError::Rejected(message)) if message.contains("payment evidence cannot be voided"))
+        );
+        expect_event_missing(&fixture, &void_event).await;
+
+        let writeoff_invoice = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, writeoff_invoice, 10_000, None).await;
+        issue_test_invoice(&fixture, &owner, client_id, writeoff_invoice).await;
+        let (writeoff_head_event, _writeoff_head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            writeoff_invoice,
+        )
+        .await
+        .expect("load write-off invoice");
+        let writeoff = money_adjustment(
+            client_id,
+            writeoff_invoice,
+            &writeoff_head_event.event.id.to_hex(),
+            MoneyAdjustmentType::WriteOff,
+            2_500,
+        );
+        let writeoff_d = money_adjustment_d_tag(client_id, writeoff.adjustment_id);
+        let writeoff_event = signed_command(
+            &owner,
+            KIND_MONEY_ADJUSTMENT,
+            client_id,
+            &writeoff_d,
+            &writeoff,
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            writeoff_event,
+            auth(&owner),
+        )
+        .await
+        .expect("record write-off evidence");
+        let (_, written_off) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            writeoff_invoice,
+        )
+        .await
+        .expect("load written-off invoice");
+        assert_eq!(written_off.written_off_minor, 2_500);
+        assert_eq!(written_off.outstanding_minor, 7_500);
+        assert_eq!(head.status, InvoiceStatus::Issued);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn follow_up_draft_review_and_approval_record_intent_only() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-follow-up-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        let invoice_due_at = chrono::Utc::now().timestamp() - 3_600;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            invoice_id,
+            10_000,
+            Some(invoice_due_at),
+        )
+        .await;
+        let (invoice_event, invoice) =
+            issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+        let follow_up_id = Uuid::new_v4();
+        let draft = MoneyFollowUpAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            follow_up_id,
+            action: MoneyFollowUpActionKind::Draft,
+            expected_head_event_id: None,
+            expected_invoice_head_event_id: invoice_event.event.id.to_hex(),
+            due_at: Some(chrono::Utc::now().timestamp() + 86_400),
+            draft_content: "Please review the outstanding project invoice.".into(),
+        };
+        let follow_up_d = money_follow_up_d_tag(client_id, follow_up_id);
+        let draft_event = signed_command(
+            &owner,
+            KIND_MONEY_FOLLOW_UP,
+            client_id,
+            &follow_up_d,
+            &draft,
+        );
+        handle(&fixture.tenant, &fixture.state, draft_event, auth(&owner))
+            .await
+            .expect("create follow-up draft");
+        let (follow_head_event, follow_head) = current_head::<MoneyFollowUpHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_MONEY_FOLLOW_UP_HEAD,
+            &follow_up_d,
+        )
+        .await
+        .expect("load follow-up draft")
+        .map(|event| {
+            let head: MoneyFollowUpHead =
+                parse_content(&event.event).expect("parse follow-up draft head");
+            (event, head)
+        })
+        .expect("follow-up draft exists");
+        assert_eq!(follow_head.status, MoneyFollowUpStatus::Draft);
+        assert!(!follow_head.approval_intent_only);
+
+        let review = MoneyFollowUpAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            follow_up_id,
+            action: MoneyFollowUpActionKind::Review,
+            expected_head_event_id: Some(follow_head_event.event.id.to_hex()),
+            expected_invoice_head_event_id: invoice_event.event.id.to_hex(),
+            due_at: follow_head.due_at,
+            draft_content: follow_head.draft_content.clone(),
+        };
+        let review_event = signed_command(
+            &owner,
+            KIND_MONEY_FOLLOW_UP,
+            client_id,
+            &follow_up_d,
+            &review,
+        );
+        handle(&fixture.tenant, &fixture.state, review_event, auth(&owner))
+            .await
+            .expect("move follow-up into review");
+        let (follow_head_event, follow_head) = current_head::<MoneyFollowUpHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_MONEY_FOLLOW_UP_HEAD,
+            &follow_up_d,
+        )
+        .await
+        .expect("load follow-up under review")
+        .map(|event| {
+            let head: MoneyFollowUpHead =
+                parse_content(&event.event).expect("parse follow-up review head");
+            (event, head)
+        })
+        .expect("review head exists");
+        assert_eq!(follow_head.status, MoneyFollowUpStatus::InReview);
+
+        let approval = MoneyFollowUpAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            follow_up_id,
+            action: MoneyFollowUpActionKind::Approve,
+            expected_head_event_id: Some(follow_head_event.event.id.to_hex()),
+            expected_invoice_head_event_id: invoice_event.event.id.to_hex(),
+            due_at: follow_head.due_at,
+            draft_content: follow_head.draft_content,
+        };
+        let approval_event = signed_command(
+            &owner,
+            KIND_MONEY_FOLLOW_UP,
+            client_id,
+            &follow_up_d,
+            &approval,
+        );
+        handle(
+            &fixture.tenant,
+            &fixture.state,
+            approval_event,
+            auth(&owner),
+        )
+        .await
+        .expect("approve follow-up intent");
+        let (_, approved) = current_head::<MoneyFollowUpHead>(
+            &fixture.state,
+            fixture.tenant.community(),
+            KIND_MONEY_FOLLOW_UP_HEAD,
+            &follow_up_d,
+        )
+        .await
+        .expect("load approved follow-up")
+        .map(|event| {
+            let head: MoneyFollowUpHead =
+                parse_content(&event.event).expect("parse approved follow-up head");
+            (event, head)
+        })
+        .expect("approved head exists");
+        assert_eq!(approved.status, MoneyFollowUpStatus::Approved);
+        assert!(approved.approval_intent_only);
+        assert_eq!(
+            approved.approved_by_pubkey,
+            Some(owner.public_key().to_hex())
+        );
+        assert_eq!(invoice.outstanding_minor, 10_000);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn concurrent_payments_with_one_invoice_head_commit_only_one() {
+        let fixture = fixture().await;
+        let owner = Keys::generate();
+        business_stream(&fixture, &owner).await;
+        let client_id = private_stream(&fixture, "money-race-client", &owner).await;
+        let invoice_id = Uuid::new_v4();
+        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        let (head_event, _) = issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
+        let expected_head = head_event.event.id.to_hex();
+        let first = payment_evidence(client_id, invoice_id, &expected_head, 7_000, "ZAR");
+        let second = payment_evidence(client_id, invoice_id, &expected_head, 7_000, "ZAR");
+        let first_d = payment_d_tag(client_id, first.payment_id);
+        let second_d = payment_d_tag(client_id, second.payment_id);
+        let first_event = signed_command(&owner, KIND_PAYMENT, client_id, &first_d, &first);
+        let second_event = signed_command(&owner, KIND_PAYMENT, client_id, &second_d, &second);
+
+        let paused = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        let other_lock_attempt = Arc::new(Notify::new());
+        let other_first_lock = Arc::new(Notify::new());
+        install_expected_head_lock_test_hook(
+            first_event.id.to_bytes(),
+            Arc::clone(&paused),
+            Arc::clone(&resume),
+            Arc::clone(&other_lock_attempt),
+            Arc::clone(&other_first_lock),
+        );
+        let hook_guard = ExpectedHeadLockTestHookGuard {
+            resume: Arc::clone(&resume),
+        };
+        let first_tenant = fixture.tenant.clone();
+        let first_state = Arc::clone(&fixture.state);
+        let first_actor = owner.clone();
+        let mut first_task = tokio::spawn(async move {
+            handle(&first_tenant, &first_state, first_event, auth(&first_actor)).await
+        });
+        if tokio::time::timeout(Duration::from_secs(5), paused.notified())
+            .await
+            .is_err()
+        {
+            resume.notify_one();
+            first_task.abort();
+            let _ = first_task.await;
+            drop(hook_guard);
+            panic!("first payment did not acquire the invoice head lock");
+        }
+
+        let second_tenant = fixture.tenant.clone();
+        let second_state = Arc::clone(&fixture.state);
+        let second_actor = owner.clone();
+        let mut second_task = tokio::spawn(async move {
+            handle(
+                &second_tenant,
+                &second_state,
+                second_event,
+                auth(&second_actor),
+            )
+            .await
+        });
+        if tokio::time::timeout(Duration::from_secs(5), other_lock_attempt.notified())
+            .await
+            .is_err()
+        {
+            resume.notify_one();
+            first_task.abort();
+            second_task.abort();
+            let _ = first_task.await;
+            let _ = second_task.await;
+            drop(hook_guard);
+            panic!("second payment did not reach the invoice head lock");
+        }
+        let second_acquired_stale_lock =
+            tokio::time::timeout(Duration::from_millis(150), other_first_lock.notified())
+                .await
+                .is_ok();
+        resume.notify_one();
+
+        let first_result = tokio::time::timeout(Duration::from_secs(5), &mut first_task)
+            .await
+            .ok();
+        let second_result = tokio::time::timeout(Duration::from_secs(5), &mut second_task)
+            .await
+            .ok();
+        if first_result.is_none() || second_result.is_none() {
+            first_task.abort();
+            second_task.abort();
+            let _ = first_task.await;
+            let _ = second_task.await;
+        }
+        drop(hook_guard);
+
+        assert!(
+            !second_acquired_stale_lock,
+            "second payment acquired the invoice lock before the first commit"
+        );
+        let first_result = first_result
+            .expect("first payment handler completed")
+            .expect("first payment handler task succeeded")
+            .expect("first payment commits");
+        assert!(first_result.accepted);
+        let second_result = second_result
+            .expect("second payment handler completed")
+            .expect("second payment handler task succeeded");
+        assert!(matches!(
+            second_result,
+            Err(IngestError::Rejected(message))
+                if message.contains("referenced business record changed before the command committed")
+        ));
+        let (_, final_head) = current_invoice_head(
+            &fixture.state,
+            fixture.tenant.community(),
+            client_id,
+            client_id,
+            invoice_id,
+        )
+        .await
+        .expect("load final raced invoice head");
+        assert_eq!(final_head.collected_minor, 7_000);
+        assert_eq!(final_head.outstanding_minor, 3_000);
+        assert_eq!(final_head.payment_evidence_count, 1);
     }
 }

@@ -97,6 +97,7 @@ export const KIND_CONTENT_CAMPAIGN_HEAD = 30638;
 export const KIND_CONTENT_POST_HEAD = 30639;
 export const KIND_SITE_HEAD = 30640;
 export const KIND_INVOICE_HEAD = 30641;
+export const KIND_MONEY_FOLLOW_UP_HEAD = 30645;
 export const KIND_PARTY_ACTION = 47000;
 export const KIND_CLIENT_ACTION = 47001;
 export const KIND_SERVICE_ACTION = 47002;
@@ -145,6 +146,7 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
   KIND_CONTENT_POST_HEAD,
   KIND_SITE_HEAD,
   KIND_INVOICE_HEAD,
+  KIND_MONEY_FOLLOW_UP_HEAD,
   KIND_PARTY_ACTION,
   KIND_CLIENT_ACTION,
   KIND_SERVICE_ACTION,
@@ -184,9 +186,11 @@ export const BUSINESS_RECORD_EVENT_KINDS = [
 // joins the thread timeline kinds together with its card renderer.
 export const KIND_GOAL_HEAD = 30642;
 export const KIND_ASK_HEAD = 30643;
+export const KIND_TOOL_PERMISSION_HEAD = 30646;
 export const KIND_GOAL_ACTION = 47031;
 export const KIND_ASK_ACTION = 47032;
 export const KIND_ASK_RESPONSE = 47033;
+export const KIND_TOOL_PERMISSION_ACTION = 47035;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,
@@ -194,6 +198,8 @@ export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_ACTION,
   KIND_ASK_ACTION,
   KIND_ASK_RESPONSE,
+  KIND_TOOL_PERMISSION_HEAD,
+  KIND_TOOL_PERMISSION_ACTION,
 ] as const;
 
 // Human-visible "new content" message kinds. Used as the unread trigger set

@@ -4,14 +4,20 @@
 //! authoritative registry used by `buzz-core` and the relay.
 
 use buzz_core::business_records::{
-    business_d_tag, client_d_tag, deliverable_approval_d_tag, deliverable_version_d_tag,
-    proposal_version_d_tag,
+    business_d_tag, client_d_tag, company_work_d_tag, deliverable_approval_d_tag,
+    deliverable_version_d_tag, invoice_version_d_tag, money_adjustment_d_tag,
+    money_follow_up_d_tag, payment_d_tag, proposal_version_d_tag,
+    validate_company_work_item_action,
 };
 pub use buzz_core::business_records::{
-    ApprovalDecision, ClientAction, ClientHead, ClientHeadInput, DeliverableApproval,
-    DeliverablePointer, DeliverableVersion, DraftInvoiceHead, PartyAction, ProposalAcceptance,
-    ProposalConversionReceipt, ProposalHead, ProposalLine, ProposalVersion, RecordAction,
-    WorkItemAction, WorkItemHead, WorkItemHeadInput,
+    ApprovalDecision, ClientAction, ClientHead, ClientHeadInput, CompanyWorkItemAction,
+    CompanyWorkItemActionKind, CompanyWorkItemHead, CompanyWorkItemInput, CompanyWorkStatus,
+    CompanyWorkVerdict, CompanyWorkVerification, CompanyWorkVerificationInput, DeliverableApproval,
+    DeliverablePointer, DeliverableVersion, DraftInvoiceHead, InvoiceHead, InvoiceStatus,
+    InvoiceVersion, InvoiceVersionAction, MoneyAdjustment, MoneyAdjustmentType,
+    MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead, MoneyFollowUpStatus,
+    PartyAction, PaymentEvidence, ProposalAcceptance, ProposalConversionReceipt, ProposalHead,
+    ProposalLine, ProposalVersion, RecordAction, WorkItemAction, WorkItemHead, WorkItemHeadInput,
 };
 use buzz_core::kind::*;
 use nostr::{EventBuilder, Kind, Tag};
@@ -72,6 +78,22 @@ pub fn build_work_item_action(action: &WorkItemAction) -> Result<EventBuilder, S
     )
 }
 
+/// Build a member-signed company work-item action in its conversation channel.
+pub fn build_company_work_item_action(
+    channel_id: Uuid,
+    action: &CompanyWorkItemAction,
+) -> Result<EventBuilder, SdkError> {
+    validate_company_work_item_action(action).map_err(|error| {
+        SdkError::InvalidInput(format!("company work item action is invalid: {error}"))
+    })?;
+    build(
+        KIND_WORK_ITEM_ACTION,
+        channel_id,
+        company_work_d_tag(action.work_item_id),
+        action,
+    )
+}
+
 /// Build a member-signed immutable proposal revision in the business channel.
 pub fn build_proposal_version(
     community_id: Uuid,
@@ -116,6 +138,42 @@ pub fn build_deliverable_approval(
     )
 }
 
+/// Build a member-signed invoice revision or lifecycle transition.
+pub fn build_invoice_version(version: &InvoiceVersion) -> Result<EventBuilder, SdkError> {
+    let d_tag = invoice_version_d_tag(version.client_id, version.invoice_id, version.version);
+    build(KIND_INVOICE_VERSION, version.client_id, d_tag, version)
+}
+
+/// Build member-signed evidence that an invoice payment already happened.
+pub fn build_payment_evidence(payment: &PaymentEvidence) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_PAYMENT,
+        payment.client_id,
+        payment_d_tag(payment.client_id, payment.payment_id),
+        payment,
+    )
+}
+
+/// Build member-signed evidence for a credit note, external refund, or write-off.
+pub fn build_money_adjustment(adjustment: &MoneyAdjustment) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_MONEY_ADJUSTMENT,
+        adjustment.client_id,
+        money_adjustment_d_tag(adjustment.client_id, adjustment.adjustment_id),
+        adjustment,
+    )
+}
+
+/// Build a member-signed follow-up draft, review, or intent approval.
+pub fn build_money_follow_up(action: &MoneyFollowUpAction) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_MONEY_FOLLOW_UP,
+        action.client_id,
+        money_follow_up_d_tag(action.client_id, action.follow_up_id),
+        action,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +209,173 @@ mod tests {
         assert_eq!(tags[1].kind().to_string(), "d");
         let expected_d_tag = client_d_tag(id, "client", id);
         assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+    }
+
+    #[test]
+    fn money_builders_bind_kind_client_scope_and_record_coordinate() {
+        use buzz_core::business_records::{BusinessCommand, BUSINESS_RECORD_SCHEMA_VERSION};
+
+        let client_id = Uuid::from_u128(9);
+        let invoice_id = Uuid::from_u128(10);
+        let version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            version: 2,
+            previous_version_event_id: Some("a".repeat(64)),
+            proposal_version_event_id: Some("b".repeat(64)),
+            expected_head_event_id: Some("c".repeat(64)),
+            action: InvoiceVersionAction::Issue,
+            currency: "ZAR".into(),
+            lines: vec![ProposalLine {
+                service_id: None,
+                description: "Project milestone".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 25_000,
+            }],
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor: 25_000,
+            status: InvoiceStatus::Issued,
+            due_at: Some(1_800_000_000),
+            void_reason: None,
+        };
+        let payment = PaymentEvidence {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            payment_id: Uuid::from_u128(11),
+            provider: "manual".into(),
+            provider_reference: None,
+            amount_minor: 5_000,
+            currency: "ZAR".into(),
+            occurred_at: 1_800_000_001,
+            evidence_ref: "receipt:local-1".into(),
+            expected_invoice_head_event_id: "d".repeat(64),
+        };
+        let adjustment = MoneyAdjustment {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            adjustment_id: Uuid::from_u128(12),
+            adjustment_type: MoneyAdjustmentType::CreditNote,
+            amount_minor: 1_000,
+            currency: "ZAR".into(),
+            occurred_at: 1_800_000_001,
+            reason: "Scope reduced".into(),
+            evidence_ref: "credit-note:1".into(),
+            expected_invoice_head_event_id: "e".repeat(64),
+        };
+        let follow_up = MoneyFollowUpAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id,
+            invoice_id,
+            follow_up_id: Uuid::from_u128(13),
+            action: MoneyFollowUpActionKind::Draft,
+            expected_head_event_id: None,
+            expected_invoice_head_event_id: "f".repeat(64),
+            due_at: None,
+            draft_content: "Please review the outstanding invoice.".into(),
+        };
+        let cases = [
+            (
+                build_invoice_version(&version).expect("invoice builder"),
+                KIND_INVOICE_VERSION,
+                invoice_version_d_tag(client_id, invoice_id, 2),
+            ),
+            (
+                build_payment_evidence(&payment).expect("payment builder"),
+                KIND_PAYMENT,
+                payment_d_tag(client_id, payment.payment_id),
+            ),
+            (
+                build_money_adjustment(&adjustment).expect("adjustment builder"),
+                KIND_MONEY_ADJUSTMENT,
+                money_adjustment_d_tag(client_id, adjustment.adjustment_id),
+            ),
+            (
+                build_money_follow_up(&follow_up).expect("follow-up builder"),
+                KIND_MONEY_FOLLOW_UP,
+                money_follow_up_d_tag(client_id, follow_up.follow_up_id),
+            ),
+        ];
+
+        for (builder, kind, expected_d_tag) in cases {
+            let event = builder
+                .sign_with_keys(&nostr::Keys::generate())
+                .expect("sign event");
+            assert_eq!(event.kind, Kind::Custom(kind as u16));
+            let tags = event.tags.iter().collect::<Vec<_>>();
+            assert_eq!(tags.len(), 2);
+            assert_eq!(tags[0].kind().to_string(), "h");
+            assert_eq!(tags[0].content(), Some(client_id.to_string().as_str()));
+            assert_eq!(tags[1].kind().to_string(), "d");
+            assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+            let _: BusinessCommand =
+                buzz_core::business_records::parse_business_command(kind, &event.content)
+                    .expect("parse built money command");
+        }
+    }
+
+    #[test]
+    fn company_work_action_builder_rejects_invalid_payloads() {
+        let action = CompanyWorkItemAction {
+            schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id: Uuid::from_u128(8),
+            action: CompanyWorkItemActionKind::Create,
+            expected_head_event_id: Some("01".repeat(32)),
+            head: None,
+            status: None,
+            reason: None,
+            verification: None,
+        };
+
+        assert!(build_company_work_item_action(Uuid::from_u128(7), &action).is_err());
+    }
+
+    #[test]
+    fn company_work_action_builder_uses_shared_kind_and_host_scoped_coordinate() {
+        let channel_id = Uuid::from_u128(7);
+        let work_item_id = Uuid::from_u128(8);
+        let action = CompanyWorkItemAction {
+            schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+            work_item_id,
+            action: CompanyWorkItemActionKind::Create,
+            expected_head_event_id: None,
+            head: Some(CompanyWorkItemInput {
+                schema_version: buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION,
+                work_item_id,
+                title: "Prepare the launch checklist".into(),
+                status: CompanyWorkStatus::Active,
+                assigned_pubkeys: vec!["ab".repeat(32)],
+                approver_pubkeys: Vec::new(),
+                deliverables: Vec::new(),
+                requester_pubkey: "cd".repeat(32),
+                done_condition: "Every launch task has an owner".into(),
+                goal_id: None,
+                source_event_id: None,
+                thread_root_event_id: None,
+                evidence: None,
+            }),
+            status: None,
+            reason: None,
+            verification: None,
+        };
+        let event = build_company_work_item_action(channel_id, &action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+
+        assert_eq!(event.kind, Kind::Custom(KIND_WORK_ITEM_ACTION as u16));
+        let tags = event.tags.iter().collect::<Vec<_>>();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].kind().to_string(), "h");
+        assert_eq!(tags[0].content(), Some(channel_id.to_string().as_str()));
+        assert_eq!(tags[1].kind().to_string(), "d");
+        assert_eq!(
+            tags[1].content(),
+            Some(company_work_d_tag(work_item_id).as_str())
+        );
     }
 }

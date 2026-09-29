@@ -14,7 +14,10 @@ export const Route = createFileRoute("/workflows/$workflowId")({
   validateSearch: (search: Record<string, unknown>) => ({
     pane: serializeWorkflowEditorPane(parseWorkflowEditorPane(search.pane)),
     view:
-      search.view === "edit" || search.view === "duplicate"
+      search.view === "edit" ||
+      search.view === "plain-edit" ||
+      search.view === "advanced" ||
+      search.view === "duplicate"
         ? search.view
         : undefined,
   }),
@@ -35,9 +38,10 @@ function WorkflowRouteComponent() {
       mode:
         view === "duplicate"
           ? "duplicate"
-          : view === "edit"
+          : view === "edit" || view === "plain-edit" || view === "advanced"
             ? "edit"
             : "detail",
+      advanced: view === "edit" || view === "advanced" || view === "duplicate",
       pane: parseWorkflowEditorPane(pane),
       workflowId,
     };

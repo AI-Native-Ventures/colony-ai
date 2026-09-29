@@ -3,6 +3,7 @@ import * as React from "react";
 import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
+  CircleDollarSign,
   LayoutTemplate,
   Search,
   Settings as SettingsIcon,
@@ -938,6 +939,31 @@ export function AppSidebar({
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ) : null}
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          className="sidebar-navigation-child pl-7"
+                          data-testid="sidebar-business-money"
+                          isActive={
+                            pathname === "/money" ||
+                            pathname.startsWith("/money/")
+                          }
+                          tooltip="Money"
+                        >
+                          <a
+                            aria-current={
+                              pathname === "/money" ||
+                              pathname.startsWith("/money/")
+                                ? "page"
+                                : undefined
+                            }
+                            href="#/money"
+                          >
+                            <CircleDollarSign className="h-4 w-4" />
+                            <SidebarMenuLabel>Money</SidebarMenuLabel>
+                          </a>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
                     </SidebarMenu>
                   </SidebarNavigationGroup>
 
@@ -1064,7 +1090,7 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <SidebarMenu>
+            <SidebarMenu className="sidebar-navigation-profile">
               <SidebarMenuItem>
                 <SidebarProfileCard
                   activeCommunity={activeCommunity}

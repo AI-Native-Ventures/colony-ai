@@ -186,11 +186,24 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goGoalWorkLink = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/link/$goalId",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goNewGoal = React.useCallback(
     (parentGoalId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/goals/new",
+          to: "/goals/$goalId",
+          params: { goalId: "new" },
           search: { parent: parentGoalId },
         },
         behavior,
@@ -363,7 +376,8 @@ export function useAppNavigation() {
     (clientId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/work",
+          to: "/$workSurface",
+          params: { workSurface: "work" },
           search: clientId ? { client: clientId } : {},
         },
         behavior,
@@ -384,6 +398,111 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goCompanyWork = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/$workSurface",
+          params: { workSurface: "company-work" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewCompanyWork = React.useCallback(
+    (
+      search: { channel?: string; goal?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: "new" },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkFromChat = React.useCallback(
+    (
+      messageId: string,
+      search: { channel: string; threadRoot: string; goal?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "from-chat", resourceId: messageId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkDetail = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "detail", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkEdit = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "edit", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkStatus = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "status", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkVerify = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "verify", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkArchive = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "archive", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -397,6 +516,30 @@ export function useAppNavigation() {
         },
         behavior,
       ),
+    [commitNavigation],
+  );
+
+  const goAdvancedWorkflow = React.useCallback(
+    (workflowId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/workflows/$workflowId",
+          params: { workflowId },
+          search: { pane: "trigger", view: "advanced" },
+          state: { workflowEditorHasOrigin: true },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewPlainWorkflow = React.useCallback(
+    (starting: "blank" | "example" = "blank") =>
+      commitNavigation({
+        to: "/workflows",
+        search: { starting, view: "plain-new" },
+        state: { workflowEditorHasOrigin: true },
+      }),
     [commitNavigation],
   );
 
@@ -420,8 +563,7 @@ export function useAppNavigation() {
           to: "/workflows",
           search: {
             channel: channelId,
-            pane: "trigger",
-            view: "create",
+            view: "plain-new",
           },
           state: { workflowEditorHasOrigin: true },
         },
@@ -436,7 +578,7 @@ export function useAppNavigation() {
         {
           to: "/workflows/$workflowId",
           params: { workflowId },
-          search: { pane: "trigger", view: "edit" },
+          search: { pane: "trigger", view: "plain-edit" },
           state: { workflowEditorHasOrigin: true },
         },
         behavior,
@@ -529,11 +671,19 @@ export function useAppNavigation() {
   );
 
   const goAskDetail = React.useCallback(
-    (channelId: string, askId: string, behavior?: NavigationBehavior) =>
+    (
+      channelId: string,
+      askId: string,
+      companyToolConsentInbox = false,
+      behavior?: NavigationBehavior,
+    ) =>
       commitNavigation(
         {
           to: "/asks/$channelId/$askId",
           params: { channelId, askId },
+          ...(companyToolConsentInbox
+            ? { search: { companyToolConsentInbox: "1" } }
+            : {}),
         },
         behavior,
       ),
@@ -674,6 +824,7 @@ export function useAppNavigation() {
     goClient,
     goClients,
     goDuplicateWorkflow,
+    goAdvancedWorkflow,
     goEditWorkflow,
     goForumPost,
     goHome,
@@ -682,6 +833,7 @@ export function useAppNavigation() {
     goGoalDelete,
     goGoalProgress,
     goGoalReference,
+    goGoalWorkLink,
     goGoals,
     goNewGoal,
     goEditGoal,
@@ -691,6 +843,7 @@ export function useAppNavigation() {
     goToday,
     goNewMessage,
     goNewWorkflow,
+    goNewPlainWorkflow,
     goNewWorkflowForChannel,
     goProject,
     goProjects,
@@ -703,6 +856,14 @@ export function useAppNavigation() {
     goWorkflows,
     goWork,
     goWorkItem,
+    goCompanyWork,
+    goNewCompanyWork,
+    goCompanyWorkFromChat,
+    goCompanyWorkDetail,
+    goCompanyWorkEdit,
+    goCompanyWorkStatus,
+    goCompanyWorkVerify,
+    goCompanyWorkArchive,
     openSearchHit,
   };
 }

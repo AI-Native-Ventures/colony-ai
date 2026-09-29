@@ -1,6 +1,7 @@
 import * as React from "react";
-import { LogIn } from "lucide-react";
+import { LogIn, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/businessRecords";
@@ -195,6 +196,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   const messageTimelineRef = React.useRef<MessageTimelineHandle>(null);
   const composerWrapperRef = React.useRef<HTMLDivElement>(null);
   const { goChannel } = useAppNavigation();
+  const navigate = useNavigate();
   const prepareDmSendChannel = usePrepareDmSendChannel(
     activeChannel,
     currentPubkey,
@@ -414,6 +416,12 @@ export const ChannelPane = React.memo(function ChannelPane({
         : channelVisibleMessages,
     [channelVisibleMessages, threadContextRootId],
   );
+  const latestVisibleMessage = visibleMessages[visibleMessages.length - 1];
+  const askThreadRootEventId =
+    threadHeadMessage?.id ??
+    latestVisibleMessage?.rootId ??
+    latestVisibleMessage?.id ??
+    null;
   const hasWorkItemReference = React.useMemo(() => {
     if (!activeChannelId) return false;
     const messagesWithThreadReplies = [
@@ -492,7 +500,8 @@ export const ChannelPane = React.memo(function ChannelPane({
   const hasThreadSurface =
     Boolean(threadHeadMessage) || shouldShowThreadSkeleton;
   const useFocusThreadDrawer =
-    threadViewMode === "focus" && useSplitAuxiliaryPane && hasThreadSurface;
+    hasThreadSurface &&
+    (isOverlay || (threadViewMode === "focus" && useSplitAuxiliaryPane));
   const selectedAgent = React.useMemo(
     () =>
       agentSessionSelection.resolveSelectedAgentSession({
@@ -593,6 +602,8 @@ export const ChannelPane = React.memo(function ChannelPane({
       covered={threadSurface.covered}
       hasActiveEdit={threadEditTarget !== null}
       isFocusDrawer={useFocusThreadDrawer}
+      responsiveOverlay={isOverlay}
+      restoreFocusOnDismiss={isOverlay}
       key={THREAD_SURFACE_KEY}
       onClose={onCloseThread}
       ref={threadSurface.ref}
@@ -865,6 +876,33 @@ export const ChannelPane = React.memo(function ChannelPane({
                       onSend={handleSendMessage}
                       {...{ profiles, recentMentionPubkeys: recentMentions }}
                       showBackgroundUploadProgress={false}
+                      footerContent={
+                        workspaceChrome &&
+                        activeChannel?.channelType === "stream" ? (
+                          <Button
+                            className="colony-ask-entry-button"
+                            data-testid="raise-ask-from-composer"
+                            disabled={!activeChannelId || !askThreadRootEventId}
+                            onClick={() => {
+                              if (!activeChannelId || !askThreadRootEventId)
+                                return;
+                              void navigate({
+                                to: "/asks/new",
+                                search: {
+                                  channelId: activeChannelId,
+                                  threadRootEventId: askThreadRootEventId,
+                                },
+                              });
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <Plus aria-hidden="true" />
+                            Raise an ask
+                          </Button>
+                        ) : undefined
+                      }
                       placeholder={
                         timeoutState.active
                           ? "You're timed out by community moderators."

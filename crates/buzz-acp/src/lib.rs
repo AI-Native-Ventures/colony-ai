@@ -13,6 +13,7 @@ mod queue;
 mod relay;
 mod scope;
 mod setup_mode;
+mod tool_permissions;
 mod usage;
 
 pub use acp::{

@@ -960,6 +960,10 @@ impl RunCtx<'_> {
                         emit_failed(&wire, &session_id, &call, msg).await;
                         return (i, InvokeOutcome::Failed(msg.into()));
                     }
+                    PermissionDecision::DeniedMessage(msg) => {
+                        emit_failed(&wire, &session_id, &call, &msg).await;
+                        return (i, InvokeOutcome::Failed(msg));
+                    }
                     PermissionDecision::Cancelled => {
                         emit_failed(&wire, &session_id, &call, "cancelled").await;
                         return (i, InvokeOutcome::Failed("cancelled".into()));

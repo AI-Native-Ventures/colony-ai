@@ -60,7 +60,7 @@ services:
       start_period: 10s
 
   minio-init:
-    image: public.ecr.aws/aws-cli/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5
+    image: docker.io/amazon/aws-cli:2.37.3@sha256:83f8ffe939569070c5b66d22231862ab78718766d9d8e4c44ca84dd0be5569a5
     depends_on:
       minio:
         condition: service_healthy

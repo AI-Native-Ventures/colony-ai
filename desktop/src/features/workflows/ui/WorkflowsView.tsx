@@ -1,43 +1,27 @@
-import { Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { stringify as yamlStringify } from "yaml";
-import { toast } from "sonner";
 
 import {
   allWorkflowsQueryKey,
   workflowListFocusRefetchPolicy,
-  workflowQueryKey,
 } from "@/features/workflows/hooks";
-import { getWorkflowActivationWarning } from "@/features/workflows/ui/workflowActivationWarning";
-import { WorkflowCard } from "@/features/workflows/ui/WorkflowCard";
 import { WorkflowDeleteDialog } from "@/features/workflows/ui/WorkflowDeleteDialog";
 import { WorkflowEditorHost } from "@/features/workflows/ui/WorkflowEditorHost";
-import { useWorkflowListAuthorPresentations } from "@/features/workflows/ui/useWorkflowListAuthorPresentations";
-import { useWorkflowListMessagePresentations } from "@/features/workflows/ui/useWorkflowListMessagePresentations";
+import { PlainWorkflowBuilder } from "@/features/workflows/ui/PlainWorkflowBuilder";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import {
+  getWorkflowDisplayStatus,
+  getWorkflowTriggerSummary,
+} from "@/features/workflows/ui/workflowDefinition";
 import type { WorkflowEditorRoute } from "@/features/workflows/ui/WorkflowsScreen";
 import type { WorkflowEditorPane } from "@/features/workflows/ui/workflowEditorPane";
-import {
-  getWorkflowEnabled,
-  withWorkflowEnabled,
-} from "@/features/workflows/ui/workflowDefinition";
 import type { Channel, Workflow } from "@/shared/api/types";
 import {
   deleteWorkflow,
   getChannelsWorkflows,
   triggerWorkflow,
-  updateWorkflow,
 } from "@/shared/api/tauriWorkflows";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -46,7 +30,7 @@ type WorkflowsViewProps = {
   channels: Channel[];
   editor: WorkflowEditorRoute | null;
   onCloseEditor: () => void;
-  onCreateWorkflow: () => void;
+  onCreateWorkflow: (starting: "blank" | "example") => void;
   onDuplicateWorkflow: (workflowId: string) => void;
   onEditWorkflow: (workflowId: string) => void;
   onViewWorkflow: (workflowId: string) => void;
@@ -58,46 +42,48 @@ type WorkflowWithChannel = {
   channelName: string;
 };
 
-const WORKFLOW_CARD_GRID_CLASS =
-  "grid grid-cols-1 gap-3 [@container(min-width:42rem)]:grid-cols-2 [@container(min-width:63rem)]:grid-cols-3";
-
 function WorkflowsListSkeleton() {
   return (
-    <div className={WORKFLOW_CARD_GRID_CLASS}>
-      {["first", "second", "third", "fourth"].map((card) => (
-        <div
-          className="flex min-h-60 flex-col rounded-2xl bg-muted/50 p-5 shadow-xs"
-          key={card}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-9 rounded-xl" />
-              <Skeleton className="h-4 w-4" />
-              <Skeleton className="h-9 w-9 rounded-xl" />
-            </div>
-            <Skeleton className="h-6 w-16 rounded-full" />
-          </div>
-          <Skeleton className="mt-5 h-3 w-28" />
-          <Skeleton className="mt-2 h-6 w-full" />
-          <Skeleton className="mt-2 h-6 w-4/5" />
-          <Skeleton className="mt-auto h-4 w-32" />
+    <div className="space-y-4" role="status" aria-label="Loading workflows">
+      {["first", "second", "third"].map((row) => (
+        <div className="space-y-2 border-b border-border px-3 py-5" key={row}>
+          <Skeleton className="h-5 w-52" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+          <Skeleton className="h-3 w-36" />
         </div>
       ))}
     </div>
   );
 }
 
-function CreateWorkflowCard({ onClick }: { onClick: () => void }) {
+function WorkflowStartCard({
+  onCreateWorkflow,
+}: {
+  onCreateWorkflow: (starting: "blank" | "example") => void;
+}) {
   return (
-    <button
-      aria-label="Create Workflow"
-      className="group relative flex min-h-60 w-full min-w-0 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-border/80 bg-transparent text-muted-foreground shadow-xs transition-colors hover:border-border hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-      data-testid="new-workflow-card"
-      onClick={onClick}
-      type="button"
-    >
-      <Plus className="h-7 w-7 transition-colors" />
-    </button>
+    <section className="col-span-full rounded-2xl border border-border bg-card p-6 shadow-xs sm:p-8">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Start with a familiar routine
+      </span>
+      <h2 className="mt-3 text-xl font-semibold">
+        A weekly content plan, from brief to approval.
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+        A channel agent prepares it, then a person in the channel reviews it.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Button onClick={() => onCreateWorkflow("example")}>
+          Use this example
+        </Button>
+        <Button onClick={() => onCreateWorkflow("blank")} variant="outline">
+          Start from scratch
+        </Button>
+      </div>
+      <p className="mt-6 text-sm text-muted-foreground">
+        One person doing one recurring job? Set a duty on their profile instead.
+      </p>
+    </section>
   );
 }
 
@@ -112,9 +98,11 @@ export function WorkflowsView({
   onEditorPaneChange,
 }: WorkflowsViewProps) {
   const [deleteTarget, setDeleteTarget] = React.useState<Workflow | null>(null);
-  const [activationTarget, setActivationTarget] =
-    React.useState<Workflow | null>(null);
   const queryClient = useQueryClient();
+  const membershipQuery = useMyRelayMembershipQuery();
+  const canManageWorkflows =
+    membershipQuery.data?.role === "owner" ||
+    membershipQuery.data?.role === "admin";
 
   const editorWorkflowId =
     editor && editor.mode !== "create" ? editor.workflowId : null;
@@ -127,7 +115,7 @@ export function WorkflowsView({
     queryKey: allWorkflowsQueryKey(channelIdKey),
     queryFn: async () => {
       // Single batched relay query for all member channels, then group by the
-      // channel_id each workflow carries — replaces the per-channel fanout.
+      // channel_id each workflow carries, replacing the per-channel fanout.
       const channelNameById = new Map(
         memberChannels.map((channel) => [channel.id, channel.name]),
       );
@@ -148,9 +136,6 @@ export function WorkflowsView({
   });
 
   const allWorkflows = allWorkflowsQuery.data ?? [];
-  const workflows = allWorkflows.map(({ workflow }) => workflow);
-  const authorPresentations = useWorkflowListAuthorPresentations(workflows);
-  const messagePresentations = useWorkflowListMessagePresentations(workflows);
 
   const triggerMutation = useMutation({
     mutationFn: (workflowId: string) => triggerWorkflow(workflowId),
@@ -164,39 +149,6 @@ export function WorkflowsView({
   const deleteMutation = useMutation({
     mutationFn: (workflowId: string) => deleteWorkflow(workflowId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[0] === "workflows" ||
-          query.queryKey[0] === "workflows-all",
-      });
-    },
-  });
-
-  const toggleEnabledMutation = useMutation({
-    mutationFn: (workflow: Workflow) =>
-      updateWorkflow(
-        workflow.id,
-        yamlStringify(
-          withWorkflowEnabled(
-            workflow.definition,
-            !getWorkflowEnabled(workflow.definition),
-          ),
-        ),
-        workflow.revision,
-      ),
-    onError: (error) => {
-      toast.error("Couldn’t change workflow status", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "The workflow was not changed. Try again.",
-      });
-    },
-    onSuccess: (_data, workflow) => {
-      setActivationTarget(null);
-      void queryClient.invalidateQueries({
-        queryKey: workflowQueryKey(workflow.id),
-      });
       void queryClient.invalidateQueries({
         predicate: (query) =>
           query.queryKey[0] === "workflows" ||
@@ -237,37 +189,29 @@ export function WorkflowsView({
     [onViewWorkflow],
   );
 
-  const handleEdit = React.useCallback(
-    (workflow: Workflow) => onEditWorkflow(workflow.id),
-    [onEditWorkflow],
-  );
-
-  const handleDuplicate = React.useCallback(
-    (workflow: Workflow) => onDuplicateWorkflow(workflow.id),
-    [onDuplicateWorkflow],
-  );
-
-  const toggleEnabled = toggleEnabledMutation.mutate;
-  const handleToggleEnabled = React.useCallback(
-    (workflow: Workflow) => {
-      if (
-        !getWorkflowEnabled(workflow.definition) &&
-        getWorkflowActivationWarning(yamlStringify(workflow.definition))
-      ) {
-        setActivationTarget(workflow);
-        return;
-      }
-      toggleEnabled(workflow);
-    },
-    [toggleEnabled],
-  );
-  const activationWarning = activationTarget
-    ? getWorkflowActivationWarning(yamlStringify(activationTarget.definition))
-    : null;
-
   const editorWorkflowHint = allWorkflows.find(
     ({ workflow }) => workflow.id === editorWorkflowId,
   )?.workflow;
+
+  if (editor && (editor.advanced !== true || !canManageWorkflows)) {
+    return (
+      <div
+        className="relative flex min-h-0 flex-1 overflow-hidden"
+        data-testid="workflows-view"
+      >
+        <PlainWorkflowBuilder
+          channels={memberChannels}
+          editor={editor}
+          key={
+            editor.mode === "create"
+              ? editor.mode
+              : `${editor.mode}:${editor.workflowId}`
+          }
+          onClose={onCloseEditor}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -281,21 +225,16 @@ export function WorkflowsView({
         <div className="mx-auto w-full max-w-6xl space-y-8 [container-type:inline-size]">
           <PageHeader
             action={
-              <Button
-                aria-label="Refresh workflows"
-                disabled={allWorkflowsQuery.isFetching}
-                onClick={() => void allWorkflowsQuery.refetch()}
-                size="icon"
-                variant="ghost"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${allWorkflowsQuery.isFetching ? "animate-spin" : ""}`}
-                />
+              <Button onClick={() => onCreateWorkflow("blank")}>
+                <Plus aria-hidden="true" />
+                Create workflow
               </Button>
             }
-            description="Automations that keep your community moving."
             title="Workflows"
           />
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Bring people and agents together around a repeatable routine.
+          </p>
 
           {allWorkflowsQuery.isLoading ? (
             <WorkflowsListSkeleton />
@@ -311,27 +250,58 @@ export function WorkflowsView({
               </Button>
             </div>
           ) : (
-            <div className={WORKFLOW_CARD_GRID_CLASS}>
-              <CreateWorkflowCard onClick={onCreateWorkflow} />
-              {allWorkflows.map(({ workflow, channelName }) => (
-                <WorkflowCard
-                  authorPresentation={authorPresentations.get(workflow.id)}
-                  channelName={channelName}
-                  isTogglingEnabled={
-                    toggleEnabledMutation.isPending &&
-                    toggleEnabledMutation.variables?.id === workflow.id
-                  }
-                  key={workflow.id}
-                  messagePresentation={messagePresentations.get(workflow.id)}
-                  onDelete={handleDelete}
-                  onDuplicate={handleDuplicate}
-                  onEdit={handleEdit}
-                  onToggleEnabled={handleToggleEnabled}
-                  onTrigger={handleTrigger}
-                  onView={handleView}
-                  workflow={workflow}
-                />
-              ))}
+            <div className="space-y-1">
+              {allWorkflows.length === 0 ? (
+                <WorkflowStartCard onCreateWorkflow={onCreateWorkflow} />
+              ) : (
+                allWorkflows.map(({ workflow, channelName }) => {
+                  const status = getWorkflowDisplayStatus(workflow);
+                  const stepCount = Array.isArray(workflow.definition.steps)
+                    ? workflow.definition.steps.length
+                    : 0;
+                  const trigger = getWorkflowTriggerSummary(
+                    workflow.definition,
+                  );
+                  return (
+                    <button
+                      className="group flex w-full items-center gap-4 border-y border-border px-3 py-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:gap-6 sm:px-4"
+                      data-testid={`workflow-card-${workflow.id}`}
+                      key={workflow.id}
+                      onClick={() => handleView(workflow)}
+                      type="button"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <strong
+                          className="block truncate text-base font-semibold"
+                          data-testid="workflow-card-name"
+                        >
+                          {workflow.name}
+                        </strong>
+                        <span className="mt-2 block text-sm text-muted-foreground">
+                          {trigger ?? "Workflow"}
+                        </span>
+                        <span
+                          className="mt-2 block text-xs text-muted-foreground"
+                          data-testid="workflow-card-channel"
+                        >
+                          {stepCount} {stepCount === 1 ? "step" : "steps"}
+                          {channelName ? ` · #${channelName}` : ""}
+                        </span>
+                      </span>
+                      <span
+                        className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+                        data-testid="workflow-card-status"
+                      >
+                        {status === "active" ? "Active" : "Paused"}
+                      </span>
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                      />
+                    </button>
+                  );
+                })
+              )}
             </div>
           )}
         </div>
@@ -348,40 +318,6 @@ export function WorkflowsView({
         onTriggerWorkflow={handleTrigger}
         workflowHint={editorWorkflowHint}
       />
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open && !toggleEnabledMutation.isPending) {
-            setActivationTarget(null);
-          }
-        }}
-        open={activationTarget !== null}
-      >
-        <AlertDialogContent data-testid="workflow-activation-confirmation">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {activationWarning?.title ?? "Turn on this workflow?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {activationWarning?.description ??
-                "Turn it on to let it run immediately, or keep it off until you’re ready."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep off</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={toggleEnabledMutation.isPending}
-              onClick={(event) => {
-                if (!activationTarget) return;
-                event.preventDefault();
-                toggleEnabled(activationTarget);
-              }}
-            >
-              Turn on
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <WorkflowDeleteDialog
         error={

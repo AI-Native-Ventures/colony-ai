@@ -6,7 +6,6 @@
 
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
-import { Route as workRouteImport } from "./routes/work";
 import { Route as todayRouteImport } from "./routes/today";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
@@ -15,6 +14,7 @@ import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
 import { Route as powerRouteImport } from "./routes/power";
 import { Route as pipelineRouteImport } from "./routes/pipeline";
+import { Route as moneyRouteImport } from "./routes/money";
 import { Route as leadsRouteImport } from "./routes/leads";
 import { Route as goalsRouteImport } from "./routes/goals";
 import { Route as factoryRouteImport } from "./routes/factory";
@@ -22,6 +22,7 @@ import { Route as discoveryRouteImport } from "./routes/discovery";
 import { Route as clientsRouteImport } from "./routes/clients";
 import { Route as campaignRouteImport } from "./routes/campaign";
 import { Route as agentsRouteImport } from "./routes/agents";
+import { Route as workRouteImport } from "./routes/work";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$workflowId";
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
@@ -30,11 +31,15 @@ import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as permissionDotsplatRouteImport } from "./routes/permission.$";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
+import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
+import { Route as moneyDotinvoicesRouteImport } from "./routes/money.invoices";
+import { Route as moneyDotfollowUpsRouteImport } from "./routes/money.follow-ups";
+import { Route as moneyDotadjustmentsRouteImport } from "./routes/money.adjustments";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
 import { Route as goalsDotreferenceRouteImport } from "./routes/goals.reference";
-import { Route as goalsDotnewRouteImport } from "./routes/goals.new";
 import { Route as goalsDotgoalIdRouteImport } from "./routes/goals.$goalId";
 import { Route as factoryDotstatesRouteImport } from "./routes/factory.states";
 import { Route as factoryDotsessionsRouteImport } from "./routes/factory.sessions";
@@ -42,10 +47,18 @@ import { Route as factoryDotprojectsRouteImport } from "./routes/factory.project
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
+import { Route as asksDotnewRouteImport } from "./routes/asks.new";
+import { Route as workDotscreenDotresourceIdRouteImport } from "./routes/work.$screen.$resourceId";
 import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
+import { Route as moneyDottaxDotstateRouteImport } from "./routes/money.tax.$state";
+import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
+import { Route as moneyDotprofitabilityDotstateRouteImport } from "./routes/money.profitability.$state";
+import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
+import { Route as moneyDotcostsDotstateRouteImport } from "./routes/money.costs.$state";
+import { Route as goalsDotlinkDotgoalIdRouteImport } from "./routes/goals.link.$goalId";
 import { Route as goalsDotgoalIdDotsubgoalRouteImport } from "./routes/goals.$goalId.subgoal";
 import { Route as goalsDotgoalIdDotshareRouteImport } from "./routes/goals.$goalId.share";
 import { Route as goalsDotgoalIdDotprogressRouteImport } from "./routes/goals.$goalId.progress";
@@ -62,11 +75,6 @@ import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./rou
 const workflowsRoute = workflowsRouteImport.update({
   id: "/workflows",
   path: "/workflows",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const workRoute = workRouteImport.update({
-  id: "/work",
-  path: "/work",
   getParentRoute: () => rootRouteImport,
 } as any);
 const todayRoute = todayRouteImport.update({
@@ -109,6 +117,11 @@ const pipelineRoute = pipelineRouteImport.update({
   path: "/pipeline",
   getParentRoute: () => rootRouteImport,
 } as any);
+const moneyRoute = moneyRouteImport.update({
+  id: "/money",
+  path: "/money",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const leadsRoute = leadsRouteImport.update({
   id: "/leads",
   path: "/leads",
@@ -142,6 +155,11 @@ const campaignRoute = campaignRouteImport.update({
 const agentsRoute = agentsRouteImport.update({
   id: "/agents",
   path: "/agents",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const workRoute = workRouteImport.update({
+  id: "/$workSurface",
+  path: "/$workSurface",
   getParentRoute: () => rootRouteImport,
 } as any);
 const indexRoute = indexRouteImport.update({
@@ -184,6 +202,11 @@ const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   path: "/projects/$projectId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const permissionDotsplatRoute = permissionDotsplatRouteImport.update({
+  id: "/permission/$",
+  path: "/permission/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const navigationDotstartRoute = navigationDotstartRouteImport.update({
   id: "/navigation/start",
   path: "/navigation/start",
@@ -194,6 +217,26 @@ const navigationDothistoryRoute = navigationDothistoryRouteImport.update({
   path: "/navigation/history",
   getParentRoute: () => rootRouteImport,
 } as any);
+const moneyDotrevenueRoute = moneyDotrevenueRouteImport.update({
+  id: "/money/revenue",
+  path: "/money/revenue",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotinvoicesRoute = moneyDotinvoicesRouteImport.update({
+  id: "/money/invoices",
+  path: "/money/invoices",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotfollowUpsRoute = moneyDotfollowUpsRouteImport.update({
+  id: "/money/follow-ups",
+  path: "/money/follow-ups",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotadjustmentsRoute = moneyDotadjustmentsRouteImport.update({
+  id: "/money/adjustments",
+  path: "/money/adjustments",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
@@ -202,11 +245,6 @@ const messagesDotnewRoute = messagesDotnewRouteImport.update({
 const goalsDotreferenceRoute = goalsDotreferenceRouteImport.update({
   id: "/goals/reference",
   path: "/goals/reference",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const goalsDotnewRoute = goalsDotnewRouteImport.update({
-  id: "/goals/new",
-  path: "/goals/new",
   getParentRoute: () => rootRouteImport,
 } as any);
 const goalsDotgoalIdRoute = goalsDotgoalIdRouteImport.update({
@@ -244,6 +282,17 @@ const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   path: "/channels/$channelId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const asksDotnewRoute = asksDotnewRouteImport.update({
+  id: "/asks/new",
+  path: "/asks/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const workDotscreenDotresourceIdRoute =
+  workDotscreenDotresourceIdRouteImport.update({
+    id: "/work/$screen/$resourceId",
+    path: "/work/$screen/$resourceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const salesDotproposalDotproposalFormRoute =
   salesDotproposalDotproposalFormRouteImport.update({
     id: "/sales/proposal/proposal-form",
@@ -268,6 +317,39 @@ const salesDotleadDotprospectIdRoute =
     path: "/sales/lead/$prospectId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const moneyDottaxDotstateRoute = moneyDottaxDotstateRouteImport.update({
+  id: "/money/tax/$state",
+  path: "/money/tax/$state",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const moneyDotrevenueDotinvoiceIdRoute =
+  moneyDotrevenueDotinvoiceIdRouteImport.update({
+    id: "/money/revenue/$invoiceId",
+    path: "/money/revenue/$invoiceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotprofitabilityDotstateRoute =
+  moneyDotprofitabilityDotstateRouteImport.update({
+    id: "/money/profitability/$state",
+    path: "/money/profitability/$state",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotinvoiceDotinvoiceIdRoute =
+  moneyDotinvoiceDotinvoiceIdRouteImport.update({
+    id: "/money/invoice/$invoiceId",
+    path: "/money/invoice/$invoiceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const moneyDotcostsDotstateRoute = moneyDotcostsDotstateRouteImport.update({
+  id: "/money/costs/$state",
+  path: "/money/costs/$state",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const goalsDotlinkDotgoalIdRoute = goalsDotlinkDotgoalIdRouteImport.update({
+  id: "/goals/link/$goalId",
+  path: "/goals/link/$goalId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const goalsDotgoalIdDotsubgoalRoute =
   goalsDotgoalIdDotsubgoalRouteImport.update({
     id: "/goals/$goalId/subgoal",
@@ -339,6 +421,7 @@ const channelsDotchannelIdDotpostsDotpostIdRoute =
 
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
+  "/$workSurface": typeof workRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -346,6 +429,7 @@ export interface FileRoutesByFullPath {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -354,8 +438,8 @@ export interface FileRoutesByFullPath {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
-  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
+  "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
@@ -363,11 +447,15 @@ export interface FileRoutesByFullPath {
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
-  "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -386,14 +474,22 @@ export interface FileRoutesByFullPath {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
+  "/money/costs/$state": typeof moneyDotcostsDotstateRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/profitability/$state": typeof moneyDotprofitabilityDotstateRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
+  "/money/tax/$state": typeof moneyDottaxDotstateRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
+  "/$workSurface": typeof workRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -401,6 +497,7 @@ export interface FileRoutesByTo {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -409,8 +506,8 @@ export interface FileRoutesByTo {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
-  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
+  "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
@@ -418,11 +515,15 @@ export interface FileRoutesByTo {
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
-  "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -441,15 +542,23 @@ export interface FileRoutesByTo {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
+  "/money/costs/$state": typeof moneyDotcostsDotstateRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/profitability/$state": typeof moneyDotprofitabilityDotstateRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
+  "/money/tax/$state": typeof moneyDottaxDotstateRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
+  "/$workSurface": typeof workRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -457,6 +566,7 @@ export interface FileRoutesById {
   "/factory": typeof factoryRoute;
   "/goals": typeof goalsRoute;
   "/leads": typeof leadsRoute;
+  "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
   "/projects": typeof projectsRoute;
@@ -465,8 +575,8 @@ export interface FileRoutesById {
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
-  "/work": typeof workRoute;
   "/workflows": typeof workflowsRoute;
+  "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
@@ -474,11 +584,15 @@ export interface FileRoutesById {
   "/factory/sessions": typeof factoryDotsessionsRoute;
   "/factory/states": typeof factoryDotstatesRoute;
   "/goals/$goalId": typeof goalsDotgoalIdRoute;
-  "/goals/new": typeof goalsDotnewRoute;
   "/goals/reference": typeof goalsDotreferenceRoute;
   "/messages/new": typeof messagesDotnewRoute;
+  "/money/adjustments": typeof moneyDotadjustmentsRoute;
+  "/money/follow-ups": typeof moneyDotfollowUpsRoute;
+  "/money/invoices": typeof moneyDotinvoicesRoute;
+  "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -497,16 +611,24 @@ export interface FileRoutesById {
   "/goals/$goalId/progress": typeof goalsDotgoalIdDotprogressRoute;
   "/goals/$goalId/share": typeof goalsDotgoalIdDotshareRoute;
   "/goals/$goalId/subgoal": typeof goalsDotgoalIdDotsubgoalRoute;
+  "/goals/link/$goalId": typeof goalsDotlinkDotgoalIdRoute;
+  "/money/costs/$state": typeof moneyDotcostsDotstateRoute;
+  "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
+  "/money/profitability/$state": typeof moneyDotprofitabilityDotstateRoute;
+  "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
+  "/money/tax/$state": typeof moneyDottaxDotstateRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | "/"
+    | "/$workSurface"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -514,6 +636,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -522,8 +645,8 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
-    | "/work"
     | "/workflows"
+    | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/factory/plans"
@@ -531,11 +654,15 @@ export interface FileRouteTypes {
     | "/factory/sessions"
     | "/factory/states"
     | "/goals/$goalId"
-    | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -554,14 +681,22 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
+    | "/money/costs/$state"
+    | "/money/invoice/$invoiceId"
+    | "/money/profitability/$state"
+    | "/money/revenue/$invoiceId"
+    | "/money/tax/$state"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/$screen/$resourceId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
+    | "/$workSurface"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -569,6 +704,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -577,8 +713,8 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
-    | "/work"
     | "/workflows"
+    | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/factory/plans"
@@ -586,11 +722,15 @@ export interface FileRouteTypes {
     | "/factory/sessions"
     | "/factory/states"
     | "/goals/$goalId"
-    | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -609,14 +749,22 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
+    | "/money/costs/$state"
+    | "/money/invoice/$invoiceId"
+    | "/money/profitability/$state"
+    | "/money/revenue/$invoiceId"
+    | "/money/tax/$state"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/$screen/$resourceId"
     | "/channels/$channelId/posts/$postId";
   id:
     | "__root__"
     | "/"
+    | "/$workSurface"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -624,6 +772,7 @@ export interface FileRouteTypes {
     | "/factory"
     | "/goals"
     | "/leads"
+    | "/money"
     | "/pipeline"
     | "/power"
     | "/projects"
@@ -632,8 +781,8 @@ export interface FileRouteTypes {
     | "/settings"
     | "/supervision"
     | "/today"
-    | "/work"
     | "/workflows"
+    | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/factory/plans"
@@ -641,11 +790,15 @@ export interface FileRouteTypes {
     | "/factory/sessions"
     | "/factory/states"
     | "/goals/$goalId"
-    | "/goals/new"
     | "/goals/reference"
     | "/messages/new"
+    | "/money/adjustments"
+    | "/money/follow-ups"
+    | "/money/invoices"
+    | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -664,15 +817,23 @@ export interface FileRouteTypes {
     | "/goals/$goalId/progress"
     | "/goals/$goalId/share"
     | "/goals/$goalId/subgoal"
+    | "/goals/link/$goalId"
+    | "/money/costs/$state"
+    | "/money/invoice/$invoiceId"
+    | "/money/profitability/$state"
+    | "/money/revenue/$invoiceId"
+    | "/money/tax/$state"
     | "/sales/lead/$prospectId"
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/work/$screen/$resourceId"
     | "/channels/$channelId/posts/$postId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
+  workRoute: typeof workRoute;
   agentsRoute: typeof agentsRoute;
   campaignRoute: typeof campaignRoute;
   clientsRoute: typeof clientsRoute;
@@ -680,6 +841,7 @@ export interface RootRouteChildren {
   factoryRoute: typeof factoryRoute;
   goalsRoute: typeof goalsRoute;
   leadsRoute: typeof leadsRoute;
+  moneyRoute: typeof moneyRoute;
   pipelineRoute: typeof pipelineRoute;
   powerRoute: typeof powerRoute;
   projectsRoute: typeof projectsRoute;
@@ -688,8 +850,8 @@ export interface RootRouteChildren {
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
   todayRoute: typeof todayRoute;
-  workRoute: typeof workRoute;
   workflowsRoute: typeof workflowsRoute;
+  asksDotnewRoute: typeof asksDotnewRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   factoryDotplansRoute: typeof factoryDotplansRoute;
@@ -697,11 +859,15 @@ export interface RootRouteChildren {
   factoryDotsessionsRoute: typeof factoryDotsessionsRoute;
   factoryDotstatesRoute: typeof factoryDotstatesRoute;
   goalsDotgoalIdRoute: typeof goalsDotgoalIdRoute;
-  goalsDotnewRoute: typeof goalsDotnewRoute;
   goalsDotreferenceRoute: typeof goalsDotreferenceRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
+  moneyDotadjustmentsRoute: typeof moneyDotadjustmentsRoute;
+  moneyDotfollowUpsRoute: typeof moneyDotfollowUpsRoute;
+  moneyDotinvoicesRoute: typeof moneyDotinvoicesRoute;
+  moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
+  permissionDotsplatRoute: typeof permissionDotsplatRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
@@ -720,10 +886,17 @@ export interface RootRouteChildren {
   goalsDotgoalIdDotprogressRoute: typeof goalsDotgoalIdDotprogressRoute;
   goalsDotgoalIdDotshareRoute: typeof goalsDotgoalIdDotshareRoute;
   goalsDotgoalIdDotsubgoalRoute: typeof goalsDotgoalIdDotsubgoalRoute;
+  goalsDotlinkDotgoalIdRoute: typeof goalsDotlinkDotgoalIdRoute;
+  moneyDotcostsDotstateRoute: typeof moneyDotcostsDotstateRoute;
+  moneyDotinvoiceDotinvoiceIdRoute: typeof moneyDotinvoiceDotinvoiceIdRoute;
+  moneyDotprofitabilityDotstateRoute: typeof moneyDotprofitabilityDotstateRoute;
+  moneyDotrevenueDotinvoiceIdRoute: typeof moneyDotrevenueDotinvoiceIdRoute;
+  moneyDottaxDotstateRoute: typeof moneyDottaxDotstateRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
   salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
+  workDotscreenDotresourceIdRoute: typeof workDotscreenDotresourceIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
 }
 
@@ -734,13 +907,6 @@ declare module "@tanstack/react-router" {
       path: "/workflows";
       fullPath: "/workflows";
       preLoaderRoute: typeof workflowsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/work": {
-      id: "/work";
-      path: "/work";
-      fullPath: "/work";
-      preLoaderRoute: typeof workRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/today": {
@@ -799,6 +965,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof pipelineRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/money": {
+      id: "/money";
+      path: "/money";
+      fullPath: "/money";
+      preLoaderRoute: typeof moneyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/leads": {
       id: "/leads";
       path: "/leads";
@@ -846,6 +1019,13 @@ declare module "@tanstack/react-router" {
       path: "/agents";
       fullPath: "/agents";
       preLoaderRoute: typeof agentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/$workSurface": {
+      id: "/$workSurface";
+      path: "/$workSurface";
+      fullPath: "/$workSurface";
+      preLoaderRoute: typeof workRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/": {
@@ -904,6 +1084,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/permission/$": {
+      id: "/permission/$";
+      path: "/permission/$";
+      fullPath: "/permission/$";
+      preLoaderRoute: typeof permissionDotsplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/navigation/start": {
       id: "/navigation/start";
       path: "/navigation/start";
@@ -918,6 +1105,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof navigationDothistoryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/money/revenue": {
+      id: "/money/revenue";
+      path: "/money/revenue";
+      fullPath: "/money/revenue";
+      preLoaderRoute: typeof moneyDotrevenueRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/invoices": {
+      id: "/money/invoices";
+      path: "/money/invoices";
+      fullPath: "/money/invoices";
+      preLoaderRoute: typeof moneyDotinvoicesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/follow-ups": {
+      id: "/money/follow-ups";
+      path: "/money/follow-ups";
+      fullPath: "/money/follow-ups";
+      preLoaderRoute: typeof moneyDotfollowUpsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/adjustments": {
+      id: "/money/adjustments";
+      path: "/money/adjustments";
+      fullPath: "/money/adjustments";
+      preLoaderRoute: typeof moneyDotadjustmentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/messages/new": {
       id: "/messages/new";
       path: "/messages/new";
@@ -930,13 +1145,6 @@ declare module "@tanstack/react-router" {
       path: "/goals/reference";
       fullPath: "/goals/reference";
       preLoaderRoute: typeof goalsDotreferenceRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/goals/new": {
-      id: "/goals/new";
-      path: "/goals/new";
-      fullPath: "/goals/new";
-      preLoaderRoute: typeof goalsDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/goals/$goalId": {
@@ -988,6 +1196,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof channelsDotchannelIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/asks/new": {
+      id: "/asks/new";
+      path: "/asks/new";
+      fullPath: "/asks/new";
+      preLoaderRoute: typeof asksDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/work/$screen/$resourceId": {
+      id: "/work/$screen/$resourceId";
+      path: "/work/$screen/$resourceId";
+      fullPath: "/work/$screen/$resourceId";
+      preLoaderRoute: typeof workDotscreenDotresourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sales/proposal/proposal-form": {
       id: "/sales/proposal/proposal-form";
       path: "/sales/proposal/proposal-form";
@@ -1014,6 +1236,48 @@ declare module "@tanstack/react-router" {
       path: "/sales/lead/$prospectId";
       fullPath: "/sales/lead/$prospectId";
       preLoaderRoute: typeof salesDotleadDotprospectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/tax/$state": {
+      id: "/money/tax/$state";
+      path: "/money/tax/$state";
+      fullPath: "/money/tax/$state";
+      preLoaderRoute: typeof moneyDottaxDotstateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/revenue/$invoiceId": {
+      id: "/money/revenue/$invoiceId";
+      path: "/money/revenue/$invoiceId";
+      fullPath: "/money/revenue/$invoiceId";
+      preLoaderRoute: typeof moneyDotrevenueDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/profitability/$state": {
+      id: "/money/profitability/$state";
+      path: "/money/profitability/$state";
+      fullPath: "/money/profitability/$state";
+      preLoaderRoute: typeof moneyDotprofitabilityDotstateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/invoice/$invoiceId": {
+      id: "/money/invoice/$invoiceId";
+      path: "/money/invoice/$invoiceId";
+      fullPath: "/money/invoice/$invoiceId";
+      preLoaderRoute: typeof moneyDotinvoiceDotinvoiceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/money/costs/$state": {
+      id: "/money/costs/$state";
+      path: "/money/costs/$state";
+      fullPath: "/money/costs/$state";
+      preLoaderRoute: typeof moneyDotcostsDotstateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/goals/link/$goalId": {
+      id: "/goals/link/$goalId";
+      path: "/goals/link/$goalId";
+      fullPath: "/goals/link/$goalId";
+      preLoaderRoute: typeof goalsDotlinkDotgoalIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/goals/$goalId/subgoal": {
@@ -1105,6 +1369,7 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
+  workRoute: workRoute,
   agentsRoute: agentsRoute,
   campaignRoute: campaignRoute,
   clientsRoute: clientsRoute,
@@ -1112,6 +1377,7 @@ const rootRouteChildren: RootRouteChildren = {
   factoryRoute: factoryRoute,
   goalsRoute: goalsRoute,
   leadsRoute: leadsRoute,
+  moneyRoute: moneyRoute,
   pipelineRoute: pipelineRoute,
   powerRoute: powerRoute,
   projectsRoute: projectsRoute,
@@ -1120,8 +1386,8 @@ const rootRouteChildren: RootRouteChildren = {
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
   todayRoute: todayRoute,
-  workRoute: workRoute,
   workflowsRoute: workflowsRoute,
+  asksDotnewRoute: asksDotnewRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
   factoryDotplansRoute: factoryDotplansRoute,
@@ -1129,11 +1395,15 @@ const rootRouteChildren: RootRouteChildren = {
   factoryDotsessionsRoute: factoryDotsessionsRoute,
   factoryDotstatesRoute: factoryDotstatesRoute,
   goalsDotgoalIdRoute: goalsDotgoalIdRoute,
-  goalsDotnewRoute: goalsDotnewRoute,
   goalsDotreferenceRoute: goalsDotreferenceRoute,
   messagesDotnewRoute: messagesDotnewRoute,
+  moneyDotadjustmentsRoute: moneyDotadjustmentsRoute,
+  moneyDotfollowUpsRoute: moneyDotfollowUpsRoute,
+  moneyDotinvoicesRoute: moneyDotinvoicesRoute,
+  moneyDotrevenueRoute: moneyDotrevenueRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
+  permissionDotsplatRoute: permissionDotsplatRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,
@@ -1152,10 +1422,17 @@ const rootRouteChildren: RootRouteChildren = {
   goalsDotgoalIdDotprogressRoute: goalsDotgoalIdDotprogressRoute,
   goalsDotgoalIdDotshareRoute: goalsDotgoalIdDotshareRoute,
   goalsDotgoalIdDotsubgoalRoute: goalsDotgoalIdDotsubgoalRoute,
+  goalsDotlinkDotgoalIdRoute: goalsDotlinkDotgoalIdRoute,
+  moneyDotcostsDotstateRoute: moneyDotcostsDotstateRoute,
+  moneyDotinvoiceDotinvoiceIdRoute: moneyDotinvoiceDotinvoiceIdRoute,
+  moneyDotprofitabilityDotstateRoute: moneyDotprofitabilityDotstateRoute,
+  moneyDotrevenueDotinvoiceIdRoute: moneyDotrevenueDotinvoiceIdRoute,
+  moneyDottaxDotstateRoute: moneyDottaxDotstateRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,
   salesDotproposalDotproposalFormRoute: salesDotproposalDotproposalFormRoute,
+  workDotscreenDotresourceIdRoute: workDotscreenDotresourceIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
 };

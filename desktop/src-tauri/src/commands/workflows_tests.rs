@@ -20,6 +20,21 @@ fn wf_event(d: &str, h: &str, yaml: &str) -> nostr::Event {
         .expect("sign")
 }
 
+fn workflow_status_event(workflow_id: &str, channel_id: &str, status: &str) -> nostr::Event {
+    let keys = Keys::generate();
+    let tags: Vec<Tag> = [vec!["workflow", workflow_id], vec!["h", channel_id]]
+        .into_iter()
+        .map(|tag| Tag::parse(tag).expect("parse tag"))
+        .collect();
+    EventBuilder::new(
+        Kind::Custom(46021),
+        serde_json::json!({ "status": status }).to_string(),
+    )
+    .tags(tags)
+    .sign_with_keys(&keys)
+    .expect("sign status")
+}
+
 const CHAN: &str = "11111111-1111-1111-1111-111111111111";
 const WF: &str = "22222222-2222-2222-2222-222222222222";
 
@@ -48,6 +63,59 @@ fn workflow_from_event_maps_all_fields() {
     assert_eq!(wf.status, "active");
     assert_eq!(wf.created_at, ev.created_at.as_secs() as i64);
     assert_eq!(wf.updated_at, ev.created_at.as_secs() as i64);
+}
+
+#[test]
+fn workflow_record_respects_legacy_disabled_definition_until_status_override() {
+    let workflow = workflow_record(
+        WF.to_string(),
+        "revision".to_string(),
+        Some(CHAN.to_string()),
+        "owner".to_string(),
+        "name: Paused\nenabled: false\ntrigger:\n  on: manual\nsteps:\n  - id: wait\n    action: delay\n    duration: 1m\n",
+        1,
+        2,
+    );
+    assert_eq!(workflow.status, "disabled");
+    assert_eq!(
+        workflow_status_from_event(&workflow_status_event(WF, CHAN, "paused")),
+        Some("disabled")
+    );
+    assert_eq!(
+        workflow_status_from_event(&workflow_status_event(WF, CHAN, "active")),
+        Some("active")
+    );
+}
+
+#[test]
+fn workflow_draft_event_uses_draft_wire_shape() {
+    let event = EventBuilder::new(Kind::Custom(30623), YAML)
+        .tags(
+            [vec!["d", WF], vec!["h", CHAN]]
+                .into_iter()
+                .map(|tag| Tag::parse(tag).expect("parse tag")),
+        )
+        .sign_with_keys(&Keys::generate())
+        .expect("sign draft");
+    let draft = workflow_draft_from_event(&event).expect("draft wire");
+
+    assert_eq!(draft.id, WF);
+    assert_eq!(draft.revision, event.id.to_hex());
+    assert_eq!(draft.channel_id, CHAN);
+    assert_eq!(draft.name, "Greet on join");
+}
+
+#[test]
+fn draft_yaml_accepts_incomplete_builder_state_and_rejects_non_objects() {
+    assert!(validate_workflow_draft_yaml(
+        "name: Weekly review\ntrigger:\n  on: manual\nsteps: []\n"
+    )
+    .is_ok());
+    assert!(validate_workflow_draft_yaml("name: [unfinished").is_err());
+    assert_eq!(
+        validate_workflow_draft_yaml("a scalar"),
+        Err("workflow draft must be a YAML object".to_string())
+    );
 }
 
 #[test]

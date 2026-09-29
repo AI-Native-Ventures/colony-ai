@@ -162,9 +162,20 @@ type MockBridgeOptions = {
   referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */
   referenceWorkspaceRole?: "owner" | "admin" | "member";
+  /** Override the active community role when testing relay-authorized actions. */
+  relayRole?: "owner" | "admin" | "member" | null;
+  /** Make the mock relay expose its NIP-43 community membership snapshot. */
+  relayRequiresMembership?: boolean;
   /** Override record statuses to exercise reference workspace boundaries. */
   referenceWorkspaceClientStatus?: string;
   referenceWorkspaceWorkStatus?: string;
+  /** Exclude invoice/payment records for unavailable source-state scenarios. */
+  referenceWorkspaceMoneyRecords?: boolean;
+  /** Reject listed business record writes once in reference workspace tests. */
+  referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+    kind: number;
+    reason: string;
+  }>;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
@@ -190,6 +201,8 @@ type MockBridgeOptions = {
   companyAskRelayPrivateKeyHex?: string;
   /** Reject these ask response publishes in order, then accept them. */
   askResponseErrors?: string[];
+  /** Reject these ask create publishes in order, then accept them. */
+  askActionErrors?: string[];
   /** Pending workflow approval rows used by Today E2E coverage. */
   workflowApprovals?: Array<{
     workflowId: string;
@@ -208,6 +221,12 @@ type MockBridgeOptions = {
   goalEvents?: RelayEvent[];
   /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
   goalRelayPrivateKey?: string;
+  /** Relay-signed company work events for company work UI E2E coverage. */
+  companyWorkEvents?: RelayEvent[];
+  /** Synthetic relay key used to broker company work actions in focused E2E tests. */
+  companyWorkRelayPrivateKey?: string;
+  /** Reject company work action publishes in order, then accept them. */
+  companyWorkActionErrors?: string[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */

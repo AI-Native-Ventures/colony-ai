@@ -1,6 +1,6 @@
 # Colony business record contracts
 
-Status: W00.05 contract and broker implementation. Schema version: `1`.
+Status: W18a contract and broker implementation. Schema version: `1`.
 
 Business records are signed Nostr events in the community resolved from the
 relay host. The `h` tag is the authoritative NIP-29 group scope. A client UUID
@@ -10,6 +10,11 @@ acceptance is business-scoped by `h` and names the target client channel in its
 `clientId`. The relay checks private visibility, stream channel type,
 membership, token channel scope, event kind, content, d-tag coordinate, and
 record-specific authorization before persisting a command.
+
+Invoice schema version 1 accepts optional tax fields. An older invoice version
+or head that omits them means no tax and remains valid. Tax fields are omitted
+from serialization when unset, so existing tax-free invoices keep their
+meaning and shape.
 
 The relay signs canonical replaceable heads and conversion receipts. A command
 event and all of its head changes are stored in one transaction. The SDK builds
@@ -44,8 +49,9 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30638 | Content campaign head | Reserved |
 | 30639 | Content post head | Reserved |
 | 30640 | Site head | Reserved |
-| 30641 | Invoice head | Relay signed, replaceable draft invoice |
+| 30641 | Invoice head | Relay signed, replaceable current invoice |
 | 30644 | Prospect head | Relay signed, replaceable |
+| 30645 | Money follow-up head | Relay signed, replaceable client follow-up state |
 | 47000 | Party action | Brokered |
 | 47001 | Client action | Brokered |
 | 47002 | Service action | Brokered |
@@ -72,11 +78,11 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47023 | Site deployment | Reserved |
 | 47024 | Site domain | Reserved |
 | 47025 | Site enquiry | Reserved |
-| 47026 | Invoice version | Reserved |
-| 47027 | Payment evidence | Reserved |
-| 47028 | Money adjustment | Reserved |
+| 47026 | Invoice version | Brokered, immutable |
+| 47027 | Payment evidence | Brokered, append only |
+| 47028 | Money adjustment | Brokered, append only |
 | 47029 | Reconciliation | Reserved |
-| 47030 | Money follow up | Reserved |
+| 47030 | Money follow up | Brokered, immutable |
 | 47031 to 47033 | Company records | See [company records](company-records.md) |
 | 47034 | Prospect action | Brokered |
 
@@ -102,9 +108,14 @@ channel and binds the client UUID in the content to the `h` UUID.
 | Conversion acceptance or receipt | `business:<community-uuid>:conversion:<conversion-uuid>` |
 | Client head or action | `client:<client-uuid>:client:<client-uuid>` |
 | Work item head or action | `client:<client-uuid>:work:<work-item-uuid>` |
+| Company work item head or action | `company:work:<work-item-uuid>` |
 | Deliverable version revision `n` | `client:<client-uuid>:deliverable:<deliverable-uuid>:version:<n>` |
 | Approval of version event `id` | `client:<client-uuid>:deliverable-approval:<id>` |
 | Invoice head | `client:<client-uuid>:invoice:<invoice-uuid>` |
+| Invoice version `n` | `client:<client-uuid>:invoice:<invoice-uuid>:version:<n>` |
+| Payment evidence | `client:<client-uuid>:payment:<payment-uuid>` |
+| Money adjustment | `client:<client-uuid>:money-adjustment:<adjustment-uuid>` |
+| Follow-up action and head | `client:<client-uuid>:money-follow-up:<follow-up-uuid>` |
 
 Tags contain exactly one two-value `h` tag and one two-value `d` tag on brokered
 commands. The proposal acceptance's `h` tag identifies the private business
@@ -147,7 +158,7 @@ owner or admin membership in that client's private stream channel. Archive
 sets the status to `archived`; restore sets it to `active`. The client record
 coordinate is the client channel UUID.
 
-### Work item action, kind 47006
+### Client work item action, kind 47006
 
 `WorkItemAction` fields: `clientId`, `workItemId`, `action`,
 `expectedHeadEventId`, and `head`. The member-supplied head contains
@@ -159,6 +170,17 @@ member. A non-admin assigned member cannot change assignees, approvers, title,
 or deliverable pointers. Only a deliverable-version command can advance a
 deliverable pointer. Archive sets the work status to `archived`; restore sets
 it to `open`. The relay emits kind 30634.
+
+### Company work item action, kind 47006
+
+Company work uses the same 30634 head and 47006 action kinds, but has no
+`clientId`. Its coordinate is `company:work:<work-item-uuid>` and its single
+`h` tag is the channel where the commitment lives. The company is resolved from
+the relay host. The company work fields and state transitions are defined in
+[company-records.md](company-records.md#company-work-items). A goal link changes
+through one exact-head company work `update` action for that item. Multi-select
+clients send separate actions and report partial failures per item. This
+separate scope preserves the existing client work payload and W11 behavior.
 
 ### Service action, kind 47002
 
@@ -257,19 +279,31 @@ decision. A later deliverable version changes the pointer and immediately
 makes earlier approval events stale for current-state calculations; history
 is retained.
 
-## Reserved schemas for later broker phases
+## Additional business schemas
 
-These JSON shapes are contract reservations. Service catalog records are
-community-scoped and live in the private internal business channel. Their
-d-tags begin `business:<community-uuid>:`. The remaining records are scoped to
-the relevant private client channel and use a d-tag beginning
-`client:<client-uuid>:`. Their handlers are intentionally not active yet, and
-the relay rejects writes to these kinds until their action validation and
-authorization are implemented.
+Money schemas are active in W18a and their transition and amount rules are
+specified below. Reconciliation remains reserved for W18b. Other listed kinds
+are reservations for later broker phases and the relay rejects writes to them
+until their validation and authorization are implemented. Community-scoped
+records live in the private internal business channel and use d-tags beginning
+`business:<community-uuid>:`. Client-scoped records live in their private
+client channel and use a d-tag beginning `client:<client-uuid>:`.
+
+### Active money schemas
+
+| Record | Required content fields |
+| --- | --- |
+| Invoice head 30641 | `schemaVersion`, `clientId`, `invoiceId`, `proposalId`, `proposalVersionEventId`, `currency`, `lines`, optional `taxLines`, optional `sellerTaxNumber`, optional `customerTaxNumber`, `totalMinor`, `creditedMinor`, `writtenOffMinor`, `collectedMinor`, `outstandingMinor`, `paymentEvidenceCount`, `version`, `currentVersionEventId`, `status`, `dueAt`, `issuedAt`, `sourceEventId` |
+| Invoice version 47026 | `schemaVersion`, `clientId`, `invoiceId`, `version`, `previousVersionEventId`, `proposalVersionEventId`, `expectedHeadEventId`, `action`, `currency`, `lines`, optional `taxLines`, optional `sellerTaxNumber`, optional `customerTaxNumber`, `totalMinor`, `status`, `dueAt`, `voidReason` |
+| Payment evidence 47027 | `schemaVersion`, `clientId`, `invoiceId`, `paymentId`, `provider`, `providerReference`, `amountMinor`, `currency`, `occurredAt`, `evidenceRef`, `expectedInvoiceHeadEventId` |
+| Money adjustment 47028 | `schemaVersion`, `clientId`, `invoiceId`, `adjustmentId`, `adjustmentType`, `amountMinor`, `currency`, `occurredAt`, `reason`, `evidenceRef`, `expectedInvoiceHeadEventId` |
+| Money follow up action 47030 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `action`, `expectedHeadEventId`, `expectedInvoiceHeadEventId`, `dueAt`, `draftContent` |
+| Money follow up head 30645 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `status`, `version`, `currentVersionEventId`, `dueAt`, `draftContent`, `approvalIntentOnly`, `approvedByPubkey`, `approvedAt`, `sourceEventId` |
+
+### Reserved schemas for later broker phases
 
 | Record kinds | Required content fields |
 | --- | --- |
-| Service head 30632, service action 47002 | `schemaVersion`, community-scoped `serviceId`, `action`, `expectedHeadEventId`, `name`, `description`, `currency`, `unitAmountMinor`, `status`, `sourceEventId`. The d-tag is `business:<community-uuid>:service:<service-uuid>`. |
 | Knowledge document head 30635, version 47009 | `schemaVersion`, `clientId`, `documentId`, `version`, `previousVersionEventId`, `title`, `body`, `contentDigest`, `sourceRefs`, `sourceEventId` |
 | Knowledge fact head 30636, version 47010 | `schemaVersion`, `clientId`, `factId`, `version`, `previousVersionEventId`, `statement`, `confidence`, `sourceRefs`, `expiresAt`, `sourceEventId` |
 | Knowledge access change 47011 | `schemaVersion`, `clientId`, `recordId`, `subjectPubkey`, `access`, `reason`, `sourceEventId` |
@@ -286,11 +320,85 @@ authorization are implemented.
 | Site deployment 47023 | `schemaVersion`, `clientId`, `siteId`, `siteVersionEventId`, `buildEventId`, `environment`, `provider`, `status`, `deploymentUrl`, `sourceEventId` |
 | Site domain 47024 | `schemaVersion`, `clientId`, `siteId`, `domain`, `verification`, `dnsEvidence`, `status`, `sourceEventId`. The customer keeps their registrar; verify with Cloudflare for SaaS custom hostnames and auto SSL. Colony does not buy domains. |
 | Site enquiry 47025 | `schemaVersion`, `clientId`, `siteId`, `receivedAt`, `formData`, `consent`, `sourceEventId` |
-| Invoice head 30641, version 47026 | `schemaVersion`, `clientId`, `invoiceId`, `version`, `previousVersionEventId`, `proposalVersionEventId`, `currency`, `lines`, `totalMinor`, `status`, `dueAt`, `sourceEventId` |
-| Payment 47027 | `schemaVersion`, `clientId`, `invoiceId`, `provider`, `providerReference`, `amountMinor`, `currency`, `occurredAt`, `evidenceRef`, `sourceEventId` |
-| Money adjustment 47028 | `schemaVersion`, `clientId`, `invoiceId`, `adjustmentId`, `type`, `amountMinor`, `currency`, `reason`, `evidenceRef`, `sourceEventId` |
 | Reconciliation 47029 | `schemaVersion`, `clientId`, `externalAccount`, `externalReference`, `recordId`, `matchState`, `amountMinor`, `currency`, `evidenceRef`, `sourceEventId` |
-| Money follow up 47030 | `schemaVersion`, `clientId`, `invoiceId`, `followUpId`, `action`, `dueAt`, `draftContent`, `sourceEventId` |
+
+Money event d-tags are `client:<client UUID>:invoice:<invoice UUID>:version:<n>`
+for invoice versions, `client:<client UUID>:payment:<payment UUID>` for payment
+evidence, `client:<client UUID>:money-adjustment:<adjustment UUID>` for
+adjustments, and `client:<client UUID>:money-follow-up:<follow-up UUID>` for
+follow-up actions and their relay-signed heads. Every event's single `h` tag is
+the same UUID as `clientId`. The invoice head uses
+`client:<client UUID>:invoice:<invoice UUID>`.
+
+### Money transitions and totals
+
+Proposal acceptance creates invoice version 1 and its relay-signed draft head
+in the same transaction as the client and work records. Invoice versions are
+immutable. A draft edit, issue, or void command must name the exact current
+invoice head; issue and void append a new version and replace the relay-signed
+head. A void requires a non-empty reason and is rejected if any payment
+evidence was recorded, even if a later refund reduced the net collected amount
+to zero. Draft and void invoices do not count as invoiced revenue.
+
+All amounts are integer minor units. Currency values use uppercase three-letter
+ISO 4217 codes. The relay checks line totals with checked integer arithmetic
+and rejects non-positive payment or adjustment amounts. Invoice head totals are
+updated in the same transaction as the payment or adjustment evidence:
+
+- `totalMinor` is the gross invoice amount from the current invoice version.
+  With no configured tax it equals the sum of the net line amounts. The
+  optional `taxLines` array contains up to 100 `{label, rateBasisPoints}` rules.
+  `label` is optional and, when supplied, contains 1 to 200 UTF-8 bytes.
+  `rateBasisPoints` is a 32-bit unsigned integer. `sellerTaxNumber` and
+  `customerTaxNumber` are optional invoice snapshots containing non-empty
+  strings of at most 128 bytes. Empty or absent `taxLines` applies no tax. The
+  relay never supplies a default rule. Businesses may configure zero or more
+  rules on a draft; each rule uses an integer basis-point rate, where 100 basis
+  points equals one percent.
+- Each net line amount is `floor(quantityHundredths * unitAmountMinor / 100)`.
+  For each invoice line and each configured tax rule, tax minor units are
+  `floor((lineNetMinor * rateBasisPoints + 5000) / 10000)`, which rounds to the
+  nearest minor unit with ties rounded up. The relay sums these rounded
+  line-level tax amounts, then adds them to the net subtotal for `totalMinor`.
+  It does not round only once over the invoice subtotal.
+- `creditedMinor` is the sum of credit notes and cannot exceed `totalMinor`.
+- `writtenOffMinor` is the sum of write-offs against the remaining balance.
+- `collectedMinor` is recorded payments less refunds already paid externally.
+- Invoiced revenue is `totalMinor - creditedMinor` for issued invoices only.
+- `outstandingMinor` for an issued invoice is `max(totalMinor - creditedMinor - writtenOffMinor - collectedMinor, 0)`. Draft and void invoices have zero outstanding.
+- Client credit available for a refund is `max(collectedMinor - (totalMinor - creditedMinor - writtenOffMinor), 0)`.
+
+Payment evidence applies only to an issued invoice, must use the invoice
+currency, and cannot exceed its current outstanding balance. `provider` is
+`manual` or a named provider; provider credentials are never included, and a
+provider reference is required when a named provider is used. `evidenceRef` is
+required for every payment and adjustment. `occurredAt` records when the
+adjustment took effect and is used for period-based reporting. A credit note
+reduces the invoice amount but does not represent a returned payment. A refund
+records evidence of a refund that already happened outside Colony and cannot
+exceed client credit.
+A write-off reduces the outstanding balance without adding collected cash.
+
+Money mutations require a community owner or admin and membership in the
+private client channel. Other members can read only through client channels
+they are authorized to read. The invoice head is the exact-head lock for
+payment and adjustment operations. Follow-up actions use their relay-signed
+head and the current invoice head as locks; a follow-up can be drafted only for
+an issued overdue invoice with a positive outstanding balance. Its state moves
+from `draft` to `in_review` to `approved`. Approval records intent only. It
+does not send email, a payment request, or a reminder.
+
+Version, payment, adjustment, and follow-up action events are their own source
+events, so they do not include a self-referential `sourceEventId`. Relay-signed
+heads carry `sourceEventId` pointing to the member action that produced the
+head. Tax terms are stored only on invoice versions and their relay-signed
+invoice head. Payment evidence remains evidence of an external payment already
+received and never initiates collection.
+
+There is no cost record kind or source-health API in this contract. Cost and
+profitability figures require a real source before they can be reported. A UI
+may derive revenue from issued invoice records, but it must report costs and
+profit as unavailable until cost records and their source status are defined.
 
 Credential values, access tokens, private keys, and payment card data must not
 be placed in these events. `credentialRef` is an opaque local/provider secret

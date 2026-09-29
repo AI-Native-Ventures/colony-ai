@@ -1,10 +1,11 @@
 import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
+  CalendarCheck2,
   ChevronDown,
+  CircleDollarSign,
   FileText,
   KanbanSquare,
-  ListTodo,
   Search,
   Users,
 } from "lucide-react";
@@ -23,12 +24,14 @@ const BUSINESS_DESTINATIONS = [
   ["/pipeline", "Pipeline", KanbanSquare],
   ["/sales/proposals", "Proposals", FileText],
   ["/sales/service", "Services", BriefcaseBusiness],
+  ["/money", "Money", CircleDollarSign],
 ] as const;
 
 /** Whether `pathname` is the destination at `href` or one of its detail routes. */
 function isDestinationPath(pathname: string, href: string): boolean {
   return (
     pathname === href ||
+    (href === "/money" && pathname.startsWith("/money/")) ||
     (href === "/sales/proposals" && pathname.startsWith("/sales/proposal/")) ||
     (href === "/leads" && pathname.startsWith("/sales/lead/"))
   );
@@ -78,7 +81,7 @@ export function AppSidebarBusinessSection({
             tooltip="Work"
             type="button"
           >
-            <ListTodo aria-hidden="true" />
+            <CalendarCheck2 aria-hidden="true" />
             <SidebarMenuLabel>Work</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>
