@@ -104,6 +104,7 @@ mod tests {
             decide_by: None,
             options: None,
             items: None,
+            tool_consent: None,
             subject: None,
         }
     }

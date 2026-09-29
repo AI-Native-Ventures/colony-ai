@@ -7,10 +7,19 @@ export type SpecializedAskCard = {
   submitLabel: string;
 };
 
-/** Maps only supported approval records to their category-specific detail card. */
+/** Maps supported approval and consent records to their detail cards. */
 export function mapSpecializedAskCard(
   ask: Pick<AskRecord, "category" | "type">,
 ): SpecializedAskCard | null {
+  if (ask.type === "tool_consent") {
+    return {
+      kind: "tool",
+      listLabel: "Tool consent",
+      decisionTitle: "Tool consent",
+      submitLabel: "Record tool decision",
+    };
+  }
+
   if (ask.type !== "approval") return null;
 
   switch (ask.category) {

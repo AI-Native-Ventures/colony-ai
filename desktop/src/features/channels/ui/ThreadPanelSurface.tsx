@@ -10,6 +10,8 @@ type ThreadPanelSurfaceProps = {
   hasActiveEdit: boolean;
   isFocusDrawer: boolean;
   onClose: () => void;
+  responsiveOverlay?: boolean;
+  restoreFocusOnDismiss?: boolean;
 };
 
 /** Keeps a thread mounted while controlling its focus-drawer presentation. */
@@ -17,7 +19,16 @@ export const ThreadPanelSurface = React.forwardRef<
   HTMLDivElement,
   ThreadPanelSurfaceProps
 >(function ThreadPanelSurface(
-  { channelName, children, covered, hasActiveEdit, isFocusDrawer, onClose },
+  {
+    channelName,
+    children,
+    covered,
+    hasActiveEdit,
+    isFocusDrawer,
+    onClose,
+    responsiveOverlay = false,
+    restoreFocusOnDismiss = false,
+  },
   ref,
 ) {
   return (
@@ -34,6 +45,8 @@ export const ThreadPanelSurface = React.forwardRef<
           escapeEnabled={!covered}
           hasActiveEdit={hasActiveEdit}
           onClose={onClose}
+          responsiveOverlay={responsiveOverlay}
+          restoreFocusOnDismiss={restoreFocusOnDismiss}
         >
           {children}
         </FocusThreadDrawer>

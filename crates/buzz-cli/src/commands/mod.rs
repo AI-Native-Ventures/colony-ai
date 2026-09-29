@@ -16,6 +16,7 @@ pub mod money;
 pub mod notes;
 pub mod pack;
 pub mod patches;
+pub mod permissions;
 pub mod pr;
 pub mod project_channel;
 pub mod projects;
@@ -25,6 +26,7 @@ pub mod repos;
 pub mod social;
 pub mod upload;
 pub mod users;
+pub mod work;
 pub mod workflows;
 
 use crate::{client::normalize_write_response, error::CliError};
