@@ -26,7 +26,7 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await page.getByTestId("settings-group-agents-group").click();
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible({
     timeout: 10_000,
   });
@@ -198,7 +198,7 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
   // Step 3: navigate back and open the per-agent edit dialog for the Goose
   // agent. We use the app's Back link rather than page.goto("/") to preserve
   // the in-memory mock state (page.goto causes a full reload that resets it).
-  await page.getByRole("button", { name: "Back to app" }).click();
+  await page.getByRole("button", { name: "Back to workspace" }).click();
   await openAgentTemplatesView(page);
   const agentButton = page.getByRole("button", {
     name: "Tyler Agent agent profile",

@@ -1,117 +1,95 @@
-/**
- * E2E tests for the destructive sign-out confirmation flow.
- *
- * Signing out wipes the identity key and all local data, so the dialog gates
- * "Delete My Data" behind two explicit steps:
- *   1. backup — check "I have saved my private key"
- *   2. typed confirmation — type the exact phrase "wipe all my data"
- */
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings } from "../helpers/settings";
+import { openSettings, selectSettingsSection } from "../helpers/settings";
 
-const CONFIRM_PHRASE = "wipe all my data";
-
-async function openSignOutDialog(page: Page) {
-  await openSettings(page, "profile");
-  const section = page.getByTestId("settings-signout");
-  await section.scrollIntoViewIfNeeded();
-  await page.getByTestId("signout-open-dialog").click();
-  await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 5_000 });
-}
-
-test("delete button unlocks only after backup + typed phrase", async ({
-  page,
-}) => {
-  await installMockBridge(page);
-  await page.goto("/");
-  await openSignOutDialog(page);
-
-  const deleteButton = page.getByTestId("signout-confirm");
-  const backupCheckbox = page.getByTestId("signout-backup-confirm");
-  const phraseInput = page.getByTestId("signout-confirm-phrase");
-
-  // Delete is locked initially; the backup checkbox is immediately usable.
-  await expect(deleteButton).toBeDisabled();
-  await expect(backupCheckbox).toBeEnabled();
-  await backupCheckbox.click();
-
-  // Backup alone is not enough.
-  await expect(deleteButton).toBeDisabled();
-
-  // Wrong phrase keeps it locked.
-  await phraseInput.fill("wipe my data");
-  await expect(deleteButton).toBeDisabled();
-
-  // Exact phrase (case/whitespace tolerant) unlocks it.
-  await phraseInput.fill(`  ${CONFIRM_PHRASE.toUpperCase()}  `);
-  await expect(deleteButton).toBeEnabled();
-
-  // Clearing the phrase locks it again.
-  await phraseInput.fill("");
-  await expect(deleteButton).toBeDisabled();
-});
-
-test("completing both gates invokes sign_out", async ({ page }) => {
-  await installMockBridge(page);
-  await page.goto("/");
-  await openSignOutDialog(page);
-
-  await page.getByTestId("signout-backup-confirm").click();
-  await page.getByTestId("signout-confirm-phrase").fill(CONFIRM_PHRASE);
-
-  const deleteButton = page.getByTestId("signout-confirm");
-  await expect(deleteButton).toBeEnabled();
-  await deleteButton.click();
-
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as Window & { __BUZZ_E2E_COMMANDS__?: string[] }
-          ).__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
-      ),
-    )
-    .toBe(true);
-});
-
-test("cancel resets the gates for the next open", async ({ page }) => {
-  await installMockBridge(page);
-  await page.goto("/");
-  await openSignOutDialog(page);
-
-  // Satisfy both gates, then cancel.
-  await page.getByTestId("signout-backup-confirm").click();
-  await page.getByTestId("signout-confirm-phrase").fill(CONFIRM_PHRASE);
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("alertdialog")).not.toBeVisible();
-
-  // Reopen — everything must be reset again.
+async function openSignOutDialog(page: Parameters<typeof openSettings>[0]) {
+  await openSettings(page, "security");
   await page.getByTestId("signout-open-dialog").click();
   await expect(page.getByRole("alertdialog")).toBeVisible();
-  await expect(page.getByTestId("signout-backup-confirm")).not.toBeChecked();
-  await expect(page.getByTestId("signout-confirm-phrase")).toHaveValue("");
-  await expect(page.getByTestId("signout-confirm")).toBeDisabled();
-});
+}
 
-test("nsec load failure still allows sign-out (backup step degrades)", async ({
+async function installSignOutFixture(page: Parameters<typeof openSettings>[0]) {
+  await page.addInitScript(() => {
+    const pubkey = "deadbeef".repeat(8);
+    const draft = {
+      content: "A draft to review before leaving",
+      selectionStart: 0,
+      selectionEnd: 0,
+      channelId: "engineering",
+      createdAt: "2026-09-25T09:00:00.000Z",
+      updatedAt: "2026-09-25T09:01:00.000Z",
+      pendingImeta: [
+        {
+          url: "https://example.test/pending-attachment.png",
+          mimeType: "image/png",
+          sha256: "a".repeat(64),
+          size: 1024,
+        },
+      ],
+      mentionRefs: [],
+      spoileredAttachmentUrls: [],
+      status: "active",
+    };
+    localStorage.setItem(
+      `buzz-drafts.v2:ws://localhost:3000:${pubkey}`,
+      JSON.stringify({ "channel:engineering": draft }),
+    );
+  });
+  await installMockBridge(page, {
+    managedAgents: [
+      { pubkey: "a".repeat(64), name: "Ava", status: "running" },
+      { pubkey: "b".repeat(64), name: "Noah", status: "running" },
+    ],
+  });
+  await page.goto("/");
+}
+
+test("sign-out confirmation previews running agents and unsynced work", async ({
   page,
 }) => {
-  await installMockBridge(page, { nsecError: "Keychain locked" });
-  await page.goto("/");
+  await installSignOutFixture(page);
   await openSignOutDialog(page);
 
-  // Error shown in place of the key; checkbox is still usable so the user is
-  // not locked out of signing out.
-  await expect(page.getByTestId("signout-nsec-error")).toContainText(
-    "Keychain locked",
-  );
-  const backupCheckbox = page.getByTestId("signout-backup-confirm");
-  await expect(backupCheckbox).toBeEnabled();
+  const dialog = page.getByRole("alertdialog");
+  const removeButton = page.getByTestId("signout-confirm");
 
-  await backupCheckbox.click();
-  await page.getByTestId("signout-confirm-phrase").fill(CONFIRM_PHRASE);
-  await expect(page.getByTestId("signout-confirm")).toBeEnabled();
+  await expect(
+    dialog.getByText("Sign out of this device?", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toContainText(
+    "Your remote business and conversations stay available.",
+  );
+  await expect(dialog).toContainText("2 local agents are running");
+  await expect(dialog).toContainText(
+    "Sign-out stops local agents on this device. Remote agents continue with their own permissions.",
+  );
+  await expect(dialog).toContainText("1 draft · 1 pending attachment");
+  await expect(
+    dialog.getByRole("button", { name: "Review before leaving" }),
+  ).toBeVisible();
+  await expect(removeButton).toBeEnabled();
+  await expect(
+    page.evaluate(
+      () => window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
+    ),
+  ).resolves.toBe(false);
+  await dialog.getByRole("button", { name: "Review before leaving" }).click();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByTestId("settings-draft-recovery")).toBeVisible();
+});
+
+test("staying signed in closes the dialog and restores the security panel", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSignOutDialog(page);
+  await page.getByRole("button", { name: "Stay signed in" }).click();
+
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByTestId("settings-account-security")).toBeVisible();
+  await expect(page.getByTestId("signout-open-dialog")).toBeVisible();
+  await selectSettingsSection(page, "profile");
+  await expect(page.getByTestId("settings-profile")).toBeVisible();
 });

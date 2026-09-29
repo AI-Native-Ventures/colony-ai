@@ -77,6 +77,15 @@ class SignInPage extends HookConsumerWidget {
     return AccountPageScaffold(
       title: 'Welcome back.',
       description: 'One account. All your businesses.',
+      footerTopPadding: 16,
+      footerBottomPadding: 39,
+      footerHorizontalMargin: 20,
+      footer: pairIdentityPageBuilder == null
+          ? null
+          : TextButton(
+              onPressed: auth.isLoading ? null : pairWithDesktop,
+              child: const Text('Pair with my desktop'),
+            ),
       children: [
         AccountGoogleButton(
           onPressed: hasGoogleBuildConfig ? continueWithGoogle : null,
@@ -97,7 +106,7 @@ class SignInPage extends HookConsumerWidget {
                   autofillHints: const [AutofillHints.email],
                   validator: _validateSignInEmail,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 21),
                 AccountTextField(
                   controller: password,
                   label: 'Password',
@@ -112,7 +121,7 @@ class SignInPage extends HookConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 19),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
@@ -126,7 +135,7 @@ class SignInPage extends HookConsumerWidget {
             child: const Text('Forgot password?'),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         if (auth.failure != null) ...[
           AccountAuthErrorText(failure: auth.failure),
           const SizedBox(height: Grid.xs),
@@ -136,7 +145,7 @@ class SignInPage extends HookConsumerWidget {
           isLoading: auth.isLoading,
           onPressed: auth.isLoading ? null : submit,
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 8),
         AccountSecondaryButton(
           label: 'New to Colony? Create an account',
           onPressed: auth.isLoading
@@ -147,13 +156,6 @@ class SignInPage extends HookConsumerWidget {
                   ),
                 ),
         ),
-        if (pairIdentityPageBuilder != null) ...[
-          const SizedBox(height: 32),
-          TextButton(
-            onPressed: auth.isLoading ? null : pairWithDesktop,
-            child: const Text('Pair with my desktop'),
-          ),
-        ],
       ],
     );
   }

@@ -37,7 +37,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
     final colors = context.colors;
 
     return Scaffold(
-      backgroundColor: context.mobileTokens.paper,
+      backgroundColor: context.mobileTokens.canvas,
       appBar: const MobileFlowAppBar(title: 'Themes'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -63,7 +63,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
                 fontSize: 13,
               ),
               decoration: InputDecoration(
-                hintText: 'Search 62 themes',
+                hintText: 'Search ${themeCatalog.length} themes',
                 hintStyle: context.mobileTypography.conversation.copyWith(
                   color: context.mobileTokens.muted,
                   fontSize: 13,

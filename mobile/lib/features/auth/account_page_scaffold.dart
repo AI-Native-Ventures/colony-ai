@@ -13,9 +13,12 @@ class AccountPageScaffold extends StatelessWidget {
     this.titleTopSpacing = 12,
     this.titleDescriptionSpacing = Grid.xs,
     this.descriptionChildrenSpacing = 22,
+    this.footerTopPadding = 12,
     this.footerBottomPadding = 8,
+    this.footerHorizontalMargin = 0,
     this.showBackButton = true,
     this.showBrandBar = true,
+    this.centerBrandTitle = false,
     this.showHeroBackground = false,
     this.onBack,
     this.topLabel,
@@ -35,9 +38,12 @@ class AccountPageScaffold extends StatelessWidget {
 
   /// Space after a title and description before the page contents.
   final double descriptionChildrenSpacing;
+  final double footerTopPadding;
   final double footerBottomPadding;
+  final double footerHorizontalMargin;
   final bool showBackButton;
   final bool showBrandBar;
+  final bool centerBrandTitle;
   final bool showHeroBackground;
   final VoidCallback? onBack;
   final String? topLabel;
@@ -57,20 +63,50 @@ class AccountPageScaffold extends StatelessWidget {
             appBar: showBrandBar
                 ? AppBar(
                     toolbarHeight: 66,
-                    centerTitle: false,
-                    titleSpacing: showBackButton ? 0 : Grid.gutter,
+                    centerTitle: centerBrandTitle,
+                    titleSpacing: showBackButton ? 8 : Grid.gutter,
                     leadingWidth: showBackButton ? 68 : 0,
                     leading: showBackButton
-                        ? IconButton(
-                            tooltip: 'Back',
-                            onPressed:
-                                onBack ??
-                                () => Navigator.of(context).maybePop(),
-                            icon: Transform.translate(
-                              offset: Offset(5, 0),
-                              child: const Icon(
-                                Icons.arrow_back_ios_new,
-                                size: 18,
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 20),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                width: 42,
+                                height: 42,
+                                child: Semantics(
+                                  button: true,
+                                  label: 'Back',
+                                  onTap:
+                                      onBack ??
+                                      () => Navigator.of(context).maybePop(),
+                                  child: ExcludeSemantics(
+                                    child: Material(
+                                      color: paper,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        side: BorderSide(color: line),
+                                      ),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap:
+                                            onBack ??
+                                            () => Navigator.of(
+                                              context,
+                                            ).maybePop(),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.arrow_back_ios_new,
+                                            size: 18,
+                                            color: AccountFlowPalette.ink(
+                                              brightness,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           )
@@ -83,7 +119,6 @@ class AccountPageScaffold extends StatelessWidget {
                         letterSpacing: -0.4,
                       ),
                     ),
-                    shape: Border(bottom: BorderSide(color: line)),
                   )
                 : null,
             body: Column(
@@ -100,7 +135,7 @@ class AccountPageScaffold extends StatelessWidget {
                         child: SingleChildScrollView(
                           padding: EdgeInsets.fromLTRB(
                             20,
-                            showHeroBackground ? 30 : 22,
+                            showHeroBackground ? 16 : 8,
                             20,
                             28,
                           ),
@@ -167,10 +202,13 @@ class AccountPageScaffold extends StatelessWidget {
                     top: false,
                     child: Container(
                       width: double.infinity,
+                      margin: EdgeInsets.symmetric(
+                        horizontal: footerHorizontalMargin,
+                      ),
                       padding: EdgeInsets.fromLTRB(
-                        16,
-                        12,
-                        16,
+                        20,
+                        footerTopPadding,
+                        20,
                         footerBottomPadding,
                       ),
                       decoration: BoxDecoration(
@@ -199,21 +237,21 @@ ThemeData _accountTheme(ThemeData base) {
   final muted = AccountFlowPalette.muted(brightness);
   final line = AccountFlowPalette.line(brightness);
   final soft = AccountFlowPalette.soft(brightness);
-  final blue = AccountFlowPalette.blue(brightness);
-  const action = AccountFlowPalette.action;
+  final accent = AccountFlowPalette.accent(brightness);
+  final onAccent = AccountFlowPalette.onAccent(brightness);
   final error = AccountFlowPalette.error(brightness);
   final errorContainer = AccountFlowPalette.errorContainer(brightness);
   final onErrorContainer = AccountFlowPalette.onErrorContainer(brightness);
   final colorScheme = base.colorScheme.copyWith(
-    primary: blue,
-    onPrimary: Colors.white,
-    secondary: blue,
-    onSecondary: Colors.white,
+    primary: accent,
+    onPrimary: onAccent,
+    secondary: accent,
+    onSecondary: onAccent,
     error: error,
     onError: Colors.white,
     surface: paper,
     onSurface: ink,
-    surfaceContainerLowest: paper,
+    surfaceContainerLowest: AccountFlowPalette.field(brightness),
     surfaceContainerLow: soft,
     surfaceContainer: soft,
     surfaceContainerHigh: soft,
@@ -241,10 +279,10 @@ ThemeData _accountTheme(ThemeData base) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: action,
-        foregroundColor: Colors.white,
-        disabledBackgroundColor: action.withValues(alpha: 0.45),
-        disabledForegroundColor: Colors.white.withValues(alpha: 0.45),
+        backgroundColor: accent,
+        foregroundColor: onAccent,
+        disabledBackgroundColor: accent.withValues(alpha: 0.45),
+        disabledForegroundColor: onAccent.withValues(alpha: 0.45),
         textStyle: const TextStyle(
           fontFamily: 'Manrope',
           fontSize: 12,
@@ -256,7 +294,7 @@ ThemeData _accountTheme(ThemeData base) {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: blue,
+        foregroundColor: accent,
         padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 10),
         textStyle: const TextStyle(
           fontFamily: 'Manrope',
@@ -295,8 +333,8 @@ class _AccountHeroBackground extends StatelessWidget {
             center: const Alignment(-0.8, -1.0),
             radius: 1.0,
             colors: [
-              const Color(0xffeddae9).withValues(alpha: 0.47),
-              const Color(0x00eddae9),
+              const Color(0xffe8d7ee).withValues(alpha: 0.48),
+              const Color(0x00e8d7ee),
             ],
             stops: const [0, 0.6],
           ),
@@ -308,8 +346,8 @@ class _AccountHeroBackground extends StatelessWidget {
             center: const Alignment(1.0, 0.6),
             radius: 1.0,
             colors: [
-              const Color(0xffd7e4f6).withValues(alpha: 0.33),
-              const Color(0x00d7e4f6),
+              const Color(0xfff2dccc).withValues(alpha: 0.34),
+              const Color(0x00f2dccc),
             ],
             stops: const [0, 0.7],
           ),

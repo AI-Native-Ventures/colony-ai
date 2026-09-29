@@ -130,7 +130,7 @@ class ConfirmPasswordResetPage extends HookConsumerWidget {
                               height: 14,
                               decoration: BoxDecoration(
                                 color: showPasswords.value
-                                    ? AccountFlowPalette.blue(brightness)
+                                    ? AccountFlowPalette.accent(brightness)
                                     : AccountFlowPalette.paper(brightness),
                                 borderRadius: BorderRadius.circular(2),
                                 border: Border.all(

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cpu, Factory } from "lucide-react";
+import { Factory } from "lucide-react";
 
 import { FactoryNavigator } from "@/features/factory/ui/FactoryNavigator";
 import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
@@ -9,23 +9,20 @@ import {
   SidebarMenuItem,
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
-import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
 import type { FactoryScope } from "@/shared/api/factoryRuntime";
 
-/** App-shell entry for the existing factory, project, and shared-compute routes. */
+/** App-shell entry for the existing factory and project routes. */
 export function SidebarSoftwareFactoryGroup({
   isActive,
   isProjectsActive,
   selectedChannelId,
   onSelectFactory,
-  onSelectSettings,
   scope,
 }: {
   isActive: boolean;
   isProjectsActive: boolean;
   selectedChannelId: string | null;
   onSelectFactory: () => void;
-  onSelectSettings: (section?: SettingsSection) => void;
   scope: FactoryScope;
 }) {
   const [activeProjectChannelId, setActiveProjectChannelId] = React.useState<
@@ -67,20 +64,6 @@ export function SidebarSoftwareFactoryGroup({
           <SidebarProjectsSection
             onProjectChannelSelect={setActiveProjectChannelId}
           />
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="sidebar-navigation-child pl-7"
-                data-testid="sidebar-shared-compute"
-                onClick={() => onSelectSettings("compute")}
-                tooltip="Shared compute"
-                type="button"
-              >
-                <Cpu className="h-4 w-4" />
-                <SidebarMenuLabel>Shared compute</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
           {isActive ? <FactoryNavigator scope={scope} /> : null}
         </section>
       ) : null}

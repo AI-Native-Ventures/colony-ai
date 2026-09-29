@@ -7,8 +7,10 @@
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as workflowsRouteImport } from "./routes/workflows";
 import { Route as todayRouteImport } from "./routes/today";
+import { Route as teamRouteImport } from "./routes/team";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
+import { Route as secretsRouteImport } from "./routes/secrets";
 import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
@@ -28,6 +30,7 @@ import { Route as workflowsDotworkflowIdRouteImport } from "./routes/workflows.$
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotupdatesRouteImport } from "./routes/today.updates";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
+import { Route as teamDotorgRouteImport } from "./routes/team.org";
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
@@ -46,9 +49,14 @@ import { Route as factoryDotsessionsRouteImport } from "./routes/factory.session
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
+import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as asksDotnewRouteImport } from "./routes/asks.new";
 import { Route as workDotscreenDotresourceIdRouteImport } from "./routes/work.$screen.$resourceId";
+import { Route as teamDotpauseDotmemberPubkeyRouteImport } from "./routes/team.pause.$memberPubkey";
+import { Route as teamDoteditDotmemberPubkeyRouteImport } from "./routes/team.edit.$memberPubkey";
+import { Route as teamDotdetailDotmemberPubkeyRouteImport } from "./routes/team.detail.$memberPubkey";
+import { Route as teamDotarchiveDotmemberPubkeyRouteImport } from "./routes/team.archive.$memberPubkey";
 import { Route as salesDotproposalDotproposalFormRouteImport } from "./routes/sales.proposal.proposal-form";
 import { Route as salesDotproposalDotproposalIdRouteImport } from "./routes/sales.proposal.$proposalId";
 import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lead.form-field";
@@ -70,6 +78,7 @@ import { Route as factoryDotprojectDotprojectIdRouteImport } from "./routes/fact
 import { Route as factoryDotplanDotplanIdRouteImport } from "./routes/factory.plan.$planId";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
+import { Route as workDottrackingDotscreenDotresourceIdRouteImport } from "./routes/work.tracking.$screen.$resourceId";
 import { Route as channelsDotchannelIdDotpostsDotpostIdRouteImport } from "./routes/channels.$channelId.posts.$postId";
 
 const workflowsRoute = workflowsRouteImport.update({
@@ -82,6 +91,11 @@ const todayRoute = todayRouteImport.update({
   path: "/today",
   getParentRoute: () => rootRouteImport,
 } as any);
+const teamRoute = teamRouteImport.update({
+  id: "/team",
+  path: "/team",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const supervisionRoute = supervisionRouteImport.update({
   id: "/supervision",
   path: "/supervision",
@@ -90,6 +104,11 @@ const supervisionRoute = supervisionRouteImport.update({
 const settingsRoute = settingsRouteImport.update({
   id: "/settings",
   path: "/settings",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const secretsRoute = secretsRouteImport.update({
+  id: "/secrets",
+  path: "/secrets",
   getParentRoute: () => rootRouteImport,
 } as any);
 const remindersRoute = remindersRouteImport.update({
@@ -187,6 +206,11 @@ const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
   path: "/today/reviews-empty",
   getParentRoute: () => rootRouteImport,
 } as any);
+const teamDotorgRoute = teamDotorgRouteImport.update({
+  id: "/team/org",
+  path: "/team/org",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const salesDotserviceRoute = salesDotserviceRouteImport.update({
   id: "/sales/service",
   path: "/sales/service",
@@ -277,6 +301,11 @@ const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
   path: "/clients/$clientId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
+  id: "/channels/from-template",
+  path: "/channels/from-template",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   id: "/channels/$channelId",
   path: "/channels/$channelId",
@@ -291,6 +320,30 @@ const workDotscreenDotresourceIdRoute =
   workDotscreenDotresourceIdRouteImport.update({
     id: "/work/$screen/$resourceId",
     path: "/work/$screen/$resourceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDotpauseDotmemberPubkeyRoute =
+  teamDotpauseDotmemberPubkeyRouteImport.update({
+    id: "/team/pause/$memberPubkey",
+    path: "/team/pause/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDoteditDotmemberPubkeyRoute =
+  teamDoteditDotmemberPubkeyRouteImport.update({
+    id: "/team/edit/$memberPubkey",
+    path: "/team/edit/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDotdetailDotmemberPubkeyRoute =
+  teamDotdetailDotmemberPubkeyRouteImport.update({
+    id: "/team/detail/$memberPubkey",
+    path: "/team/detail/$memberPubkey",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const teamDotarchiveDotmemberPubkeyRoute =
+  teamDotarchiveDotmemberPubkeyRouteImport.update({
+    id: "/team/archive/$memberPubkey",
+    path: "/team/archive/$memberPubkey",
     getParentRoute: () => rootRouteImport,
   } as any);
 const salesDotproposalDotproposalFormRoute =
@@ -412,6 +465,12 @@ const asksDotchannelIdDotaskIdRoute =
     path: "/asks/$channelId/$askId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const workDottrackingDotscreenDotresourceIdRoute =
+  workDottrackingDotscreenDotresourceIdRouteImport.update({
+    id: "/work/tracking/$screen/$resourceId",
+    path: "/work/tracking/$screen/$resourceId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotchannelIdDotpostsDotpostIdRoute =
   channelsDotchannelIdDotpostsDotpostIdRouteImport.update({
     id: "/channels/$channelId/posts/$postId",
@@ -435,12 +494,15 @@ export interface FileRoutesByFullPath {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -459,6 +521,7 @@ export interface FileRoutesByFullPath {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -484,8 +547,13 @@ export interface FileRoutesByFullPath {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
@@ -503,12 +571,15 @@ export interface FileRoutesByTo {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -527,6 +598,7 @@ export interface FileRoutesByTo {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -552,8 +624,13 @@ export interface FileRoutesByTo {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -572,12 +649,15 @@ export interface FileRoutesById {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
+  "/team": typeof teamRoute;
   "/today": typeof todayRoute;
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -596,6 +676,7 @@ export interface FileRoutesById {
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
+  "/team/org": typeof teamDotorgRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/today/updates": typeof todayDotupdatesRoute;
   "/work/$workId": typeof workDotworkIdRoute;
@@ -621,8 +702,13 @@ export interface FileRoutesById {
   "/sales/lead/form-field": typeof salesDotleadDotformFieldRoute;
   "/sales/proposal/$proposalId": typeof salesDotproposalDotproposalIdRoute;
   "/sales/proposal/proposal-form": typeof salesDotproposalDotproposalFormRoute;
+  "/team/archive/$memberPubkey": typeof teamDotarchiveDotmemberPubkeyRoute;
+  "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
+  "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
+  "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
   "/work/$screen/$resourceId": typeof workDotscreenDotresourceIdRoute;
   "/channels/$channelId/posts/$postId": typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  "/work/tracking/$screen/$resourceId": typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -642,12 +728,15 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -666,6 +755,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -691,8 +781,13 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -710,12 +805,15 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -734,6 +832,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -759,8 +858,13 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   id:
     | "__root__"
     | "/"
@@ -778,12 +882,15 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
+    | "/team"
     | "/today"
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -802,6 +909,7 @@ export interface FileRouteTypes {
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
+    | "/team/org"
     | "/today/reviews-empty"
     | "/today/updates"
     | "/work/$workId"
@@ -827,8 +935,13 @@ export interface FileRouteTypes {
     | "/sales/lead/form-field"
     | "/sales/proposal/$proposalId"
     | "/sales/proposal/proposal-form"
+    | "/team/archive/$memberPubkey"
+    | "/team/detail/$memberPubkey"
+    | "/team/edit/$memberPubkey"
+    | "/team/pause/$memberPubkey"
     | "/work/$screen/$resourceId"
-    | "/channels/$channelId/posts/$postId";
+    | "/channels/$channelId/posts/$postId"
+    | "/work/tracking/$screen/$resourceId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -847,12 +960,15 @@ export interface RootRouteChildren {
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
   remindersRoute: typeof remindersRoute;
+  secretsRoute: typeof secretsRoute;
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
+  teamRoute: typeof teamRoute;
   todayRoute: typeof todayRoute;
   workflowsRoute: typeof workflowsRoute;
   asksDotnewRoute: typeof asksDotnewRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
+  channelsDotfromTemplateRoute: typeof channelsDotfromTemplateRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   factoryDotplansRoute: typeof factoryDotplansRoute;
   factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
@@ -871,6 +987,7 @@ export interface RootRouteChildren {
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
+  teamDotorgRoute: typeof teamDotorgRoute;
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   todayDotupdatesRoute: typeof todayDotupdatesRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
@@ -896,8 +1013,13 @@ export interface RootRouteChildren {
   salesDotleadDotformFieldRoute: typeof salesDotleadDotformFieldRoute;
   salesDotproposalDotproposalIdRoute: typeof salesDotproposalDotproposalIdRoute;
   salesDotproposalDotproposalFormRoute: typeof salesDotproposalDotproposalFormRoute;
+  teamDotarchiveDotmemberPubkeyRoute: typeof teamDotarchiveDotmemberPubkeyRoute;
+  teamDotdetailDotmemberPubkeyRoute: typeof teamDotdetailDotmemberPubkeyRoute;
+  teamDoteditDotmemberPubkeyRoute: typeof teamDoteditDotmemberPubkeyRoute;
+  teamDotpauseDotmemberPubkeyRoute: typeof teamDotpauseDotmemberPubkeyRoute;
   workDotscreenDotresourceIdRoute: typeof workDotscreenDotresourceIdRoute;
   channelsDotchannelIdDotpostsDotpostIdRoute: typeof channelsDotchannelIdDotpostsDotpostIdRoute;
+  workDottrackingDotscreenDotresourceIdRoute: typeof workDottrackingDotscreenDotresourceIdRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -916,6 +1038,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/team": {
+      id: "/team";
+      path: "/team";
+      fullPath: "/team";
+      preLoaderRoute: typeof teamRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/supervision": {
       id: "/supervision";
       path: "/supervision";
@@ -928,6 +1057,13 @@ declare module "@tanstack/react-router" {
       path: "/settings";
       fullPath: "/settings";
       preLoaderRoute: typeof settingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/secrets": {
+      id: "/secrets";
+      path: "/secrets";
+      fullPath: "/secrets";
+      preLoaderRoute: typeof secretsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/reminders": {
@@ -1063,6 +1199,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/team/org": {
+      id: "/team/org";
+      path: "/team/org";
+      fullPath: "/team/org";
+      preLoaderRoute: typeof teamDotorgRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sales/service": {
       id: "/sales/service";
       path: "/sales/service";
@@ -1189,6 +1332,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof clientsDotclientIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/channels/from-template": {
+      id: "/channels/from-template";
+      path: "/channels/from-template";
+      fullPath: "/channels/from-template";
+      preLoaderRoute: typeof channelsDotfromTemplateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId": {
       id: "/channels/$channelId";
       path: "/channels/$channelId";
@@ -1208,6 +1358,34 @@ declare module "@tanstack/react-router" {
       path: "/work/$screen/$resourceId";
       fullPath: "/work/$screen/$resourceId";
       preLoaderRoute: typeof workDotscreenDotresourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/pause/$memberPubkey": {
+      id: "/team/pause/$memberPubkey";
+      path: "/team/pause/$memberPubkey";
+      fullPath: "/team/pause/$memberPubkey";
+      preLoaderRoute: typeof teamDotpauseDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/edit/$memberPubkey": {
+      id: "/team/edit/$memberPubkey";
+      path: "/team/edit/$memberPubkey";
+      fullPath: "/team/edit/$memberPubkey";
+      preLoaderRoute: typeof teamDoteditDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/detail/$memberPubkey": {
+      id: "/team/detail/$memberPubkey";
+      path: "/team/detail/$memberPubkey";
+      fullPath: "/team/detail/$memberPubkey";
+      preLoaderRoute: typeof teamDotdetailDotmemberPubkeyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/team/archive/$memberPubkey": {
+      id: "/team/archive/$memberPubkey";
+      path: "/team/archive/$memberPubkey";
+      fullPath: "/team/archive/$memberPubkey";
+      preLoaderRoute: typeof teamDotarchiveDotmemberPubkeyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/sales/proposal/proposal-form": {
@@ -1357,6 +1535,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof asksDotchannelIdDotaskIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/work/tracking/$screen/$resourceId": {
+      id: "/work/tracking/$screen/$resourceId";
+      path: "/work/tracking/$screen/$resourceId";
+      fullPath: "/work/tracking/$screen/$resourceId";
+      preLoaderRoute: typeof workDottrackingDotscreenDotresourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId/posts/$postId": {
       id: "/channels/$channelId/posts/$postId";
       path: "/channels/$channelId/posts/$postId";
@@ -1383,12 +1568,15 @@ const rootRouteChildren: RootRouteChildren = {
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
   remindersRoute: remindersRoute,
+  secretsRoute: secretsRoute,
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
+  teamRoute: teamRoute,
   todayRoute: todayRoute,
   workflowsRoute: workflowsRoute,
   asksDotnewRoute: asksDotnewRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
+  channelsDotfromTemplateRoute: channelsDotfromTemplateRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
   factoryDotplansRoute: factoryDotplansRoute,
   factoryDotprojectsRoute: factoryDotprojectsRoute,
@@ -1407,6 +1595,7 @@ const rootRouteChildren: RootRouteChildren = {
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,
+  teamDotorgRoute: teamDotorgRoute,
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   todayDotupdatesRoute: todayDotupdatesRoute,
   workDotworkIdRoute: workDotworkIdRoute,
@@ -1432,9 +1621,15 @@ const rootRouteChildren: RootRouteChildren = {
   salesDotleadDotformFieldRoute: salesDotleadDotformFieldRoute,
   salesDotproposalDotproposalIdRoute: salesDotproposalDotproposalIdRoute,
   salesDotproposalDotproposalFormRoute: salesDotproposalDotproposalFormRoute,
+  teamDotarchiveDotmemberPubkeyRoute: teamDotarchiveDotmemberPubkeyRoute,
+  teamDotdetailDotmemberPubkeyRoute: teamDotdetailDotmemberPubkeyRoute,
+  teamDoteditDotmemberPubkeyRoute: teamDoteditDotmemberPubkeyRoute,
+  teamDotpauseDotmemberPubkeyRoute: teamDotpauseDotmemberPubkeyRoute,
   workDotscreenDotresourceIdRoute: workDotscreenDotresourceIdRoute,
   channelsDotchannelIdDotpostsDotpostIdRoute:
     channelsDotchannelIdDotpostsDotpostIdRoute,
+  workDottrackingDotscreenDotresourceIdRoute:
+    workDottrackingDotscreenDotresourceIdRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

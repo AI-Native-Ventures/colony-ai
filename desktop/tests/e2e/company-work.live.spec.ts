@@ -118,6 +118,22 @@ test.describe("company work local relay journey", () => {
     if (await joinButton.isVisible().catch(() => false)) {
       await joinButton.click();
     }
+    const destinationMessageText = `Move destination ${Date.now()}`;
+    await page.getByTestId("message-input").fill(destinationMessageText);
+    await page.getByTestId("send-message").click();
+    const destinationMessage = page
+      .locator("[data-message-id]")
+      .filter({ hasText: destinationMessageText });
+    await expect(destinationMessage).toHaveCount(1);
+    await expect(destinationMessage).toHaveAttribute(
+      "data-message-id",
+      /^[0-9a-f]{64}$/,
+    );
+    const destinationRootId =
+      await destinationMessage.getAttribute("data-message-id");
+    if (!destinationRootId) {
+      throw new Error("The local relay omitted the destination message id.");
+    }
     await page.goto("/#/work/new");
     await expect(page.getByTestId("company-work-form")).toBeVisible();
     await page
@@ -163,7 +179,35 @@ test.describe("company work local relay journey", () => {
       "Verification passed",
     );
 
+    await page.getByRole("button", { name: "Move to another thread" }).click();
+    await expect(page.getByTestId("company-work-move")).toBeVisible();
+    const destinationRoot = page.getByTestId(
+      `company-work-move-root-${destinationRootId}`,
+    );
+    await expect(destinationRoot).toBeEnabled();
+    await destinationRoot.click();
+    await page.getByRole("button", { name: "Review move" }).click();
+    await expect(page.getByTestId("company-work-move")).toContainText(
+      "Both threads are in #general. No membership or permissions will change.",
+    );
+    await page.getByRole("button", { name: "Move work item" }).click();
+    await expect(page.getByTestId("company-work-detail")).toBeVisible();
+    await page.getByRole("button", { name: "Full timeline" }).click();
+    await expect(page.getByTestId("company-work-full-timeline")).toContainText(
+      "moved this work item to a new thread.",
+    );
+
     await page.reload();
+    await expect(page.getByTestId("company-work-full-timeline")).toContainText(
+      "moved this work item to a new thread.",
+    );
+    await page.goto(
+      `/#/channels/${GENERAL_CHANNEL_ID}?messageId=${destinationRootId}&threadRootId=${destinationRootId}`,
+    );
+    await expect(
+      page.getByTestId(`company-work-current-card-${workItemId}`),
+    ).toBeVisible();
+    await page.goto(`/#/work/detail/${workItemId}`);
     await expect(page.getByTestId("company-work-verification")).toContainText(
       "The evidence satisfies the done condition.",
     );

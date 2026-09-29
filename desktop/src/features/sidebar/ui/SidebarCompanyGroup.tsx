@@ -1,9 +1,11 @@
-import { CalendarCheck2, Target, Workflow } from "lucide-react";
+import { CalendarCheck2, Target, UsersRound, Workflow } from "lucide-react";
 
+import { useCompanyTeamCountQuery } from "@/features/company-team/teamRelay";
 import { FeatureGate } from "@/shared/features";
 import {
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuBadge,
   SidebarMenuItem,
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
@@ -12,26 +14,57 @@ import type { AppSidebarProps } from "@/features/sidebar/ui/AppSidebar.types";
 
 type SidebarCompanyGroupProps = Pick<
   AppSidebarProps,
-  "onSelectGoals" | "onSelectWork" | "onSelectWorkflows" | "selectedView"
+  | "onSelectGoals"
+  | "onSelectTeam"
+  | "onSelectWork"
+  | "onSelectWorkflows"
+  | "selectedView"
 >;
 
 export function SidebarCompanyGroup({
   onSelectGoals,
+  onSelectTeam,
   onSelectWork,
   onSelectWorkflows,
   selectedView,
 }: SidebarCompanyGroupProps) {
+  const teamCountQuery = useCompanyTeamCountQuery();
+  const teamCount = teamCountQuery.data?.membershipSnapshotFound
+    ? teamCountQuery.data.memberCount
+    : null;
+
   return (
     <SidebarNavigationGroup
       defaultExpanded
       expandForActiveRoute={
         selectedView === "goals" ||
+        selectedView === "team" ||
         selectedView === "work" ||
         selectedView === "workflows"
       }
       label="Company"
       testId="sidebar-nav-company"
     >
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="sidebar-navigation-child pl-7"
+            data-testid="sidebar-company-team"
+            isActive={selectedView === "team"}
+            onClick={onSelectTeam}
+            tooltip="Team"
+            type="button"
+          >
+            <UsersRound className="h-4 w-4" />
+            <SidebarMenuLabel>Team</SidebarMenuLabel>
+          </SidebarMenuButton>
+          {teamCount !== null ? (
+            <SidebarMenuBadge data-testid="sidebar-team-count">
+              {teamCount}
+            </SidebarMenuBadge>
+          ) : null}
+        </SidebarMenuItem>
+      </SidebarMenu>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton

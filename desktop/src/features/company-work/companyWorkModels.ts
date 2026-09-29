@@ -87,6 +87,7 @@ export type CompanyWorkAction = {
 export type CompanyWorkHistoryEntry = {
   event: RelayEvent;
   action: CompanyWorkAction;
+  channelId: string;
 };
 
 const UUID_RE =
@@ -211,8 +212,8 @@ function parseHeadContent(content: string): CompanyWorkHead | null {
     (value.threadRootEventId !== undefined &&
       (typeof value.threadRootEventId !== "string" ||
         !HEX64_RE.test(value.threadRootEventId))) ||
-    (value.sourceEventId === undefined) !==
-      (value.threadRootEventId === undefined) ||
+    (value.sourceEventId !== undefined &&
+      value.threadRootEventId === undefined) ||
     (value.evidence !== undefined && typeof value.evidence !== "string") ||
     (value.statusReason !== undefined &&
       typeof value.statusReason !== "string") ||
@@ -327,7 +328,7 @@ export function parseCompanyWorkHeadEvent(
 
 export function parseCompanyWorkActionEvent(
   event: RelayEvent,
-  channelId: string,
+  channelIds: readonly string[] | string,
   workItemId: string,
 ): CompanyWorkHistoryEntry | null {
   try {
@@ -337,10 +338,15 @@ export function parseCompanyWorkActionEvent(
     return null;
   }
   const dTag = companyWorkDTag(workItemId);
+  const allowedChannelIds =
+    typeof channelIds === "string" ? [channelIds] : channelIds;
+  const hTags = event.tags.filter((tag) => tag[0] === "h");
+  const channelId = hTags[0]?.[1]?.toLowerCase();
   if (
     event.tags.length !== 2 ||
-    event.tags.filter((tag) => tag[0] === "h" && tag[1] === channelId)
-      .length !== 1 ||
+    hTags.length !== 1 ||
+    !channelId ||
+    !allowedChannelIds.some((allowed) => allowed.toLowerCase() === channelId) ||
     event.tags.filter((tag) => tag[0] === "d" && tag[1] === dTag).length !==
       1 ||
     event.tags.some((tag) => !["h", "d"].includes(tag[0]))
@@ -380,5 +386,5 @@ export function parseCompanyWorkActionEvent(
     return null;
   }
   const action = value as unknown as CompanyWorkAction;
-  return { event, action };
+  return { event, action, channelId };
 }

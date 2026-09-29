@@ -246,6 +246,12 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// Read and update company member positions
+    #[command(subcommand)]
+    Team(TeamCmd),
+    /// List, bind and revoke company secret metadata
+    #[command(subcommand)]
+    Secrets(SecretsCmd),
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
@@ -1193,6 +1199,80 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TeamCmd {
+    /// List current relay-signed member position heads
+    List {
+        /// Maximum current position heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one member position by member public key
+    Get {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+    },
+    /// Create or update a member title and reporting line
+    SetPosition {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+        /// Manager public key in 64-character hex
+        #[arg(long, conflicts_with = "clear_manager")]
+        manager: Option<String>,
+        /// Clear the manager and report directly to the company owner
+        #[arg(long, conflicts_with = "manager")]
+        clear_manager: bool,
+    },
+    /// Set a member title at the exact current head
+    SetTitle {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// New title
+        #[arg(long)]
+        title: String,
+    },
+    /// Set or clear the manager at the exact current head
+    SetManager {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// Manager public key in 64-character hex
+        #[arg(long, conflicts_with = "clear_manager")]
+        manager: Option<String>,
+        /// Clear the manager and report directly to the company owner
+        #[arg(long, conflicts_with = "manager")]
+        clear_manager: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretsCmd {
+    /// List secret binding names and statuses
+    List {
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Create a pending binding from metadata JSON or stdin; no value is accepted
+    Bind {
+        /// SecretBindingSpec JSON or '-' to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke a binding by its UUID
+    Revoke {
+        /// Secret binding UUID
+        #[arg(long)]
+        binding_id: String,
     },
 }
 
@@ -2653,6 +2733,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
@@ -2843,7 +2925,9 @@ mod tests {
             "projects",
             "reactions",
             "repos",
+            "secrets",
             "social",
+            "team",
             "upload",
             "users",
             "work",
@@ -2870,6 +2954,25 @@ mod tests {
             actual, expected_groups,
             "Command group inventory drift detected"
         );
+    }
+
+    #[test]
+    fn secret_binding_cli_does_not_accept_a_value_argument_or_echo_it() {
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let result = Cli::try_parse_from([
+            "buzz",
+            "secrets",
+            "bind",
+            "--record",
+            "{}",
+            "--value",
+            sentinel.as_str(),
+        ]);
+        let error = match result {
+            Ok(_) => panic!("the secret binding CLI has no credential value argument"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().contains(&sentinel));
     }
 
     #[test]
@@ -2943,6 +3046,7 @@ mod tests {
             vec!["balance", "history", "packs", "pay", "usage", "verify"]
         );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
+        assert_eq!(names(&cmd, "secrets"), vec!["bind", "list", "revoke"]);
         assert_eq!(
             names(&cmd, "emoji"),
             vec!["export", "import", "list", "rm", "set"]
@@ -2975,6 +3079,10 @@ mod tests {
                 "archive", "create", "delete", "get", "list", "progress", "restore", "status",
                 "update"
             ]
+        );
+        assert_eq!(
+            names(&cmd, "team"),
+            vec!["get", "list", "set-manager", "set-position", "set-title"]
         );
         assert_eq!(names(&cmd, "feed"), vec!["get"]);
         assert_eq!(

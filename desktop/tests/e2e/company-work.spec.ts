@@ -1,36 +1,60 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { expect, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   finalizeEvent,
   generateSecretKey,
   getPublicKey,
 } from "nostr-tools/pure";
 
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
 
+const CAPTURE_COMPANY_WORK_MATRIX =
+  process.env.CAPTURE_COMPANY_WORK_MATRIX === "1";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const GOAL_ID = "e1a2b3c4-d5e6-4789-8abc-1234567890ab";
 const LINK_FAILURE_WORK_ID = "7a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const LINK_SUCCESS_WORK_ID = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+const MOVE_WORK_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
-type SeedWorkItem = { workItemId: string; title: string; goalId?: string };
+type SeedWorkItem = {
+  workItemId: string;
+  title: string;
+  goalId?: string;
+  ownerPubkey?: string;
+  status?:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "done_unverified"
+    | "done_verified";
+};
 
-function goalHeadEvent(relaySecret: Uint8Array, ownerPubkey: string) {
+type SeedGoal = { goalId: string; title: string; parentGoalId?: string };
+
+function goalHeadEvent(
+  relaySecret: Uint8Array,
+  ownerPubkey: string,
+  goal: SeedGoal = { goalId: GOAL_ID, title: "Complete the launch brief" },
+) {
   return finalizeEvent(
     {
       kind: 30642,
       created_at: Math.floor(Date.now() / 1_000),
-      tags: [["d", `company:goal:${GOAL_ID}`]],
+      tags: [["d", `company:goal:${goal.goalId}`]],
       content: JSON.stringify({
         schemaVersion: 1,
-        goalId: GOAL_ID,
+        goalId: goal.goalId,
         status: "active",
-        title: "Complete the launch brief",
+        title: goal.title,
         goal: {
           schemaVersion: 1,
-          goalId: GOAL_ID,
-          title: "Complete the launch brief",
+          goalId: goal.goalId,
+          ...(goal.parentGoalId ? { parentGoalId: goal.parentGoalId } : {}),
+          title: goal.title,
           ownerPubkey,
           doneCondition: "The launch brief is reviewed and approved.",
           linkedChannelIds: [GENERAL_CHANNEL_ID],
@@ -59,11 +83,11 @@ function companyWorkHeadEvent(
         schemaVersion: 1,
         workItemId: workItem.workItemId,
         title: workItem.title,
-        status: "active",
-        assignedPubkeys: [ownerPubkey],
+        status: workItem.status ?? "active",
+        assignedPubkeys: [workItem.ownerPubkey ?? ownerPubkey],
         approverPubkeys: [],
         deliverables: [],
-        requesterPubkey: ownerPubkey,
+        requesterPubkey: workItem.ownerPubkey ?? ownerPubkey,
         doneCondition: `The work for ${workItem.title} is complete.`,
         ...(workItem.goalId ? { goalId: workItem.goalId } : {}),
         sourceActionEventId: "c".repeat(64),
@@ -95,9 +119,16 @@ async function installCompanyWorkMock(
   page: import("@playwright/test").Page,
   companyWorkActionErrors: string[] = [],
   workItems: SeedWorkItem[] = [],
+  goals: SeedGoal[] = [{ goalId: GOAL_ID, title: "Complete the launch brief" }],
 ) {
   const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
+  if (CAPTURE_COMPANY_WORK_MATRIX) {
+    await page.addInitScript(() => {
+      window.localStorage.removeItem("buzz-theme");
+      window.localStorage.removeItem("buzz-follow-system");
+    });
+  }
   await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
   await installMockBridge(page, {
     companyWorkEvents: workItems.map((workItem) =>
@@ -105,11 +136,30 @@ async function installCompanyWorkMock(
     ),
     companyWorkActionErrors,
     companyWorkRelayPrivateKey: bytesToHex(relaySecret),
-    goalEvents: [goalHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey)],
+    goalEvents: goals.map((goal) =>
+      goalHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey, goal),
+    ),
     goalRelayPrivateKey: bytesToHex(relaySecret),
     relayRequiresMembership: true,
     relayRole: "owner",
     relaySelf,
+    searchProfiles: [
+      {
+        pubkey: TEST_IDENTITIES.tyler.pubkey,
+        displayName: "Tyler",
+        isAgent: false,
+      },
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        displayName: "Alice",
+        isAgent: false,
+      },
+      {
+        pubkey: TEST_IDENTITIES.bob.pubkey,
+        displayName: "Briefing Agent",
+        isAgent: true,
+      },
+    ],
   });
 }
 
@@ -121,9 +171,45 @@ async function activateByKeyboard(
   await page.keyboard.press("Enter");
 }
 
+async function captureCompanyWorkMatrix(
+  page: import("@playwright/test").Page,
+  label: string,
+) {
+  if (!CAPTURE_COMPANY_WORK_MATRIX) return;
+  const outputDirectory = resolve(
+    process.cwd(),
+    "test-results/company-work-v8-comparison",
+  );
+  mkdirSync(outputDirectory, { recursive: true });
+  for (const [width, height] of [
+    [1728, 1117],
+    [1440, 900],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.waitForFunction(
+        (shouldBeDark) =>
+          document.documentElement.classList.contains("dark") === shouldBeDark,
+        theme === "dark",
+      );
+      await waitForAnimations(page);
+      await page.screenshot({
+        path: resolve(
+          outputDirectory,
+          `${label}-${width}x${height}-${theme}.png`,
+        ),
+      });
+    }
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1280, height: 720 });
+}
+
 test("company work keeps its chat source, review history, and goal link", async ({
   page,
 }) => {
+  if (CAPTURE_COMPANY_WORK_MATRIX) test.setTimeout(120_000);
   await installCompanyWorkMock(page);
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   const joinButton = page.getByRole("button", {
@@ -184,6 +270,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(detail).toBeVisible();
   await expect(detail).toContainText("Review launch brief");
   await expect(page.getByText("Company / Review launch brief")).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-detail");
   await expect(page.getByTestId("company-work-goal-card")).toContainText(
     "Complete the launch brief",
   );
@@ -289,13 +376,66 @@ test("company work keeps its chat source, review history, and goal link", async 
   await recordVerdict.focus();
   await page.keyboard.press("Enter");
   await expect(detail.getByText("Verification passed")).toBeVisible();
-  await page.reload();
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  const rejoinButton = page.getByRole("button", { name: "Join", exact: true });
-  await expect(rejoinButton).toBeVisible({ timeout: 30_000 });
-  await rejoinButton.click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await waitForMockLiveSubscription(page, "general");
+  const destinationRootId = await page.evaluate((pubkey) => {
+    const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content: "Final review thread",
+      pubkey,
+    });
+    if (!event) throw new Error("The mock message seam is unavailable.");
+    return event.id;
+  }, TEST_IDENTITIES.tyler.pubkey);
   await page.goto(`/#/work/detail/${workItemId}`);
+  await expect(page.getByTestId("company-work-verification")).toContainText(
+    "The final brief meets the done condition.",
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Move to another thread" }),
+  );
+  const moveScreen = page.getByTestId("company-work-move");
+  await expect(moveScreen).toContainText(
+    "Choose an existing thread you can access. A move cannot silently change who can see the work.",
+  );
+  await captureCompanyWorkMatrix(page, "work-move");
+  await page.getByTestId(`company-work-move-root-${destinationRootId}`).click();
+  await page.getByRole("button", { name: "Review move" }).click();
+  await expect(moveScreen).toContainText("Same audience");
+  await captureCompanyWorkMatrix(page, "work-move-confirm");
+  await page.getByRole("button", { name: "Move work item" }).click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "moved this work item to a new thread.",
+  );
+
+  await page.goto(
+    `/#/channels/${GENERAL_CHANNEL_ID}?messageId=${sourceEventId}&threadRootId=${sourceEventId}`,
+  );
+  const movedReference = page.getByTestId(
+    `company-work-moved-reference-${workItemId}`,
+  );
+  await expect(movedReference).toBeVisible();
+  await expect(movedReference).toContainText(
+    "moved this work item to another thread.",
+  );
+  await movedReference
+    .getByRole("button", { name: "Open moved thread" })
+    .click();
+  await expect(
+    page.getByTestId(`company-work-current-card-${workItemId}`),
+  ).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-thread-panel");
+  await page.getByRole("button", { name: "Full timeline" }).click();
+  await expect(page.getByTestId("company-work-full-timeline")).toContainText(
+    "moved this work item to a new thread.",
+  );
+  await captureCompanyWorkMatrix(page, "work-full-timeline");
+  await page.goto(`/#/work/detail/${workItemId}`);
+  await expect(page.getByTestId("company-work-detail")).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByTestId("company-work-verification")).toContainText(
     "The final brief meets the done condition.",
   );
@@ -323,6 +463,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   await expect(
     goalDetail.getByTestId(`company-work-row-${workItemId}`),
   ).toContainText("Review final launch brief");
+  await captureCompanyWorkMatrix(page, "goal-linked-work");
   await goalDetail.getByRole("button", { name: "Link work" }).click();
   await expect(page.getByTestId("goal-work-link-form")).toBeVisible();
   await expect(
@@ -389,6 +530,302 @@ test("goal work links retain and retry only the failed exact-head action", async
   await expect(
     goalDetail.getByTestId(`company-work-row-${LINK_SUCCESS_WORK_ID}`),
   ).toBeVisible();
+});
+
+test("company work filters intersect real owners, statuses, and goal descendants", async ({
+  page,
+}) => {
+  const parentGoalId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const childGoalId = "5a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const otherGoalId = "6a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const tylerWorkId = "1a1657ac-f7aa-5db0-b632-d8bbeb6dfb51";
+  const aliceWorkId = "2a1657ac-f7aa-5db0-b632-d8bbeb6dfb51";
+  const agentWorkId = "3a1657ac-f7aa-5db0-b632-d8bbeb6dfb51";
+  const unrelatedWorkId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb51";
+  await installCompanyWorkMock(
+    page,
+    [],
+    [
+      {
+        workItemId: tylerWorkId,
+        title: "Prepare launch outline",
+        goalId: parentGoalId,
+      },
+      {
+        workItemId: aliceWorkId,
+        title: "Draft customer brief",
+        goalId: childGoalId,
+        ownerPubkey: TEST_IDENTITIES.alice.pubkey,
+      },
+      {
+        workItemId: agentWorkId,
+        title: "Review customer brief",
+        goalId: childGoalId,
+        ownerPubkey: TEST_IDENTITIES.bob.pubkey,
+        status: "blocked",
+      },
+      {
+        workItemId: unrelatedWorkId,
+        title: "Prepare sales update",
+        goalId: otherGoalId,
+        ownerPubkey: TEST_IDENTITIES.alice.pubkey,
+      },
+    ],
+    [
+      { goalId: parentGoalId, title: "Launch customer plan" },
+      {
+        goalId: childGoalId,
+        parentGoalId,
+        title: "Customer brief",
+      },
+      { goalId: otherGoalId, title: "Sales update" },
+    ],
+  );
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await page.getByRole("button", { name: "Join to participate" }).click();
+  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await page.goto("/#/company-work");
+
+  const list = page.getByTestId("company-work-list");
+  await expect(list.getByText("4 commitments", { exact: true })).toBeVisible();
+  const ownerFilter = page.getByTestId("company-work-owner-filter");
+  const goalFilter = page.getByTestId("company-work-goal-filter");
+  await expect(
+    page.getByTestId("company-work-status-filter").locator("option:checked"),
+  ).toHaveText("All statuses");
+  await expect(ownerFilter).toContainText("Anyone");
+  await expect(goalFilter).toContainText("Any goal");
+  await ownerFilter.click();
+  const ownerSearch = page.getByRole("textbox", { name: "Search owners" });
+  await ownerSearch.fill("Alice");
+  await ownerSearch.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("company-work-filter-chips")).toContainText(
+    "Owner: Alice",
+  );
+  await expect(
+    page.getByTestId(`company-work-row-${aliceWorkId}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`company-work-row-${unrelatedWorkId}`),
+  ).toBeVisible();
+  await expect(page.getByTestId(`company-work-row-${tylerWorkId}`)).toHaveCount(
+    0,
+  );
+
+  await goalFilter.click();
+  const goalSearch = page.getByRole("textbox", { name: "Search goals" });
+  await goalSearch.fill("Launch customer plan");
+  await goalSearch.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("company-work-filter-chips")).toContainText(
+    "Goal: Launch customer plan + sub-goals",
+  );
+  await expect(
+    page.getByTestId(`company-work-row-${aliceWorkId}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`company-work-row-${unrelatedWorkId}`),
+  ).toHaveCount(0);
+
+  await page.getByTestId("company-work-status-filter").selectOption("blocked");
+  await expect(list.getByText("0 commitments", { exact: true })).toBeVisible();
+  await expect(list.getByText("No work matches these filters")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Clear Status: blocked filter" })
+    .click();
+  await expect(
+    page.getByTestId(`company-work-row-${aliceWorkId}`),
+  ).toBeVisible();
+  await expect(page.getByTestId(`company-work-row-${agentWorkId}`)).toHaveCount(
+    0,
+  );
+
+  await page.getByRole("button", { name: "Clear Owner: Alice filter" }).click();
+  await expect(
+    page.getByTestId(`company-work-row-${tylerWorkId}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`company-work-row-${agentWorkId}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`company-work-row-${unrelatedWorkId}`),
+  ).toHaveCount(0);
+
+  await page.getByTestId("company-work-clear-all").click();
+  await expect(list.getByText("4 commitments", { exact: true })).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-list-all");
+  await ownerFilter.click();
+  const agentSearch = page.getByRole("textbox", { name: "Search owners" });
+  await agentSearch.fill("AI employee");
+  await agentSearch.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByTestId(`company-work-row-${agentWorkId}`),
+  ).toBeVisible();
+  await expect(page.getByTestId(`company-work-row-${aliceWorkId}`)).toHaveCount(
+    0,
+  );
+  await captureCompanyWorkMatrix(page, "work-list-filters");
+});
+
+test("company work tracking reads current owner records and keeps unavailable automation off", async ({
+  page,
+}) => {
+  if (CAPTURE_COMPANY_WORK_MATRIX) test.setTimeout(120_000);
+  const aliceWorkId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const tylerWorkId = "5a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  await installCompanyWorkMock(
+    page,
+    [],
+    [
+      {
+        workItemId: aliceWorkId,
+        title: "Prepare the client handover",
+        ownerPubkey: TEST_IDENTITIES.alice.pubkey,
+      },
+      { workItemId: tylerWorkId, title: "Review the launch brief" },
+    ],
+  );
+
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  const joinButton = page.getByRole("button", {
+    name: "Join to participate",
+  });
+  await expect(joinButton).toBeVisible({ timeout: 30_000 });
+  await joinButton.click();
+  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await page.goto(`/#/work/tracking/person/${TEST_IDENTITIES.alice.pubkey}`);
+  const commitments = page.getByTestId("company-work-person-commitments");
+  await expect(commitments).toContainText("Prepare the client handover");
+  await expect(
+    page.getByTestId(`company-work-person-row-${tylerWorkId}`),
+  ).toHaveCount(0);
+  await captureCompanyWorkMatrix(page, "work-person-commitments");
+
+  await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
+  await expect(page.getByText("Watchdog is off")).toBeVisible();
+  await expect(
+    page.getByText("No interval is selected or saved."),
+  ).toBeVisible();
+  await expect(page.getByRole("spinbutton")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Save changes" }),
+  ).toBeDisabled();
+  await captureCompanyWorkMatrix(page, "work-watchdog-off");
+
+  await page.goto(`/#/work/tracking/watchdog-saved/${aliceWorkId}`);
+  await expect(
+    page.getByText("Watchdog settings were not saved"),
+  ).toBeVisible();
+  await expect(page.getByText("The watchdog remains off")).toBeVisible();
+  await captureCompanyWorkMatrix(page, "work-watchdog-saved");
+
+  await page.goto(`/#/work/tracking/suggestion/${aliceWorkId}`);
+  await expect(page.getByText("Suggestions unavailable")).toBeVisible();
+  await expect(
+    page.getByText("Messages never create work automatically."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Track this?" })).toHaveCount(
+    0,
+  );
+  await captureCompanyWorkMatrix(page, "work-suggestion-unavailable");
+});
+
+test("company work move keeps its destination on failure and preserves standalone roots on edit", async ({
+  page,
+}) => {
+  const failureMessage =
+    "restricted: moving work would change conversation membership or permissions.";
+  await installCompanyWorkMock(
+    page,
+    [failureMessage],
+    [{ workItemId: MOVE_WORK_ID, title: "Prepare the launch brief" }],
+  );
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await page.getByRole("button", { name: "Join to participate" }).click();
+  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await waitForMockLiveSubscription(page, "general");
+  const destinationRootId = await page.evaluate((pubkey) => {
+    const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "general",
+      content: "Reviewed launch plan",
+      pubkey,
+    });
+    if (!event) throw new Error("The mock message seam is unavailable.");
+    return event.id;
+  }, TEST_IDENTITIES.tyler.pubkey);
+
+  await page.goto(`/#/work/move/${MOVE_WORK_ID}`);
+  const moveScreen = page.getByTestId("company-work-move");
+  const destination = page.getByTestId(
+    `company-work-move-root-${destinationRootId}`,
+  );
+  await expect(destination).toBeVisible();
+  await destination.click();
+  const reviewButton = page.getByRole("button", { name: "Review move" });
+  await expect(reviewButton).toBeEnabled();
+  await reviewButton.click();
+  await expect(moveScreen).toContainText("Same audience");
+  await page.getByRole("button", { name: "Move work item" }).click();
+
+  await expect(page.getByTestId("company-work-move-failure")).toContainText(
+    failureMessage,
+  );
+  await captureCompanyWorkMatrix(page, "work-move-failed");
+  const failedHead = await page.evaluate((id) => {
+    const events = JSON.parse(
+      window.localStorage.getItem("buzz-e2e-company-work-events-v1") ?? "[]",
+    ) as Array<{ kind: number; content: string }>;
+    const event = events.find(
+      (candidate) =>
+        candidate.kind === 30634 &&
+        (JSON.parse(candidate.content) as { workItemId?: string })
+          .workItemId === id,
+    );
+    return event
+      ? (JSON.parse(event.content) as { threadRootEventId?: string })
+      : null;
+  }, MOVE_WORK_ID);
+  expect(failedHead?.threadRootEventId).toBeUndefined();
+
+  await page.getByRole("button", { name: "Retry move" }).click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Prepare the launch brief",
+  );
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "moved this work item to a new thread.",
+  );
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Reviewed launch plan",
+  );
+  expect(page.url()).toContain(`/work/detail/${MOVE_WORK_ID}`);
+
+  await page.getByRole("button", { name: "Edit work item" }).click();
+  await page.getByTestId("company-work-title").fill("Prepare the final brief");
+  await page.getByRole("button", { name: "Save work item" }).click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Prepare the final brief",
+  );
+  const movedHead = await page.evaluate((id) => {
+    const events = JSON.parse(
+      window.localStorage.getItem("buzz-e2e-company-work-events-v1") ?? "[]",
+    ) as Array<{ kind: number; content: string }>;
+    const event = events.find(
+      (candidate) =>
+        candidate.kind === 30634 &&
+        (JSON.parse(candidate.content) as { workItemId?: string })
+          .workItemId === id,
+    );
+    return event
+      ? (JSON.parse(event.content) as {
+          workItemId: string;
+          threadRootEventId?: string;
+        })
+      : null;
+  }, MOVE_WORK_ID);
+  expect(movedHead?.workItemId).toBe(MOVE_WORK_ID);
+  expect(movedHead?.threadRootEventId).toBe(destinationRootId);
 });
 
 test("company work keeps entered fields after a rejected create", async ({

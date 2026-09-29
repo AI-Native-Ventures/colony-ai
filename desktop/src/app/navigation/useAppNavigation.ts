@@ -113,6 +113,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAgentProfile = React.useCallback(
+    (agentPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/agents",
+          search: { agent: agentPubkey },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goSupervision = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/supervision" }, behavior),
@@ -162,6 +174,54 @@ export function useAppNavigation() {
   const goGoals = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/goals" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeam = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamOrg = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team/org" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamMember = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/detail/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamEdit = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/edit/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamPause = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/pause/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamArchive = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/archive/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
     [commitNavigation],
   );
 
@@ -503,6 +563,45 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goCompanyWorkMove = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "move", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkTracking = React.useCallback(
+    (
+      screen:
+        | "suggestion"
+        | "timeline"
+        | "panel"
+        | "person"
+        | "watchdog"
+        | "watchdog-saved"
+        | "failed"
+        | "unavailable"
+        | "empty",
+      resourceId: string,
+      search: { channel?: string; threadRoot?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/tracking/$screen/$resourceId",
+          params: { screen, resourceId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -819,6 +918,7 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAgentProfile,
     goAskDetail,
     goChannel,
     goClient,
@@ -835,6 +935,12 @@ export function useAppNavigation() {
     goGoalReference,
     goGoalWorkLink,
     goGoals,
+    goTeam,
+    goTeamOrg,
+    goTeamMember,
+    goTeamEdit,
+    goTeamPause,
+    goTeamArchive,
     goNewGoal,
     goEditGoal,
     goShareGoal,
@@ -864,6 +970,8 @@ export function useAppNavigation() {
     goCompanyWorkStatus,
     goCompanyWorkVerify,
     goCompanyWorkArchive,
+    goCompanyWorkMove,
+    goCompanyWorkTracking,
     openSearchHit,
   };
 }

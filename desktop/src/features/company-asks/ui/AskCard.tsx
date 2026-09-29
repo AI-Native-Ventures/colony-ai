@@ -5,7 +5,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useChannelMembersQuery } from "@/features/channels/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { useRelayAgentsQuery } from "@/features/agents/hooks";
+import {
+  useManagedAgentsQuery,
+  useRelayAgentsQuery,
+  useStopManagedAgentMutation,
+} from "@/features/agents/hooks";
+import {
+  isManagedAgentActive,
+  stopManagedAgentWithRules,
+} from "@/features/agents/lib/managedAgentControlActions";
+import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -144,6 +153,24 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
   const ask = record.head.ask;
   const specializedVariant = mapSpecializedAskCard(ask);
   const currentHeadId = record.event.id;
+  const memberProposal = ask.memberProposal;
+  const needsRuntimeStop =
+    outcome === "approved" &&
+    (memberProposal?.action === "pause" ||
+      memberProposal?.action === "terminate");
+  const managedAgentsQuery = useManagedAgentsQuery({
+    enabled: needsRuntimeStop,
+  });
+  const relayAgentsQuery = useRelayAgentsQuery({ enabled: needsRuntimeStop });
+  const channelsQuery = useChannelsQuery({ enabled: needsRuntimeStop });
+  const stopManagedAgent = useStopManagedAgentMutation();
+  const runtimeStoppedForHead = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (runtimeStoppedForHead.current !== currentHeadId) {
+      runtimeStoppedForHead.current = null;
+    }
+  }, [currentHeadId]);
 
   React.useEffect(() => {
     if (!pendingEvent) return;
@@ -181,6 +208,46 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
     setSubmitting(true);
     setError(null);
     try {
+      if (needsRuntimeStop && memberProposal) {
+        let managedAgent = managedAgentsQuery.data?.find(
+          (candidate) =>
+            normalizePubkey(candidate.pubkey) ===
+            normalizePubkey(memberProposal.pubkey),
+        );
+        if (!managedAgent) {
+          const refreshed = await managedAgentsQuery.refetch();
+          managedAgent = refreshed.data?.find(
+            (candidate) =>
+              normalizePubkey(candidate.pubkey) ===
+              normalizePubkey(memberProposal.pubkey),
+          );
+        }
+        if (!managedAgent) {
+          throw new Error(
+            "The employee runtime cannot be stopped from this device, so the approval was not recorded.",
+          );
+        }
+        if (
+          isManagedAgentActive(managedAgent) &&
+          runtimeStoppedForHead.current !== currentHeadId
+        ) {
+          const channels =
+            channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
+          const relayAgents =
+            relayAgentsQuery.data ??
+            (await relayAgentsQuery.refetch()).data ??
+            [];
+          const result = await stopManagedAgentWithRules({
+            agent: managedAgent,
+            channels,
+            relayAgents,
+            stopManagedAgent: stopManagedAgent.mutateAsync,
+          });
+          if (result.noticeMessage) throw new Error(result.noticeMessage);
+          clearActiveTurnsForAgentOnStop(memberProposal.pubkey);
+        }
+        runtimeStoppedForHead.current = currentHeadId;
+      }
       let signedEvent = pendingEvent;
       if (!signedEvent) {
         const response = {

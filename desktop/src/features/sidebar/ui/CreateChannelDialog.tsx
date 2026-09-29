@@ -6,6 +6,7 @@ import { Dialog } from "@/shared/ui/dialog";
 
 import {
   type CreateChannelInput,
+  type CreateChannelFormDraft,
   useCreateChannelForm,
 } from "@/features/sidebar/lib/useCreateChannelForm";
 import {
@@ -22,7 +23,10 @@ type CreateChannelDialogProps = {
   children?: ReactNode;
   description?: string;
   isCreating: boolean;
+  initialDraft?: CreateChannelFormDraft | null;
+  initialTemplateId?: string | null;
   onOpenChange: (open: boolean) => void;
+  onBrowseTemplates?: (draft: CreateChannelFormDraft) => void;
   onCreate: (input: {
     name: string;
     description?: string;
@@ -39,7 +43,10 @@ export function CreateChannelDialog({
   children,
   description,
   isCreating,
+  initialDraft,
+  initialTemplateId,
   onOpenChange,
+  onBrowseTemplates,
   onCreate,
   testId = "create-channel-dialog",
   title,
@@ -50,6 +57,8 @@ export function CreateChannelDialog({
     channelKind: channelKind ?? "stream",
     active: open,
     isCreating,
+    initialDraft,
+    initialTemplateId,
     onCreate: onCreate as (input: CreateChannelInput) => Promise<void>,
     onCreated: () => onOpenChange(false),
   });
@@ -85,7 +94,10 @@ export function CreateChannelDialog({
           onSubmit={form.handleSubmit}
         >
           {children}
-          <CreateChannelFormFields form={form} />
+          <CreateChannelFormFields
+            form={form}
+            onBrowseTemplates={onBrowseTemplates}
+          />
         </form>
       </ChooserDialogContent>
     </Dialog>

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
+import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
 import type {
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
@@ -156,6 +157,10 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Linked account address returned by the mocked account API. */
+  accountEmail?: string;
+  /** Current user status event returned by the mocked relay. */
+  userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
   /** Match the company shell review's conversation rows and empty badge state. */
@@ -181,8 +186,19 @@ type MockBridgeOptions = {
     agentTextToSpeech: boolean;
     voicePreferences: string[];
   };
+  /** Audio output records returned only by the mocked desktop host. */
+  audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+  /** Selected output device returned only by the mocked desktop host. */
+  selectedAudioOutputDevice?: string;
+  /** Optional NIP-30 records for visual fixture routes. */
+  customEmojiSets?: Array<{
+    owner: "self" | "community";
+    emojis: Array<{ shortcode: string; url: string }>;
+  }>;
   /** Native picker boundary result for Pocket voice import tests. */
   pocketVoiceImportResult?: "success" | "cancel" | "invalid";
+  /** Local voice files returned by the native registry in visual fixtures. */
+  importedPocketVoices?: VoiceRegistryEntry[];
   /** Advertised HEAD for the first mock project without adding that branch. */
   projectHeadBranch?: string;
   /** Factory-only project announcements for focused Factory E2E coverage. */
@@ -199,6 +215,12 @@ type MockBridgeOptions = {
   companyAskHeads?: RelayEvent[];
   /** Ephemeral test key used to model relay-signed head updates after responses. */
   companyAskRelayPrivateKeyHex?: string;
+  /** Verified relay-signed secret binding heads used by secure-entry E2E coverage. */
+  companySecretBindingHeads?: RelayEvent[];
+  /** Fail the native secret-store boundary with a generic error. */
+  companySecretStoreError?: boolean;
+  /** Reject secret-binding activation publishes in order. */
+  companySecretActivationErrors?: string[];
   /** Reject these ask response publishes in order, then accept them. */
   askResponseErrors?: string[];
   /** Reject these ask create publishes in order, then accept them. */
@@ -221,6 +243,12 @@ type MockBridgeOptions = {
   goalEvents?: RelayEvent[];
   /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
   goalRelayPrivateKey?: string;
+  /** Relay-signed member-position heads for Company Team E2E coverage. */
+  companyMemberPositionEvents?: RelayEvent[];
+  /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
+  companyMemberRelayPrivateKeyHex?: string;
+  /** Reject successive member-position writes in order, then accept them. */
+  companyMemberActionErrors?: string[];
   /** Relay-signed company work events for company work UI E2E coverage. */
   companyWorkEvents?: RelayEvent[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -258,6 +286,10 @@ type MockBridgeOptions = {
   acpRuntimesDelayMs?: number;
   /** When true, the mock catalog discovery command throws an error. */
   acpRuntimesError?: boolean;
+  /** Reject successive product feedback events, then accept when exhausted. */
+  feedbackPublishErrors?: Array<string | null>;
+  /** Delay product feedback acknowledgements so the pending UI can be captured. */
+  feedbackPublishDelayMs?: number;
   acpAuthMethods?: Record<string, { methods: Record<string, unknown>[] }>;
   acpAuthMethodsError?: string;
   /** When set, the `delete_custom_harness` mock command throws with this message. */
@@ -339,6 +371,9 @@ type MockBridgeOptions = {
   agentListDelayMs?: number;
   createManagedAgentDelayMs?: number;
   channelTemplates?: ChannelTemplate[];
+  /** Override display names for visual fixtures without changing channel IDs. */
+  channelNamesById?: Record<string, string>;
+  deleteMessageError?: string;
   addChannelMembersDelayMs?: number;
   /** Sequenced add-member failures. A string fails that call; null succeeds. */
   addChannelMembersErrors?: (string | null)[];

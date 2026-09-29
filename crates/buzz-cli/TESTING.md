@@ -206,6 +206,36 @@ refresh with `buzz work get` before retrying. Client work continues to use
 `buzz clients` and the existing client-scoped `buzz work` UI flows; this CLI
 command group addresses company work coordinates only.
 
+### 6.0.2 Standing tool permissions
+
+Only community owners and admins can grant or revoke a permission. Use the
+agent public key, exact scope and an RFC 3339 UTC expiry in the record. Reads
+show relay-signed heads:
+
+```bash
+buzz permissions list | jq .
+buzz permissions list --agent "$AGENT_PUBKEY" | jq .
+buzz permissions grant --record "$PERMISSION_RECORD_PATH" | jq .
+buzz permissions revoke --permission "$PERMISSION_ID" \
+  --expected-head-event-id "$PERMISSION_HEAD_EVENT_ID" \
+  --reason "The approved action is no longer needed." | jq .
+```
+
+### 6.0.3 Secret bindings
+
+Secret commands accept binding metadata only. Entering a credential is handled
+by the desktop secure-entry flow, never by the CLI. `bind` creates a pending
+device binding; the CLI lists names and statuses and can revoke a binding:
+
+```bash
+buzz secrets list | jq .
+buzz secrets bind --record "$SECRET_BINDING_METADATA_PATH" | jq .
+buzz secrets revoke --binding-id "$SECRET_BINDING_ID" | jq .
+```
+
+The `team`, `secrets`, `permissions` and `work` command groups are
+included in the stable command inventory test in `crates/buzz-cli/src/lib.rs`.
+
 ### 6.1 Channels
 
 ```bash

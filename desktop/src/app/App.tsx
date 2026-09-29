@@ -64,7 +64,6 @@ import { CommunityApplyErrorScreen } from "@/features/communities/ui/CommunityAp
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
 import { seedProjectSnapshot } from "@/features/projects/projectSnapshot";
-import { EncryptedBackupProvider } from "@/features/settings/EncryptedBackupProvider";
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
 import { hydrateChannelHeads } from "@/features/messages/lib/channelHeadCache";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -349,21 +348,12 @@ function AppReady({
   }
 
   return (
-    <EncryptedBackupProvider
-      onOpenSettings={() =>
-        void router.navigate({
-          to: "/settings",
-          search: { section: "profile" },
-        })
-      }
-    >
-      <KnownAgentPubkeysProvider>
-        <RouterProvider router={router} />
-        {huddleWindowChannelId() === null ? (
-          <AccountClaimPrompt authClient={authClient} />
-        ) : null}
-      </KnownAgentPubkeysProvider>
-    </EncryptedBackupProvider>
+    <KnownAgentPubkeysProvider>
+      <RouterProvider router={router} />
+      {huddleWindowChannelId() === null ? (
+        <AccountClaimPrompt authClient={authClient} />
+      ) : null}
+    </KnownAgentPubkeysProvider>
   );
 }
 

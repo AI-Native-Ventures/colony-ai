@@ -117,7 +117,7 @@ test.describe("NIP-IA hide archived from discovery", () => {
     // Alice's seed message renders with her display name in the timeline.
     const aliceMessage = page.getByTestId("message-row").nth(1);
     await expect(aliceMessage).toContainText("alice");
-    await expect(aliceMessage).toContainText("Hey team — checking in.");
+    await expect(aliceMessage).toContainText("Hey team - checking in.");
   });
 
   test("self-exemption: archived current user still appears in their own People list (not folded)", async ({

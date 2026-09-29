@@ -150,6 +150,38 @@ void main() {
     await controller.leave();
   });
 
+  test('joins muted before opening the audio transport', () async {
+    final operations = <String>[];
+    final media = _FakeMedia(operationLog: operations);
+    final transport = _FakeTransport(operationLog: operations);
+    final container = ProviderContainer(
+      overrides: [
+        huddleMediaFactoryProvider.overrideWithValue(() => media),
+        huddleTransportFactoryProvider.overrideWithValue((_) => transport),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container
+        .read(huddleSessionProvider.notifier)
+        .join(_parameters(), currentPubkey: 'mobile', startMuted: true);
+
+    expect(operations, ['prepare', 'start', 'mute:true', 'connect']);
+    expect(container.read(huddleSessionProvider).isMuted, isTrue);
+    media.emitLocal(
+      HuddleLocalAudioFrame(
+        header: const HuddleAudioHeader(
+          sequence: 1,
+          timestamp48k: 480,
+          levelDbov: -24,
+          flags: 0,
+        ),
+        opusPayload: Uint8List.fromList([9, 8, 7]),
+      ),
+    );
+    expect(transport.sentFrames, isEmpty);
+  });
+
   test('bounds playback per peer, drops oldest, and drains fairly', () async {
     final media = _FakeMedia(blockPlayback: true);
     final transport = _FakeTransport();
@@ -385,11 +417,13 @@ final class _FakeMedia implements HuddleMedia {
     this.permission = HuddleMicrophonePermission.granted,
     this.blockPlayback = false,
     this.disposeGate,
+    this.operationLog,
   });
 
   final HuddleMicrophonePermission permission;
   final bool blockPlayback;
   final Future<void>? disposeGate;
+  final List<String>? operationLog;
   final _states = StreamController<HuddleMediaState>.broadcast(sync: true);
   final _localFrames = StreamController<HuddleLocalAudioFrame>.broadcast(
     sync: true,
@@ -470,6 +504,7 @@ final class _FakeMedia implements HuddleMedia {
 
   @override
   Future<void> prepare() async {
+    operationLog?.add('prepare');
     _state = HuddleMediaState(
       phase: HuddleMediaPhase.prepared,
       capabilities: _state.capabilities,
@@ -479,6 +514,7 @@ final class _FakeMedia implements HuddleMedia {
 
   @override
   Future<void> start() async {
+    operationLog?.add('start');
     startCalls += 1;
     _state = HuddleMediaState(
       phase: HuddleMediaPhase.active,
@@ -489,6 +525,7 @@ final class _FakeMedia implements HuddleMedia {
 
   @override
   Future<void> setMuted(bool muted) async {
+    operationLog?.add('mute:$muted');
     _state = HuddleMediaState(
       phase: HuddleMediaPhase.active,
       capabilities: _state.capabilities,
@@ -543,6 +580,9 @@ final class _FakeMedia implements HuddleMedia {
 }
 
 final class _FakeTransport implements HuddleTransportClient {
+  _FakeTransport({this.operationLog});
+
+  final List<String>? operationLog;
   final _states = StreamController<HuddleTransportState>.broadcast(sync: true);
   final _remoteFrames = StreamController<HuddleRemoteAudioFrame>.broadcast(
     sync: true,
@@ -595,6 +635,7 @@ final class _FakeTransport implements HuddleTransportClient {
 
   @override
   Future<void> connect() async {
+    operationLog?.add('connect');
     connectCalls += 1;
     _state = HuddleTransportState(
       phase: HuddleTransportPhase.connected,

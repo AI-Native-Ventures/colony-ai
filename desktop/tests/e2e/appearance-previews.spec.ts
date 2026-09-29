@@ -1,9 +1,8 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
-const SHOTS = "test-results/appearance-previews";
 const THEME_STORAGE_KEY = "buzz-theme";
 const LINK_PREVIEW_STYLE_STORAGE_KEY = "buzz.appearance.linkPreviewStyle";
 const THREAD_VIEW_MODE_STORAGE_KEY = "buzz.channels.threadViewMode";
@@ -39,79 +38,47 @@ async function openAppearance(
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-appearance").click();
-  await expect(page.getByTestId("settings-theme")).toBeVisible({
+  await page.getByTestId("settings-group-appearance-group").click();
+  await expect(
+    page.getByTestId("settings-group-appearance-group").locator("svg"),
+  ).toHaveClass(/lucide-sun/);
+  await expect(page.locator(".w20-topbar-title > svg")).toHaveClass(
+    /lucide-sun/,
+  );
+  await expect(page.locator(".w20-nav-person > div strong")).toHaveCSS(
+    "color",
+    theme === "buzz-dark" ? "rgb(236, 230, 239)" : "rgb(40, 37, 50)",
+  );
+  await expect(page.getByTestId("settings-appearance")).toBeVisible({
     timeout: 10_000,
   });
   await waitForAnimations(page);
 }
 
-async function scrubTo(control: Locator, option: Locator) {
-  await control.scrollIntoViewIfNeeded();
-  const controlBox = await control.boundingBox();
-  const optionBox = await option.boundingBox();
-  if (!controlBox || !optionBox) throw new Error("Segment geometry is missing");
-
-  const selectedOption = control.locator('button[aria-pressed="true"]');
-  const selectedOptionBox = await selectedOption.boundingBox();
-  if (!selectedOptionBox)
-    throw new Error("Starting segment geometry is missing");
-
-  await control
-    .page()
-    .mouse.move(
-      selectedOptionBox.x + selectedOptionBox.width / 2,
-      controlBox.y + controlBox.height / 2,
-    );
-  await control.page().mouse.down();
-  await control
-    .page()
-    .mouse.move(
-      optionBox.x + optionBox.width / 2,
-      controlBox.y + controlBox.height / 2,
-      { steps: 5 },
-    );
-}
-
-test("appearance samples preview locally and commit only on selection", async ({
+test("conversation controls update the preview and save one global snapshot", async ({
   page,
 }) => {
   await openAppearance(page);
 
-  const linkControl = page.getByTestId("link-preview-style-control");
-  const richOption = page.getByTestId("link-preview-style-rich");
-  const linkSample = page.getByTestId("link-preview-sample");
-  await expect(linkSample.locator("[data-link-preview-inline]")).toHaveCount(0);
-  await expect(page.getByTestId("link-preview-sample-surface")).toHaveAttribute(
-    "inert",
-    "",
-  );
-  const sampleLink = linkSample.locator("a").first();
-  await sampleLink.evaluate((element) => element.focus());
-  await expect(sampleLink).not.toBeFocused();
-  await scrubTo(linkControl, richOption);
-  await expect(linkSample.locator("[data-link-preview-inline]")).toBeVisible();
-  await expect(linkSample.getByText("Show less")).toHaveCount(0);
-  await expect(
-    page.getByText("Large previews with images and descriptions"),
-  ).toBeVisible();
+  const preview = page.getByTestId("appearance-live-preview");
+  await expect(preview.locator(".ap-demo-link")).toHaveClass(/compact/);
+  await expect(preview.locator(".ap-live-chat")).not.toHaveClass(/focused/);
+
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(preview.locator(".ap-demo-link")).toHaveClass(/rich/);
+  await page.getByTestId("appearance-threads-focus").click();
+  await expect(preview.locator(".ap-live-chat")).toHaveClass(/focused/);
+
   await expect
     .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        LINK_PREVIEW_STYLE_STORAGE_KEY,
-      ),
+      page.evaluate(() => {
+        const key = Object.keys(localStorage).find((candidate) =>
+          candidate.endsWith(":global-conversations"),
+        );
+        return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+      }),
     )
-    .toBe("compact");
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await expect(linkSample.locator("[data-link-preview-inline]")).toHaveCount(0);
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-
-  await richOption.click();
-  await expect(linkSample.locator("[data-link-preview-inline]")).toBeVisible();
+    .toMatchObject({ linkPreview: "rich", threadLayout: "focus" });
   await expect
     .poll(() =>
       page.evaluate(
@@ -120,26 +87,6 @@ test("appearance samples preview locally and commit only on selection", async ({
       ),
     )
     .toBe("rich");
-
-  const threadControl = page.getByTestId("thread-layout-control");
-  const focusOption = page.getByTestId("thread-layout-focus");
-  await expect(page.getByTestId("thread-layout-diagram-split")).toBeVisible();
-  await scrubTo(threadControl, focusOption);
-  await expect(page.getByTestId("thread-layout-diagram-focus")).toBeVisible();
-  await expect(page.getByText("Threads open over the channel")).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        THREAD_VIEW_MODE_STORAGE_KEY,
-      ),
-    )
-    .toBe("split");
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await expect(page.getByTestId("thread-layout-diagram-split")).toBeVisible();
-
-  await focusOption.click();
-  await expect(page.getByTestId("thread-layout-diagram-focus")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -150,7 +97,51 @@ test("appearance samples preview locally and commit only on selection", async ({
     .toBe("focus");
 });
 
-test("appearance previews stay grouped and responsive", async ({ page }) => {
+test("appearance preview keeps the custom thumbnail and compose affordance", async ({
+  page,
+}) => {
+  await openAppearance(page);
+
+  await expect(
+    page.getByTestId("appearance-theme-custom").locator(".ap-mini"),
+  ).toHaveCSS("background-image", /linear-gradient/);
+  await expect(page.locator(".ap-live-compose")).toContainText("＋");
+});
+
+test("custom palette validates, survives Default, and stays applied after closing settings", async ({
+  page,
+}) => {
+  await openAppearance(page);
+
+  await page.getByTestId("appearance-theme-custom").click();
+  const firstHex = page.getByTestId("appearance-color-hex-1");
+  await firstHex.fill("#12AB34");
+  await expect(firstHex).toHaveValue("#12AB34");
+  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
+
+  const secondHex = page.getByTestId("appearance-color-hex-2");
+  await secondHex.fill("#12x");
+  await expect(page.getByRole("alert")).toContainText(
+    "Use a six-digit hex colour",
+  );
+  await secondHex.blur();
+  await expect(secondHex).toHaveValue("#5A9CF6");
+
+  await page.getByTestId("appearance-theme-default").click();
+  await expect(page.getByTestId("appearance-color-hex-1")).toHaveCount(0);
+  await page.getByTestId("appearance-theme-custom").click();
+  await expect(page.getByTestId("appearance-color-hex-1")).toHaveValue(
+    "#12AB34",
+  );
+
+  await page.getByTestId("settings-close").click();
+  await expect(page.getByTestId("settings-view")).toHaveCount(0);
+  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
+});
+
+test("appearance controls remain usable at the narrow desktop width", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 840, height: 900 });
   await openAppearance(page, {
     linkStyle: "rich",
@@ -158,50 +149,14 @@ test("appearance previews stay grouped and responsive", async ({ page }) => {
     threadMode: "focus",
   });
 
-  const preferencesCard = page.getByTestId("appearance-preferences-card");
-  const linkGroup = page.getByTestId("link-preview-style-group");
-  const threadGroup = page.getByTestId("thread-layout-group");
-  const linkControl = page.getByTestId("link-preview-style-control");
-  const threadControl = page.getByTestId("thread-layout-control");
+  const grid = page.locator(".ap-appearance-grid");
+  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await expect(page.getByTestId("appearance-live-preview")).toBeHidden();
+  const gridColumns = await grid.evaluate(
+    (element) => getComputedStyle(element).gridTemplateColumns,
+  );
+  expect(gridColumns.trim().split(/\s+/)).toHaveLength(1);
 
-  await expect(linkGroup.getByText("Preview", { exact: true })).toBeVisible();
-  await expect(threadGroup.getByText("Preview", { exact: true })).toBeVisible();
-
-  const [cardBox, linkControlBox, threadControlBox] = await Promise.all([
-    preferencesCard.boundingBox(),
-    linkControl.boundingBox(),
-    threadControl.boundingBox(),
-  ]);
-  if (!cardBox || !linkControlBox || !threadControlBox) {
-    throw new Error("Responsive Appearance geometry is missing");
-  }
-  for (const controlBox of [linkControlBox, threadControlBox]) {
-    expect(controlBox.width).toBeGreaterThanOrEqual(180);
-    expect(controlBox.width).toBeLessThan(cardBox.width);
-    expect(controlBox.x).toBeGreaterThanOrEqual(cardBox.x);
-    expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
-      cardBox.x + cardBox.width,
-    );
-  }
-
-  await waitForAnimations(page);
-  await linkGroup.screenshot({
-    path: `${SHOTS}/01-link-preview-rich-dark-narrow.png`,
-  });
-  await threadGroup.screenshot({
-    path: `${SHOTS}/02-thread-focus-dark-narrow.png`,
-  });
-});
-
-test("appearance previews render compact and split samples at wide width", async ({
-  page,
-}) => {
-  await openAppearance(page);
-  await waitForAnimations(page);
-  await page.getByTestId("link-preview-style-group").screenshot({
-    path: `${SHOTS}/03-link-preview-compact-light-wide.png`,
-  });
-  await page.getByTestId("thread-layout-group").screenshot({
-    path: `${SHOTS}/04-thread-split-light-wide.png`,
-  });
+  await page.getByTestId("appearance-density").selectOption("spacious");
+  await expect(page.getByTestId("appearance-density")).toHaveValue("spacious");
 });

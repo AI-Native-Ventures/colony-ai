@@ -55,6 +55,22 @@ test("company goal routes select the Company Goals destination", () => {
   }
 });
 
+test("company team routes select the Company Team destination", () => {
+  for (const pathname of [
+    "/team",
+    "/team/org",
+    "/team/detail/abc",
+    "/team/edit/abc",
+    "/team/pause/abc",
+    "/team/archive/abc",
+  ]) {
+    assert.deepEqual(deriveShellRoute(pathname), {
+      selectedChannelId: null,
+      selectedView: "team",
+    });
+  }
+});
+
 test("deriveShellRoute identifies the designed channel pins page", () => {
   assert.deepEqual(deriveShellRoute("/channels/pins/channel-id"), {
     selectedChannelId: null,

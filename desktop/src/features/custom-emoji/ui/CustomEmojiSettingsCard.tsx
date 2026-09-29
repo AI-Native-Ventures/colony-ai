@@ -127,162 +127,25 @@ export function CustomEmojiSettingsCard() {
     <section className="min-w-0" data-testid="settings-custom-emoji">
       <SettingsSectionHeader
         title="Custom emoji"
-        description={
-          <>
-            Add your own custom emoji for everyone on this relay to use. Type{" "}
-            <code>:name:</code> in messages and reactions.
-          </>
-        }
+        description="Shared marks for your business."
       />
 
       <div className="space-y-6">
-        <form
-          className="w-full"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (canSubmit) void handleAdd();
-          }}
-        >
-          <SettingsOptionGroup title="Add emoji">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-              <div className="min-w-0 flex-[1_1_22rem]">
-                <h4 className="text-sm font-medium">Upload an image</h4>
-                <p
-                  className="text-sm font-normal text-muted-foreground/70"
-                  data-settings-subcopy
-                >
-                  Square images work best. GIF, PNG, JPEG, and WebP files are
-                  supported.
-                </p>
-              </div>
-              <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-3">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border bg-background">
-                  {pendingUpload ? (
-                    <img
-                      alt="Selected custom emoji preview"
-                      src={rewriteRelayUrl(pendingUpload.url)}
-                      className="h-14 w-14 object-contain"
-                      draggable={false}
-                    />
-                  ) : (
-                    <ImagePlus className="h-6 w-6 text-muted-foreground" />
-                  )}
-                </div>
-                <div className="min-w-0 space-y-2">
-                  {pendingUpload?.filename ? (
-                    <p className="max-w-full truncate text-sm font-normal text-muted-foreground">
-                      {pendingUpload.filename}
-                    </p>
-                  ) : null}
-                  <Button
-                    type="button"
-                    data-testid="custom-emoji-upload"
-                    onClick={() => void handleUpload()}
-                    disabled={isUploading || setEmoji.isPending}
-                    variant="outline"
-                  >
-                    {isUploading
-                      ? "Uploading…"
-                      : pendingUpload
-                        ? "Choose different image"
-                        : "Upload image"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
-              <div className="min-w-0 flex-[1_1_22rem]">
-                <h4 className="text-sm font-medium">Give it a name</h4>
-                <p
-                  className="text-sm font-normal text-muted-foreground/70"
-                  data-settings-subcopy
-                >
-                  This is what you’ll type to add this emoji to messages and
-                  reactions.
-                </p>
-              </div>
-              <div className="w-full min-w-0 max-w-sm flex-[1_1_20rem] space-y-2">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    :
-                  </span>
-                  <Input
-                    id="custom-emoji-name"
-                    data-testid="custom-emoji-name-input"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    className="px-6"
-                    placeholder="party-parrot"
-                    spellCheck={false}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    :
-                  </span>
-                </div>
-                {nameInvalid ? (
-                  <p className="text-sm text-destructive">
-                    Use only letters, numbers, hyphen, or underscore.
-                  </p>
-                ) : pendingUpload === null ? (
-                  <p
-                    className="text-sm font-normal text-muted-foreground/70"
-                    data-settings-subcopy
-                  >
-                    Choose an image first; Buzz will suggest a name from the
-                    filename.
-                  </p>
-                ) : ownDuplicate ? (
-                  <p
-                    className="text-sm font-normal text-muted-foreground/70"
-                    data-settings-subcopy
-                  >
-                    You already have :{normalized}: — saving will replace its
-                    image.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 px-4 py-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleReset}
-                disabled={
-                  setEmoji.isPending || (name.length === 0 && !pendingUpload)
-                }
-              >
-                Clear
-              </Button>
-              <Button
-                type="submit"
-                data-testid="custom-emoji-add"
-                disabled={!canSubmit}
-              >
-                {setEmoji.isPending ? "Saving…" : "Save emoji"}
-              </Button>
-            </div>
-          </SettingsOptionGroup>
-        </form>
-
         <div data-testid="custom-emoji-mine">
           {ownLoading ? (
-            <SettingsOptionGroup title="My emoji">
+            <SettingsOptionGroup title="Your emoji">
               <div className="px-4 py-3 text-sm font-normal text-muted-foreground">
                 Loading…
               </div>
             </SettingsOptionGroup>
           ) : own.length === 0 ? (
-            <SettingsOptionGroup title="My emoji">
+            <SettingsOptionGroup title="Your emoji">
               <div className="px-4 py-3 text-sm font-normal text-muted-foreground">
-                You haven&apos;t added any emoji yet. Add one above.
+                You haven&apos;t added any emoji yet. Add one below.
               </div>
             </SettingsOptionGroup>
           ) : (
-            <SettingsOptionGroup title={`My emoji (${own.length})`}>
+            <SettingsOptionGroup title="Your emoji">
               {own.map((e) => (
                 <div
                   key={e.shortcode}
@@ -311,6 +174,119 @@ export function CustomEmojiSettingsCard() {
             </SettingsOptionGroup>
           )}
         </div>
+
+        <form
+          className="w-full"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canSubmit) void handleAdd();
+          }}
+        >
+          <SettingsOptionGroup>
+            <div className="grid grid-cols-1 gap-4 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
+              <div className="min-w-0 space-y-2">
+                <label
+                  className="block text-sm font-medium"
+                  htmlFor="custom-emoji-name"
+                >
+                  Name
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    :
+                  </span>
+                  <Input
+                    id="custom-emoji-name"
+                    data-testid="custom-emoji-name-input"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="px-6"
+                    placeholder="studio_star"
+                    spellCheck={false}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    :
+                  </span>
+                </div>
+                {nameInvalid ? (
+                  <p className="text-sm text-destructive">
+                    Use only letters, numbers, hyphen, or underscore.
+                  </p>
+                ) : ownDuplicate ? (
+                  <p
+                    className="text-sm font-normal text-muted-foreground/70"
+                    data-settings-subcopy
+                  >
+                    You already have :{normalized}:. Saving replaces its image.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="min-w-0 space-y-2">
+                <p className="text-sm font-medium">Image</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md border bg-background">
+                    {pendingUpload ? (
+                      <img
+                        alt="Selected custom emoji preview"
+                        src={rewriteRelayUrl(pendingUpload.url)}
+                        className="size-8 object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <ImagePlus className="size-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    {pendingUpload?.filename ? (
+                      <p className="max-w-full truncate text-xs text-muted-foreground">
+                        {pendingUpload.filename}
+                      </p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      data-testid="custom-emoji-upload"
+                      onClick={() => void handleUpload()}
+                      disabled={isUploading || setEmoji.isPending}
+                      variant="outline"
+                    >
+                      {isUploading
+                        ? "Uploading…"
+                        : pendingUpload
+                          ? "Choose different image"
+                          : "Upload image"}
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  PNG, JPEG, GIF, or WebP.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 px-4 py-3">
+              {name.length > 0 || pendingUpload ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleReset}
+                  disabled={setEmoji.isPending}
+                >
+                  Clear
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                data-testid="custom-emoji-add"
+                disabled={!canSubmit}
+              >
+                {setEmoji.isPending ? "Saving…" : "Save emoji"}
+              </Button>
+            </div>
+          </SettingsOptionGroup>
+        </form>
 
         {!communityLoading && othersEmoji.length > 0 ? (
           <div data-testid="custom-emoji-community">

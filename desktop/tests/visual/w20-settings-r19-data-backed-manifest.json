@@ -1,0 +1,1476 @@
+{
+  "version": 1,
+  "matrix": {
+    "viewports": ["1728x1117", "1440x900"],
+    "themes": ["light", "dark"]
+  },
+  "defaults": {
+    "referencePrefs": {
+      "localStorage": {
+        "colony-settings-review-v1": {
+          "version": 1,
+          "businesses": {
+            "Lerato Social": {
+              "mode": "system",
+              "style": "default",
+              "color1": "#895AF6",
+              "color2": "#5A9CF6",
+              "accent": "Blue",
+              "glass": false,
+              "opacity": 65,
+              "prominent": true,
+              "links": "compact",
+              "threads": "split",
+              "size": "large"
+            }
+          },
+          "conversations": {
+            "links": "compact",
+            "threads": "split",
+            "size": "large"
+          }
+        }
+      },
+      "sessionStorage": {}
+    },
+    "appPrefs": {
+      "localStorage": {
+        "buzz-communities": [
+          {
+            "id": "lerato-social-business",
+            "name": "Lerato Social",
+            "relayUrl": "ws://127.0.0.1:3000",
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "addedAt": "2026-09-25T00:00:00.000Z"
+          }
+        ],
+        "buzz-active-community-id": "lerato-social-business",
+        "buzz-community-theme.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:ws%3A%2F%2F127.0.0.1%3A3000": {
+          "version": 1,
+          "theme": "buzz",
+          "accent": "#3b82f6",
+          "followSystem": true
+        },
+        "buzz-theme": "buzz",
+        "buzz-follow-system": "true",
+        "buzz-accent-color": "#3b82f6",
+        "buzz-glass-background": "false",
+        "buzz-glass-opacity": "65",
+        "buzz-prominent-active-tab": "true",
+        "buzz.appearance.fontSize": "default",
+        "buzz.appearance.conversationDensity": "comfortable",
+        "buzz.appearance.linkPreviewStyle": "compact",
+        "buzz.thread-view-mode": "split",
+        "buzz-sidebar-width": "238",
+        "buzz-self-profile.v1:ws://127.0.0.1:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+          "version": 1,
+          "displayName": "Lerato Molefe",
+          "avatarUrl": null,
+          "about": "Workspace owner at Lerato Social",
+          "avatarDataUrl": null,
+          "updatedAt": 1790380800000
+        },
+        "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+          "version": 1,
+          "theme": "buzz",
+          "accent": "#3b82f6",
+          "followSystem": true,
+          "custom": false,
+          "customLight": ["#895AF6", "#5A9CF6"],
+          "customDark": ["#895AF6", "#5A9CF6"],
+          "glassBackground": false,
+          "glassOpacity": 65,
+          "prominentActiveTab": true,
+          "messageSize": "larger",
+          "density": "comfortable",
+          "linkPreview": "compact",
+          "threadLayout": "split"
+        }
+      },
+      "sessionStorage": {
+        "colony.settings.last-inner-section.v1": {
+          "account": "profile",
+          "appearance-group": "appearance",
+          "preferences": "notifications",
+          "business": "business-profile",
+          "agents-group": "agent-defaults",
+          "blocks-templates": "channel-templates",
+          "administration": "moderation",
+          "app-devices": "app",
+          "storage-group": "storage"
+        }
+      },
+      "cookies": {
+        "sidebar_state": "true"
+      }
+    },
+    "appMockData": {
+      "accountEmail": "lerato@leratosocial.example",
+      "searchProfiles": [
+        {
+          "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "displayName": "Lerato Molefe",
+          "avatarUrl": null,
+          "nip05Handle": "lerato@example.test",
+          "about": "Workspace owner at Lerato Social"
+        }
+      ],
+      "acpRuntimesCatalog": [
+        {
+          "id": "claude",
+          "label": "Claude Code",
+          "avatar_url": "",
+          "availability": "available",
+          "command": "claude",
+          "binary_path": "/usr/local/bin/claude",
+          "default_args": [],
+          "mcp_command": null,
+          "install_hint": "Claude Code is detected on this device.",
+          "install_instructions_url": "https://docs.anthropic.com/en/docs/claude-code/overview",
+          "can_auto_install": false,
+          "requires_external_cli": true,
+          "underlying_cli_path": "/usr/local/bin/claude",
+          "node_required": false,
+          "auth_status": {
+            "status": "unknown"
+          },
+          "source": "builtin"
+        },
+        {
+          "id": "codex",
+          "label": "Codex",
+          "avatar_url": "",
+          "availability": "not_installed",
+          "command": null,
+          "binary_path": null,
+          "default_args": [],
+          "mcp_command": null,
+          "install_hint": "Install the supported Codex CLI adapter.",
+          "install_instructions_url": "https://developers.openai.com/codex/cli/",
+          "can_auto_install": true,
+          "requires_external_cli": true,
+          "underlying_cli_path": null,
+          "node_required": false,
+          "auth_status": {
+            "status": "unknown"
+          },
+          "source": "builtin"
+        },
+        {
+          "id": "opencode",
+          "label": "OpenCode",
+          "avatar_url": "",
+          "availability": "available",
+          "command": "opencode",
+          "binary_path": "/usr/local/bin/opencode",
+          "default_args": ["acp"],
+          "mcp_command": null,
+          "install_hint": "Sign in to configure a provider account.",
+          "install_instructions_url": "https://opencode.ai/docs/",
+          "can_auto_install": false,
+          "requires_external_cli": true,
+          "underlying_cli_path": "/usr/local/bin/opencode",
+          "node_required": false,
+          "auth_status": {
+            "status": "logged_out"
+          },
+          "source": "preset",
+          "login_hint": "Sign in to OpenCode on this device."
+        }
+      ]
+    },
+    "appReadySelector": "[data-testid=settings-view]"
+  },
+  "routes": [
+    {
+      "id": "workspace-settings",
+      "referenceInventoryRoute": "settings",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings",
+      "appRoute": "/#/settings?section=business-profile",
+      "routeLabel": "Settings overview"
+    },
+    {
+      "id": "workspace-account",
+      "referenceInventoryRoute": "account",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Account profile settings",
+      "appMockData": {
+        "relayRequiresMembership": true,
+        "relayRole": "owner",
+        "userStatus": "Available"
+      },
+      "appReadySelector": "[data-testid=settings-profile][data-ready=true]"
+    },
+    {
+      "id": "workspace-account-accessibility",
+      "referenceInventoryRoute": "account/accessibility",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/accessibility",
+      "appRoute": "/#/settings?section=accessibility",
+      "routeLabel": "Accessibility settings"
+    },
+    {
+      "id": "workspace-account-notifications",
+      "referenceInventoryRoute": "account/notifications",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/notifications",
+      "appRoute": "/#/settings?section=notifications",
+      "routeLabel": "Notifications and sounds"
+    },
+    {
+      "id": "workspace-settings-admin",
+      "referenceInventoryRoute": "settings/admin",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/admin",
+      "appRoute": "/#/settings?section=audit",
+      "routeLabel": "Administration settings"
+    },
+    {
+      "id": "workspace-account-security",
+      "referenceInventoryRoute": "account/security",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/security",
+      "appRoute": "/#/settings?section=security",
+      "routeLabel": "account/security"
+    },
+    {
+      "id": "workspace-account-archive",
+      "referenceInventoryRoute": "account/archive",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/archive",
+      "appRoute": "/#/settings?section=archived-records",
+      "routeLabel": "account/archive"
+    },
+    {
+      "id": "workspace-account-audit",
+      "referenceInventoryRoute": "account/audit",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/audit",
+      "appRoute": "/#/settings?section=audit",
+      "routeLabel": "account/audit"
+    },
+    {
+      "id": "workspace-account-moderation",
+      "referenceInventoryRoute": "account/moderation",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/moderation",
+      "appRoute": "/#/settings?section=moderation",
+      "routeLabel": "account/moderation",
+      "appReadySelector": "[data-testid=settings-moderation]",
+      "appMockData": {
+        "relayRole": "owner",
+        "relayRequiresMembership": true,
+        "channelNamesById": {
+          "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50": "marketing"
+        },
+        "moderationReports": [
+          {
+            "id": "visual-settings-report-1",
+            "report_event_id": "visual-settings-report-event-1",
+            "reporter_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "target_kind": "event",
+            "target": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "channel_id": "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
+            "report_type": "spam",
+            "note": "Client information shared in the wrong channel",
+            "status": "open",
+            "resolved_by": null,
+            "resolved_at": null,
+            "action_id": null,
+            "created_at": "2026-09-26T07:00:00.000Z"
+          }
+        ],
+        "searchProfiles": [
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "displayName": "Zinhle"
+          }
+        ]
+      }
+    },
+    {
+      "id": "workspace-account-recovery",
+      "referenceInventoryRoute": "account/recovery",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#account/recovery",
+      "appRoute": "/#/settings?section=recovery",
+      "routeLabel": "account/recovery"
+    },
+    {
+      "id": "workspace-settings-appearance",
+      "referenceInventoryRoute": "settings/appearance",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/appearance",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "settings/appearance"
+    },
+    {
+      "id": "workspace-settings-device",
+      "referenceInventoryRoute": "settings/device",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/device",
+      "appRoute": "/#/settings?section=app",
+      "routeLabel": "settings/device"
+    },
+    {
+      "id": "workspace-settings-emoji",
+      "referenceInventoryRoute": "settings/emoji",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/emoji",
+      "appRoute": "/#/settings?section=custom-emoji",
+      "routeLabel": "settings/emoji",
+      "appMockData": {
+        "customEmojiSets": [
+          {
+            "owner": "self",
+            "emojis": [
+              {
+                "shortcode": "celebrate",
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzI5MjYzMSIgZD0iTTEyIDEgMTQuOCA5LjIgMjMgMTJsLTguMiAyLjhMMTIgMjNsLTIuOC04LjJMMSAxMmw4LjItMi44TDEyIDF6Ii8+PC9zdmc+"
+              },
+              {
+                "shortcode": "approved",
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0ibTQgMTIgNSA1TDIwIDYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzI5MjYzMSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2Utd2lkdGg9IjIuNSIvPjwvc3ZnPg=="
+              },
+              {
+                "shortcode": "colony",
+                "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgZmlsbD0iIzI5MjYzMSI+PGNpcmNsZSBjeD0iMTIiIGN5PSI1IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxOC4xIiBjeT0iOC41IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxOC4xIiBjeT0iMTUuNSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxOSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iNS45IiBjeT0iMTUuNSIgcj0iMi40Ii8+PGNpcmNsZSBjeD0iNS45IiBjeT0iOC41IiByPSIyLjQiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIyLjQiLz48L2c+PC9zdmc+"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "workspace-settings-experiments",
+      "referenceInventoryRoute": "settings/experiments",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/experiments",
+      "appRoute": "/#/settings?section=experimental",
+      "routeLabel": "settings/experiments"
+    },
+    {
+      "id": "workspace-settings-people",
+      "referenceInventoryRoute": "settings/people",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/people",
+      "appRoute": "/#/settings?section=people",
+      "routeLabel": "settings/people",
+      "appMockData": {
+        "relayRequiresMembership": true,
+        "relayRole": "owner",
+        "relayMembers": [
+          {
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "role": "owner"
+          },
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "role": "member"
+          }
+        ],
+        "searchProfiles": [
+          {
+            "pubkey": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "displayName": "Lerato Molefe",
+            "nip05Handle": "lerato@leratosocial.example"
+          },
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "displayName": "Zinhle Dlamini",
+            "nip05Handle": "zinhle@leratosocial.example"
+          }
+        ]
+      }
+    },
+    {
+      "id": "workspace-settings-shortcuts",
+      "referenceInventoryRoute": "settings/shortcuts",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/shortcuts",
+      "appRoute": "/#/settings?section=shortcuts",
+      "routeLabel": "settings/shortcuts"
+    },
+    {
+      "id": "workspace-settings-storage",
+      "referenceInventoryRoute": "settings/storage",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/storage",
+      "appRoute": "/#/settings?section=storage",
+      "routeLabel": "settings/storage"
+    },
+    {
+      "id": "workspace-settings-templates",
+      "referenceInventoryRoute": "settings/templates",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/templates",
+      "appRoute": "/#/settings?section=channel-templates",
+      "routeLabel": "settings/templates",
+      "appReadySelector": "[data-testid=settings-channel-templates]",
+      "actions": [
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "text=Client workspace"
+        }
+      ],
+      "appMockData": {
+        "channelTemplates": [
+          {
+            "id": "client-workspace",
+            "name": "Client workspace",
+            "description": "A brief, content review and delivery conversation for each client.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": "Keep the agreed brief pinned. Share drafts for review and wait for client approval before publishing.",
+            "agents": {
+              "personas": [
+                {
+                  "personaId": "mina",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                },
+                {
+                  "personaId": "theo",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                }
+              ],
+              "teams": []
+            },
+            "isBuiltin": false,
+            "createdAt": "2026-09-25T00:00:00.000Z",
+            "updatedAt": "2026-09-25T00:00:00.000Z"
+          },
+          {
+            "id": "project-room",
+            "name": "Project room",
+            "description": "A focused place for a project team and its agents.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": "Clarify scope, track decisions and keep the next action visible.",
+            "agents": {
+              "personas": [
+                {
+                  "personaId": "aya",
+                  "runtime": null,
+                  "model": null,
+                  "role": null,
+                  "backend": null
+                }
+              ],
+              "teams": []
+            },
+            "isBuiltin": false,
+            "createdAt": "2026-09-25T00:00:00.000Z",
+            "updatedAt": "2026-09-25T00:00:00.000Z"
+          }
+        ],
+        "personas": [
+          {
+            "id": "mina",
+            "displayName": "Mina",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          },
+          {
+            "id": "theo",
+            "displayName": "Theo",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          },
+          {
+            "id": "aya",
+            "displayName": "Aya",
+            "systemPrompt": "Fixture persona for the frozen channel template preview."
+          }
+        ]
+      }
+    },
+    {
+      "id": "workspace-settings-updates",
+      "referenceInventoryRoute": "settings/updates",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/updates",
+      "appRoute": "/#/settings?section=updates",
+      "routeLabel": "settings/updates"
+    },
+    {
+      "id": "workspace-settings-voice",
+      "referenceInventoryRoute": "settings/voice",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/voice",
+      "appRoute": "/#/settings?section=voice",
+      "routeLabel": "settings/voice",
+      "audioInputDevices": [
+        {
+          "deviceId": "macbook-microphone-example",
+          "groupId": "macbook-audio-example",
+          "kind": "audioinput",
+          "label": "MacBook microphone · example"
+        }
+      ],
+      "appMockData": {
+        "ttsSettings": {
+          "version": 1,
+          "agentTextToSpeech": false,
+          "voicePreferences": ["pocket:mary"]
+        },
+        "audioOutputDevices": [
+          {
+            "name": "MacBook speakers · example",
+            "is_default": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "workspace-settings-themes",
+      "referenceInventoryRoute": "settings/themes",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/themes",
+      "appRoute": "/#/settings?section=settings/themes",
+      "routeLabel": "settings/themes",
+      "appReadySelector": "[data-theme-catalog-ready=true]"
+    },
+    {
+      "id": "workspace-settings-theme-preview",
+      "referenceInventoryRoute": "settings/theme-preview",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/theme-preview",
+      "appRoute": "/#/settings?section=settings/theme-preview",
+      "routeLabel": "settings/theme-preview"
+    },
+    {
+      "id": "workspace-settings-theme-applied",
+      "referenceInventoryRoute": "settings/theme-applied",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/app/workspace/?embedded=1#settings/theme-applied",
+      "appRoute": "/#/settings?section=settings/theme-applied",
+      "routeLabel": "settings/theme-applied"
+    },
+    {
+      "id": "desktop-06-profile",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/profile",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar editor profile",
+      "referenceCanvas": true,
+      "clip": {
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 465
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-choose",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/choose",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar editor choice",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        }
+      ],
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      }
+    },
+    {
+      "id": "desktop-06-upload",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/upload",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar image selection",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-camera",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/camera",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar camera preview",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-camera-open]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-crop",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/crop",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar crop preview",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-invalid",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/invalid",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar file rejected",
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "unsupported.txt"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-saving",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/saving",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update pending",
+      "referenceCanvas": true,
+      "appMockData": {
+        "profileUpdateDelayMs": 30000
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=avatar-saving]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/failed",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update failed",
+      "referenceCanvas": true,
+      "appMockData": {
+        "profileUpdateErrors": ["Profile update failed."]
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=profile-avatar-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=avatar-save-error]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-06-saved",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/saved",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar update accepted",
+      "referenceCanvas": true,
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-upload-open]"
+        },
+        {
+          "type": "setInputFiles",
+          "target": "app",
+          "selector": "[data-testid=avatar-file-input]",
+          "value": "avatar.png"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-save]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-saved]"
+        }
+      ],
+      "clip": {
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 517
+      }
+    },
+    {
+      "id": "desktop-06-cancelled",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#06/cancelled",
+      "appRoute": "/#/settings?section=profile",
+      "routeLabel": "Avatar edit cancelled",
+      "referenceCanvas": true,
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=settings-profile-avatar-context]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-avatar-edit]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=avatar-cancel]"
+        }
+      ],
+      "clip": {
+        "x": 238,
+        "y": 8,
+        "width": 880,
+        "height": 465
+      }
+    },
+    {
+      "id": "desktop-07-confirm",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#07/confirm",
+      "appRoute": "/#/settings?section=security",
+      "routeLabel": "Sign out confirmation",
+      "appPrefs": {
+        "localStorage": {
+          "buzz-drafts.v2:ws://localhost:3000:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+            "channel:engineering": {
+              "content": "A draft to review before leaving",
+              "selectionStart": 0,
+              "selectionEnd": 0,
+              "channelId": "engineering",
+              "createdAt": "2026-09-25T09:00:00.000Z",
+              "updatedAt": "2026-09-25T09:01:00.000Z",
+              "pendingImeta": [
+                {
+                  "url": "https://example.test/pending-attachment.png",
+                  "mimeType": "image/png",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "size": 1024
+                }
+              ],
+              "mentionRefs": [],
+              "spoileredAttachmentUrls": [],
+              "status": "active"
+            }
+          }
+        }
+      },
+      "appMockData": {
+        "managedAgents": [
+          {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "Ava",
+            "status": "running"
+          },
+          {
+            "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "Noah",
+            "status": "running"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=signout-open-dialog]"
+        }
+      ],
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=signout-dialog]"
+      }
+    },
+    {
+      "id": "desktop-08-catalog",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/catalog",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Theme catalog",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-custom",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/custom",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Custom theme",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": true,
+            "customLight": ["#efb3d5", "#84a5f4"],
+            "customDark": ["#efb3d5", "#84a5f4"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=appearance-theme-custom]"
+        }
+      ],
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-compact",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/compact",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Compact conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "compact",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-comfortable",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/comfortable",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Comfortable conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-spacious",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/spacious",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Spacious conversation density",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": false,
+            "customLight": ["#895AF6", "#5A9CF6"],
+            "customDark": ["#895AF6", "#5A9CF6"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "spacious",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-08-saved",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/saved",
+      "appRoute": "/#/settings?section=appearance",
+      "routeLabel": "Appearance saved",
+      "appReadySelector": "[data-testid=settings-appearance]",
+      "appPrefs": {
+        "localStorage": {
+          "colony.appearance.v1:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:global-conversations": {
+            "version": 1,
+            "theme": "buzz",
+            "accent": "#3b82f6",
+            "followSystem": true,
+            "custom": true,
+            "customLight": ["#efb3d5", "#84a5f4"],
+            "customDark": ["#efb3d5", "#84a5f4"],
+            "glassBackground": false,
+            "glassOpacity": 65,
+            "prominentActiveTab": true,
+            "messageSize": "larger",
+            "density": "comfortable",
+            "linkPreview": "compact",
+            "threadLayout": "split"
+          }
+        }
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-11-library",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#11/library",
+      "appRoute": "/#/settings?section=voice",
+      "routeLabel": "Voice library",
+      "appMockData": {
+        "importedPocketVoices": [
+          {
+            "key": "pocket:imported:1111111111111111111111111111111111111111111111111111111111111111",
+            "displayName": "Studio narration",
+            "backend": "pocket",
+            "backendName": "Pocket TTS",
+            "availability": "installed",
+            "fallbackKey": "pocket:mary",
+            "referenceFile": "voice-studio.wav",
+            "provenance": {
+              "source": "local import",
+              "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+              "license": null,
+              "sourceUrl": null
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=voice-library-open]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=voice-library]"
+        }
+      ],
+      "referenceCanvas": true,
+      "clip": {
+        "x": 238,
+        "y": 8,
+        "width": 1191,
+        "height": 245
+      }
+    },
+    {
+      "id": "desktop-12-pick",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#12/pick",
+      "appRoute": "/#/channels/from-template",
+      "routeLabel": "Channel template picker",
+      "appReadySelector": "[data-testid=channel-template-picker]",
+      "appMockData": {
+        "channelTemplates": [
+          {
+            "id": "client-campaign",
+            "name": "Client campaign",
+            "description": "Briefs, reviews and delivery.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          },
+          {
+            "id": "team-updates",
+            "name": "Team updates",
+            "description": "An async forum for your team.",
+            "channelType": "forum",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          },
+          {
+            "id": "project-delivery",
+            "name": "Project delivery",
+            "description": "Milestones, decisions and handoffs.",
+            "channelType": "stream",
+            "visibility": "open",
+            "canvasTemplate": null,
+            "agents": {
+              "personas": [],
+              "teams": []
+            },
+            "isBuiltin": true,
+            "createdAt": "2026-09-26T07:00:00Z",
+            "updatedAt": "2026-09-26T07:00:00Z"
+          }
+        ]
+      },
+      "referenceCanvas": true,
+      "clip": {
+        "referenceSelector": ".surface",
+        "appSelector": "[data-testid=channel-template-picker]"
+      }
+    },
+    {
+      "id": "desktop-14-moderation-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#14/moderation-failed",
+      "appRoute": "/#/settings?section=moderation",
+      "routeLabel": "Moderation save failed",
+      "appReadySelector": "[data-testid=settings-moderation]",
+      "clearAppFocus": true,
+      "appMockData": {
+        "channelNamesById": {
+          "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50": "campaign-studio"
+        },
+        "relayRequiresMembership": true,
+        "relayRole": "owner",
+        "deleteMessageError": "Permission denied.",
+        "moderationReports": [
+          {
+            "id": "visual-report-row-1",
+            "report_event_id": "visual-report-event-1",
+            "reporter_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "target_kind": "event",
+            "target": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "channel_id": "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
+            "report_type": "spam",
+            "note": "Repeated unsolicited advertising",
+            "status": "open",
+            "resolved_by": null,
+            "resolved_at": null,
+            "action_id": null,
+            "created_at": "2026-09-26T07:00:00.000Z"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=settings-moderation]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid^=moderation-group-]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=moderation-resolve-trigger]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=moderation-resolve-delete]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=moderation-action-failed]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=moderation-action-reason]",
+          "value": "Repeated unsolicited advertising"
+        }
+      ],
+      "clip": {
+        "referenceSelector": ".narrow",
+        "appSelector": "[data-testid=moderation-action-form]"
+      },
+      "referenceCanvas": true
+    },
+    {
+      "id": "desktop-15-form",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#15/form",
+      "appRoute": "/",
+      "routeLabel": "Send feedback form",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ],
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      }
+    },
+    {
+      "id": "desktop-15-failed",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#15/failed",
+      "appRoute": "/",
+      "routeLabel": "Send feedback failed",
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-error]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ],
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "appMockData": {
+        "feedbackPublishErrors": ["Relay connection unavailable."]
+      }
+    },
+    {
+      "id": "desktop-15-diagnostics",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#15/diagnostics",
+      "appRoute": "/",
+      "routeLabel": "Send feedback diagnostics disclosure",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-diagnostics-toggle]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-15-sending",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#15/sending",
+      "appRoute": "/",
+      "routeLabel": "Send feedback pending",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "appMockData": {
+        "feedbackPublishDelayMs": 30000
+      },
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-sending]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    },
+    {
+      "id": "desktop-15-sent",
+      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#15/sent",
+      "appRoute": "/",
+      "routeLabel": "Send feedback accepted",
+      "referenceCanvas": true,
+      "appReadySelector": "[data-testid=sidebar-profile-avatar-button]",
+      "clip": {
+        "referenceSelector": ".modal",
+        "appSelector": "[data-testid=send-feedback-dialog]"
+      },
+      "actions": [
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=sidebar-profile-avatar-button]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=profile-popover-send-feedback]"
+        },
+        {
+          "type": "fill",
+          "target": "app",
+          "selector": "[data-testid=feedback-message]",
+          "value": "The channel and side-by-side thread layout works well. I’d like a quicker way to switch between client projects."
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=feedback-submit]"
+        },
+        {
+          "type": "waitFor",
+          "target": "app",
+          "selector": "[data-testid=feedback-sent]"
+        },
+        {
+          "type": "click",
+          "target": "app",
+          "selector": "[data-testid=send-feedback-title]"
+        }
+      ]
+    }
+  ]
+}

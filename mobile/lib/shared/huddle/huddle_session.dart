@@ -215,6 +215,7 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
     HuddleConnectionParameters parameters, {
     String? currentPubkey,
     bool isCreator = false,
+    bool startMuted = false,
     String? startedEventId,
   }) async {
     if (_ageRestricted) {
@@ -295,13 +296,19 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
       _ensureCurrent(generation);
       await media.start();
       _ensureCurrent(generation);
+      if (startMuted) {
+        // No transport listener is attached until after this mute completes,
+        // so no captured audio can leave the device before the first packet.
+        await media.setMuted(true);
+        _ensureCurrent(generation);
+      }
 
       final transport = ref.read(huddleTransportFactoryProvider)(parameters);
       _transport = transport;
       _wireMediaAndTransport(media, transport, generation);
       state = state.copyWith(
         phase: HuddleSessionPhase.connecting,
-        isMuted: false,
+        isMuted: startMuted,
       );
       await transport.connect();
       _ensureCurrent(generation);
