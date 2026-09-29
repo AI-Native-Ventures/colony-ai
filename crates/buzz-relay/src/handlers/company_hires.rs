@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use chrono::{SecondsFormat, Utc};
 use nostr::{Event, EventBuilder, EventId, Kind, Tag};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
