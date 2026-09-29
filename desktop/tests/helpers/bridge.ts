@@ -249,6 +249,12 @@ type MockBridgeOptions = {
   companyMemberRelayPrivateKeyHex?: string;
   /** Reject successive member-position writes in order, then accept them. */
   companyMemberActionErrors?: string[];
+  /** Relay-signed employee configuration actions for history E2E coverage. */
+  companyEmployeeRevisionActions?: RelayEvent[];
+  /** Relay-signed current employee history heads for history E2E coverage. */
+  companyEmployeeRevisionHeads?: RelayEvent[];
+  /** Reject employee history action publishes in order, then accept them. */
+  companyEmployeeRevisionActionErrors?: string[];
   /** Relay-signed company work events for company work UI E2E coverage. */
   companyWorkEvents?: RelayEvent[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -975,7 +981,7 @@ async function seedPreviewFeaturesEnabled(page: Page) {
 
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
-    options.mode === "relay"
+    options.mode === "relay" || options.user !== undefined
       ? TEST_IDENTITIES[options.user ?? "tyler"]
       : undefined;
 
@@ -1106,11 +1112,13 @@ export async function installMockBridge(
     skipOnboardingSeed?: boolean;
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
+    user?: keyof typeof TEST_IDENTITIES;
   },
 ) {
   await installBridge(page, {
     mode: "mock",
     mock,
+    user: options?.user,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,
     skipOnboardingSeed: options?.skipOnboardingSeed,

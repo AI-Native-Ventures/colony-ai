@@ -111,7 +111,7 @@ export function AgentInstanceEditDialog({
   /** Present only when the linked definition is editable (non-built-in, resolved). Caller closes this dialog and enters definition-edit. */
   onEditLinkedPersona?: () => void;
   onOpenChange: (open: boolean) => void;
-  onUpdated?: (agent: ManagedAgent) => void;
+  onUpdated?: (agent: ManagedAgent) => void | Promise<void>;
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const startMutation = useStartManagedAgentMutation();
@@ -791,10 +791,10 @@ export function AgentInstanceEditDialog({
       }
 
       showAgentProfileSyncWarning(result.agent.name, result.profileSyncError);
+      await onUpdated?.(result.agent);
       // Close via onOpenChange directly — handleOpenChange guards against
       // mid-save dismissal and must not block the intentional post-success close.
       onOpenChange(false);
-      onUpdated?.(result.agent);
       // The auto-restart policy deliberately never fires for a stopped or
       // failing agent (a broken agent must not auto-loop), so an edit meant
       // to FIX one silently waits for a manual start. Offer that start
@@ -818,8 +818,10 @@ export function AgentInstanceEditDialog({
           },
         });
       }
-    } catch {
-      // React Query stores the update error; keep dialog open and render it inline.
+    } catch (e) {
+      // React Query stores mutation failures. Post-save callbacks can also fail
+      // and must leave a visible retry path instead of silently swallowing it.
+      setSetterError(e instanceof Error ? e : new Error("Failed to save"));
     } finally {
       setIsSaving(false);
     }
