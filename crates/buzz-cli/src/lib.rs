@@ -2869,7 +2869,7 @@ mod tests {
     #[test]
     fn secret_binding_cli_does_not_accept_a_value_argument_or_echo_it() {
         let sentinel = format!("credential-{}", Uuid::new_v4());
-        let error = Cli::try_parse_from([
+        let result = Cli::try_parse_from([
             "buzz",
             "secrets",
             "bind",
@@ -2877,8 +2877,11 @@ mod tests {
             "{}",
             "--value",
             sentinel.as_str(),
-        ])
-        .expect_err("the secret binding CLI has no credential value argument");
+        ]);
+        let error = match result {
+            Ok(_) => panic!("the secret binding CLI has no credential value argument"),
+            Err(error) => error,
+        };
         assert!(!error.to_string().contains(&sentinel));
     }
 
