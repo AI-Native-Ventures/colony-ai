@@ -538,7 +538,7 @@ test("a persisted commitment suggestion creates work and survives reload", async
   await expect(joinButton).toBeVisible({ timeout: 30_000 });
   await joinButton.click();
 
-  await page.goto("/#/work");
+  await page.goto("/#/company-work");
   await expect(page.getByTestId("company-work-list")).toBeVisible();
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await waitForMockLiveSubscription(page, "general");

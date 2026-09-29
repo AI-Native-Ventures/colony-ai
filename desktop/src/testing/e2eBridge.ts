@@ -2254,6 +2254,67 @@ function syncMockChannel(channel: MockChannel) {
   );
 }
 
+const MOCK_CHANNEL_MEMBERSHIP_STORAGE_KEY = "buzz-e2e-channel-members-v1";
+
+function mockChannelMembershipStorageKey(channelId: string): string {
+  const communityId =
+    window.localStorage.getItem("buzz-active-community-id") ?? "default";
+  return `${MOCK_CHANNEL_MEMBERSHIP_STORAGE_KEY}:${encodeURIComponent(communityId)}:${channelId}`;
+}
+
+function persistedMockChannelMembers(
+  channelId: string,
+): RawChannelMember[] | null {
+  const value = window.localStorage.getItem(
+    mockChannelMembershipStorageKey(channelId),
+  );
+  if (value === null) return null;
+
+  const parsed: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some(
+      (member) =>
+        member === null ||
+        typeof member !== "object" ||
+        typeof (member as RawChannelMember).pubkey !== "string" ||
+        typeof (member as RawChannelMember).joined_at !== "string" ||
+        !["owner", "admin", "member", "guest", "bot"].includes(
+          (member as RawChannelMember).role,
+        ) ||
+        !(
+          (member as RawChannelMember).display_name === null ||
+          typeof (member as RawChannelMember).display_name === "string"
+        ),
+    )
+  ) {
+    throw new Error(
+      `Stored mock channel members are invalid for ${channelId}.`,
+    );
+  }
+
+  return parsed.map((member) => ({ ...member })) as RawChannelMember[];
+}
+
+function restoreMockChannelMembers(channel: MockChannel): MockChannel {
+  const members = persistedMockChannelMembers(channel.id);
+  if (members === null) return channel;
+  channel.members = cloneMembers(members);
+  syncMockChannel(channel);
+  return channel;
+}
+
+function persistMockChannelMembers(channel: MockChannel): void {
+  window.localStorage.setItem(
+    mockChannelMembershipStorageKey(channel.id),
+    JSON.stringify(channel.members),
+  );
+}
+
+function clearPersistedMockChannelMembers(channelId: string): void {
+  window.localStorage.removeItem(mockChannelMembershipStorageKey(channelId));
+}
+
 function touchMockChannel(channel: MockChannel) {
   channel.updated_at = new Date().toISOString();
 }
@@ -3213,7 +3274,7 @@ function listMockChannels(config?: E2eConfig): RawChannelWithMembership[] {
   return [
     ...mockChannels.filter((channel) => !visualIds.has(channel.id)),
     ...visualChannels,
-  ].map((channel) => toRawChannel(channel, config));
+  ].map((channel) => toRawChannel(restoreMockChannelMembers(channel), config));
 }
 
 function buildVisualChannels(config?: E2eConfig): MockChannel[] {
@@ -3230,28 +3291,30 @@ function buildVisualChannels(config?: E2eConfig): MockChannel[] {
       ...agentMembers,
     ];
 
-    return createMockChannel({
-      id: seed.id,
-      name: seed.name,
-      channel_type: "stream",
-      visibility: "open",
-      description: "",
-      topic: null,
-      purpose: null,
-      last_message_at: null,
-      archived_at: null,
-      created_by: getMockMemberPubkey(config),
-      topic_set_by: null,
-      topic_set_at: null,
-      purpose_set_by: null,
-      purpose_set_at: null,
-      topic_required: false,
-      max_members: null,
-      nip29_group_id: null,
-      created_minutes_ago: 1440,
-      updated_minutes_ago: 1440,
-      members,
-    });
+    return restoreMockChannelMembers(
+      createMockChannel({
+        id: seed.id,
+        name: seed.name,
+        channel_type: "stream",
+        visibility: "open",
+        description: "",
+        topic: null,
+        purpose: null,
+        last_message_at: null,
+        archived_at: null,
+        created_by: getMockMemberPubkey(config),
+        topic_set_by: null,
+        topic_set_at: null,
+        purpose_set_by: null,
+        purpose_set_at: null,
+        topic_required: false,
+        max_members: null,
+        nip29_group_id: null,
+        created_minutes_ago: 1440,
+        updated_minutes_ago: 1440,
+        members,
+      }),
+    );
   });
 }
 
@@ -3263,7 +3326,7 @@ function getMockChannel(channelId: string): MockChannel {
     throw new Error(`Channel ${channelId} not found.`);
   }
 
-  return channel;
+  return restoreMockChannelMembers(channel);
 }
 
 function getMockMemberPubkey(config: E2eConfig | undefined): string {
@@ -12450,6 +12513,7 @@ async function handleDeleteChannel(
 
     mockChannels.splice(index, 1);
     mockMessages.delete(args.channelId);
+    clearPersistedMockChannelMembers(args.channelId);
     return;
   }
 
@@ -12562,6 +12626,7 @@ async function handleAddChannelMembers(
 
     syncMockChannel(targetChannel);
     touchMockChannel(targetChannel);
+    persistMockChannelMembers(targetChannel);
     syncMockRelayAgentsFromManagedAgents();
     return {
       added,
@@ -12604,6 +12669,7 @@ async function handleRemoveChannelMember(
     );
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     syncMockRelayAgentsFromManagedAgents();
     return;
   }
@@ -12641,6 +12707,7 @@ async function handleJoinChannel(
     channel.members.push(createCurrentMember(config, "member"));
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     return;
   }
 
@@ -12667,6 +12734,7 @@ async function handleLeaveChannel(
     );
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     return;
   }
 
