@@ -115,6 +115,7 @@ import {
   KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_FACTORY_RUN_HEAD,
   KIND_GOAL_ACTION,
   KIND_GOAL_HEAD,
   KIND_GIT_ISSUE,
@@ -374,6 +375,8 @@ type E2eConfig = {
     factoryProjects?: MockFactoryProjectSeed[];
     /** Host Factory records used only by Factory E2E fixtures. */
     factoryRuns?: MockFactoryRunSeed[];
+    /** Signed run preview and pull request heads for focused Factory E2E coverage. */
+    factoryRunRecordEvents?: RelayEvent[];
     /** Run ids whose snapshot reads fail, exercising reconnect states. */
     factorySnapshotFailureRunIds?: string[];
     /** Local checkout paths returned by the E2E filesystem boundary. */
@@ -9445,6 +9448,28 @@ let mockFactoryRuns: FactoryRun[] = [];
 let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
 let mockFactoryDrafts = new Map<string, FactoryRunDraft>();
 
+function filterMockFactoryRunRecordEvents(filter: MockFilter): RelayEvent[] {
+  const configured = getConfig()?.mock?.factoryRunRecordEvents ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  return configured
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        filter["#d"] &&
+        !filter["#d"].some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, filter.limit ?? 500)
+    .map((event) => structuredClone(event));
+}
+
 function resetMockFactoryRuntime(config?: E2eConfig) {
   const seeds = config?.mock?.factoryRuns ?? [];
   mockFactoryRuns = seeds.map((seed) => structuredClone(seed.run));
@@ -15339,6 +15364,14 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_TOOL_PERMISSION_HEAD)) {
       for (const event of filterMockCompanyToolPermissionHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_FACTORY_RUN_HEAD)) {
+      for (const event of filterMockFactoryRunRecordEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);

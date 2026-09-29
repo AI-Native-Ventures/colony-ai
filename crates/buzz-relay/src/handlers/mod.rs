@@ -16,6 +16,8 @@ pub mod community_provisioning;
 pub mod company_asks;
 /// Nostr-first broker for community-wide employee configuration history.
 pub mod company_employee_history;
+/// Nostr-first broker for Software Factory run metadata.
+pub mod company_factory;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
 /// Nostr-first broker for community-wide standing tool permissions.
