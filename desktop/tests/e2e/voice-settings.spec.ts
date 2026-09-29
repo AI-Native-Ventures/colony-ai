@@ -12,18 +12,50 @@ test.describe("Pocket voice settings", () => {
   test("selects and retains a bundled voice while text to speech is off", async ({
     page,
   }) => {
-    await installMockBridge(page);
+    await page.addInitScript(() => {
+      const mediaDevices = navigator.mediaDevices;
+      if (!mediaDevices) return;
+      Object.defineProperty(mediaDevices, "enumerateDevices", {
+        configurable: true,
+        value: async () => [
+          {
+            deviceId: "mic-device-fixture",
+            groupId: "mic-group-fixture",
+            kind: "audioinput",
+            label: "Desk microphone",
+            toJSON: () => ({}),
+          } as MediaDeviceInfo,
+        ],
+      });
+    });
+    await installMockBridge(page, {
+      audioOutputDevices: [{ name: "USB headset output", is_default: false }],
+    });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await openSettings(page, "voice");
 
     const card = page.getByTestId("settings-voice");
     await expect(card).toBeVisible();
     await expect(
-      page.getByText("Agent text to speech", { exact: true }),
+      card.getByRole("heading", { level: 1, name: "Voice & audio" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Pocket TTS voice", { exact: true }),
+      card.getByText("Your input, playback and agent voices on this device."),
     ).toBeVisible();
+    const microphone = page.getByTestId("voice-microphone-select");
+    await expect(microphone).toHaveValue("system-default");
+    await expect(microphone).toContainText("Desk microphone");
+    await microphone.selectOption("mic-device-fixture");
+    await expect(microphone).toHaveValue("mic-device-fixture");
+    const output = page.getByTestId("voice-output-select");
+    await expect(output).toHaveValue("system-default");
+    await expect(output).toContainText("USB headset output");
+    await output.selectOption("USB headset output");
+    await expect(output).toHaveValue("USB headset output");
+    await expect(
+      page.getByText("Read agent replies aloud", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Voice", { exact: true })).toBeVisible();
     await expect(card).not.toContainText("April INT8");
 
     await page.getByTestId("pocket-voice-selector").click();
@@ -33,7 +65,7 @@ test.describe("Pocket voice settings", () => {
       "Eve",
     );
     await expect(
-      page.getByRole("button", { name: "Pocket TTS voice: Eve" }),
+      page.getByRole("button", { name: "Voice: Eve" }),
     ).toBeVisible();
 
     await page.getByTestId("agent-text-to-speech-toggle").click();
@@ -51,11 +83,19 @@ test.describe("Pocket voice settings", () => {
     const savedCommands = await page.evaluate(() =>
       (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
         .filter((entry) =>
-          ["set_pocket_voice", "set_tts_enabled"].includes(entry.command),
+          [
+            "set_audio_output_device",
+            "set_pocket_voice",
+            "set_tts_enabled",
+          ].includes(entry.command),
         )
         .map((entry) => ({ command: entry.command, payload: entry.payload })),
     );
     expect(savedCommands).toEqual([
+      {
+        command: "set_audio_output_device",
+        payload: { name: "USB headset output" },
+      },
       {
         command: "set_pocket_voice",
         payload: { voiceKey: "pocket:eve" },
@@ -129,16 +169,16 @@ test.describe("Pocket voice settings", () => {
       "My voice",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeVisible();
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByTestId("pocket-voice-preview").click();
 
     await page.getByTestId("pocket-voice-delete").click();
-    await expect(page.getByText("Delete imported voice?")).toBeVisible();
+    await expect(page.getByText("Remove this voice?")).toBeVisible();
     await page.getByTestId("confirm-pocket-voice-delete").click();
     await expect(page.getByTestId("pocket-voice-selector")).toContainText(
       "Mary",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeHidden();
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByTestId("pocket-voice-preview").click();
 
     const mutations = await page.evaluate(() =>
       (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
@@ -208,5 +248,90 @@ test.describe("Pocket voice settings", () => {
       "Mary",
     );
     await expect(page.getByTestId("pocket-voice-delete")).toBeHidden();
+  });
+
+  test("opens and manages the saved voice library from Voice & audio", async ({
+    page,
+  }) => {
+    const hash = "1".repeat(64);
+    const key = `pocket:imported:${hash}`;
+    await installMockBridge(page, {
+      importedPocketVoices: [
+        {
+          key,
+          displayName: "Studio narration",
+          backend: "pocket",
+          backendName: "Pocket TTS",
+          availability: "installed",
+          fallbackKey: "pocket:mary",
+          referenceFile: "voice-studio.wav",
+          provenance: {
+            source: "local import",
+            contentHash: hash,
+            license: null,
+            sourceUrl: null,
+          },
+        },
+      ],
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openSettings(page, "voice");
+    await page.getByTestId("voice-library-open").click();
+
+    await expect(page.getByTestId("voice-library")).toContainText(
+      "Voice library",
+    );
+    await expect(page.getByTestId("settings-history-back")).toBeHidden();
+    await expect(page.getByTestId("settings-history-forward")).toBeHidden();
+    await expect(page.getByTestId("settings-top-chrome")).toContainText(
+      "Preferences",
+    );
+    await expect(page.getByTestId("settings-inner-voice")).toBeHidden();
+    await expect(
+      page.getByRole("tab", { name: "Voice & audio" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByRole("tab", { name: "Notifications" }),
+    ).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
+      "Studio narration",
+    );
+    await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
+      "voice-studio.wav · Local file",
+    );
+
+    await page.getByTestId(`voice-library-preview-${key}`).click();
+    await page.getByTestId(`voice-library-remove-${key}`).click();
+    await expect(page.getByText("Remove this voice?")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Remove Studio narration from the library. The original file is not deleted. Existing generated audio is unchanged.",
+      ),
+    ).toBeVisible();
+    await page.getByTestId("confirm-pocket-voice-delete").click();
+    await expect(page.getByTestId("voice-library-empty")).toContainText(
+      "Your voice library is empty",
+    );
+
+    const voiceCommands = await page.evaluate(() =>
+      (window.__BUZZ_E2E_COMMAND_LOG__ ?? [])
+        .filter((entry) =>
+          ["preview_pocket_voice", "delete_pocket_voice"].includes(
+            entry.command,
+          ),
+        )
+        .map((entry) => ({ command: entry.command, payload: entry.payload })),
+    );
+    expect(voiceCommands).toEqual([
+      { command: "preview_pocket_voice", payload: { voiceKey: key } },
+      { command: "delete_pocket_voice", payload: { voiceKey: key } },
+    ]);
+
+    await page.getByRole("tab", { name: "Voice & audio" }).click();
+    await expect(page.getByTestId("settings-voice")).toContainText(
+      "Audio devices",
+    );
+    await page.getByRole("tab", { name: "Notifications" }).click();
+    await expect(page.getByTestId("settings-notifications")).toBeVisible();
   });
 });

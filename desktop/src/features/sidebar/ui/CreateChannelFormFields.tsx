@@ -38,8 +38,12 @@ export const CREATE_CHANNEL_FORM_ID = "create-channel-form";
  */
 export function CreateChannelFormFields({
   form,
+  onBrowseTemplates,
 }: {
   form: CreateChannelFormState;
+  onBrowseTemplates?: (
+    draft: ReturnType<CreateChannelFormState["getDraft"]>,
+  ) => void;
 }) {
   const { channelKind, kindLabel, isCreating } = form;
   const [isCreateTemplateOpen, setIsCreateTemplateOpen] = React.useState(false);
@@ -199,6 +203,17 @@ export function CreateChannelFormFields({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+            {form.templates.length > 0 && onBrowseTemplates ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="create-channel-browse-templates"
+                  onSelect={() => onBrowseTemplates(form.getDraft())}
+                >
+                  Browse templates
+                </DropdownMenuItem>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setIsCreateTemplateOpen(true)}>
               <Plus className="size-4" />

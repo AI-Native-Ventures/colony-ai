@@ -671,7 +671,8 @@ test("shows a sidebar update card when an update is ready", async ({
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
     "Update downloaded. Click to apply.",
@@ -766,7 +767,8 @@ test("reflects an install started from the header update button on the sidebar c
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
     "Update downloaded. Click to apply.",
@@ -819,7 +821,8 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
 
   // Settings panel shows the manual-required state, not "ready".

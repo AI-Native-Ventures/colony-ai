@@ -1,6 +1,7 @@
 import * as React from "react";
-import { ChevronDown, Play, Trash2, Upload, Volume2 } from "lucide-react";
+import { ChevronDown, Mic, Play, Trash2, Upload, Volume2 } from "lucide-react";
 
+import { useHuddle } from "@/features/huddle/HuddleContext";
 import { invokeTauri } from "@/shared/api/tauri";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -46,13 +47,33 @@ type TtsVoiceMutation = {
   registry: VoiceRegistryEntry[];
 };
 
-export function VoiceSettingsCard() {
+export function VoiceSettingsCard({
+  onSectionChange,
+}: {
+  onSectionChange?: (section: "notifications" | "voice") => void;
+}) {
+  const {
+    audioDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    outputDevices,
+    selectedOutputDevice,
+    setSelectedOutputDevice,
+  } = useHuddle();
   const [settings, setSettings] = React.useState<TtsSettings | null>(null);
   const [registry, setRegistry] = React.useState<VoiceRegistryEntry[]>([]);
+  const [hasLoaded, setHasLoaded] = React.useState(false);
+  const [showLibrary, setShowLibrary] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
+  const [previewingVoiceKey, setPreviewingVoiceKey] = React.useState<
+    string | null
+  >(null);
   const [deleteCandidate, setDeleteCandidate] =
     React.useState<VoiceRegistryEntry | null>(null);
+  const [importFailure, setImportFailure] = React.useState<
+    "invalid" | "failed" | null
+  >(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -65,10 +86,12 @@ export function VoiceSettingsCard() {
         if (!disposed) {
           setSettings(nextSettings);
           setRegistry(nextRegistry);
+          setHasLoaded(true);
         }
       })
       .catch((loadError) => {
         if (!disposed) {
+          setHasLoaded(true);
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -134,6 +157,7 @@ export function VoiceSettingsCard() {
 
   const importPocketVoice = React.useCallback(async () => {
     setBusy(true);
+    setImportFailure(null);
     setError(null);
     try {
       const result = await invokeTauri<TtsVoiceMutation | null>(
@@ -144,15 +168,20 @@ export function VoiceSettingsCard() {
         setRegistry(result.registry);
       }
     } catch (importError) {
-      setError(
+      const message =
         importError instanceof Error
           ? importError.message
-          : "Voice could not be imported.",
-      );
+          : "Voice could not be imported.";
+      if (showLibrary) {
+        setImportFailure(
+          /unsupported|pcm|wav|format/i.test(message) ? "invalid" : "failed",
+        );
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [showLibrary]);
 
   const deletePocketVoice = React.useCallback(async (voiceKey: string) => {
     setBusy(true);
@@ -177,6 +206,9 @@ export function VoiceSettingsCard() {
   }, []);
 
   const voices = voicesForBackend(registry, "pocket");
+  const localVoices = registry.filter((voice) =>
+    voice.key.startsWith("pocket:imported:"),
+  );
   const selectedVoice = selectedVoiceForBackend(
     settings?.voicePreferences ?? [],
     voices,
@@ -184,28 +216,352 @@ export function VoiceSettingsCard() {
   const enabled = settings?.agentTextToSpeech ?? true;
   const controlsDisabled = !settings || busy || !enabled;
 
+  const previewVoice = React.useCallback(async (voiceKey: string) => {
+    setPreviewing(true);
+    setPreviewingVoiceKey(voiceKey);
+    setError(null);
+    try {
+      await invokeTauri<void>("preview_pocket_voice", { voiceKey });
+    } catch (previewError) {
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Voice preview could not be played.",
+      );
+    } finally {
+      setPreviewing(false);
+      setPreviewingVoiceKey(null);
+    }
+  }, []);
+
+  const deleteDialog = (
+    <AlertDialog
+      onOpenChange={(open) => {
+        if (!open) setDeleteCandidate(null);
+      }}
+      open={deleteCandidate !== null}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove this voice?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {deleteCandidate
+              ? `Remove ${deleteCandidate.displayName} from the library. The original file is not deleted. Existing generated audio is unchanged.`
+              : "Remove this voice from the library. The original file is not deleted. Existing generated audio is unchanged."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            data-testid="confirm-pocket-voice-delete"
+            disabled={busy || !deleteCandidate}
+            onClick={(event) => {
+              event.preventDefault();
+              if (deleteCandidate) {
+                void deletePocketVoice(deleteCandidate.key);
+              }
+            }}
+          >
+            Remove from library
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const importDialog = (
+    <AlertDialog
+      onOpenChange={(open) => {
+        if (!open) {
+          setImportFailure(null);
+          setError(null);
+        }
+      }}
+      open={showLibrary && importFailure !== null}
+    >
+      <AlertDialogContent data-testid="voice-import-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Import voice file</AlertDialogTitle>
+          <AlertDialogDescription>
+            <span
+              className="block rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              {importFailure === "invalid" ? (
+                <>
+                  <span className="block font-medium">
+                    This is not a supported voice file
+                  </span>
+                  <span>
+                    Choose a file supported by the voice provider. Your existing
+                    library is unchanged.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block font-medium">
+                    The voice file couldn’t be imported
+                  </span>
+                  <span>
+                    The file could not be read. Choose another file or try
+                    again.
+                  </span>
+                </>
+              )}
+            </span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            data-testid="voice-import-retry"
+            disabled={busy}
+            onClick={(event) => {
+              event.preventDefault();
+              void importPocketVoice();
+            }}
+          >
+            Import
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (showLibrary) {
+    return (
+      <>
+        <section
+          className="min-w-0"
+          data-testid="settings-voice"
+          data-voice-library-route
+        >
+          <div data-testid="voice-library-route">
+            <SettingsSectionHeader
+              action={
+                <span className="text-xs text-muted-foreground">
+                  This device
+                </span>
+              }
+              title={<span data-testid="voice-library">Voice library</span>}
+            />
+            <div
+              aria-label="Voice library sections"
+              className="w20-inner-tabs w20-voice-library-tabs"
+              role="tablist"
+            >
+              <button
+                aria-selected="true"
+                className="w20-inner-tab is-active"
+                data-testid="voice-library-tab-audio"
+                onClick={() => setShowLibrary(false)}
+                role="tab"
+                type="button"
+              >
+                Voice &amp; audio
+              </button>
+              <button
+                aria-selected="false"
+                className="w20-inner-tab"
+                data-testid="voice-library-tab-notifications"
+                onClick={() => onSectionChange?.("notifications")}
+                role="tab"
+                type="button"
+              >
+                Notifications
+              </button>
+            </div>
+          </div>
+
+          {error && !importFailure ? (
+            <p
+              className="mt-5 text-sm text-destructive"
+              data-testid="voice-settings-error"
+              role="alert"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          {hasLoaded && !error && localVoices.length === 0 ? (
+            <div
+              className="mt-8 flex min-h-48 flex-col items-center justify-center gap-2 border-t border-border/60 px-4 text-center"
+              data-testid="voice-library-empty"
+            >
+              <Mic
+                aria-hidden="true"
+                className="h-5 w-5 text-muted-foreground"
+              />
+              <p className="text-sm font-medium">Your voice library is empty</p>
+              <p className="text-sm text-muted-foreground">
+                Import a voice file to make it available to compatible voice
+                tools.
+              </p>
+            </div>
+          ) : null}
+
+          {localVoices.length > 0 ? (
+            <div className="mt-6 mb-[26px] border-b border-border/60 pb-[26px] voice-library-list">
+              <h3 className="mb-3 text-sm font-semibold leading-[1.5]">
+                Saved voices
+              </h3>
+              {localVoices.map((voice) => (
+                <div
+                  className="flex items-center gap-[15px] py-[18px]"
+                  data-testid={`voice-library-row-${voice.key}`}
+                  key={voice.key}
+                >
+                  <span className="grid size-10 shrink-0 place-items-center">
+                    <Mic
+                      aria-hidden="true"
+                      className="h-4 w-4 text-muted-foreground"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold leading-[1.5]">
+                      {voice.displayName}
+                    </p>
+                    <p className="mt-1 text-xs leading-[1.65] text-[#79747f] dark:text-[#a39aa9]">
+                      {voice.referenceFile ?? "Local file"} · Local file
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2.5">
+                    <Button
+                      className="rounded-[6px] px-[13.5px] text-xs"
+                      data-testid={`voice-library-preview-${voice.key}`}
+                      disabled={previewing || busy}
+                      onClick={() => void previewVoice(voice.key)}
+                      size="default"
+                      variant="outline"
+                    >
+                      {previewingVoiceKey === voice.key ? "Playing" : "Preview"}
+                    </Button>
+                    <Button
+                      className="rounded-[6px] px-[13.5px] text-xs"
+                      data-testid={`voice-library-remove-${voice.key}`}
+                      disabled={busy}
+                      onClick={() => setDeleteCandidate(voice)}
+                      size="default"
+                      variant="outline"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <Button
+            className="h-9 min-w-[120px] rounded-[6px] bg-[#315fae] px-3 text-xs text-white hover:bg-[#284f94]"
+            data-testid="voice-library-import"
+            disabled={busy || !hasLoaded}
+            onClick={() => void importPocketVoice()}
+            size="default"
+          >
+            Import voice file
+          </Button>
+        </section>
+        {deleteDialog}
+        {importDialog}
+      </>
+    );
+  }
+
   return (
     <section className="min-w-0" data-testid="settings-voice">
       <SettingsSectionHeader
-        title="Voice"
-        description="Choose whether Buzz reads new agent responses aloud during an active huddle."
+        title="Voice & audio"
+        description="Your input, playback and agent voices on this device."
       />
 
       <SettingsOptionGroupList>
-        <SettingsOptionGroup title="Playback">
+        <SettingsOptionGroup title="Audio devices">
+          <SettingsOptionRow>
+            <label className="text-sm font-medium" htmlFor="voice-microphone">
+              Microphone
+            </label>
+            <select
+              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
+              data-testid="voice-microphone-select"
+              id="voice-microphone"
+              onChange={(event) => {
+                setSelectedDeviceId(
+                  event.currentTarget.value === "system-default"
+                    ? ""
+                    : event.currentTarget.value,
+                );
+              }}
+              value={
+                audioDevices.some(
+                  (device) => device.deviceId === selectedDeviceId,
+                )
+                  ? selectedDeviceId
+                  : "system-default"
+              }
+            >
+              <option value="system-default">System default</option>
+              {audioDevices
+                .filter(
+                  (device) => device.deviceId && device.deviceId !== "default",
+                )
+                .map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Mic ${device.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+            </select>
+          </SettingsOptionRow>
+          <SettingsOptionRow>
+            <label className="text-sm font-medium" htmlFor="voice-output">
+              Output
+            </label>
+            <select
+              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
+              data-testid="voice-output-select"
+              id="voice-output"
+              onChange={(event) => {
+                setSelectedOutputDevice(
+                  event.currentTarget.value === "system-default"
+                    ? ""
+                    : event.currentTarget.value,
+                );
+              }}
+              value={
+                (outputDevices ?? []).some(
+                  (device) => device.name === selectedOutputDevice,
+                )
+                  ? selectedOutputDevice
+                  : "system-default"
+              }
+            >
+              <option value="system-default">System default</option>
+              {(outputDevices ?? [])
+                .filter((device) => device.name)
+                .map((device) => (
+                  <option key={device.name} value={device.name}>
+                    {device.name}
+                  </option>
+                ))}
+            </select>
+          </SettingsOptionRow>
+        </SettingsOptionGroup>
+
+        <SettingsOptionGroup title="Agent voice">
           <SettingsOptionRow>
             <div className="min-w-0">
               <label
                 className="text-sm font-medium"
                 htmlFor="agent-text-to-speech-switch"
               >
-                Agent text to speech
+                Read agent replies aloud
               </label>
               <p
                 className="text-sm text-muted-foreground/70"
                 data-settings-subcopy
               >
-                Read new agent messages aloud in the order they arrive.
+                During an active huddle.
               </p>
             </div>
             <Switch
@@ -218,25 +574,22 @@ export function VoiceSettingsCard() {
               }}
             />
           </SettingsOptionRow>
-        </SettingsOptionGroup>
-
-        <div
-          aria-disabled={!enabled}
-          className={cn(
-            "transition-opacity",
-            !enabled && "pointer-events-none opacity-45",
-          )}
-          data-testid="pocket-voice-controls"
-        >
-          <SettingsOptionGroup title="Voice">
+          <div
+            aria-disabled={!enabled}
+            className={cn(
+              "transition-opacity",
+              !enabled && "pointer-events-none opacity-45",
+            )}
+            data-testid="pocket-voice-controls"
+          >
             <SettingsOptionRow>
               <div className="min-w-0">
-                <p className="text-sm font-medium">Pocket TTS voice</p>
+                <p className="text-sm font-medium">Voice</p>
                 <p
                   className="text-sm text-muted-foreground/70"
                   data-settings-subcopy
                 >
-                  Voice files stay private on this device.
+                  Local Pocket TTS voice library.
                 </p>
               </div>
 
@@ -244,7 +597,7 @@ export function VoiceSettingsCard() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      aria-label={`Pocket TTS voice: ${selectedVoice?.displayName ?? "Mary"}`}
+                      aria-label={`Voice: ${selectedVoice?.displayName ?? "Mary"}`}
                       className="min-w-32 justify-between"
                       data-testid="pocket-voice-selector"
                       disabled={controlsDisabled}
@@ -283,19 +636,7 @@ export function VoiceSettingsCard() {
                   disabled={controlsDisabled || previewing || !selectedVoice}
                   onClick={() => {
                     if (!selectedVoice) return;
-                    setPreviewing(true);
-                    setError(null);
-                    void invokeTauri<void>("preview_pocket_voice", {
-                      voiceKey: selectedVoice.key,
-                    })
-                      .catch((previewError) => {
-                        setError(
-                          previewError instanceof Error
-                            ? previewError.message
-                            : "Voice preview could not be played.",
-                        );
-                      })
-                      .finally(() => setPreviewing(false));
+                    void previewVoice(selectedVoice.key);
                   }}
                   size="sm"
                   variant="outline"
@@ -331,8 +672,17 @@ export function VoiceSettingsCard() {
                 )}
               </div>
             </SettingsOptionRow>
-          </SettingsOptionGroup>
-        </div>
+          </div>
+          <Button
+            className="mt-3"
+            data-testid="voice-library-open"
+            onClick={() => setShowLibrary(true)}
+            size="sm"
+            variant="outline"
+          >
+            Preview voice library
+          </Button>
+        </SettingsOptionGroup>
       </SettingsOptionGroupList>
       {error && (
         <p
@@ -343,41 +693,7 @@ export function VoiceSettingsCard() {
           {error}
         </p>
       )}
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) setDeleteCandidate(null);
-        }}
-        open={deleteCandidate !== null}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete imported voice?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteCandidate
-                ? `${deleteCandidate.displayName} and its local audio file will be removed.`
-                : "This imported voice and its local audio file will be removed."}
-              {selectedVoice?.key === deleteCandidate?.key &&
-                " Mary will be selected instead."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="confirm-pocket-voice-delete"
-              disabled={busy || !deleteCandidate}
-              onClick={(event) => {
-                event.preventDefault();
-                if (deleteCandidate) {
-                  void deletePocketVoice(deleteCandidate.key);
-                }
-              }}
-            >
-              Delete voice
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {deleteDialog}
     </section>
   );
 }

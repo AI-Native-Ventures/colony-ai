@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { selectSettingsSection } from "../helpers/settings";
 
 const SCREENSHOT_DIR = "test-results/mobile-pairing-qr";
 
@@ -41,7 +42,7 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
   await page.goto("/");
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-mobile").click();
+  await selectSettingsSection(page, "mobile");
 
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -234,7 +235,7 @@ test("pairing completion updates the final step and resets after leaving", async
   await page.goto("/");
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-mobile").click();
+  await selectSettingsSection(page, "mobile");
 
   const card = page.getByTestId("mobile-pairing-card");
   const finalStep = card.getByTestId("mobile-pairing-final-step");
@@ -383,8 +384,8 @@ test("pairing completion updates the final step and resets after leaving", async
   await waitForAnimations(page);
   await card.screenshot({ path: `${SCREENSHOT_DIR}/pairing-complete.png` });
 
-  await page.getByTestId("settings-nav-updates").click();
-  await page.getByTestId("settings-nav-mobile").click();
+  await selectSettingsSection(page, "updates");
+  await selectSettingsSection(page, "mobile");
 
   const restartedCard = page.getByTestId("mobile-pairing-card");
   await expect(restartedCard.getByTestId("start-pairing-button")).toBeVisible();
@@ -400,7 +401,7 @@ test("late pairing events are ignored after canceling", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-mobile").click();
+  await selectSettingsSection(page, "mobile");
 
   const card = page.getByTestId("mobile-pairing-card");
   await card.getByTestId("start-pairing-button").click();
@@ -435,7 +436,7 @@ test("step completion respects reduced motion", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-mobile").click();
+  await selectSettingsSection(page, "mobile");
 
   const card = page.getByTestId("mobile-pairing-card");
   const scanStepIndicator = card.getByTestId(

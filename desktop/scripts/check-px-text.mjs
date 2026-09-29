@@ -25,6 +25,7 @@ const rules = [
 // the literal keeps these exceptions stable when unrelated edits move lines.
 const overrides = new Set([
   "src/features/settings/ui/ProfileSettingsCard.tsx:text-[6rem]",
+  "src/features/settings/ui/ProfileAvatarDialog.tsx:text-[4rem]",
   "src/features/onboarding/ui/AvatarStep.tsx:text-[6rem]",
   "src/features/agents/ui/AgentCreationPreview.tsx:text-[4rem]",
   "src/features/agents/ui/AgentCreationPreview.tsx:text-[6rem]",

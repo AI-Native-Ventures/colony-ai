@@ -47,6 +47,7 @@ import { Route as factoryDotsessionsRouteImport } from "./routes/factory.session
 import { Route as factoryDotprojectsRouteImport } from "./routes/factory.projects";
 import { Route as factoryDotplansRouteImport } from "./routes/factory.plans";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
+import { Route as channelsDotfromTemplateRouteImport } from "./routes/channels.from-template";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as asksDotnewRouteImport } from "./routes/asks.new";
 import { Route as workDotscreenDotresourceIdRouteImport } from "./routes/work.$screen.$resourceId";
@@ -283,6 +284,11 @@ const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
   path: "/clients/$clientId",
   getParentRoute: () => rootRouteImport,
 } as any);
+const channelsDotfromTemplateRoute = channelsDotfromTemplateRouteImport.update({
+  id: "/channels/from-template",
+  path: "/channels/from-template",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const channelsDotchannelIdRoute = channelsDotchannelIdRouteImport.update({
   id: "/channels/$channelId",
   path: "/channels/$channelId",
@@ -448,6 +454,7 @@ export interface FileRoutesByFullPath {
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -517,6 +524,7 @@ export interface FileRoutesByTo {
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -587,6 +595,7 @@ export interface FileRoutesById {
   "/workflows": typeof workflowsRoute;
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
+  "/channels/from-template": typeof channelsDotfromTemplateRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/factory/plans": typeof factoryDotplansRoute;
   "/factory/projects": typeof factoryDotprojectsRoute;
@@ -658,6 +667,7 @@ export interface FileRouteTypes {
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -727,6 +737,7 @@ export interface FileRouteTypes {
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -796,6 +807,7 @@ export interface FileRouteTypes {
     | "/workflows"
     | "/asks/new"
     | "/channels/$channelId"
+    | "/channels/from-template"
     | "/clients/$clientId"
     | "/factory/plans"
     | "/factory/projects"
@@ -866,6 +878,7 @@ export interface RootRouteChildren {
   workflowsRoute: typeof workflowsRoute;
   asksDotnewRoute: typeof asksDotnewRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
+  channelsDotfromTemplateRoute: typeof channelsDotfromTemplateRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   factoryDotplansRoute: typeof factoryDotplansRoute;
   factoryDotprojectsRoute: typeof factoryDotprojectsRoute;
@@ -1209,6 +1222,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof clientsDotclientIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/channels/from-template": {
+      id: "/channels/from-template";
+      path: "/channels/from-template";
+      fullPath: "/channels/from-template";
+      preLoaderRoute: typeof channelsDotfromTemplateRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/$channelId": {
       id: "/channels/$channelId";
       path: "/channels/$channelId";
@@ -1410,6 +1430,7 @@ const rootRouteChildren: RootRouteChildren = {
   workflowsRoute: workflowsRoute,
   asksDotnewRoute: asksDotnewRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
+  channelsDotfromTemplateRoute: channelsDotfromTemplateRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
   factoryDotplansRoute: factoryDotplansRoute,
   factoryDotprojectsRoute: factoryDotprojectsRoute,

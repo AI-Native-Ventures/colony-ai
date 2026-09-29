@@ -455,7 +455,7 @@ export function GlassBackgroundSetting() {
           >
             {glassBackgroundSupported
               ? "Blur the desktop behind navigation while keeping content solid."
-              : "Available in the macOS desktop app."}
+              : "Translucent navigation. Solid content."}
           </p>
         </div>
         <Switch

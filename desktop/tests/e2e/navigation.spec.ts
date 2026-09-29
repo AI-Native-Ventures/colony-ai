@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings } from "../helpers/settings";
+import { openSettings, selectSettingsSection } from "../helpers/settings";
 import {
   createPlainWorkflow,
   installWorkflowAdminBridge,
@@ -313,7 +313,7 @@ test("settings is a route: section survives reload, closing returns to the previ
   await expect(page).toHaveURL(/#\/settings/);
 
   // Section switches rewrite the settings entry (replace, not push).
-  await page.getByTestId("settings-nav-notifications").click();
+  await selectSettingsSection(page, "notifications");
   await expect(page).toHaveURL(/section=notifications/);
 
   await page.reload();
