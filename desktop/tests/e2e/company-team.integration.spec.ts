@@ -6,6 +6,7 @@ import {
   getPublicKey,
 } from "nostr-tools/pure";
 
+import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
@@ -19,7 +20,7 @@ test("Team keeps the relay-signed position after reload in the integration proje
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
   const initialPosition = finalizeEvent(
     {
-      kind: 30_645,
+      kind: KIND_MEMBER_POSITION_HEAD,
       created_at: Math.floor(Date.now() / 1_000),
       tags: [["d", `company:member:${alicePubkey}`]],
       content: JSON.stringify({
