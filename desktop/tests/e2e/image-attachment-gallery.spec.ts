@@ -589,6 +589,11 @@ test("preview-first galleries retain Markdown image actions", async ({
       `[data-testid="message-thread-summary"][data-thread-head-id="${rootId}"]`,
     )
     .click();
+  const trackedWorkPanel = page.getByTestId("company-work-thread-context");
+  await expect(trackedWorkPanel).toBeVisible();
+  await expect(trackedWorkPanel.getByText("Checking linked work")).toHaveCount(
+    0,
+  );
   const reply = page
     .getByTestId("message-thread-panel")
     .getByTestId("message-row")

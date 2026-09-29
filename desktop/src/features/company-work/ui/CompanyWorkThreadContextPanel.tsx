@@ -7,6 +7,7 @@ import {
   type UserProfileLookup,
 } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
 import { Button } from "@/shared/ui/button";
 import {
   useCompanyWorkHeadsQuery,
@@ -25,7 +26,25 @@ export function CompanyWorkThreadContextPanel({
   enabled?: boolean;
 }) {
   const headsQuery = useCompanyWorkHeadsQuery(enabled);
-  const movesQuery = useCompanyWorkMoveReferencesQuery(enabled);
+  const { activeCommunity } = useCommunities();
+  const channels = headsQuery.channelsQuery.data ?? [];
+  const hasReadableChannels = channels.some(
+    (channel) =>
+      channel.channelType === "stream" &&
+      channel.isMember &&
+      channel.archivedAt === null,
+  );
+  const noReadableChannels =
+    headsQuery.channelsQuery.isSuccess && !hasReadableChannels;
+  const headsUnavailable = Boolean(
+    !activeCommunity?.relayUrl ||
+      headsQuery.channelsQuery.isError ||
+      noReadableChannels ||
+      headsQuery.isError,
+  );
+  const movesQuery = useCompanyWorkMoveReferencesQuery(
+    enabled && !headsQuery.isFetching && !headsUnavailable,
+  );
   const identityQuery = useIdentityQuery();
   const { goChannel, goCompanyWorkDetail, goCompanyWorkTracking } =
     useAppNavigation();
@@ -70,13 +89,14 @@ export function CompanyWorkThreadContextPanel({
   });
   const currentPubkey = identityQuery.data?.pubkey;
   const profiles = profilesQuery.data?.profiles;
-  const channels = headsQuery.channelsQuery.data ?? [];
+  const movesUnavailable = Boolean(headsUnavailable || movesQuery.isError);
+  const isCheckingLinkedWork = Boolean(
+    !movesUnavailable && (headsQuery.isPending || movesQuery.isPending),
+  );
   if (
     !enabled ||
-    (!headsQuery.isPending &&
-      !headsQuery.isError &&
-      !movesQuery.isPending &&
-      !movesQuery.isError &&
+    (!isCheckingLinkedWork &&
+      !movesUnavailable &&
       currentRecords.length === 0 &&
       referencedRecords.length === 0)
   ) {
@@ -90,15 +110,15 @@ export function CompanyWorkThreadContextPanel({
       data-testid="company-work-thread-context"
     >
       <h2 className="text-sm font-semibold">Tracked work</h2>
-      {headsQuery.isPending || movesQuery.isPending ? (
+      {isCheckingLinkedWork ? (
         <p className="mt-3 text-xs text-muted-foreground" role="status">
           Checking linked work
         </p>
       ) : null}
-      {headsQuery.isError || movesQuery.isError ? (
+      {movesUnavailable ? (
         <div className="mt-3 rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">
-            {headsQuery.isError
+            {headsUnavailable
               ? "Tracked work is unavailable."
               : "Moved work references are unavailable."}
           </p>
