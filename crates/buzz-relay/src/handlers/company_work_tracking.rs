@@ -20,7 +20,6 @@ use buzz_core::kind::*;
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
-use buzz_db::EventQuery;
 
 use crate::state::AppState;
 
@@ -669,7 +668,9 @@ pub(super) async fn sync_watchdog_for_work_change(
                 &next_event,
                 &d_tag,
                 Some(next_channel_id),
-                ParameterizedReplacePrecondition::ExpectedRevision,
+                ParameterizedReplacePrecondition::ExpectedRevision(
+                    current_stored.event.id.as_bytes(),
+                ),
             )
             .await
             .map_err(broker::internal)?;
