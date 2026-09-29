@@ -29,6 +29,9 @@ abstract final class EventKind {
   static const eventReminder = 30300;
   static const userStatus = 30315;
   static const dmVisibility = 30622;
+  static const workflowDefinition = 30620;
+  static const workflowDraft = 30623;
+  static const workflowStatus = 46021;
   static const partyHead = 30630;
   static const clientHead = 30631;
   static const serviceHead = 30632;
