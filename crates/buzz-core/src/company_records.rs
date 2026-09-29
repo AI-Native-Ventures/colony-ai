@@ -733,7 +733,7 @@ pub struct HireHead {
     /// Community owner who signed founder approval.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub founder_pubkey: Option<String>,
-    /// Created managed-employee identity after completion.
+    /// Managed employee identity recorded after founder approval and before completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub employee_pubkey: Option<String>,
     /// Introduction event id after completion.
@@ -754,6 +754,8 @@ pub enum HireActionKind {
     Create,
     /// Record the community owner's founder approval.
     Approve,
+    /// Durably attach the owner-created managed employee before side effects.
+    AttachEmployee,
     /// Record the created managed employee and introduction event.
     Complete,
     /// Deny an existing proposal.
@@ -921,6 +923,28 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
             {
                 return Err(CompanyRecordError::Invalid(
                     "approve does not carry a proposal, employee or reason",
+                ));
+            }
+            Ok(())
+        }
+        HireActionKind::AttachEmployee => {
+            let employee = action
+                .employee_pubkey
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid(
+                    "attach_employee needs employeePubkey",
+                ))?;
+            if action.proposal.is_some()
+                || action.introduction_event_id.is_some()
+                || action.reason.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "attach_employee carries only employeePubkey",
+                ));
+            }
+            if !is_hex_id(employee) {
+                return Err(CompanyRecordError::Invalid(
+                    "employeePubkey must be a lowercase hex id",
                 ));
             }
             Ok(())
@@ -2503,6 +2527,21 @@ mod tests {
             .title
             .clear();
         assert!(validate_hire_action(&missing_title).is_err());
+
+        let attach = HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: proposal.hire_id,
+            action: HireActionKind::AttachEmployee,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: Some(PK_B.into()),
+            introduction_event_id: None,
+            reason: None,
+        };
+        assert!(validate_hire_action(&attach).is_ok());
+        let mut malformed_attach = attach;
+        malformed_attach.introduction_event_id = Some(EV.into());
+        assert!(validate_hire_action(&malformed_attach).is_err());
 
         let mut unavailable_runtime = create.clone();
         unavailable_runtime

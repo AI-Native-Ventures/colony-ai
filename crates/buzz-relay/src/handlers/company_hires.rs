@@ -69,25 +69,52 @@ pub(super) async fn handle(
             "only a community owner or admin can hire an employee",
         ));
     }
-    if action.action == HireActionKind::Approve && actor.role != "owner" {
+    if matches!(
+        action.action,
+        HireActionKind::Approve | HireActionKind::AttachEmployee | HireActionKind::Complete
+    ) && actor.role != "owner"
+    {
         return Err(forbidden("founder sign-off requires the community owner"));
     }
-    let employee_intro = if action.action == HireActionKind::Complete {
-        let stored = current_hire_head(state, community_id, &d_tag)
-            .await?
-            .ok_or_else(|| conflict("hire does not exist"))?;
-        let hire = parse_hire_head(&stored)?;
-        let employee = action
-            .employee_pubkey
-            .as_deref()
-            .ok_or_else(|| invalid("complete needs employeePubkey"))?;
-        let introduction = action
-            .introduction_event_id
-            .as_deref()
-            .ok_or_else(|| invalid("complete needs introductionEventId"))?;
-        Some(verify_employee_and_introduction(state, tenant, &hire, employee, introduction).await?)
-    } else {
-        None
+    let employee_intro = match action.action {
+        HireActionKind::AttachEmployee => {
+            let stored = current_hire_head(state, community_id, &d_tag)
+                .await?
+                .ok_or_else(|| conflict("hire does not exist"))?;
+            let hire = parse_hire_head(&stored)?;
+            let employee = action
+                .employee_pubkey
+                .as_deref()
+                .ok_or_else(|| invalid("attach_employee needs employeePubkey"))?;
+            verify_managed_employee(state, tenant, &hire, &actor_pubkey, employee).await?;
+            None
+        }
+        HireActionKind::Complete => {
+            let stored = current_hire_head(state, community_id, &d_tag)
+                .await?
+                .ok_or_else(|| conflict("hire does not exist"))?;
+            let hire = parse_hire_head(&stored)?;
+            let employee = action
+                .employee_pubkey
+                .as_deref()
+                .ok_or_else(|| invalid("complete needs employeePubkey"))?;
+            let introduction = action
+                .introduction_event_id
+                .as_deref()
+                .ok_or_else(|| invalid("complete needs introductionEventId"))?;
+            Some(
+                verify_employee_and_introduction(
+                    state,
+                    tenant,
+                    &hire,
+                    &actor_pubkey,
+                    employee,
+                    introduction,
+                )
+                .await?,
+            )
+        }
+        _ => None,
     };
     let mut tx = state
         .db
@@ -115,7 +142,11 @@ pub(super) async fn handle(
             "only a community owner or admin can hire an employee",
         ));
     }
-    if action.action == HireActionKind::Approve && role != "owner" {
+    if matches!(
+        action.action,
+        HireActionKind::Approve | HireActionKind::AttachEmployee | HireActionKind::Complete
+    ) && role != "owner"
+    {
         return Err(forbidden("founder sign-off requires the community owner"));
     }
 
@@ -223,10 +254,33 @@ pub(super) async fn handle(
             head.source_action_event_id = event.id.to_hex();
             head
         }
+        HireActionKind::AttachEmployee => {
+            let mut head = current.ok_or_else(|| conflict("hire does not exist"))?;
+            if head.status != HireStatus::Approved
+                || head.founder_pubkey.as_deref() != Some(actor_pubkey.as_str())
+            {
+                return Err(forbidden(
+                    "founder approval is required before attaching an employee",
+                ));
+            }
+            if head.employee_pubkey.is_some() {
+                return Err(conflict("an employee is already attached to this hire"));
+            }
+            let employee = action
+                .employee_pubkey
+                .clone()
+                .ok_or_else(|| invalid("attach_employee needs employeePubkey"))?;
+            head.employee_pubkey = Some(employee);
+            head.source_action_event_id = event.id.to_hex();
+            head
+        }
         HireActionKind::Deny => {
             let mut head = current.ok_or_else(|| conflict("hire does not exist"))?;
-            if matches!(head.status, HireStatus::Hired | HireStatus::Denied) {
-                return Err(conflict("hire is already complete or denied"));
+            if !matches!(
+                head.status,
+                HireStatus::Proposed | HireStatus::AwaitingFounder
+            ) {
+                return Err(conflict("hire is already approved, complete or denied"));
             }
             head.status = HireStatus::Denied;
             head.denial_reason = action.reason.clone();
@@ -246,6 +300,13 @@ pub(super) async fn handle(
                 .introduction_event_id
                 .clone()
                 .ok_or_else(|| invalid("complete needs introductionEventId"))?;
+            if head.employee_pubkey.as_deref() != Some(employee.as_str())
+                || head.founder_pubkey.as_deref() != Some(actor_pubkey.as_str())
+            {
+                return Err(forbidden(
+                    "the approved hire employee must be attached by its founder",
+                ));
+            }
             validate_unique_name_in_transaction(
                 &mut tx,
                 tenant,
@@ -594,6 +655,9 @@ pub(super) fn parse_hire_head(event: &StoredEvent) -> Result<HireHead, IngestErr
             .introduction_event_id
             .as_deref()
             .is_some_and(|id| EventId::parse(id).is_err())
+        || (head.introduction_event_id.is_some() && head.employee_pubkey.is_none())
+        || (head.status == HireStatus::Hired
+            && (head.employee_pubkey.is_none() || head.introduction_event_id.is_none()))
         || head.source_ask_id.is_some() != head.source_ask_channel_id.is_some()
     {
         return Err(IngestError::Internal(
@@ -649,32 +713,15 @@ async fn verify_employee_and_introduction(
     state: &AppState,
     tenant: &TenantContext,
     hire: &HireHead,
+    actor_pubkey: &str,
     employee_pubkey: &str,
     introduction_event_id: &str,
 ) -> Result<String, IngestError> {
-    if hire.status != HireStatus::Approved || hire.founder_pubkey.is_none() {
-        return Err(forbidden("founder sign-off is required before hiring"));
-    }
-    let employee = nostr::PublicKey::from_hex(employee_pubkey)
-        .map_err(|_| invalid("employeePubkey must be a public key"))?;
-    let founder = nostr::PublicKey::from_hex(
-        hire.founder_pubkey
-            .as_deref()
-            .ok_or_else(|| forbidden("founder sign-off is required before hiring"))?,
-    )
-    .map_err(internal)?;
-    if !state
-        .db
-        .is_agent_owner(
-            tenant.community(),
-            &employee.to_bytes(),
-            &founder.to_bytes(),
-        )
-        .await
-        .map_err(internal)?
-    {
-        return Err(invalid(
-            "employee must be a managed agent created by the signing founder",
+    let employee =
+        verify_managed_employee(state, tenant, hire, actor_pubkey, employee_pubkey).await?;
+    if hire.employee_pubkey.as_deref() != Some(employee_pubkey) {
+        return Err(forbidden(
+            "the approved hire employee must be attached before completion",
         ));
     }
     let event_id = EventId::parse(introduction_event_id)
@@ -702,6 +749,36 @@ async fn verify_employee_and_introduction(
         ));
     }
     Ok(introduction_event_id.to_owned())
+}
+
+async fn verify_managed_employee(
+    state: &AppState,
+    tenant: &TenantContext,
+    hire: &HireHead,
+    actor_pubkey: &str,
+    employee_pubkey: &str,
+) -> Result<nostr::PublicKey, IngestError> {
+    if hire.status != HireStatus::Approved || hire.founder_pubkey.as_deref() != Some(actor_pubkey) {
+        return Err(forbidden("founder sign-off is required before hiring"));
+    }
+    let employee = nostr::PublicKey::from_hex(employee_pubkey)
+        .map_err(|_| invalid("employeePubkey must be a public key"))?;
+    let founder = nostr::PublicKey::from_hex(actor_pubkey).map_err(internal)?;
+    if !state
+        .db
+        .is_agent_owner(
+            tenant.community(),
+            &employee.to_bytes(),
+            &founder.to_bytes(),
+        )
+        .await
+        .map_err(internal)?
+    {
+        return Err(invalid(
+            "employee must be a managed agent created by the signing founder",
+        ));
+    }
+    Ok(employee)
 }
 
 fn is_admin(role: &str) -> bool {

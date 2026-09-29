@@ -479,8 +479,8 @@ contains `schemaVersion`, `hireId`, the immutable role-pack coordinate and
 metadata snapshot, the configured employee name and title (separate from the
 role-pack title), reporting manager,
 home channel, selected runtime/provider/model, configured allowance and period,
-founder approver, optional ask coordinate, optional employee pubkey, optional
-introduction event id, status (`proposed`, `awaiting_founder`, `approved`,
+founder approver, optional ask coordinate, optional employee pubkey recorded
+after founder approval, optional introduction event id, status (`proposed`, `awaiting_founder`, `approved`,
 `hired`, or `denied`), timestamps, and `sourceActionEventId`. Catalog metadata
 is copied into the hire head so later catalog edits do not rewrite the scope
 that was approved. Runtime and provider values are validated against the live
@@ -489,7 +489,8 @@ identifiers as part of the approved snapshot.
 
 Hire heads and hire actions carry no `h` tag. The d-tag is
 `company:hire:<hire-uuid>`. The `create` action has no
-`expectedHeadEventId`; `approve` and `complete` name the exact current head.
+`expectedHeadEventId`; `approve`, `attach_employee`, `complete`, and `deny`
+name the exact current head.
 The ask action remains kind 47032 and remains a channel thread item. A hire
 proposal ask carries a typed `hireProposal` snapshot and subject kind `hire`.
 The relay writes its kind 30643 ask head and kind 30650 proposed hire head in
@@ -498,10 +499,10 @@ in one transaction. If an administrator approves, the hire head waits for the
 owner's `approve` action. If the owner approves, the ask and hire heads record
 the decision and founder signature together.
 
-The member-signed hire action supports `create`, `approve`, `complete`, and
-`deny`. `create` stores a proposed hire record. A community owner or admin may
-prepare a direct hire proposal, but only the owner may sign its final founder
-approval. Managers and employees cannot create a hire head directly. They
+The member-signed hire action supports `create`, `approve`, `attach_employee`,
+`complete`, and `deny`. `create` stores a proposed hire record. A community
+owner or admin may prepare a direct hire proposal, but only the owner may sign
+its final founder approval. Managers and employees cannot create a hire head directly. They
 propose a hire through an approval ask in the existing
 channel thread. The existing ask action uses category `hire`, links the hire
 UUID, and carries the proposed configuration. The ask head and proposed hire
@@ -512,7 +513,16 @@ An owner approval can record the ask resolution and founder approval in the
 same transaction. `approve` and `complete` name the exact current
 `expectedHeadEventId`. Rejection marks the hire denied and never creates a
 persona, managed agent, member position, channel membership, tool grant, or
-introduction.
+introduction. After founder approval, the owner records the managed employee
+pubkey with `attach_employee` before adding it to the selected channel or
+posting its introduction. This keeps the employee coordinate on the approved
+hire head so reloads can resume without creating a second identity. The
+introduction uses the message marker
+`company-hire:<hire-uuid>:introduction`; a retry reads the existing marked event
+before sending again. `complete` records the introduction event and employee
+position together after the relay verifies the employee is owned by the
+founder and the introduction is a post by that employee in the selected
+channel.
 
 The relay checks the trimmed, case-insensitive employee name against current
 company member profiles and other pending or active hire records before
