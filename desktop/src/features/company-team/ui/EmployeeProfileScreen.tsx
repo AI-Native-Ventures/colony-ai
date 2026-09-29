@@ -690,10 +690,10 @@ export function EmployeeProfileScreen({
     if (editInstructions) {
       return (
         <section
-          className="max-w-3xl"
+          className="max-w-[46rem]"
           data-testid="employee-instructions-editor"
         >
-          <h1 className="mb-8 text-2xl font-semibold tracking-tight">
+          <h1 className="mb-9 text-2xl font-semibold tracking-tight">
             Edit instructions
           </h1>
           <form
@@ -701,13 +701,13 @@ export function EmployeeProfileScreen({
             onSubmit={(event) => void saveInstructions(event)}
           >
             <label
-              className="block space-y-2 text-sm font-medium"
+              className="block space-y-3 text-sm font-medium"
               htmlFor="employee-system-instructions"
             >
               <span>System instructions</span>
               <Textarea
                 id="employee-system-instructions"
-                className="min-h-20 text-sm leading-6"
+                className="min-h-[5.25rem] text-sm leading-6"
                 data-testid="employee-system-instructions"
                 maxLength={20_000}
                 onChange={(event) =>
@@ -721,7 +721,7 @@ export function EmployeeProfileScreen({
                 {instructionError}
               </p>
             ) : null}
-            <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
+            <div className="mt-7 flex flex-wrap items-center gap-3 border-t border-border pt-5">
               <Button
                 disabled={
                   !canEditInstructions ||
@@ -749,12 +749,12 @@ export function EmployeeProfileScreen({
     }
     return (
       <section data-testid="employee-instructions">
-        <div className="mb-4">
+        <div className="mb-0">
           <h2 className="text-lg font-semibold tracking-tight">
             System instructions
           </h2>
         </div>
-        <div className="rounded-lg border border-border p-3">
+        <div className="rounded-lg border border-border p-4">
           {snapshot?.instructions ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6">
               {snapshot.instructions}
@@ -767,7 +767,7 @@ export function EmployeeProfileScreen({
         </div>
         {canEditInstructions ? (
           <Button
-            className="mt-3 w-full"
+            className="mt-3 h-10 w-full"
             onClick={() => setEditInstructions(true)}
             type="button"
           >
@@ -782,25 +782,13 @@ export function EmployeeProfileScreen({
   }
 
   if (!agent) {
-    return (
-      <main
-        className="mx-auto w-full max-w-[72rem] px-6 py-8"
-        data-testid="company-employee-profile"
-      >
-        <Alert variant="destructive">
-          <AlertTitle>Employee unavailable</AlertTitle>
-          <AlertDescription>
-            The employee runtime is not available on this device.
-          </AlertDescription>
-        </Alert>
-      </main>
-    );
+    return null;
   }
 
   if (editInstructions) {
     return (
       <main
-        className="mx-auto w-full max-w-[72rem] px-6 py-8"
+        className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
         data-testid="company-employee-profile"
       >
         <div className="mb-8 text-xs text-muted-foreground">
@@ -822,7 +810,7 @@ export function EmployeeProfileScreen({
 
   return (
     <main
-      className="mx-auto w-full max-w-[72rem] px-6 py-8"
+      className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
       data-testid="company-employee-profile"
     >
       <div className="mb-8 text-xs text-muted-foreground">
@@ -836,14 +824,14 @@ export function EmployeeProfileScreen({
         <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
       </button>
       <div
-        className="mb-8 flex flex-wrap items-center justify-between gap-4"
+        className="mb-9 flex flex-wrap items-center justify-between gap-4"
         data-testid="company-position-header"
       >
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight">
             {fullName}
           </h1>
-          <p className="mt-1 truncate text-sm text-muted-foreground">
+          <p className="mt-8 truncate text-sm text-muted-foreground">
             {subtitle}
           </p>
         </div>
