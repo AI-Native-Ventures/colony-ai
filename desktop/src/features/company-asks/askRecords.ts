@@ -46,6 +46,7 @@ export type HireProposal = {
     defaultAllowance?: string;
   };
   displayName: string;
+  managerPubkey?: string;
   introductionChannelId: string;
   runtimeId: string;
   providerId: string;
@@ -204,6 +205,7 @@ function parseHireProposal(value: unknown): HireProposal | null {
     "hireId",
     "rolePack",
     "displayName",
+    "managerPubkey",
     "introductionChannelId",
     "runtimeId",
     "providerId",
@@ -221,7 +223,16 @@ function parseHireProposal(value: unknown): HireProposal | null {
   ]);
   const allowanceValid = (allowance: unknown) =>
     allowance === undefined ||
-    (typeof allowance === "string" && /^\d+(\.\d+)?$/.test(allowance));
+    (typeof allowance === "string" &&
+      allowance.length <= 30 &&
+      /^\d+(\.\d+)?$/.test(allowance));
+  const validManagerPubkey =
+    proposal.managerPubkey === undefined ||
+    (typeof proposal.managerPubkey === "string" &&
+      /^[0-9a-f]{64}$/.test(proposal.managerPubkey));
+  const uniqueWorkerMenu =
+    Array.isArray(rolePack.workerMenu) &&
+    new Set(rolePack.workerMenu).size === rolePack.workerMenu.length;
   if (
     Object.keys(value).some((key) => !knownKeys.has(key)) ||
     Object.keys(rolePack).some((key) => !knownRoleKeys.has(key)) ||
@@ -238,8 +249,10 @@ function parseHireProposal(value: unknown): HireProposal | null {
     !validTools ||
     !validStringArray(rolePack.workerMenu, 32) ||
     rolePack.workerMenu.length === 0 ||
+    !uniqueWorkerMenu ||
     typeof proposal.displayName !== "string" ||
     !proposal.displayName.trim() ||
+    !validManagerPubkey ||
     typeof proposal.introductionChannelId !== "string" ||
     typeof proposal.runtimeId !== "string" ||
     !rolePack.workerMenu.includes(proposal.runtimeId) ||

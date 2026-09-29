@@ -18,7 +18,8 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     managed_agents::{
-        validate_agent_definition_text, validate_agent_description_text, AcpSessionPolicy,
+        validate_agent_definition_text, validate_agent_description_text,
+        validate_company_role_metadata, AcpSessionPolicy, CompanyRoleMetadata,
     },
     native_relay_client::NativeRelayClient,
 };
@@ -60,6 +61,7 @@ struct CatalogAgentProjection {
     respond_to: Option<String>,
     parallelism: Option<u64>,
     session_policy: AcpSessionPolicy,
+    company_role: Option<CompanyRoleMetadata>,
 }
 
 /// Fetches the active community's relay-confirmed persona catalog.
@@ -253,6 +255,11 @@ fn parse_agent(content: &str) -> Option<CatalogAgentProjection> {
         Some("thread") => AcpSessionPolicy::Thread,
         _ => AcpSessionPolicy::Channel,
     };
+    let company_role = object
+        .get("companyRole")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<CompanyRoleMetadata>(value).ok())
+        .filter(|role| validate_company_role_metadata(role).is_ok());
     let name_pool = object
         .get("name_pool")
         .and_then(Value::as_array)
@@ -281,6 +288,7 @@ fn parse_agent(content: &str) -> Option<CatalogAgentProjection> {
         respond_to,
         parallelism,
         session_policy,
+        company_role,
     })
 }
 

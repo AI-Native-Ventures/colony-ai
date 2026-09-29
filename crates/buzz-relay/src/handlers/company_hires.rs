@@ -273,10 +273,10 @@ pub(super) async fn handle(
                 .employee_pubkey
                 .clone()
                 .ok_or_else(|| invalid("complete needs employeePubkey"))?,
-            action: MemberPositionActionKind::SetTitle,
+            action: MemberPositionActionKind::SetPosition,
             expected_head_event_id: None,
             title: Some(next.proposal.role_pack.title.clone()),
-            manager_pubkey: None,
+            manager_pubkey: Some(next.proposal.manager_pubkey.clone()),
             reason: None,
         })
     } else {

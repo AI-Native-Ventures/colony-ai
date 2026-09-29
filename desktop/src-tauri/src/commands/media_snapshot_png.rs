@@ -170,6 +170,7 @@ mod tests {
                 idle_timeout_seconds: None,
                 max_turn_duration_seconds: None,
                 name_pool: vec![],
+                company_role: None,
             },
             profile: AgentSnapshotProfile {
                 display_name: "Tree Trunks".to_string(),

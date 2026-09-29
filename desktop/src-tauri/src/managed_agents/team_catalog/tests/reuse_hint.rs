@@ -37,6 +37,7 @@ fn test_a_reuse_hash_covering_different_fields_than_the_member_is_rejected() {
         parallelism: None,
         builtin_slug: Some("fizz".to_string()),
         projection_hash: Some(genuine_fizz_hash),
+        company_role: None,
     };
     let content = TeamCatalogContent {
         v: TEAM_CATALOG_SCHEMA_VERSION,

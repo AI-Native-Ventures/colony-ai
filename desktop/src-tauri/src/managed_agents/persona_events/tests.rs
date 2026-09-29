@@ -146,6 +146,7 @@ fn preview_passes_through_unchanged_when_persona_missing() {
 
 pub(super) fn sample_persona() -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: "test-persona".to_string(),
@@ -324,6 +325,7 @@ fn content_matches_nip_ap_vector() {
 
     let content = PersonaEventContent {
         session_policy: Default::default(),
+        company_role: None,
         description: None,
         display_name: "Test Agent".to_string(),
         system_prompt: Some("You are a test assistant.".to_string()),
@@ -378,6 +380,7 @@ fn content_matches_nip_ap_vector() {
     // signed content, so a second implementer following the spec computes
     // the same NIP-01 id.
     let record = AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: "test-agent".to_string(),
@@ -412,6 +415,7 @@ fn content_matches_nip_ap_vector() {
 #[test]
 fn round_trip_minimal_persona() {
     let record = AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: "minimal".to_string(),
@@ -512,6 +516,7 @@ fn behavioral_defaults_survive_record_round_trip() {
 #[test]
 fn quad_absent_definition_hash_stable_across_activation() {
     let record = AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: "quad-absent".to_string(),
@@ -560,6 +565,7 @@ fn quad_absent_definition_hash_stable_across_activation() {
 /// way `persona_from_event` maps fields, without needing a signed event.
 fn persona_from_event_content_for_test(content: PersonaEventContent) -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: content.session_policy,
         description: content.description,
         id: "staged".to_string(),
@@ -590,6 +596,7 @@ fn persona_from_event_content_for_test(content: PersonaEventContent) -> AgentDef
 fn persona_content_hash_is_deterministic() {
     let content = PersonaEventContent {
         session_policy: Default::default(),
+        company_role: None,
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -612,6 +619,7 @@ fn persona_content_hash_is_deterministic() {
 fn persona_content_hash_changes_on_edit() {
     let content1 = PersonaEventContent {
         session_policy: Default::default(),
+        company_role: None,
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -689,6 +697,7 @@ fn channel_policy_stays_wire_compatible_when_absent() {
 fn description_change_does_not_change_content_hash() {
     let without = PersonaEventContent {
         session_policy: Default::default(),
+        company_role: None,
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -749,6 +758,7 @@ fn snapshot_runtime_verbatim_from_persona() {
 /// Helper: a persona with no model/provider configured.
 fn blank_model_persona() -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         model: None,
         provider: None,

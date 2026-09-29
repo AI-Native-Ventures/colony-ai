@@ -676,6 +676,9 @@ pub struct HireProposal {
     pub role_pack: HireRolePack,
     /// Employee display name; uniqueness is checked again on completion.
     pub display_name: String,
+    /// Optional direct manager selected from the current company team.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manager_pubkey: Option<String>,
     /// Channel where the employee introduction will be posted.
     pub introduction_channel_id: Uuid,
     /// Runtime identifier selected from the live worker menu.
@@ -862,6 +865,15 @@ pub fn validate_hire_proposal(proposal: &HireProposal) -> Result<(), CompanyReco
     require_text(&proposal.provider_id, 120, "providerId is required")?;
     if let Some(model_id) = proposal.model_id.as_deref() {
         require_text(model_id, 180, "modelId must not be empty")?;
+    }
+    if proposal
+        .manager_pubkey
+        .as_deref()
+        .is_some_and(|manager| !is_hex_id(manager))
+    {
+        return Err(CompanyRecordError::Invalid(
+            "managerPubkey must be a lowercase pubkey",
+        ));
     }
     Ok(())
 }
@@ -2304,6 +2316,7 @@ mod tests {
                 default_allowance: None,
             },
             display_name: "Social Media Manager".into(),
+            manager_pubkey: Some(PK_A.into()),
             introduction_channel_id: Uuid::from_u128(43),
             runtime_id: "runtime-available".into(),
             provider_id: "provider-current".into(),
@@ -2482,6 +2495,10 @@ mod tests {
             .expect("proposal")
             .weekly_allowance = Some("not-a-number".into());
         assert!(validate_hire_action(&with_preset_amount).is_err());
+
+        let mut invalid_manager = hire_proposal();
+        invalid_manager.manager_pubkey = Some("not-a-pubkey".into());
+        assert!(validate_hire_proposal(&invalid_manager).is_err());
 
         let deny = HireAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,

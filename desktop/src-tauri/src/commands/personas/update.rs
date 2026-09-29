@@ -9,7 +9,8 @@ use crate::{
     managed_agents::{
         apply_persona_behavior, effective_agent_command, load_managed_agents, load_personas,
         managed_agent_avatar_url, save_managed_agents, save_personas, try_regenerate_nest,
-        validate_agent_definition_text, AgentDefinition, ManagedAgentRecord, UpdatePersonaRequest,
+        validate_agent_definition_text, validate_company_role_metadata, AgentDefinition,
+        ManagedAgentRecord, UpdatePersonaRequest,
     },
     util::now_iso,
 };
@@ -192,6 +193,14 @@ pub(super) async fn update_persona_with<R: Send + 'static>(
             persona.display_name = display_name;
             persona.avatar_url = avatar_url;
             persona.description = description;
+            if let Some(company_role) = input.company_role.clone() {
+                persona.company_role = company_role
+                    .map(|role| {
+                        validate_company_role_metadata(&role)?;
+                        Ok(role)
+                    })
+                    .transpose()?;
+            }
             persona.system_prompt = system_prompt;
             persona.runtime = runtime;
             persona.model = model;
