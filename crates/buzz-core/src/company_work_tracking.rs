@@ -56,7 +56,7 @@ pub enum CompanyWorkTrackingRecordType {
 #[serde(tag = "recordType", rename_all = "snake_case")]
 pub enum CompanyWorkTrackingHead {
     /// Persisted commitment proposal and its lifecycle state.
-    CommitmentSuggestion(CompanyWorkSuggestionHead),
+    CommitmentSuggestion(Box<CompanyWorkSuggestionHead>),
     /// Business-scoped check-in settings for one work item.
     WatchdogConfiguration(CompanyWorkWatchdogHead),
 }

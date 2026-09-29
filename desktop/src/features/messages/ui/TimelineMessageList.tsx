@@ -33,6 +33,7 @@ import { UnreadDivider } from "./UnreadDivider";
 import { useTimelineRetention } from "./useTimelineRetention";
 import { useUpwardPaginationWheel } from "./useUpwardPaginationWheel";
 import { useVirtualizedBottomSettle } from "./useVirtualizedBottomSettle";
+import { CompanyWorkTrackingProvider } from "@/features/company-work/companyWorkTrackingContext";
 
 export type TimelineVirtualizerApi = {
   cancelBottomIntent: () => void;
@@ -330,53 +331,57 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
 
   if (useVirtualizer) {
     return (
-      <VirtualizedTimelineRows
-        dayGroups={dayGroups}
-        historyExhausted={historyExhausted}
-        hideDayDividers={hideDayDividers}
-        leadingContent={leadingContent}
-        onAtBottomStateChange={onAtBottomStateChange}
-        onStartReached={onStartReached}
-        onVirtualizerApiChange={onVirtualizerApiChange}
-        onVirtualizerRangeChanged={onVirtualizerRangeChanged}
-        onVirtualizerScrollerChange={onVirtualizerScrollerChange}
-        renderItem={renderItem}
-      />
+      <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
+        <VirtualizedTimelineRows
+          dayGroups={dayGroups}
+          historyExhausted={historyExhausted}
+          hideDayDividers={hideDayDividers}
+          leadingContent={leadingContent}
+          onAtBottomStateChange={onAtBottomStateChange}
+          onStartReached={onStartReached}
+          onVirtualizerApiChange={onVirtualizerApiChange}
+          onVirtualizerRangeChanged={onVirtualizerRangeChanged}
+          onVirtualizerScrollerChange={onVirtualizerScrollerChange}
+          renderItem={renderItem}
+        />
+      </CompanyWorkTrackingProvider>
     );
   }
 
   return (
-    <div className="flex flex-col">
-      {dayGroups.map((group) => (
-        <section
-          className={cn(
-            "relative flex flex-col",
-            !hideDayDividers &&
-              group.headingTimestamp !== null &&
-              "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
-          )}
-          data-day-label={
-            group.headingTimestamp === null
-              ? undefined
-              : formatDayGroupLabel(group.headingTimestamp)
-          }
-          data-testid="message-timeline-day-group"
-          key={group.key}
-        >
-          {hideDayDividers || group.headingTimestamp === null ? null : (
-            <DayDivider
-              label={formatDayGroupLabel(group.headingTimestamp)}
-              sticky={stickyDayDividers}
-            />
-          )}
-          {group.items.map((item) => (
-            <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
-              {renderItem(item)}
-            </TimelineRowShell>
-          ))}
-        </section>
-      ))}
-    </div>
+    <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
+      <div className="flex flex-col">
+        {dayGroups.map((group) => (
+          <section
+            className={cn(
+              "relative flex flex-col",
+              !hideDayDividers &&
+                group.headingTimestamp !== null &&
+                "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
+            )}
+            data-day-label={
+              group.headingTimestamp === null
+                ? undefined
+                : formatDayGroupLabel(group.headingTimestamp)
+            }
+            data-testid="message-timeline-day-group"
+            key={group.key}
+          >
+            {hideDayDividers || group.headingTimestamp === null ? null : (
+              <DayDivider
+                label={formatDayGroupLabel(group.headingTimestamp)}
+                sticky={stickyDayDividers}
+              />
+            )}
+            {group.items.map((item) => (
+              <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
+                {renderItem(item)}
+              </TimelineRowShell>
+            ))}
+          </section>
+        ))}
+      </div>
+    </CompanyWorkTrackingProvider>
   );
 });
 

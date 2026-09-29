@@ -111,6 +111,8 @@ import {
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
   KIND_CLIENT_ACTION,
+  KIND_COMPANY_WORK_TRACKING_ACTION,
+  KIND_COMPANY_WORK_TRACKING_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
   KIND_DM_VISIBILITY,
@@ -741,6 +743,8 @@ type E2eConfig = {
     companyWorkRelayPrivateKey?: string;
     /** Reject company work action publishes in order, then accept them. */
     companyWorkActionErrors?: string[];
+    /** Reject company work tracking action publishes in order, then accept them. */
+    companyWorkTrackingActionErrors?: string[];
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
@@ -1634,6 +1638,8 @@ declare global {
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
     }) => RelayEvent;
+    /** Seed and live-publish one signed company work tracking head. */
+    __BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__?: (event: RelayEvent) => void;
     /** Sign and publish a mock relay ask head with the per-test relay key. */
     __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: (input: {
       channelId: string;
@@ -10786,6 +10792,214 @@ function mockCompanyWorkHeadByDTag(dTag: string): RelayEvent | undefined {
   );
 }
 
+function mockCompanyWorkTrackingHeadByDTag(
+  dTag: string,
+): RelayEvent | undefined {
+  return getMockCompanyWorkEventStore().find(
+    (event) =>
+      event.kind === KIND_COMPANY_WORK_TRACKING_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event)) {
+    return "invalid: company work tracking action signature is invalid.";
+  }
+  if (
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: company work tracking action must have one h tag and one d tag.";
+  }
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+  const match = /^company:work-suggestion:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (!channelId || !dTag || !match) {
+    return "invalid: company work tracking coordinate is malformed.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (channel?.channel_type !== "stream" || channel.archived_at !== null) {
+    return "restricted: company work tracking requires an active stream conversation.";
+  }
+  if (
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer) ||
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of the suggestion channel.";
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: company work tracking action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: company work tracking action content is not JSON.";
+  }
+  const suggestionId = action.recordId;
+  if (
+    action.schemaVersion !== 1 ||
+    typeof suggestionId !== "string" ||
+    suggestionId.toLowerCase() !== match[1].toLowerCase() ||
+    (action.action !== "accept" && action.action !== "dismiss")
+  ) {
+    return "invalid: unsupported company work tracking action.";
+  }
+  const current = mockCompanyWorkTrackingHeadByDTag(dTag);
+  if (
+    !current ||
+    current.tags.find((tag) => tag[0] === "h")?.[1] !== channelId
+  ) {
+    return "conflict: commitment suggestion does not exist in this channel.";
+  }
+  if (action.expectedHeadEventId !== current.id) {
+    return "conflict: commitment suggestion changed; retry from its latest head.";
+  }
+  let head: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(current.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      (parsed as { recordType?: unknown }).recordType !==
+        "commitment_suggestion" ||
+      (parsed as { status?: unknown }).status !== "pending"
+    ) {
+      return "conflict: commitment suggestion is not pending.";
+    }
+    head = parsed as Record<string, unknown>;
+  } catch {
+    return "error: stored commitment suggestion is invalid.";
+  }
+
+  let relaySecret: Uint8Array;
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey) {
+    return "error: mock company work relay signing key is not configured.";
+  }
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+
+  const createdAt = Math.max(
+    Math.floor(Date.now() / 1_000),
+    current.created_at + 1,
+  );
+  const store = getMockCompanyWorkEventStore();
+  let createdWorkHead: RelayEvent | null = null;
+  if (action.action === "accept") {
+    const acceptedWorkItemId = action.acceptedWorkItemId;
+    if (
+      typeof acceptedWorkItemId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        acceptedWorkItemId,
+      )
+    ) {
+      return "invalid: acceptedWorkItemId must be a UUID.";
+    }
+    const workDTag = `company:work:${acceptedWorkItemId.toLowerCase()}`;
+    if (mockCompanyWorkHeadByDTag(workDTag)) {
+      return "conflict: accepted work item id already exists.";
+    }
+    const sourceEventId = head.sourceEventId;
+    const source =
+      typeof sourceEventId === "string"
+        ? findMockCompanyWorkMessage(sourceEventId)
+        : null;
+    if (!source || source.channelId.toLowerCase() !== channelId.toLowerCase()) {
+      return "invalid: suggestion source message is unavailable.";
+    }
+    if (
+      typeof head.expiresAt === "string" &&
+      Date.parse(head.expiresAt) <= Date.now()
+    ) {
+      return "conflict: commitment suggestion has expired.";
+    }
+    const input = head.workItem;
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return "error: stored commitment suggestion work item is invalid.";
+    }
+    const workItem = input as Record<string, unknown>;
+    const acceptedAt = new Date().toISOString();
+    if (
+      typeof workItem.dueAt === "string" &&
+      Date.parse(workItem.dueAt) <= Date.parse(acceptedAt)
+    ) {
+      return "invalid: dueAt must be later than acceptance.";
+    }
+    const nextWorkItem = {
+      ...workItem,
+      workItemId: acceptedWorkItemId.toLowerCase(),
+      sourceEventId: source.event.id,
+      threadRootEventId:
+        typeof workItem.threadRootEventId === "string"
+          ? workItem.threadRootEventId
+          : source.event.id,
+      acceptedAt,
+      sourceActionEventId: event.id,
+    };
+    createdWorkHead = finalizeEvent(
+      {
+        kind: KIND_WORK_ITEM_HEAD,
+        created_at: createdAt,
+        tags: [
+          ["h", channelId],
+          ["d", workDTag],
+        ],
+        content: JSON.stringify(nextWorkItem),
+      },
+      relaySecret,
+    );
+    head.status = "accepted";
+    head.acceptedWorkItemId = acceptedWorkItemId.toLowerCase();
+  } else {
+    head.status = "dismissed";
+  }
+  head.sourceActionEventId = event.id;
+  const nextTrackingHead = finalizeEvent(
+    {
+      kind: KIND_COMPANY_WORK_TRACKING_HEAD,
+      created_at: createdAt,
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  const index = store.findIndex((candidate) => candidate.id === current.id);
+  if (index >= 0) store.splice(index, 1);
+  store.push(event, nextTrackingHead);
+  if (createdWorkHead) store.push(createdWorkHead);
+  persistMockCompanyWorkEventStore();
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, nextTrackingHead);
+  if (createdWorkHead) emitMockLiveEvent(channelId, createdWorkHead);
+  return null;
+}
+
 function filterMockCompanyWorkEvents(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const ids = filter.ids ? new Set(filter.ids) : null;
@@ -15481,10 +15695,21 @@ function sendToMockSocket(args: {
         filter["#h"]?.length &&
         !filter["#d"],
     );
+    const companyWorkTrackingHeadQuery = Boolean(
+      filter.kinds?.includes(KIND_COMPANY_WORK_TRACKING_HEAD) &&
+        relaySelf &&
+        filter.authors?.some((author) => author.toLowerCase() === relaySelf),
+    );
+    const companyWorkTrackingActionQuery = Boolean(
+      filter.kinds?.includes(KIND_COMPANY_WORK_TRACKING_ACTION) &&
+        filter["#h"]?.length,
+    );
     if (
       companyWorkHeadQuery ||
       companyWorkHistoryQuery ||
-      companyWorkMoveHistoryQuery
+      companyWorkMoveHistoryQuery ||
+      companyWorkTrackingHeadQuery ||
+      companyWorkTrackingActionQuery
     ) {
       for (const event of filterMockCompanyWorkEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -15925,6 +16150,51 @@ function sendToMockSocket(args: {
       const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
       if (actionEvent) emitMockGlobalEvent(actionEvent);
       if (headEvent) emitMockGlobalEvent(headEvent);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (
+      event.kind === KIND_COMPANY_WORK_TRACKING_ACTION &&
+      event.tags.some(
+        (tag) =>
+          tag[0] === "d" && tag[1]?.startsWith("company:work-suggestion:"),
+      )
+    ) {
+      const configuredError =
+        getConfig()?.mock?.companyWorkTrackingActionErrors?.shift();
+      if (configuredError) {
+        sendWsText(socket.handler, ["OK", event.id, false, configuredError]);
+        return;
+      }
+      const error = brokerMockCompanyWorkTrackingAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const channelId = getChannelIdFromTags(event.tags);
+      const trackingHead = dTag
+        ? mockCompanyWorkTrackingHeadByDTag(dTag)
+        : undefined;
+      let acceptedWorkHead: RelayEvent | undefined;
+      try {
+        const action = JSON.parse(event.content) as {
+          acceptedWorkItemId?: string;
+        };
+        if (action.acceptedWorkItemId) {
+          acceptedWorkHead = mockCompanyWorkHeadByDTag(
+            `company:work:${action.acceptedWorkItemId}`,
+          );
+        }
+      } catch {
+        acceptedWorkHead = undefined;
+      }
+      if (channelId) {
+        emitMockLiveEvent(channelId, event);
+        if (trackingHead) emitMockLiveEvent(channelId, trackingHead);
+        if (acceptedWorkHead) emitMockLiveEvent(channelId, acceptedWorkHead);
+      }
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }
@@ -16599,6 +16869,29 @@ export function maybeInstallE2eTauriMocks() {
       pending,
       id,
     );
+  };
+  window.__BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__ = (event) => {
+    if (!verifyEvent(event) || event.kind !== KIND_COMPANY_WORK_TRACKING_HEAD) {
+      throw new Error("A signed company work tracking head is required.");
+    }
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+    if (!channelId || !dTag?.startsWith("company:work-suggestion:")) {
+      throw new Error("A suggestion channel and coordinate are required.");
+    }
+    const store = getMockCompanyWorkEventStore();
+    for (let index = store.length - 1; index >= 0; index -= 1) {
+      const candidate = store[index];
+      if (
+        candidate.kind === KIND_COMPANY_WORK_TRACKING_HEAD &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag)
+      ) {
+        store.splice(index, 1);
+      }
+    }
+    store.push(event);
+    persistMockCompanyWorkEventStore();
+    emitMockLiveEvent(channelId, event);
   };
   window.__BUZZ_E2E_SET_MOCK_USER_STATUS__ = ({
     text,

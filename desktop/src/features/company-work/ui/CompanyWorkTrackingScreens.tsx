@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
@@ -11,6 +12,17 @@ import { useGoalHeadsQuery } from "@/features/goals/goalRelay";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
 import { useCompanyWorkHeadsQuery, useCompanyWorkHistoryQuery } from "../hooks";
+import {
+  useCompanyWorkSuggestionAcceptancesQuery,
+  useCompanyWorkTrackingHeadsQuery,
+  useCompanyWorkTrackingActionMutation,
+} from "../companyWorkTrackingRelay";
+import { relayClient } from "@/shared/api/relayClient";
+import {
+  KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_V2,
+} from "@/shared/constants/kinds";
+import type { RelayEvent } from "@/shared/api/types";
 import { projectCompanyWorkTimeline } from "../companyWorkTimeline";
 import {
   CompanyWorkBackButton,
@@ -53,7 +65,7 @@ export function CompanyWorkTrackingScreens(
         />
       );
     case "suggestion":
-      return <SuggestionUnavailableScreen />;
+      return <CompanyWorkSuggestionScreen suggestionId={props.resourceId} />;
     case "watchdog":
       return <WatchdogUnavailableScreen workItemId={props.resourceId} />;
     case "watchdog-saved":
@@ -204,10 +216,16 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
     record?.head.workItemId ?? null,
     Boolean(record),
   );
+  const trackingHistoryQuery = useCompanyWorkSuggestionAcceptancesQuery(
+    record?.channelId ?? null,
+    record?.head.workItemId ?? null,
+    Boolean(record),
+  );
   const history = historyQuery.data ?? [];
+  const trackingHistory = trackingHistoryQuery.data ?? [];
   const timeline = React.useMemo(
-    () => projectCompanyWorkTimeline(history),
-    [history],
+    () => projectCompanyWorkTimeline([...history, ...trackingHistory]),
+    [history, trackingHistory],
   );
   const pubkeys = React.useMemo(
     () => [
@@ -243,7 +261,7 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
     channelsQuery.isPending ||
     headsQuery.channelsQuery.isPending ||
     headsQuery.isPending ||
-    (record && historyQuery.isPending)
+    (record && (historyQuery.isPending || trackingHistoryQuery.isPending))
   ) {
     return <LoadingScreen title="Loading work activity" />;
   }
@@ -251,7 +269,8 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
     channelsQuery.isError ||
     headsQuery.channelsQuery.isError ||
     headsQuery.isError ||
-    historyQuery.isError
+    historyQuery.isError ||
+    trackingHistoryQuery.isError
   ) {
     const error = channelsQuery.isError
       ? channelsQuery.error
@@ -259,7 +278,9 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
         ? headsQuery.channelsQuery.error
         : headsQuery.isError
           ? headsQuery.error
-          : historyQuery.error;
+          : historyQuery.isError
+            ? historyQuery.error
+            : trackingHistoryQuery.error;
     return (
       <UnavailableScreen
         message={errorMessage(error)}
@@ -268,6 +289,7 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
           void headsQuery.channelsQuery.refetch();
           void channelsQuery.refetch();
           void historyQuery.refetch();
+          void trackingHistoryQuery.refetch();
         }}
         title="Work activity is unavailable"
       />
@@ -471,12 +493,216 @@ function CompanyWorkPanelScreen({
   );
 }
 
-function SuggestionUnavailableScreen() {
+function CompanyWorkSuggestionScreen({
+  suggestionId,
+}: {
+  suggestionId: string;
+}) {
+  const trackingQuery = useCompanyWorkTrackingHeadsQuery();
+  const identityQuery = useIdentityQuery();
+  const {
+    goChannel,
+    goCompanyWork,
+    goCompanyWorkDetail,
+    goCompanyWorkTracking,
+  } = useAppNavigation();
+  const record = trackingQuery.data?.find(
+    (candidate) =>
+      candidate.head.recordType === "commitment_suggestion" &&
+      candidate.head.suggestionId === suggestionId.toLowerCase(),
+  );
+  const suggestion =
+    record?.head.recordType === "commitment_suggestion" ? record.head : null;
+  const channel = trackingQuery.channelsQuery.data?.find(
+    (candidate) => candidate.id.toLowerCase() === record?.channelId,
+  );
+  const sourceQuery = useQuery({
+    enabled: Boolean(suggestion && channel?.isMember),
+    queryKey: [
+      "company-work-suggestion-source",
+      record?.channelId ?? "",
+      suggestion?.sourceEventId ?? "",
+    ],
+    queryFn: async (): Promise<RelayEvent | null> => {
+      if (!suggestion || !record) return null;
+      const events = await relayClient.fetchEvents({
+        ids: [suggestion.sourceEventId],
+        kinds: [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2],
+        "#h": [record.channelId],
+        limit: 1,
+      });
+      return (
+        events.find((event) => event.id === suggestion.sourceEventId) ?? null
+      );
+    },
+  });
+  const mutation = useCompanyWorkTrackingActionMutation();
+  const profilePubkeys = sourceQuery.data?.pubkey
+    ? [sourceQuery.data.pubkey]
+    : [];
+  const profilesQuery = useUsersBatchQuery(profilePubkeys, {
+    enabled: profilePubkeys.length > 0,
+  });
+  const profiles: UserProfileLookup | undefined = profilesQuery.data?.profiles;
+
+  React.useEffect(() => {
+    if (!suggestion || suggestion.status === "pending") return;
+    if (suggestion.status === "accepted" && suggestion.acceptedWorkItemId) {
+      void goCompanyWorkDetail(suggestion.acceptedWorkItemId);
+      return;
+    }
+    void goCompanyWork();
+  }, [goCompanyWork, goCompanyWorkDetail, suggestion]);
+
+  if (trackingQuery.channelsQuery.isPending || trackingQuery.isPending) {
+    return <LoadingScreen title="Loading commitment suggestion" />;
+  }
+  if (trackingQuery.channelsQuery.isError || trackingQuery.isError) {
+    return (
+      <UnavailableScreen
+        message={errorMessage(
+          trackingQuery.channelsQuery.isError
+            ? trackingQuery.channelsQuery.error
+            : trackingQuery.error,
+        )}
+        onRetry={() => {
+          void trackingQuery.channelsQuery.refetch();
+          void trackingQuery.refetch();
+        }}
+        title="Commitment suggestion is unavailable"
+      />
+    );
+  }
+  if (!record || !suggestion || !channel) {
+    return (
+      <UnavailableScreen
+        message="This commitment suggestion is not available in the current community."
+        title="Commitment suggestion unavailable"
+      />
+    );
+  }
+  if (suggestion.status !== "pending") return null;
+  if (sourceQuery.isPending) {
+    return <LoadingScreen title="Loading the source message" />;
+  }
+  if (sourceQuery.isError || !sourceQuery.data) {
+    return (
+      <UnavailableScreen
+        message={
+          sourceQuery.isError
+            ? errorMessage(sourceQuery.error)
+            : "The source message for this suggestion is unavailable."
+        }
+        onRetry={() => void sourceQuery.refetch()}
+        title="Source message unavailable"
+      />
+    );
+  }
+  const source = sourceQuery.data;
+  const expired =
+    suggestion.expiresAt !== undefined &&
+    Date.parse(suggestion.expiresAt) <= Date.now();
+  const accept = async () => {
+    const acceptedWorkItemId = crypto.randomUUID();
+    try {
+      await mutation.mutateAsync({
+        channelId: record.channelId,
+        dTag: record.dTag,
+        action: {
+          schemaVersion: 1,
+          action: "accept",
+          recordId: suggestion.suggestionId,
+          expectedHeadEventId: record.event.id,
+          acceptedWorkItemId,
+        },
+      });
+    } catch {
+      void goCompanyWorkTracking("failed", suggestion.suggestionId, {
+        channel: record.channelId,
+        threadRoot: suggestion.workItem.threadRootEventId,
+      });
+      return;
+    }
+    void goCompanyWorkDetail(acceptedWorkItemId);
+  };
+  const dismiss = async () => {
+    try {
+      await mutation.mutateAsync({
+        channelId: record.channelId,
+        dTag: record.dTag,
+        action: {
+          schemaVersion: 1,
+          action: "dismiss",
+          recordId: suggestion.suggestionId,
+          expectedHeadEventId: record.event.id,
+        },
+      });
+    } catch {
+      void goCompanyWorkTracking("failed", suggestion.suggestionId, {
+        channel: record.channelId,
+        threadRoot: suggestion.workItem.threadRootEventId,
+      });
+      return;
+    }
+    void goChannel(record.channelId, {
+      messageId: suggestion.sourceEventId,
+      threadRootId: suggestion.workItem.threadRootEventId ?? null,
+    });
+  };
+
   return (
-    <UnavailableScreen
-      message="Commitment suggestions are unavailable because this community does not provide validated suggestions. Messages never create work automatically."
-      title="Suggestions unavailable"
-    />
+    <>
+      <CompanyWorkPageHeader title={`#${channel.name}`} />
+      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+        <CompanyWorkBackButton onClick={() => void goCompanyWork()} />
+        <section
+          aria-label="Source message"
+          className="rounded-xl border border-border p-6"
+          data-testid="company-work-suggestion-source"
+        >
+          <div className="flex items-baseline justify-between gap-4">
+            <strong className="text-sm font-semibold">
+              {resolveUserLabel({
+                currentPubkey: identityQuery.data?.pubkey,
+                profiles,
+                pubkey: source.pubkey,
+                preferResolvedSelfLabel: true,
+              })}
+            </strong>
+            <time
+              className="text-2xs text-muted-foreground"
+              dateTime={new Date(source.created_at * 1000).toISOString()}
+            >
+              {new Date(source.created_at * 1000).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
+          </div>
+          <p className="mt-3 whitespace-pre-wrap text-sm">{source.content}</p>
+          <div className="mt-5 rounded-lg border border-border bg-muted/20 p-4">
+            <p className="text-sm font-semibold">Looks like a commitment.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                disabled={mutation.isPending || expired}
+                onClick={() => void accept()}
+                size="sm"
+              >
+                Track this
+              </Button>
+              <Button
+                disabled={mutation.isPending}
+                onClick={() => void dismiss()}
+                size="sm"
+                variant="ghost"
+              >
+                Not now
+              </Button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </>
   );
 }
 

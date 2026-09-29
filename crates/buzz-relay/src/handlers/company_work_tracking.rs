@@ -278,7 +278,7 @@ pub async fn handle(
                 &work_item.assigned_pubkeys,
             )
             .await?;
-            CompanyWorkTrackingHead::CommitmentSuggestion(CompanyWorkSuggestionHead {
+            CompanyWorkTrackingHead::CommitmentSuggestion(Box::new(CompanyWorkSuggestionHead {
                 schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
                 suggestion_id: action.record_id,
                 source_event_id: source.source_event_id,
@@ -289,7 +289,7 @@ pub async fn handle(
                 status: CompanyWorkSuggestionStatus::Pending,
                 accepted_work_item_id: None,
                 source_action_event_id: event.id.to_hex(),
-            })
+            }))
         }
         CompanyWorkTrackingActionKind::Accept => {
             let Some(CompanyWorkTrackingHead::CommitmentSuggestion(previous)) = previous.as_ref()
