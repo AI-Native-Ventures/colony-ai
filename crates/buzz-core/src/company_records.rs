@@ -752,6 +752,8 @@ pub struct HireHead {
 pub enum HireActionKind {
     /// Create a direct owner/admin proposal before founder sign-off.
     Create,
+    /// Replace an unapproved proposal at its exact current head.
+    Update,
     /// Record the community owner's founder approval.
     Approve,
     /// Durably attach the owner-created managed employee before side effects.
@@ -778,7 +780,7 @@ pub struct HireAction {
     /// Proposal payload, required only for create.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposal: Option<HireProposal>,
-    /// Created employee identity, required only for complete.
+    /// Created employee identity, required only for attachment and completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub employee_pubkey: Option<String>,
     /// Introduction event id, required only for complete.
@@ -911,6 +913,21 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
             {
                 return Err(CompanyRecordError::Invalid(
                     "create carries only a matching hire proposal",
+                ));
+            }
+            validate_hire_proposal(proposal)
+        }
+        HireActionKind::Update => {
+            let proposal = action.proposal.as_ref().ok_or(CompanyRecordError::Invalid(
+                "update needs the hire proposal",
+            ))?;
+            if proposal.hire_id != action.hire_id
+                || action.employee_pubkey.is_some()
+                || action.introduction_event_id.is_some()
+                || action.reason.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "update carries only a matching hire proposal",
                 ));
             }
             validate_hire_proposal(proposal)
@@ -2016,11 +2033,15 @@ pub fn validate_ask_response(
                     "only a reason goes with this outcome",
                 ));
             }
-            require_text(
-                reason.unwrap_or_default(),
-                MAX_REASON_CHARS,
-                "a reason is required, 1000 characters at most",
-            )
+            if ask.hire_proposal.is_some() && reason.is_none() {
+                Ok(())
+            } else {
+                require_text(
+                    reason.unwrap_or_default(),
+                    MAX_REASON_CHARS,
+                    "a reason is required, 1000 characters at most",
+                )
+            }
         }
         AskType::Question => {
             if response.outcome != O::Answered
@@ -2493,8 +2514,11 @@ mod tests {
         });
         resolved_ask.hire_proposal = Some(proposal);
         let mut approved = response(AskOutcome::Approved);
-        approved.reason = Some("Approved for founder review".into());
         assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
+        let mut rejected = response(AskOutcome::Rejected);
+        assert!(validate_ask_response(&resolved_ask, &rejected).is_ok());
+        rejected.reason = Some("   ".into());
+        assert!(validate_ask_response(&resolved_ask, &rejected).is_err());
         let mut revision = approved;
         revision.outcome = AskOutcome::RevisionRequested;
         assert!(validate_ask_response(&resolved_ask, &revision).is_err());
@@ -2514,6 +2538,13 @@ mod tests {
             reason: None,
         };
         assert!(validate_hire_action(&create).is_ok());
+
+        let mut update = create.clone();
+        update.action = HireActionKind::Update;
+        update.expected_head_event_id = Some(EV.into());
+        assert!(validate_hire_action(&update).is_ok());
+        update.expected_head_event_id = None;
+        assert!(validate_hire_action(&update).is_err());
 
         let mut no_provider = create.clone();
         no_provider.proposal.as_mut().expect("proposal").provider_id = None;

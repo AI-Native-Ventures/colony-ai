@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use buzz_core::company_records::{
-    hire_d_tag, AskAction, AskActionKind, AskCategory, AskOutcome, AskRecord, AskResponse,
-    AskStatus, AskSubject, AskSubjectKind, AskType, HireAction, HireActionKind, HireHead,
-    HireProposal, HireRolePack, HireStatus, HireTool, HireToolRisk, COMPANY_RECORD_SCHEMA_VERSION,
+    hire_d_tag, AskAction, AskActionKind, AskCategory, AskRecord, AskStatus, AskSubject,
+    AskSubjectKind, AskType, HireAction, HireActionKind, HireHead, HireProposal, HireRolePack,
+    HireStatus, HireTool, HireToolRisk, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{KIND_ASK_HEAD, KIND_HIRE_ACTION, KIND_HIRE_HEAD};
 use buzz_test_client::BuzzTestClient;

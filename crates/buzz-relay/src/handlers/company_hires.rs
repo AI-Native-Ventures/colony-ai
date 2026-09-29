@@ -239,6 +239,28 @@ pub(super) async fn handle(
                 source_action_event_id: event.id.to_hex(),
             }
         }
+        HireActionKind::Update => {
+            let mut head = current.ok_or_else(|| conflict("hire does not exist"))?;
+            if head.status != HireStatus::Proposed {
+                return Err(conflict("only an open hire proposal can be edited"));
+            }
+            let proposal = action
+                .proposal
+                .as_ref()
+                .ok_or_else(|| invalid("update needs the hire proposal"))?;
+            validate_unique_name_in_transaction(
+                &mut tx,
+                tenant,
+                state,
+                &proposal.display_name,
+                Some(action.hire_id),
+                None,
+            )
+            .await?;
+            head.proposal = proposal.clone();
+            head.source_action_event_id = event.id.to_hex();
+            head
+        }
         HireActionKind::Approve => {
             let mut head = current.ok_or_else(|| conflict("hire does not exist"))?;
             if !matches!(

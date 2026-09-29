@@ -499,8 +499,10 @@ in one transaction. If an administrator approves, the hire head waits for the
 owner's `approve` action. If the owner approves, the ask and hire heads record
 the decision and founder signature together.
 
-The member-signed hire action supports `create`, `approve`, `attach_employee`,
-`complete`, and `deny`. `create` stores a proposed hire record. A community
+The member-signed hire action supports `create`, `update`, `approve`,
+`attach_employee`, `complete`, and `deny`. `create` stores a proposed hire
+record. `update` replaces the proposal while it is still proposed and names
+the exact current hire head. A community
 owner or admin may prepare a direct hire proposal, but only the owner may sign
 its final founder approval. Managers and employees cannot create a hire head directly. They
 propose a hire through an approval ask in the existing

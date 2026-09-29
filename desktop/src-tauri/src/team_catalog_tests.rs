@@ -347,6 +347,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             "runtime": "acp",
             "model": null,
             "provider": "p1",
+            "companyRole": null,
         }],
     }]);
     assert_eq!(actual, expected);

@@ -281,6 +281,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             "respondTo": "mentions",
             "parallelism": 2,
             "sessionPolicy": "thread",
+            "companyRole": null,
         },
     }]);
     assert_eq!(actual, expected);
