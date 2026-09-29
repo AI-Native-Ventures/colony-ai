@@ -468,16 +468,24 @@ async function createGoal(page: Page, title: string) {
   return createdId;
 }
 
-async function createMessage(page: Page, content: string) {
+async function createMessage(
+  page: Page,
+  content: string,
+  visibleText = content,
+) {
   await page.goto(`/#/channels/${account.channel}`);
   await page.getByTestId("message-input").fill(content);
   await page.getByTestId("send-message").click();
-  const row = page.locator("[data-message-id]").filter({ hasText: content });
+  const row = page
+    .locator("[data-message-id]")
+    .filter({ hasText: visibleText });
   await expect(row).toHaveCount(1);
   const id = await row.getAttribute("data-message-id");
   if (!id) throw new Error("The canary relay message omitted its event id.");
   await page.reload();
-  await expect(page.getByText(content)).toBeVisible();
+  await expect(
+    page.getByTestId("message-timeline").getByText(visibleText),
+  ).toBeVisible();
   return id;
 }
 
@@ -880,9 +888,10 @@ test.describe("signed-in canary company UI", () => {
       await expect(page.getByText("No secrets bound")).toBeVisible();
       await capture(page, "06-secrets-empty-after-quota");
     } else {
-      const sourceText = `Canary work source ${randomUUID().slice(0, 8)} buzz://goal/${goalId}`;
+      const sourceLabel = `Canary work source ${randomUUID().slice(0, 8)}`;
+      const sourceText = `${sourceLabel} buzz://goal/${goalId}`;
       await waitForCanaryWriteWindow(page);
-      const sourceId = await createMessage(page, sourceText);
+      const sourceId = await createMessage(page, sourceText, sourceLabel);
       const sourceRow = page
         .getByTestId("message-timeline")
         .locator(`[data-message-id="${sourceId}"]`)
@@ -895,6 +904,7 @@ test.describe("signed-in canary company UI", () => {
         .getByTestId(`create-company-work-from-message-${sourceId}`)
         .click();
       await expect(page.getByTestId("company-work-form")).toBeVisible();
+      await expect(page.getByTestId("company-work-goal")).toHaveValue(goalId);
       const workTitle = `Canary work ${randomUUID().slice(0, 8)}`;
       await page.getByTestId("company-work-title").fill(workTitle);
       await page
