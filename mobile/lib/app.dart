@@ -56,7 +56,7 @@ import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
 import 'features/business/discovery_workspace_page.dart';
 import 'features/business/money_workspace_page.dart';
-import 'features/workflows/workflow_detail_page.dart';
+import 'features/workflows/workflow_detail_route.dart';
 import 'features/profile/user_profile_sheet.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
@@ -91,9 +91,6 @@ import 'shared/business/mobile_business_entry_points.dart';
 import 'shared/business/mobile_business_records.dart';
 import 'shared/company/goals/goal_records.dart';
 import 'shared/company/goals/goal_repository.dart';
-import 'shared/company/workflows/workflow_records.dart';
-import 'shared/company/workflows/workflow_repository.dart';
-import 'shared/community/community_membership_provider.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/navigation/mobile_route.dart';
@@ -377,107 +374,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
         },
       );
     })
-    .register(MobileBusinessRoutes.workflowDetail, (context, workflowId) {
-      return Consumer(
-        builder: (context, ref, _) {
-          void onBack() => unawaited(Navigator.of(context).maybePop());
-          void onQuickActions() =>
-              ChannelQuickActionsLauncher.openFromHome(ref);
-          final communityName = ref.watch(activeCommunityProvider).value?.name;
-
-          if (!isWorkflowId(workflowId)) {
-            return WorkflowDetailUnavailablePage(
-              onBack: onBack,
-              onRetry: onBack,
-            );
-          }
-          final channelsAsync = ref.watch(channelsProvider);
-          return channelsAsync.when(
-            loading: () => WorkflowDetailLoadingPage(
-              onBack: onBack,
-              communityName: communityName,
-              onQuickActions: onQuickActions,
-            ),
-            error: (_, _) => WorkflowDetailUnavailablePage(
-              onBack: onBack,
-              onRetry: () => ref.invalidate(channelsProvider),
-            ),
-            data: (channels) {
-              final availableChannels = channels
-                  .where((channel) => channel.isMember && channel.isStream)
-                  .toList();
-              final channelIds =
-                  availableChannels
-                      .map((channel) => channel.id.toLowerCase())
-                      .toSet()
-                      .toList()
-                    ..sort();
-              final query = WorkflowQuery(
-                workflowId: workflowId.toLowerCase(),
-                channelIds: channelIds,
-              );
-              final workflowAsync = ref.watch(workflowRecordProvider(query));
-              return workflowAsync.when(
-                loading: () => WorkflowDetailLoadingPage(
-                  onBack: onBack,
-                  communityName: communityName,
-                  onQuickActions: onQuickActions,
-                ),
-                error: (_, _) => WorkflowDetailUnavailablePage(
-                  onBack: onBack,
-                  onRetry: () => ref.invalidate(workflowRecordProvider(query)),
-                ),
-                data: (record) {
-                  if (record == null) {
-                    return WorkflowDetailUnavailablePage(
-                      onBack: onBack,
-                      onRetry: () =>
-                          ref.invalidate(workflowRecordProvider(query)),
-                    );
-                  }
-                  final channel = availableChannels
-                      .where(
-                        (candidate) =>
-                            candidate.id.toLowerCase() == record.channelId,
-                      )
-                      .firstOrNull;
-                  final role = ref
-                      .watch(currentCommunityRoleProvider)
-                      .asData
-                      ?.value
-                      ?.name;
-                  final actor = ref.watch(myPubkeyProvider)?.toLowerCase();
-                  return WorkflowDetailPage(
-                    record: record,
-                    communityName: communityName,
-                    channelName: channel?.name,
-                    canChange:
-                        actor == record.ownerPubkey ||
-                        role == 'owner' ||
-                        role == 'admin',
-                    onBack: onBack,
-                    onQuickActions: onQuickActions,
-                    onSetStatus: (expectedRecord, status) async {
-                      try {
-                        return await ref
-                            .read(workflowRepositoryProvider)
-                            .setStatus(
-                              expectedRecord: expectedRecord,
-                              status: status,
-                              channelIds: channelIds,
-                            );
-                      } finally {
-                        ref.invalidate(workflowRecordProvider(query));
-                      }
-                    },
-                  );
-                },
-              );
-            },
-          );
-        },
-      );
-    })
+    .register(MobileBusinessRoutes.workflowDetail, workflowDetailRoute)
     .register(MobileRoutes.business, (context, routeContext) {
       return Consumer(
         builder: (context, ref, _) {
