@@ -819,8 +819,6 @@ export function AgentInstanceEditDialog({
         });
       }
     } catch (e) {
-      // React Query stores mutation failures. Post-save callbacks can also fail
-      // and must leave a visible retry path instead of silently swallowing it.
       setSetterError(e instanceof Error ? e : new Error("Failed to save"));
     } finally {
       setIsSaving(false);

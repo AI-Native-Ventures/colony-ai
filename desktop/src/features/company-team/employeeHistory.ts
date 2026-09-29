@@ -44,6 +44,12 @@ export type EmployeeRevision = {
   action: EmployeeRevisionAction;
 };
 
+export type PendingEmployeeRevision = {
+  pendingId: string;
+  actorPubkey: string;
+  action: EmployeeRevisionAction;
+};
+
 export type EmployeeHistory = {
   employeePubkey: string;
   headEvent: RelayEvent | null;

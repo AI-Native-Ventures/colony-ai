@@ -30,8 +30,10 @@ import {
   type EmployeeHistory,
   type EmployeeRevision,
   type EmployeeRevisionAction,
+  type PendingEmployeeRevision,
 } from "../employeeHistory";
 import { CompanyEmployeeProfileActions } from "./CompanyEmployeeProfileActions";
+import { EmployeeHistoryPanel } from "./EmployeeHistoryPanel";
 import type { CompanyTeamData } from "../teamRelay";
 import type { TeamMember } from "../teamModels";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -46,15 +48,6 @@ import { Badge } from "@/shared/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/shared/ui/avatar";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Textarea } from "@/shared/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
 import { truncateNpub } from "@/shared/lib/pubkey";
 
 type EmployeeTab =
@@ -86,12 +79,6 @@ type ProfileSummary = {
   displayName: string | null;
   avatarUrl: string | null;
   ownerPubkey?: string | null;
-};
-
-type PendingEmployeeRevision = {
-  pendingId: string;
-  actorPubkey: string;
-  action: EmployeeRevisionAction;
 };
 
 function sameSnapshot(
@@ -206,28 +193,6 @@ function unavailableState(title: string) {
   );
 }
 
-function snapshotFields(snapshot: EmployeeConfigSnapshot) {
-  return [
-    ["System instructions", snapshot.instructions],
-    ["Provider", snapshot.provider],
-    ["Model", snapshot.model],
-    ["Runtime", snapshot.runtime],
-  ] as const;
-}
-
-function changedSnapshotFields(
-  before: EmployeeConfigSnapshot,
-  after: EmployeeConfigSnapshot,
-) {
-  return snapshotFields(after).filter(([label, value], index) => {
-    const beforeValue = snapshotFields(before)[index]?.[1];
-    return (
-      value !== beforeValue ||
-      (label === "System instructions" && value !== before.instructions)
-    );
-  });
-}
-
 export function EmployeeProfileScreen({
   member,
   fullName,
@@ -325,9 +290,6 @@ export function EmployeeProfileScreen({
   const [runtimeDialogOpen, setRuntimeDialogOpen] = React.useState(false);
   const [runtimeDialogBefore, setRuntimeDialogBefore] =
     React.useState<EmployeeConfigSnapshot | null>(null);
-  const [undoRevision, setUndoRevision] =
-    React.useState<EmployeeRevision | null>(null);
-  const [undoError, setUndoError] = React.useState<string | null>(null);
   const [pendingRevisions, setPendingRevisions] = React.useState<
     PendingEmployeeRevision[]
   >([]);
@@ -625,16 +587,10 @@ export function EmployeeProfileScreen({
     });
   }
 
-  async function confirmUndo() {
-    if (
-      !undoRevision ||
-      !historyQuery.data?.head ||
-      !historyQuery.data.headEvent ||
-      !canUndo
-    )
-      return;
-    setUndoError(null);
-    const target = undoRevision;
+  async function applyUndo(target: EmployeeRevision) {
+    if (!historyQuery.data?.head || !historyQuery.data.headEvent || !canUndo) {
+      throw new Error("Employee history changed. Refresh and try again.");
+    }
     const currentHead = historyQuery.data.head;
     const action: EmployeeRevisionAction = {
       schemaVersion: 1,
@@ -646,17 +602,8 @@ export function EmployeeProfileScreen({
       after: target.action.before,
       undoOfEventId: target.event.id,
     };
-    try {
-      await applySnapshot(target.action.before);
-      await recordOrQueue(action);
-      setUndoRevision(null);
-    } catch (error) {
-      setUndoError(
-        error instanceof Error
-          ? error.message
-          : "The employee configuration could not be restored.",
-      );
-    }
+    await applySnapshot(target.action.before);
+    await recordOrQueue(action);
   }
 
   async function messageEmployee() {
@@ -825,232 +772,6 @@ export function EmployeeProfileScreen({
       </section>
     );
   }
-
-  function historyContent() {
-    if (historyQuery.isLoading)
-      return (
-        <p className="text-sm text-muted-foreground" role="status">
-          Loading employee history
-        </p>
-      );
-    if (historyQuery.isError)
-      return (
-        <div className="space-y-3">
-          <p className="text-sm text-destructive" role="alert">
-            Employee history could not be loaded: {historyQuery.error.message}
-          </p>
-          <Button
-            onClick={() => void historyQuery.refetch()}
-            type="button"
-            variant="outline"
-          >
-            Retry
-          </Button>
-        </div>
-      );
-    const history = historyQuery.data;
-    const revisions = [...(history?.revisions ?? [])].reverse();
-    return (
-      <section data-testid="employee-history">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Configuration and lifecycle history
-          </h2>
-          <Button
-            disabled={historyQuery.isFetching}
-            onClick={() => void historyQuery.refetch()}
-            type="button"
-            variant="outline"
-          >
-            Refresh
-          </Button>
-        </div>
-        {pendingRevisions.map((pending, index) => (
-          <Alert className="mb-4" key={pending.pendingId}>
-            <AlertTitle>History change waiting to sync</AlertTitle>
-            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-              <span>
-                {pendingError ?? "The configuration is saved on this device."}
-              </span>
-              {pending.actorPubkey.toLowerCase() === actorPubkey && canUndo ? (
-                <Button
-                  disabled={recordMutation.isPending}
-                  onClick={() => void retryPendingRevision(index)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Retry history
-                </Button>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        ))}
-        {revisions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No configuration revisions have been recorded yet.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {revisions.map((revision) => {
-              const actor = displayName(
-                historyActors.data?.profiles[
-                  revision.event.pubkey.toLowerCase()
-                ],
-                null,
-                revision.event.pubkey,
-              );
-              const changed = changedSnapshotFields(
-                revision.action.before,
-                revision.action.after,
-              );
-              return (
-                <article
-                  className="rounded-lg border border-border p-4"
-                  data-testid={`employee-revision-${revision.event.id}`}
-                  key={revision.event.id}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        {revision.action.action === "undo"
-                          ? "Configuration restored"
-                          : "Configuration changed"}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {new Date(
-                          revision.event.created_at * 1_000,
-                        ).toLocaleString()}{" "}
-                        · {actor}
-                      </p>
-                    </div>
-                    {canUndo &&
-                    history?.head?.revisionEventId !== revision.event.id &&
-                    !sameSnapshot(
-                      revision.action.before,
-                      history?.head?.snapshot ?? {},
-                    ) ? (
-                      <Button
-                        onClick={() => {
-                          setUndoRevision(revision);
-                          setUndoError(null);
-                        }}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        Review undo
-                      </Button>
-                    ) : null}
-                  </div>
-                  <dl className="mt-4 space-y-3">
-                    {changed.map(([label, value]) => {
-                      const index = snapshotFields(
-                        revision.action.after,
-                      ).findIndex(([field]) => field === label);
-                      const beforeValue = snapshotFields(
-                        revision.action.before,
-                      )[index]?.[1];
-                      return (
-                        <div
-                          className="grid gap-1 text-sm sm:grid-cols-[11rem_minmax(0,1fr)]"
-                          key={label}
-                        >
-                          <dt className="text-muted-foreground">{label}</dt>
-                          <dd className="min-w-0 break-words">
-                            <span>{beforeValue || "Not set"}</span>
-                            <span
-                              aria-hidden="true"
-                              className="mx-2 text-muted-foreground"
-                            >
-                              →
-                            </span>
-                            <span>{value || "Not set"}</span>
-                          </dd>
-                        </div>
-                      );
-                    })}
-                  </dl>
-                  {revision.action.undoOfEventId ? (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Undo of {revision.action.undoOfEventId}
-                    </p>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        )}
-        <AlertDialog
-          open={undoRevision !== null}
-          onOpenChange={(open) => {
-            if (!open) setUndoRevision(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Undo configuration change?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This creates a new history entry restoring the previous values.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {undoRevision ? (
-              <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border border-border p-3 text-sm">
-                {snapshotFields(undoRevision.action.before).map(
-                  ([label, value]) => (
-                    <div key={label}>
-                      <p className="text-xs text-muted-foreground">{label}</p>
-                      <pre className="whitespace-pre-wrap break-words font-mono text-xs">
-                        {value ?? "Not set"}
-                      </pre>
-                    </div>
-                  ),
-                )}
-              </div>
-            ) : null}
-            {undoError ? (
-              <p className="text-sm text-destructive" role="alert">
-                {undoError}
-              </p>
-            ) : null}
-            <AlertDialogFooter>
-              <AlertDialogCancel
-                disabled={
-                  recordMutation.isPending ||
-                  updateAgentMutation.isPending ||
-                  updatePersonaMutation.isPending
-                }
-              >
-                Cancel
-              </AlertDialogCancel>
-              <Button
-                disabled={
-                  recordMutation.isPending ||
-                  updateAgentMutation.isPending ||
-                  updatePersonaMutation.isPending
-                }
-                onClick={() => void confirmUndo()}
-                type="button"
-              >
-                {recordMutation.isPending ||
-                updateAgentMutation.isPending ||
-                updatePersonaMutation.isPending
-                  ? "Restoring"
-                  : "Restore these values"}
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </section>
-    );
-  }
-
-  const historyActors = useUsersBatchQuery(
-    (historyQuery.data?.revisions ?? []).map((revision) =>
-      revision.event.pubkey.toLowerCase(),
-    ),
-    { enabled: (historyQuery.data?.revisions.length ?? 0) > 0 },
-  );
 
   if (!agent) {
     return (
@@ -1396,7 +1117,22 @@ export function EmployeeProfileScreen({
             </div>
           </section>
         ) : null}
-        {tab === "history" ? historyContent() : null}
+        {tab === "history" ? (
+          <EmployeeHistoryPanel
+            actorPubkey={actorPubkey}
+            canUndo={canUndo}
+            historyQuery={historyQuery}
+            pendingError={pendingError}
+            pendingRevisions={pendingRevisions}
+            undoPending={
+              recordMutation.isPending ||
+              updateAgentMutation.isPending ||
+              updatePersonaMutation.isPending
+            }
+            onRetryPending={(index) => void retryPendingRevision(index)}
+            onUndo={applyUndo}
+          />
+        ) : null}
       </div>
     </main>
   );
