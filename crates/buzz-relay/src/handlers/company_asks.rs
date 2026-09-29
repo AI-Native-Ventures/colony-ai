@@ -44,7 +44,7 @@ pub(super) async fn handle(
 
     match command {
         CompanyCommand::AskAction(action) => {
-            handle_ask_action(tenant, state, event, auth, action).await
+            handle_ask_action(tenant, state, event, auth, *action).await
         }
         CompanyCommand::AskResponse(response) => {
             handle_ask_response(tenant, state, event, auth, response).await

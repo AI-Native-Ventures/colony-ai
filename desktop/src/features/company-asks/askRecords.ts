@@ -312,6 +312,30 @@ function parseAskHead(content: string): AskHead {
       typeof toolConsent.actionPreview === "string" &&
       toolConsent.actionPreview.length > 0 &&
       toolConsent.actionPreview.length <= 4000);
+  const invalidMemberProposal =
+    (ask.memberProposal !== undefined &&
+      ask.memberProposal !== null &&
+      !memberProposal) ||
+    (memberProposal !== null &&
+      (ask.type !== "approval" ||
+        subject?.kind !== "companyMember" ||
+        subject.id !== memberProposal.pubkey ||
+        (memberProposal.action === "terminate" ||
+        memberProposal.action === "rehire"
+          ? ask.category !== "hire"
+          : ask.category !== "general"))) ||
+    (subject?.kind === "companyMember" && memberProposal === null);
+  const invalidHireProposal =
+    (ask.hireProposal !== undefined &&
+      ask.hireProposal !== null &&
+      !hireProposal) ||
+    (hireProposal !== null &&
+      (ask.type !== "approval" ||
+        ask.category !== "hire" ||
+        subject?.kind !== "hire" ||
+        subject.id !== hireProposal.hireId ||
+        memberProposal !== null)) ||
+    (subject?.kind === "hire" && hireProposal === null);
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -339,33 +363,17 @@ function parseAskHead(content: string): AskHead {
     );
   }
   if (
-    (rawSubject !== undefined &&
-      rawSubject !== null &&
-      subject === undefined) ||
-    (ask.memberProposal !== undefined &&
-      ask.memberProposal !== null &&
-      !memberProposal) ||
-    (memberProposal !== null &&
-      (ask.type !== "approval" ||
-        subject?.kind !== "companyMember" ||
-        subject.id !== memberProposal.pubkey ||
-        (memberProposal.action === "terminate" ||
-        memberProposal.action === "rehire"
-          ? ask.category !== "hire"
-          : ask.category !== "general"))) ||
-    (subject?.kind === "companyMember" && memberProposal === null) ||
-    (ask.hireProposal !== undefined &&
-      ask.hireProposal !== null &&
-      !hireProposal) ||
-    (hireProposal !== null &&
-      (ask.type !== "approval" ||
-        ask.category !== "hire" ||
-        subject?.kind !== "hire" ||
-        subject.id !== hireProposal.hireId ||
-        memberProposal !== null)) ||
-    (subject?.kind === "hire" && hireProposal === null)
+    rawSubject !== undefined &&
+    rawSubject !== null &&
+    subject === undefined
   ) {
     throw new Error("The relay returned a malformed company proposal ask.");
+  }
+  if (invalidMemberProposal) {
+    throw new Error("The relay returned a malformed member-position proposal.");
+  }
+  if (invalidHireProposal) {
+    throw new Error("The relay returned a malformed hire proposal ask.");
   }
   return head;
 }

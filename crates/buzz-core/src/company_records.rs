@@ -74,7 +74,7 @@ pub enum CompanyCommand {
     /// Goal mutation (kind 47031).
     GoalAction(GoalAction),
     /// Ask create or cancel (kind 47032).
-    AskAction(AskAction),
+    AskAction(Box<AskAction>),
     /// Ask resolution (kind 47033).
     AskResponse(AskResponse),
     /// Secret binding create, activation or revocation (kind 47036).
@@ -1196,9 +1196,8 @@ pub fn parse_company_command(
         crate::kind::KIND_GOAL_ACTION => {
             serde_json::from_str::<GoalAction>(content).map(CompanyCommand::GoalAction)
         }
-        crate::kind::KIND_ASK_ACTION => {
-            serde_json::from_str::<AskAction>(content).map(CompanyCommand::AskAction)
-        }
+        crate::kind::KIND_ASK_ACTION => serde_json::from_str::<AskAction>(content)
+            .map(|action| CompanyCommand::AskAction(Box::new(action))),
         crate::kind::KIND_ASK_RESPONSE => {
             serde_json::from_str::<AskResponse>(content).map(CompanyCommand::AskResponse)
         }
