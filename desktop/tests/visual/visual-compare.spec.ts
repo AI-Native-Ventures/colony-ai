@@ -15,7 +15,14 @@ type StorageSeed = {
 };
 
 type VisualAction = {
-  type: "click" | "hover" | "select" | "fill";
+  type:
+    | "click"
+    | "hover"
+    | "select"
+    | "selectOption"
+    | "fill"
+    | "setInputFiles"
+    | "waitFor";
   target?: "reference" | "app" | "both";
   selector: string;
   value?: string;
@@ -60,7 +67,14 @@ type VisualCase = {
 
 type VisualManifest = {
   fixture?: string;
+  matrix?: {
+    viewports: VisualCase["viewport"][];
+    themes: VisualCase["theme"][];
+  };
   defaults?: Partial<VisualCase>;
+  routes?: Array<
+    Partial<VisualCase> & Pick<VisualCase, "id" | "referenceUrl" | "appRoute">
+  >;
   cases?: Array<
     Partial<VisualCase> &
       Pick<
@@ -115,16 +129,33 @@ const manropeFont = await readFile(
   ),
 );
 const defaults = manifest.defaults ?? {};
-const cases = (manifest.cases ?? manifest.entries ?? []).map((entry) => ({
-  ...defaults,
-  ...entry,
-  referencePrefs: mergeStorageSeed(
-    defaults.referencePrefs,
-    entry.referencePrefs,
-  ),
-  appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
-  actions: entry.actions ?? defaults.actions ?? [],
-})) as VisualCase[];
+const templates = manifest.routes ?? manifest.cases ?? manifest.entries ?? [];
+const matrix = manifest.matrix;
+const variants = matrix
+  ? matrix.themes.flatMap((theme) =>
+      matrix.viewports.map((viewport) => ({ theme, viewport })),
+    )
+  : [null];
+const cases = templates.flatMap((entry) =>
+  variants.map((variant) => ({
+    ...defaults,
+    ...entry,
+    ...(variant ?? {}),
+    ...(variant
+      ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
+      : {}),
+    referencePrefs: mergeStorageSeed(
+      defaults.referencePrefs,
+      entry.referencePrefs,
+    ),
+    appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
+    appMockData: {
+      ...(defaults.appMockData ?? {}),
+      ...(entry.appMockData ?? {}),
+    },
+    actions: entry.actions ?? defaults.actions ?? [],
+  })),
+) as VisualCase[];
 
 function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
   return {
@@ -201,6 +232,9 @@ test.describe("visual comparison captures", () => {
             });
           },
         );
+        const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+          .map((selector) => `${selector} { display: none !important; }`)
+          .join("\n");
         await seedStorage(
           referencePage,
           entry.referencePrefs,
@@ -224,6 +258,15 @@ test.describe("visual comparison captures", () => {
           waitUntil: "domcontentloaded",
         });
         await referencePage.waitForLoadState("load");
+        if (ignoredShellStyles) {
+          await referencePage.addStyleTag({ content: ignoredShellStyles });
+        }
+        if (entry.referenceCanvas && entry.theme === "dark") {
+          await referencePage.locator("#dark").click();
+          await expect(referencePage.locator("#canvas")).toHaveClass(
+            /\bdark\b/,
+          );
+        }
         if (
           entry.referenceInventoryRoute === "channel/sales" &&
           entry.appRoute.includes("?thread=")
@@ -253,6 +296,15 @@ test.describe("visual comparison captures", () => {
               body: r17VoiceNoteWav,
             }),
         );
+        const moderationReports = entry.appMockData?.moderationReports;
+        if (Array.isArray(moderationReports)) {
+          await appPage.route("**/moderation/reports**", (route) =>
+            route.fulfill({ json: moderationReports }),
+          );
+          await appPage.route("**/moderation/audit**", (route) =>
+            route.fulfill({ json: [] }),
+          );
+        }
         await appPage.clock.install({
           time: new Date("2026-09-23T12:00:00+02:00"),
         });
@@ -778,6 +830,10 @@ test.describe("visual comparison captures", () => {
               appRoute: entry.appRoute,
               viewport: entry.viewport,
               theme: entry.theme,
+              captureRegion: entry.clip ?? null,
+              captureRegionBounds: clip
+                ? { reference: clip.reference, app: clip.app }
+                : null,
               deviceScaleFactor: 1,
               referenceGeometry,
               appGeometry,
@@ -870,6 +926,26 @@ async function waitForCaptureReady(
     // Faces load lazily on first use; request the expected face explicitly.
     await document.fonts.load(`400 14px "${family}"`);
     await document.fonts.ready;
+    const backgroundUrls = new Set(
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".app-frame, .buzz-huddle-shell, .buzz-theme-gradient-underlay, .buzz-theme-gradient-layer-light, .buzz-theme-gradient-layer-dark",
+        ),
+      ).flatMap((element) => {
+        const backgroundImage = getComputedStyle(element).backgroundImage;
+        return Array.from(
+          backgroundImage.matchAll(/url\(["']?([^"')]+)["']?\)/g),
+          (match) => match[1],
+        );
+      }),
+    );
+    await Promise.all(
+      Array.from(backgroundUrls, async (url) => {
+        const image = new Image();
+        image.src = new URL(url, window.location.href).toString();
+        await image.decode();
+      }),
+    );
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
@@ -1030,6 +1106,19 @@ async function inspectPageGeometry(
         ".full-sidebar .profile-row strong",
         ".full-sidebar .px-status-button",
         "#surface",
+        ".w20-settings-sidebar",
+        ".w20-settings-topbar",
+        ".w20-settings-surface",
+        ".ap-heading h1",
+        ".text-settings-title",
+        ".ap-heading",
+        ".ap-appearance-grid",
+        ".ap-controls-scroll",
+        ".ap-preview-column",
+        "#ap-live-preview",
+        ".ap-foot",
+        ".w20-inner-tabs",
+        ".w20-inner-tab",
         ".studio-page",
         ".studio-heading",
         ".today-studio-grid",
@@ -1181,6 +1270,39 @@ async function inspectPageGeometry(
         ".colony-sidebar-profile-row",
         "[data-testid=sidebar-profile-avatar-button]",
         "[data-testid=sidebar-theme-toggle]",
+        "[data-testid=settings-theme-preview] > div",
+        "[data-testid=settings-theme-preview] h2",
+        "[data-testid=settings-theme-preview] p",
+        "[data-testid=settings-theme-preview] > div > button",
+        "[data-testid=settings-theme-applied] > div",
+        "[data-testid=settings-theme-applied] h2",
+        "[data-testid=settings-theme-applied] p",
+        "[data-testid=settings-theme-applied] > div > button",
+        ".d17-theme-live",
+        ".d17-theme-live > aside",
+        ".d17-theme-live > aside > strong",
+        ".d17-theme-live > aside > small",
+        ".d17-theme-live > aside > b",
+        ".d17-theme-live > aside > footer",
+        ".d17-theme-live > section",
+        ".d17-theme-live > section > header",
+        ".d17-theme-live article",
+        ".d17-theme-live article > b",
+        ".d17-theme-live article strong",
+        ".d17-theme-live article p",
+        ".d17-design-card",
+        ".d17-design-card > span",
+        ".d17-design-card > strong",
+        ".d17-design-card > small",
+        ".d17-theme-live > section > footer",
+        ".d17-preview-footer",
+        ".d17-preview-footer > p",
+        ".d17-preview-footer > p > small",
+        ".d17-preview-page > .ap-heading > .secondary",
+        ".d17-preview-footer > .secondary",
+        ".d17-preview-footer > .primary",
+        ".d17-preview-button",
+        ".d17-applied-button",
         "[data-testid=app-top-chrome]",
         "[data-buzz-content-surface]",
         "[data-testid=chat-header]",
@@ -1256,6 +1378,17 @@ async function inspectPageGeometry(
           fontFamily: style.fontFamily,
           fontSize: style.fontSize,
           fontWeight: style.fontWeight,
+          fontStyle: style.fontStyle,
+          fontStretch: style.fontStretch,
+          fontSynthesis: style.fontSynthesis,
+          fontKerning: style.fontKerning,
+          fontOpticalSizing: style.fontOpticalSizing,
+          fontVariant: style.fontVariant,
+          letterSpacing: style.letterSpacing,
+          textRendering: style.textRendering,
+          textShadow: style.textShadow,
+          webkitFontSmoothing: style.getPropertyValue("-webkit-font-smoothing"),
+          fontFeatureSettings: style.fontFeatureSettings,
           lineHeight: style.lineHeight,
           width: style.width,
           height: style.height,
@@ -1492,7 +1625,7 @@ async function performActions(
         await locator.click(options);
       } else if (action.type === "hover") {
         await locator.hover(options);
-      } else if (action.type === "select") {
+      } else if (action.type === "select" || action.type === "selectOption") {
         if (action.value === undefined) {
           throw new Error("Select visual actions need a value.");
         }
@@ -1502,6 +1635,15 @@ async function performActions(
           throw new Error("Fill visual actions need a value.");
         }
         await locator.fill(action.value, options);
+      } else if (action.type === "setInputFiles") {
+        if (action.value === undefined) {
+          throw new Error("File visual actions need a fixture name.");
+        }
+        await locator.setInputFiles(await visualInputFile(action.value), {
+          timeout: options.timeout,
+        });
+      } else if (action.type === "waitFor") {
+        await locator.waitFor({ state: "visible", timeout: options.timeout });
       } else {
         throw new Error(`Unsupported action type: ${String(action.type)}`);
       }
@@ -1510,6 +1652,23 @@ async function performActions(
       await runOnPage(referencePage);
     if (target === "app" || target === "both") await runOnPage(appPage);
   }
+}
+
+async function visualInputFile(name: string) {
+  if (name === "avatar.png") {
+    const buffer = await readFile(
+      new URL("./fixtures/w20-avatar.png", import.meta.url),
+    );
+    return { name, mimeType: "image/png", buffer };
+  }
+  if (name === "unsupported.txt") {
+    return {
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from("unsupported avatar file"),
+    };
+  }
+  throw new Error(`Unknown visual input fixture: ${name}`);
 }
 
 async function resolveClip(

@@ -4,7 +4,6 @@ import { useLocation } from "@tanstack/react-router";
 import {
   BriefcaseBusiness,
   CircleDollarSign,
-  LayoutTemplate,
   Search,
   Settings as SettingsIcon,
   Zap,
@@ -51,6 +50,7 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
+import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
 import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
 import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
 import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
@@ -167,6 +167,11 @@ export function AppSidebar({
   starredChannelIds,
   onStarChannel,
   onUnstarChannel,
+  createChannelTemplateDraft,
+  createChannelTemplateId,
+  createChannelTemplateKind,
+  onClearChannelTemplateRequest,
+  onOpenTemplatePicker,
 }: AppSidebarProps) {
   const { pathname } = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
@@ -276,9 +281,9 @@ export function AppSidebar({
   // dialog's `onOpenChange` below.
   React.useEffect(() => {
     if (isCreateChannelOpenProp) {
-      openCreateDialog("stream");
+      openCreateDialog(createChannelTemplateKind ?? "stream");
     }
-  }, [isCreateChannelOpenProp, openCreateDialog]);
+  }, [createChannelTemplateKind, isCreateChannelOpenProp, openCreateDialog]);
   const [collapsedGroups, setCollapsedGroups] = React.useState<
     Record<CollapsibleSidebarGroup, boolean>
   >({
@@ -974,36 +979,10 @@ export function AppSidebar({
                       selectedView === "channel" ? selectedChannelId : null
                     }
                     onSelectFactory={onSelectFactory}
-                    onSelectSettings={onSelectSettings}
                     scope={factoryScope}
                   />
 
-                  <SidebarNavigationGroup
-                    defaultExpanded={false}
-                    label="Library"
-                    testId="sidebar-nav-library"
-                  >
-                    <FeatureGate feature="channel-templates">
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="text-xs pl-7"
-                            data-testid="sidebar-blocks-templates"
-                            onClick={() =>
-                              onSelectSettings("channel-templates")
-                            }
-                            tooltip="Blocks & templates"
-                            type="button"
-                          >
-                            <LayoutTemplate className="h-4 w-4" />
-                            <SidebarMenuLabel>
-                              Blocks &amp; templates
-                            </SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </FeatureGate>
-                  </SidebarNavigationGroup>
+                  <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
 
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
@@ -1118,6 +1097,8 @@ export function AppSidebar({
 
       <CreateChannelDialog
         channelKind={createDialogKind}
+        initialDraft={createChannelTemplateDraft}
+        initialTemplateId={createChannelTemplateId}
         isCreating={isCreatingAny}
         onOpenChange={(open) => {
           if (!open) {
@@ -1126,9 +1107,19 @@ export function AppSidebar({
             if (createDialogKind === "stream") {
               onCreateChannelOpenChange?.(false);
             }
+            onClearChannelTemplateRequest?.();
             setCreateDialogKind(null);
           }
         }}
+        onBrowseTemplates={
+          onOpenTemplatePicker
+            ? (draft) => {
+                setCreateDialogKind(null);
+                onCreateChannelOpenChange?.(false);
+                onOpenTemplatePicker(draft);
+              }
+            : undefined
+        }
         onCreate={handleCreateFromDialog}
       />
 

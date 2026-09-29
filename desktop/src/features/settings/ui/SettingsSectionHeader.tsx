@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/shared/ui/PageHeader";
 
 /**
- * Page title for a Settings card. Thin wrapper over the shared {@link PageHeader}
- * that preserves the `mb-12` spacing every Settings card relies on.
+ * Page title for a Settings card. The R19 settings route applies its page
+ * geometry to this marker while other settings surfaces keep their own layout.
  */
 export function SettingsSectionHeader({
   action,
@@ -12,17 +12,19 @@ export function SettingsSectionHeader({
   title,
 }: {
   action?: ReactNode;
-  description: ReactNode;
+  description?: ReactNode;
   title: ReactNode;
 }) {
   return (
     <PageHeader
       action={action}
-      className="mb-12"
+      className="mb-12 w20-r19-page-heading"
       description={
-        <span data-settings-subcopy className="text-muted-foreground/70">
-          {description}
-        </span>
+        description ? (
+          <span data-settings-subcopy className="text-muted-foreground/70">
+            {description}
+          </span>
+        ) : undefined
       }
       title={title}
     />

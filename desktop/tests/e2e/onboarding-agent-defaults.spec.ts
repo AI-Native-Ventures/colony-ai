@@ -16,8 +16,10 @@ async function openR17AgentDefaultsSettings(
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
-  await expect(page.getByTestId("settings-agents")).toBeVisible();
+  await page.getByTestId("settings-group-agents-group").click();
+  await expect(
+    page.getByTestId("settings-inner-agent-defaults"),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
 }
 
@@ -114,7 +116,7 @@ test("R17 onboarding can continue when provider discovery fails", async ({
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await page.getByTestId("settings-group-agents-group").click();
   await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
 });
 

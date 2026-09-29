@@ -75,6 +75,7 @@ import type {
   HomeFeedVisualFixture,
   RelayEvent,
 } from "@/shared/api/types";
+import type { VoiceRegistryEntry } from "@/features/settings/ui/voiceSettingsLogic";
 import type {
   FactoryRun,
   FactoryRunDraft,
@@ -133,6 +134,7 @@ import {
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_PAYMENT,
   KIND_PERSONA,
+  KIND_PRODUCT_FEEDBACK,
   KIND_PROJECT_ANNOUNCEMENT,
   KIND_REPO_ANNOUNCEMENT,
   KIND_REPO_STATE,
@@ -349,8 +351,19 @@ type E2eConfig = {
       agentTextToSpeech: boolean;
       voicePreferences: string[];
     };
+    /** Audio output records returned only by the mocked desktop host. */
+    audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+    /** Selected output device returned only by the mocked desktop host. */
+    selectedAudioOutputDevice?: string;
+    /** Optional NIP-30 records for visual fixture routes. */
+    customEmojiSets?: Array<{
+      owner: "self" | "community";
+      emojis: Array<{ shortcode: string; url: string }>;
+    }>;
     /** Native picker boundary result for Pocket voice import tests. */
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
+    /** Local voice files returned by the native registry in visual fixtures. */
+    importedPocketVoices?: VoiceRegistryEntry[];
     /** Advertised HEAD for the first mock project without adding that branch. */
     projectHeadBranch?: string;
     /** Project announcements used only by Factory E2E fixtures. */
@@ -375,6 +388,10 @@ type E2eConfig = {
     } | null;
     /** Account state returned by the mocked account API. Defaults to linked. */
     accountLinked?: boolean;
+    /** Linked account address returned by the mocked account API. */
+    accountEmail?: string;
+    /** Current user status event returned by the mocked relay. */
+    userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
@@ -430,8 +447,12 @@ type E2eConfig = {
     /** Catalog responses for successive discovery calls. The final response repeats. */
     acpRuntimesCatalogSequence?: RawAcpRuntimeCatalogEntry[][];
     acpRuntimesDelayMs?: number;
-    /** When true, the catalog discovery call throws — simulates a failed query. */
+    /** When true, the catalog discovery call throws to simulate a failed query. */
     acpRuntimesError?: boolean;
+    /** Reject successive product feedback events, then accept when exhausted. */
+    feedbackPublishErrors?: Array<string | null>;
+    /** Delay product feedback acknowledgements so the pending UI can be captured. */
+    feedbackPublishDelayMs?: number;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
@@ -528,6 +549,10 @@ type E2eConfig = {
     channelMembersReadDelayMs?: number;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
+    /** Override display names for visual fixtures without changing channel IDs. */
+    channelNamesById?: Record<string, string>;
+    /** Reject the mock delete_message command before changing its message store. */
+    deleteMessageError?: string;
     channelsReadError?: string;
     /** Reject successive mock `get_channels` calls, then resume. */
     channelsReadErrors?: (string | null)[];
@@ -601,6 +626,7 @@ type E2eConfig = {
     profileHasEvent?: boolean;
     profileUpdateError?: string;
     profileUpdateErrors?: string[];
+    profileUpdateDelayMs?: number;
     linkPreviewMetadata?: {
       title: string;
       siteName: string | null;
@@ -1374,6 +1400,21 @@ function createMockRelayMembershipEvent(): RelayEvent {
  * `:bufo_joy:` prove a second member's distinct emoji unions in.
  */
 function createMockCustomEmojiSetEvents(): RelayEvent[] {
+  const configuredSets = getConfig()?.mock?.customEmojiSets;
+  if (configuredSets !== undefined) {
+    return configuredSets.map((set) =>
+      createMockEvent(
+        KIND_EMOJI_SET,
+        "",
+        [
+          ["d", CUSTOM_EMOJI_SET_D_TAG],
+          ...set.emojis.map(({ shortcode, url }) => ["emoji", shortcode, url]),
+        ],
+        set.owner === "self" ? MOCK_IDENTITY_PUBKEY : "c".repeat(64),
+      ),
+    );
+  }
+
   return [
     createMockEvent(
       KIND_EMOJI_SET,
@@ -2064,7 +2105,7 @@ function toRawChannel(
 
   return {
     id: channel.id,
-    name: channel.name,
+    name: config?.mock?.channelNamesById?.[channel.id] ?? channel.name,
     channel_type: channel.channel_type,
     visibility: channel.visibility,
     description: channel.description,
@@ -5643,7 +5684,7 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
             created_at: Math.floor(Date.now() / 1000) - 60,
             kind: 9,
             tags: [["h", channelId]],
-            content: "Hey team — checking in.",
+            content: "Hey team - checking in.",
             sig: "mocksig".repeat(20).slice(0, 128),
           },
           // Reaction-target seed for the custom-emoji reaction guard. Real
@@ -7709,8 +7750,18 @@ function recordMockMessage(channelId: string, event: RelayEvent) {
   touchMockChannel(channel);
 }
 
-function resetMockUserStatuses() {
+function resetMockUserStatuses(config: E2eConfig | undefined) {
   mockUserStatuses.length = 0;
+  const text = config?.mock?.userStatus?.trim();
+  if (!text) return;
+  mockUserStatuses.push(
+    createMockEvent(
+      KIND_USER_STATUS,
+      text,
+      [["d", "general"]],
+      getMockMemberPubkey(config),
+    ),
+  );
 }
 
 // Mocked Rust-side pending deep-link queue (see desktop/src-tauri/src/deep_link.rs).
@@ -10386,6 +10437,10 @@ async function handleUpdateProfile(
   },
   config: E2eConfig | undefined,
 ) {
+  const delayMs = config?.mock?.profileUpdateDelayMs ?? 0;
+  if (delayMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  }
   const identity = getIdentity(config);
   if (!identity) {
     const profileUpdateError = config?.mock?.profileUpdateError;
@@ -14065,6 +14120,9 @@ function handleDeleteMessage(
   },
   config: E2eConfig | undefined,
 ): void {
+  const error = config?.mock?.deleteMessageError;
+  if (error) throw new Error(error);
+
   const history = mockMessages.get(args.channelId);
   if (history) {
     const index = history.findIndex((ev) => ev.id === args.eventId);
@@ -14777,6 +14835,25 @@ function sendToMockSocket(args: {
       }
     }
 
+    if (event.kind === KIND_PRODUCT_FEEDBACK) {
+      const configuredErrors = getConfig()?.mock?.feedbackPublishErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      const acknowledge = () =>
+        sendWsText(socket.handler, [
+          "OK",
+          event.id,
+          error === null,
+          error ?? "",
+        ]);
+      const delayMs = getConfig()?.mock?.feedbackPublishDelayMs ?? 0;
+      if (delayMs > 0) {
+        window.setTimeout(acknowledge, delayMs);
+      } else {
+        acknowledge();
+      }
+      return;
+    }
+
     if (event.kind === KIND_TOOL_PERMISSION_ACTION) {
       acceptMockToolPermissionAction(socket, event, getConfig());
       return;
@@ -15145,7 +15222,7 @@ export function maybeInstallE2eTauriMocks() {
   }
 
   let mockAccountLinked = config.mock?.accountLinked ?? true;
-  let mockAccountEmail = "person@example.com";
+  let mockAccountEmail = config.mock?.accountEmail ?? "person@example.com";
   const accountAuthCalls: AccountAuthTestCall[] = [];
   const queuedAccountAuthErrors: Array<{
     method: keyof AccountAuthClient;
@@ -15382,7 +15459,7 @@ export function maybeInstallE2eTauriMocks() {
   seedMockSearchProfiles(config);
   resetMockWorkflows(config);
   resetMockMesh();
-  resetMockUserStatuses();
+  resetMockUserStatuses(config);
   resetMockPersonaCatalogEvents(config);
   resetMockObservedUnread();
   resetMockTeamCatalogEvents(config);
@@ -15950,21 +16027,8 @@ export function maybeInstallE2eTauriMocks() {
       deviceName: state === "running" ? "Mock desktop" : null,
     };
   };
-  let mockImportedVoices: Array<{
-    key: string;
-    displayName: string;
-    backend: string;
-    backendName: string;
-    availability: "installed";
-    fallbackKey: string;
-    referenceFile: string;
-    provenance: {
-      source: string;
-      contentHash: string;
-      license: null;
-      sourceUrl: null;
-    };
-  }> = [];
+  let mockImportedVoices: VoiceRegistryEntry[] =
+    getConfig()?.mock?.importedPocketVoices ?? [];
   const handleMockCommand = async (
     command: string,
     payload: unknown,
@@ -16296,6 +16360,17 @@ export function maybeInstallE2eTauriMocks() {
         await emitMockHuddleState();
         return;
       }
+      case "list_audio_output_devices":
+        return activeConfig?.mock?.audioOutputDevices ?? [];
+      case "get_audio_output_device":
+        return activeConfig?.mock?.selectedAudioOutputDevice ?? "";
+      case "set_audio_output_device": {
+        const { name } = payload as { name: string };
+        if (activeConfig?.mock) {
+          activeConfig.mock.selectedAudioOutputDevice = name;
+        }
+        return null;
+      }
       case "get_model_status":
         return { stt: "ready", tts: "ready" };
       case "get_tts_settings":
@@ -16466,7 +16541,7 @@ export function maybeInstallE2eTauriMocks() {
           throw new Error("Voice WAV must contain PCM or 32-bit float audio");
         }
         const contentHash = "1".repeat(64);
-        const imported = {
+        const imported: VoiceRegistryEntry = {
           key: `pocket:imported:${contentHash}`,
           displayName: "My voice",
           backend: "pocket",
@@ -16481,7 +16556,7 @@ export function maybeInstallE2eTauriMocks() {
             sourceUrl: null,
           },
         };
-        mockImportedVoices = [imported];
+        mockImportedVoices = [...mockImportedVoices, imported];
         const current = activeConfig?.mock?.ttsSettings ?? {
           version: 1,
           agentTextToSpeech: true,

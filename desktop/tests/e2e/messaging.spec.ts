@@ -6,7 +6,7 @@ import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
-import { openSettings } from "../helpers/settings";
+import { openAvatarProfileContext, openSettings } from "../helpers/settings";
 
 const LINK_PREVIEW_IMAGE = readFileSync(
   new URL("../fixtures/github-pr-5629-og.png", import.meta.url),
@@ -162,7 +162,7 @@ test.beforeEach(async ({ page }, testInfo) => {
           }
         : testInfo.title.includes("fragment link previews")
           ? {
-              // Metadata is keyed by the canonical, fragment-less URL — the
+              // Metadata is keyed by the canonical, fragment-less URL - the
               // shape a real OpenGraph/HTML fetch resolves against. A resolver
               // that fetches with the raw `#fragment` attached would miss these
               // keys and drop the card, which is exactly the bug under test.
@@ -398,7 +398,7 @@ test("message agent avatar uses square initials and preserves its profile shortc
 
   const agentMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   const avatar = agentMessage.getByTestId("message-avatar");
   await expect(avatar).toHaveClass(/rounded-md/);
   await expect(avatar).not.toHaveClass(/rounded-squircle/);
@@ -447,7 +447,7 @@ test("agent owner label identifies the agent and owner", async ({ page }) => {
 
   const aliceMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   const ownerTreatment = aliceMessage.getByTestId("message-agent-owner");
 
   await expect(ownerTreatment.locator("svg")).toBeVisible();
@@ -638,8 +638,8 @@ test("sent link preview media uses the authenticated proxy in compact and rich c
   await expectSmoothCorners(compactThumbnailFrame);
 
   await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(page.getByTestId("appearance-links-rich")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -704,12 +704,12 @@ test("link preview style defaults to compact and Rich unfurls descriptions", asy
   }
 
   await openSettings(page, "appearance");
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
+  await expect(page.getByTestId("appearance-links-compact")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(page.getByTestId("appearance-links-rich")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -763,8 +763,8 @@ test("link preview style defaults to compact and Rich unfurls descriptions", asy
   }
 
   await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-compact").click();
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
+  await page.getByTestId("appearance-links-compact").click();
+  await expect(page.getByTestId("appearance-links-compact")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -1266,7 +1266,7 @@ test("draft auto-send promotes link preview preparation and sends exactly once",
 
   // Drive the real Drafts-panel "Send message" confirm flow. This does an
   // in-app client navigation to the channel with ?autoSend=<draftKey>, arming
-  // the main composer's auto-submit effect — the exact production path.
+  // the main composer's auto-submit effect - the exact production path.
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("home-inbox")).toBeVisible({ timeout: 10_000 });
   await page.getByTestId("inbox-filter-trigger").click();
@@ -1316,7 +1316,7 @@ test("rapid Enter presses on a ready link preview send exactly once", async ({
   await input.fill(previewUrl);
 
   // Wait until the snapshot is fully ready and Send is enabled, so the only
-  // thing under test is the composer-local send lock — not preview settling.
+  // thing under test is the composer-local send lock - not preview settling.
   await waitForReadyComposerSnapshots(page);
   await expect(page.getByTestId("send-message")).toBeEnabled();
 
@@ -1416,7 +1416,7 @@ test("editing a message excludes link previews entirely", async ({ page }) => {
   await expect(page.getByTestId("edit-target")).toBeVisible();
 
   // Adding a link while editing must NOT resolve, upload, gate Save, or render a
-  // composer preview card — edit mode does not persist snapshots (decision A).
+  // composer preview card - edit mode does not persist snapshots (decision A).
   await input.fill(`${message} ${previewUrl}`);
   await expect(page.locator("[data-composer-link-previews]")).toHaveCount(0);
   // No snapshot upload was attempted for the edited link.
@@ -1633,8 +1633,8 @@ test("mixed link preview image outcomes keep Compact and Rich fallbacks stable",
   ).toHaveCount(0);
 
   await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(page.getByTestId("appearance-links-rich")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -1654,7 +1654,7 @@ test("fragment link previews render a card per canonical URL", async ({
 }) => {
   // Two links into the SAME page differing only by `#fragment`, plus a link
   // to a second page. The fragment variants collapse to one card (the preview
-  // is of the page, not the anchor); the second page adds a second card — two
+  // is of the page, not the anchor); the second page adds a second card - two
   // cards total. A resolver that keys previews on the raw fragment-bearing URL
   // drops the fragment cards entirely (the reported bug).
   const fragmentUrlA =
@@ -1681,7 +1681,7 @@ test("fragment link previews render a card per canonical URL", async ({
   await expect(
     row.locator('[data-link-preview="github-pull-request"]'),
   ).toHaveCount(2);
-  // Both original fragment-bearing prose links survive intact and clickable —
+  // Both original fragment-bearing prose links survive intact and clickable -
   // the fragment is a navigation anchor, only the preview is normalized.
   await expect(row.locator(`a[href="${fragmentUrlA}"]`)).toBeVisible();
   await expect(row.locator(`a[href="${fragmentUrlB}"]`)).toBeVisible();
@@ -1706,8 +1706,8 @@ test("link preview browser image errors render a fallback", async ({
   ).toHaveCount(0);
 
   await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
+  await page.getByTestId("appearance-links-rich").click();
+  await expect(page.getByTestId("appearance-links-rich")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -1930,7 +1930,7 @@ test("emoji picker inserts emoji into the draft and keeps focus in the composer"
 
   await page.getByTestId("composer-emoji-button").click();
 
-  // emoji-mart renders inside a Shadow DOM web component — use the search
+  // emoji-mart renders inside a Shadow DOM web component - use the search
   // input to find the rocket emoji, then click it.
   const pickerEl = page.locator("em-emoji-picker");
   const searchInput = pickerEl.locator("input[type='search']");
@@ -2386,12 +2386,12 @@ test("draft is preserved when switching channels", async ({ page }) => {
   await input.fill(draft);
   await expect(input).toHaveText(draft);
 
-  // Switch to another channel — composer should be empty
+  // Switch to another channel - composer should be empty
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(input).toHaveText("");
 
-  // Switch back — the draft should still be there
+  // Switch back - the draft should still be there
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(input).toHaveText(draft);
@@ -2410,7 +2410,7 @@ test("sending a message clears the draft", async ({ page }) => {
   await page.getByTestId("send-message").click();
   await expect(page.getByTestId("message-timeline")).toContainText(message);
 
-  // Switch away and back — composer should be empty, not restored from draft
+  // Switch away and back - composer should be empty, not restored from draft
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await page.getByTestId("channel-general").click();
@@ -2783,14 +2783,45 @@ test("shows your avatar on your own message when profile avatar is set", async (
   page,
 }) => {
   const message = `Avatar message ${Date.now()}`;
-  const avatarUrl =
-    'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Crect width="16" height="16" rx="4" fill="%2300a36c"/%3E%3C/svg%3E';
+  const avatarUrl = "https://mock.relay/media/avatar-message.png";
+  const avatarImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
+    "base64",
+  );
 
+  await installMockBridge(page, {
+    uploadDescriptors: [
+      {
+        filename: "avatar-message.png",
+        sha256: "c".repeat(64),
+        size: 553432,
+        type: "image/png",
+        uploaded: 1_779_900_000,
+        url: avatarUrl,
+      },
+    ],
+  });
+  await page.route("**/media/avatar-message.png", (route) =>
+    route.fulfill({ body: avatarImage, contentType: "image/png" }),
+  );
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-url").fill(avatarUrl);
-  await page.getByTestId("profile-avatar-done").click();
+  await page.getByTestId("avatar-upload-open").click();
+  await page.getByTestId("avatar-file-input").setInputFiles({
+    buffer: avatarImage,
+    mimeType: "image/png",
+    name: "avatar-message.png",
+  });
+  await expect(page.getByTestId("avatar-crop-preview")).toBeVisible();
+  await page.getByTestId("avatar-save").click();
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
+  );
+  await expect(
+    page.getByTestId("account-profile-avatar-image"),
+  ).toHaveAttribute("src", avatarUrl);
   await page.getByTestId("settings-back-to-app").click();
 
   await page.getByTestId("channel-general").click();
@@ -3459,7 +3490,7 @@ test("thread composer keeps focus after sending a thread reply", async ({
   // Wait for the send to settle.
   await expect(threadPanel).toContainText(reply);
 
-  // The thread input should still be focused — not the main composer.
+  // The thread input should still be focused - not the main composer.
   // Both composers expose the same `message-input` data-testid, so we
   // verify directly that `document.activeElement` lives inside the thread
   // panel rather than the main pane.
@@ -4789,7 +4820,7 @@ test("ArrowUp in an empty composer edits your last message right after sending",
   await input.press("Enter");
   await expect(page.getByTestId("message-timeline")).toContainText(message);
 
-  // Composer stays focused after send — no click, just press ↑.
+  // Composer stays focused after send - no click, just press ↑.
   await expect(input).toBeFocused();
   await page.keyboard.press("ArrowUp");
 
@@ -4858,7 +4889,7 @@ test("ArrowUp edits your last thread reply right after sending it", async ({
   await page.keyboard.press("Enter");
   await expect(threadPanel).toContainText(reply);
 
-  // No click — press ↑ in the still-focused thread composer.
+  // No click - press ↑ in the still-focused thread composer.
   await page.keyboard.press("ArrowUp");
 
   const editBanner = threadPanel.getByTestId("edit-target");

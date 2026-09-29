@@ -1,13 +1,4 @@
-import {
-  Bot,
-  Copy,
-  MessageSquare,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { Hash, Users } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -19,8 +10,6 @@ import {
 import {
   useChannelTemplatesQuery,
   useCreateChannelTemplateMutation,
-  useDeleteChannelTemplateMutation,
-  useDuplicateChannelTemplateMutation,
   useUpdateChannelTemplateMutation,
 } from "@/features/channel-templates/hooks";
 import { AddChannelBotPersonasSection } from "@/features/channels/ui/AddChannelBotPersonasSection";
@@ -34,121 +23,79 @@ import type {
   UpdateChannelTemplateInput,
 } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { SettingsOptionGroup } from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Dialog } from "@/shared/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 
 export function ChannelTemplatesSettingsCard() {
   const templatesQuery = useChannelTemplatesQuery();
-  const deleteMutation = useDeleteChannelTemplateMutation();
-  const duplicateMutation = useDuplicateChannelTemplateMutation();
+  const personasQuery = usePersonasQuery();
+  const teamsQuery = useTeamsQuery();
 
   const [editingTemplate, setEditingTemplate] =
     React.useState<ChannelTemplate | null>(null);
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] =
-    React.useState<ChannelTemplate | null>(null);
+
+  if (templatesQuery.isError) throw templatesQuery.error;
 
   const templates = templatesQuery.data ?? [];
-
-  function handleDuplicate(template: ChannelTemplate) {
-    duplicateMutation.mutate(template.id, {
-      onSuccess: (created) => {
-        toast.success(`Duplicated as "${created.name}"`);
-      },
-      onError: (error) => {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to duplicate",
-        );
-      },
-    });
-  }
-
-  function handleDelete() {
-    if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id, {
-      onSuccess: () => {
-        toast.success(`Deleted "${deleteTarget.name}"`);
-        setDeleteTarget(null);
-      },
-      onError: (error) => {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to delete",
-        );
-      },
-    });
-  }
+  const personasById = new Map(
+    (personasQuery.data ?? []).map((persona) => [
+      persona.id,
+      persona.displayName,
+    ]),
+  );
+  const teamsById = new Map(
+    (teamsQuery.data ?? []).map((team) => [team.id, team.name]),
+  );
 
   return (
     <section className="min-w-0" data-testid="settings-channel-templates">
-      <SettingsSectionHeader
-        title="Channel templates"
-        description={
-          <>
-            Save reusable channel configurations and apply them when creating
-            new channels.
-          </>
-        }
-        action={
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            Create
-          </Button>
-        }
-      />
+      <div className="mb-10 flex w-full min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Channel templates
+        </h1>
+        <p
+          className="text-sm font-normal text-muted-foreground/70"
+          data-settings-subcopy
+        >
+          Reusable starting points for teams and client work.
+        </p>
+      </div>
 
-      {templatesQuery.isLoading ? (
-        <SettingsOptionGroup title="Templates">
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            Loading templates...
-          </p>
-        </SettingsOptionGroup>
-      ) : templates.length === 0 ? (
-        <SettingsOptionGroup title="Templates">
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            No templates yet. Create one to save a reusable channel
-            configuration.
-          </div>
-        </SettingsOptionGroup>
-      ) : (
-        <SettingsOptionGroup title="Templates">
-          {templates.map((template) => (
-            <TemplateRow
-              key={template.id}
-              onDelete={() => setDeleteTarget(template)}
-              onDuplicate={() => handleDuplicate(template)}
-              onEdit={() => setEditingTemplate(template)}
-              template={template}
-            />
-          ))}
-        </SettingsOptionGroup>
-      )}
+      <div className="w-full max-w-[860px] border-b border-border/60 pb-5">
+        <h2 className="mb-4 text-sm font-semibold">Templates</h2>
+        <div className="min-w-0">
+          {templatesQuery.isSuccess
+            ? templates.map((template) => (
+                <TemplateRow
+                  key={template.id}
+                  onEdit={() => setEditingTemplate(template)}
+                  suggestedNames={[
+                    ...template.agents.personas
+                      .map((persona) => personasById.get(persona.personaId))
+                      .filter((name): name is string => Boolean(name)),
+                    ...template.agents.teams
+                      .map((team) => teamsById.get(team.teamId))
+                      .filter((name): name is string => Boolean(name)),
+                  ]}
+                  template={template}
+                />
+              ))
+            : null}
+        </div>
+
+        <Button
+          className="w20-template-create-button mt-4 h-7 rounded-md px-2.5 text-xs"
+          onClick={() => setIsCreateOpen(true)}
+          size="sm"
+          type="button"
+        >
+          Create template
+        </Button>
+      </div>
 
       <TemplateFormDialog
         onOpenChange={setIsCreateOpen}
@@ -165,32 +112,6 @@ export function ChannelTemplatesSettingsCard() {
           template={editingTemplate}
         />
       ) : null}
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-        open={deleteTarget !== null}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete template</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &quot;{deleteTarget?.name}&quot;?
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDelete}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </section>
   );
 }
@@ -198,92 +119,42 @@ export function ChannelTemplatesSettingsCard() {
 function TemplateRow({
   template,
   onEdit,
-  onDuplicate,
-  onDelete,
+  suggestedNames,
 }: {
   template: ChannelTemplate;
   onEdit: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
+  suggestedNames: string[];
 }) {
-  const personaCount = template.agents.personas.length;
-  const teamCount = template.agents.teams.length;
-
   return (
-    <div className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/50">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{template.name}</span>
-          {template.isBuiltin ? (
-            <Badge className="shrink-0 text-2xs uppercase" variant="outline">
-              built-in
-            </Badge>
-          ) : null}
+    <div className="flex min-w-0 items-center justify-between gap-5 border-b border-border/60 py-5">
+      <div className="min-w-0 max-w-[650px] flex-1">
+        <div className="flex min-w-0 items-center">
+          <Hash aria-hidden="true" className="size-4 shrink-0" />
+          <strong className="ml-2 truncate text-sm font-semibold">
+            {template.name}
+          </strong>
         </div>
         {template.description ? (
-          <p
-            className="mt-0.5 truncate text-sm font-normal text-muted-foreground/70"
-            data-settings-subcopy
-          >
+          <p className="my-1.5 truncate text-xs leading-[1.6] text-muted-foreground/70">
             {template.description}
           </p>
         ) : null}
-        <div
-          className="mt-1 flex items-center gap-3 text-xs text-muted-foreground/70"
-          data-settings-subcopy
-        >
-          {personaCount > 0 ? (
-            <span className="flex items-center gap-1">
-              <Bot className="h-4 w-4" />
-              {personaCount} {personaCount === 1 ? "agent" : "agents"}
-            </span>
-          ) : null}
-          {teamCount > 0 ? (
-            <span className="flex items-center gap-1">
-              <Users className="h-4 w-4" />
-              {teamCount} {teamCount === 1 ? "team" : "teams"}
-            </span>
-          ) : null}
-          {template.canvasTemplate ? (
-            <span className="flex items-center gap-1">
-              <MessageSquare className="h-4 w-4" />
-              canvas
-            </span>
-          ) : null}
-        </div>
+        {suggestedNames.length > 0 ? (
+          <p className="text-xs text-muted-foreground/70">
+            {suggestedNames.join(", ")}
+          </p>
+        ) : null}
       </div>
-
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy className="mr-2 h-4 w-4" />
-            Duplicate
-          </DropdownMenuItem>
-          {!template.isBuiltin ? (
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onDelete}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        aria-label={`Edit ${template.name}`}
+        className="h-7 shrink-0 rounded-md px-3 text-xs"
+        onClick={onEdit}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Edit
+      </Button>
     </div>
   );
 }

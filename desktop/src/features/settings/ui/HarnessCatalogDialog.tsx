@@ -32,6 +32,7 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
 
 import { CustomHarnessForm } from "./CustomHarnessForm";
+import { HarnessInstallDialog } from "./HarnessInstallDialog";
 import { harnessDescription } from "./harnessCatalogCopy";
 import {
   adapterUpdateWarning,
@@ -452,6 +453,10 @@ function CatalogDetail({ entry }: { entry: AcpRuntimeCatalogEntry }) {
   const install = useInstallAcpRuntimeMutation();
   const [installError, setInstallError] = React.useState<string | null>(null);
   const [isUpdateWarningOpen, setIsUpdateWarningOpen] = React.useState(false);
+  const [isInstallConfirmationOpen, setIsInstallConfirmationOpen] =
+    React.useState(false);
+  const [installProgressDismissed, setInstallProgressDismissed] =
+    React.useState(false);
   const action = catalogPrimaryAction(entry);
   const statusLabel = entryStatusLabel(entry);
   const description = harnessDescription(entry.id);
@@ -460,6 +465,7 @@ function CatalogDetail({ entry }: { entry: AcpRuntimeCatalogEntry }) {
   const installOutputLine = useInstallOutputLine(entry.id, install.isPending);
 
   function handleInstall() {
+    setInstallProgressDismissed(false);
     setInstallError(null);
     install.mutate(entry.id, {
       onSuccess: (result) => {
@@ -483,7 +489,7 @@ function CatalogDetail({ entry }: { entry: AcpRuntimeCatalogEntry }) {
       setIsUpdateWarningOpen(true);
       return;
     }
-    handleInstall();
+    setIsInstallConfirmationOpen(true);
   }
 
   // The outline docs button only shows when the entry needs no setup action
@@ -615,6 +621,26 @@ function CatalogDetail({ entry }: { entry: AcpRuntimeCatalogEntry }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <HarnessInstallDialog
+        installOutputLine={installOutputLine}
+        onConfirm={() => {
+          setIsInstallConfirmationOpen(false);
+          handleInstall();
+        }}
+        onOpenChange={(open) => {
+          if (install.isPending) {
+            setInstallProgressDismissed(!open);
+          } else {
+            setIsInstallConfirmationOpen(open);
+          }
+        }}
+        open={
+          isInstallConfirmationOpen ||
+          (install.isPending && !installProgressDismissed)
+        }
+        runtime={entry}
+        stage={install.isPending ? "installing" : "confirm"}
+      />
     </div>
   );
 }

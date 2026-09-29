@@ -320,7 +320,7 @@ test("automatically mentions multiple agents from the mention picker", async ({
   ).toBeVisible();
 });
 
-test("keeps the composer and global automatic mention settings synchronized", async ({
+test("keeps automatic mention preferences in the composer across the R19 settings route", async ({
   page,
 }) => {
   await installAudienceFixtures(page);
@@ -360,11 +360,15 @@ test("keeps the composer and global automatic mention settings synchronized", as
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
-  const settingsToggle = page
-    .getByTestId("settings-automatic-agent-mentions")
-    .getByRole("switch", { name: "Automatically mention agents" });
-  await expect(settingsToggle).toHaveAttribute("data-state", "unchecked");
+  await page.getByTestId("settings-group-agents-group").click();
+  await expect(
+    page.getByTestId("settings-inner-agent-defaults"),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page
+      .getByTestId("settings-view")
+      .getByTestId("settings-automatic-agent-mentions"),
+  ).toHaveCount(0);
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(
@@ -801,8 +805,8 @@ test("pressing a mention overlay's own container keeps it open", async ({
   await expect(list).toBeVisible();
   await expect(input).toBeFocused();
 
-  // A mousedown landing on the list container itself — its padding ring here,
-  // a native scrollbar on platforms that render one — steals focus from the
+  // A mousedown landing on the list container itself - its padding ring here,
+  // a native scrollbar on platforms that render one - steals focus from the
   // editor unless the default is prevented, and the focus gate would then
   // unmount the menu mid-press.
   const listBox = await list.boundingBox();
@@ -839,7 +843,7 @@ test("the mention setting is reachable and operable by keyboard", async ({
   await expect(list).toBeVisible();
   await expect(mainInput).toBeFocused();
 
-  // Trip a flag if the overlay ever unmounts from here on — "operable while
+  // Trip a flag if the overlay ever unmounts from here on - "operable while
   // the surface stays mounted" has to hold through every focus handoff below,
   // not just at the polled assertion boundaries.
   await mainComposer.evaluate((element) => {
@@ -884,7 +888,7 @@ test("the mention setting is reachable and operable by keyboard", async ({
 
   // Ownership is still per-composer: focus moving to a sibling composer hides
   // this composer's menu, which is what stops a background composer from
-  // resurrecting a stale one. Programmatic focus, not a click — a pointerdown
+  // resurrecting a stale one. Programmatic focus, not a click - a pointerdown
   // would dismiss the menu through its outside-press handler and mask the gate
   // under test.
   await mainInput.fill("@Mor");

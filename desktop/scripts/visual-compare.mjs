@@ -115,17 +115,33 @@ try {
 
 function expandManifest(source) {
   const defaults = source.defaults ?? {};
-  const cases = source.cases ?? source.entries ?? [];
-  return cases.map((entry) => ({
-    ...defaults,
-    ...entry,
-    referencePrefs: mergeStorageSeed(
-      defaults.referencePrefs,
-      entry.referencePrefs,
-    ),
-    appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
-    actions: entry.actions ?? defaults.actions ?? [],
-  }));
+  const cases = source.routes ?? source.cases ?? source.entries ?? [];
+  const matrix = source.matrix;
+  const variants = matrix
+    ? matrix.themes.flatMap((theme) =>
+        matrix.viewports.map((viewport) => ({ theme, viewport })),
+      )
+    : [null];
+  return cases.flatMap((entry) =>
+    variants.map((variant) => ({
+      ...defaults,
+      ...entry,
+      ...(variant ?? {}),
+      ...(variant
+        ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
+        : {}),
+      referencePrefs: mergeStorageSeed(
+        defaults.referencePrefs,
+        entry.referencePrefs,
+      ),
+      appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
+      appMockData: {
+        ...(defaults.appMockData ?? {}),
+        ...(entry.appMockData ?? {}),
+      },
+      actions: entry.actions ?? defaults.actions ?? [],
+    })),
+  );
 }
 
 function mergeStorageSeed(base = {}, override = {}) {

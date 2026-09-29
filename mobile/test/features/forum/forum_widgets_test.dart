@@ -709,7 +709,10 @@ void main() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
-      final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 120;
+      // Keep the fixture on the same local day when CI runs after midnight.
+      final now = DateTime.now();
+      final createdAt =
+          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch ~/ 1000;
       const postAuthor = 'A moderately long original author';
       const replyAuthor = 'A moderately long reply author';
 

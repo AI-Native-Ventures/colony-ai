@@ -179,7 +179,7 @@ test.describe("reminders", () => {
       target: {
         eventId: "mock-general-alice",
         channelId: "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
-        preview: "Hey team — checking in.",
+        preview: "Hey team - checking in.",
         authorPubkey:
           "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
       },
@@ -243,7 +243,7 @@ function aliceReminderContent() {
     target: {
       eventId: "mock-general-alice",
       channelId: GENERAL_CHANNEL_ID,
-      preview: "Hey team — checking in.",
+      preview: "Hey team - checking in.",
       authorPubkey: ALICE_PUBKEY,
     },
     note: "Reply to Alice",
@@ -355,7 +355,7 @@ test.describe("reminders phase 2 — author, source, navigation", () => {
     // Lands in the #general chat view with the target message in context.
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await expect(
-      page.getByTestId("message-timeline").getByText("Hey team — checking in."),
+      page.getByTestId("message-timeline").getByText("Hey team - checking in."),
     ).toBeVisible();
     await waitForAnimations(page);
   });

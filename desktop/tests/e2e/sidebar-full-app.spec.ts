@@ -240,7 +240,7 @@ test("Saved for later remains under Activity and keeps the reminder filter", asy
   await expect(savedForLater).toHaveAttribute("data-active", "true");
 });
 
-test("Software Factory contains the existing Projects and Shared compute destinations", async ({
+test("Software Factory exposes its designed Projects destination only", async ({
   page,
 }) => {
   await page.goto("/");
@@ -249,7 +249,7 @@ test("Software Factory contains the existing Projects and Shared compute destina
   await page.getByTestId("open-factory-view").click();
   await expect(page).toHaveURL(/#\/factory$/);
   await expect(page.getByTestId("sidebar-projects-section")).toBeVisible();
-  await expect(page.getByTestId("sidebar-shared-compute")).toBeVisible();
+  await expect(page.getByTestId("sidebar-shared-compute")).toHaveCount(0);
 });
 
 test("Blocks and templates stays in Library and opens its existing settings panel", async ({

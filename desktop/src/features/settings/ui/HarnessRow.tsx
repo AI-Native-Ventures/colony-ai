@@ -1,5 +1,5 @@
 import * as React from "react";
-import { EllipsisVertical, ExternalLink } from "lucide-react";
+import { EllipsisVertical, ExternalLink, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
+import { SettingsAlertDialogContent } from "@/shared/ui/settings-alert-dialog-content";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,7 @@ import {
 import { Spinner } from "@/shared/ui/spinner";
 
 import { CustomHarnessForm } from "./CustomHarnessForm";
+import { HarnessInstallDialog } from "./HarnessInstallDialog";
 import {
   adapterUpdateWarning,
   entryStatusLabel,
@@ -308,6 +310,10 @@ export function HarnessRow({
     string | null
   >(null);
   const [isUpdateWarningOpen, setIsUpdateWarningOpen] = React.useState(false);
+  const [isInstallConfirmationOpen, setIsInstallConfirmationOpen] =
+    React.useState(false);
+  const [installProgressDismissed, setInstallProgressDismissed] =
+    React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
@@ -344,6 +350,7 @@ export function HarnessRow({
   );
 
   function handleInstall() {
+    setInstallProgressDismissed(false);
     setInstallResult(null);
     installMutation.mutate(runtime.id, {
       onSuccess: (result) => {
@@ -452,7 +459,7 @@ export function HarnessRow({
                 setIsUpdateWarningOpen(true);
                 return;
               }
-              handleInstall();
+              setIsInstallConfirmationOpen(true);
             }}
             runtime={runtime}
           />
@@ -474,14 +481,6 @@ export function HarnessRow({
             data-testid={`doctor-runtime-install-output-${runtime.id}`}
           >
             {installOutputLine}
-          </p>
-        ) : null}
-        {installError ? (
-          <p
-            className="mt-2 whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
-            data-testid={`doctor-runtime-install-error-${runtime.id}`}
-          >
-            {installError}
           </p>
         ) : null}
         {connectionError ? (
@@ -574,6 +573,87 @@ export function HarnessRow({
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
+      </AlertDialog>
+      <HarnessInstallDialog
+        installOutputLine={installOutputLine}
+        onConfirm={() => {
+          setIsInstallConfirmationOpen(false);
+          handleInstall();
+        }}
+        onOpenChange={(open) => {
+          if (isInstalling) {
+            setInstallProgressDismissed(!open);
+          } else {
+            setIsInstallConfirmationOpen(open);
+          }
+        }}
+        open={
+          isInstallConfirmationOpen ||
+          (isInstalling && !installProgressDismissed)
+        }
+        runtime={runtime}
+        stage={isInstalling ? "installing" : "confirm"}
+      />
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setInstallResult(null);
+        }}
+        open={installError !== null}
+      >
+        <SettingsAlertDialogContent
+          className="flex w-[33.75rem] max-w-[calc(100vw-2rem)] max-h-[90vh] flex-col gap-0 overflow-hidden rounded-[0.75rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-[0_24px_80px_#30203824] dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
+          data-testid={`doctor-runtime-install-failure-${runtime.id}`}
+        >
+          <div className="flex items-center justify-between border-b border-[#eae7eb] px-[1.5625rem] pt-[1.4375rem] pb-6 dark:border-[#3c3544]">
+            <AlertDialogHeader className="space-y-0">
+              <AlertDialogTitle className="text-lg font-medium tracking-normal">
+                Failed
+              </AlertDialogTitle>
+            </AlertDialogHeader>
+            <Button
+              aria-label="Close"
+              data-testid={`doctor-runtime-install-close-${runtime.id}`}
+              onClick={() => setInstallResult(null)}
+              size="icon"
+              variant="ghost"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </Button>
+          </div>
+          <div className="flex flex-col px-[1.5625rem] pt-[1.4375rem] pb-[3.0625rem]">
+            <div className="mb-[1.1875rem] space-y-1 rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[1.125rem] py-[1.03125rem] text-xs leading-5 text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]">
+              <p className="font-semibold">
+                {runtime.label} could not be installed.
+              </p>
+              <AlertDialogDescription className="whitespace-pre-line text-xs text-[#925369] dark:text-[#dcacb8]">
+                {installError
+                  ?.split("\n\nFull log:")[0]
+                  .replace(/^Step "[^"]+" failed:\s*/, "")}{" "}
+                Other harnesses are unaffected.
+              </AlertDialogDescription>
+            </div>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[#282532] dark:text-[#e6e1ec]">
+                Show details
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs text-[#79747f] dark:text-[#a9a1b4]">
+                {installError}
+              </pre>
+            </details>
+          </div>
+          <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-[1.5625rem] py-[1.125rem] dark:border-[#3c3544]">
+            <AlertDialogCancel className="h-9 rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-9 rounded-md bg-[#2655a0] px-[13px] text-xs font-semibold text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              data-testid={`doctor-runtime-install-retry-${runtime.id}`}
+              onClick={handleInstall}
+            >
+              Retry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </SettingsAlertDialogContent>
       </AlertDialog>
     </div>
   );
