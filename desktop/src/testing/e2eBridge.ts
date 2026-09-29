@@ -10990,6 +10990,9 @@ async function relayQuery(
   }
 
   if (config?.relayAuthMode === "nip42") {
+    if (filters.some((filter) => filter.top_level === true)) {
+      return nip98RelayQuery(config, filters);
+    }
     return nip42RelayRequest(config, { type: "query", filters });
   }
 
@@ -11000,6 +11003,41 @@ async function relayQuery(
       "X-Pubkey": identity.pubkey,
     },
     body: JSON.stringify(filters),
+  });
+  await assertOk(response);
+  return response.json() as Promise<RelayEvent[]>;
+}
+
+/**
+ * Channel-window extensions are implemented by the relay's HTTP `/query`
+ * bridge. The desktop host also uses signed NIP-98 HTTP queries, so relay-mode
+ * E2E must preserve the extension by using that same transport instead of
+ * sending a plain NIP-01 REQ over WebSocket.
+ */
+async function nip98RelayQuery(
+  config: E2eConfig | undefined,
+  filters: Array<Record<string, unknown>>,
+): Promise<RelayEvent[]> {
+  const identity = getRelayIdentity(config);
+  const url = `${getRelayHttpUrl(config).replace(/\/+$/, "")}/query`;
+  const body = JSON.stringify(filters);
+  const authEvent = await signWithIdentity(identity, {
+    kind: 27235,
+    content: "",
+    tags: [
+      ["u", url],
+      ["method", "POST"],
+      ["payload", bytesToHex(sha256(new TextEncoder().encode(body)))],
+      ["nonce", crypto.randomUUID()],
+    ],
+  });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Nostr ${btoa(JSON.stringify(authEvent))}`,
+      "Content-Type": "application/json",
+    },
+    body,
   });
   await assertOk(response);
   return response.json() as Promise<RelayEvent[]>;

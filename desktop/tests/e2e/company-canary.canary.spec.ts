@@ -3,7 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { getPublicKey } from "nostr-tools/pure";
 import { nip19 } from "nostr-tools";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { RelayEvent } from "../../src/shared/api/types";
@@ -37,6 +37,163 @@ let relayWsUrl: string;
 let relaySelf: string;
 let communityId: string;
 let goalId = "";
+let diagnosticsFileName = "canary-diagnostics";
+let diagnostics: string[] = [];
+
+function redactDiagnosticText(value: string) {
+  return value
+    .replaceAll(SECRET_SENTINEL, "[REDACTED_SECRET_SENTINEL]")
+    .replace(/\bnsec1[0-9a-z]+/gi, "[REDACTED_NSEC]")
+    .replace(/\bnpub1[0-9a-z]+/gi, "[REDACTED_NPUB]")
+    .replace(/\b[0-9a-f]{64}\b/gi, "[REDACTED_HEX64]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]");
+}
+
+function redactDiagnosticValue(value: unknown, fieldName = ""): unknown {
+  if (
+    /private.*key|nsec|secret|password|token|signature|pubkey|challenge/i.test(
+      fieldName,
+    )
+  ) {
+    return "[REDACTED]";
+  }
+  if (fieldName === "content") return "[REDACTED_EVENT_CONTENT]";
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDiagnosticValue(item));
+  }
+  if (typeof value === "string") return redactDiagnosticText(value);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        redactDiagnosticValue(child, key),
+      ]),
+    );
+  }
+  return value;
+}
+
+function captureCanaryDiagnostics(page: Page, label: string) {
+  const record = (entry: Record<string, unknown>) => {
+    let route = "unknown";
+    try {
+      const url = new URL(page.url());
+      route = url.hash.split("?")[0] || url.pathname;
+    } catch {
+      // Keep the diagnostic useful without writing a full URL.
+    }
+    diagnostics.push(
+      JSON.stringify({ at: new Date().toISOString(), label, route, ...entry }),
+    );
+  };
+
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      record({
+        type: "console-error",
+        message: redactDiagnosticText(message.text()),
+      });
+    }
+  });
+  page.on("pageerror", (error) => {
+    record({
+      type: "page-error",
+      message: redactDiagnosticText(error.message),
+    });
+  });
+  page.on("websocket", (socket) => {
+    let address = "unknown";
+    try {
+      const url = new URL(socket.url());
+      address = `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+      // Keep the diagnostic usable without ever writing an unparsed URL.
+    }
+
+    const captureFrame = (direction: "sent" | "received", payload: unknown) => {
+      if (typeof payload !== "string") {
+        const byteLength =
+          payload !== null && typeof payload === "object" && "length" in payload
+            ? Number(payload.length)
+            : 0;
+        record({
+          type: "websocket-frame",
+          address,
+          direction,
+          frame: `[binary frame, ${byteLength} bytes]`,
+        });
+        return;
+      }
+
+      let frame: unknown;
+      try {
+        frame = JSON.parse(payload);
+      } catch {
+        record({
+          type: "websocket-frame",
+          address,
+          direction,
+          frame: redactDiagnosticText(payload),
+        });
+        return;
+      }
+      if (Array.isArray(frame) && frame[0] === "AUTH") {
+        record({
+          type: "websocket-frame",
+          address,
+          direction,
+          frame: ["AUTH", "[REDACTED_AUTH_EVENT_OR_CHALLENGE]"],
+        });
+        return;
+      }
+      record({
+        type: "websocket-frame",
+        address,
+        direction,
+        frame: redactDiagnosticValue(frame),
+      });
+    };
+
+    socket.on("framesent", ({ payload }) => captureFrame("sent", payload));
+    socket.on("framereceived", ({ payload }) =>
+      captureFrame("received", payload),
+    );
+  });
+}
+
+async function assertAskCardsSettle(page: Page) {
+  const loadingCards = page.getByTestId("ask-card-loading");
+  if ((await loadingCards.count()) > 0) {
+    await expect(loadingCards).toHaveCount(0, { timeout: 35_000 });
+  }
+  const errorCards = page.getByTestId("ask-card-error");
+  const errorCount = await errorCards.count();
+  const retryCount = await errorCards
+    .getByRole("button", { name: "Try again" })
+    .count();
+  expect(retryCount).toBeGreaterThanOrEqual(errorCount);
+  const state = await page.evaluate(() => ({
+    cards: document.querySelectorAll(".colony-ask-card").length,
+    loadingCards: document.querySelectorAll('[data-testid="ask-card-loading"]')
+      .length,
+    errorCards: document.querySelectorAll('[data-testid="ask-card-error"]')
+      .length,
+    loadedCards: document.querySelectorAll('[data-testid="ask-card"]').length,
+    latestAskStatusText: [
+      ...document.querySelectorAll('[role="status"]'),
+    ].filter((element) =>
+      (element.textContent ?? "").includes("Loading the latest ask"),
+    ).length,
+  }));
+  console.log("CANARY_THREAD_ASK_CARD_STATE", JSON.stringify(state));
+}
+
+async function waitForCanaryWriteWindow(page: Page) {
+  // The relay's default authenticated WebSocket budget is 50 operations in a
+  // fixed five-second window. Let route subscriptions drain before each write
+  // so this UI journey measures product behavior rather than quota timing.
+  await page.waitForTimeout(6_000);
+}
 
 function readAccount(): { account: CanaryAccount; identity: CanaryIdentity } {
   const mode = statSync(ACCOUNT_FILE).mode & 0o777;
@@ -335,6 +492,15 @@ async function openCanaryAsk(page: Page, askId: string, title: string) {
 }
 
 test.describe("signed-in canary company UI", () => {
+  test.beforeEach(({ page }, testInfo) => {
+    diagnostics = [];
+    diagnosticsFileName = testInfo.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    captureCanaryDiagnostics(page, "primary");
+  });
+
   test.beforeAll(async () => {
     test.setTimeout(45_000);
     const loaded = readAccount();
@@ -345,6 +511,15 @@ test.describe("signed-in canary company UI", () => {
     relaySelf = await fetchRelaySelf(relayHttpUrl);
     communityId = `canary-${account.host.split(".")[0]}`;
     mkdirSync(ARTIFACT_DIR, { recursive: true, mode: 0o700 });
+  });
+
+  test.afterEach(() => {
+    if (!ARTIFACT_DIR) return;
+    writeFileSync(
+      resolve(ARTIFACT_DIR, `${diagnosticsFileName}-diagnostics.jsonl`),
+      diagnostics.length > 0 ? `${diagnostics.join("\n")}\n` : "",
+      { mode: 0o600 },
+    );
   });
 
   test("checks the full app shell and company journeys on the canary relay", async ({
@@ -442,6 +617,7 @@ test.describe("signed-in canary company UI", () => {
     await capture(page, "01-today-needs-me");
 
     const goalTitle = `Canary UI goal ${randomUUID().slice(0, 8)}`;
+    await waitForCanaryWriteWindow(page);
     goalId = await createGoal(page, goalTitle);
     await page.reload();
     await expect(page.getByTestId("goal-detail")).toContainText(goalTitle);
@@ -452,6 +628,7 @@ test.describe("signed-in canary company UI", () => {
     await progress
       .getByLabel("Evidence or update")
       .fill("Canary review evidence was attached to the active goal.");
+    await waitForCanaryWriteWindow(page);
     await page.getByRole("button", { name: "Record update" }).click();
     await expect(page.getByTestId("goal-detail")).toContainText("off pace");
     await expect(page.getByTestId("goal-detail")).toContainText(
@@ -466,6 +643,7 @@ test.describe("signed-in canary company UI", () => {
       `/#/channels/${account.channel}?messageId=${account.rootId}&threadRootId=${account.rootId}`,
     );
     const askSourceRow = page
+      .getByTestId("message-timeline")
       .locator(`[data-message-id="${account.rootId}"]`)
       .first();
     await expect(askSourceRow).toBeVisible();
@@ -486,6 +664,7 @@ test.describe("signed-in canary company UI", () => {
 
     const askId = randomUUID();
     const askTitle = `Canary approval ${askId.slice(0, 8)}`;
+    await waitForCanaryWriteWindow(page);
     await createAsk(page, { askId, title: askTitle });
     const seededAskHeads = await queryRelay(page, [
       {
@@ -501,6 +680,7 @@ test.describe("signed-in canary company UI", () => {
     const stalePage = await browser.newPage({
       viewport: { width: 1440, height: 900 },
     });
+    captureCanaryDiagnostics(stalePage, "stale");
     observeRelaySockets(stalePage, "stale");
     await installCanaryPage(stalePage);
     try {
@@ -532,6 +712,7 @@ test.describe("signed-in canary company UI", () => {
     await page
       .getByLabel("Reason or requested changes")
       .fill("Approved for canary review.");
+    await waitForCanaryWriteWindow(page);
     await page.getByRole("button", { name: "Record response" }).click();
     await expect(page.getByTestId("ask-resolved")).toContainText(
       "Approved by You",
@@ -547,6 +728,7 @@ test.describe("signed-in canary company UI", () => {
     await stalePage
       .getByLabel("Reason or requested changes")
       .fill("A stale decision must fail.");
+    await waitForCanaryWriteWindow(stalePage);
     await stalePage.getByRole("button", { name: "Record response" }).click();
     const staleDecisionAlert = stalePage.getByRole("alert");
     const staleDecisionMessage = await staleDecisionAlert.innerText();
@@ -554,6 +736,10 @@ test.describe("signed-in canary company UI", () => {
       await expect(staleDecisionAlert).toContainText("current ask");
     } else if (/rate-limited/i.test(staleDecisionMessage)) {
       relayWritesRateLimited = true;
+      await expect(
+        stalePage.getByLabel("Reason or requested changes"),
+      ).toHaveValue("A stale decision must fail.");
+      await expect(staleDecisionAlert).toContainText("retry");
       canaryFindings.push(
         `Asks stale decision: expected a stale-head refusal; relay returned "${staleDecisionMessage}".`,
       );
@@ -680,6 +866,7 @@ test.describe("signed-in canary company UI", () => {
       await capture(page, "06-secrets-empty-after-quota");
     } else {
       const sourceText = `Canary work source ${randomUUID().slice(0, 8)} buzz://goal/${goalId}`;
+      await waitForCanaryWriteWindow(page);
       const sourceId = await createMessage(page, sourceText);
       await expect(
         page.getByTestId(`create-company-work-from-message-${sourceId}`),
@@ -702,6 +889,7 @@ test.describe("signed-in canary company UI", () => {
       await page
         .getByTestId("company-work-evidence")
         .fill("The relay accepted this synthetic evidence.");
+      await waitForCanaryWriteWindow(page);
       await page.getByRole("button", { name: "Create commitment" }).click();
       await expect(page.getByTestId("company-work-detail")).toContainText(
         workTitle,
@@ -739,6 +927,7 @@ test.describe("signed-in canary company UI", () => {
       );
 
       const destinationText = `Canary destination ${randomUUID().slice(0, 8)}`;
+      await waitForCanaryWriteWindow(page);
       const destinationRootId = await createMessage(page, destinationText);
       await page.goto(`/#/work/detail/${workId}`);
       await page
@@ -751,6 +940,7 @@ test.describe("signed-in canary company UI", () => {
       await expect(destinationRoot).toBeEnabled();
       await destinationRoot.click();
       await page.getByRole("button", { name: "Review move" }).click();
+      await waitForCanaryWriteWindow(page);
       await page.getByRole("button", { name: "Move work item" }).click();
       await expect(page.getByTestId("company-work-detail")).toContainText(
         workTitle,
@@ -782,6 +972,7 @@ test.describe("signed-in canary company UI", () => {
         .click();
       const ownerTitle = `Canary owner ${randomUUID().slice(0, 8)}`;
       await page.getByLabel("Title").fill(ownerTitle);
+      await waitForCanaryWriteWindow(page);
       await page.getByRole("button", { name: "Save changes" }).click();
       await expect(
         page.getByTestId("company-team-member-profile"),
@@ -832,6 +1023,7 @@ test.describe("signed-in canary company UI", () => {
           },
         },
       };
+      await waitForCanaryWriteWindow(page);
       await publishRelayEvent(page, {
         kind: KIND_ASK_ACTION,
         content: JSON.stringify(secretAsk),
@@ -852,6 +1044,7 @@ test.describe("signed-in canary company UI", () => {
       await expect(page.getByTestId("secret-credential-input")).toBeVisible();
       await page.getByLabel("Connection name").fill("Canary publishing");
       await page.getByLabel("Credential").fill(SECRET_SENTINEL);
+      await waitForCanaryWriteWindow(page);
       await page.getByRole("button", { name: "Bind securely" }).click();
       await expect(page.getByText("Binding created")).toBeVisible();
       await expect(page.getByTestId("secret-credential-input")).toHaveCount(0);
@@ -866,6 +1059,7 @@ test.describe("signed-in canary company UI", () => {
         secretHeads.some((event) => event.content.includes(SECRET_SENTINEL)),
       ).toBe(false);
       await capture(page, "06-secrets-bound-metadata-only");
+      await waitForCanaryWriteWindow(page);
       await page
         .getByRole("button", {
           name: "Review and revoke binding Canary publishing",
@@ -956,16 +1150,16 @@ test.describe("signed-in canary company UI", () => {
           `/#/channels/${account.channel}?messageId=${account.rootId}&threadRootId=${account.rootId}`,
         );
         const sourceRow = page
+          .getByTestId("message-timeline")
           .locator(`[data-message-id="${account.rootId}"]`)
           .first();
-        try {
-          await expect(sourceRow).toBeVisible({ timeout: 8_000 });
-        } catch {
-          unproven.push(
-            "Work from a message: the canary source thread did not render its root message, so the source action could not be exercised.",
-          );
-          return;
-        }
+        await expect(sourceRow).toBeVisible({ timeout: 30_000 });
+        await expect
+          .poll(() => page.locator(".colony-ask-card").count(), {
+            timeout: 15_000,
+          })
+          .toBeGreaterThan(0);
+        await assertAskCardsSettle(page);
         await sourceRow.hover();
         const createWorkButton = page.getByTestId(
           `create-company-work-from-message-${account.rootId}`,
