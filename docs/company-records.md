@@ -1,7 +1,8 @@
 # Colony company record contracts
 
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
-and member positions), PERM-1 standing tool permissions, and secret bindings.
+and member positions), PERM-1 standing tool permissions, secret bindings, and
+FACTORY-1 Factory run preview and pull request records.
 Schema version: `1`. Goals, asks, work, permissions, and member positions
 follow design baseline
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
@@ -35,6 +36,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30646 | Tool permission head | Relay signed, replaceable | Tool permissions |
 | 30647 | Secret binding head | Relay signed, replaceable | Secrets |
 | 30648 | Member position head | Relay signed, replaceable | Company team |
+| 30649 | Factory run preview and pull request head | Relay signed, replaceable | Software Factory |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -42,6 +44,12 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47035 | Tool permission action | Brokered | Tool permissions |
 | 47036 | Secret binding action | Brokered | Secrets |
 | 47037 | Member position action | Brokered | Company team |
+| 47038 | Factory run preview and pull request action | Brokered | Software Factory |
+
+The Factory run record contract is in
+[`factory-run-records.md`](factory-run-records.md). It extends the company
+record broker without changing the native Factory run, transcript, or working
+copy store.
 
 ## Scope and storage
 

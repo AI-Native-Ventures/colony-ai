@@ -24,6 +24,8 @@ import type {
   FactoryPanePosition,
   FactoryPlan,
 } from "./factoryTypes";
+import { FactoryRunToolPane, type FactoryRunTool } from "./FactoryRunTools";
+import { useFactoryRunRecordQuery } from "../lib/factoryRunRecords";
 
 export function FactoryDeskLayout({
   activeTabId,
@@ -297,9 +299,33 @@ function FactoryAgentPane({
   const [draft, setDraft] = React.useState("");
   const [draftLoading, setDraftLoading] = React.useState(true);
   const [draftError, setDraftError] = React.useState<string | null>(null);
+  const [activeTool, setActiveTool] = React.useState<FactoryRunTool>("agent");
+  const activeToolRunId = React.useRef(run.id);
+  const runRecordQuery = useFactoryRunRecordQuery(run.id);
   const draftGeneration = React.useRef(0);
   const draftWrites = React.useRef<Promise<void>>(Promise.resolve());
   const title = runTitle(run, snapshot, agent?.name);
+
+  React.useEffect(() => {
+    if (activeToolRunId.current !== run.id) {
+      activeToolRunId.current = run.id;
+      setActiveTool("agent");
+    }
+  }, [run.id]);
+
+  const previewState = runRecordQuery.data?.head.preview.state;
+  const previewDesignMissing = ["starting", "running", "stopped"].includes(
+    previewState ?? "",
+  );
+  const reviewDesignMissing = Boolean(runRecordQuery.data?.head.pullRequest);
+  React.useEffect(() => {
+    if (
+      (activeTool === "preview" && previewDesignMissing) ||
+      (activeTool === "review" && reviewDesignMissing)
+    ) {
+      setActiveTool("agent");
+    }
+  }, [activeTool, previewDesignMissing, reviewDesignMissing]);
 
   React.useEffect(() => {
     const generation = ++draftGeneration.current;
@@ -357,89 +383,127 @@ function FactoryAgentPane({
           {run.checkoutPath}
         </span>
         <StatusLabel status={run.status} />
-      </div>
-      {reconnecting ? (
-        <div className="fx-run-message" data-state="reconnecting" role="status">
-          <RefreshCw aria-hidden="true" /> Reconnecting to this session
-        </div>
-      ) : null}
-      {run.error ? (
-        <div className="fx-run-message fx-failed" role="status">
-          <CircleAlert aria-hidden="true" />
-          <span>{run.error}</span>
-        </div>
-      ) : null}
-      <div
-        aria-label={`${title} transcript`}
-        className="fx-agent-transcript"
-        role="log"
-      >
-        {events.map((event) => (
-          <div
-            className={
-              event.kind === "user_prompt"
-                ? "fx-agent-message fx-from-you"
-                : "fx-agent-message"
-            }
-            key={`${event.sequence}:${event.kind}`}
-          >
-            <strong>
-              {event.kind === "user_prompt"
-                ? "You"
-                : (agent?.name ?? agent?.runtime ?? run.harnessId)}
-            </strong>
-            <p>{eventText(event.payload)}</p>
-          </div>
-        ))}
-      </div>
-      {delegates.length ? (
-        <section aria-label="Delegated work" className="fx-agent-delegates">
-          <div>
-            <span>
-              <GitBranch aria-hidden="true" /> Delegated work
-            </span>
-          </div>
-          {delegates.map((delegate) => {
-            const delegateTitle = runTitle(
-              delegate,
-              runSnapshots.get(delegate.id),
-              agents.find((item) => item.pubkey === delegate.agentId)?.name,
-            );
-            return (
+        <nav aria-label={`${title} tools`} className="fx-agent-tool-tabs">
+          {(["agent", "preview", "review"] as const)
+            .filter(
+              (tool) =>
+                !(tool === "preview" && previewDesignMissing) &&
+                !(tool === "review" && reviewDesignMissing),
+            )
+            .map((tool) => (
               <button
-                aria-label={`${delegateTitle}, ${factoryStatusPresentation(delegate.status).label}`}
-                className="fx-delegate"
-                key={delegate.id}
-                onClick={() => onOpenRun(delegate.id)}
+                aria-pressed={activeTool === tool}
+                className="fx-agent-tool-tab"
+                data-testid={`factory-run-tool-${tool}`}
+                key={tool}
+                onClick={() => setActiveTool(tool)}
                 type="button"
               >
-                <span>{delegateTitle}</span>
-                <StatusLabel status={delegate.status} />
+                {tool === "agent"
+                  ? "Agent"
+                  : tool === "preview"
+                    ? "Preview"
+                    : "Review"}
               </button>
-            );
-          })}
-        </section>
-      ) : null}
-      <label className="fx-agent-composer">
-        <textarea
-          aria-label={`Draft for ${title}`}
-          disabled={draftLoading}
-          onChange={(event) => saveDraft(event.currentTarget.value)}
-          placeholder="Steer this task..."
-          value={draft}
+            ))}
+        </nav>
+      </div>
+      {activeTool === "agent" ? (
+        <>
+          {reconnecting ? (
+            <div
+              className="fx-run-message"
+              data-state="reconnecting"
+              role="status"
+            >
+              <RefreshCw aria-hidden="true" /> Reconnecting to this session
+            </div>
+          ) : null}
+          {run.error ? (
+            <div className="fx-run-message fx-failed" role="status">
+              <CircleAlert aria-hidden="true" />
+              <span>{run.error}</span>
+            </div>
+          ) : null}
+          <div
+            aria-label={`${title} transcript`}
+            className="fx-agent-transcript"
+            role="log"
+          >
+            {events.map((event) => (
+              <div
+                className={
+                  event.kind === "user_prompt"
+                    ? "fx-agent-message fx-from-you"
+                    : "fx-agent-message"
+                }
+                key={`${event.sequence}:${event.kind}`}
+              >
+                <strong>
+                  {event.kind === "user_prompt"
+                    ? "You"
+                    : (agent?.name ?? agent?.runtime ?? run.harnessId)}
+                </strong>
+                <p>{eventText(event.payload)}</p>
+              </div>
+            ))}
+          </div>
+          {delegates.length ? (
+            <section aria-label="Delegated work" className="fx-agent-delegates">
+              <div>
+                <span>
+                  <GitBranch aria-hidden="true" /> Delegated work
+                </span>
+              </div>
+              {delegates.map((delegate) => {
+                const delegateTitle = runTitle(
+                  delegate,
+                  runSnapshots.get(delegate.id),
+                  agents.find((item) => item.pubkey === delegate.agentId)?.name,
+                );
+                return (
+                  <button
+                    aria-label={`${delegateTitle}, ${factoryStatusPresentation(delegate.status).label}`}
+                    className="fx-delegate"
+                    key={delegate.id}
+                    onClick={() => onOpenRun(delegate.id)}
+                    type="button"
+                  >
+                    <span>{delegateTitle}</span>
+                    <StatusLabel status={delegate.status} />
+                  </button>
+                );
+              })}
+            </section>
+          ) : null}
+          <label className="fx-agent-composer">
+            <textarea
+              aria-label={`Draft for ${title}`}
+              disabled={draftLoading}
+              onChange={(event) => saveDraft(event.currentTarget.value)}
+              placeholder="Steer this task..."
+              value={draft}
+            />
+            {draftError ? (
+              <span className="fx-draft-error" role="status">
+                {draftError}
+              </span>
+            ) : null}
+          </label>
+          <footer className="fx-agent-footer">
+            <span>
+              <Bot aria-hidden="true" /> {agent?.runtime ?? run.harnessId}
+            </span>
+            <span>Local</span>
+          </footer>
+        </>
+      ) : (
+        <FactoryRunToolPane
+          onOpenAgent={() => setActiveTool("agent")}
+          run={run}
+          tool={activeTool}
         />
-        {draftError ? (
-          <span className="fx-draft-error" role="status">
-            {draftError}
-          </span>
-        ) : null}
-      </label>
-      <footer className="fx-agent-footer">
-        <span>
-          <Bot aria-hidden="true" /> {agent?.runtime ?? run.harnessId}
-        </span>
-        <span>Local</span>
-      </footer>
+      )}
     </article>
   );
 }

@@ -14,6 +14,8 @@ pub mod command_executor;
 pub mod community_provisioning;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
+/// Nostr-first broker for Software Factory run metadata.
+pub mod company_factory;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
 /// Nostr-first broker for community-wide standing tool permissions.

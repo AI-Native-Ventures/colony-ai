@@ -101,6 +101,7 @@ export default defineConfig({
         "**/company-work.spec.ts",
         "**/asks-2.spec.ts",
         "**/factory.spec.ts",
+        "**/factoryPreview.spec.ts",
         "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
         "**/workflow-local-controls.spec.ts",
