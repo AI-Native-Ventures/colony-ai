@@ -20,7 +20,7 @@ class AccountTextField extends StatelessWidget {
     this.validator,
     this.focusNode,
     this.suffixIcon,
-    this.labelFieldSpacing = Grid.xxs,
+    this.labelFieldSpacing = 16,
     this.useSoftFill = false,
     this.readOnly = false,
     super.key,
@@ -75,7 +75,7 @@ class AccountTextField extends StatelessWidget {
             filled: true,
             fillColor: useSoftFill
                 ? AccountFlowPalette.soft(brightness)
-                : AccountFlowPalette.paper(brightness),
+                : AccountFlowPalette.field(brightness),
             isDense: true,
             constraints: const BoxConstraints(minHeight: 46),
             contentPadding: const EdgeInsets.symmetric(
@@ -87,7 +87,7 @@ class AccountTextField extends StatelessWidget {
             disabledBorder: outline,
             focusedBorder: outline.copyWith(
               borderSide: BorderSide(
-                color: AccountFlowPalette.blue(brightness),
+                color: AccountFlowPalette.accent(brightness),
               ),
             ),
             errorBorder: outline.copyWith(

@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/identity/identity_components.dart';
-import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import 'today_models.dart';
 
@@ -22,18 +21,13 @@ class TodayPage extends StatelessWidget {
     required this.onOpenUpdate,
     required this.onOpenActivity,
     required this.onRetryActivity,
-    this.profileInitials,
-    this.profileAvatarUrl,
-    this.profilePubkey,
+    this.onOpenConversations,
     this.now,
     super.key,
   });
 
   final String? communityName;
   final String? profileName;
-  final String? profileInitials;
-  final String? profileAvatarUrl;
-  final String? profilePubkey;
   final AsyncValue<List<TodayReviewItem>> reviewItems;
   final AsyncValue<List<TodayProgressItem>> movingItems;
   final AsyncValue<TodayTeamUpdate?> teamUpdate;
@@ -44,6 +38,7 @@ class TodayPage extends StatelessWidget {
   final ValueChanged<String> onOpenUpdate;
   final ValueChanged<BuildContext> onOpenActivity;
   final Future<void> Function() onRetryActivity;
+  final ValueChanged<BuildContext>? onOpenConversations;
   final DateTime? now;
 
   @override
@@ -57,6 +52,17 @@ class TodayPage extends StatelessWidget {
         ? normalizedName!.split(RegExp(r'\s+')).first
         : null;
 
+    final loaded =
+        !reviewItems.isLoading &&
+        !movingItems.isLoading &&
+        !teamUpdate.isLoading;
+    final unavailable =
+        reviewItems.hasError || movingItems.hasError || teamUpdate.hasError;
+    final hasContent =
+        (reviewItems.asData?.value.isNotEmpty ?? false) ||
+        (movingItems.asData?.value.isNotEmpty ?? false) ||
+        teamUpdate.asData?.value != null;
+
     return ColoredBox(
       color: context.mobileTokens.canvas,
       child: Column(
@@ -65,45 +71,53 @@ class TodayPage extends StatelessWidget {
             bottom: false,
             child: _TodayHeader(
               communityName: communityName,
-              profileName: profileName,
-              profileInitials: profileInitials,
-              profileAvatarUrl: profileAvatarUrl,
-              profilePubkey: profilePubkey,
               onOpenUpdates: onOpenUpdates,
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                Grid.gutter,
-                Grid.half,
-                Grid.gutter,
-                mediaPadding.bottom + Grid.gutter,
-              ),
-              children: [
-                _DayOverviewCard(
-                  date: date,
-                  greeting: firstName == null
-                      ? 'Morning.\nLet’s make it happen.'
-                      : 'Morning, $firstName.\nLet’s make it happen.',
-                  metrics: overviewMetrics,
-                ),
-                _NeedsYourEyeSection(
-                  items: reviewItems,
-                  onOpenActivity: onOpenActivity,
-                  onOpenReview: onOpenReview,
-                  onRetry: onRetryActivity,
-                ),
-                _MovingForwardSection(
-                  items: movingItems,
-                  teamUpdate: teamUpdate,
-                  onOpenActivity: onOpenActivity,
-                  onOpenProgress: onOpenProgress,
-                  onOpenUpdate: onOpenUpdate,
-                  onRetry: onRetryActivity,
-                ),
-              ],
-            ),
+            child: unavailable
+                ? _TodayUnavailableState(
+                    onRetry: onRetryActivity,
+                    bottomPadding: mediaPadding.bottom,
+                  )
+                : !loaded
+                ? const Center(child: CircularProgressIndicator.adaptive())
+                : !hasContent
+                ? _TodayEmptyState(
+                    onOpenConversations: onOpenConversations,
+                    bottomPadding: mediaPadding.bottom,
+                  )
+                : ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      Grid.gutter,
+                      Grid.half,
+                      Grid.gutter,
+                      mediaPadding.bottom + Grid.gutter,
+                    ),
+                    children: [
+                      _DayOverviewCard(
+                        date: date,
+                        greeting: firstName == null
+                            ? 'Morning.\nLet’s make it happen.'
+                            : 'Morning, $firstName.\nLet’s make it happen.',
+                        metrics: overviewMetrics,
+                      ),
+                      _NeedsYourEyeSection(
+                        items: reviewItems,
+                        onOpenActivity: onOpenActivity,
+                        onOpenReview: onOpenReview,
+                        onRetry: onRetryActivity,
+                      ),
+                      _MovingForwardSection(
+                        items: movingItems,
+                        teamUpdate: teamUpdate,
+                        onOpenActivity: onOpenActivity,
+                        onOpenProgress: onOpenProgress,
+                        onOpenUpdate: onOpenUpdate,
+                        onRetry: onRetryActivity,
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -111,72 +125,60 @@ class TodayPage extends StatelessWidget {
   }
 }
 
-class _TodayHeader extends ConsumerWidget {
+class _TodayHeader extends StatelessWidget {
   const _TodayHeader({
     required this.communityName,
-    required this.profileName,
-    required this.profileInitials,
-    required this.profileAvatarUrl,
-    required this.profilePubkey,
     required this.onOpenUpdates,
   });
 
   final String? communityName;
-  final String? profileName;
-  final String? profileInitials;
-  final String? profileAvatarUrl;
-  final String? profilePubkey;
   final ValueChanged<BuildContext> onOpenUpdates;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     final name = communityName?.trim();
-    final personName = profileName?.trim();
-    final pubkey = profilePubkey?.toLowerCase();
-    if (pubkey != null && pubkey.isNotEmpty) {
-      ref.read(presenceCacheProvider.notifier).track([pubkey]);
-    }
-    final isOnline =
-        pubkey != null &&
-        ref.watch(
-              presenceCacheProvider.select((presence) => presence[pubkey]),
-            ) ==
-            'online';
     return Container(
       key: const ValueKey('today-header'),
-      height: 66,
-      padding: const EdgeInsets.symmetric(horizontal: Grid.gutter),
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
       decoration: BoxDecoration(color: tokens.paper),
       child: Row(
         children: [
-          IdentityAvatar(
-            initials: profileInitials ?? '?',
-            kind: IdentityKind.person,
-            imageUrl: profileAvatarUrl,
-            size: 39,
-            isOnline: isOnline,
-            semanticLabel: personName?.isNotEmpty == true ? personName : null,
+          IconButton(
+            key: const ValueKey('today-back'),
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              fixedSize: const Size(42, 42),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                side: BorderSide(color: tokens.line),
+              ),
+            ),
+            icon: const Icon(LucideIcons.chevronLeft, size: 19),
           ),
-          const SizedBox(width: Grid.xs),
+          const SizedBox(width: Grid.xxs),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name?.isNotEmpty == true ? name! : 'Today',
+                  'Your day',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.textTheme.titleMedium?.copyWith(
                     color: tokens.ink,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.35,
+                    letterSpacing: -0.45,
                   ),
                 ),
                 Text(
-                  'Your company, together',
+                  name?.isNotEmpty == true ? name! : 'Colony',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.textTheme.bodySmall?.copyWith(
@@ -188,11 +190,252 @@ class _TodayHeader extends ConsumerWidget {
             ),
           ),
           _HeaderAction(
-            semanticLabel: 'Open updates',
-            icon: LucideIcons.bell,
+            semanticLabel: 'Open team updates',
+            icon: LucideIcons.plus,
             onTap: () => onOpenUpdates(context),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TodayEmptyState extends StatelessWidget {
+  const _TodayEmptyState({
+    required this.onOpenConversations,
+    required this.bottomPadding,
+  });
+
+  final ValueChanged<BuildContext>? onOpenConversations;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        Grid.gutter,
+        Grid.xs,
+        Grid.gutter,
+        bottomPadding + Grid.gutter,
+      ),
+      children: [
+        _QuietMomentCard(
+          eyebrow: 'A CLEAR START',
+          title: 'Room for\nwhat’s next.',
+        ),
+        const SizedBox(height: 50),
+        Center(
+          child: Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+        ),
+        const SizedBox(height: Grid.sm),
+        Text(
+          'Nothing needs you right now',
+          textAlign: TextAlign.center,
+          style: context.textTheme.titleLarge?.copyWith(
+            color: tokens.ink,
+            fontSize: 21,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.65,
+          ),
+        ),
+        const SizedBox(height: Grid.xxs),
+        Text(
+          'New work and decisions will appear here when the workspace has something to show.',
+          textAlign: TextAlign.center,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: tokens.muted,
+            fontSize: 12,
+            height: 1.65,
+          ),
+        ),
+        const SizedBox(height: Grid.sm + 13),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: _FeedActionButton(
+            label: 'Open conversations',
+            onPressed: onOpenConversations == null
+                ? null
+                : () => onOpenConversations!(context),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TodayUnavailableState extends StatelessWidget {
+  const _TodayUnavailableState({
+    required this.onRetry,
+    required this.bottomPadding,
+  });
+
+  final Future<void> Function() onRetry;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) => _FeedUnavailableState(
+    title: 'Could not load your day',
+    onRetry: onRetry,
+    bottomPadding: bottomPadding,
+    topPadding: 63,
+  );
+}
+
+class _FeedUnavailableState extends StatelessWidget {
+  const _FeedUnavailableState({
+    required this.title,
+    required this.onRetry,
+    required this.bottomPadding,
+    required this.topPadding,
+  });
+
+  final String title;
+  final Future<void> Function() onRetry;
+  final double bottomPadding;
+  final double topPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        Grid.gutter,
+        topPadding,
+        Grid.gutter,
+        bottomPadding + Grid.gutter,
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: tokens.soft,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+          ),
+          const SizedBox(height: 13),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: context.textTheme.titleLarge?.copyWith(
+              color: tokens.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.65,
+            ),
+          ),
+          const SizedBox(height: Grid.xxs + 10),
+          Text(
+            'The workspace connection is unavailable. This is not an empty list. Your local drafts are safe.',
+            textAlign: TextAlign.center,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: tokens.muted,
+              fontSize: 13,
+              height: 1.65,
+            ),
+          ),
+          const SizedBox(height: Grid.sm + 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: _FeedActionButton(
+              label: 'Retry connection',
+              onPressed: () => onRetry(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuietMomentCard extends StatelessWidget {
+  const _QuietMomentCard({required this.eyebrow, required this.title});
+
+  final String eyebrow;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 48),
+      decoration: BoxDecoration(
+        gradient: isDark
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xff4f365d), Color(0xff563f46)],
+              )
+            : context.appColors.channelInfoHeroGradient,
+        borderRadius: BorderRadius.circular(27),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            eyebrow,
+            style: context.textTheme.labelSmall?.copyWith(
+              color: tokens.ink.withValues(alpha: 0.78),
+              fontSize: 9,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Grid.xxs),
+          Text(
+            title,
+            style: context.mobileTypography.flowTitle.copyWith(
+              color: tokens.ink,
+              fontSize: 27,
+              height: 1.15,
+              letterSpacing: -0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedActionButton extends StatelessWidget {
+  const _FeedActionButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: tokens.action,
+          foregroundColor: tokens.onAction,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.button),
+          ),
+          textStyle: context.textTheme.labelLarge?.copyWith(
+            color: tokens.onAction,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: Text(label),
       ),
     );
   }
@@ -212,31 +455,20 @@ class _HeaderAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      onTap: onTap,
-      child: ExcludeSemantics(
-        child: Material(
-          color: tokens.paper,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.button),
-            side: BorderSide(color: tokens.line),
-          ),
-          child: InkWell(
-            key: ValueKey('today-action-$semanticLabel'),
-            customBorder: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(Radii.button),
-            ),
-            onTap: onTap,
-            child: SizedBox(
-              width: 42,
-              height: 42,
-              child: Icon(icon, size: 19, color: tokens.ink),
-            ),
-          ),
+    return IconButton(
+      key: ValueKey('today-action-$semanticLabel'),
+      tooltip: semanticLabel,
+      onPressed: onTap,
+      style: IconButton.styleFrom(
+        foregroundColor: tokens.ink,
+        backgroundColor: tokens.paper,
+        fixedSize: const Size(42, 42),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.button),
+          side: BorderSide(color: tokens.line),
         ),
       ),
+      icon: Icon(icon, size: 19),
     );
   }
 }

@@ -16,13 +16,9 @@ part 'pairing_mobile_page/entry_views.dart';
 part 'pairing_mobile_page/session_views.dart';
 part 'pairing_mobile_page/outcome_views.dart';
 
-const _pairingActionColor = Color(0xff45669f);
 const _pairingWaitingColor = Color(0xff9580b0);
 
-Color _pairingLinkColor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xffa1bce9)
-    : const Color(0xff345c99);
+Color _pairingLinkColor(BuildContext context) => context.mobileTokens.action;
 
 /// One route in the existing-identity phone pairing flow.
 enum PairingMobileRoute {
@@ -185,26 +181,43 @@ class PairingMobilePage extends HookConsumerWidget {
           statusBarBrightness: Theme.of(context).brightness,
         ),
         child: Scaffold(
-          backgroundColor: tokens.paper,
+          backgroundColor: tokens.canvas,
           appBar: AppBar(
-            backgroundColor: tokens.paper,
+            backgroundColor: tokens.canvas,
             foregroundColor: tokens.ink,
             elevation: 0,
             scrolledUnderElevation: 0,
             toolbarHeight: 66,
-            leadingWidth: route.value == PairingMobileRoute.success ? 52 : 56,
+            leadingWidth: route.value == PairingMobileRoute.success ? 52 : 60,
             leading: route.value == PairingMobileRoute.success
                 ? Padding(
                     padding: const EdgeInsets.only(left: 16, right: 4),
                     child: const _PairingSuccessBadge(),
                   )
-                : IconButton(
-                    tooltip: 'Back',
-                    onPressed: back,
-                    icon: const Icon(Icons.chevron_left),
+                : Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: tokens.paper,
+                            border: Border.all(color: tokens.line),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: IconButton(
+                            tooltip: 'Back',
+                            onPressed: back,
+                            icon: const Icon(Icons.chevron_left),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
             automaticallyImplyLeading: false,
-            titleSpacing: route.value == PairingMobileRoute.success ? 6 : 12,
+            titleSpacing: route.value == PairingMobileRoute.success ? 6 : 16,
             title: Text(
               _pairingRouteTitle(route.value),
               style: context.textTheme.titleSmall?.copyWith(
@@ -213,10 +226,6 @@ class PairingMobilePage extends HookConsumerWidget {
                 fontSize: 16,
                 letterSpacing: -0.4,
               ),
-            ),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Divider(height: 1, color: tokens.line),
             ),
           ),
           body: SafeArea(
@@ -350,8 +359,8 @@ Widget _pairingRouteFooter({
     child: FilledButton(
       onPressed: onPressed,
       style: FilledButton.styleFrom(
-        backgroundColor: _pairingActionColor,
-        foregroundColor: Colors.white,
+        backgroundColor: tokens.action,
+        foregroundColor: tokens.onAction,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.button),
         ),

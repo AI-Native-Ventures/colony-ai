@@ -208,6 +208,7 @@ final class MobileHuddleController extends Notifier<bool> {
     required String ephemeralChannelId,
     required String startedBy,
     required String startedEventId,
+    bool startMuted = false,
   }) async {
     ++_generation;
     final admissionEpoch = ++_admissionEpoch;
@@ -225,6 +226,7 @@ final class MobileHuddleController extends Notifier<bool> {
             isCreator:
                 currentPubkey != null &&
                 currentPubkey.toLowerCase() == startedBy.toLowerCase(),
+            startMuted: startMuted,
             startedEventId: startedEventId,
           );
     } catch (_) {

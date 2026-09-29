@@ -44,12 +44,67 @@ class HomePage extends HookConsumerWidget {
         (_) => GlobalKey<NavigatorState>(),
       ),
     );
+    final chatNavigatorKey =
+        tabNavigatorKeys[MobileShellDestination.chat.index];
+
+    void selectDestination(MobileShellDestination next) {
+      if (next == selected.value) {
+        switch (next) {
+          case MobileShellDestination.today:
+            todayReselection.value++;
+          case MobileShellDestination.chat:
+            chatReselection.value++;
+          case MobileShellDestination.company:
+            companyReselection.value++;
+        }
+        return;
+      }
+
+      unawaited(HapticFeedback.selectionClick());
+      visited.value = {...visited.value, next};
+      selected.value = next;
+    }
+
+    void openTeamUpdates() {
+      if (selected.value != MobileShellDestination.chat) {
+        selectDestination(MobileShellDestination.chat);
+      }
+      void pushTeamUpdates({bool retry = false}) {
+        if (!context.mounted) return;
+        final navigator = chatNavigatorKey.currentState;
+        if (navigator == null) {
+          if (!retry) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => pushTeamUpdates(retry: true),
+            );
+          }
+          return;
+        }
+        navigator.push<void>(
+          MaterialPageRoute<void>(
+            settings: RouteSettings(name: MobileRoutes.updates.path),
+            builder: (routeContext) => MobileRouteScope(
+              registry: routeRegistry,
+              child: routeRegistry.build(
+                routeContext,
+                MobileRoutes.updates,
+                const NoMobileRouteArguments(),
+              ),
+            ),
+          ),
+        );
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => pushTeamUpdates());
+    }
 
     MobileShellRouteContext routeContext(ValueListenable<int> tabReselection) =>
         MobileShellRouteContext(
           tabReselection: tabReselection,
           settingsPageBuilder: settingsPageBuilder,
           onSettingsTransitionProgress: (_) {},
+          onOpenChat: () => selectDestination(MobileShellDestination.chat),
+          onOpenTeamUpdates: openTeamUpdates,
         );
 
     final todayPage = _buildPage(
@@ -95,23 +150,7 @@ class HomePage extends HookConsumerWidget {
         hasUnreadActivity: hasUnreadInbox,
         showBrandBar: false,
         overlayBuilder: overlayBuilder,
-        onDestinationSelected: (next) {
-          if (next == selected.value) {
-            switch (next) {
-              case MobileShellDestination.today:
-                todayReselection.value++;
-              case MobileShellDestination.chat:
-                chatReselection.value++;
-              case MobileShellDestination.company:
-                companyReselection.value++;
-            }
-            return;
-          }
-
-          unawaited(HapticFeedback.selectionClick());
-          visited.value = {...visited.value, next};
-          selected.value = next;
-        },
+        onDestinationSelected: selectDestination,
         child: Column(
           children: [
             ?accountClaimPrompt,
