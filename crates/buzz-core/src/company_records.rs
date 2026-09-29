@@ -1,13 +1,14 @@
 //! Shared typed content and validation for Colony company records.
 //!
-//! Company records (goals and asks) are brokered like business records: a
-//! member signs a command, the relay validates it and emits a relay-signed
-//! replaceable head. Goals are community-wide (no `h` tag); asks live in a
-//! channel thread. See `docs/company-records.md` for the full contract.
+//! Company records (goals, asks, tool permissions and secret bindings) are
+//! brokered like business records: a member signs a command, the relay validates
+//! it and emits a relay-signed replaceable head. Goals, permissions and secret
+//! bindings are community-wide (no `h` tag); asks live in a channel thread. See
+//! `docs/company-records.md` for the full contract.
 //!
 //! This module holds the pure parts of the contract: typed content that
 //! rejects unknown fields, per-action payload rules, the goal-tree cycle
-//! check, ask response rules and the ask authority decision. The relay
+//! check, ask response rules, secret binding rules and ask authority decision. The relay
 //! supplies everything that needs I/O (current heads, roles, agent status).
 
 use std::collections::BTreeSet;
@@ -27,8 +28,16 @@ pub const MAX_DONE_CONDITION_CHARS: usize = 1000;
 pub const MAX_EVIDENCE_CHARS: usize = 2000;
 /// Longest ask body, in characters.
 pub const MAX_ASK_BODY_CHARS: usize = 4000;
+/// Longest exact tool action preview shown in a tool consent ask, in characters.
+pub const MAX_TOOL_CONSENT_PREVIEW_CHARS: usize = 4000;
+/// Longest exact action label on a standing permission, in characters.
+pub const MAX_TOOL_PERMISSION_ACTION_CHARS: usize = 180;
 /// Longest ask answer, in characters.
 pub const MAX_ANSWER_CHARS: usize = 4000;
+/// Longest human-readable secret binding name, in characters.
+pub const MAX_SECRET_NAME_CHARS: usize = 120;
+/// Longest tool name on a secret request or binding, in characters.
+pub const MAX_SECRET_TOOL_CHARS: usize = 120;
 /// Longest reason attached to a decision, status change or cancellation.
 pub const MAX_REASON_CHARS: usize = 1000;
 /// Longest target unit label, in characters.
@@ -66,6 +75,122 @@ pub enum CompanyCommand {
     AskAction(AskAction),
     /// Ask resolution (kind 47033).
     AskResponse(AskResponse),
+    /// Secret binding create, activation or revocation (kind 47036).
+    SecretBindingAction(SecretBindingAction),
+    /// Standing tool permission mutation (kind 47035).
+    ToolPermissionAction(ToolPermissionAction),
+}
+
+/// Storage location for a secret value. The value is never part of a company record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretStorage {
+    /// The authenticated user's operating system credential store.
+    Device,
+    /// Shared encrypted relay storage. Unsupported by the current relay.
+    Server,
+}
+
+/// Lifecycle status of a secret binding head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretBindingStatus {
+    /// Metadata exists and is waiting for secure entry and activation.
+    Pending,
+    /// The binding may be used after the runtime verifies this current head.
+    Active,
+    /// Future use must be denied.
+    Revoked,
+}
+
+/// Secret binding actions supported by the relay broker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretBindingActionKind {
+    /// Create metadata without a value.
+    Create,
+    /// Activate after the value has been saved in the selected store.
+    Activate,
+    /// Revoke future uses of this binding.
+    Revoke,
+}
+
+/// A channel ask that requested a secret binding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretAskCoordinate {
+    /// Channel containing the secret ask.
+    pub channel_id: Uuid,
+    /// Secret ask UUID.
+    pub ask_id: Uuid,
+}
+
+/// Non-secret details an agent supplies when requesting a secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretAskRequest {
+    /// Name of the tool that needs the credential.
+    pub tool_name: String,
+    /// Client or service the requested credential is for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    /// Scope the requested binding should allow.
+    pub allowed_use: String,
+}
+
+/// Metadata for one binding. This type deliberately has no value field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingSpec {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable binding UUID.
+    pub binding_id: Uuid,
+    /// Human-readable connection name.
+    pub name: String,
+    /// Member or agent that may use this binding.
+    pub employee_pubkey: String,
+    /// Tool name this binding is scoped to.
+    pub tool_name: String,
+    /// Human-readable use scope.
+    pub allowed_use: String,
+    /// Device or server storage selection.
+    pub storage: SecretStorage,
+    /// Ask that led to this binding, when the binding resolves a request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask: Option<SecretAskCoordinate>,
+}
+
+/// Member-signed create, activation or revocation command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable binding UUID.
+    pub binding_id: Uuid,
+    /// Requested lifecycle transition.
+    pub action: SecretBindingActionKind,
+    /// Exact current head for activation and revocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Metadata, required only for create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<SecretBindingSpec>,
+}
+
+/// Relay-signed canonical secret binding head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SecretBindingHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Binding metadata, never the value.
+    pub binding: SecretBindingSpec,
+    /// Relay-controlled lifecycle state.
+    pub status: SecretBindingStatus,
+    /// Member command that last advanced this head.
+    pub source_action_event_id: String,
 }
 
 // ── Goals ────────────────────────────────────────────────────────────────────
@@ -221,6 +346,149 @@ pub struct GoalHead {
     pub source_action_event_id: String,
 }
 
+// ── Standing tool permissions ────────────────────────────────────────────────
+
+/// Always-ask action a standing permission may authorize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionVerb {
+    /// Spend money or make a purchase.
+    SpendMoney,
+    /// Send a message to an outsider.
+    MessageOutsider,
+    /// Delete data.
+    DeleteData,
+    /// Publish content publicly.
+    PublishPublicly,
+}
+
+impl ToolPermissionVerb {
+    /// Stable permission action key corresponding to this sensitive action.
+    pub const fn permission_key(self) -> &'static str {
+        match self {
+            Self::SpendMoney => "spend_money",
+            Self::MessageOutsider => "message_outsider",
+            Self::DeleteData => "delete_data",
+            Self::PublishPublicly => "publish_publicly",
+        }
+    }
+}
+
+/// Kind of resource a standing tool permission is scoped to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionScopeKind {
+    /// One canonical NIP-10 thread root event id.
+    Thread,
+    /// One channel UUID.
+    Channel,
+    /// One customer UUID.
+    Customer,
+}
+
+/// Exact target covered by a standing tool permission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToolPermissionScope {
+    /// Resource kind.
+    pub kind: ToolPermissionScopeKind,
+    /// Stable id for the resource kind.
+    pub id: String,
+}
+
+/// Permission fields supplied on grant and scope or expiry update.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToolPermissionRecord {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable permission UUID.
+    pub permission_id: Uuid,
+    /// Managed agent receiving the permission.
+    pub agent_pubkey: String,
+    /// Exact action label or stable sensitive-action key this record covers.
+    pub action: String,
+    /// Exact thread, channel or customer covered by this record.
+    pub scope: ToolPermissionScope,
+    /// RFC 3339 UTC expiry time.
+    pub expires_at: String,
+}
+
+/// Operation requested by a standing tool permission command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionCommandKind {
+    /// Create a new permission.
+    Grant,
+    /// Edit only the permission scope or expiry.
+    Update,
+    /// Revoke a permission while retaining its audit head.
+    Revoke,
+}
+
+/// Member request to grant, update or revoke a tool permission (kind 47035).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToolPermissionAction {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable permission UUID.
+    pub permission_id: Uuid,
+    /// Requested operation.
+    pub action: ToolPermissionCommandKind,
+    /// Exact current head event id; omitted only on grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head_event_id: Option<String>,
+    /// Permission fields on grant and update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<ToolPermissionRecord>,
+    /// Required reason on revoke.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Lifecycle status of a relay-signed tool permission head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionStatus {
+    /// The record is not revoked. Expiry is checked separately.
+    Active,
+    /// The record was revoked by an owner or admin.
+    Revoked,
+}
+
+/// Relay-authored canonical standing tool permission head (kind 30646).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToolPermissionHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Stable permission UUID.
+    pub permission_id: Uuid,
+    /// Lifecycle status. Expiry is derived from `permission.expiresAt`.
+    pub status: ToolPermissionStatus,
+    /// Current action, agent, scope and expiry.
+    pub permission: ToolPermissionRecord,
+    /// Who originally granted the permission.
+    pub granted_by_pubkey: String,
+    /// Who last changed the permission head.
+    pub changed_by_pubkey: String,
+    /// RFC 3339 UTC timestamp of the last change.
+    pub updated_at: String,
+    /// Event id of the member action that produced this head.
+    pub source_action_event_id: String,
+}
+
+/// Exact action preview shown on a tool consent ask.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToolConsentPreview {
+    /// Action category that triggered the consent request.
+    pub action: ToolPermissionVerb,
+    /// Exact bounded preview of the action for the human resolver.
+    pub action_preview: String,
+}
+
 // ── Asks ─────────────────────────────────────────────────────────────────────
 
 /// Kind of answer an ask needs.
@@ -229,6 +497,8 @@ pub struct GoalHead {
 pub enum AskType {
     /// Approve, reject or request a revision.
     Approval,
+    /// Approve or reject one exact tool invocation.
+    ToolConsent,
     /// Free-text answer.
     Question,
     /// Pick one option.
@@ -326,9 +596,15 @@ pub struct AskRecord {
     /// Items for a checklist ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub items: Option<Vec<AskOption>>,
+    /// Exact action preview for a tool consent ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_consent: Option<ToolConsentPreview>,
     /// Optional record the ask is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<AskSubject>,
+    /// Non-secret tool and scope details for a secret request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_request: Option<SecretAskRequest>,
 }
 
 /// Ask create or cancel.
@@ -382,6 +658,8 @@ pub enum AskOutcome {
     Pass,
     /// Verdict: fails.
     Fail,
+    /// A secret request was resolved by creating and activating a binding.
+    SecretBound,
 }
 
 /// Member resolution of an ask (kind 47033).
@@ -408,6 +686,9 @@ pub struct AskResponse {
     /// Every checklist item id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked_item_ids: Option<Vec<String>>,
+    /// Secret binding created for a secret ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_binding_id: Option<Uuid>,
 }
 
 /// Lifecycle status of an ask head.
@@ -456,6 +737,9 @@ pub struct AskResolutionPayload {
     /// Confirmed items, for checklists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked_item_ids: Option<Vec<String>>,
+    /// Binding created to resolve a secret ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_binding_id: Option<Uuid>,
 }
 
 /// Cancellation stored on the head.
@@ -508,6 +792,28 @@ pub fn ask_d_tag(channel_id: Uuid, ask_id: Uuid) -> String {
     format!("channel:{channel_id}:ask:{ask_id}")
 }
 
+/// Company-wide coordinate for a secret binding.
+pub fn secret_binding_d_tag(binding_id: Uuid) -> String {
+    format!("company:secret:{binding_id}")
+}
+
+/// Validates a secret binding d-tag against its UUID.
+pub fn validate_secret_binding_d_tag(
+    d_tag: &str,
+    binding_id: Uuid,
+) -> Result<(), CompanyRecordError> {
+    if d_tag == secret_binding_d_tag(binding_id) {
+        Ok(())
+    } else {
+        Err(CompanyRecordError::DTagMismatch)
+    }
+}
+
+/// d-tag of a standing tool permission command or head.
+pub fn tool_permission_d_tag(permission_id: Uuid) -> String {
+    format!("company:permission:{permission_id}")
+}
+
 /// Checks a goal command's d-tag against its goal id.
 pub fn validate_goal_d_tag(d_tag: &str, goal_id: Uuid) -> Result<(), CompanyRecordError> {
     if d_tag == goal_d_tag(goal_id) {
@@ -524,6 +830,18 @@ pub fn validate_ask_d_tag(
     ask_id: Uuid,
 ) -> Result<(), CompanyRecordError> {
     if d_tag == ask_d_tag(channel_id, ask_id) {
+        Ok(())
+    } else {
+        Err(CompanyRecordError::DTagMismatch)
+    }
+}
+
+/// Checks a tool permission command's d-tag against its stable permission id.
+pub fn validate_tool_permission_d_tag(
+    d_tag: &str,
+    permission_id: Uuid,
+) -> Result<(), CompanyRecordError> {
+    if d_tag == tool_permission_d_tag(permission_id) {
         Ok(())
     } else {
         Err(CompanyRecordError::DTagMismatch)
@@ -547,6 +865,14 @@ pub fn parse_company_command(
         crate::kind::KIND_ASK_RESPONSE => {
             serde_json::from_str::<AskResponse>(content).map(CompanyCommand::AskResponse)
         }
+        crate::kind::KIND_SECRET_BINDING_ACTION => {
+            serde_json::from_str::<SecretBindingAction>(content)
+                .map(CompanyCommand::SecretBindingAction)
+        }
+        crate::kind::KIND_TOOL_PERMISSION_ACTION => {
+            serde_json::from_str::<ToolPermissionAction>(content)
+                .map(CompanyCommand::ToolPermissionAction)
+        }
         _ => return Err(CompanyRecordError::UnsupportedKind),
     }
     .map_err(|_| CompanyRecordError::InvalidContent)?;
@@ -555,6 +881,8 @@ pub fn parse_company_command(
         CompanyCommand::GoalAction(value) => value.schema_version,
         CompanyCommand::AskAction(value) => value.schema_version,
         CompanyCommand::AskResponse(value) => value.schema_version,
+        CompanyCommand::SecretBindingAction(value) => value.schema_version,
+        CompanyCommand::ToolPermissionAction(value) => value.schema_version,
     };
     if schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
@@ -799,6 +1127,134 @@ pub fn goal_parent_creates_cycle(
     true
 }
 
+/// Validates a standing permission's stable identity, target scope and expiry.
+pub fn validate_tool_permission_record(
+    permission: &ToolPermissionRecord,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), CompanyRecordError> {
+    if permission.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    if !is_hex_id(&permission.agent_pubkey) {
+        return Err(CompanyRecordError::Invalid(
+            "agentPubkey must be a lowercase public key",
+        ));
+    }
+    require_text(
+        &permission.action,
+        MAX_TOOL_PERMISSION_ACTION_CHARS,
+        "action is required, 180 characters at most",
+    )?;
+    if ![
+        ToolPermissionVerb::SpendMoney.permission_key(),
+        ToolPermissionVerb::MessageOutsider.permission_key(),
+        ToolPermissionVerb::DeleteData.permission_key(),
+        ToolPermissionVerb::PublishPublicly.permission_key(),
+    ]
+    .contains(&permission.action.as_str())
+    {
+        return Err(CompanyRecordError::Invalid(
+            "action must be one of the always-ask action values",
+        ));
+    }
+    let valid_scope = match permission.scope.kind {
+        ToolPermissionScopeKind::Thread => is_hex_id(&permission.scope.id),
+        ToolPermissionScopeKind::Channel | ToolPermissionScopeKind::Customer => {
+            is_canonical_uuid(&permission.scope.id)
+        }
+    };
+    if !valid_scope {
+        return Err(CompanyRecordError::Invalid(
+            "scope id does not match its thread, channel or customer kind",
+        ));
+    }
+    let expires_at = parse_utc_timestamp(&permission.expires_at).ok_or(
+        CompanyRecordError::Invalid("expiresAt must be an RFC 3339 UTC timestamp"),
+    )?;
+    if expires_at <= now {
+        return Err(CompanyRecordError::Invalid(
+            "expiresAt must be later than command acceptance",
+        ));
+    }
+    Ok(())
+}
+
+/// Validates a permission mutation's expected-head and action payload rules.
+pub fn validate_tool_permission_action(
+    action: &ToolPermissionAction,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), CompanyRecordError> {
+    validate_expected_head(
+        action.expected_head_event_id.as_deref(),
+        action.action == ToolPermissionCommandKind::Grant,
+    )?;
+    match action.action {
+        ToolPermissionCommandKind::Grant | ToolPermissionCommandKind::Update => {
+            let permission = action
+                .permission
+                .as_ref()
+                .ok_or(CompanyRecordError::Invalid(
+                    "grant or update needs the permission",
+                ))?;
+            if action.reason.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "grant or update does not take a reason",
+                ));
+            }
+            if permission.permission_id != action.permission_id {
+                return Err(CompanyRecordError::Invalid(
+                    "permission.permissionId must equal permissionId",
+                ));
+            }
+            validate_tool_permission_record(permission, now)
+        }
+        ToolPermissionCommandKind::Revoke => {
+            if action.permission.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "revoke does not carry the permission",
+                ));
+            }
+            let reason = action
+                .reason
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("revoke needs a reason"))?;
+            require_text(
+                reason,
+                MAX_REASON_CHARS,
+                "reason is required, 1000 characters at most",
+            )
+        }
+    }
+}
+
+/// Returns whether an active permission authorizes this exact agent, action,
+/// scope and time. Callers must load and verify the relay-signed current head.
+pub fn tool_permission_matches(
+    head: &ToolPermissionHead,
+    agent_pubkey: &str,
+    action: ToolPermissionVerb,
+    scope: &ToolPermissionScope,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    head.status == ToolPermissionStatus::Active
+        && head.permission.agent_pubkey == agent_pubkey
+        && head.permission.action == action.permission_key()
+        && head.permission.scope == *scope
+        && parse_utc_timestamp(&head.permission.expires_at)
+            .is_some_and(|expires_at| expires_at > now)
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+    Uuid::parse_str(value).is_ok_and(|id| id.to_string() == value)
+}
+
+fn parse_utc_timestamp(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .filter(|timestamp| timestamp.offset().local_minus_utc() == 0)
+        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+}
+
 /// Validates an ask as created.
 ///
 /// `addressee_is_agent` comes from the relay's account record; an agent may
@@ -821,6 +1277,43 @@ pub fn validate_ask_record(
                 "body is 4000 characters at most",
             ));
         }
+    }
+    match (ask.category, ask.secret_request.as_ref()) {
+        (AskCategory::Secret, Some(request)) => {
+            if ask.ask_type != AskType::Question {
+                return Err(CompanyRecordError::Invalid(
+                    "a secret request must be a question",
+                ));
+            }
+            require_text(
+                &request.tool_name,
+                MAX_SECRET_TOOL_CHARS,
+                "secret tool name is required, 120 characters at most",
+            )?;
+            if let Some(client_name) = &request.client_name {
+                require_text(
+                    client_name,
+                    MAX_SECRET_NAME_CHARS,
+                    "secret client name must be 120 characters at most",
+                )?;
+            }
+            require_text(
+                &request.allowed_use,
+                MAX_DONE_CONDITION_CHARS,
+                "secret allowedUse is required, 1000 characters at most",
+            )?;
+        }
+        (AskCategory::Secret, None) => {
+            return Err(CompanyRecordError::Invalid(
+                "a secret ask needs non-secret tool and allowedUse details",
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(CompanyRecordError::Invalid(
+                "secret request details are only valid for secret asks",
+            ));
+        }
+        (_, None) => {}
     }
     if !is_hex_id(&ask.thread_root_event_id) {
         return Err(CompanyRecordError::Invalid(
@@ -902,6 +1395,34 @@ pub fn validate_ask_record(
                 ));
             }
         }
+        AskType::ToolConsent => {
+            if ask.category != AskCategory::Tool {
+                return Err(CompanyRecordError::Invalid(
+                    "a tool consent ask must use the tool category",
+                ));
+            }
+            if ask.options.is_some() || ask.items.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "a tool consent ask does not carry options or items",
+                ));
+            }
+            let preview = ask
+                .tool_consent
+                .as_ref()
+                .ok_or(CompanyRecordError::Invalid(
+                    "a tool consent ask needs the exact action preview",
+                ))?;
+            require_text(
+                &preview.action_preview,
+                MAX_TOOL_CONSENT_PREVIEW_CHARS,
+                "actionPreview is required, 4000 characters at most",
+            )?;
+        }
+    }
+    if ask.ask_type != AskType::ToolConsent && ask.tool_consent.is_some() {
+        return Err(CompanyRecordError::Invalid(
+            "only a tool consent ask carries toolConsent",
+        ));
     }
     if let Some(subject) = &ask.subject {
         let ok = match subject.kind {
@@ -968,6 +1489,26 @@ pub fn validate_ask_response(
             "expectedHeadEventId must name the current head",
         ));
     }
+    if ask.category == AskCategory::Secret {
+        if ask.ask_type != AskType::Question
+            || response.outcome != AskOutcome::SecretBound
+            || response.reason.is_some()
+            || response.answer.is_some()
+            || response.option_id.is_some()
+            || response.checked_item_ids.is_some()
+            || response.secret_binding_id.is_none()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "a secret ask resolves only to a secret binding id",
+            ));
+        }
+        return Ok(());
+    }
+    if response.outcome == AskOutcome::SecretBound || response.secret_binding_id.is_some() {
+        return Err(CompanyRecordError::Invalid(
+            "secret binding references are only valid for secret asks",
+        ));
+    }
     let (reason, answer, option, checked) = (
         response.reason.as_deref(),
         response.answer.as_deref(),
@@ -975,6 +1516,22 @@ pub fn validate_ask_response(
         response.checked_item_ids.as_ref(),
     );
     match ask.ask_type {
+        AskType::ToolConsent => {
+            if !matches!(response.outcome, O::Approved | O::Rejected)
+                || answer.is_some()
+                || option.is_some()
+                || checked.is_some()
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "a tool consent ask is approved or rejected with a reason",
+                ));
+            }
+            require_text(
+                reason.unwrap_or_default(),
+                MAX_REASON_CHARS,
+                "a reason is required, 1000 characters at most",
+            )
+        }
         AskType::Approval | AskType::Verdict => {
             let allowed = match ask.ask_type {
                 AskType::Approval => matches!(
@@ -1068,6 +1625,79 @@ pub fn validate_ask_response(
     }
 }
 
+/// Validates metadata-only secret binding actions.
+pub fn validate_secret_binding_action(
+    action: &SecretBindingAction,
+) -> Result<(), CompanyRecordError> {
+    if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    match action.action {
+        SecretBindingActionKind::Create => {
+            if action.expected_head_event_id.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "create does not carry an expected head",
+                ));
+            }
+            let binding = action
+                .binding
+                .as_ref()
+                .ok_or(CompanyRecordError::Invalid("create needs binding metadata"))?;
+            if binding.binding_id != action.binding_id {
+                return Err(CompanyRecordError::Invalid(
+                    "binding.bindingId must equal bindingId",
+                ));
+            }
+            validate_secret_binding_spec(binding)
+        }
+        SecretBindingActionKind::Activate | SecretBindingActionKind::Revoke => {
+            if action.binding.is_some() {
+                return Err(CompanyRecordError::Invalid(
+                    "activation and revocation do not carry binding metadata",
+                ));
+            }
+            let expected = action
+                .expected_head_event_id
+                .as_deref()
+                .ok_or(CompanyRecordError::Invalid("action needs the current head"))?;
+            if !is_hex_id(expected) {
+                return Err(CompanyRecordError::Invalid(
+                    "expectedHeadEventId must name the current head",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Validates a secret binding's non-secret metadata.
+pub fn validate_secret_binding_spec(binding: &SecretBindingSpec) -> Result<(), CompanyRecordError> {
+    if binding.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    require_text(
+        &binding.name,
+        MAX_SECRET_NAME_CHARS,
+        "secret name is required, 120 characters at most",
+    )?;
+    if !is_hex_id(&binding.employee_pubkey) {
+        return Err(CompanyRecordError::Invalid(
+            "employeePubkey must be a pubkey",
+        ));
+    }
+    require_text(
+        &binding.tool_name,
+        MAX_SECRET_TOOL_CHARS,
+        "secret tool name is required, 120 characters at most",
+    )?;
+    require_text(
+        &binding.allowed_use,
+        MAX_DONE_CONDITION_CHARS,
+        "secret allowedUse is required, 1000 characters at most",
+    )?;
+    Ok(())
+}
+
 /// Community role of a would-be resolver, from the relay's member records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommunityRole {
@@ -1102,7 +1732,11 @@ pub fn ask_resolution_denied_reason(
     ask: &AskRecord,
     resolver: AskResolver<'_>,
 ) -> Option<&'static str> {
-    if !resolver.is_channel_member && resolver.community_role.is_none() {
+    let authority_resolver = matches!(
+        resolver.community_role,
+        Some(CommunityRole::Owner | CommunityRole::Admin)
+    );
+    if !(resolver.is_channel_member || ask.category.requires_authority() && authority_resolver) {
         return Some("Only members of this conversation can answer");
     }
     if ask.category.requires_authority() {
@@ -1181,7 +1815,9 @@ mod tests {
             decide_by: None,
             options: None,
             items: None,
+            tool_consent: None,
             subject: None,
+            secret_request: None,
         }
     }
 
@@ -1204,6 +1840,32 @@ mod tests {
             answer: None,
             option_id: None,
             checked_item_ids: None,
+            secret_binding_id: None,
+        }
+    }
+
+    fn secret_ask() -> AskRecord {
+        let mut ask = ask(AskType::Question);
+        ask.category = AskCategory::Secret;
+        ask.secret_request = Some(SecretAskRequest {
+            tool_name: "Social publishing".into(),
+            client_name: Some("Olive Studio".into()),
+            allowed_use: "Prepare Olive Studio drafts".into(),
+        });
+        ask
+    }
+
+    fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
+        ToolPermissionRecord {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            permission_id: Uuid::from_u128(21),
+            agent_pubkey: PK_A.into(),
+            action: ToolPermissionVerb::MessageOutsider.permission_key().into(),
+            scope: ToolPermissionScope {
+                kind: ToolPermissionScopeKind::Thread,
+                id: EV.into(),
+            },
+            expires_at: (now + chrono::Duration::hours(1)).to_rfc3339(),
         }
     }
 
@@ -1234,6 +1896,11 @@ mod tests {
             validate_ask_d_tag(&ask_d_tag(channel, id), channel, Uuid::from_u128(8)),
             Err(CompanyRecordError::DTagMismatch)
         );
+        assert_eq!(
+            tool_permission_d_tag(id),
+            format!("company:permission:{id}")
+        );
+        assert!(validate_tool_permission_d_tag(&tool_permission_d_tag(id), id).is_ok());
     }
 
     #[test]
@@ -1397,6 +2064,121 @@ mod tests {
     }
 
     #[test]
+    fn tool_permission_actions_validate_identity_scope_expiry_and_cas() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-28T12:00:00Z")
+            .expect("fixed test timestamp")
+            .with_timezone(&chrono::Utc);
+        let permission = tool_permission(now);
+        assert!(validate_tool_permission_record(&permission, now).is_ok());
+
+        let mut expired = permission.clone();
+        expired.expires_at = now.to_rfc3339();
+        assert!(validate_tool_permission_record(&expired, now).is_err());
+
+        let mut invalid_scope = permission.clone();
+        invalid_scope.scope.kind = ToolPermissionScopeKind::Customer;
+        assert!(validate_tool_permission_record(&invalid_scope, now).is_err());
+
+        let mut unknown_action = permission.clone();
+        unknown_action.action = "read_client_reports".into();
+        assert!(validate_tool_permission_record(&unknown_action, now).is_err());
+
+        let grant = ToolPermissionAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            permission_id: permission.permission_id,
+            action: ToolPermissionCommandKind::Grant,
+            expected_head_event_id: None,
+            permission: Some(permission.clone()),
+            reason: None,
+        };
+        assert!(validate_tool_permission_action(&grant, now).is_ok());
+
+        let mut update = grant.clone();
+        update.action = ToolPermissionCommandKind::Update;
+        update.expected_head_event_id = Some(EV.into());
+        assert!(validate_tool_permission_action(&update, now).is_ok());
+        update.expected_head_event_id = None;
+        assert!(validate_tool_permission_action(&update, now).is_err());
+
+        let revoke = ToolPermissionAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            permission_id: permission.permission_id,
+            action: ToolPermissionCommandKind::Revoke,
+            expected_head_event_id: Some(EV.into()),
+            permission: None,
+            reason: Some("Access no longer needed".into()),
+        };
+        assert!(validate_tool_permission_action(&revoke, now).is_ok());
+    }
+
+    #[test]
+    fn standing_permission_matches_only_the_exact_active_unexpired_grant() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-28T12:00:00Z")
+            .expect("fixed test timestamp")
+            .with_timezone(&chrono::Utc);
+        let permission = tool_permission(now);
+        let head = ToolPermissionHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            permission_id: permission.permission_id,
+            status: ToolPermissionStatus::Active,
+            permission: permission.clone(),
+            granted_by_pubkey: PK_B.into(),
+            changed_by_pubkey: PK_B.into(),
+            updated_at: now.to_rfc3339(),
+            source_action_event_id: EV.into(),
+        };
+        assert!(tool_permission_matches(
+            &head,
+            PK_A,
+            ToolPermissionVerb::MessageOutsider,
+            &permission.scope,
+            now
+        ));
+        assert!(!tool_permission_matches(
+            &head,
+            PK_B,
+            ToolPermissionVerb::MessageOutsider,
+            &permission.scope,
+            now
+        ));
+        assert!(!tool_permission_matches(
+            &head,
+            PK_A,
+            ToolPermissionVerb::DeleteData,
+            &permission.scope,
+            now
+        ));
+        let other_scope = ToolPermissionScope {
+            kind: ToolPermissionScopeKind::Thread,
+            id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".into(),
+        };
+        assert!(!tool_permission_matches(
+            &head,
+            PK_A,
+            ToolPermissionVerb::MessageOutsider,
+            &other_scope,
+            now
+        ));
+        let expired_now = now + chrono::Duration::hours(1);
+        assert!(!tool_permission_matches(
+            &head,
+            PK_A,
+            ToolPermissionVerb::MessageOutsider,
+            &permission.scope,
+            expired_now
+        ));
+        let mut revoked = head;
+        revoked.status = ToolPermissionStatus::Revoked;
+        assert!(!tool_permission_matches(
+            &revoked,
+            PK_A,
+            ToolPermissionVerb::MessageOutsider,
+            &permission.scope,
+            now
+        ));
+    }
+
+    #[test]
     fn asks_validate_their_type_specific_fields() {
         assert!(validate_ask_record(&ask(AskType::Question), false).is_ok());
 
@@ -1430,6 +2212,24 @@ mod tests {
         assert!(validate_ask_record(&timed, false).is_err());
         timed.decide_by = Some("2026-09-28T14:00:00Z".into());
         assert!(validate_ask_record(&timed, false).is_ok());
+
+        let mut tool_consent = ask(AskType::ToolConsent);
+        tool_consent.category = AskCategory::Tool;
+        tool_consent.tool_consent = Some(ToolConsentPreview {
+            action: ToolPermissionVerb::MessageOutsider,
+            action_preview: "Send this email to x@y.com: Hello".into(),
+        });
+        assert!(validate_ask_record(&tool_consent, false).is_ok());
+        tool_consent.category = AskCategory::General;
+        assert!(validate_ask_record(&tool_consent, false).is_err());
+        tool_consent.category = AskCategory::Tool;
+        tool_consent
+            .tool_consent
+            .as_mut()
+            .unwrap()
+            .action_preview
+            .clear();
+        assert!(validate_ask_record(&tool_consent, false).is_err());
     }
 
     #[test]
@@ -1485,6 +2285,19 @@ mod tests {
         r.outcome = AskOutcome::Pass;
         assert!(validate_ask_response(&approval, &r).is_err());
 
+        let mut consent = ask(AskType::ToolConsent);
+        consent.category = AskCategory::Tool;
+        consent.tool_consent = Some(ToolConsentPreview {
+            action: ToolPermissionVerb::MessageOutsider,
+            action_preview: "Send this email to x@y.com: Hello".into(),
+        });
+        let mut decision = response(AskOutcome::Approved);
+        assert!(validate_ask_response(&consent, &decision).is_err());
+        decision.reason = Some("Approved for this action".into());
+        assert!(validate_ask_response(&consent, &decision).is_ok());
+        decision.outcome = AskOutcome::RevisionRequested;
+        assert!(validate_ask_response(&consent, &decision).is_err());
+
         let question = ask(AskType::Question);
         let mut a = response(AskOutcome::Answered);
         assert!(validate_ask_response(&question, &a).is_err());
@@ -1523,6 +2336,78 @@ mod tests {
         assert!(validate_ask_response(&verdict, &v).is_ok());
         v.answer = Some("extra".into());
         assert!(validate_ask_response(&verdict, &v).is_err());
+    }
+
+    #[test]
+    fn secret_asks_require_non_secret_request_details_and_bind_only_by_id() {
+        let mut secret_record = secret_ask();
+        assert!(validate_ask_record(&secret_record, false).is_ok());
+        secret_record.secret_request = None;
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+        secret_record
+            .secret_request
+            .as_mut()
+            .expect("secret request")
+            .client_name = Some("   ".into());
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+        secret_record
+            .secret_request
+            .as_mut()
+            .expect("secret request")
+            .client_name = Some("x".repeat(MAX_SECRET_NAME_CHARS + 1));
+        assert!(validate_ask_record(&secret_record, false).is_err());
+        secret_record = secret_ask();
+
+        let mut response = response(AskOutcome::SecretBound);
+        response.secret_binding_id = Some(Uuid::from_u128(11));
+        assert!(validate_ask_response(&secret_record, &response).is_ok());
+        response.answer = Some("must never be used for a credential".into());
+        assert!(validate_ask_response(&secret_record, &response).is_err());
+        response.answer = None;
+        response.secret_binding_id = None;
+        assert!(validate_ask_response(&secret_record, &response).is_err());
+
+        let mut ordinary = ask(AskType::Question);
+        ordinary.secret_request = Some(SecretAskRequest {
+            tool_name: "Social publishing".into(),
+            client_name: None,
+            allowed_use: "Prepare drafts".into(),
+        });
+        assert!(validate_ask_record(&ordinary, false).is_err());
+    }
+
+    #[test]
+    fn secret_binding_actions_are_metadata_only_and_reject_value_fields() {
+        let binding_id = Uuid::from_u128(12);
+        let action = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Create,
+            expected_head_event_id: None,
+            binding: Some(SecretBindingSpec {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                binding_id,
+                name: "Publishing credential".into(),
+                employee_pubkey: PK_A.into(),
+                tool_name: "Social publishing".into(),
+                allowed_use: "Prepare Olive Studio drafts".into(),
+                storage: SecretStorage::Device,
+                source_ask: None,
+            }),
+        };
+        assert!(validate_secret_binding_action(&action).is_ok());
+        let serialized = serde_json::to_string(&action).expect("metadata serialization");
+        assert!(!serialized.contains("value"));
+
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let attempted = format!(
+            "{{\"schemaVersion\":1,\"bindingId\":\"{binding_id}\",\"action\":\"create\",\"binding\":{{\"schemaVersion\":1,\"bindingId\":\"{binding_id}\",\"name\":\"Publishing credential\",\"employeePubkey\":\"{PK_A}\",\"toolName\":\"Social publishing\",\"allowedUse\":\"Prepare drafts\",\"storage\":\"device\",\"value\":\"{sentinel}\"}}}}"
+        );
+        let error = parse_company_command(crate::kind::KIND_SECRET_BINDING_ACTION, &attempted)
+            .expect_err("secret values are not part of the binding command");
+        assert!(!error.to_string().contains(&sentinel));
     }
 
     #[test]

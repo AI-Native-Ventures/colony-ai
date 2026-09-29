@@ -10,7 +10,8 @@ export type AskType =
   | "question"
   | "choice"
   | "checklist"
-  | "verdict";
+  | "verdict"
+  | "tool_consent";
 export type AskCategory = "general" | "money" | "hire" | "tool" | "secret";
 export type AskStatus = "open" | "resolved" | "cancelled";
 export type AskOutcome =
@@ -21,9 +22,25 @@ export type AskOutcome =
   | "chosen"
   | "confirmed"
   | "pass"
-  | "fail";
+  | "fail"
+  | "secret_bound";
+
+export type SecretAskRequest = {
+  toolName: string;
+  clientName?: string;
+  allowedUse: string;
+};
 
 export type AskOption = { id: string; label: string };
+
+export type ToolConsentPreview = {
+  action:
+    | "spend_money"
+    | "message_outsider"
+    | "delete_data"
+    | "publish_publicly";
+  actionPreview: string;
+};
 
 export type AskRecord = {
   schemaVersion: number;
@@ -37,7 +54,9 @@ export type AskRecord = {
   decideBy?: string | null;
   options?: AskOption[] | null;
   items?: AskOption[] | null;
+  toolConsent?: ToolConsentPreview | null;
   subject?: { kind: "goal" | "workflowRun" | "workItem"; id: string } | null;
+  secretRequest?: SecretAskRequest | null;
 };
 
 export type AskHead = {
@@ -53,6 +72,7 @@ export type AskHead = {
     answer?: string;
     optionId?: string;
     checkedItemIds?: string[];
+    secretBindingId?: string;
     resolvedByPubkey: string;
     resolvedAt: string;
     responseEventId: string;
@@ -75,16 +95,26 @@ export const askHeadQueryKey = (
   channelId: string,
   askId: string,
   relaySelfPubkey: string | null,
-) => ["company-ask-head", channelId, askId, relaySelfPubkey] as const;
+  companyToolConsentInbox = false,
+) =>
+  [
+    "company-ask-head",
+    channelId,
+    askId,
+    relaySelfPubkey,
+    companyToolConsentInbox,
+  ] as const;
 
 export const askHeadsQueryKey = (
   channelIds: readonly string[],
   relaySelfPubkey: string | null,
+  includeCompanyToolConsent = false,
 ) =>
   [
     "company-ask-heads",
     [...channelIds].sort().join(","),
     relaySelfPubkey,
+    includeCompanyToolConsent,
   ] as const;
 
 const ASK_PAGE_SIZE = 500;
@@ -96,6 +126,7 @@ const ASK_TYPES = new Set<AskType>([
   "choice",
   "checklist",
   "verdict",
+  "tool_consent",
 ]);
 const ASK_CATEGORIES = new Set<AskCategory>([
   "general",
@@ -128,6 +159,36 @@ function parseAskHead(content: string): AskHead {
   }
   const head = value as unknown as AskHead;
   const ask = value.ask;
+  const secretRequest = ask.secretRequest;
+  const invalidSecretRequest =
+    ask.category === "secret"
+      ? ask.type !== "question" ||
+        !isRecord(secretRequest) ||
+        Object.keys(secretRequest).some(
+          (key) =>
+            key !== "toolName" && key !== "clientName" && key !== "allowedUse",
+        ) ||
+        typeof secretRequest.toolName !== "string" ||
+        (secretRequest.clientName !== undefined &&
+          (typeof secretRequest.clientName !== "string" ||
+            !secretRequest.clientName.trim() ||
+            Array.from(secretRequest.clientName).length > 120)) ||
+        typeof secretRequest.allowedUse !== "string"
+      : secretRequest !== undefined && secretRequest !== null;
+  const toolConsent = ask.toolConsent;
+  const validToolConsent =
+    toolConsent === undefined ||
+    toolConsent === null ||
+    (isRecord(toolConsent) &&
+      [
+        "spend_money",
+        "message_outsider",
+        "delete_data",
+        "publish_publicly",
+      ].includes(String(toolConsent.action)) &&
+      typeof toolConsent.actionPreview === "string" &&
+      toolConsent.actionPreview.length > 0 &&
+      toolConsent.actionPreview.length <= 4000);
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -143,7 +204,12 @@ function parseAskHead(content: string): AskHead {
     typeof ask.category !== "string" ||
     !ASK_CATEGORIES.has(ask.category as AskCategory) ||
     typeof ask.title !== "string" ||
-    typeof ask.threadRootEventId !== "string"
+    typeof ask.threadRootEventId !== "string" ||
+    invalidSecretRequest ||
+    !validToolConsent ||
+    (ask.type === "tool_consent" &&
+      (ask.category !== "tool" || !isRecord(toolConsent))) ||
+    (ask.type !== "tool_consent" && toolConsent != null)
   ) {
     throw new Error(
       "The relay returned an ask head with an unsupported shape.",
@@ -223,6 +289,35 @@ export async function fetchAskHead(
       .map((event) => decodeRelayAskHead(event, relaySelfPubkey, channelId))
       .filter((record): record is AskHeadRecord => record !== null)
       .filter((record) => record.head.askId === askId)
+      .sort((first, second) => compareNewest(first.event, second.event))[0] ??
+    null
+  );
+}
+
+export async function fetchCompanyToolConsentAskHead(
+  channelId: string,
+  askId: string,
+  relaySelfPubkey: string,
+): Promise<AskHeadRecord | null> {
+  const dTag = `channel:${channelId}:ask:${askId}`;
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_ASK_HEAD],
+    authors: [relaySelfPubkey],
+    "#d": [dTag],
+    "#t": ["tool_consent"],
+    limit: 10,
+  });
+  return (
+    events
+      .filter((event) => oneTagValue(event, "t") === "tool_consent")
+      .map((event) => decodeRelayAskHead(event, relaySelfPubkey, channelId))
+      .filter((record): record is AskHeadRecord => record !== null)
+      .filter(
+        (record) =>
+          record.head.askId === askId &&
+          record.head.ask.type === "tool_consent" &&
+          record.head.ask.category === "tool",
+      )
       .sort((first, second) => compareNewest(first.event, second.event))[0] ??
     null
   );
@@ -331,6 +426,55 @@ export async function fetchAskHeads(
     }
   }
   return [...byCoordinate.values()];
+}
+
+/**
+ * Fetch tool-consent asks across community channels. The relay permits this
+ * global filter only for community owners and admins, then limits results to
+ * relay-signed tool-consent heads.
+ */
+export async function fetchCompanyToolConsentAskHeads(
+  relaySelfPubkey: string,
+): Promise<AskHeadRecord[]> {
+  const seen = new Map<string, AskHeadRecord>();
+  let until: number | undefined;
+  let beforeId: string | undefined;
+
+  for (let pageNumber = 0; pageNumber < ASK_MAX_PAGES; pageNumber += 1) {
+    const events = await relayClient.fetchEvents({
+      kinds: [KIND_ASK_HEAD],
+      authors: [relaySelfPubkey],
+      "#t": ["tool_consent"],
+      limit: ASK_PAGE_SIZE,
+      ...(until === undefined ? {} : { until, before_id: beforeId }),
+    });
+    for (const event of events) {
+      if (oneTagValue(event, "t") !== "tool_consent") continue;
+      const record = decodeRelayAskHead(event, relaySelfPubkey);
+      if (
+        record?.head.ask.type === "tool_consent" &&
+        record.head.ask.category === "tool"
+      ) {
+        const key = `${record.channelId}:${record.head.askId}`;
+        const current = seen.get(key);
+        if (!current || compareNewest(current.event, record.event) > 0) {
+          seen.set(key, record);
+        }
+      }
+    }
+    if (events.length < ASK_PAGE_SIZE) return [...seen.values()];
+
+    const oldest = nextPageCursor(events);
+    if (!oldest || (until === oldest.created_at && beforeId === oldest.id)) {
+      throw new Error(
+        "The tool-consent inbox could not advance its relay history cursor.",
+      );
+    }
+    until = oldest.created_at;
+    beforeId = oldest.id;
+  }
+
+  throw new Error("The tool-consent inbox exceeds supported history.");
 }
 
 export function splitChannelIds(channelIds: readonly string[]) {

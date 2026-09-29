@@ -587,6 +587,8 @@ pub fn run() {
             save_ncryptsec_copy,
             import_identity,
             persist_current_identity,
+            store_company_secret,
+            delete_company_secret,
             get_profile,
             update_profile,
             update_profile_at_relay,

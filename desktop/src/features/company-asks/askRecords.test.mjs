@@ -124,6 +124,57 @@ test("decodeRelayAskHead rejects a tampered signature and reports malformed sign
   );
 });
 
+test("decodeRelayAskHead accepts a tool consent ask with an exact preview", () => {
+  const value = JSON.parse(headContent());
+  value.ask.type = "tool_consent";
+  value.ask.category = "tool";
+  value.ask.toolConsent = {
+    action: "message_outsider",
+    actionPreview:
+      "Send this email to client@example.com: The report is ready.",
+  };
+  const decoded = decodeRelayAskHead(
+    signHead({ content: JSON.stringify(value) }),
+    RELAY_PUBKEY,
+  );
+  assert.equal(decoded?.head.ask.type, "tool_consent");
+  assert.equal(
+    decoded?.head.ask.toolConsent?.actionPreview,
+    "Send this email to client@example.com: The report is ready.",
+  );
+});
+
+test("decodeRelayAskHead rejects tool consent records without bounded previews", () => {
+  const missingPreview = JSON.parse(headContent());
+  missingPreview.ask.type = "tool_consent";
+  missingPreview.ask.category = "tool";
+  missingPreview.ask.toolConsent = { action: "delete_data" };
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: JSON.stringify(missingPreview) }),
+        RELAY_PUBKEY,
+      ),
+    /unsupported shape/i,
+  );
+
+  const wrongCategory = JSON.parse(headContent());
+  wrongCategory.ask.type = "tool_consent";
+  wrongCategory.ask.category = "general";
+  wrongCategory.ask.toolConsent = {
+    action: "publish_publicly",
+    actionPreview: "Publish a post.",
+  };
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: JSON.stringify(wrongCategory) }),
+        RELAY_PUBKEY,
+      ),
+    /unsupported shape/i,
+  );
+});
+
 test("askIdFromAction reads create commands only", () => {
   assert.equal(
     askIdFromAction(JSON.stringify({ action: "create", askId: ASK_ID })),

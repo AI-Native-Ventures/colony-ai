@@ -4,12 +4,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/community/community_provider.dart';
+import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import 'pulse_actions.dart';
 import 'pulse_models.dart';
 import 'pulse_provider.dart';
+import 'team_updates_page.dart';
 
 class TeamUpdateNotePage extends HookConsumerWidget {
   const TeamUpdateNotePage({
@@ -26,6 +29,7 @@ class TeamUpdateNotePage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(globalNotesProvider);
+    final community = ref.watch(activeCommunityProvider).value;
     final notes = notesAsync.asData?.value ?? const <UserNote>[];
     final note = notes.where((candidate) => candidate.id == noteId).firstOrNull;
     final replies =
@@ -61,6 +65,8 @@ class TeamUpdateNotePage extends HookConsumerWidget {
       if (context.mounted) isSending.value = false;
     }
 
+    if (notesAsync.hasError) return const TeamUpdatesPage();
+
     return Scaffold(
       backgroundColor: context.mobileTokens.paper,
       resizeToAvoidBottomInset: true,
@@ -69,6 +75,7 @@ class TeamUpdateNotePage extends HookConsumerWidget {
         child: Column(
           children: [
             _NoteHeader(
+              communityName: community?.name,
               author: note == null
                   ? null
                   : ref.watch(
@@ -79,13 +86,18 @@ class TeamUpdateNotePage extends HookConsumerWidget {
               createdAt: note?.createdAt,
               now: now,
               onBack: () => Navigator.of(context).maybePop(),
+              onOpenTeamUpdates: () => MobileNavigation.openUpdates(context),
             ),
             Expanded(
               child: notesAsync.when(
-                loading: () => const SizedBox.shrink(),
+                loading: () =>
+                    const Center(child: CircularProgressIndicator.adaptive()),
                 error: (_, _) => const SizedBox.shrink(),
                 data: (_) => note == null
-                    ? const SizedBox.shrink()
+                    ? _NoteMissingState(
+                        onBackToTeamUpdates: () =>
+                            Navigator.of(context).maybePop(),
+                      )
                     : _NoteBody(
                         note: note,
                         replies: replies,
@@ -109,42 +121,52 @@ class TeamUpdateNotePage extends HookConsumerWidget {
 
 class _NoteHeader extends StatelessWidget {
   const _NoteHeader({
+    required this.communityName,
     required this.author,
     required this.createdAt,
     required this.now,
     required this.onBack,
+    required this.onOpenTeamUpdates,
   });
 
+  final String? communityName;
   final String? author;
   final int? createdAt;
   final DateTime? now;
   final VoidCallback onBack;
+  final VoidCallback onOpenTeamUpdates;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Container(
-      height: 66,
-      padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
-      decoration: BoxDecoration(
-        color: tokens.paper,
-        border: Border(bottom: BorderSide(color: tokens.line)),
-      ),
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
+      color: tokens.paper,
       child: Row(
         children: [
           IconButton(
             onPressed: onBack,
             tooltip: 'Back',
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              fixedSize: const Size(42, 42),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                side: BorderSide(color: tokens.line),
+              ),
+            ),
             icon: const Icon(LucideIcons.chevronLeft, size: 19),
           ),
-          const SizedBox(width: Grid.half),
+          const SizedBox(width: Grid.xxs),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Team update',
+                  'Team note',
                   style: context.textTheme.titleMedium?.copyWith(
                     color: tokens.ink,
                     fontSize: 16,
@@ -154,7 +176,9 @@ class _NoteHeader extends StatelessWidget {
                 Text(
                   author != null && createdAt != null
                       ? '$author · ${_relativeDayLabel(createdAt!, now: now)}'
-                      : 'Team update',
+                      : communityName?.trim().isNotEmpty == true
+                      ? communityName!.trim()
+                      : 'Colony',
                   style: context.textTheme.bodySmall?.copyWith(
                     color: tokens.muted,
                     fontSize: 10,
@@ -163,8 +187,94 @@ class _NoteHeader extends StatelessWidget {
               ],
             ),
           ),
-          Icon(LucideIcons.ellipsis, size: 18, color: tokens.muted),
+          IconButton(
+            key: const ValueKey('team-note-open-updates'),
+            tooltip: 'Open team updates',
+            onPressed: onOpenTeamUpdates,
+            style: IconButton.styleFrom(
+              foregroundColor: tokens.ink,
+              backgroundColor: tokens.paper,
+              fixedSize: const Size(42, 42),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                side: BorderSide(color: tokens.line),
+              ),
+            ),
+            icon: const Icon(LucideIcons.plus, size: 19),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _NoteMissingState extends StatelessWidget {
+  const _NoteMissingState({required this.onBackToTeamUpdates});
+
+  final VoidCallback onBackToTeamUpdates;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Grid.gutter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                color: tokens.soft,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Icon(LucideIcons.briefcaseBusiness, color: tokens.action),
+            ),
+            const SizedBox(height: Grid.sm),
+            Text(
+              'This note is no longer here',
+              textAlign: TextAlign.center,
+              style: context.textTheme.titleLarge?.copyWith(
+                color: tokens.ink,
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.65,
+              ),
+            ),
+            const SizedBox(height: Grid.xxs),
+            Text(
+              'It may have been removed or you may no longer have access. We cannot show its replies.',
+              textAlign: TextAlign.center,
+              style: context.textTheme.bodySmall?.copyWith(
+                color: tokens.muted,
+                fontSize: 12,
+                height: 1.65,
+              ),
+            ),
+            const SizedBox(height: Grid.sm),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                onPressed: onBackToTeamUpdates,
+                style: FilledButton.styleFrom(
+                  backgroundColor: tokens.action,
+                  foregroundColor: tokens.onAction,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.button),
+                  ),
+                  textStyle: context.textTheme.labelLarge?.copyWith(
+                    color: tokens.onAction,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: const Text('Back to team updates'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

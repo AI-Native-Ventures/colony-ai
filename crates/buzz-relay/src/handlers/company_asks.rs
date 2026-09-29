@@ -12,8 +12,8 @@ use uuid::Uuid;
 use buzz_core::company_records::{
     ask_resolution_denied_reason, parse_company_command, validate_ask_action, validate_ask_d_tag,
     validate_ask_response, AskAction, AskActionKind, AskCancellation, AskHead, AskRecord,
-    AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, CommunityRole,
-    CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
+    AskResolution, AskResolutionPayload, AskResolver, AskResponse, AskStatus, AskType,
+    CommunityRole, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_ASK_RESPONSE};
 use buzz_core::tenant::TenantContext;
@@ -51,6 +51,13 @@ pub(super) async fn handle(
         CompanyCommand::GoalAction(_) => Err(IngestError::Rejected(
             "restricted: goal commands are handled by the company goal broker".into(),
         )),
+        CompanyCommand::SecretBindingAction(_) => Err(IngestError::Rejected(
+            "restricted: secret binding commands are handled by the company secret broker".into(),
+        )),
+        CompanyCommand::ToolPermissionAction(_) => Err(IngestError::Rejected(
+            "restricted: tool permission commands are handled by the company permission broker"
+                .into(),
+        )),
     }
 }
 
@@ -83,6 +90,14 @@ async fn handle_ask_action(
                 .ok_or_else(|| invalid("create needs the ask"))?;
             if !actor.is_channel_member {
                 return Err(forbidden("only channel members can create an ask"));
+            }
+            if ask.ask_type == AskType::ToolConsent && !actor.is_agent {
+                return Err(forbidden(
+                    "tool consent asks can only be created by a managed agent",
+                ));
+            }
+            if ask.ask_type == AskType::ToolConsent {
+                validate_tool_consent_deadline(ask)?;
             }
             let addressee_is_agent = match ask.addressee_pubkey.as_deref() {
                 Some(pubkey) => is_managed_agent(state, tenant, pubkey).await?,
@@ -204,9 +219,6 @@ async fn handle_ask_response(
     }
 
     let actor = actor_facts(tenant, state, &auth, channel_id).await?;
-    if !actor.is_channel_member {
-        return Err(forbidden("only channel members can answer an ask"));
-    }
 
     let current = current_ask_head(state, tenant, channel_id, &d_tag)
         .await?
@@ -215,6 +227,14 @@ async fn handle_ask_response(
     ensure_head_identity(&head, response.ask_id)?;
     ensure_expected_head(Some(response.expected_head_event_id.as_str()), &current)?;
     ensure_open(&head, &current)?;
+    if head.ask.category == buzz_core::company_records::AskCategory::Secret {
+        return Err(invalid(
+            "secret asks resolve only through secret binding activation",
+        ));
+    }
+    if head.ask.ask_type == AskType::ToolConsent && is_tool_consent_expired(&head.ask) {
+        return Err(conflict("tool consent ask expired; the action was refused"));
+    }
     validate_ask_response(&head.ask, &response)
         .map_err(|error| invalid(format!("ask response: {error}")))?;
 
@@ -237,6 +257,7 @@ async fn handle_ask_response(
             answer: response.answer,
             option_id: response.option_id,
             checked_item_ids: response.checked_item_ids,
+            secret_binding_id: response.secret_binding_id,
         },
         resolved_by_pubkey: auth.pubkey().to_hex(),
         resolved_at: now_rfc3339(),
@@ -691,7 +712,7 @@ fn ensure_open(head: &AskHead, current: &StoredEvent) -> Result<(), IngestError>
     }
 }
 
-fn relay_ask_head_event(
+pub(super) fn relay_ask_head_event(
     head: &AskHead,
     channel_id: Uuid,
     d_tag: &str,
@@ -709,8 +730,15 @@ fn relay_ask_head_event(
         Tag::parse(["d", d_tag]).map_err(|error| internal(format!("ask d tag: {error}")))?;
     let root_tag = Tag::parse(["e", head.ask.thread_root_event_id.as_str(), "", "root"])
         .map_err(|error| internal(format!("ask thread root tag: {error}")))?;
+    let mut tags = vec![channel_tag, d_tag, root_tag];
+    if head.ask.ask_type == AskType::ToolConsent {
+        tags.push(
+            Tag::parse(["t", "tool_consent"])
+                .map_err(|error| internal(format!("tool consent inbox tag: {error}")))?,
+        );
+    }
     EventBuilder::new(Kind::Custom(KIND_ASK_HEAD as u16), content)
-        .tags([channel_tag, d_tag, root_tag])
+        .tags(tags)
         .custom_created_at(nostr::Timestamp::from_secs(created_at))
         .sign_with_keys(&state.relay_keypair)
         .map_err(internal)
@@ -730,6 +758,29 @@ fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<()
 
 fn now_rfc3339() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+fn validate_tool_consent_deadline(ask: &AskRecord) -> Result<(), IngestError> {
+    let deadline = ask
+        .decide_by
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc))
+        .ok_or_else(|| invalid("tool consent asks need a deadline"))?;
+    let now = Utc::now();
+    if deadline <= now || deadline > now + chrono::Duration::minutes(5) {
+        return Err(invalid(
+            "tool consent deadline must be within the next five minutes",
+        ));
+    }
+    Ok(())
+}
+
+fn is_tool_consent_expired(ask: &AskRecord) -> bool {
+    ask.decide_by
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .is_some_and(|deadline| deadline.with_timezone(&Utc) <= Utc::now())
 }
 
 fn invalid(message: impl Into<String>) -> IngestError {
@@ -989,6 +1040,12 @@ mod postgres_tests {
         ask_type: AskType,
         category: AskCategory,
     ) -> AskRecord {
+        let tool_consent = (ask_type == AskType::ToolConsent).then(|| {
+            buzz_core::company_records::ToolConsentPreview {
+                action: buzz_core::company_records::ToolPermissionVerb::MessageOutsider,
+                action_preview: "Send this email to x@y.com: The approved draft".into(),
+            }
+        });
         let (options, items) = match ask_type {
             AskType::Choice => (
                 Some(vec![
@@ -1021,10 +1078,19 @@ mod postgres_tests {
             body: None,
             thread_root_event_id: thread_root_event_id.into(),
             addressee_pubkey: None,
-            decide_by: None,
+            decide_by: (ask_type == AskType::ToolConsent)
+                .then(|| (Utc::now() + chrono::Duration::minutes(2)).to_rfc3339()),
             options,
             items,
+            tool_consent,
             subject: None,
+            secret_request: (category == AskCategory::Secret).then(|| {
+                buzz_core::company_records::SecretAskRequest {
+                    tool_name: "Social publishing".into(),
+                    client_name: Some("Olive Studio".into()),
+                    allowed_use: "Prepare campaign drafts".into(),
+                }
+            }),
         }
     }
 
@@ -1051,6 +1117,34 @@ mod postgres_tests {
         .tags(tags)
         .sign_with_keys(keys)
         .expect("sign command")
+    }
+
+    fn sign_secret_action(
+        keys: &Keys,
+        action: &buzz_core::company_records::SecretBindingAction,
+    ) -> Event {
+        buzz_sdk::company_records::build_secret_binding_action(action)
+            .expect("build secret binding action")
+            .sign_with_keys(keys)
+            .expect("sign secret binding action")
+    }
+
+    async fn secret_binding_head(fixture: &Fixture, binding_id: Uuid) -> StoredEvent {
+        let d_tag = buzz_core::company_records::secret_binding_d_tag(binding_id);
+        let mut query = EventQuery::for_community(fixture.tenant.community());
+        query.kinds = Some(vec![buzz_core::kind::KIND_SECRET_BINDING_HEAD as i32]);
+        query.pubkey = Some(fixture.state.relay_keypair.public_key().to_bytes().to_vec());
+        query.d_tag = Some(d_tag);
+        query.global_only = true;
+        query.limit = Some(2);
+        fixture
+            .state
+            .db
+            .query_events_for_event_write(&query)
+            .await
+            .expect("query secret binding head")
+            .pop()
+            .expect("secret binding head exists")
     }
 
     async fn create_ask(
@@ -1088,7 +1182,7 @@ mod postgres_tests {
 
     fn response(ask_id: Uuid, expected_head_event_id: &str, ask_type: AskType) -> AskResponse {
         match ask_type {
-            AskType::Approval => AskResponse {
+            AskType::Approval | AskType::ToolConsent => AskResponse {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
                 ask_id,
                 expected_head_event_id: expected_head_event_id.into(),
@@ -1097,6 +1191,7 @@ mod postgres_tests {
                 answer: None,
                 option_id: None,
                 checked_item_ids: None,
+                secret_binding_id: None,
             },
             AskType::Question => AskResponse {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -1107,6 +1202,7 @@ mod postgres_tests {
                 answer: Some("The brief is ready".into()),
                 option_id: None,
                 checked_item_ids: None,
+                secret_binding_id: None,
             },
             AskType::Choice => AskResponse {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -1117,6 +1213,7 @@ mod postgres_tests {
                 answer: None,
                 option_id: Some("one".into()),
                 checked_item_ids: None,
+                secret_binding_id: None,
             },
             AskType::Checklist => AskResponse {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -1127,6 +1224,7 @@ mod postgres_tests {
                 answer: None,
                 option_id: None,
                 checked_item_ids: Some(vec!["brief".into()]),
+                secret_binding_id: None,
             },
             AskType::Verdict => AskResponse {
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -1137,6 +1235,7 @@ mod postgres_tests {
                 answer: None,
                 option_id: None,
                 checked_item_ids: None,
+                secret_binding_id: None,
             },
         }
     }
@@ -1331,12 +1430,7 @@ mod postgres_tests {
         add_actor(&fixture, &agent, Some("member"), true, true).await;
         add_actor(&fixture, &outside, Some("member"), false, false).await;
 
-        for category in [
-            AskCategory::Money,
-            AskCategory::Hire,
-            AskCategory::Tool,
-            AskCategory::Secret,
-        ] {
+        for category in [AskCategory::Money, AskCategory::Hire, AskCategory::Tool] {
             for (resolver, expected_reason) in [
                 (
                     &member,
@@ -1419,7 +1513,8 @@ mod postgres_tests {
         let (_, denied) = response_for(&fixture, &outside, &head, AskType::Question).await;
         assert!(matches!(
             denied,
-            Err(IngestError::AuthFailed(message)) if message.contains("only channel members")
+            Err(IngestError::AuthFailed(message))
+                if message.contains("Only members of this conversation can answer")
         ));
 
         let addressed = ask_record(
@@ -1530,6 +1625,97 @@ mod postgres_tests {
             .await
             .expect("check nonmember command")
             .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn tool_consent_is_agent_created_and_resolved_only_by_owner_or_admin() {
+        let fixture = fixture().await;
+        let agent = Keys::generate();
+        let member = Keys::generate();
+        let admin = Keys::generate();
+        add_actor(&fixture, &agent, Some("member"), true, true).await;
+        add_actor(&fixture, &member, Some("member"), false, true).await;
+        add_actor(&fixture, &admin, Some("admin"), false, false).await;
+
+        let ask = ask_record(
+            Uuid::new_v4(),
+            &fixture.root.id.to_hex(),
+            AskType::ToolConsent,
+            AskCategory::Tool,
+        );
+        let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, ask.ask_id);
+        let action = AskAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            ask_id: ask.ask_id,
+            action: AskActionKind::Create,
+            expected_head_event_id: None,
+            ask: Some(ask.clone()),
+            reason: None,
+        };
+        let member_command = sign_command(
+            &member,
+            KIND_ASK_ACTION,
+            fixture.channel_id,
+            &d_tag,
+            &action,
+            Some(&fixture.root.id.to_hex()),
+        );
+        assert!(matches!(
+            company_records::handle(
+                &fixture.tenant,
+                &fixture.state,
+                member_command,
+                auth(&member)
+            )
+            .await,
+            Err(IngestError::AuthFailed(message))
+                if message.contains("managed agent")
+        ));
+
+        let (_, head) = create_ask(&fixture, &agent, ask).await;
+        let (agent_response, agent_result) =
+            response_for(&fixture, &agent, &head, AskType::ToolConsent).await;
+        assert!(matches!(
+            agent_result,
+            Err(IngestError::AuthFailed(message))
+                if message.contains("Agents cannot decide")
+        ));
+        assert!(fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(
+                fixture.tenant.community(),
+                &agent_response.id.to_bytes(),
+            )
+            .await
+            .expect("check agent response was not stored")
+            .is_none());
+
+        let (member_response, member_result) =
+            response_for(&fixture, &member, &head, AskType::ToolConsent).await;
+        assert!(matches!(
+            member_result,
+            Err(IngestError::AuthFailed(message))
+                if message.contains("Only company owners and admins")
+        ));
+        assert!(fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(
+                fixture.tenant.community(),
+                &member_response.id.to_bytes(),
+            )
+            .await
+            .expect("check member response was not stored")
+            .is_none());
+
+        let (_, admin_result) = response_for(&fixture, &admin, &head, AskType::ToolConsent).await;
+        assert!(
+            admin_result
+                .expect("community admin can resolve a tool consent outside the channel")
+                .accepted
+        );
     }
 
     #[tokio::test]
@@ -1765,6 +1951,7 @@ mod postgres_tests {
                 AskType::Choice => buzz_core::company_records::AskOutcome::Chosen,
                 AskType::Checklist => buzz_core::company_records::AskOutcome::Confirmed,
                 AskType::Verdict => buzz_core::company_records::AskOutcome::Approved,
+                AskType::ToolConsent => buzz_core::company_records::AskOutcome::Answered,
             };
             if ask_type == AskType::Choice {
                 wrong.option_id = Some("not-an-option".into());
@@ -1948,6 +2135,197 @@ mod postgres_tests {
                 .expect("parse final head")
                 .status,
             AskStatus::Resolved | AskStatus::Cancelled
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable Postgres and Redis"]
+    async fn secret_binding_authority_activation_and_revocation_use_exact_heads() {
+        use buzz_core::company_records::{
+            SecretAskCoordinate, SecretBindingAction, SecretBindingActionKind, SecretBindingHead,
+            SecretBindingSpec, SecretBindingStatus, SecretStorage,
+        };
+
+        let fixture = fixture().await;
+        let admin = Keys::generate();
+        let member = Keys::generate();
+        let agent = Keys::generate();
+        add_actor(&fixture, &admin, Some("admin"), false, true).await;
+        add_actor(&fixture, &member, Some("member"), false, true).await;
+        add_actor(&fixture, &agent, Some("member"), true, true).await;
+
+        let ask_id = Uuid::new_v4();
+        let (_, original_ask_head) = create_ask(
+            &fixture,
+            &agent,
+            ask_record(
+                ask_id,
+                &fixture.root.id.to_hex(),
+                AskType::Question,
+                AskCategory::Secret,
+            ),
+        )
+        .await;
+        let binding_id = Uuid::new_v4();
+        let create = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Create,
+            expected_head_event_id: None,
+            binding: Some(SecretBindingSpec {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                binding_id,
+                name: "Publishing credential".into(),
+                employee_pubkey: agent.public_key().to_hex(),
+                tool_name: "Social publishing".into(),
+                allowed_use: "Prepare campaign drafts".into(),
+                storage: SecretStorage::Device,
+                source_ask: Some(SecretAskCoordinate {
+                    channel_id: fixture.channel_id,
+                    ask_id,
+                }),
+            }),
+        };
+
+        let denied = company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&member, &create),
+            auth(&member),
+        )
+        .await;
+        assert!(matches!(
+            denied,
+            Err(IngestError::Rejected(message)) if message.contains("owner or admin")
+        ));
+        let denied_agent = company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&agent, &create),
+            auth(&agent),
+        )
+        .await;
+        assert!(matches!(
+            denied_agent,
+            Err(IngestError::Rejected(message)) if message.contains("managed agents")
+        ));
+
+        company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&fixture.owner, &create),
+            auth(&fixture.owner),
+        )
+        .await
+        .expect("owner creates pending binding");
+        let pending = secret_binding_head(&fixture, binding_id).await;
+        let pending_head = serde_json::from_str::<SecretBindingHead>(&pending.event.content)
+            .expect("parse pending binding");
+        assert_eq!(pending_head.status, SecretBindingStatus::Pending);
+
+        let stale = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Activate,
+            expected_head_event_id: Some("00".repeat(32)),
+            binding: None,
+        };
+        let stale_result = company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&admin, &stale),
+            auth(&admin),
+        )
+        .await;
+        assert!(matches!(
+            stale_result,
+            Err(IngestError::Rejected(message)) if message.contains("current head is")
+        ));
+
+        let activation = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Activate,
+            expected_head_event_id: Some(pending.event.id.to_hex()),
+            binding: None,
+        };
+        company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&admin, &activation),
+            auth(&admin),
+        )
+        .await
+        .expect("admin activates binding");
+        let active = secret_binding_head(&fixture, binding_id).await;
+        let active_head = serde_json::from_str::<SecretBindingHead>(&active.event.content)
+            .expect("parse active binding");
+        assert_eq!(active_head.status, SecretBindingStatus::Active);
+        let resolved_ask = current_ask_head(
+            &fixture.state,
+            &fixture.tenant,
+            fixture.channel_id,
+            &buzz_core::company_records::ask_d_tag(fixture.channel_id, ask_id),
+        )
+        .await
+        .expect("load resolved secret ask")
+        .expect("secret ask head exists");
+        let resolved_ask = parse_head(&resolved_ask.event).expect("parse resolved ask");
+        assert_eq!(resolved_ask.status, AskStatus::Resolved);
+        let resolution = resolved_ask.resolution.expect("secret ask resolution");
+        assert_eq!(
+            resolution.response.outcome,
+            buzz_core::company_records::AskOutcome::SecretBound
+        );
+        assert_eq!(resolution.response.secret_binding_id, Some(binding_id));
+        assert_eq!(
+            resolution.response_event_id,
+            active_head.source_action_event_id
+        );
+        assert_eq!(
+            parse_head(&original_ask_head.event)
+                .expect("original ask snapshot")
+                .status,
+            AskStatus::Open
+        );
+
+        let revoke = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Revoke,
+            expected_head_event_id: Some(active.event.id.to_hex()),
+            binding: None,
+        };
+        company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&admin, &revoke),
+            auth(&admin),
+        )
+        .await
+        .expect("admin revokes binding");
+        let revoked = secret_binding_head(&fixture, binding_id).await;
+        let revoked_head = serde_json::from_str::<SecretBindingHead>(&revoked.event.content)
+            .expect("parse revoked binding");
+        assert_eq!(revoked_head.status, SecretBindingStatus::Revoked);
+
+        let duplicate = SecretBindingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            binding_id,
+            action: SecretBindingActionKind::Revoke,
+            expected_head_event_id: Some(revoked.event.id.to_hex()),
+            binding: None,
+        };
+        let duplicate_result = company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            sign_secret_action(&admin, &duplicate),
+            auth(&admin),
+        )
+        .await;
+        assert!(matches!(
+            duplicate_result,
+            Err(IngestError::Rejected(message)) if message.contains("already revoked")
         ));
     }
 }

@@ -9,6 +9,7 @@ import { Route as workflowsRouteImport } from "./routes/workflows";
 import { Route as todayRouteImport } from "./routes/today";
 import { Route as supervisionRouteImport } from "./routes/supervision";
 import { Route as settingsRouteImport } from "./routes/settings";
+import { Route as secretsRouteImport } from "./routes/secrets";
 import { Route as remindersRouteImport } from "./routes/reminders";
 import { Route as pulseRouteImport } from "./routes/pulse";
 import { Route as projectsRouteImport } from "./routes/projects";
@@ -31,6 +32,7 @@ import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews
 import { Route as salesDotserviceRouteImport } from "./routes/sales.service";
 import { Route as salesDotproposalsRouteImport } from "./routes/sales.proposals";
 import { Route as projectsDotprojectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as permissionDotsplatRouteImport } from "./routes/permission.$";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
@@ -90,6 +92,11 @@ const supervisionRoute = supervisionRouteImport.update({
 const settingsRoute = settingsRouteImport.update({
   id: "/settings",
   path: "/settings",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const secretsRoute = secretsRouteImport.update({
+  id: "/secrets",
+  path: "/secrets",
   getParentRoute: () => rootRouteImport,
 } as any);
 const remindersRoute = remindersRouteImport.update({
@@ -200,6 +207,11 @@ const salesDotproposalsRoute = salesDotproposalsRouteImport.update({
 const projectsDotprojectIdRoute = projectsDotprojectIdRouteImport.update({
   id: "/projects/$projectId",
   path: "/projects/$projectId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const permissionDotsplatRoute = permissionDotsplatRouteImport.update({
+  id: "/permission/$",
+  path: "/permission/$",
   getParentRoute: () => rootRouteImport,
 } as any);
 const navigationDotstartRoute = navigationDotstartRouteImport.update({
@@ -436,6 +448,7 @@ export interface FileRoutesByFullPath {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -456,6 +469,7 @@ export interface FileRoutesByFullPath {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -504,6 +518,7 @@ export interface FileRoutesByTo {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -524,6 +539,7 @@ export interface FileRoutesByTo {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -573,6 +589,7 @@ export interface FileRoutesById {
   "/projects": typeof projectsRoute;
   "/pulse": typeof pulseRoute;
   "/reminders": typeof remindersRoute;
+  "/secrets": typeof secretsRoute;
   "/settings": typeof settingsRoute;
   "/supervision": typeof supervisionRoute;
   "/today": typeof todayRoute;
@@ -593,6 +610,7 @@ export interface FileRoutesById {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/permission/$": typeof permissionDotsplatRoute;
   "/projects/$projectId": typeof projectsDotprojectIdRoute;
   "/sales/proposals": typeof salesDotproposalsRoute;
   "/sales/service": typeof salesDotserviceRoute;
@@ -643,6 +661,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -663,6 +682,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -711,6 +731,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -731,6 +752,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -779,6 +801,7 @@ export interface FileRouteTypes {
     | "/projects"
     | "/pulse"
     | "/reminders"
+    | "/secrets"
     | "/settings"
     | "/supervision"
     | "/today"
@@ -799,6 +822,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/permission/$"
     | "/projects/$projectId"
     | "/sales/proposals"
     | "/sales/service"
@@ -848,6 +872,7 @@ export interface RootRouteChildren {
   projectsRoute: typeof projectsRoute;
   pulseRoute: typeof pulseRoute;
   remindersRoute: typeof remindersRoute;
+  secretsRoute: typeof secretsRoute;
   settingsRoute: typeof settingsRoute;
   supervisionRoute: typeof supervisionRoute;
   todayRoute: typeof todayRoute;
@@ -868,6 +893,7 @@ export interface RootRouteChildren {
   moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
+  permissionDotsplatRoute: typeof permissionDotsplatRoute;
   projectsDotprojectIdRoute: typeof projectsDotprojectIdRoute;
   salesDotproposalsRoute: typeof salesDotproposalsRoute;
   salesDotserviceRoute: typeof salesDotserviceRoute;
@@ -929,6 +955,13 @@ declare module "@tanstack/react-router" {
       path: "/settings";
       fullPath: "/settings";
       preLoaderRoute: typeof settingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/secrets": {
+      id: "/secrets";
+      path: "/secrets";
+      fullPath: "/secrets";
+      preLoaderRoute: typeof secretsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/reminders": {
@@ -1083,6 +1116,13 @@ declare module "@tanstack/react-router" {
       path: "/projects/$projectId";
       fullPath: "/projects/$projectId";
       preLoaderRoute: typeof projectsDotprojectIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/permission/$": {
+      id: "/permission/$";
+      path: "/permission/$";
+      fullPath: "/permission/$";
+      preLoaderRoute: typeof permissionDotsplatRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/navigation/start": {
@@ -1384,6 +1424,7 @@ const rootRouteChildren: RootRouteChildren = {
   projectsRoute: projectsRoute,
   pulseRoute: pulseRoute,
   remindersRoute: remindersRoute,
+  secretsRoute: secretsRoute,
   settingsRoute: settingsRoute,
   supervisionRoute: supervisionRoute,
   todayRoute: todayRoute,
@@ -1404,6 +1445,7 @@ const rootRouteChildren: RootRouteChildren = {
   moneyDotrevenueRoute: moneyDotrevenueRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
+  permissionDotsplatRoute: permissionDotsplatRoute,
   projectsDotprojectIdRoute: projectsDotprojectIdRoute,
   salesDotproposalsRoute: salesDotproposalsRoute,
   salesDotserviceRoute: salesDotserviceRoute,

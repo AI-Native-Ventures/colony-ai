@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:hooks_riverpod/misc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import 'package:buzz/app.dart' show buildTeamUpdateNoteRoute;
 import 'package:buzz/features/activity/activity_home_page.dart';
@@ -32,7 +33,6 @@ import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
-import 'package:buzz/shared/identity/identity_components.dart';
 import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -42,7 +42,7 @@ const _leratoKey = 'lerato-proof-pubkey';
 const _proofRelay = 'https://relay.example';
 final _community = Community(
   id: 'today-proof-community',
-  name: 'Lerato Social',
+  name: 'Lerato Studio',
   relayUrl: _proofRelay,
   addedAt: DateTime.utc(2026, 9, 24),
 );
@@ -201,8 +201,7 @@ void main() {
     await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
-    expect(find.text('The company, moving together'), findsOneWidget);
-    expect(find.text('Updates'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('activity-back-to-today')),
       findsOneWidget,
@@ -224,7 +223,7 @@ void main() {
     );
   });
 
-  testWidgets('Today header has no divider and uses live presence only', (
+  testWidgets('Today header shows the route title and community name', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -240,30 +239,12 @@ void main() {
     final header = find.byKey(const ValueKey('today-header'));
     final headerDecoration = tester.widget<Container>(header).decoration!;
     expect((headerDecoration as BoxDecoration).border, isNull);
-    final avatar = find.descendant(
-      of: header,
-      matching: find.byType(IdentityAvatar),
-    );
-    expect(tester.widget<IdentityAvatar>(avatar).isOnline, isFalse);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        key: const ValueKey('today-presence-refresh'),
-        overrides: _providerOverrides(prefs, null, {_leratoKey: 'online'}),
-        child: _proofApp(_visualHome(_VisualRoute.today)),
-      ),
-    );
-    await tester.pumpAndSettle();
+    expect(find.text('Your day'), findsOneWidget);
+    expect(find.text('Lerato Studio'), findsOneWidget);
+    expect(find.byKey(const ValueKey('today-back')), findsOneWidget);
     expect(
-      tester
-          .widget<IdentityAvatar>(
-            find.descendant(
-              of: find.byKey(const ValueKey('today-header')),
-              matching: find.byType(IdentityAvatar),
-            ),
-          )
-          .isOnline,
-      isTrue,
+      find.byKey(const ValueKey('today-action-Open team updates')),
+      findsOneWidget,
     );
   });
 
@@ -287,7 +268,7 @@ void main() {
     await tester.tap(compose);
     await tester.pumpAndSettle();
 
-    expect(find.text('Write an update'), findsOneWidget);
+    expect(find.text('A note for the team'), findsOneWidget);
     expect(find.text('Publish update'), findsOneWidget);
   });
 
@@ -304,17 +285,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('today-action-Open updates')));
+    await tester.tap(
+      find.byKey(const ValueKey('today-action-Open team updates')),
+    );
     await tester.pumpAndSettle();
 
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('mobile-nav-chat')))
+          .properties
+          .selected,
+      isTrue,
+    );
     expect(find.text('From your team.'), findsOneWidget);
     expect(find.text('A little focus.\nA strong finish.'), findsOneWidget);
   });
 
-  testWidgets('Today tabs open live updates and activity rows keep their id', (
+  testWidgets('Activity rows keep their id and the compose action works', (
     tester,
   ) async {
     FeedItem? opened;
+    var composeOpened = false;
     await tester.pumpWidget(
       ProviderScope(
         overrides: _providerOverrides(),
@@ -322,8 +313,8 @@ void main() {
           theme: AppTheme.light(),
           home: Scaffold(
             body: ActivityHomePage(
-              updatesPageBuilder: (_, _) => const Text('Team updates stream'),
               onOpenItem: (item) => opened = item,
+              onComposeUpdate: (_) => composeOpened = true,
             ),
           ),
         ),
@@ -334,9 +325,8 @@ void main() {
     await tester.tap(find.text('Your review is needed'));
     expect(opened?.id, _review.id);
 
-    await tester.tap(find.text('Team updates'));
-    await tester.pumpAndSettle();
-    expect(find.text('Team updates stream'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('activity-new-team-update')));
+    expect(composeOpened, isTrue);
   });
 
   testWidgets('Activity orders approvals before newer messages', (
@@ -382,8 +372,8 @@ void main() {
     expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
     expect(find.byIcon(LucideIcons.arrowLeft), findsNothing);
     expect(
-      tester.widget<Icon>(find.byIcon(LucideIcons.ellipsis)).color,
-      MobileDesignTokens.light.muted,
+      find.byKey(const ValueKey('team-note-open-updates')),
+      findsOneWidget,
     );
     expect(find.text('Review the campaign'), findsOneWidget);
     expect(find.text('Message campaign-studio…'), findsOneWidget);
@@ -458,8 +448,6 @@ void main() {
             body: TodayPage(
               communityName: _community.name,
               profileName: _lerato.displayName,
-              profileInitials: _lerato.initials,
-              profileAvatarUrl: _lerato.avatarUrl,
               reviewItems: const AsyncData([]),
               movingItems: const AsyncData([]),
               teamUpdate: const AsyncData(null),
@@ -477,16 +465,108 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.text('Morning, Lerato.\nLet’s make it happen.'),
-      findsOneWidget,
-    );
-    expect(find.text('Needs your eye'), findsOneWidget);
+    expect(find.text('Nothing needs you right now'), findsOneWidget);
+    expect(find.text('Open conversations'), findsOneWidget);
+    expect(find.text('A CLEAR START'), findsOneWidget);
+    expect(find.text('Needs your eye'), findsNothing);
     expect(find.text('Moving forward'), findsNothing);
     expect(find.text('September journal'), findsNothing);
     expect(find.text('A little focus. A strong finish.'), findsNothing);
     expect(find.text('agents working'), findsNothing);
     expect(find.text('plans approved'), findsNothing);
+  });
+
+  testWidgets('Today shows a retry state when its feed is unavailable', (
+    tester,
+  ) async {
+    var retries = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: TodayPage(
+              communityName: _community.name,
+              profileName: _lerato.displayName,
+              reviewItems: AsyncError(
+                StateError('offline'),
+                StackTrace.current,
+              ),
+              movingItems: AsyncError(
+                StateError('offline'),
+                StackTrace.current,
+              ),
+              teamUpdate: AsyncError(StateError('offline'), StackTrace.current),
+              overviewMetrics: const [],
+              onOpenUpdates: (_) {},
+              onOpenReview: (_) {},
+              onOpenProgress: (_) {},
+              onOpenUpdate: (_) {},
+              onOpenActivity: (_) {},
+              onRetryActivity: () async {
+                retries++;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load your day'), findsOneWidget);
+    expect(find.text('Nothing needs you right now'), findsNothing);
+    await tester.tap(find.text('Retry connection'));
+    await tester.pumpAndSettle();
+    expect(retries, 1);
+  });
+
+  testWidgets('Team updates renders empty data and retries a failed request', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    var attempts = 0;
+    Future<List<UserNote>> loadNotes() async {
+      attempts++;
+      if (attempts == 1) throw StateError('offline');
+      return const [];
+    }
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs, null, const {}, loadNotes),
+        child: _proofApp(const TeamUpdatesPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load team updates'), findsOneWidget);
+    expect(find.text('Team updates'), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-updates-back')), findsOneWidget);
+    expect(find.text('No team notes yet'), findsNothing);
+    await tester.tap(find.text('Retry connection'));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('No team notes yet'), findsOneWidget);
+    expect(find.text('Write a team note'), findsOneWidget);
+  });
+
+  testWidgets('a missing team note links back without claiming a failed read', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _providerOverrides(prefs, const []),
+        child: _proofApp(const TeamUpdateNotePage(noteId: 'deleted-note')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('This note is no longer here'), findsOneWidget);
+    expect(find.text('Back to team updates'), findsOneWidget);
+    expect(find.text('Could not load team updates'), findsNothing);
   });
 
   testWidgets('Today opens a progress row by its real activity id', (
@@ -639,9 +719,7 @@ void main() {
     expect(saved?.status, TeamUpdateDraftStatus.draft);
   });
 
-  testWidgets('fresh composer keeps sample copy as hints, not update data', (
-    tester,
-  ) async {
+  testWidgets('fresh composer starts with no example text', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
@@ -656,10 +734,12 @@ void main() {
     final body = tester.widget<TextField>(find.byType(TextField).at(1));
     expect(title.controller?.text, isEmpty);
     expect(body.controller?.text, isEmpty);
-    expect(title.decoration?.hintText, 'A good week ahead');
+    expect(title.decoration?.hintText, isNull);
+    expect(body.decoration?.hintText, isNull);
+    expect(find.text('A good week ahead'), findsNothing);
     expect(
-      body.decoration?.hintText,
-      'Olive Studio is ready for review. Next, we’ll shape the Cedar launch brief and finish our client reports.',
+      find.textContaining('Olive Studio is ready for review'),
+      findsNothing,
     );
     expect(
       tester
@@ -671,6 +751,62 @@ void main() {
     );
   });
 
+  testWidgets(
+    'failed draft save keeps edits and recovers the last saved copy next open',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(_draftPrefs());
+      final prefs = await SharedPreferences.getInstance();
+      SharedPreferencesStorePlatform.instance =
+          _FailNextTeamUpdateWriteStore.withData({
+            for (final entry in _draftPrefs().entries)
+              'flutter.${entry.key}': entry.value,
+          });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _providerOverrides(prefs),
+          child: _proofApp(TeamUpdateComposePage(onPublish: (_) async {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).at(0), 'New title');
+      await tester.enterText(find.byType(TextField).at(1), 'New unsaved note');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Draft could not save on this phone'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(0)).controller?.text,
+        'New title',
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(1)).controller?.text,
+        'New unsaved note',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      SharedPreferences.setMockInitialValues(_draftPrefs());
+      final reopenedPrefs = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _providerOverrides(reopenedPrefs),
+          child: _proofApp(TeamUpdateComposePage(onPublish: (_) async {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recovered the last saved draft'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(0)).controller?.text,
+        'What made this week work',
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(1)).controller?.text,
+        'Keeping feedback beside each draft helped us get to a decision sooner.',
+      );
+    },
+  );
+
   for (final size in const [Size(390, 844), Size(412, 915)]) {
     for (final brightness in [Brightness.light, Brightness.dark]) {
       for (final route in _visualRoutes) {
@@ -678,7 +814,15 @@ void main() {
           'captures ${route.name} ${brightness.name} ${size.width.toInt()}x${size.height.toInt()}',
           (tester) async {
             final previousComparator = goldenFileComparator;
-            SharedPreferences.setMockInitialValues(_draftPrefs());
+            final hasDraft = {
+              _VisualRoute.draft,
+              _VisualRoute.draftSaveFailed,
+              _VisualRoute.discard,
+              _VisualRoute.failed,
+            }.contains(route);
+            SharedPreferences.setMockInitialValues(
+              hasDraft ? _draftPrefs() : {},
+            );
             final prefs = await SharedPreferences.getInstance();
             if (captureScreenshots) {
               goldenFileComparator = _CaptureFileComparator(
@@ -686,10 +830,10 @@ void main() {
                 output.path,
               );
               tester.view.viewPadding = const FakeViewPadding(
-                top: 46,
+                top: 30,
                 bottom: 20,
               );
-              tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+              tester.view.padding = const FakeViewPadding(top: 30, bottom: 20);
             }
             addTearDown(() {
               tester.view.resetPhysicalSize();
@@ -701,33 +845,43 @@ void main() {
             tester.view.devicePixelRatio = 1;
             tester.view.physicalSize = size;
             final rootKey = GlobalKey();
-            final child = switch (route) {
-              _VisualRoute.today ||
-              _VisualRoute.activity ||
-              _VisualRoute.updatesFeed ||
-              _VisualRoute.published => _visualHome(route),
-              _VisualRoute.note => TeamUpdateNotePage(
-                noteId: _rootNote.id,
-                onReviewCampaign: _noReview,
-                now: DateTime(2026, 9, 24),
-              ),
-              _VisualRoute.compose => TeamUpdateComposePage(
-                onPublish: (_) async {},
-              ),
-              _VisualRoute.draft => const TeamUpdateComposePage(
-                mode: TeamUpdateComposeMode.draft,
-                onPublish: _noPublish,
-              ),
-              _VisualRoute.failed => const TeamUpdateComposePage(
-                mode: TeamUpdateComposeMode.failed,
-                onPublish: _noPublish,
-              ),
+            final child = _visualHome(route);
+            final visualNotes = switch (route) {
+              _VisualRoute.updatesEmpty ||
+              _VisualRoute.noteMissing => const <UserNote>[],
+              _VisualRoute.note => _notes,
+              _ => [_feedNote],
             };
+            final loadNotes = route == _VisualRoute.updatesUnavailable
+                ? () async => throw StateError('offline')
+                : null;
+            final emptyFeed = HomeFeedResponse(
+              mentions: const [],
+              needsAction: const [],
+              activity: const [],
+              agentActivity: const [],
+            );
+            final visualActivityFeed = route == _VisualRoute.activityEmpty
+                ? emptyFeed
+                : null;
+            final activityUnavailable =
+                route == _VisualRoute.activityUnavailable;
+            if (route == _VisualRoute.draftSaveFailed) {
+              SharedPreferencesStorePlatform.instance =
+                  _FailNextTeamUpdateWriteStore.withData({
+                    for (final entry in _draftPrefs().entries)
+                      'flutter.${entry.key}': entry.value,
+                  });
+            }
             await tester.pumpWidget(
               ProviderScope(
                 overrides: _providerOverrides(
                   prefs,
-                  route == _VisualRoute.note ? _notes : [_feedNote],
+                  visualNotes,
+                  const {},
+                  loadNotes,
+                  visualActivityFeed,
+                  activityUnavailable,
                 ),
                 child: RepaintBoundary(
                   key: rootKey,
@@ -754,18 +908,21 @@ void main() {
               tester,
               captureScreenshots: captureScreenshots,
             );
+            if (_isChatVisualRoute(route)) {
+              await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
+              await tester.pumpAndSettle();
+            }
             if (route == _VisualRoute.today) {
               debugPrint(
                 'VISUAL_LAYOUT today ${size.width.toInt()}x${size.height.toInt()} '
                 '${brightness.name} '
                 'header=${tester.getRect(find.byKey(const ValueKey('today-header')))} '
-                'title=${tester.getRect(find.text('Lerato Social'))} '
+                'title=${tester.getRect(find.text('Lerato Studio'))} '
                 'navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))}',
               );
             }
             if (route == _VisualRoute.activity) {
-              expect(find.text('Updates'), findsOneWidget);
-              expect(find.text('The company, moving together'), findsOneWidget);
+              expect(find.text('Activity'), findsOneWidget);
               expect(
                 find.byKey(const ValueKey('activity-back-to-today')),
                 findsOneWidget,
@@ -776,14 +933,26 @@ void main() {
               );
               expect(find.text('Company'), findsOneWidget);
               debugPrint(
-                'VISUAL_LAYOUT activity header=${tester.getRect(find.text('Updates'))} navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))} company=${tester.getRect(find.text('Company'))}',
+                'VISUAL_LAYOUT activity header=${tester.getRect(find.text('Activity'))} navigation=${tester.getRect(find.byKey(const ValueKey('mobile-bottom-navigation')))} company=${tester.getRect(find.text('Company'))}',
               );
             }
-            if (route == _VisualRoute.updatesFeed ||
-                route == _VisualRoute.published) {
-              await tester.tap(
-                find.byKey(const ValueKey('today-action-Open updates')),
+            if (route == _VisualRoute.draftSaveFailed) {
+              await tester.enterText(
+                find.byType(TextField).at(0),
+                'New unsaved title',
               );
+              await tester.enterText(
+                find.byType(TextField).at(1),
+                'New unsaved note',
+              );
+              await tester.pump(const Duration(milliseconds: 500));
+              await _pumpVisualFrame(
+                tester,
+                captureScreenshots: captureScreenshots,
+              );
+            }
+            if (route == _VisualRoute.discard) {
+              await tester.tap(find.text('Discard draft...'));
               await _pumpVisualFrame(
                 tester,
                 captureScreenshots: captureScreenshots,
@@ -791,11 +960,36 @@ void main() {
             }
 
             if (route == _VisualRoute.draft) {
-              expect(find.text('Your draft is here'), findsOneWidget);
               expect(
-                find.text('Only you can see it until you publish.'),
+                find.text('Recovered the last saved draft'),
                 findsOneWidget,
               );
+              expect(
+                find.text(
+                  'The final unsaved edits may be missing. Review this version before posting.',
+                ),
+                findsOneWidget,
+              );
+            }
+            if (route == _VisualRoute.activityEmpty) {
+              expect(find.text('No recent activity'), findsOneWidget);
+            }
+            if (route == _VisualRoute.activityUnavailable) {
+              expect(find.text('Could not load activity'), findsOneWidget);
+              expect(find.text('Retry connection'), findsOneWidget);
+            }
+            if (route == _VisualRoute.updatesEmpty) {
+              expect(find.text('No team notes yet'), findsOneWidget);
+              expect(find.text('Write a team note'), findsOneWidget);
+            }
+            if (route == _VisualRoute.updatesUnavailable) {
+              expect(find.text('Could not load team updates'), findsOneWidget);
+              expect(find.text('Retry connection'), findsOneWidget);
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsOneWidget,
+              );
+              expect(find.text('Team updates'), findsOneWidget);
             }
             if (route == _VisualRoute.failed) {
               expect(find.text('Update wasn’t published'), findsOneWidget);
@@ -803,6 +997,15 @@ void main() {
                 find.text('Your draft is safe. Retry when you’re connected.'),
                 findsOneWidget,
               );
+            }
+            if (route == _VisualRoute.draftSaveFailed) {
+              expect(
+                find.text('Draft could not save on this phone'),
+                findsOneWidget,
+              );
+            }
+            if (route == _VisualRoute.discard) {
+              expect(find.text('Discard this draft?'), findsOneWidget);
             }
 
             if (captureScreenshots) {
@@ -853,11 +1056,24 @@ List<Override> _providerOverrides([
   SharedPreferences? prefs,
   List<UserNote>? notes,
   Map<String, String> presenceStatuses = const {},
+  Future<List<UserNote>> Function()? loadNotes,
+  HomeFeedResponse? activityFeed,
+  bool activityError = false,
 ]) => [
   ..._baseOverrides(prefs),
-  activityProvider.overrideWith(() => _ProofActivityNotifier(_feed)),
-  inboxItemsProvider.overrideWithValue(buildInboxItems(_feed.all)),
-  globalNotesProvider.overrideWith((_) async => notes ?? _notes),
+  activityProvider.overrideWith(
+    activityError
+        ? _FailingActivityNotifier.new
+        : () => _ProofActivityNotifier(activityFeed ?? _feed),
+  ),
+  inboxItemsProvider.overrideWithValue(
+    activityError
+        ? const <InboxItem>[]
+        : buildInboxItems((activityFeed ?? _feed).all),
+  ),
+  globalNotesProvider.overrideWith(
+    (_) async => loadNotes == null ? notes ?? _notes : loadNotes(),
+  ),
   profileProvider.overrideWith(() => _ProofProfileNotifier(_lerato)),
   userCacheProvider.overrideWith(() => _ProofUserCacheNotifier(_users)),
   presenceCacheProvider.overrideWith(
@@ -874,83 +1090,160 @@ List<Override> _baseOverrides(SharedPreferences? prefs) => [
 
 Map<String, Object> _draftPrefs() => {
   'team_update_draft_v1:$_proofRelay:$_leratoKey':
-      '{"title":"A good week ahead","body":"Olive Studio is ready for review. Next, we’ll shape the Cedar launch brief and finish our client reports.","status":"draft","updated_at":1790262000}',
+      '{"title":"What made this week work","body":"Keeping feedback beside each draft helped us get to a decision sooner.","status":"draft","updated_at":1790262000}',
 };
+
+class _FailNextTeamUpdateWriteStore extends InMemorySharedPreferencesStore {
+  // The inherited named constructor still requires its own positional call.
+  // ignore: use_super_parameters
+  _FailNextTeamUpdateWriteStore.withData(Map<String, Object> data)
+    : super.withData(data);
+
+  bool failedWrite = false;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    if (!failedWrite && key.startsWith('flutter.team_update_draft_v1:')) {
+      failedWrite = true;
+      return Future.value(false);
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
 
 Widget _visualHome(_VisualRoute route) {
   final routes = MobileRouteRegistry.empty()
-      .register(
-        MobileRoutes.today,
-        (context, routeContext) => route == _VisualRoute.activity
-            ? ActivityHomePage(
-                onOpenItem: (_) {},
-                onComposeUpdate: (composeContext) => unawaited(
-                  MobileNavigation.openUpdateCompose(composeContext),
-                ),
-                updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
-                tabReselection: routeContext.tabReselection,
+      .register(MobileRoutes.today, (context, routeContext) {
+        final activityRoute = {
+          _VisualRoute.activity,
+          _VisualRoute.activityEmpty,
+          _VisualRoute.activityUnavailable,
+        }.contains(route);
+        if (activityRoute) {
+          return ActivityHomePage(
+            onOpenItem: (_) {},
+            onComposeUpdate: (composeContext) =>
+                unawaited(MobileNavigation.openUpdateCompose(composeContext)),
+            onOpenConversations: () => routeContext.onOpenChat?.call(),
+            tabReselection: routeContext.tabReselection,
+          );
+        }
+        final unavailable = route == _VisualRoute.todayUnavailable;
+        final empty = route == _VisualRoute.todayEmpty;
+        final reviewItems = unavailable
+            ? AsyncError<List<TodayReviewItem>>(
+                StateError('offline'),
+                StackTrace.current,
               )
-            : TodayPage(
-                communityName: _community.name,
-                profileName: _lerato.displayName,
-                profileInitials: _lerato.initials,
-                profileAvatarUrl: _lerato.avatarUrl,
-                profilePubkey: _lerato.pubkey,
-                reviewItems: AsyncValue.data([
-                  TodayReviewItem(
-                    id: _review.id,
-                    requesterName: 'Mina',
-                    title: 'A fresh direction for Olive.',
-                    subtitle:
-                        'The October content plan is ready for your approval.',
-                    initials: 'M',
-                    requesterIsAgent: true,
-                  ),
-                ]),
-                movingItems: AsyncValue.data([
-                  TodayProgressItem(
-                    id: _researchActivity.id,
-                    title: 'Research completed',
-                    subtitle: 'Scout · Olive Studio prospects',
-                    initials: _scout.initials,
-                    isAgent: true,
-                  ),
-                ]),
-                teamUpdate: AsyncValue.data(
-                  TodayTeamUpdate(
-                    id: _rootNote.id,
-                    title: 'A little focus. A strong finish.',
-                    subtitle: 'Maya shared an update · 10:20',
-                    initials: _maya.initials,
-                  ),
-                ),
-                overviewMetrics: [
+            : AsyncValue.data(
+                empty
+                    ? const <TodayReviewItem>[]
+                    : [
+                        TodayReviewItem(
+                          id: _review.id,
+                          requesterName: 'Mina',
+                          title: 'A fresh direction for Olive.',
+                          subtitle:
+                              'The October content plan is ready for your approval.',
+                          initials: 'M',
+                          requesterIsAgent: true,
+                        ),
+                      ],
+              );
+        final movingItems = unavailable
+            ? AsyncError<List<TodayProgressItem>>(
+                StateError('offline'),
+                StackTrace.current,
+              )
+            : AsyncValue.data(
+                empty
+                    ? const <TodayProgressItem>[]
+                    : [
+                        TodayProgressItem(
+                          id: _researchActivity.id,
+                          title: 'Research completed',
+                          subtitle: 'Scout · Olive Studio prospects',
+                          initials: _scout.initials,
+                          isAgent: true,
+                        ),
+                      ],
+              );
+        final teamUpdate = unavailable
+            ? AsyncError<TodayTeamUpdate?>(
+                StateError('offline'),
+                StackTrace.current,
+              )
+            : AsyncValue.data(
+                empty
+                    ? null
+                    : TodayTeamUpdate(
+                        id: _rootNote.id,
+                        title: 'A little focus. A strong finish.',
+                        subtitle: 'Maya shared an update · 10:20',
+                        initials: _maya.initials,
+                      ),
+              );
+        return TodayPage(
+          communityName: _community.name,
+          profileName: _lerato.displayName,
+          onOpenConversations: (_) => routeContext.onOpenChat?.call(),
+          reviewItems: reviewItems,
+          movingItems: movingItems,
+          teamUpdate: teamUpdate,
+          overviewMetrics: empty || unavailable
+              ? const []
+              : [
                   TodayOverviewMetric(
                     value: '1',
                     label: 'needs your eye',
                     onTap: () {},
                   ),
                 ],
-                onOpenUpdates: (updatesContext) =>
-                    unawaited(MobileNavigation.openUpdates(updatesContext)),
-                onOpenReview: (_) {},
-                onOpenProgress: (_) {},
-                onOpenUpdate: (_) {},
-                onOpenActivity: (activityContext) => unawaited(
-                  MobileNavigation.openActivity(activityContext, routeContext),
-                ),
-                onRetryActivity: _noRetry,
-                now: DateTime(2026, 9, 28),
-              ),
-      )
-      .register(MobileRoutes.chats, (_, _) => const SizedBox.shrink())
+          onOpenUpdates: (_) => routeContext.onOpenTeamUpdates?.call(),
+          onOpenReview: (_) {},
+          onOpenProgress: (_) {},
+          onOpenUpdate: (_) {},
+          onOpenActivity: (activityContext) => unawaited(
+            MobileNavigation.openActivity(activityContext, routeContext),
+          ),
+          onRetryActivity: _noRetry,
+          now: DateTime(2026, 9, 28),
+        );
+      })
+      .register(MobileRoutes.chats, (context, routeContext) {
+        if ({
+          _VisualRoute.updatesFeed,
+          _VisualRoute.updatesEmpty,
+          _VisualRoute.updatesUnavailable,
+          _VisualRoute.published,
+        }.contains(route)) {
+          return TeamUpdatesPage(
+            initiallyPublished: route == _VisualRoute.published,
+          );
+        }
+        if (route == _VisualRoute.note || route == _VisualRoute.noteMissing) {
+          return TeamUpdateNotePage(
+            noteId: route == _VisualRoute.note ? _rootNote.id : 'deleted-note',
+            onReviewCampaign: _noReview,
+            now: DateTime(2026, 9, 24),
+          );
+        }
+        final mode = switch (route) {
+          _VisualRoute.draft ||
+          _VisualRoute.draftSaveFailed ||
+          _VisualRoute.discard => TeamUpdateComposeMode.draft,
+          _VisualRoute.failed => TeamUpdateComposeMode.failed,
+          _ => TeamUpdateComposeMode.compose,
+        };
+        return TeamUpdateComposePage(mode: mode, onPublish: _noPublish);
+      })
       .register(
         MobileRoutes.activity,
         (_, routeContext) => ActivityHomePage(
           onOpenItem: (_) {},
           onComposeUpdate: (composeContext) =>
               unawaited(MobileNavigation.openUpdateCompose(composeContext)),
-          updatesPageBuilder: (_, _) => const TeamUpdatesPage(),
+          onOpenConversations: () => routeContext.onOpenChat?.call(),
           tabReselection: routeContext.tabReselection,
         ),
       )
@@ -961,9 +1254,7 @@ Widget _visualHome(_VisualRoute route) {
       )
       .register(
         MobileRoutes.updates,
-        (_, _) => TeamUpdatesPage(
-          initiallyPublished: route == _VisualRoute.published,
-        ),
+        (_, arguments) => TeamUpdatesPage(initiallyPublished: false),
       );
   return HomePage(
     routeRegistry: routes,
@@ -971,6 +1262,20 @@ Widget _visualHome(_VisualRoute route) {
     hasUnreadInbox: false,
   );
 }
+
+bool _isChatVisualRoute(_VisualRoute route) => {
+  _VisualRoute.updatesFeed,
+  _VisualRoute.updatesEmpty,
+  _VisualRoute.updatesUnavailable,
+  _VisualRoute.note,
+  _VisualRoute.noteMissing,
+  _VisualRoute.compose,
+  _VisualRoute.draft,
+  _VisualRoute.draftSaveFailed,
+  _VisualRoute.discard,
+  _VisualRoute.failed,
+  _VisualRoute.published,
+}.contains(route);
 
 Widget _proofApp(Widget child, {Brightness brightness = Brightness.light}) =>
     MaterialApp(
@@ -992,6 +1297,11 @@ class _ProofActivityNotifier extends ActivityNotifier {
   final HomeFeedResponse feed;
   @override
   Future<HomeFeedResponse> build() async => feed;
+}
+
+class _FailingActivityNotifier extends ActivityNotifier {
+  @override
+  Future<HomeFeedResponse> build() => Future.error(StateError('offline'));
 }
 
 class _ProofProfileNotifier extends ProfileNotifier {
@@ -1024,22 +1334,40 @@ class _ProofRelayConfigNotifier extends RelayConfigNotifier {
 
 const _visualRoutes = [
   _VisualRoute.today,
+  _VisualRoute.todayEmpty,
+  _VisualRoute.todayUnavailable,
   _VisualRoute.activity,
+  _VisualRoute.activityEmpty,
+  _VisualRoute.activityUnavailable,
   _VisualRoute.updatesFeed,
+  _VisualRoute.updatesEmpty,
+  _VisualRoute.updatesUnavailable,
   _VisualRoute.note,
+  _VisualRoute.noteMissing,
   _VisualRoute.compose,
   _VisualRoute.draft,
+  _VisualRoute.draftSaveFailed,
+  _VisualRoute.discard,
   _VisualRoute.failed,
   _VisualRoute.published,
 ];
 
 enum _VisualRoute {
   today('today'),
+  todayEmpty('today-empty'),
+  todayUnavailable('today-unavailable'),
   activity('activity'),
+  activityEmpty('activity-empty'),
+  activityUnavailable('activity-unavailable'),
   updatesFeed('updates-feed'),
+  updatesEmpty('updates-empty'),
+  updatesUnavailable('updates-unavailable'),
   note('updates-note'),
+  noteMissing('note-missing'),
   compose('updates-compose'),
   draft('updates-draft'),
+  draftSaveFailed('draft-save-failed'),
+  discard('draft-discard'),
   failed('updates-failed'),
   published('updates-published');
 

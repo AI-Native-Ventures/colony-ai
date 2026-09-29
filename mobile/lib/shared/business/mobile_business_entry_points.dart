@@ -23,6 +23,9 @@ abstract final class MobileBusinessRoutes {
   /// Destination for one company goal or sub-goal.
   static const goalDetail = MobileRoute<String>('goal');
 
+  /// Destination for one relay-backed company workflow.
+  static const workflowDetail = MobileRoute<String>('workflow');
+
   /// Destination for company work commitments.
   static const work = MobileRoute<NoMobileRouteArguments>('work');
 

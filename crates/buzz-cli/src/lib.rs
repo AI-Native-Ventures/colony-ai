@@ -246,12 +246,18 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// List, bind and revoke company secret metadata
+    #[command(subcommand)]
+    Secrets(SecretsCmd),
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
     /// Review client invoices and record money evidence
     #[command(subcommand)]
     Money(MoneyCmd),
+    /// List, grant, and revoke standing tool permissions
+    #[command(subcommand)]
+    Permissions(PermissionsCmd),
     /// Read the activity feed
     #[command(subcommand)]
     Feed(FeedCmd),
@@ -1194,6 +1200,28 @@ pub enum GoalsCmd {
 }
 
 #[derive(Subcommand)]
+pub enum SecretsCmd {
+    /// List secret binding names and statuses
+    List {
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Create a pending binding from metadata JSON or stdin; no value is accepted
+    Bind {
+        /// SecretBindingSpec JSON or '-' to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke a binding by its UUID
+    Revoke {
+        /// Secret binding UUID
+        #[arg(long)]
+        binding_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum WorkCmd {
     /// Create a company work item in a conversation channel
     Create {
@@ -1446,6 +1474,34 @@ pub enum MoneyFollowUpsCmd {
         /// Follow-up UUID
         #[arg(long)]
         follow_up: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PermissionsCmd {
+    /// List current relay-signed standing permission heads
+    List {
+        /// Filter to one managed agent public key
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Grant a standing permission from a ToolPermissionRecord JSON object
+    Grant {
+        /// ToolPermissionRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke an open permission at its exact current head
+    Revoke {
+        /// Permission UUID
+        #[arg(long)]
+        permission: String,
+        /// Current kind 30645 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for revoking, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
     },
 }
 
@@ -2622,8 +2678,10 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
+        Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
@@ -2806,10 +2864,12 @@ mod tests {
             "notes",
             "pack",
             "patches",
+            "permissions",
             "pr",
             "projects",
             "reactions",
             "repos",
+            "secrets",
             "social",
             "upload",
             "users",
@@ -2837,6 +2897,25 @@ mod tests {
             actual, expected_groups,
             "Command group inventory drift detected"
         );
+    }
+
+    #[test]
+    fn secret_binding_cli_does_not_accept_a_value_argument_or_echo_it() {
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let result = Cli::try_parse_from([
+            "buzz",
+            "secrets",
+            "bind",
+            "--record",
+            "{}",
+            "--value",
+            sentinel.as_str(),
+        ]);
+        let error = match result {
+            Ok(_) => panic!("the secret binding CLI has no credential value argument"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().contains(&sentinel));
     }
 
     #[test]
@@ -2910,6 +2989,7 @@ mod tests {
             vec!["balance", "history", "packs", "pay", "usage", "verify"]
         );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
+        assert_eq!(names(&cmd, "secrets"), vec!["bind", "list", "revoke"]);
         assert_eq!(
             names(&cmd, "emoji"),
             vec!["export", "import", "list", "rm", "set"]
@@ -3036,6 +3116,7 @@ mod tests {
             ("money", 4),
             ("pack", 2),
             ("patches", 4),
+            ("permissions", 3),
             ("pr", 5),
             ("projects", 8),
             ("reactions", 3),

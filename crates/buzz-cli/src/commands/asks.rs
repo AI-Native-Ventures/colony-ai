@@ -186,6 +186,7 @@ async fn respond(
         answer,
         option_id: option_id.map(str::to_owned),
         checked_item_ids,
+        secret_binding_id: None,
     };
     let builder = buzz_sdk::asks::build_ask_response(channel_id, &response)
         .map_err(crate::validate::sdk_err)?;

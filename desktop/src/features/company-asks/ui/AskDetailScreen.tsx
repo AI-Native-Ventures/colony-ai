@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { mapSpecializedAskCard } from "@/features/company-asks/askCardMapping";
 import { useAskHeadQuery } from "@/features/company-asks/hooks";
 import { AskCard } from "@/features/company-asks/ui/AskCard";
@@ -85,18 +86,25 @@ function AskDetailMemberScreen({
   channel,
   channelId,
   currentPubkey,
+  companyToolConsentInbox,
 }: {
   askId: string;
-  channel: Channel;
+  channel: Channel | null;
   channelId: string;
   currentPubkey: string;
+  companyToolConsentInbox: boolean;
 }) {
   const { goHome } = useAppNavigation();
-  const askState = useAskHeadQuery(channelId, askId);
+  const askState = useAskHeadQuery(
+    channelId,
+    askId,
+    true,
+    companyToolConsentInbox,
+  );
   const record = askState.query.data;
   const rootId = record?.head.ask.threadRootEventId ?? null;
   const rootQuery = useQuery({
-    enabled: rootId !== null,
+    enabled: rootId !== null && channel?.isMember === true,
     queryKey: ["company-ask-thread-root", channelId, askId, rootId],
     queryFn: async () => {
       if (!rootId) throw new Error("The discussion message id is missing.");
@@ -123,19 +131,20 @@ function AskDetailMemberScreen({
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: profilePubkeys.length > 0,
   });
-  const formattedRoot = rootQuery.data
-    ? formatTimelineMessages(
-        [rootQuery.data],
-        channel,
-        currentPubkey,
-        null,
-        profilesQuery.data?.profiles,
-        undefined,
-        undefined,
-        undefined,
-        askState.relaySelfQuery.data,
-      )[0]
-    : undefined;
+  const formattedRoot =
+    rootQuery.data && channel
+      ? formatTimelineMessages(
+          [rootQuery.data],
+          channel,
+          currentPubkey,
+          null,
+          profilesQuery.data?.profiles,
+          undefined,
+          undefined,
+          undefined,
+          askState.relaySelfQuery.data,
+        )[0]
+      : undefined;
   const threadTitle = formattedRoot
     ? rootThreadTitle(formattedRoot.body)
     : "Decision";
@@ -193,14 +202,14 @@ function AskDetailMemberScreen({
         testId="ask-detail-not-found"
       />
     );
-  } else if (rootQuery.isPending) {
+  } else if (channel?.isMember && rootQuery.isPending) {
     detailState = (
       <AskDetailState
         message="Loading the discussion message…"
         testId="ask-root-loading"
       />
     );
-  } else if (rootQuery.isError) {
+  } else if (channel?.isMember && rootQuery.isError) {
     detailState = (
       <AskDetailState
         message="The discussion message could not be loaded."
@@ -208,7 +217,7 @@ function AskDetailMemberScreen({
         testId="ask-root-error"
       />
     );
-  } else if (!rootQuery.data) {
+  } else if (channel?.isMember && !rootQuery.data) {
     detailState = (
       <AskDetailState
         message="The discussion message for this ask was not found."
@@ -327,22 +336,39 @@ function AskDetailMemberScreen({
               showDetailLink={false}
             />
           ) : null}
+          {record?.head.status === "open" &&
+          record.head.ask.category === "secret" ? (
+            <Link
+              className="inline-flex rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              search={{
+                askId,
+                bindingId: null,
+                channelId,
+                state: "request",
+              }}
+              to="/secrets"
+            >
+              Enter securely
+            </Link>
+          ) : null}
           {!specializedAskTitle ? (
             <nav
               aria-label="Ask navigation"
               className="colony-ask-detail-actions"
             >
-              <Link
-                params={{ channelId }}
-                search={{
-                  messageId: rootId ?? undefined,
-                  threadRootId: rootId ?? undefined,
-                  thread: rootId ?? undefined,
-                }}
-                to="/channels/$channelId"
-              >
-                Back to discussion
-              </Link>
+              {channel?.isMember ? (
+                <Link
+                  params={{ channelId }}
+                  search={{
+                    messageId: rootId ?? undefined,
+                    threadRootId: rootId ?? undefined,
+                    thread: rootId ?? undefined,
+                  }}
+                  to="/channels/$channelId"
+                >
+                  Back to discussion
+                </Link>
+              ) : null}
               <Link to="/today">Needs me</Link>
             </nav>
           ) : null}
@@ -355,15 +381,23 @@ function AskDetailMemberScreen({
 export function AskDetailScreen({
   askId,
   channelId,
+  companyToolConsentInbox = false,
 }: {
   askId: string;
   channelId: string;
+  companyToolConsentInbox?: boolean;
 }) {
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
+  const membershipQuery = useMyRelayMembershipQuery();
   const { goHome } = useAppNavigation();
   const channel = channelsQuery.data?.find((item) => item.id === channelId);
   const currentPubkey = identityQuery.data?.pubkey;
+  const canResolveCompanyAsk =
+    membershipQuery.data?.role === "owner" ||
+    membershipQuery.data?.role === "admin";
+  const canOpenCompanyToolConsent =
+    companyToolConsentInbox && canResolveCompanyAsk;
   const searchWorkspace = () => {
     document
       .querySelector<HTMLButtonElement>('[data-testid="open-search"]')
@@ -371,20 +405,29 @@ export function AskDetailScreen({
   };
 
   let accessState: React.ReactNode = null;
-  if (channelsQuery.isPending || identityQuery.isPending) {
+  if (
+    channelsQuery.isPending ||
+    identityQuery.isPending ||
+    (companyToolConsentInbox && membershipQuery.isPending)
+  ) {
     accessState = (
       <AskDetailState
         message="Checking conversation access…"
         testId="ask-detail-access-loading"
       />
     );
-  } else if (channelsQuery.isError || identityQuery.isError) {
+  } else if (
+    channelsQuery.isError ||
+    identityQuery.isError ||
+    (companyToolConsentInbox && membershipQuery.isError)
+  ) {
     accessState = (
       <AskDetailState
         message="Conversation access could not be checked."
         onRetry={() => {
           void channelsQuery.refetch();
           void identityQuery.refetch();
+          if (companyToolConsentInbox) void membershipQuery.refetch();
         }}
         testId="ask-detail-access-error"
       />
@@ -396,7 +439,7 @@ export function AskDetailScreen({
         testId="ask-detail-no-access"
       />
     );
-  } else if (!channel?.isMember) {
+  } else if (!channel?.isMember && !canOpenCompanyToolConsent) {
     accessState = (
       <AskDetailState
         message="You are not a member of this conversation."
@@ -405,13 +448,20 @@ export function AskDetailScreen({
     );
   }
 
-  if (!accessState && channel?.isMember && currentPubkey) {
+  if (
+    !accessState &&
+    (channel?.isMember || canOpenCompanyToolConsent) &&
+    currentPubkey
+  ) {
     return (
       <AskDetailMemberScreen
         askId={askId}
-        channel={channel}
+        channel={channel ?? null}
         channelId={channelId}
         currentPubkey={currentPubkey}
+        companyToolConsentInbox={
+          canOpenCompanyToolConsent && !channel?.isMember
+        }
       />
     );
   }

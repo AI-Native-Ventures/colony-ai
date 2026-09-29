@@ -103,6 +103,10 @@ import {
   KIND_ASK_ACTION,
   KIND_ASK_HEAD,
   KIND_ASK_RESPONSE,
+  KIND_SECRET_BINDING_ACTION,
+  KIND_SECRET_BINDING_HEAD,
+  KIND_TOOL_PERMISSION_ACTION,
+  KIND_TOOL_PERMISSION_HEAD,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
   KIND_CLIENT_ACTION,
@@ -692,6 +696,14 @@ type E2eConfig = {
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
     companyAskRelayPrivateKeyHex?: string;
+    /** Verified relay-signed secret binding heads used by secure-entry E2E coverage. */
+    companySecretBindingHeads?: RelayEvent[];
+    /** Fail the native secret-store boundary with a generic error. */
+    companySecretStoreError?: boolean;
+    /** Reject secret-binding activation publishes in order. */
+    companySecretActivationErrors?: string[];
+    /** Relay-signed standing permission heads used by company permission E2E. */
+    companyToolPermissionHeads?: RelayEvent[];
     /** Reject these ask response publishes in order, then accept them. */
     askResponseErrors?: string[];
     /** Reject these ask create publishes in order, then accept them. */
@@ -1316,6 +1328,7 @@ type MockFilter = {
   "#e"?: string[];
   "#h"?: string[];
   "#p"?: string[];
+  "#t"?: string[];
   authors?: string[];
   before_id?: string;
   ids?: string[];
@@ -1547,6 +1560,8 @@ declare global {
       content: string;
       createdAt?: number;
     }) => RelayEvent;
+    __BUZZ_E2E_COMPANY_SECRET_HEADS__?: () => RelayEvent[];
+    __BUZZ_E2E_COMPANY_ASK_HEADS__?: () => RelayEvent[];
     /** Prepend `count` synthetic older messages to a channel's mock store so
      *  an older-history fetch has something to paginate. Mirrors how the real
      *  relay backfills history. Returns the created events. */
@@ -1605,6 +1620,10 @@ declare global {
       content: string;
       kind: number;
       tags: string[][];
+    }>;
+    __BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__?: Array<{
+      action: string;
+      permissionId: string;
     }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
@@ -3769,7 +3788,10 @@ const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
 const mockCompanyAskHeads: RelayEvent[] = [];
+const mockCompanyToolPermissionHeads: RelayEvent[] = [];
 const mockAskActionIds = new Set<string>();
+const mockCompanySecretBindingHeads: RelayEvent[] = [];
+const mockSecretBindingActionIds = new Set<string>();
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
 const mockAuthResponses: Array<{ success: boolean; message: string }> = [];
@@ -5847,6 +5869,7 @@ function prependMockHistory(input: {
 function filterMockCompanyAskHeads(filter: MockFilter) {
   const channelIds = filter["#h"];
   const dTags = filter["#d"];
+  const tTags = filter["#t"];
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const ids = filter.ids;
 
@@ -5861,6 +5884,14 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
       if (
         dTags &&
         !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        tTags &&
+        !tTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "t" && tag[1] === value),
+        )
       ) {
         return false;
       }
@@ -5884,6 +5915,104 @@ function filterMockCompanyAskHeads(filter: MockFilter) {
         event.created_at > filter.until
       ) {
         return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanySecretBindingHeads(filter: MockFilter) {
+  const dTags = filter["#d"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+  return mockCompanySecretBindingHeads
+    .filter((event) => {
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanyToolPermissionHeads(filter: MockFilter) {
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+  return mockCompanyToolPermissionHeads
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (
+        dTags &&
+        !dTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === value),
+        )
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !pTags.some((value) =>
+          event.tags.some(
+            (tag) =>
+              tag[0] === "p" && tag[1].toLowerCase() === value.toLowerCase(),
+          ),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
       }
       return true;
     })
@@ -5926,7 +6055,6 @@ function acceptMockAskAction(
     reject("invalid: ask action is not valid JSON");
     return;
   }
-
   if (
     action.action !== "create" ||
     action.schemaVersion !== 1 ||
@@ -6152,6 +6280,188 @@ function acceptMockAskResponse(
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
+function acceptMockToolPermissionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (
+    event.pubkey.toLowerCase() !== getMockMemberPubkey(config).toLowerCase()
+  ) {
+    reject(
+      "restricted: only the authenticated company member can manage permissions",
+    );
+    return;
+  }
+  const role = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  )?.role;
+  if (role !== "owner" && role !== "admin") {
+    reject("restricted: only a company owner or admin can manage permissions");
+    return;
+  }
+
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1) {
+    reject("invalid: tool permission action needs one coordinate");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: tool permission action is not valid JSON");
+    return;
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    typeof action.permissionId !== "string" ||
+    dTags[0][1] !== `company:permission:${action.permissionId.toLowerCase()}` ||
+    !["grant", "update", "revoke"].includes(String(action.action))
+  ) {
+    reject("invalid: tool permission action coordinates are invalid");
+    return;
+  }
+  const currentEvent = mockCompanyToolPermissionHeads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTags[0][1]),
+  );
+  if (action.action === "grant" ? Boolean(currentEvent) : !currentEvent) {
+    reject(
+      "conflict: permission already exists or its current head is missing",
+    );
+    return;
+  }
+
+  let currentHead: Record<string, unknown> | null = null;
+  if (currentEvent) {
+    try {
+      currentHead = JSON.parse(currentEvent.content);
+    } catch {
+      reject("invalid: current permission head is malformed");
+      return;
+    }
+    if (action.expectedHeadEventId !== currentEvent.id) {
+      reject(
+        `conflict: permission changed; current head is ${currentEvent.id}`,
+      );
+      return;
+    }
+    if (!currentHead) {
+      reject("invalid: current permission head is unavailable");
+      return;
+    }
+    if (currentHead.status !== "active") {
+      reject("conflict: permission is no longer active");
+      return;
+    }
+  }
+
+  let permission: Record<string, unknown>;
+  if (action.action === "revoke") {
+    const currentPermission = currentHead?.permission;
+    if (
+      typeof currentPermission !== "object" ||
+      currentPermission === null ||
+      Array.isArray(currentPermission)
+    ) {
+      reject("invalid: current permission fields are malformed");
+      return;
+    }
+    permission = currentPermission as Record<string, unknown>;
+  } else {
+    const supplied = action.permission;
+    if (
+      typeof supplied !== "object" ||
+      supplied === null ||
+      Array.isArray(supplied)
+    ) {
+      reject("invalid: grant or update needs permission fields");
+      return;
+    }
+    permission = supplied as Record<string, unknown>;
+    if (permission.permissionId !== action.permissionId) {
+      reject("invalid: permission id does not match its action");
+      return;
+    }
+    if (currentHead) {
+      const prior = currentHead.permission as Record<string, unknown>;
+      if (
+        permission.agentPubkey !== prior.agentPubkey ||
+        permission.action !== prior.action
+      ) {
+        reject(
+          "invalid: an update can change only permission scope and expiry",
+        );
+        return;
+      }
+    }
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for company permissions");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const status = action.action === "revoke" ? "revoked" : "active";
+  const head = {
+    schemaVersion: 1,
+    permissionId: action.permissionId,
+    status,
+    permission,
+    grantedByPubkey:
+      typeof currentHead?.grantedByPubkey === "string"
+        ? currentHead.grantedByPubkey
+        : event.pubkey,
+    changedByPubkey: event.pubkey,
+    updatedAt: new Date().toISOString(),
+    sourceActionEventId: event.id,
+  };
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_TOOL_PERMISSION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", dTags[0][1]],
+        ["p", String(permission.agentPubkey)],
+      ],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = mockCompanyToolPermissionHeads.indexOf(currentEvent);
+    if (index >= 0) mockCompanyToolPermissionHeads.splice(index, 1);
+  }
+  mockCompanyToolPermissionHeads.push(headEvent);
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__ ??= [];
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__.push({
+    action: String(action.action),
+    permissionId: String(action.permissionId),
+  });
+  emitMockGlobalEvent(event);
+  emitMockGlobalEvent(headEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function emitMockHistory(
   socket: MockSocket,
   subId: string,
@@ -6223,6 +6533,280 @@ function emitMockHistory(
   };
 
   emit();
+}
+
+function acceptMockSecretBindingAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  if (mockSecretBindingActionIds.has(event.id)) {
+    accept();
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    bindingId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    binding?: Record<string, unknown>;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: secret binding action is not valid JSON");
+    return;
+  }
+  if (
+    action.action === "activate" &&
+    config?.mock?.companySecretActivationErrors?.length
+  ) {
+    reject(
+      config.mock.companySecretActivationErrors.shift() ??
+        "error: secret activation failed",
+    );
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const bindingId = action.bindingId;
+  const dTag =
+    typeof bindingId === "string" ? `company:secret:${bindingId}` : "";
+  if (
+    action.schemaVersion !== 1 ||
+    !bindingId ||
+    dTags.length !== 1 ||
+    dTags[0]?.[1] !== dTag ||
+    event.tags.some((tag) => tag[0] !== "d")
+  ) {
+    reject("invalid: secret binding command coordinates are invalid");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject(
+      "restricted: only a community owner or admin can change secret bindings",
+    );
+    return;
+  }
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for secret bindings");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const current = filterMockCompanySecretBindingHeads({
+    kinds: [KIND_SECRET_BINDING_HEAD],
+    authors: [relayPubkey],
+    "#d": [dTag],
+    limit: 2,
+  });
+  if (current.length > 1) {
+    reject("error: duplicate secret binding head");
+    return;
+  }
+  const currentHead = current[0];
+  let binding: Record<string, unknown>;
+  let status: "pending" | "active" | "revoked";
+  if (action.action === "create") {
+    const allowedFields = new Set([
+      "schemaVersion",
+      "bindingId",
+      "name",
+      "employeePubkey",
+      "toolName",
+      "allowedUse",
+      "storage",
+      "sourceAsk",
+    ]);
+    if (
+      currentHead ||
+      !action.binding ||
+      Object.keys(action.binding).some((key) => !allowedFields.has(key)) ||
+      action.binding.schemaVersion !== 1 ||
+      action.binding.bindingId !== bindingId ||
+      action.binding.storage !== "device" ||
+      typeof action.binding.name !== "string" ||
+      typeof action.binding.employeePubkey !== "string" ||
+      typeof action.binding.toolName !== "string" ||
+      typeof action.binding.allowedUse !== "string"
+    ) {
+      reject("invalid: secret binding metadata is unsupported");
+      return;
+    }
+    binding = action.binding;
+    status = "pending";
+  } else if (action.action === "activate" || action.action === "revoke") {
+    if (!currentHead || currentHead.id !== action.expectedHeadEventId) {
+      reject("conflict: secret binding changed; current head is unavailable");
+      return;
+    }
+    let previous: { binding?: Record<string, unknown>; status?: string };
+    try {
+      previous = JSON.parse(currentHead.content);
+    } catch {
+      reject("error: secret binding head is invalid");
+      return;
+    }
+    if (action.action === "activate" && previous.status !== "pending") {
+      reject("conflict: only a pending secret binding can be activated");
+      return;
+    }
+    if (action.action === "revoke" && previous.status === "revoked") {
+      reject("conflict: secret binding is already revoked");
+      return;
+    }
+    if (!previous.binding) {
+      reject("error: secret binding head has no metadata");
+      return;
+    }
+    binding = previous.binding;
+    status = action.action === "activate" ? "active" : "revoked";
+  } else {
+    reject("invalid: secret binding action is unsupported");
+    return;
+  }
+
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_SECRET_BINDING_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentHead?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        binding,
+        status,
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  let resolvedAsk: RelayEvent | null = null;
+  if (action.action === "activate") {
+    const sourceAskValue = binding.sourceAsk;
+    if (!sourceAskValue || typeof sourceAskValue !== "object") {
+      reject("invalid: activation needs a linked secret ask");
+      return;
+    }
+    const sourceAsk = sourceAskValue as Record<string, unknown>;
+    if (
+      typeof sourceAsk.channelId !== "string" ||
+      typeof sourceAsk.askId !== "string"
+    ) {
+      reject("invalid: activation needs a linked secret ask");
+      return;
+    }
+    const sourceChannelId = sourceAsk.channelId;
+    const sourceAskId = sourceAsk.askId;
+    const askCoordinate = `channel:${sourceChannelId}:ask:${sourceAskId}`;
+    const askEvent = filterMockCompanyAskHeads({
+      kinds: [KIND_ASK_HEAD],
+      "#h": [sourceChannelId],
+      "#d": [askCoordinate],
+      limit: 2,
+    })[0];
+    if (!askEvent) {
+      reject("conflict: linked secret ask is unavailable");
+      return;
+    }
+    let askHead: Record<string, unknown>;
+    try {
+      askHead = JSON.parse(askEvent.content);
+    } catch {
+      reject("error: linked secret ask is invalid");
+      return;
+    }
+    const ask = askHead.ask as
+      | {
+          category?: unknown;
+          secretRequest?: { toolName?: unknown; allowedUse?: unknown };
+        }
+      | undefined;
+    if (
+      askHead.status !== "open" ||
+      ask?.category !== "secret" ||
+      askHead.askerPubkey !== binding.employeePubkey ||
+      ask.secretRequest?.toolName !== binding.toolName ||
+      ask.secretRequest?.allowedUse !== binding.allowedUse
+    ) {
+      reject("conflict: secret binding does not match its open secret ask");
+      return;
+    }
+    askHead.status = "resolved";
+    askHead.resolution = {
+      outcome: "secret_bound",
+      secretBindingId: bindingId,
+      resolvedByPubkey: event.pubkey,
+      resolvedAt: new Date().toISOString(),
+      responseEventId: event.id,
+    };
+    askHead.cancellation = null;
+    askHead.sourceActionEventId = event.id;
+    resolvedAsk = finalizeEvent(
+      {
+        kind: KIND_ASK_HEAD,
+        created_at: Math.max(
+          Math.floor(Date.now() / 1_000),
+          askEvent.created_at + 1,
+        ),
+        tags: askEvent.tags,
+        content: JSON.stringify(askHead),
+      },
+      relaySecret,
+    );
+    for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+      const candidate = mockCompanyAskHeads[index];
+      if (
+        candidate.tags.some(
+          (tag) => tag[0] === "h" && tag[1] === sourceChannelId,
+        ) &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === askCoordinate)
+      ) {
+        mockCompanyAskHeads.splice(index, 1);
+      }
+    }
+    mockCompanyAskHeads.push(resolvedAsk);
+  }
+  for (
+    let index = mockCompanySecretBindingHeads.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    if (
+      mockCompanySecretBindingHeads[index]?.tags.some(
+        (tag) => tag[0] === "d" && tag[1] === dTag,
+      )
+    ) {
+      mockCompanySecretBindingHeads.splice(index, 1);
+    }
+  }
+  mockCompanySecretBindingHeads.push(nextHead);
+  mockSecretBindingActionIds.add(event.id);
+  emitMockLiveEvent(GLOBAL_MOCK_SUBSCRIPTION, nextHead);
+  if (resolvedAsk) {
+    const askChannelId = resolvedAsk.tags.find((tag) => tag[0] === "h")?.[1];
+    if (askChannelId) emitMockLiveEvent(askChannelId, resolvedAsk);
+  }
+  accept();
 }
 
 function emitMockLiveEvent(channelId: string, event: RelayEvent) {
@@ -14116,6 +14700,22 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_SECRET_BINDING_HEAD)) {
+      for (const event of filterMockCompanySecretBindingHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_TOOL_PERMISSION_HEAD)) {
+      for (const event of filterMockCompanyToolPermissionHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     const channelIds = filter["#h"] ?? [];
     if (channelIds.length > 0 && subId.startsWith("history-")) {
       const closeReason = mockChannelHistoryCloses.shift();
@@ -14177,6 +14777,10 @@ function sendToMockSocket(args: {
       }
     }
 
+    if (event.kind === KIND_TOOL_PERMISSION_ACTION) {
+      acceptMockToolPermissionAction(socket, event, getConfig());
+      return;
+    }
     if (event.kind === KIND_ASK_ACTION) {
       let actionType: unknown;
       try {
@@ -14192,6 +14796,11 @@ function sendToMockSocket(args: {
 
     if (event.kind === KIND_ASK_RESPONSE) {
       acceptMockAskResponse(socket, event, getConfig());
+      return;
+    }
+
+    if (event.kind === KIND_SECRET_BINDING_ACTION) {
+      acceptMockSecretBindingAction(socket, event, getConfig());
       return;
     }
 
@@ -14515,7 +15124,18 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyAskHeads.length,
     ...(config.mock?.companyAskHeads ?? []),
   );
+  mockCompanyToolPermissionHeads.splice(
+    0,
+    mockCompanyToolPermissionHeads.length,
+    ...(config.mock?.companyToolPermissionHeads ?? []),
+  );
   mockAskActionIds.clear();
+  mockCompanySecretBindingHeads.splice(
+    0,
+    mockCompanySecretBindingHeads.length,
+    ...(config.mock?.companySecretBindingHeads ?? []),
+  );
+  mockSecretBindingActionIds.clear();
   if (!isRelayMode(config) && config.mock?.visualFixture) {
     seedVisualFixture(config.mock.visualFixture);
   }
@@ -14914,6 +15534,16 @@ export function maybeInstallE2eTauriMocks() {
       throw new Error("The mock relay signer does not match relaySelf.");
     }
     const coordinate = `channel:${channelId}:ask:${askId}`;
+    let isToolConsent = false;
+    try {
+      const head = JSON.parse(content) as {
+        ask?: { category?: string; type?: string };
+      };
+      isToolConsent =
+        head.ask?.type === "tool_consent" && head.ask.category === "tool";
+    } catch {
+      throw new Error("The mock ask head content is invalid JSON.");
+    }
     const event = finalizeEvent(
       {
         kind: KIND_ASK_HEAD,
@@ -14922,6 +15552,7 @@ export function maybeInstallE2eTauriMocks() {
           ["h", channelId],
           ["d", coordinate],
           ["e", threadRootEventId],
+          ...(isToolConsent ? [["t", "tool_consent"]] : []),
         ],
         content,
       },
@@ -14940,6 +15571,10 @@ export function maybeInstallE2eTauriMocks() {
     emitMockLiveEvent(channelId, event);
     return event;
   };
+  window.__BUZZ_E2E_COMPANY_SECRET_HEADS__ = () =>
+    structuredClone(mockCompanySecretBindingHeads);
+  window.__BUZZ_E2E_COMPANY_ASK_HEADS__ = () =>
+    structuredClone(mockCompanyAskHeads);
   window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ = ({
     channelName,
     content,
@@ -15336,6 +15971,39 @@ export function maybeInstallE2eTauriMocks() {
   ): Promise<unknown> => {
     const activeConfig = getConfig();
     const identity = getActiveIdentity(activeConfig);
+    if (
+      command === "store_company_secret" ||
+      command === "delete_company_secret"
+    ) {
+      const args =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : {};
+      const safePayload = {
+        relayPubkey:
+          typeof args.relayPubkey === "string" ? args.relayPubkey : null,
+        bindingId: typeof args.bindingId === "string" ? args.bindingId : null,
+        ...(command === "store_company_secret"
+          ? { secretValueProvided: typeof args.secretValue === "string" }
+          : {}),
+      };
+      window.__BUZZ_E2E_COMMANDS__?.push(command);
+      window.__BUZZ_E2E_COMMAND_PAYLOADS__?.push({
+        command,
+        payload: safePayload,
+      });
+      window.__BUZZ_E2E_COMMAND_LOG__?.push({
+        command,
+        payload: safePayload,
+      });
+      if (
+        command === "store_company_secret" &&
+        activeConfig?.mock?.companySecretStoreError
+      ) {
+        throw new Error("Device secure storage is unavailable.");
+      }
+      return null;
+    }
     window.__BUZZ_E2E_COMMANDS__?.push(command);
     const loggedPayload = (() => {
       if (payload instanceof Uint8Array) {

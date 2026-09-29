@@ -72,6 +72,8 @@ pub enum PermissionDecision {
     /// wire-channel closure). Fails closed with the given model-visible reason;
     /// the turn continues.
     Denied(&'static str),
+    /// Harness supplied a bounded, model-visible reason for refusing a tool call.
+    DeniedMessage(String),
     /// The turn was cancelled while admitting or waiting. No tool runs and the
     /// caller propagates cancellation exactly as the existing cancel path does.
     Cancelled,
@@ -320,6 +322,11 @@ fn evaluate(result: &Value) -> PermissionDecision {
     let outcome = &result["outcome"];
     if outcome["outcome"] == "selected" && outcome["optionId"].as_str() == Some(ALLOW_OPTION_ID) {
         PermissionDecision::Allowed
+    } else if let Some(message) = outcome["message"]
+        .as_str()
+        .filter(|message| !message.trim().is_empty() && message.len() <= 512)
+    {
+        PermissionDecision::DeniedMessage(message.to_owned())
     } else {
         PermissionDecision::Denied(PERMISSION_DENIED_MSG)
     }
@@ -404,6 +411,35 @@ mod tests {
         assert_eq!(
             evaluate(&selected(ALLOW_OPTION_ID)),
             PermissionDecision::Allowed
+        );
+    }
+
+    #[test]
+    fn refusal_reason_from_harness_reaches_the_tool_result() {
+        let response = json!({
+            "outcome": {
+                "outcome": "selected",
+                "optionId": "reject_once",
+                "message": "tool consent was rejected; the tool call was refused"
+            }
+        });
+        assert_eq!(
+            evaluate(&response),
+            PermissionDecision::DeniedMessage(
+                "tool consent was rejected; the tool call was refused".into()
+            )
+        );
+
+        let oversized = json!({
+            "outcome": {
+                "outcome": "selected",
+                "optionId": "reject_once",
+                "message": "x".repeat(513)
+            }
+        });
+        assert_eq!(
+            evaluate(&oversized),
+            PermissionDecision::Denied(PERMISSION_DENIED_MSG)
         );
     }
 

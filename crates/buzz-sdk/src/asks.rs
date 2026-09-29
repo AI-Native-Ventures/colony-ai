@@ -104,7 +104,9 @@ mod tests {
             decide_by: None,
             options: None,
             items: None,
+            tool_consent: None,
             subject: None,
+            secret_request: None,
         }
     }
 
@@ -178,6 +180,7 @@ mod tests {
             answer: Some("Proceed".into()),
             option_id: None,
             checked_item_ids: None,
+            secret_binding_id: None,
         };
         let event = build_ask_response(channel_id, &response)
             .expect("build")

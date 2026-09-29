@@ -710,11 +710,19 @@ export function useAppNavigation() {
   );
 
   const goAskDetail = React.useCallback(
-    (channelId: string, askId: string, behavior?: NavigationBehavior) =>
+    (
+      channelId: string,
+      askId: string,
+      companyToolConsentInbox = false,
+      behavior?: NavigationBehavior,
+    ) =>
       commitNavigation(
         {
           to: "/asks/$channelId/$askId",
           params: { channelId, askId },
+          ...(companyToolConsentInbox
+            ? { search: { companyToolConsentInbox: "1" } }
+            : {}),
         },
         behavior,
       ),
