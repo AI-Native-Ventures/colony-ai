@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelMembersQuery } from "@/features/channels/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
@@ -19,11 +20,13 @@ import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
+import { KIND_ASK_RESPONSE } from "@/shared/constants/kinds";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { hirePrimaryButtonClass } from "@/features/company-hiring/ui/HirePresentation";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
@@ -33,8 +36,6 @@ import type {
   AskOutcome,
   AskType,
 } from "../askRecords";
-
-const KIND_ASK_RESPONSE = 47033;
 
 function formatAskDate(value: string | null | undefined) {
   if (!value) return null;
@@ -529,6 +530,25 @@ export function AskCard({
   queryState?: AskHeadQueryState;
   showDetailLink?: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const { goHireReview } = useAppNavigation();
+  const [hireDeclineState, setHireDeclineState] = React.useState(() => ({
+    askId,
+    failed: false,
+    pending: false,
+  }));
+  const hireDeclineGeneration = React.useRef(0);
+  React.useEffect(() => {
+    hireDeclineGeneration.current += 1;
+    setHireDeclineState({ askId, failed: false, pending: false });
+    return () => {
+      hireDeclineGeneration.current += 1;
+    };
+  }, [askId]);
+  const hireDeclineFailed =
+    hireDeclineState.askId === askId && hireDeclineState.failed;
+  const hireDeclinePending =
+    hireDeclineState.askId === askId && hireDeclineState.pending;
   const localQueryState = useAskHeadQuery(
     channelId,
     askId,
@@ -697,13 +717,41 @@ export function AskCard({
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
   const specializedVariant = mapSpecializedAskCard(head.ask);
-  const specializedDetail = Boolean(specializedVariant && !showDetailLink);
+  const specializedDetail = Boolean(
+    specializedVariant &&
+      (!showDetailLink || specializedVariant.kind === "hire"),
+  );
   const asker = resolveUserLabel({
     pubkey: head.askerPubkey,
     currentPubkey,
     profiles,
   });
   const askerProfile = profiles?.[normalizePubkey(head.askerPubkey)];
+  const addresseePubkey = head.ask.addresseePubkey;
+  const addresseeIsCurrentUser = Boolean(
+    addresseePubkey &&
+      currentPubkey &&
+      normalizePubkey(addresseePubkey) === normalizePubkey(currentPubkey),
+  );
+  const addresseeProfile = addresseePubkey
+    ? profiles?.[normalizePubkey(addresseePubkey)]
+    : undefined;
+  const addresseeRole = addresseeIsCurrentUser
+    ? membershipQuery.data?.role === "owner"
+      ? "Owner"
+      : membershipQuery.data?.role === "admin"
+        ? "Administrator"
+        : null
+    : null;
+  const addresseeLabel = addresseePubkey
+    ? addresseeIsCurrentUser
+      ? `${addresseeProfile?.displayName ?? "You"}${addresseeRole ? ` · ${addresseeRole}` : ""}`
+      : resolveUserLabel({
+          pubkey: addresseePubkey,
+          currentPubkey,
+          profiles,
+        })
+    : "Owner or administrator";
   const askerIsAgent =
     askerProfile?.isAgent === true ||
     agentsQuery.data?.some(
@@ -721,6 +769,74 @@ export function AskCard({
         ? "Decision recorded"
         : "Decision withdrawn";
 
+  const hireProposal = head.ask.hireProposal;
+  const isHireAsk =
+    head.ask.category === "hire" &&
+    hireProposal !== null &&
+    hireProposal !== undefined;
+  const hireDeclined =
+    head.status === "resolved" && head.resolution?.outcome === "rejected";
+  const hireApproved =
+    head.status === "resolved" && head.resolution?.outcome === "approved";
+  const hireDecisionFailed = hireDeclineFailed && head.status === "open";
+
+  const declineHire = async () => {
+    if (!isHireAsk || !checksReady || deniedReason || hireDeclinePending)
+      return;
+    const generation = hireDeclineGeneration.current;
+    const updateDeclineState = (patch: {
+      failed?: boolean;
+      pending?: boolean;
+    }) => {
+      if (generation !== hireDeclineGeneration.current) return;
+      setHireDeclineState((current) =>
+        current.askId === askId ? { ...current, ...patch } : current,
+      );
+    };
+    updateDeclineState({ failed: false, pending: true });
+    try {
+      const signedResponse = await signRelayEvent({
+        kind: KIND_ASK_RESPONSE,
+        content: JSON.stringify({
+          schemaVersion: 1,
+          askId,
+          expectedHeadEventId: headRecord.event.id,
+          outcome: "rejected",
+        }),
+        tags: [
+          ["h", channelId],
+          ["d", `channel:${channelId}:ask:${askId}`],
+        ],
+      });
+      try {
+        await relayClient.publishEvent(
+          signedResponse,
+          "The ask response timed out before the relay confirmed it.",
+          "The ask response could not be sent.",
+        );
+      } catch (cause) {
+        const refreshed = await query.refetch();
+        if (
+          refreshed.data?.head.status !== "resolved" ||
+          refreshed.data.head.resolution?.outcome !== "rejected"
+        ) {
+          throw cause;
+        }
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["company-ask-head", channelId, askId],
+          exact: false,
+        }),
+        queryClient.invalidateQueries({ queryKey: ["company-hire-head"] }),
+      ]);
+    } catch {
+      updateDeclineState({ failed: true });
+    } finally {
+      updateDeclineState({ pending: false });
+    }
+  };
+
   return (
     <section
       aria-label={`${typeLabel(head.ask.type)} ask`}
@@ -729,7 +845,179 @@ export function AskCard({
       data-ask-variant={specializedVariant?.kind}
       data-testid="ask-card"
     >
-      {specializedDetail ? (
+      {specializedDetail &&
+      specializedVariant?.kind === "hire" &&
+      hireProposal ? (
+        <div className="colony-ask-special-grid">
+          <section aria-label="Hire ask" className="colony-ask-special-request">
+            <h2>Decision requested</h2>
+            <header className="colony-ask-special-header">
+              <div className="colony-ask-special-identity">
+                <span aria-hidden="true">
+                  <UserAvatar
+                    avatarUrl={askerProfile?.avatarUrl ?? null}
+                    displayName={asker}
+                    size="md"
+                  />
+                </span>
+                <div>
+                  <strong>{asker}</strong>
+                  <p>
+                    {askerIsAgent ? "AI employee" : "Person"} · #{channelName} ·{" "}
+                    {new Intl.DateTimeFormat("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }).format(new Date(Date.parse(head.createdAt)))}
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`colony-ask-status colony-ask-status-${hireDecisionFailed ? "failed" : hireDeclined ? "denied" : hireApproved ? "resolved" : isOverdue ? "overdue" : head.status}`}
+                data-testid="ask-status"
+              >
+                {hireDecisionFailed
+                  ? "failed"
+                  : hireDeclined
+                    ? "denied"
+                    : hireApproved
+                      ? "resolved"
+                      : needsYou
+                        ? "Needs you"
+                        : statusText}
+              </span>
+            </header>
+            {head.ask.body ? (
+              <p className="colony-ask-special-description">{head.ask.body}</p>
+            ) : null}
+            {hireDecisionFailed || hireDeclined || hireApproved ? (
+              <div
+                className="colony-ask-hire-outcome"
+                data-outcome={
+                  hireDecisionFailed
+                    ? "failed"
+                    : hireDeclined
+                      ? "denied"
+                      : "resolved"
+                }
+                role={hireDecisionFailed ? "alert" : undefined}
+              >
+                <strong>
+                  {hireDecisionFailed
+                    ? "Decision could not be saved"
+                    : hireDeclined
+                      ? "Request declined"
+                      : "Decision recorded"}
+                </strong>
+                <p>
+                  {hireDecisionFailed
+                    ? "No action has been released. Your review is kept; retry once connected."
+                    : hireDeclined
+                      ? `No authority or funding changed. ${asker} will keep the work paused.`
+                      : "The requester has the outcome in the original thread."}
+                </p>
+              </div>
+            ) : null}
+            {head.status === "open" ? (
+              checksReady && !deniedReason ? (
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    className={hirePrimaryButtonClass}
+                    disabled={hireDeclinePending}
+                    onClick={() =>
+                      void goHireReview(hireProposal.hireId, {
+                        channelId,
+                        askId,
+                      })
+                    }
+                    type="button"
+                  >
+                    Review hire
+                  </Button>
+                  <Button
+                    className="colony-ask-special-work-link"
+                    disabled={hireDeclinePending}
+                    onClick={() => void declineHire()}
+                    type="button"
+                    variant="outline"
+                  >
+                    Decline
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className="colony-ask-denied"
+                  data-testid="ask-cannot-resolve"
+                  role={accessFailure ? "alert" : "status"}
+                >
+                  <strong>You can view this ask, but cannot respond.</strong>
+                  <p>
+                    {accessFailure
+                      ? "Access could not be verified. Try again after the relay is available."
+                      : !checksReady
+                        ? "Checking whether you can respond…"
+                        : deniedReason}
+                  </p>
+                </div>
+              )
+            ) : null}
+            {head.status !== "open" ? (
+              <Link
+                className="colony-ask-special-work-link"
+                params={{ channelId }}
+                search={{
+                  messageId: head.ask.threadRootEventId,
+                  threadRootId: head.ask.threadRootEventId,
+                  thread: head.ask.threadRootEventId,
+                }}
+                to="/channels/$channelId"
+              >
+                Open conversation
+              </Link>
+            ) : null}
+          </section>
+          <aside
+            aria-label="Decision context"
+            className="colony-ask-special-context"
+          >
+            <h2>Decision context</h2>
+            <dl>
+              <div>
+                <dt>Addressed to</dt>
+                <dd>{addresseeLabel}</dd>
+              </div>
+              <div>
+                <dt>Can decide</dt>
+                <dd>Owner or administrator</dd>
+              </div>
+              <div>
+                <dt>Deadline</dt>
+                <dd>
+                  {head.ask.decideBy
+                    ? (formatAskDate(head.ask.decideBy) ?? head.ask.decideBy)
+                    : "No deadline"}
+                </dd>
+              </div>
+              {linkedWorkItem ? (
+                <div>
+                  <dt>Linked work</dt>
+                  <dd>{linkedWorkItem.value.title}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {linkedWorkItem ? (
+              <Link
+                aria-label={`Open work item ${linkedWorkItem.value.title}`}
+                className="colony-ask-special-work-link"
+                params={{ workId: linkedWorkItem.value.workItemId }}
+                search={{ client: linkedWorkItem.value.clientId }}
+                to="/work/$workId"
+              >
+                Open work
+              </Link>
+            ) : null}
+          </aside>
+        </div>
+      ) : specializedDetail ? (
         <div className="colony-ask-special-grid">
           <section
             aria-label="Decision requested"

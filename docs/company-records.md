@@ -554,6 +554,29 @@ runtime and tool-permission APIs do not enforce a per-employee weekly budget.
 The UI and record must not describe the value as an enforced spend cap until a
 company budget API and runtime enforcement path exist.
 
+NEEDS_DESIGN: the frozen company v8 package defines the employee-proposed hire
+decision card, but not an employee-facing composer for creating its typed
+`hireProposal`. The existing ask composer cannot create that record. Do not add
+a hire proposal composer until its route and content are designed.
+
+NEEDS_DESIGN: the hire decision card permits owners and administrators to
+review an ask, while the frozen `hire/review` route requires founder sign-off.
+The relay supports an administrator decision that waits for the founder, but
+the handoff from that decision to a founder review is not designed. The desktop
+approval action is restricted to the owner until that handoff is specified.
+
+NEEDS_DESIGN: the frozen role-picker and configure screens do not specify the
+empty role-catalog state or what to show when no supported runtime, provider,
+or model is available. The flow uses live catalog records and does not invent
+fallback roles or models; these states need design before they can be handled
+in the UI.
+
+NEEDS_DESIGN: the existing `CommunityCatalogDialog` and `AgentDialog` do not
+expose a role-pack editor for `companyRole`, and this repository has no shipped
+role-pack values. The hire picker can show only real catalog entries that
+already contain valid metadata. Designing how owners curate those fields is
+required before the catalog can be populated through the app.
+
 ## Company work items
 
 Company work items are commitments inside conversations. They use the same
