@@ -127,7 +127,7 @@ mod tests {
         COMPANY_RECORD_SCHEMA_VERSION,
     };
     use buzz_core_pkg::kind::KIND_SECRET_BINDING_ACTION;
-    use nostr::{EventBuilder, Keys, Kind, Tag};
+    use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag};
     use std::sync::Mutex;
 
     #[derive(Default)]
