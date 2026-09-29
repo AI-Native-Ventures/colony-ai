@@ -45,7 +45,6 @@ import type {
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/shared/ui/avatar";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
@@ -270,7 +269,7 @@ export function EmployeeProfileScreen({
   const subtitle = [
     currentPosition?.title || "Employee",
     "Employee",
-    ...(managerName ? [`Reports to ${managerName}`] : []),
+    status,
   ].join(" · ");
   const relaySelf = teamData.relaySelf;
   const secretsQuery = useQuery({
@@ -436,6 +435,11 @@ export function EmployeeProfileScreen({
           : "Instructions could not be saved.",
       );
     }
+  }
+
+  function cancelInstructionEdit() {
+    setInstructionDraft(snapshot?.instructions ?? "");
+    setEditInstructions(false);
   }
 
   async function openRuntimeEditor() {
@@ -685,14 +689,15 @@ export function EmployeeProfileScreen({
   function instructionsContent() {
     if (editInstructions) {
       return (
-        <section data-testid="employee-instructions-editor">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold tracking-tight">
-              Edit instructions
-            </h2>
-          </div>
+        <section
+          className="max-w-3xl"
+          data-testid="employee-instructions-editor"
+        >
+          <h1 className="mb-8 text-2xl font-semibold tracking-tight">
+            Edit instructions
+          </h1>
           <form
-            className="space-y-4"
+            className="space-y-0"
             onSubmit={(event) => void saveInstructions(event)}
           >
             <label
@@ -702,7 +707,7 @@ export function EmployeeProfileScreen({
               <span>System instructions</span>
               <Textarea
                 id="employee-system-instructions"
-                className="min-h-[26.25rem] text-sm leading-6"
+                className="min-h-20 text-sm leading-6"
                 data-testid="employee-system-instructions"
                 maxLength={20_000}
                 onChange={(event) =>
@@ -712,21 +717,11 @@ export function EmployeeProfileScreen({
               />
             </label>
             {instructionError ? (
-              <p className="text-sm text-destructive" role="alert">
+              <p className="mt-3 text-sm text-destructive" role="alert">
                 {instructionError}
               </p>
             ) : null}
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
-              <Button
-                onClick={() => {
-                  setInstructionDraft(snapshot?.instructions ?? "");
-                  setEditInstructions(false);
-                }}
-                type="button"
-                variant="outline"
-              >
-                Cancel
-              </Button>
+            <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
               <Button
                 disabled={
                   !canEditInstructions ||
@@ -740,6 +735,13 @@ export function EmployeeProfileScreen({
                   ? "Saving"
                   : "Save changes"}
               </Button>
+              <Button
+                onClick={cancelInstructionEdit}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
             </div>
           </form>
         </section>
@@ -747,27 +749,31 @@ export function EmployeeProfileScreen({
     }
     return (
       <section data-testid="employee-instructions">
-        <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="mb-4">
           <h2 className="text-lg font-semibold tracking-tight">
             System instructions
           </h2>
-          {canEditInstructions ? (
-            <Button onClick={() => setEditInstructions(true)} type="button">
-              Edit instructions
-            </Button>
-          ) : null}
         </div>
-        <div className="rounded-lg border border-border bg-muted/20 p-5">
+        <div className="rounded-lg border border-border p-3">
           {snapshot?.instructions ? (
-            <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6">
               {snapshot.instructions}
-            </pre>
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground">
               No custom instructions.
             </p>
           )}
         </div>
+        {canEditInstructions ? (
+          <Button
+            className="mt-3 w-full"
+            onClick={() => setEditInstructions(true)}
+            type="button"
+          >
+            Edit instructions
+          </Button>
+        ) : null}
         <p className="mt-4 text-xs text-muted-foreground">
           Edits are recorded as revisions in History.
         </p>
@@ -791,13 +797,27 @@ export function EmployeeProfileScreen({
     );
   }
 
-  const avatarUrl = profile?.avatarUrl || agent.avatarUrl || undefined;
-  const statusVariant =
-    status === "active"
-      ? "success"
-      : status === "paused"
-        ? "warning"
-        : "secondary";
+  if (editInstructions) {
+    return (
+      <main
+        className="mx-auto w-full max-w-[72rem] px-6 py-8"
+        data-testid="company-employee-profile"
+      >
+        <div className="mb-8 text-xs text-muted-foreground">
+          Company / Edit instructions
+        </div>
+        <button
+          className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={cancelInstructionEdit}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+        </button>
+        {instructionsContent()}
+      </main>
+    );
+  }
+
   const historyNeedsSync = pendingRevisions.length > 0;
 
   return (
@@ -805,41 +825,29 @@ export function EmployeeProfileScreen({
       className="mx-auto w-full max-w-[72rem] px-6 py-8"
       data-testid="company-employee-profile"
     >
-      <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
-        <button
-          className="inline-flex items-center gap-1 hover:text-foreground"
-          onClick={onBack}
-          type="button"
-        >
-          <ArrowLeft aria-hidden="true" className="size-3.5" /> Company
-        </button>
-        <span aria-hidden="true">/</span>
-        <span>Team</span>
-        <span aria-hidden="true">/</span>
-        <span className="truncate text-foreground">{fullName}</span>
+      <div className="mb-8 text-xs text-muted-foreground">
+        Company / {fullName}
       </div>
+      <button
+        className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        onClick={onBack}
+        type="button"
+      >
+        <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+      </button>
       <div
         className="mb-8 flex flex-wrap items-center justify-between gap-4"
         data-testid="company-position-header"
       >
-        <div className="flex min-w-0 items-center gap-4">
-          <Avatar aria-hidden="true" className="size-14">
-            {avatarUrl ? <AvatarImage alt="" src={avatarUrl} /> : null}
-            <AvatarFallback className="text-lg font-semibold">
-              {fullName.slice(0, 1).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">
-              {fullName}
-            </h1>
-            <p className="mt-1 truncate text-sm text-muted-foreground">
-              {subtitle}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">
+            {fullName}
+          </h1>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {subtitle}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          <Badge variant={statusVariant}>{status}</Badge>
           <Button
             disabled={isOpeningMessage}
             onClick={() => void messageEmployee()}

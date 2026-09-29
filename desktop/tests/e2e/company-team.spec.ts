@@ -177,6 +177,14 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
   await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await expect(page.getByTestId("company-position-header")).toContainText(
+    `${EMPLOYEE_TITLE} · Employee · active`,
+  );
+  await expect(
+    page.getByTestId("company-position-header").getByRole("button", {
+      name: "Message",
+    }),
+  ).toBeVisible();
   await expect(
     page.getByTestId("company-employee-direct-reports"),
   ).toContainText("alice");
@@ -186,6 +194,14 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     "Existing employee instructions.",
   );
   await page.getByRole("button", { name: "Edit instructions" }).click();
+  await expect(
+    page.getByTestId("employee-instructions-editor").getByRole("heading", {
+      name: "Edit instructions",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("employee-instructions-editor").getByRole("button"),
+  ).toHaveText(["Save changes", "Cancel"]);
   await page
     .getByTestId("employee-system-instructions")
     .fill("First revised employee instructions.");
