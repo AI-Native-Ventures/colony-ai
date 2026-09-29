@@ -357,6 +357,7 @@ export type VisualFixtureSeed = {
 
 type E2eConfig = {
   mode?: "mock" | "relay";
+  relayAuthMode?: "http-header" | "nip42";
   mock?: {
     /** Tauri window label exposed to the app. Defaults to the main window. */
     windowLabel?: string;
@@ -10988,6 +10989,10 @@ async function relayQuery(
     throw new Error(P_GATED_REJECTION_MESSAGE);
   }
 
+  if (config?.relayAuthMode === "nip42") {
+    return nip42RelayRequest(config, { type: "query", filters });
+  }
+
   const response = await fetch(`${getRelayHttpUrl(config)}/query`, {
     method: "POST",
     headers: {
@@ -11000,12 +11005,210 @@ async function relayQuery(
   return response.json() as Promise<RelayEvent[]>;
 }
 
+const NIP42_REQUEST_TIMEOUT_MS = 25_000;
+const NIP42_MAX_RESPONSE_BYTES = 8_000_000;
+const NIP42_MAX_QUERY_EVENTS = 2_000;
+
+type Nip42RelayRequest =
+  | { type: "query"; filters: Array<Record<string, unknown>> }
+  | { type: "publish"; event: RelayEvent };
+
+async function nip42RelayRequest<T>(
+  config: E2eConfig | undefined,
+  request: Nip42RelayRequest,
+): Promise<T> {
+  const identity = getRelayIdentity(config);
+  const relayUrl = getRelayWsUrl(config);
+
+  return new Promise<T>((resolve, reject) => {
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(relayUrl);
+    } catch {
+      reject(new Error("Could not open the authenticated canary relay."));
+      return;
+    }
+
+    const requestId = `e2e-${crypto.randomUUID()}`;
+    const events: RelayEvent[] = [];
+    let responseBytes = 0;
+    let authEventId: string | null = null;
+    let requestSent = false;
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      finish(new Error("The authenticated canary relay request timed out."));
+    }, NIP42_REQUEST_TIMEOUT_MS);
+
+    const finish = (error?: Error, result?: T) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      if (socket.readyState === WebSocket.OPEN) {
+        if (request.type === "query" && requestSent) {
+          socket.send(JSON.stringify(["CLOSE", requestId]));
+        }
+        socket.close();
+      }
+      if (error) reject(error);
+      else resolve(result as T);
+    };
+
+    socket.onmessage = (message) => {
+      void (async () => {
+        if (typeof message.data !== "string") {
+          finish(new Error("The canary relay returned a non-text frame."));
+          return;
+        }
+
+        let frame: unknown;
+        try {
+          frame = JSON.parse(message.data);
+        } catch {
+          finish(new Error("The canary relay returned an invalid frame."));
+          return;
+        }
+        if (!Array.isArray(frame) || typeof frame[0] !== "string") return;
+
+        if (frame[0] === "AUTH") {
+          const challenge = frame[1];
+          if (typeof challenge !== "string" || !challenge || authEventId) {
+            finish(
+              new Error("The canary relay sent an invalid auth challenge."),
+            );
+            return;
+          }
+
+          const authEvent = await signWithIdentity(identity, {
+            kind: 22242,
+            content: "",
+            tags: [
+              ["relay", relayUrl],
+              ["challenge", challenge],
+            ],
+          });
+          authEventId = authEvent.id;
+          socket.send(JSON.stringify(["AUTH", authEvent]));
+          return;
+        }
+
+        if (
+          frame[0] === "OK" &&
+          typeof frame[1] === "string" &&
+          frame[1] === authEventId
+        ) {
+          if (frame[2] !== true) {
+            finish(
+              new Error("The canary relay rejected NIP-42 authentication."),
+            );
+            return;
+          }
+
+          const testWindow = window as Window & {
+            __BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__?: number;
+          };
+          testWindow.__BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__ =
+            (testWindow.__BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__ ?? 0) + 1;
+
+          if (requestSent) return;
+          requestSent = true;
+          if (request.type === "query") {
+            socket.send(JSON.stringify(["REQ", requestId, ...request.filters]));
+          } else {
+            socket.send(JSON.stringify(["EVENT", request.event]));
+          }
+          return;
+        }
+
+        if (
+          request.type === "query" &&
+          frame[0] === "EVENT" &&
+          frame[1] === requestId
+        ) {
+          const encoded = JSON.stringify(frame[2]);
+          responseBytes += new TextEncoder().encode(encoded).byteLength;
+          if (
+            responseBytes > NIP42_MAX_RESPONSE_BYTES ||
+            events.length >= NIP42_MAX_QUERY_EVENTS
+          ) {
+            finish(
+              new Error("The canary relay query exceeded its response limit."),
+            );
+            return;
+          }
+          events.push(frame[2] as RelayEvent);
+          return;
+        }
+
+        if (
+          request.type === "query" &&
+          frame[0] === "EOSE" &&
+          frame[1] === requestId
+        ) {
+          finish(undefined, events as T);
+          return;
+        }
+
+        if (
+          request.type === "publish" &&
+          frame[0] === "OK" &&
+          frame[1] === request.event.id
+        ) {
+          if (frame[2] !== true) {
+            const reason =
+              typeof frame[3] === "string" ? frame[3].slice(0, 160) : "";
+            finish(
+              new Error(
+                reason
+                  ? `The canary relay rejected the signed event: ${reason}`
+                  : "The canary relay rejected the signed event.",
+              ),
+            );
+            return;
+          }
+          finish(undefined, {
+            event_id: request.event.id,
+            accepted: true,
+            message: typeof frame[3] === "string" ? frame[3] : "",
+          } as T);
+          return;
+        }
+
+        if (frame[0] === "CLOSED" || frame[0] === "NOTICE") {
+          const reason =
+            typeof frame[2] === "string" ? frame[2].slice(0, 160) : "";
+          finish(
+            new Error(
+              reason
+                ? `The canary relay closed the request: ${reason}`
+                : "The canary relay closed the request.",
+            ),
+          );
+        }
+      })().catch(() => {
+        finish(new Error("The NIP-42 relay request failed."));
+      });
+    };
+
+    socket.onerror = () => {
+      finish(new Error("The authenticated canary relay connection failed."));
+    };
+    socket.onclose = () => {
+      finish(
+        new Error("The authenticated canary relay connection closed early."),
+      );
+    };
+  });
+}
+
 async function submitSignedEvent(
   config: E2eConfig | undefined,
   template: { kind: number; content: string; tags: string[][] },
 ): Promise<{ event_id: string; accepted: boolean; message: string }> {
   const identity = getRelayIdentity(config);
   const signed = await signWithIdentity(identity, template);
+  if (config?.relayAuthMode === "nip42") {
+    return nip42RelayRequest(config, { type: "publish", event: signed });
+  }
   return relayJsonRequest(config, "/events", {
     method: "POST",
     body: JSON.stringify(signed),
@@ -20463,6 +20666,21 @@ export function maybeInstallE2eTauriMocks() {
   };
   window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ = (command, payload) =>
     handleMockCommand(command, payload ?? null);
+  const canaryTestWindow = window as typeof window & {
+    __BUZZ_E2E_PUBLISH_RELAY_EVENT__?: (template: {
+      kind: number;
+      content: string;
+      tags: string[][];
+      createdAt?: number;
+    }) => Promise<{ accepted: boolean; event_id: string; message: string }>;
+    __BUZZ_E2E_QUERY_RELAY__?: (
+      filters: Array<Record<string, unknown>>,
+    ) => Promise<RelayEvent[]>;
+  };
+  canaryTestWindow.__BUZZ_E2E_PUBLISH_RELAY_EVENT__ = (template) =>
+    submitSignedEvent(getConfig(), template);
+  canaryTestWindow.__BUZZ_E2E_QUERY_RELAY__ = (filters) =>
+    relayQuery(getConfig(), filters);
   window.__BUZZ_E2E_EMIT_TAURI_EVENT__ = (event, payload) =>
     emit(event, payload);
   mockIPC(handleMockCommand, { shouldMockEvents: true });
