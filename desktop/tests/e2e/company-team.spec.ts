@@ -219,8 +219,25 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
 
   await page.getByRole("tab", { name: "Salary" }).click();
-  await expect(page.getByTestId("employee-unavailable-salary")).toContainText(
-    "Not available yet.",
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "No allowance set",
+  );
+  await page
+    .getByRole("button", { name: "Change allowance or funding" })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/team/detail/${employeePubkey}\\?panel=salary-edit$`),
+  );
+  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
+  await page.getByLabel("Allowance in USD API-equivalent").fill("50.00");
+  await page.getByLabel("Period").selectOption("week");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "USD 50.00 / week",
+  );
+  await page.reload();
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "USD 50.00 / week",
   );
   await page.getByRole("tab", { name: "Workers" }).click();
   await expect(page.getByTestId("employee-unavailable-workers")).toContainText(

@@ -28,6 +28,7 @@ import {
 import type { MemberPositionActionKind, TeamMember } from "../teamModels";
 import type { CompanyTeamData } from "../teamRelay";
 import { EmployeeProfileScreen } from "./EmployeeProfileScreen";
+import { EmployeeAllowanceEditScreen } from "@/features/power/EmployeeAllowanceScreens";
 
 export type TeamMemberScreenMode = "detail" | "edit" | "pause" | "archive";
 
@@ -48,14 +49,23 @@ function AppError({ children }: { children: React.ReactNode }) {
 export function TeamMemberScreen({
   memberPubkey,
   mode,
+  salaryPanel,
 }: {
   memberPubkey: string;
   mode: TeamMemberScreenMode;
+  salaryPanel?: "salary" | "salary-edit";
 }) {
   const teamQuery = useCompanyTeamQuery();
   const identity = useIdentityQuery();
-  const { goTeam, goTeamArchive, goTeamEdit, goTeamMember, goTeamPause } =
-    useAppNavigation();
+  const {
+    goTeam,
+    goTeamArchive,
+    goTeamEdit,
+    goTeamMember,
+    goTeamMemberSalary,
+    goTeamPause,
+    goTeamSalaryEdit,
+  } = useAppNavigation();
   const mutation = useMemberPositionActionMutation();
   const member = teamQuery.data?.members.find(
     (candidate) => candidate.pubkey === memberPubkey.toLowerCase(),
@@ -170,6 +180,22 @@ export function TeamMemberScreen({
     return <AppError>This action is only available for AI employees.</AppError>;
   }
 
+  if (mode === "detail" && salaryPanel === "salary-edit") {
+    if (member.kind !== "employee") {
+      return (
+        <AppError>This allowance is only available for AI employees.</AppError>
+      );
+    }
+    return (
+      <EmployeeAllowanceEditScreen
+        canManage={canManage}
+        employee={member}
+        employeeName={fullName}
+        onBack={() => void goTeamMemberSalary(member.pubkey)}
+      />
+    );
+  }
+
   const back = () =>
     void (mode === "detail" ? goTeam() : goTeamMember(member.pubkey));
   const currentMember = member;
@@ -179,7 +205,9 @@ export function TeamMemberScreen({
         canManage={canManage}
         fullName={fullName}
         member={member}
+        initialTab={salaryPanel === "salary" ? "salary" : "overview"}
         onBack={() => void goTeam()}
+        onEditSalary={() => void goTeamSalaryEdit(member.pubkey)}
         onEditPosition={() => void goTeamEdit(member.pubkey)}
         onOpenMember={(pubkey) => void goTeamMember(pubkey)}
         onPause={() => void goTeamPause(member.pubkey)}
